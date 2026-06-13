@@ -141,6 +141,11 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       researched: new Set(STARTING_TECHS),
       researching: null,
       scienceProgress: 0,
+      civicsResearched: new Set<string>(),
+      researchingCivic: null,
+      cultureProgress: 0,
+      government: "chiefdom",
+      policies: [],
       explored: new Set<string>(),
     });
   }
@@ -156,6 +161,11 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       researched: new Set(STARTING_TECHS),
       researching: null,
       scienceProgress: 0,
+      civicsResearched: new Set<string>(),
+      researchingCivic: null,
+      cultureProgress: 0,
+      government: "chiefdom",
+      policies: [],
       explored: new Set<string>(),
     });
   }

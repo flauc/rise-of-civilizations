@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import {
+  availableCivics,
   availableTechs,
   cityAt,
   citiesOf,
@@ -139,13 +140,16 @@ function startGame(session: Session): void {
       if (selectedCityId != null) session.order({ type: "setProduction", cityId: selectedCityId, item });
     },
     onSetResearch: (techId) => session.order({ type: "setResearch", techId }),
+    onSetCivic: (civicId) => session.order({ type: "setCivic", civicId }),
+    onSetGovernment: (governmentId) => session.order({ type: "setGovernment", governmentId }),
+    onTogglePolicy: (policyId) => session.order({ type: "togglePolicy", policyId }),
     onCloseCity: () => {
       clearSelection();
     },
     onSuggestion: () => actOnSuggestion(),
   });
 
-  type Suggestion = { kind: "units" | "research" | "production"; label: string } | null;
+  type Suggestion = { kind: "units" | "research" | "civic" | "production"; label: string } | null;
   function computeSuggestion(): Suggestion {
     const me = session.getViewerId();
     const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0);
@@ -153,6 +157,9 @@ function startGame(session: Session): void {
     const player = st().players.find((p) => p.id === me);
     if (player && player.researching == null && availableTechs(player).length > 0) {
       return { kind: "research", label: "🔬 Choose Research" };
+    }
+    if (player && player.researchingCivic == null && availableCivics(player).length > 0) {
+      return { kind: "civic", label: "🎭 Choose Civic" };
     }
     const noProd = citiesOf(st(), me).filter((c) => c.production == null);
     if (noProd.length > 0) return { kind: "production", label: `⚒️ Set Production (${noProd.length})` };
@@ -175,6 +182,8 @@ function startGame(session: Session): void {
       centerOn(u.col, u.row);
     } else if (s.kind === "research") {
       ui.openResearch();
+    } else if (s.kind === "civic") {
+      ui.openCivics();
     } else {
       const city = citiesOf(st(), me).find((c) => c.production == null);
       if (city) {

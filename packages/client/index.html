@@ -198,14 +198,40 @@
         color: #cfe3f7;
         font-size: 16px;
       }
-      /* Research modal */
-      #research {
+      /* Research / civics modal */
+      #research,
+      #civics {
         left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);
-        width: 280px;
-        max-height: 70vh;
+        width: 300px;
+        max-height: 78vh;
         overflow: auto;
+      }
+      #civics .csub {
+        margin-top: 10px;
+        margin-bottom: 2px;
+        color: #c79ad6;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      #civics .row {
+        gap: 6px;
+      }
+      #civics .tech {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px;
+        border: 1px solid var(--edge);
+        border-radius: 8px;
+        margin-top: 6px;
+        cursor: pointer;
+      }
+      #civics .tech:hover {
+        background: #1d344c;
       }
       #research .tech {
         display: flex;

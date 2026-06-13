@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 97 112" width="97" height="112">
+  <defs>
+    <clipPath id="hexClip"><path d="M 97.50,28.00 L 97.50,84.00 L 49.00,112.00 L 0.50,84.00 L 0.50,28.00 L 49.00,0.00 Z"/></clipPath>
+    
+  </defs>
+  
+    <path d="M 97.50,28.00 L 97.50,84.00 L 49.00,112.00 L 0.50,84.00 L 0.50,28.00 L 49.00,0.00 Z" fill="#e7eef2" stroke="rgba(0,0,0,0.18)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M 91.68,31.36 L 91.68,80.64 L 49.00,105.28 L 6.32,80.64 L 6.32,31.36 L 49.00,6.72 Z" fill="#ffffff" />
+  
+  <g clip-path="url(#hexClip)">
+    <linearGradient id="snowGrad" x1="96.98463103929541%" y1="32.898992833716555%" x2="3.015368960704585%" y2="67.10100716628344%"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#d8e2e8"/></linearGradient><ellipse cx="59" cy="68" rx="24.200000000000003" ry="12.100000000000001" fill="url(#snowGrad)"/><circle cx="25" cy="38" r="3.5" fill="#d8e2e8"/>
+  </g>
+</svg>

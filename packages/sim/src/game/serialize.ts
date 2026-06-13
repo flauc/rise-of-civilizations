@@ -32,6 +32,11 @@ export interface PlayerView {
     scienceProgress: number;
     researching: TechId | null;
     researched: TechId[];
+    cultureProgress: number;
+    researchingCivic: string | null;
+    civicsResearched: string[];
+    government: string;
+    policies: string[];
   };
   players: PlayerPublic[];
   cols: number;
@@ -80,6 +85,11 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
       scienceProgress: me?.scienceProgress ?? 0,
       researching: me?.researching ?? null,
       researched: me ? [...me.researched] : [],
+      cultureProgress: me?.cultureProgress ?? 0,
+      researchingCivic: me?.researchingCivic ?? null,
+      civicsResearched: me ? [...me.civicsResearched] : [],
+      government: me?.government ?? "chiefdom",
+      policies: me ? [...me.policies] : [],
     },
     players: state.players.map((p) => ({
       id: p.id,

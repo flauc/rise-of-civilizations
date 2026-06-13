@@ -1,0 +1,12 @@
+{
+  "name": "hex-terrain-generator",
+  "private": true,
+  "type": "module",
+  "description": "Standalone vector hex terrain tile generator for Rise of Civilizations.",
+  "scripts": {
+    "generate": "bun run generate.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

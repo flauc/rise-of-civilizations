@@ -130,6 +130,11 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     researched: new Set(p.id === view.yourId ? view.you.researched : []),
     researching: p.id === view.yourId ? view.you.researching : null,
     scienceProgress: p.id === view.yourId ? view.you.scienceProgress : 0,
+    civicsResearched: new Set(p.id === view.yourId ? view.you.civicsResearched : []),
+    researchingCivic: p.id === view.yourId ? view.you.researchingCivic : null,
+    cultureProgress: p.id === view.yourId ? view.you.cultureProgress : 0,
+    government: p.id === view.yourId ? view.you.government : "chiefdom",
+    policies: p.id === view.yourId ? [...view.you.policies] : [],
     explored: p.id === view.yourId ? explored : new Set<string>(),
   }));
 

@@ -4,7 +4,7 @@ import { cityAt, makeUnit, unitAt } from "./state";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { expandTerritory } from "./territory";
-import { civEffectsOf } from "./civs";
+import { civEffectsOf, getCivic } from "./civs";
 import { cityMaxHp } from "./combat";
 import { offsetNeighbors } from "./movement";
 import {
@@ -19,6 +19,7 @@ export interface CityYields {
   production: number;
   gold: number;
   science: number;
+  culture: number;
 }
 
 const CITY_RADIUS = 2;
@@ -67,6 +68,7 @@ export function getCityYields(state: GameState, city: City): CityYields {
   let production = Math.max(1, cBase.production);
   let gold = cBase.gold;
   let science = 1; // base research from every city
+  let culture = 1; // base culture from every city
 
   const eff = civEffectsOf(state, city.ownerId);
   const desertGold = eff.goldPerWorkedDesert ?? 0;
@@ -93,14 +95,16 @@ export function getCityYields(state: GameState, city: City): CityYields {
     production += def.yields.production ?? 0;
     gold += def.yields.gold ?? 0;
     science += def.yields.science ?? 0;
+    culture += def.yields.culture ?? 0;
   }
 
   if (city.isCapital) {
     production += 1;
     science += 1;
+    culture += 1;
   }
 
-  // Civ yield bonuses (percentage).
+  // Civ / government / policy yield bonuses (percentage).
   const pct = eff.yieldPercent;
   if (pct) {
     food = Math.floor(food * (1 + (pct.food ?? 0) / 100));
@@ -108,7 +112,7 @@ export function getCityYields(state: GameState, city: City): CityYields {
     gold = Math.floor(gold * (1 + (pct.gold ?? 0) / 100));
     science = Math.floor(science * (1 + (pct.science ?? 0) / 100));
   }
-  return { food, production, gold, science };
+  return { food, production, gold, science, culture };
 }
 
 export function foodToGrow(population: number): number {
@@ -256,7 +260,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
     }
   }
 
-  // Gold + science (empire pools).
+  // Gold + science + culture (empire pools).
   owner.gold += y.gold;
   owner.scienceProgress += y.science;
   if (owner.researching) {
@@ -266,6 +270,16 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       owner.researched.add(owner.researching);
       state.log.push(`${owner.name} discovered ${def.name}.`);
       owner.researching = null;
+    }
+  }
+  owner.cultureProgress += y.culture;
+  if (owner.researchingCivic) {
+    const def = getCivic(owner.researchingCivic);
+    if (def && owner.cultureProgress >= def.cost) {
+      owner.cultureProgress -= def.cost;
+      owner.civicsResearched.add(owner.researchingCivic);
+      state.log.push(`${owner.name} adopted ${def.name}.`);
+      owner.researchingCivic = null;
     }
   }
 

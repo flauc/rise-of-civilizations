@@ -138,3 +138,76 @@ export function getCiv(id: string | undefined): CivDef | undefined {
 }
 
 export const CIV_IDS: string[] = CIVILIZATIONS.map((c) => c.id);
+
+// ===========================================================================
+// Civics tree, governments and policies (the culture-funded parallel tree).
+// ===========================================================================
+
+export interface CivicDef {
+  id: string;
+  name: string;
+  cost: number; // culture
+  prereqs: string[];
+  /** Government this civic unlocks (optional). */
+  unlocksGovernment?: string;
+  /** Policy card this civic unlocks (optional). */
+  unlocksPolicy?: string;
+}
+
+export interface GovernmentDef {
+  id: string;
+  name: string;
+  desc: string;
+  /** Civic required to adopt it (absent = available from the start). */
+  reqCivic?: string;
+  /** Number of policy-card slots. */
+  slots: number;
+  effects: CivEffects;
+}
+
+export interface PolicyDef {
+  id: string;
+  name: string;
+  desc: string;
+  effects: CivEffects;
+}
+
+export const CIVICS: CivicDef[] = [
+  { id: "code_of_laws", name: "Code of Laws", cost: 0, prereqs: [], unlocksGovernment: "chiefdom", unlocksPolicy: "discipline" },
+  { id: "craftsmanship", name: "Craftsmanship", cost: 25, prereqs: ["code_of_laws"], unlocksPolicy: "urban_planning" },
+  { id: "military_tradition", name: "Military Tradition", cost: 30, prereqs: ["code_of_laws"], unlocksPolicy: "maneuver" },
+  { id: "mysticism", name: "Mysticism", cost: 25, prereqs: ["code_of_laws"], unlocksPolicy: "god_king" },
+  { id: "early_empire", name: "Early Empire", cost: 45, prereqs: ["craftsmanship"], unlocksGovernment: "despotism" },
+  { id: "drama_poetry", name: "Drama & Poetry", cost: 50, prereqs: ["mysticism"], unlocksPolicy: "literary_tradition" },
+  { id: "recorded_history", name: "Recorded History", cost: 55, prereqs: ["early_empire"], unlocksPolicy: "natural_philosophy" },
+  { id: "trade_routes", name: "Trade", cost: 50, prereqs: ["early_empire"], unlocksPolicy: "caravans" },
+  { id: "political_philosophy", name: "Political Philosophy", cost: 80, prereqs: ["recorded_history"], unlocksGovernment: "classical_republic" },
+  { id: "military_training", name: "Military Training", cost: 70, prereqs: ["military_tradition", "early_empire"], unlocksGovernment: "oligarchy" },
+  { id: "statecraft", name: "Statecraft", cost: 75, prereqs: ["political_philosophy"], unlocksGovernment: "monarchy" },
+];
+
+export const GOVERNMENTS: GovernmentDef[] = [
+  { id: "chiefdom", name: "Chiefdom", desc: "The starting government. 2 policy slots.", slots: 2, effects: {} },
+  { id: "despotism", name: "Despotism", desc: "+10% production. 3 policy slots.", reqCivic: "early_empire", slots: 3, effects: { yieldPercent: { production: 10 } } },
+  { id: "oligarchy", name: "Oligarchy", desc: "Melee & cavalry +2 combat. 4 policy slots.", reqCivic: "military_training", slots: 4, effects: { unitClassCombat: { melee: 2, cavalry: 2 } } },
+  { id: "classical_republic", name: "Classical Republic", desc: "+15% science. 4 policy slots.", reqCivic: "political_philosophy", slots: 4, effects: { yieldPercent: { science: 15 } } },
+  { id: "monarchy", name: "Monarchy", desc: "+10% production and +10% gold. 5 policy slots.", reqCivic: "statecraft", slots: 5, effects: { yieldPercent: { production: 10, gold: 10 } } },
+];
+
+export const POLICIES: PolicyDef[] = [
+  { id: "discipline", name: "Discipline", desc: "Melee units +2 combat.", effects: { unitClassCombat: { melee: 2 } } },
+  { id: "maneuver", name: "Maneuver", desc: "Cavalry +1 movement.", effects: { cavalryMovementBonus: 1 } },
+  { id: "urban_planning", name: "Urban Planning", desc: "+15% production.", effects: { yieldPercent: { production: 15 } } },
+  { id: "god_king", name: "God King", desc: "+15% gold.", effects: { yieldPercent: { gold: 15 } } },
+  { id: "literary_tradition", name: "Literary Tradition", desc: "+10% science.", effects: { yieldPercent: { science: 10 } } },
+  { id: "natural_philosophy", name: "Natural Philosophy", desc: "+20% science.", effects: { yieldPercent: { science: 20 } } },
+  { id: "caravans", name: "Caravans", desc: "+20% gold.", effects: { yieldPercent: { gold: 20 } } },
+];
+
+const CIVIC_BY_ID = new Map(CIVICS.map((c) => [c.id, c]));
+const GOV_BY_ID = new Map(GOVERNMENTS.map((g) => [g.id, g]));
+const POLICY_BY_ID = new Map(POLICIES.map((p) => [p.id, p]));
+
+export const getCivic = (id: string | undefined) => (id ? CIVIC_BY_ID.get(id) : undefined);
+export const getGovernment = (id: string | undefined) => (id ? GOV_BY_ID.get(id) : undefined);
+export const getPolicy = (id: string | undefined) => (id ? POLICY_BY_ID.get(id) : undefined);

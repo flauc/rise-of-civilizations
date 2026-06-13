@@ -28,7 +28,7 @@ export type UnitAbility = "bonus_vs_cavalry" | "bonus_vs_city";
 
 export type BuildingId =
   | "granary" | "workshop" | "forge" | "walls" | "barracks" | "stable"
-  | "market" | "library" | "academy" | "aqueduct" | "harbor" | "monument";
+  | "market" | "library" | "academy" | "aqueduct" | "harbor" | "monument" | "amphitheater";
 
 export type TechId =
   // Dawn
@@ -118,7 +118,7 @@ export interface BuildingDef {
   name: string;
   cost: number;
   reqTech?: TechId;
-  yields: { food?: number; production?: number; gold?: number; science?: number };
+  yields: { food?: number; production?: number; gold?: number; science?: number; culture?: number };
   effect?: "walls" | "barracks";
 }
 
@@ -136,7 +136,8 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   academy: B({ id: "academy", name: "Academy", cost: 34, reqTech: "philosophy", yields: { science: 3 } }),
   aqueduct: B({ id: "aqueduct", name: "Aqueduct", cost: 30, reqTech: "engineering", yields: { food: 2 } }),
   harbor: B({ id: "harbor", name: "Harbor", cost: 24, reqTech: "sailcloth", yields: { gold: 2 } }),
-  monument: B({ id: "monument", name: "Monument", cost: 28, reqTech: "monumental_architecture", yields: { science: 1 } }),
+  monument: B({ id: "monument", name: "Monument", cost: 22, reqTech: "monumental_architecture", yields: { culture: 2 } }),
+  amphitheater: B({ id: "amphitheater", name: "Amphitheater", cost: 26, reqTech: "ritual_burial", yields: { culture: 3 } }),
 };
 
 export interface TechDef {

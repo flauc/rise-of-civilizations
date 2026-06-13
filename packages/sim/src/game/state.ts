@@ -63,6 +63,13 @@ export interface Player {
   researched: Set<TechId>;
   researching: TechId | null;
   scienceProgress: number;
+  // Civics / government (culture tree)
+  civicsResearched: Set<string>;
+  researchingCivic: string | null;
+  cultureProgress: number;
+  government: string;
+  /** Active policy-card ids (capped at the government's slot count). */
+  policies: string[];
   explored: Set<string>;
 }
 

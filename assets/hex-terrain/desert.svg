@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 97 112" width="97" height="112">
+  <defs>
+    <clipPath id="hexClip"><path d="M 97.50,28.00 L 97.50,84.00 L 49.00,112.00 L 0.50,84.00 L 0.50,28.00 L 49.00,0.00 Z"/></clipPath>
+    
+  </defs>
+  
+    <path d="M 97.50,28.00 L 97.50,84.00 L 49.00,112.00 L 0.50,84.00 L 0.50,28.00 L 49.00,0.00 Z" fill="#cdb87a" stroke="rgba(0,0,0,0.18)" stroke-width="1.5" stroke-linejoin="round"/>
+    <path d="M 91.68,31.36 L 91.68,80.64 L 49.00,105.28 L 6.32,80.64 L 6.32,31.36 L 49.00,6.72 Z" fill="#d3be80" />
+  
+  <g clip-path="url(#hexClip)">
+    <linearGradient id="duneGrad" x1="1.7037086855465873%" y1="37.059047744873965%" x2="98.29629131445341%" y2="62.940952255126035%"><stop offset="0%" stop-color="#dfca8c"/><stop offset="100%" stop-color="#cdb87a"/></linearGradient><ellipse cx="37" cy="60" rx="42" ry="13" fill="url(#duneGrad)"/><ellipse cx="65" cy="76" rx="36" ry="11" fill="url(#duneGrad)"/>
+  </g>
+</svg>

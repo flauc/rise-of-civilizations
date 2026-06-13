@@ -16,7 +16,15 @@ import { buildImprovement, type ImprovementKind } from "./improvements";
 import { applyVictoryCheck } from "./victory";
 import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter } from "./features";
-import { civEffectsOf, unitMovement } from "./civs";
+import {
+  civEffectsOf,
+  unitMovement,
+  civicUnlocked,
+  availableGovernments,
+  unlockedPolicies,
+  getCivic,
+  getGovernment,
+} from "./civs";
 import { aiTakeTurn } from "./ai";
 import { UNIT_DEFS, TECH_DEFS, techUnlocked, type BuildingId, type PromotionId, type TechId } from "./content";
 
@@ -29,6 +37,9 @@ export type Command =
   | { type: "setProduction"; cityId: number; item: ProductionItem }
   | { type: "assignCitizen"; cityId: number; col: number; row: number }
   | { type: "setResearch"; techId: TechId }
+  | { type: "setCivic"; civicId: string }
+  | { type: "setGovernment"; governmentId: string }
+  | { type: "togglePolicy"; policyId: string }
   | { type: "endTurn" };
 
 export interface CommandResult {
@@ -219,6 +230,39 @@ export function applyCommand(
       if (!techUnlocked(player.researched, cmd.techId)) return fail("prereqs not met");
       player.researching = cmd.techId;
       state.log.push(`${player.name} is researching ${TECH_DEFS[cmd.techId].name}.`);
+      return ok;
+    }
+
+    case "setCivic": {
+      if (player.civicsResearched.has(cmd.civicId)) return fail("already adopted");
+      if (!civicUnlocked(player.civicsResearched, cmd.civicId)) return fail("prereqs not met");
+      const def = getCivic(cmd.civicId);
+      if (!def) return fail("no such civic");
+      player.researchingCivic = cmd.civicId;
+      state.log.push(`${player.name} is developing ${def.name}.`);
+      return ok;
+    }
+
+    case "setGovernment": {
+      const gov = getGovernment(cmd.governmentId);
+      if (!gov) return fail("no such government");
+      if (!availableGovernments(player).includes(cmd.governmentId)) return fail("government not unlocked");
+      player.government = cmd.governmentId;
+      if (player.policies.length > gov.slots) player.policies = player.policies.slice(0, gov.slots);
+      state.log.push(`${player.name} adopted ${gov.name}.`);
+      return ok;
+    }
+
+    case "togglePolicy": {
+      const idx = player.policies.indexOf(cmd.policyId);
+      if (idx >= 0) {
+        player.policies.splice(idx, 1);
+        return ok;
+      }
+      const slots = getGovernment(player.government)?.slots ?? 0;
+      if (!unlockedPolicies(player).includes(cmd.policyId)) return fail("policy not unlocked");
+      if (player.policies.length >= slots) return fail("no free policy slots");
+      player.policies.push(cmd.policyId);
       return ok;
     }
   }

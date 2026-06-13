@@ -1,7 +1,13 @@
 import {
+  availableCivics,
+  availableGovernments,
   availableProduction,
   availablePromotions,
   availableTechs,
+  unlockedPolicies,
+  getCivic,
+  getGovernment,
+  getPolicy,
   buildableHere,
   citiesOf,
   cityDefenseStrength,
@@ -33,7 +39,7 @@ export interface CombatOdds {
 }
 
 export interface Suggestion {
-  kind: "units" | "research" | "production";
+  kind: "units" | "research" | "civic" | "production";
   label: string;
 }
 
@@ -54,6 +60,9 @@ export interface UIHandlers {
   onPromote(promotion: PromotionId): void;
   onSetProduction(item: ProductionItem): void;
   onSetResearch(techId: TechId): void;
+  onSetCivic(civicId: string): void;
+  onSetGovernment(governmentId: string): void;
+  onTogglePolicy(policyId: string): void;
   onCloseCity(): void;
   onSuggestion(): void;
 }
@@ -62,6 +71,7 @@ export interface UI {
   render(view: UIView): void;
   banner(text: string): void;
   openResearch(): void;
+  openCivics(): void;
 }
 
 function div(id: string, cls: string): HTMLDivElement {
@@ -85,6 +95,7 @@ export function createUI(handlers: UIHandlers): UI {
   const unitPanel = div("unit-panel", "panel hidden");
   const cityPanel = div("city-panel", "panel hidden");
   const research = div("research", "panel hidden");
+  const civics = div("civics", "panel hidden");
   const log = div("log", "");
   const banner = div("banner", "");
   const gameover = div("gameover", "hidden");
@@ -102,6 +113,7 @@ export function createUI(handlers: UIHandlers): UI {
   document.body.appendChild(endturn2);
 
   let researchOpen = false;
+  let civicsOpen = false;
   let bannerTimer = 0;
   let lastState: GameState | null = null;
 
@@ -130,6 +142,13 @@ export function createUI(handlers: UIHandlers): UI {
     const researchPct = researchingDef
       ? Math.min(100, (player.scienceProgress / researchingDef.cost) * 100)
       : 0;
+    const cul = citiesOf(state, player.id).reduce((n, c) => n + getCityYields(state, c).culture, 0);
+    const civicDef = getCivic(player.researchingCivic ?? undefined);
+    const civicLabel = civicDef
+      ? `${civicDef.name} (${Math.floor(player.cultureProgress)}/${civicDef.cost})`
+      : "— none —";
+    const civicPct = civicDef ? Math.min(100, (player.cultureProgress / civicDef.cost) * 100) : 0;
+    const gov = getGovernment(player.government);
     const civ = getCiv(player.civId);
     topbar.innerHTML = `
       <span><b>Turn ${state.turn}</b></span>
@@ -137,15 +156,24 @@ export function createUI(handlers: UIHandlers): UI {
         civ ? ` <span title="${civ.abilityName}: ${civ.abilityDesc}" style="color:#9fc0dc;cursor:help">· ${civ.name} ⓘ</span>` : ""
       }</span>
       <span>🪙 <b>${Math.floor(player.gold)}</b></span>
-      <span style="min-width:170px">🔬 <b>${researchLabel}</b> <span style="color:#9fc0dc">+${sci}/t</span>
-        <div class="bar" style="width:160px"><i style="width:${researchPct}%"></i></div></span>
-      <button class="btn" id="research-btn">Research</button>`;
-    topbar
-      .querySelector<HTMLButtonElement>("#research-btn")!
-      .addEventListener("click", () => {
-        researchOpen = !researchOpen;
-        renderResearch(state);
-      });
+      <span style="min-width:150px">🔬 <b>${researchLabel}</b> <span style="color:#9fc0dc">+${sci}</span>
+        <div class="bar" style="width:140px"><i style="width:${researchPct}%"></i></div></span>
+      <span style="min-width:150px">🎭 <b>${civicLabel}</b> <span style="color:#9fc0dc">+${cul}</span>
+        <div class="bar" style="width:140px"><i style="width:${civicPct}%;background:#c07ad0"></i></div></span>
+      <button class="btn" id="research-btn">Research</button>
+      <button class="btn" id="civics-btn" title="${gov?.name ?? "Government"}">🏛️ Civics</button>`;
+    topbar.querySelector<HTMLButtonElement>("#research-btn")!.addEventListener("click", () => {
+      researchOpen = !researchOpen;
+      civicsOpen = false;
+      renderResearch(state);
+      renderCivics(state);
+    });
+    topbar.querySelector<HTMLButtonElement>("#civics-btn")!.addEventListener("click", () => {
+      civicsOpen = !civicsOpen;
+      researchOpen = false;
+      renderCivics(state);
+      renderResearch(state);
+    });
   };
 
   const renderResearch = (state: GameState): void => {
@@ -175,6 +203,69 @@ export function createUI(handlers: UIHandlers): UI {
         research.classList.add("hidden");
       });
     });
+  };
+
+  const renderCivics = (state: GameState): void => {
+    civics.classList.toggle("hidden", !civicsOpen);
+    if (!civicsOpen) return;
+    const player = state.players[state.currentPlayerIndex]!;
+    const gov = getGovernment(player.government);
+    const slots = gov?.slots ?? 0;
+    const civicList = availableCivics(player);
+    const govList = availableGovernments(player);
+    const policyList = unlockedPolicies(player);
+
+    let html =
+      `<div class="row" style="justify-content:space-between"><b>Civics & Government</b><button class="btn" id="vclose">✕</button></div>`;
+
+    html += `<div class="csub">Develop a civic</div>`;
+    html += civicList.length
+      ? civicList
+          .map((id) => {
+            const d = getCivic(id)!;
+            return `<div class="tech" data-civic="${id}"><span>${d.name}</span><span style="color:#9fc0dc">${d.cost}🎭</span></div>`;
+          })
+          .join("")
+      : `<div style="color:#9fc0dc;font-size:12px">No new civics available yet.</div>`;
+
+    html += `<div class="csub">Government — <b style="color:#fff">${gov?.name ?? "—"}</b></div>`;
+    html += `<div class="row" style="flex-wrap:wrap">${govList
+      .map((id) => {
+        const g = getGovernment(id)!;
+        const active = id === player.government;
+        return `<button class="btn ${active ? "primary" : ""}" data-gov="${id}" title="${g.desc}">${g.name}</button>`;
+      })
+      .join("")}</div>`;
+
+    html += `<div class="csub">Policies <span style="color:#9fc0dc">(${player.policies.length}/${slots} slots)</span></div>`;
+    html += policyList.length
+      ? `<div class="row" style="flex-wrap:wrap">${policyList
+          .map((id) => {
+            const p = getPolicy(id)!;
+            const active = player.policies.includes(id);
+            return `<button class="btn ${active ? "primary" : ""}" data-policy="${id}" title="${p.desc}">${p.name}</button>`;
+          })
+          .join("")}</div>`
+      : `<div style="color:#9fc0dc;font-size:12px">Unlock policies by developing civics.</div>`;
+
+    civics.innerHTML = html;
+    civics.querySelector<HTMLButtonElement>("#vclose")!.addEventListener("click", () => {
+      civicsOpen = false;
+      civics.classList.add("hidden");
+    });
+    civics.querySelectorAll<HTMLDivElement>("[data-civic]").forEach((el) =>
+      el.addEventListener("click", () => {
+        handlers.onSetCivic(el.dataset.civic!);
+        civicsOpen = false;
+        civics.classList.add("hidden");
+      }),
+    );
+    civics.querySelectorAll<HTMLButtonElement>("[data-gov]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onSetGovernment(el.dataset.gov!)),
+    );
+    civics.querySelectorAll<HTMLButtonElement>("[data-policy]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onTogglePolicy(el.dataset.policy!)),
+    );
   };
 
   const renderUnitPanel = (state: GameState, unit: Unit | null, odds?: CombatOdds | null): void => {
@@ -329,6 +420,7 @@ export function createUI(handlers: UIHandlers): UI {
       lastState = view.state;
       renderTopbar(view.state);
       renderResearch(view.state);
+      renderCivics(view.state);
       renderUnitPanel(view.state, view.selectedUnit, view.odds);
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state);
@@ -339,6 +431,11 @@ export function createUI(handlers: UIHandlers): UI {
       if (!lastState) return;
       researchOpen = true;
       renderResearch(lastState);
+    },
+    openCivics() {
+      if (!lastState) return;
+      civicsOpen = true;
+      renderCivics(lastState);
     },
     banner(text) {
       banner.textContent = text;

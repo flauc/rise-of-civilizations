@@ -12,6 +12,7 @@ import { applyCommand } from "./commands";
 import { computeReachable } from "./movement";
 import { computeAttackTargets } from "./combat";
 import { availableProduction, availableTechs } from "./economy";
+import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
 import { buildableHere } from "./improvements";
 import { isPassableLand } from "./terrain";
 import { UNIT_DEFS, isMilitary, type TechId } from "./content";
@@ -223,6 +224,21 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
       const pick = TECH_PREFERENCE.find((t) => techs.includes(t)) ?? techs[0]!;
       applyCommand(state, { type: "setResearch", techId: pick }, playerId);
     }
+  }
+
+  // Civics: develop the next civic, adopt the best government, slot all policies.
+  if (!player.researchingCivic) {
+    const civics = availableCivics(player);
+    if (civics.length > 0) applyCommand(state, { type: "setCivic", civicId: civics[0]! }, playerId);
+  }
+  const bestGov = availableGovernments(player)
+    .map((g) => getGovernment(g)!)
+    .sort((a, b) => b.slots - a.slots)[0];
+  if (bestGov && bestGov.id !== player.government) {
+    applyCommand(state, { type: "setGovernment", governmentId: bestGov.id }, playerId);
+  }
+  for (const pol of unlockedPolicies(player)) {
+    if (!player.policies.includes(pol)) applyCommand(state, { type: "togglePolicy", policyId: pol }, playerId);
   }
 
   for (const city of citiesOf(state, playerId)) {

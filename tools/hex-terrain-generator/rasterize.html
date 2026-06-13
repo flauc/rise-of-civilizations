@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hex Terrain Rasterizer</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0b1622;
+      color: #e7eef2;
+      margin: 0;
+      padding: 2rem;
+    }
+    h1 { margin-top: 0; }
+    .controls { margin-bottom: 1rem; }
+    button {
+      background: #2e6f93;
+      color: white;
+      border: none;
+      padding: 0.6rem 1.2rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    button:hover { background: #3a7fa5; }
+    button:disabled { opacity: 0.5; cursor: wait; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .tile {
+      text-align: center;
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 0.5rem;
+    }
+    .tile img {
+      width: 97px;
+      height: 112px;
+      image-rendering: crisp-edges;
+    }
+    .tile label {
+      display: block;
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      text-transform: capitalize;
+    }
+    #status { margin-top: 1rem; min-height: 1.5rem; }
+  </style>
+</head>
+<body>
+  <h1>Hex Terrain Rasterizer</h1>
+  <p>Preview the generated SVG tiles and export them as PNGs.</p>
+  <p><small>Note: serve this file from a local HTTP server (not <code>file://</code>) so the SVGs can load.</small></p>
+  <div class="controls">
+    <label>
+      Scale (PNG size multiplier):
+      <input id="scale" type="number" min="1" max="8" value="2" />
+    </label>
+    <button id="saveAll">Save PNGs</button>
+  </div>
+  <div id="status"></div>
+  <div class="grid" id="grid"></div>
+
+  <script type="module">
+    const terrains = [
+      "ocean", "coast", "lake", "plains", "grassland", "desert",
+      "tundra", "snow", "forest", "jungle", "hills", "mountains",
+    ];
+    const VIEW_W = 97;
+    const VIEW_H = 112;
+
+    const grid = document.getElementById("grid");
+    const status = document.getElementById("status");
+    const scaleInput = document.getElementById("scale");
+    const saveAllBtn = document.getElementById("saveAll");
+
+    function setStatus(msg) { status.textContent = msg; }
+
+    async function loadSvg(name) {
+      const res = await fetch(`../../assets/hex-terrain/${name}.svg`);
+      const text = await res.text();
+      const blob = new Blob([text], { type: "image/svg+xml;charset=utf-8" });
+      return URL.createObjectURL(blob);
+    }
+
+    async function renderPng(name, scale) {
+      const url = await loadSvg(name);
+      const img = new Image();
+      img.src = url;
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = VIEW_W * scale;
+      canvas.height = VIEW_H * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      return canvas;
+    }
+
+    async function downloadPng(name, scale) {
+      const canvas = await renderPng(name, scale);
+      const link = document.createElement("a");
+      link.download = `${name}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    }
+
+    async function init() {
+      for (const t of terrains) {
+        const url = await loadSvg(t);
+        const div = document.createElement("div");
+        div.className = "tile";
+        div.innerHTML = `<img src="${url}" alt="${t}" /><label>${t}</label>`;
+        div.querySelector("img").addEventListener("click", () => {
+          const scale = parseInt(scaleInput.value, 10) || 2;
+          downloadPng(t, scale);
+        });
+        grid.appendChild(div);
+      }
+    }
+
+    saveAllBtn.addEventListener("click", async () => {
+      saveAllBtn.disabled = true;
+      const scale = parseInt(scaleInput.value, 10) || 2;
+      setStatus("Rendering PNGs...");
+      for (let i = 0; i < terrains.length; i++) {
+        setStatus(`Rendering ${terrains[i]} (${i + 1}/${terrains.length})...`);
+        await downloadPng(terrains[i], scale);
+        await new Promise((r) => setTimeout(r, 150)); // avoid browser download throttling
+      }
+      setStatus("All PNGs saved.");
+      saveAllBtn.disabled = false;
+    });
+
+    init().catch((err) => setStatus("Error: " + err.message));
+  </script>
+</body>
+</html>
