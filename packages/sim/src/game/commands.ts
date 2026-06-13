@@ -24,6 +24,7 @@ import {
   unlockedPolicies,
   getCivic,
   getGovernment,
+  nextCityNameForCiv,
 } from "./civs";
 import { aiTakeTurn } from "./ai";
 import { UNIT_DEFS, TECH_DEFS, techUnlocked, type BuildingId, type PromotionId, type TechId } from "./content";
@@ -49,11 +50,6 @@ export interface CommandResult {
 
 const ok: CommandResult = { ok: true };
 const fail = (error: string): CommandResult => ({ ok: false, error });
-
-const CITY_NAMES = [
-  "Ur", "Akkad", "Memphis", "Thebes", "Babylon", "Nineveh", "Tyre",
-  "Athens", "Sparta", "Rome", "Carthage", "Sidon", "Susa", "Knossos",
-];
 
 const MIN_CITY_DISTANCE = 3;
 
@@ -148,7 +144,8 @@ export function applyCommand(
         }
       }
       const isCapital = citiesOf(state, player.id).length === 0;
-      const name = CITY_NAMES[state.cities.size % CITY_NAMES.length]!;
+      const foundedCount = citiesOf(state, player.id).length;
+      const name = nextCityNameForCiv(player.civId, foundedCount);
       const id = state.nextEntityId++;
       const city: City = {
         id,

@@ -10,6 +10,7 @@ import {
   getCivic,
   getGovernment,
   getPolicy,
+  nextCityNameForCiv,
   type CivDef,
   type CivEffects,
   type CivicDef,
@@ -19,7 +20,7 @@ import { UNIT_DEFS } from "./content";
 import type { GameState, Player, Unit } from "./state";
 import { playerById } from "./state";
 
-export { CIVILIZATIONS, getCiv, CIVICS, GOVERNMENTS, getCivic, getGovernment, getPolicy };
+export { CIVILIZATIONS, getCiv, CIVICS, GOVERNMENTS, getCivic, getGovernment, getPolicy, nextCityNameForCiv };
 export type { CivDef, CivEffects, CivicDef, GovernmentDef };
 
 function mergeInto(acc: CivEffects, e: CivEffects | undefined): void {

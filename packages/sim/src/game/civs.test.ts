@@ -61,4 +61,24 @@ describe("civilizations", () => {
     s.players[0]!.civId = "egypt";
     expect(getCityYields(s, city).production).toBeGreaterThanOrEqual(base);
   });
+
+  it("assigns civilization-specific city names per player", () => {
+    const s = game();
+    s.players[0]!.civId = "rome";
+    s.players[1]!.civId = "egypt";
+    const settler0 = unitsOf(s, 0).find((u) => u.type === "settler")!;
+    const settler1 = unitsOf(s, 1).find((u) => u.type === "settler")!;
+    applyCommand(s, { type: "foundCity", unitId: settler0.id }, 0);
+    applyCommand(s, { type: "foundCity", unitId: settler1.id }, 1);
+    expect(citiesOf(s, 0)[0]!.name).toBe("Rome");
+    expect(citiesOf(s, 1)[0]!.name).toBe("Memphis");
+  });
+
+  it("advances through a civilization's city name list as more cities are founded", () => {
+    const s = game();
+    s.players[0]!.civId = "rome";
+    const settler = unitsOf(s, 0).find((u) => u.type === "settler")!;
+    applyCommand(s, { type: "foundCity", unitId: settler.id });
+    expect(citiesOf(s, 0)[0]!.name).toBe("Rome");
+  });
 });

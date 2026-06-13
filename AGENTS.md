@@ -184,5 +184,5 @@ Add or update tests when changing deterministic simulation behavior. The server 
 
 - `noUncheckedIndexedAccess` means `[0]` on arrays returns `T | undefined`. Code already uses `!` in many places where the value is known; keep the same style.
 - `shared` and `sim` must not import Node/Bun/DOM modules. If you need crypto, timers, or storage, do it in the client or server package.
-- The `data` package is currently a placeholder. Civilization/unit/tech content is still defined in `packages/sim/src/game/content.ts`.
+- Civilization definitions (including civilization-specific city names) live in `packages/data/src/index.ts`. Unit/tech/building content is still defined in `packages/sim/src/game/content.ts`.
 - `tools/geodata-poc` has its own `package.json` and `node_modules`; it is not part of the Bun workspace and uses npm.
