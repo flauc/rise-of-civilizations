@@ -1,9 +1,11 @@
 /// <reference types="vite/client" />
 import {
   cityAt,
+  combatPreview,
   computeAttackTargets,
   computeReachable,
   unitAt,
+  UNIT_DEFS,
 } from "@roc/sim";
 import { Camera } from "./camera";
 import {
@@ -15,7 +17,8 @@ import {
 } from "./renderer";
 import { drawOverlay } from "./overlay";
 import { attachInput } from "./input";
-import { createUI } from "./ui";
+import { createUI, type CombatOdds } from "./ui";
+import { createMinimap } from "./minimap";
 import { createLobby } from "./lobby-ui";
 import type { Session } from "./session";
 
@@ -39,8 +42,15 @@ function startGame(session: Session): void {
   let attackTargets = new Set<string>();
   let visible = new Set<string>();
   let gameOverShown = false;
+  let hoverOdds: CombatOdds | null = null;
 
   const st = () => session.getState();
+  const minimap = createMinimap((col, row) => {
+    const c = tileCenterWorld(col, row);
+    camera.offsetX = cssWidth / 2 - c.x * camera.zoom;
+    camera.offsetY = cssHeight / 2 - c.y * camera.zoom;
+    needsRedraw = true;
+  });
 
   function recomputeOverlays(): void {
     const u = selectedUnitId != null ? st().units.get(selectedUnitId) : undefined;
@@ -84,6 +94,7 @@ function startGame(session: Session): void {
     selectedCityId = null;
     reachable = new Set();
     attackTargets = new Set();
+    hoverOdds = null;
     needsRedraw = true;
   }
 
@@ -139,10 +150,40 @@ function startGame(session: Session): void {
     }
   }
 
+  function onHover(sx: number, sy: number): void {
+    let next: CombatOdds | null = null;
+    if (selectedUnitId != null) {
+      const off = screenToTile(camera, st().map, sx, sy);
+      if (off && attackTargets.has(`${off.col},${off.row}`)) {
+        const u = st().units.get(selectedUnitId);
+        const prev = u ? combatPreview(st(), u, off.col, off.row) : null;
+        if (prev) {
+          const city = cityAt(st(), off.col, off.row);
+          const enemy = unitAt(st(), off.col, off.row);
+          next = {
+            targetName: city ? city.name : enemy ? UNIT_DEFS[enemy.type].name : "target",
+            toDefender: prev.toDefender,
+            toAttacker: prev.toAttacker,
+            vsCity: prev.vsCity,
+          };
+        }
+      }
+    }
+    if (next?.targetName !== hoverOdds?.targetName || next?.toDefender !== hoverOdds?.toDefender) {
+      hoverOdds = next;
+      needsRedraw = true;
+    }
+  }
+
   attachInput(canvas, camera, {
     onChange: () => (needsRedraw = true),
-    onHover: () => {},
-    onHoverEnd: () => {},
+    onHover,
+    onHoverEnd: () => {
+      if (hoverOdds) {
+        hoverOdds = null;
+        needsRedraw = true;
+      }
+    },
     onTap: handleTap,
   });
 
@@ -174,10 +215,12 @@ function startGame(session: Session): void {
         reachable,
         attackTargets,
       });
+      minimap.draw(st(), me, explored, visible, camera, cssWidth, cssHeight);
       ui.render({
         state: st(),
         selectedUnit: selectedUnitId != null ? st().units.get(selectedUnitId) ?? null : null,
         selectedCity: selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null,
+        odds: hoverOdds,
       });
     }
     requestAnimationFrame(frame);
@@ -201,6 +244,10 @@ function startGame(session: Session): void {
       tapTile(col: number, row: number) {
         const c = tileCenterWorld(col, row);
         handleTap(camera.worldToScreenX(c.x), camera.worldToScreenY(c.y));
+      },
+      hoverTile(col: number, row: number) {
+        const c = tileCenterWorld(col, row);
+        onHover(camera.worldToScreenX(c.x), camera.worldToScreenY(c.y));
       },
     };
   }

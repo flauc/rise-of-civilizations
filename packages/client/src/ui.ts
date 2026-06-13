@@ -24,10 +24,19 @@ import {
   type Unit,
 } from "@roc/sim";
 
+export interface CombatOdds {
+  targetName: string;
+  toDefender: number;
+  toAttacker: number;
+  vsCity: boolean;
+}
+
 export interface UIView {
   state: GameState;
   selectedUnit: Unit | null;
   selectedCity: City | null;
+  /** Combat odds for the attack target currently hovered (if any). */
+  odds?: CombatOdds | null;
 }
 
 export interface UIHandlers {
@@ -68,6 +77,7 @@ export function createUI(handlers: UIHandlers): UI {
   const research = div("research", "panel hidden");
   const log = div("log", "");
   const banner = div("banner", "");
+  const gameover = div("gameover", "hidden");
 
   const endturn = document.createElement("button");
   endturn.id = "endturn";
@@ -89,11 +99,15 @@ export function createUI(handlers: UIHandlers): UI {
     const researchLabel = researchingDef
       ? `${researchingDef.name} (${Math.floor(player.scienceProgress)}/${researchingDef.cost})`
       : "— none —";
+    const researchPct = researchingDef
+      ? Math.min(100, (player.scienceProgress / researchingDef.cost) * 100)
+      : 0;
     topbar.innerHTML = `
       <span><b>Turn ${state.turn}</b></span>
       <span><span class="dot" style="background:${player.color}"></span><b>${player.name}</b></span>
       <span>🪙 <b>${Math.floor(player.gold)}</b></span>
-      <span>🔬 <b>${researchLabel}</b> <span style="color:#9fc0dc">+${sci}/t</span></span>
+      <span style="min-width:170px">🔬 <b>${researchLabel}</b> <span style="color:#9fc0dc">+${sci}/t</span>
+        <div class="bar" style="width:160px"><i style="width:${researchPct}%"></i></div></span>
       <button class="btn" id="research-btn">Research</button>`;
     topbar
       .querySelector<HTMLButtonElement>("#research-btn")!
@@ -132,7 +146,7 @@ export function createUI(handlers: UIHandlers): UI {
     });
   };
 
-  const renderUnitPanel = (state: GameState, unit: Unit | null): void => {
+  const renderUnitPanel = (state: GameState, unit: Unit | null, odds?: CombatOdds | null): void => {
     if (!unit) {
       unitPanel.classList.add("hidden");
       return;
@@ -156,6 +170,13 @@ export function createUI(handlers: UIHandlers): UI {
     }
     if (unit.promotions.length) {
       html += `<div style="color:#9fc0dc">${unit.promotions.map((p) => PROMOTION_DEFS[p].name).join(", ")}</div>`;
+    }
+    if (odds) {
+      html +=
+        `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--edge)">` +
+        `⚔️ vs <b>${odds.targetName}</b>: deal <b style="color:#5fcf61">${odds.toDefender}</b>` +
+        (odds.toAttacker > 0 ? ` · take <b style="color:#e0533d">${odds.toAttacker}</b>` : ` (no retaliation)`) +
+        `</div>`;
     }
 
     const actions: string[] = [];
@@ -246,13 +267,30 @@ export function createUI(handlers: UIHandlers): UI {
       .join("");
   };
 
+  const renderGameOver = (state: GameState): void => {
+    if (!state.gameOver) {
+      gameover.classList.add("hidden");
+      return;
+    }
+    const viewerId = state.players[state.currentPlayerIndex]?.id;
+    const winner = state.players.find((p) => p.id === state.gameOver!.winnerId);
+    const won = winner?.id === viewerId;
+    gameover.classList.remove("hidden");
+    gameover.innerHTML =
+      `<div class="title" style="color:${won ? "#ffd967" : "#e0533d"}">${won ? "Victory!" : "Defeat"}</div>` +
+      `<div class="sub"><b style="color:${winner?.color}">${winner?.name ?? "Someone"}</b> wins by ${state.gameOver.condition} on turn ${state.turn}.</div>` +
+      `<button class="btn primary" id="go-menu" style="font-size:15px;padding:10px 18px">Back to Menu</button>`;
+    gameover.querySelector<HTMLButtonElement>("#go-menu")?.addEventListener("click", () => location.reload());
+  };
+
   return {
     render(view) {
       renderTopbar(view.state);
       renderResearch(view.state);
-      renderUnitPanel(view.state, view.selectedUnit);
+      renderUnitPanel(view.state, view.selectedUnit, view.odds);
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state);
+      renderGameOver(view.state);
     },
     banner(text) {
       banner.textContent = text;

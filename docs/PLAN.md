@@ -331,7 +331,8 @@ The strategy is **vertical slice first**, then widen. Each milestone is playable
 - ✅ **Territory / cultural borders**: cities claim their tile + ring on founding and expand outward as population grows; only owned tiles can be worked; borders rendered (tinted region + outline), shown in the city panel, and sent through the fog-filtered server view.
 - ✅ **Map features** — **tribal Villages** (random perk on entry: learn a tech, gold, production/citizen boost, free unit, free promotion, or a barbarian ambush) and **Barbarian Camps** (periodically spawn raiders; clear them with a military unit for a reward). Deterministic (seeded) so the server & clients agree. Rendered as ? / ! markers; flow through the server view. Barbarians now **raze** captured cities rather than holding them.
 - ✅ **Game-creation menu** — single-player setup (map size S/M/L, 0–4 AI opponents, barbarians toggle) and the same map-size + AI-fill options on multiplayer create. Engine generalised to **N players** with greedy-spread starts and an 8-colour palette.
-- ⏳ Civics trees & governments/policies; **deeper in-game UI**; **civ data layer**.
+- ✅ **In-game UI polish** — clickable **minimap** (explored terrain + cities/units + viewport rect, click-to-recenter), a **research progress bar**, **combat-odds preview** on hover ("vs Archer: deal 45 · take 20"), and a **Victory/Defeat overlay** with winner/condition + Back to Menu.
+- ⏳ Civics trees & governments/policies; **civ data layer** (distinct civ abilities).
 - ⏳ Religion, culture/tourism, trade routes, diplomacy & city-states.
 - ⏳ 10 launch civilizations (data-driven), each with UU/UI/ability.
 - ⏳ **First Legends (heroes)** wired into recruitment + abilities (core feature).

@@ -271,6 +271,43 @@ export function computeAttackTargets(state: GameState, unit: Unit): Set<string> 
   return out;
 }
 
+export interface CombatPreview {
+  toDefender: number; // damage the attacker would deal
+  toAttacker: number; // damage taken back (0 for ranged or vs an empty-HP city)
+  vsCity: boolean;
+}
+
+/** Predict the outcome of an attack without mutating state (for UI hover odds). */
+export function combatPreview(state: GameState, attacker: Unit, col: number, row: number): CombatPreview | null {
+  const def = UNIT_DEFS[attacker.type];
+  const ranged = isRanged(def);
+  const targetTile = getTile(state.map, col, row);
+  if (!targetTile) return null;
+  const enemyCity = cityAt(state, col, row);
+  const enemyUnit = unitAt(state, col, row);
+
+  if (enemyCity && enemyCity.ownerId !== attacker.ownerId) {
+    const cityDef = cityDefenseStrength(state, enemyCity);
+    const mult = vsCityMultiplier(attacker);
+    const attEff = (ranged ? def.rangedStrength ?? 0 : def.strength) * woundFactor(attacker.hp) * mult;
+    return {
+      toDefender: damageFrom(attEff, cityDef),
+      toAttacker: ranged ? 0 : damageFrom(cityDef, attEff),
+      vsCity: true,
+    };
+  }
+  if (enemyUnit && enemyUnit.ownerId !== attacker.ownerId) {
+    const attEff = attackStrength(attacker, enemyUnit, targetTile.terrain, ranged);
+    const defEff = defenseStrength(state, enemyUnit, attacker, ranged);
+    return {
+      toDefender: damageFrom(attEff, defEff),
+      toAttacker: ranged ? 0 : damageFrom(defEff, attEff),
+      vsCity: false,
+    };
+  }
+  return null;
+}
+
 /** Start-of-turn upkeep for a player's units: heal, medic aura, reset flags. */
 export function healAndReset(state: GameState, player: Player): void {
   const own = [...state.units.values()].filter((u) => u.ownerId === player.id);

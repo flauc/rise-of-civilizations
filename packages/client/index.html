@@ -127,10 +127,43 @@
       /* End turn button */
       #endturn {
         position: fixed;
-        right: 12px;
+        left: 50%;
+        transform: translateX(-50%);
         bottom: 12px;
         font-size: 15px;
         padding: 12px 18px;
+      }
+      /* Minimap */
+      #minimap {
+        position: fixed;
+        right: 12px;
+        bottom: 12px;
+        border: 1px solid var(--edge);
+        border-radius: 8px;
+        background: var(--panel);
+        touch-action: none;
+        cursor: pointer;
+      }
+      /* Victory / defeat overlay */
+      #gameover {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: rgba(5, 12, 20, 0.78);
+        z-index: 60;
+        text-align: center;
+      }
+      #gameover .title {
+        font-size: 40px;
+        font-weight: 800;
+      }
+      #gameover .sub {
+        color: #cfe3f7;
+        font-size: 16px;
       }
       /* Research modal */
       #research {
