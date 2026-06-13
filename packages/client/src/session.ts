@@ -34,14 +34,38 @@ export interface Session {
 
 // ---- local (single-player hotseat) --------------------------------------
 
+export type MapSize = "small" | "medium" | "large";
+
+export const MAP_DIMENSIONS: Record<MapSize, { cols: number; rows: number }> = {
+  small: { cols: 36, rows: 24 },
+  medium: { cols: 52, rows: 34 },
+  large: { cols: 68, rows: 44 },
+};
+
+export interface LocalGameOptions {
+  seed?: string;
+  mapSize?: MapSize;
+  aiCount?: number;
+  barbarians?: boolean;
+}
+
 export class LocalSession implements Session {
   readonly isOnline = false;
   private state: GameState;
   private cb: () => void = () => {};
 
-  constructor(opts: { seed?: string; cols?: number; rows?: number } = {}) {
-    // Single-player = 1 human vs 1 AI civ (+ barbarians).
-    this.state = createGame({ ...opts, humanSlots: 1 });
+  constructor(opts: LocalGameOptions = {}) {
+    const dims = MAP_DIMENSIONS[opts.mapSize ?? "medium"];
+    const aiCount = Math.max(0, opts.aiCount ?? 1);
+    // Single-player = 1 human vs N AI civs (+ optional barbarians).
+    this.state = createGame({
+      seed: opts.seed ?? "rise",
+      cols: dims.cols,
+      rows: dims.rows,
+      humanSlots: 1,
+      playerCount: 1 + aiCount,
+      barbarians: opts.barbarians ?? true,
+    });
     beginTurn(this.state);
   }
   hasState(): boolean {

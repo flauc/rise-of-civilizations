@@ -12,15 +12,17 @@ export interface NewGameOptions {
   cols?: number;
   rows?: number;
   seed?: number | string;
-  playerNames?: [string, string];
+  /** Display names per civ slot. Length (or playerCount) sets the civ count. */
+  playerNames?: string[];
+  /** Total civ players (humans + AI). Defaults to playerNames.length or 2. */
+  playerCount?: number;
+  /** How many of the slots are human (default = all). The rest are AI civs. */
+  humanSlots?: number;
   barbarians?: boolean;
   turnLimit?: number;
-  /** Number of human slots (default 2). Remaining player slots are AI civs. */
-  humanSlots?: number;
 }
 
-const PLAYER_COLORS = ["#e0533d", "#3d7fe0"];
-const BARBARIAN_ID = 2;
+const PLAYER_COLORS = ["#e0533d", "#3d7fe0", "#49b85a", "#e0b53d", "#a05ad0", "#3dc8c8", "#d060aa", "#e08a3d"];
 
 function startScore(state: GameState, col: number, row: number): number {
   const tile = getTile(state.map, col, row);
@@ -35,18 +37,30 @@ function startScore(state: GameState, col: number, row: number): number {
   return score;
 }
 
-function findStart(state: GameState, minCol: number, maxCol: number): { col: number; row: number } | null {
+/** Pick `count` well-separated, high-scoring land starts via greedy spreading. */
+function findStarts(state: GameState, count: number): { col: number; row: number }[] {
   const { map } = state;
-  let best: { col: number; row: number; score: number } | null = null;
-  const rowLo = Math.floor(map.rows * 0.3);
-  const rowHi = Math.ceil(map.rows * 0.7);
-  for (let row = rowLo; row <= rowHi; row++) {
-    for (let col = minCol; col <= maxCol; col++) {
+  const candidates: { col: number; row: number; score: number }[] = [];
+  for (let row = 0; row < map.rows; row++) {
+    for (let col = 0; col < map.cols; col++) {
       const score = startScore(state, col, row);
-      if (best === null || score > best.score) best = { col, row, score };
+      if (score > -Infinity) candidates.push({ col, row, score });
     }
   }
-  return best && best.score > -Infinity ? { col: best.col, row: best.row } : null;
+  candidates.sort((a, b) => b.score - a.score);
+
+  // Try to keep starts at least `minDist` apart, relaxing if we can't fit them.
+  for (let minDist = Math.floor(Math.min(map.cols, map.rows) / 2); minDist >= 2; minDist--) {
+    const picks: { col: number; row: number }[] = [];
+    for (const c of candidates) {
+      if (picks.every((p) => axialDistance(offsetToAxial(p), offsetToAxial(c)) >= minDist)) {
+        picks.push({ col: c.col, row: c.row });
+        if (picks.length === count) return picks;
+      }
+    }
+    if (picks.length === count) return picks;
+  }
+  return candidates.slice(0, count).map((c) => ({ col: c.col, row: c.row }));
 }
 
 function spawn(state: GameState, ownerId: number, type: UnitTypeId, col: number, row: number): void {
@@ -64,22 +78,24 @@ function openNeighbor(state: GameState, col: number, row: number): { col: number
   return null;
 }
 
-function spawnBarbarians(state: GameState, starts: ({ col: number; row: number } | null)[]): void {
+function spawnBarbarians(
+  state: GameState,
+  barbId: number,
+  starts: { col: number; row: number }[],
+): void {
   const { map } = state;
   const placed: { col: number; row: number }[] = [];
   const types: UnitTypeId[] = ["warrior", "slinger", "warrior", "spearman"];
   let ti = 0;
   const farFromStarts = (col: number, row: number) =>
-    starts.every(
-      (s) => !s || axialDistance(offsetToAxial(s), offsetToAxial({ col, row })) > 5,
-    );
+    starts.every((s) => axialDistance(offsetToAxial(s), offsetToAxial({ col, row })) > 5);
   for (let row = 2; row < map.rows - 2 && placed.length < types.length; row += 3) {
     for (let col = 2; col < map.cols - 2 && placed.length < types.length; col += 5) {
       const tile = getTile(map, col, row);
       if (!tile || !isPassableLand(tile.terrain)) continue;
       if (!farFromStarts(col, row)) continue;
       if (placed.some((p) => axialDistance(offsetToAxial(p), offsetToAxial({ col, row })) < 6)) continue;
-      spawn(state, BARBARIAN_ID, types[ti++ % types.length]!, col, row);
+      spawn(state, barbId, types[ti++ % types.length]!, col, row);
       placed.push({ col, row });
     }
   }
@@ -88,27 +104,32 @@ function spawnBarbarians(state: GameState, starts: ({ col: number; row: number }
 export function createGame(opts: NewGameOptions = {}): GameState {
   const cols = opts.cols ?? 48;
   const rows = opts.rows ?? 32;
-  const seed = opts.seed ?? "rise-m2";
-  const names = opts.playerNames ?? ["Player 1", "Player 2"];
+  const seed = opts.seed ?? "rise";
+  const count = Math.max(1, opts.playerCount ?? opts.playerNames?.length ?? 2);
+  const humanSlots = opts.humanSlots ?? count;
   const withBarbarians = opts.barbarians ?? true;
-  const humanSlots = opts.humanSlots ?? names.length;
 
   const map = generateMap({ cols, rows, seed });
-  const players: Player[] = names.map((name, i) => ({
-    id: i,
-    name: i < humanSlots ? name : `${name} (AI)`,
-    color: PLAYER_COLORS[i] ?? "#aaaaaa",
-    isHuman: i < humanSlots,
-    isBarbarian: false,
-    gold: 0,
-    researched: new Set(STARTING_TECHS),
-    researching: null,
-    scienceProgress: 0,
-    explored: new Set<string>(),
-  }));
+  const players: Player[] = [];
+  for (let i = 0; i < count; i++) {
+    const baseName = opts.playerNames?.[i] ?? `Player ${i + 1}`;
+    players.push({
+      id: i,
+      name: i < humanSlots ? baseName : `${baseName} (AI)`,
+      color: PLAYER_COLORS[i] ?? "#aaaaaa",
+      isHuman: i < humanSlots,
+      isBarbarian: false,
+      gold: 0,
+      researched: new Set(STARTING_TECHS),
+      researching: null,
+      scienceProgress: 0,
+      explored: new Set<string>(),
+    });
+  }
+  const barbId = count;
   if (withBarbarians) {
     players.push({
-      id: BARBARIAN_ID,
+      id: barbId,
       name: "Barbarians",
       color: "#9aa0a6",
       isHuman: false,
@@ -134,19 +155,14 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     turnLimit: opts.turnLimit ?? 120,
   };
 
-  const starts = [
-    findStart(state, Math.floor(cols * 0.1), Math.floor(cols * 0.35)),
-    findStart(state, Math.floor(cols * 0.65), Math.floor(cols * 0.9)),
-  ];
-
+  const starts = findStarts(state, count);
   starts.forEach((start, i) => {
-    if (!start) return;
     spawn(state, i, "settler", start.col, start.row);
     const adj = openNeighbor(state, start.col, start.row);
     if (adj) spawn(state, i, "warrior", adj.col, adj.row);
   });
 
-  if (withBarbarians) spawnBarbarians(state, starts);
+  if (withBarbarians) spawnBarbarians(state, barbId, starts);
   placeFeatures(state, starts, withBarbarians);
 
   for (const p of players) updateExplored(state, p.id);

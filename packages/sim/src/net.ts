@@ -18,7 +18,7 @@ export type ClientMessage =
   | { t: "login"; handle: string; password: string }
   | { t: "resume"; token: string }
   | { t: "listGames" }
-  | { t: "createGame"; name: string; seed?: string }
+  | { t: "createGame"; name: string; seed?: string; cols?: number; rows?: number; aiCount?: number }
   | { t: "joinGame"; gameId: string }
   | { t: "startGame"; gameId: string }
   | { t: "order"; cmd: Command }

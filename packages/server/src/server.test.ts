@@ -16,7 +16,7 @@ describe("storage", () => {
 describe("lobby + game host (simultaneous multiplayer)", () => {
   it("runs a full create/join/start/order/resolve loop with fog", () => {
     const lobby = new Lobby();
-    const g = lobby.create("Test Match", "uA", "Alice", "seed-mp");
+    const g = lobby.create("Test Match", "uA", "Alice", { seed: "seed-mp" });
     const joined = lobby.join(g.id, "uB", "Bob");
     expect("playerId" in joined && joined.playerId).toBe(1);
 

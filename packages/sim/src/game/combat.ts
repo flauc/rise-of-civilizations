@@ -130,6 +130,16 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
   const garrison = unitAt(state, city.col, city.row);
   if (garrison && garrison.ownerId === city.ownerId) state.units.delete(garrison.id);
   const oldOwner = playerById(state, city.ownerId);
+  const taker0 = playerById(state, attacker.ownerId);
+
+  // Barbarians raze cities rather than holding them.
+  if (taker0?.isBarbarian) {
+    for (const t of state.map.tiles) if (t.ownerCityId === city.id) t.ownerCityId = undefined;
+    state.cities.delete(city.id);
+    state.log.push(`Barbarians razed ${city.name}!`);
+    return;
+  }
+
   city.ownerId = attacker.ownerId;
   city.production = null;
   city.population = Math.max(1, city.population - 1);

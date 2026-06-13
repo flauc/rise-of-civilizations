@@ -1,22 +1,44 @@
-// Pre-game lobby: choose single-player (LocalSession) or connect to the server
-// (OnlineSession) to register/login, list/create/join, and start a match.
+// Pre-game lobby: a single-player setup screen (map size / AI opponents /
+// barbarians) and a multiplayer flow (connect → register/login → list/create/
+// join/start) with the same game options on create.
 
-import { LocalSession, OnlineSession, type Session } from "./session";
+import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
 import type { GameSummary } from "@roc/sim";
 
 const DEFAULT_WS = `ws://${location.hostname || "localhost"}:3001/ws`;
+
+function mapSelect(id: string): string {
+  return `<select id="${id}" class="lobby-in">
+    <option value="small">Small</option>
+    <option value="medium" selected>Medium</option>
+    <option value="large">Large</option>
+  </select>`;
+}
+function aiSelect(id: string, def = 1): string {
+  return `<select id="${id}" class="lobby-in">${[0, 1, 2, 3, 4]
+    .map((n) => `<option value="${n}"${n === def ? " selected" : ""}>${n}</option>`)
+    .join("")}</select>`;
+}
 
 export function createLobby(onStart: (session: Session) => void): void {
   const root = document.createElement("div");
   root.id = "lobby";
   root.innerHTML = `
-    <div class="panel" id="lobby-card" style="position:static;width:340px;max-width:92vw">
+    <div class="panel" style="position:static;width:360px;max-width:92vw">
       <div style="font-size:20px;font-weight:700;margin-bottom:4px">Rise of Civilizations</div>
       <div style="color:#9fc0dc;margin-bottom:12px">Ancient Era → Age of Exploration</div>
       <div class="row">
         <button class="btn primary" id="sp">Single Player</button>
         <button class="btn" id="mp">Multiplayer</button>
       </div>
+
+      <div id="sp-panel" class="hidden" style="margin-top:12px">
+        <div class="frow"><span>Map size</span>${mapSelect("sp-map")}</div>
+        <div class="frow"><span>AI opponents</span>${aiSelect("sp-ai", 1)}</div>
+        <label class="frow" style="cursor:pointer"><span>Barbarians</span><input type="checkbox" id="sp-barb" checked /></label>
+        <button class="btn primary" id="sp-start" style="width:100%;margin-top:8px">Start Game</button>
+      </div>
+
       <div id="mp-panel" class="hidden" style="margin-top:12px">
         <input id="url" class="lobby-in" value="${DEFAULT_WS}" />
         <div class="row" style="margin-top:6px">
@@ -29,7 +51,9 @@ export function createLobby(onStart: (session: Session) => void): void {
         </div>
         <div id="status" style="color:#ffb38a;margin-top:8px;min-height:18px"></div>
         <div id="games" class="hidden" style="margin-top:8px">
-          <div class="row" style="justify-content:space-between">
+          <div class="frow"><span>Map size</span>${mapSelect("mp-map")}</div>
+          <div class="frow"><span>AI opponents</span>${aiSelect("mp-ai", 0)}</div>
+          <div class="row" style="justify-content:space-between;margin-top:6px">
             <b>Games</b>
             <span><button class="btn" id="refresh">Refresh</button>
             <button class="btn primary" id="create">Create</button></span>
@@ -41,7 +65,9 @@ export function createLobby(onStart: (session: Session) => void): void {
   const style = document.createElement("style");
   style.textContent = `
     #lobby{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,12,20,.7);z-index:50}
-    .lobby-in{font:inherit;font-size:13px;color:#eaf3fb;background:#14283b;border:1px solid var(--edge);border-radius:8px;padding:7px 10px;width:100%}
+    .lobby-in{font:inherit;font-size:13px;color:#eaf3fb;background:#14283b;border:1px solid var(--edge);border-radius:8px;padding:7px 10px}
+    #lobby input.lobby-in{width:100%}
+    .frow{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:6px}
     #game-list .gi{display:flex;justify-content:space-between;align-items:center;padding:7px;border:1px solid var(--edge);border-radius:8px;margin-top:6px}`;
   document.head.appendChild(style);
   document.body.appendChild(root);
@@ -52,12 +78,30 @@ export function createLobby(onStart: (session: Session) => void): void {
     root.remove();
     style.remove();
   };
+  const val = (id: string) => $<HTMLSelectElement>(id).value;
 
+  // ---- single player ----
   $("sp").addEventListener("click", () => {
-    close();
-    onStart(new LocalSession({ seed: "rise-m3b" }));
+    $("sp-panel").classList.remove("hidden");
+    $("mp-panel").classList.add("hidden");
   });
-  $("mp").addEventListener("click", () => $("mp-panel").classList.toggle("hidden"));
+  $("sp-start").addEventListener("click", () => {
+    close();
+    onStart(
+      new LocalSession({
+        mapSize: val("sp-map") as MapSize,
+        aiCount: Number(val("sp-ai")),
+        barbarians: $<HTMLInputElement>("sp-barb").checked,
+        seed: "rise-" + Math.random().toString(36).slice(2, 8),
+      }),
+    );
+  });
+
+  // ---- multiplayer ----
+  $("mp").addEventListener("click", () => {
+    $("mp-panel").classList.remove("hidden");
+    $("sp-panel").classList.add("hidden");
+  });
 
   let session: OnlineSession | null = null;
   let joinedGameId: string | null = null;
@@ -122,7 +166,13 @@ export function createLobby(onStart: (session: Session) => void): void {
   $("login").addEventListener("click", () => void connectAndAuth("login"));
   $("refresh").addEventListener("click", () => session?.send({ t: "listGames" }));
   $("create").addEventListener("click", () => {
-    const name = `${$<HTMLInputElement>("handle").value || "Player"}'s game`;
-    session?.send({ t: "createGame", name });
+    const dims = MAP_DIMENSIONS[val("mp-map") as MapSize];
+    session?.send({
+      t: "createGame",
+      name: `${$<HTMLInputElement>("handle").value || "Player"}'s game`,
+      cols: dims.cols,
+      rows: dims.rows,
+      aiCount: Number(val("mp-ai")),
+    });
   });
 }

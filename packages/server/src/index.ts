@@ -63,7 +63,12 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
 
     case "createGame": {
       if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
-      const game = lobby.create(msg.name, ws.data.userId, ws.data.handle ?? "Player", msg.seed);
+      const game = lobby.create(msg.name, ws.data.userId, ws.data.handle ?? "Player", {
+        seed: msg.seed,
+        cols: msg.cols,
+        rows: msg.rows,
+        aiCount: msg.aiCount,
+      });
       ws.data.gameId = game.id;
       ws.data.playerId = game.slots[0]!.playerId;
       addConn(game.id, ws);

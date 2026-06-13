@@ -16,11 +16,21 @@ export interface LobbyGame {
   status: "lobby" | "active";
   seed: string;
   capacity: number;
+  cols?: number;
+  rows?: number;
+  aiCount: number;
   slots: Slot[];
   host?: GameHost;
 }
 
 const CAPACITY = 2;
+
+export interface CreateOptions {
+  seed?: string;
+  cols?: number;
+  rows?: number;
+  aiCount?: number;
+}
 
 function randomId(): string {
   return "g_" + Math.random().toString(36).slice(2, 10);
@@ -29,7 +39,7 @@ function randomId(): string {
 export class Lobby {
   private readonly games = new Map<string, LobbyGame>();
 
-  create(name: string, ownerUserId: string, ownerHandle: string, seed?: string): LobbyGame {
+  create(name: string, ownerUserId: string, ownerHandle: string, opts: CreateOptions = {}): LobbyGame {
     const id = randomId();
     const slots: Slot[] = Array.from({ length: CAPACITY }, (_, i) => ({ slot: i, playerId: i }));
     slots[0]!.userId = ownerUserId;
@@ -38,8 +48,11 @@ export class Lobby {
       id,
       name,
       status: "lobby",
-      seed: seed ?? id,
+      seed: opts.seed ?? id,
       capacity: CAPACITY,
+      cols: opts.cols,
+      rows: opts.rows,
+      aiCount: Math.max(0, Math.min(4, opts.aiCount ?? 0)),
       slots,
     };
     this.games.set(id, game);
@@ -69,11 +82,19 @@ export class Lobby {
     const game = this.games.get(gameId);
     if (!game) return { error: "no such game" };
     if (game.status === "active") return { ok: true };
-    const names: [string, string] = [
+    const names = [
       game.slots[0]?.handle ?? "Player 1",
       game.slots[1]?.handle ?? "Player 2",
     ];
-    const state = createGame({ seed: game.seed, playerNames: names, barbarians: true });
+    const state = createGame({
+      seed: game.seed,
+      cols: game.cols,
+      rows: game.rows,
+      playerNames: names,
+      playerCount: CAPACITY + game.aiCount,
+      humanSlots: CAPACITY,
+      barbarians: true,
+    });
     game.host = new GameHost(state);
     game.status = "active";
     return { ok: true };

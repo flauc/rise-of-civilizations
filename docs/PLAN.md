@@ -329,8 +329,9 @@ The strategy is **vertical slice first**, then widen. Each milestone is playable
 - ✅ **Deep unit roster** (~29 land units across roles & eras: clubman/warrior/slinger/javelineer/hunter → fire-hardened spear/war-dogs/archer → axeman/maceman/spearman/hoplite/chariots/riders/horse-archer → swordsman/longsword/pikeman/cataphract/crossbow/legionary/war-elephant + siege ram/catapult/ballista). Some available immediately, others tech-gated. AI is class-based so it adapts.
 - ✅ **Reworked buildings** (Granary/Workshop/Forge/Walls/Barracks/Stable/Market/Archive/Academy/Aqueduct/Harbor/Monument), tech-gated.
 - ✅ **Territory / cultural borders**: cities claim their tile + ring on founding and expand outward as population grows; only owned tiles can be worked; borders rendered (tinted region + outline), shown in the city panel, and sent through the fog-filtered server view.
-- ✅ **Map features** — **tribal Villages** (random perk on entry: learn a tech, gold, production/citizen boost, free unit, free promotion, or a barbarian ambush) and **Barbarian Camps** (periodically spawn raiders; clear them with a military unit for a reward). Deterministic (seeded) so the server & clients agree. Rendered as ? / ! markers; flow through the server view.
-- ⏳ Civics trees & governments/policies; **game-creation menu** + deeper in-game UI; civ data layer.
+- ✅ **Map features** — **tribal Villages** (random perk on entry: learn a tech, gold, production/citizen boost, free unit, free promotion, or a barbarian ambush) and **Barbarian Camps** (periodically spawn raiders; clear them with a military unit for a reward). Deterministic (seeded) so the server & clients agree. Rendered as ? / ! markers; flow through the server view. Barbarians now **raze** captured cities rather than holding them.
+- ✅ **Game-creation menu** — single-player setup (map size S/M/L, 0–4 AI opponents, barbarians toggle) and the same map-size + AI-fill options on multiplayer create. Engine generalised to **N players** with greedy-spread starts and an 8-colour palette.
+- ⏳ Civics trees & governments/policies; **deeper in-game UI**; **civ data layer**.
 - ⏳ Religion, culture/tourism, trade routes, diplomacy & city-states.
 - ⏳ 10 launch civilizations (data-driven), each with UU/UI/ability.
 - ⏳ **First Legends (heroes)** wired into recruitment + abilities (core feature).
