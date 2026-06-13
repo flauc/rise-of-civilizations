@@ -1,0 +1,10 @@
+{
+  "name": "@roc/data",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Data-driven game content: civilizations, units, techs, buildings, great people (see /docs).",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

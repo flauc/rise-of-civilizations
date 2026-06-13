@@ -1,0 +1,24 @@
+{
+  "name": "rise-of-civilizations",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "A turn-based 4X (Ancient Era -> Age of Exploration). Canvas + TypeScript client, Bun + Postgres server.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "bun run --filter @roc/client dev",
+    "build": "bun run --filter @roc/client build",
+    "preview": "bun run --filter @roc/client preview",
+    "server": "bun run --filter @roc/server start",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10",
+    "vitest": "^2.1.4"
+  }
+}

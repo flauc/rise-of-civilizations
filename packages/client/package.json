@@ -1,0 +1,16 @@
+{
+  "name": "@roc/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Canvas + TypeScript game client. Renders the hex map; talks to the server (M3).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@roc/shared": "*",
+    "@roc/sim": "*"
+  }
+}

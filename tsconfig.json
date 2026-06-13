@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "types": [],
+    "paths": {
+      "@roc/shared": ["packages/shared/src/index.ts"],
+      "@roc/sim": ["packages/sim/src/index.ts"],
+      "@roc/data": ["packages/data/src/index.ts"],
+      "@roc/ai": ["packages/ai/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src", "packages/client/vite.config.ts"]
+}

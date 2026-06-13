@@ -1,0 +1,284 @@
+import { axialDistance, getTile, offsetToAxial, type TerrainType } from "@roc/shared";
+import type { City, GameState, Player, Unit } from "./state";
+import { cityAt, playerById, unitAt, areEnemies } from "./state";
+import {
+  UNIT_DEFS,
+  UNIT_MAX_HP,
+  isRanged,
+  PROMOTION_POOL,
+  type PromotionId,
+} from "./content";
+
+const ROUGH: ReadonlySet<TerrainType> = new Set<TerrainType>(["forest", "jungle", "hills"]);
+
+function terrainDefense(t: TerrainType): number {
+  if (t === "hills") return 3;
+  if (t === "forest" || t === "jungle") return 2;
+  return 0;
+}
+
+/** Wounded units fight weaker: 1.0 at full HP down to 0.5 at 0 HP. */
+function woundFactor(hp: number): number {
+  return 0.5 + (0.5 * Math.max(0, hp)) / UNIT_MAX_HP;
+}
+
+function isOpen(t: TerrainType): boolean {
+  return !ROUGH.has(t);
+}
+
+function has(unit: Unit, p: PromotionId): boolean {
+  return unit.promotions.includes(p);
+}
+
+/** Damage one combatant deals to another given effective strengths. */
+export function damageFrom(attEff: number, defEff: number): number {
+  const d = Math.round(30 * Math.pow(attEff / Math.max(1, defEff), 1.4));
+  return Math.max(1, Math.min(75, d));
+}
+
+function attackStrength(unit: Unit, defender: Unit, targetTerrain: TerrainType, ranged: boolean): number {
+  const def = UNIT_DEFS[unit.type];
+  let s = ranged ? def.rangedStrength ?? 0 : def.strength;
+  if (!ranged && has(unit, "shock") && isOpen(targetTerrain)) s += 3;
+  if (!ranged && has(unit, "drill") && ROUGH.has(targetTerrain)) s += 3;
+  if (ranged && has(unit, "accuracy") && isOpen(targetTerrain)) s += 3;
+  if (ranged && has(unit, "barrage") && ROUGH.has(targetTerrain)) s += 3;
+  // Anti-cavalry bonus on the attack.
+  if (def.abilities?.includes("bonus_vs_cavalry") && UNIT_DEFS[defender.type].cls === "cavalry") s += 5;
+  return s * woundFactor(unit.hp);
+}
+
+function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged: boolean): number {
+  const def = UNIT_DEFS[unit.type];
+  let s = def.strength;
+  const tile = getTile(state.map, unit.col, unit.row);
+  if (tile) s += terrainDefense(tile.terrain);
+  if (tile?.road) s += 0; // roads don't add defense
+  if (vsRanged && has(unit, "cover")) s += 4;
+  // Anti-cavalry also helps the defender against mounted attackers.
+  if (def.abilities?.includes("bonus_vs_cavalry") && UNIT_DEFS[attacker.type].cls === "cavalry") s += 5;
+  return Math.max(1, s) * woundFactor(unit.hp);
+}
+
+// ---- cities --------------------------------------------------------------
+
+export function cityHasWalls(city: City): boolean {
+  return city.buildings.includes("walls");
+}
+
+export function cityMaxHp(city: City): number {
+  return 80 + 8 * city.population + (cityHasWalls(city) ? 100 : 0);
+}
+
+export function cityDefenseStrength(state: GameState, city: City): number {
+  const tile = getTile(state.map, city.col, city.row);
+  let s = 6 + 1.5 * city.population;
+  if (cityHasWalls(city)) s += 6;
+  if (city.buildings.includes("barracks")) s += 3;
+  if (tile) s += terrainDefense(tile.terrain);
+  // Strongest garrison lends some strength.
+  const garrison = unitAt(state, city.col, city.row);
+  if (garrison && garrison.ownerId === city.ownerId) {
+    s += UNIT_DEFS[garrison.type].strength * 0.5 * woundFactor(garrison.hp);
+  }
+  return Math.max(1, Math.round(s));
+}
+
+function vsCityMultiplier(unit: Unit): number {
+  let m = 1;
+  if (UNIT_DEFS[unit.type].abilities?.includes("bonus_vs_city")) m *= 1.5;
+  if (has(unit, "siege")) m *= 1.5;
+  return m;
+}
+
+// ---- XP & promotions -----------------------------------------------------
+
+function xpForNextLevel(level: number): number {
+  return 10 * level;
+}
+
+function awardXp(unit: Unit, amount: number): void {
+  const def = UNIT_DEFS[unit.type];
+  if (def.cls === "settler" || def.cls === "worker") return;
+  unit.xp += amount;
+  while (unit.xp >= xpForNextLevel(unit.level)) {
+    unit.xp -= xpForNextLevel(unit.level);
+    unit.level += 1;
+    if (PROMOTION_POOL[def.cls].length > 0) unit.unspentPromotions += 1;
+  }
+}
+
+/** Promotions this unit could still take. */
+export function availablePromotions(unit: Unit): PromotionId[] {
+  const pool = PROMOTION_POOL[UNIT_DEFS[unit.type].cls];
+  return pool.filter((p) => !unit.promotions.includes(p));
+}
+
+// ---- attack resolution ---------------------------------------------------
+
+export interface AttackResult {
+  ok: boolean;
+  error?: string;
+}
+
+function dist(a: { col: number; row: number }, b: { col: number; row: number }): number {
+  return axialDistance(offsetToAxial(a), offsetToAxial(b));
+}
+
+function captureCity(state: GameState, city: City, attacker: Unit): void {
+  // Destroy any of the old owner's units sitting on the tile.
+  const garrison = unitAt(state, city.col, city.row);
+  if (garrison && garrison.ownerId === city.ownerId) state.units.delete(garrison.id);
+  const oldOwner = playerById(state, city.ownerId);
+  city.ownerId = attacker.ownerId;
+  city.production = null;
+  city.population = Math.max(1, city.population - 1);
+  city.hp = Math.floor(cityMaxHp(city) / 2);
+  city.isCapital = false;
+  // Attacker advances into the captured city.
+  attacker.col = city.col;
+  attacker.row = city.row;
+  const taker = playerById(state, attacker.ownerId);
+  state.log.push(`${taker?.name ?? "Someone"} captured ${city.name}${oldOwner ? ` from ${oldOwner.name}` : ""}.`);
+}
+
+/** Resolve an attack by `attacker` against whatever is on (col,row). */
+export function resolveAttack(state: GameState, attacker: Unit, col: number, row: number): AttackResult {
+  const def = UNIT_DEFS[attacker.type];
+  if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return { ok: false, error: "unit cannot attack" };
+  if (attacker.attackedThisTurn || attacker.movementLeft <= 0) return { ok: false, error: "no attack available" };
+
+  const attackerOwner = playerById(state, attacker.ownerId)!;
+  const ranged = isRanged(def);
+  const range = ranged ? def.range ?? 1 : 1;
+  const d = dist({ col: attacker.col, row: attacker.row }, { col, row });
+  if (d > range) return { ok: false, error: "out of range" };
+
+  const targetTile = getTile(state.map, col, row);
+  if (!targetTile) return { ok: false, error: "invalid tile" };
+
+  const enemyUnit = unitAt(state, col, row);
+  const enemyCity = cityAt(state, col, row);
+
+  // ---- attack a city ----
+  if (enemyCity && enemyCity.ownerId !== attacker.ownerId) {
+    const owner = playerById(state, enemyCity.ownerId);
+    if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
+    const cityDef = cityDefenseStrength(state, enemyCity);
+    const mult = vsCityMultiplier(attacker);
+    enemyCity.lastAttackedTurn = state.turn;
+
+    if (ranged) {
+      const attEff = (def.rangedStrength ?? 0) * woundFactor(attacker.hp) * mult;
+      enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
+      awardXp(attacker, 3);
+    } else {
+      if (enemyCity.hp <= 0) {
+        captureCity(state, enemyCity, attacker);
+      } else {
+        const attEff = def.strength * woundFactor(attacker.hp) * mult;
+        enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
+        attacker.hp -= damageFrom(cityDef, attEff);
+        awardXp(attacker, 4);
+        if (enemyCity.hp <= 0 && attacker.hp > 0) captureCity(state, enemyCity, attacker);
+      }
+    }
+    finishAttack(state, attacker);
+    return { ok: true };
+  }
+
+  // ---- attack a unit ----
+  if (enemyUnit && enemyUnit.ownerId !== attacker.ownerId) {
+    const owner = playerById(state, enemyUnit.ownerId);
+    if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
+
+    if (ranged) {
+      const attEff = attackStrength(attacker, enemyUnit, targetTile.terrain, true);
+      const defEff = defenseStrength(state, enemyUnit, attacker, true);
+      enemyUnit.hp -= damageFrom(attEff, defEff);
+      awardXp(attacker, 3);
+      awardXp(enemyUnit, 2);
+      if (enemyUnit.hp <= 0) killUnit(state, enemyUnit);
+    } else {
+      const attEff = attackStrength(attacker, enemyUnit, targetTile.terrain, false);
+      const defEff = defenseStrength(state, enemyUnit, attacker, false);
+      enemyUnit.hp -= damageFrom(attEff, defEff);
+      attacker.hp -= damageFrom(defEff, attEff);
+      awardXp(attacker, 4);
+      awardXp(enemyUnit, 4);
+      const defenderDead = enemyUnit.hp <= 0;
+      const attackerDead = attacker.hp <= 0;
+      if (defenderDead) killUnit(state, enemyUnit);
+      if (attackerDead) {
+        killUnit(state, attacker);
+        return { ok: true };
+      }
+      if (defenderDead && !cityAt(state, col, row) && !unitAt(state, col, row)) {
+        attacker.col = col; // advance into vacated tile
+        attacker.row = row;
+      }
+    }
+    finishAttack(state, attacker);
+    return { ok: true };
+  }
+
+  return { ok: false, error: "nothing to attack there" };
+}
+
+function killUnit(state: GameState, unit: Unit): void {
+  state.units.delete(unit.id);
+  const owner = playerById(state, unit.ownerId);
+  state.log.push(`${UNIT_DEFS[unit.type].name} (${owner?.name ?? "?"}) was destroyed.`);
+}
+
+function finishAttack(state: GameState, attacker: Unit): void {
+  if (!state.units.has(attacker.id)) return;
+  attacker.attackedThisTurn = true;
+  attacker.movementLeft = 0;
+}
+
+/** Tiles this unit could attack right now (enemy units/cities in range). */
+export function computeAttackTargets(state: GameState, unit: Unit): Set<string> {
+  const out = new Set<string>();
+  const def = UNIT_DEFS[unit.type];
+  if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return out;
+  if (unit.attackedThisTurn || unit.movementLeft <= 0) return out;
+  const owner = playerById(state, unit.ownerId);
+  if (!owner) return out;
+  const range = isRanged(def) ? def.range ?? 1 : 1;
+  const from = { col: unit.col, row: unit.row };
+
+  for (const u of state.units.values()) {
+    if (u.ownerId === unit.ownerId) continue;
+    const o = playerById(state, u.ownerId);
+    if (o && areEnemies(owner, o) && dist(from, u) <= range) out.add(`${u.col},${u.row}`);
+  }
+  for (const c of state.cities.values()) {
+    if (c.ownerId === unit.ownerId) continue;
+    const o = playerById(state, c.ownerId);
+    if (o && areEnemies(owner, o) && dist(from, c) <= range) out.add(`${c.col},${c.row}`);
+  }
+  return out;
+}
+
+/** Start-of-turn upkeep for a player's units: heal, medic aura, reset flags. */
+export function healAndReset(state: GameState, player: Player): void {
+  const own = [...state.units.values()].filter((u) => u.ownerId === player.id);
+  for (const u of own) {
+    u.attackedLastTurn = u.attackedThisTurn;
+    u.attackedThisTurn = false;
+  }
+  for (const u of own) {
+    if (u.attackedLastTurn) continue;
+    let heal = 8;
+    if (cityAt(state, u.col, u.row)?.ownerId === player.id) heal += 12;
+    u.hp = Math.min(UNIT_MAX_HP, u.hp + heal);
+    if (u.promotions.includes("medic")) {
+      for (const other of own) {
+        if (other.id !== u.id && dist(u, other) === 1) {
+          other.hp = Math.min(UNIT_MAX_HP, other.hp + 10);
+        }
+      }
+    }
+  }
+}

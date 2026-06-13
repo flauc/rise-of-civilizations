@@ -1,0 +1,10 @@
+{
+  "name": "@roc/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure, environment-agnostic core: hex math, seeded RNG, map types. No DOM, no Node/Bun APIs.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

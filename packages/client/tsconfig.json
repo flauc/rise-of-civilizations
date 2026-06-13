@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": [],
+    "noEmit": true,
+    "baseUrl": "../..",
+    "paths": {
+      "@roc/shared": ["packages/shared/src/index.ts"],
+      "@roc/sim": ["packages/sim/src/index.ts"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

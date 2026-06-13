@@ -1,0 +1,14 @@
+{
+  "name": "@roc/ai",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Single-player / fill AI opponents. Runs server-side or in a worker. Built out in M5.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@roc/shared": "*",
+    "@roc/sim": "*"
+  }
+}

@@ -1,0 +1,96 @@
+// In-memory lobby + match registry. Pure TS (no Bun) so it's unit-testable.
+
+import { createGame, type GameSummary } from "@roc/sim";
+import { GameHost } from "./gamehost";
+
+export interface Slot {
+  slot: number;
+  playerId: number;
+  userId?: string;
+  handle?: string;
+}
+
+export interface LobbyGame {
+  id: string;
+  name: string;
+  status: "lobby" | "active";
+  seed: string;
+  capacity: number;
+  slots: Slot[];
+  host?: GameHost;
+}
+
+const CAPACITY = 2;
+
+function randomId(): string {
+  return "g_" + Math.random().toString(36).slice(2, 10);
+}
+
+export class Lobby {
+  private readonly games = new Map<string, LobbyGame>();
+
+  create(name: string, ownerUserId: string, ownerHandle: string, seed?: string): LobbyGame {
+    const id = randomId();
+    const slots: Slot[] = Array.from({ length: CAPACITY }, (_, i) => ({ slot: i, playerId: i }));
+    slots[0]!.userId = ownerUserId;
+    slots[0]!.handle = ownerHandle;
+    const game: LobbyGame = {
+      id,
+      name,
+      status: "lobby",
+      seed: seed ?? id,
+      capacity: CAPACITY,
+      slots,
+    };
+    this.games.set(id, game);
+    return game;
+  }
+
+  get(id: string): LobbyGame | undefined {
+    return this.games.get(id);
+  }
+
+  /** Join a game in an open slot (idempotent if already seated). */
+  join(gameId: string, userId: string, handle: string): { slot: number; playerId: number } | { error: string } {
+    const game = this.games.get(gameId);
+    if (!game) return { error: "no such game" };
+    if (game.status !== "lobby") return { error: "game already started" };
+    const existing = game.slots.find((s) => s.userId === userId);
+    if (existing) return { slot: existing.slot, playerId: existing.playerId };
+    const open = game.slots.find((s) => s.userId === undefined);
+    if (!open) return { error: "game is full" };
+    open.userId = userId;
+    open.handle = handle;
+    return { slot: open.slot, playerId: open.playerId };
+  }
+
+  /** Start the match: build the sim state and a GameHost. */
+  start(gameId: string): { error: string } | { ok: true } {
+    const game = this.games.get(gameId);
+    if (!game) return { error: "no such game" };
+    if (game.status === "active") return { ok: true };
+    const names: [string, string] = [
+      game.slots[0]?.handle ?? "Player 1",
+      game.slots[1]?.handle ?? "Player 2",
+    ];
+    const state = createGame({ seed: game.seed, playerNames: names, barbarians: true });
+    game.host = new GameHost(state);
+    game.status = "active";
+    return { ok: true };
+  }
+
+  /** Which player slot a user occupies in a game (if any). */
+  slotOf(gameId: string, userId: string): Slot | undefined {
+    return this.games.get(gameId)?.slots.find((s) => s.userId === userId);
+  }
+
+  list(): GameSummary[] {
+    return [...this.games.values()].map((g) => ({
+      id: g.id,
+      name: g.name,
+      status: g.status,
+      players: g.slots.filter((s) => s.userId).length,
+      capacity: g.capacity,
+    }));
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@roc/sim",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic game simulation: world generation, state, command resolution. Pure (no DOM/Node).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@roc/shared": "*"
+  }
+}

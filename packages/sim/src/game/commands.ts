@@ -1,0 +1,193 @@
+import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
+import type { GameState, ProductionItem } from "./state";
+import { cityAt, currentPlayer, playerById, unitsOf, citiesOf } from "./state";
+import { isPassableLand } from "./terrain";
+import { computeReachable } from "./movement";
+import { updateExplored } from "./visibility";
+import { processCity, availableProduction } from "./economy";
+import {
+  cityMaxHp,
+  healAndReset,
+  resolveAttack,
+  availablePromotions,
+} from "./combat";
+import { barbarianTurn } from "./barbarians";
+import { buildImprovement, type ImprovementKind } from "./improvements";
+import { UNIT_DEFS, TECH_DEFS, techUnlocked, type PromotionId, type TechId } from "./content";
+
+export type Command =
+  | { type: "move"; unitId: number; col: number; row: number }
+  | { type: "attack"; attackerId: number; col: number; row: number }
+  | { type: "foundCity"; unitId: number }
+  | { type: "build"; unitId: number; improvement: ImprovementKind }
+  | { type: "promote"; unitId: number; promotion: PromotionId }
+  | { type: "setProduction"; cityId: number; item: ProductionItem }
+  | { type: "setResearch"; techId: TechId }
+  | { type: "endTurn" };
+
+export interface CommandResult {
+  ok: boolean;
+  error?: string;
+}
+
+const ok: CommandResult = { ok: true };
+const fail = (error: string): CommandResult => ({ ok: false, error });
+
+const CITY_NAMES = [
+  "Ur", "Akkad", "Memphis", "Thebes", "Babylon", "Nineveh", "Tyre",
+  "Athens", "Sparta", "Rome", "Carthage", "Sidon", "Susa", "Knossos",
+];
+
+const MIN_CITY_DISTANCE = 3;
+
+/** Begin the current player's turn: refresh movement, heal, run economy, reveal. */
+export function beginTurn(state: GameState): void {
+  const player = currentPlayer(state);
+  for (const u of unitsOf(state, player.id)) {
+    u.movementLeft = UNIT_DEFS[u.type].movement;
+  }
+  healAndReset(state, player);
+  for (const c of citiesOf(state, player.id)) {
+    c.rangedAttackUsed = false;
+    processCity(state, c, player);
+  }
+  updateExplored(state, player.id);
+}
+
+/** Advance to the next player and auto-run non-human (barbarian) turns. */
+export function endTurn(state: GameState): void {
+  const advance = (): void => {
+    state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
+    if (state.currentPlayerIndex === 0) state.turn += 1;
+    beginTurn(state);
+  };
+  advance();
+  let guard = 0;
+  while (!currentPlayer(state).isHuman && guard++ < state.players.length + 1) {
+    if (currentPlayer(state).isBarbarian) barbarianTurn(state);
+    advance();
+  }
+}
+
+/**
+ * Apply a validated command. `actingPlayerId` is whose order this is — defaults
+ * to the current player (hotseat/sequential), but the multiplayer server passes
+ * the submitting player's id so simultaneous orders are validated per-owner.
+ */
+export function applyCommand(
+  state: GameState,
+  cmd: Command,
+  actingPlayerId?: number,
+): CommandResult {
+  const player =
+    (actingPlayerId !== undefined ? playerById(state, actingPlayerId) : undefined) ??
+    currentPlayer(state);
+
+  switch (cmd.type) {
+    case "endTurn": {
+      endTurn(state);
+      return ok;
+    }
+
+    case "move": {
+      const unit = state.units.get(cmd.unitId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      const entry = computeReachable(state, unit).get(`${cmd.col},${cmd.row}`);
+      if (!entry) return fail("tile not reachable");
+      unit.col = cmd.col;
+      unit.row = cmd.row;
+      unit.movementLeft = Math.max(0, unit.movementLeft - entry.cost);
+      updateExplored(state, player.id);
+      return ok;
+    }
+
+    case "attack": {
+      const unit = state.units.get(cmd.attackerId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      const res = resolveAttack(state, unit, cmd.col, cmd.row);
+      if (res.ok) updateExplored(state, player.id);
+      return res;
+    }
+
+    case "foundCity": {
+      const unit = state.units.get(cmd.unitId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      if (!UNIT_DEFS[unit.type].founder) return fail("unit cannot found cities");
+      const tile = getTile(state.map, unit.col, unit.row);
+      if (!tile || !isPassableLand(tile.terrain)) return fail("invalid terrain");
+      if (cityAt(state, unit.col, unit.row)) return fail("already a city here");
+      const here = offsetToAxial({ col: unit.col, row: unit.row });
+      for (const c of state.cities.values()) {
+        if (axialDistance(here, offsetToAxial({ col: c.col, row: c.row })) < MIN_CITY_DISTANCE) {
+          return fail("too close to another city");
+        }
+      }
+      const isCapital = citiesOf(state, player.id).length === 0;
+      const name = CITY_NAMES[state.cities.size % CITY_NAMES.length]!;
+      const id = state.nextEntityId++;
+      const city = {
+        id,
+        ownerId: player.id,
+        name,
+        col: unit.col,
+        row: unit.row,
+        population: 1,
+        foodStored: 0,
+        productionStored: 0,
+        production: { kind: "unit", id: "warrior" } as ProductionItem,
+        buildings: [],
+        isCapital,
+        hp: 0,
+        lastAttackedTurn: 0,
+        rangedAttackUsed: false,
+      };
+      city.hp = cityMaxHp(city);
+      state.cities.set(id, city);
+      state.units.delete(unit.id);
+      state.log.push(`${player.name} founded ${name}.`);
+      updateExplored(state, player.id);
+      return ok;
+    }
+
+    case "build": {
+      const unit = state.units.get(cmd.unitId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      return buildImprovement(state, unit, cmd.improvement);
+    }
+
+    case "promote": {
+      const unit = state.units.get(cmd.unitId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      if (unit.unspentPromotions <= 0) return fail("no promotion available");
+      if (!availablePromotions(unit).includes(cmd.promotion)) return fail("invalid promotion");
+      unit.promotions.push(cmd.promotion);
+      unit.unspentPromotions -= 1;
+      return ok;
+    }
+
+    case "setProduction": {
+      const city = state.cities.get(cmd.cityId);
+      if (!city) return fail("no such city");
+      if (city.ownerId !== player.id) return fail("not your city");
+      const allowed = availableProduction(player, city).some(
+        (o) => o.item.kind === cmd.item.kind && o.item.id === cmd.item.id,
+      );
+      if (!allowed) return fail("cannot build that");
+      city.production = cmd.item;
+      return ok;
+    }
+
+    case "setResearch": {
+      if (player.researched.has(cmd.techId)) return fail("already researched");
+      if (!techUnlocked(player.researched, cmd.techId)) return fail("prereqs not met");
+      player.researching = cmd.techId;
+      state.log.push(`${player.name} is researching ${TECH_DEFS[cmd.techId].name}.`);
+      return ok;
+    }
+  }
+}

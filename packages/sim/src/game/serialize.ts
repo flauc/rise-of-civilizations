@@ -1,0 +1,145 @@
+import { getTile } from "@roc/shared";
+import type { GameState, Unit, City } from "./state";
+import { computeVisible } from "./visibility";
+import type { TechId } from "./content";
+
+// ---- per-player view (fog enforced server-side; never leak unexplored data) --
+
+export interface TileView {
+  col: number;
+  row: number;
+  terrain: string;
+  improvement?: string;
+  road?: boolean;
+}
+
+export interface PlayerPublic {
+  id: number;
+  name: string;
+  color: string;
+  isHuman: boolean;
+  isBarbarian: boolean;
+}
+
+export interface PlayerView {
+  turn: number;
+  yourId: number;
+  you: {
+    gold: number;
+    scienceProgress: number;
+    researching: TechId | null;
+    researched: TechId[];
+  };
+  players: PlayerPublic[];
+  cols: number;
+  rows: number;
+  tiles: TileView[]; // explored tiles only
+  visible: string[];
+  units: Unit[];
+  cities: City[];
+  log: string[];
+}
+
+/** Build the state a player is allowed to see (fog of war enforced here). */
+export function viewForPlayer(state: GameState, playerId: number): PlayerView {
+  const me = state.players.find((p) => p.id === playerId);
+  const explored = me?.explored ?? new Set<string>();
+  const visible = computeVisible(state, playerId);
+
+  const tiles: TileView[] = [];
+  for (const key of explored) {
+    const [col, row] = key.split(",").map(Number) as [number, number];
+    const t = getTile(state.map, col, row);
+    if (!t) continue;
+    const tv: TileView = { col, row, terrain: t.terrain };
+    if (t.improvement) tv.improvement = t.improvement;
+    if (t.road) tv.road = true;
+    tiles.push(tv);
+  }
+
+  const units: Unit[] = [];
+  for (const u of state.units.values()) {
+    if (u.ownerId === playerId || visible.has(`${u.col},${u.row}`)) units.push(u);
+  }
+  const cities: City[] = [];
+  for (const c of state.cities.values()) {
+    if (c.ownerId === playerId || visible.has(`${c.col},${c.row}`)) cities.push(c);
+  }
+
+  return {
+    turn: state.turn,
+    yourId: playerId,
+    you: {
+      gold: me?.gold ?? 0,
+      scienceProgress: me?.scienceProgress ?? 0,
+      researching: me?.researching ?? null,
+      researched: me ? [...me.researched] : [],
+    },
+    players: state.players.map((p) => ({
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      isHuman: p.isHuman,
+      isBarbarian: p.isBarbarian,
+    })),
+    cols: state.map.cols,
+    rows: state.map.rows,
+    tiles,
+    visible: [...visible],
+    units,
+    cities,
+    log: state.log.slice(-12),
+  };
+}
+
+// ---- full (de)serialization for persistence (snapshots) ------------------
+
+export interface SerializedState {
+  map: GameState["map"];
+  turn: number;
+  currentPlayerIndex: number;
+  nextEntityId: number;
+  log: string[];
+  players: Array<
+    Omit<GameState["players"][number], "researched" | "explored"> & {
+      researched: string[];
+      explored: string[];
+    }
+  >;
+  units: Unit[];
+  cities: City[];
+}
+
+export function serializeState(state: GameState): SerializedState {
+  return {
+    map: state.map,
+    turn: state.turn,
+    currentPlayerIndex: state.currentPlayerIndex,
+    nextEntityId: state.nextEntityId,
+    log: state.log,
+    players: state.players.map((p) => ({
+      ...p,
+      researched: [...p.researched],
+      explored: [...p.explored],
+    })),
+    units: [...state.units.values()],
+    cities: [...state.cities.values()],
+  };
+}
+
+export function deserializeState(s: SerializedState): GameState {
+  return {
+    map: s.map,
+    turn: s.turn,
+    currentPlayerIndex: s.currentPlayerIndex,
+    nextEntityId: s.nextEntityId,
+    log: s.log,
+    players: s.players.map((p) => ({
+      ...p,
+      researched: new Set(p.researched as TechId[]),
+      explored: new Set(p.explored),
+    })),
+    units: new Map(s.units.map((u) => [u.id, u])),
+    cities: new Map(s.cities.map((c) => [c.id, c])),
+  };
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@roc/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Authoritative multiplayer server (Bun + WebSocket + Postgres). Run with `bun run src/index.ts`.",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts"
+  },
+  "dependencies": {
+    "@roc/shared": "*",
+    "@roc/sim": "*"
+  }
+}

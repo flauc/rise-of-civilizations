@@ -1,0 +1,13 @@
+{
+  "name": "geodata-poc",
+  "private": true,
+  "type": "module",
+  "description": "Proof of concept: bake Natural Earth (world-atlas TopoJSON) land data into a hex map",
+  "scripts": {
+    "bake": "node bake.mjs"
+  },
+  "dependencies": {
+    "d3-geo": "^3.1.1",
+    "topojson-client": "^3.1.0"
+  }
+}
