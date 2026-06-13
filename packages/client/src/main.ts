@@ -25,6 +25,7 @@ import { attachInput } from "./input";
 import { createUI, type CombatOdds } from "./ui";
 import { createMinimap } from "./minimap";
 import { createLobby } from "./lobby-ui";
+import { loadTerrainAtlas } from "./terrain-assets";
 import type { Session } from "./session";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -273,12 +274,22 @@ function startGame(session: Session): void {
     needsRedraw = true;
   });
 
+  const terrainAtlas = loadTerrainAtlas(() => {
+    needsRedraw = true;
+  });
+
   function frame(): void {
     if (needsRedraw && session.hasState()) {
       needsRedraw = false;
       const me = session.getViewerId();
       const explored = st().players.find((p) => p.id === me)?.explored ?? new Set<string>();
-      drawScene(ctx!, st().map, camera, { dpr, cssWidth, cssHeight, fog: { visible, explored } });
+      drawScene(ctx!, st().map, camera, {
+        dpr,
+        cssWidth,
+        cssHeight,
+        fog: { visible, explored },
+        terrainAtlas,
+      });
       const selCity = selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null;
       drawOverlay(ctx!, camera, st(), {
         viewingPlayerId: me,

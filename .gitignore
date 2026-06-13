@@ -5,3 +5,4 @@ dist/
 .env
 .env.*
 tools/geodata-poc/*.hexmap.json
+Hex Samples

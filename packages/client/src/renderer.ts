@@ -10,6 +10,7 @@ import {
 } from "@roc/shared";
 import { Camera, type Bounds } from "./camera";
 import { TERRAIN_COLORS, HEX_STROKE, HEX_HOVER_STROKE } from "./palette";
+import { isImageReady, type TerrainAtlas } from "./terrain-assets";
 
 // Hex size (center-to-corner) in world units at zoom 1.
 export const BASE_SIZE = 26;
@@ -70,6 +71,7 @@ export interface RenderOptions {
   cssHeight: number;
   hovered?: Offset | undefined;
   fog?: FogState | undefined;
+  terrainAtlas?: TerrainAtlas | undefined;
 }
 
 const UNEXPLORED_FILL = "#0a1320";
@@ -128,13 +130,25 @@ export function drawScene(
       ctx.fill();
       continue; // hide terrain entirely
     }
-    ctx.fillStyle = TERRAIN_COLORS[t.terrain];
-    ctx.fill();
+    const img = opts.terrainAtlas?.images[t.terrain];
+    if (img && isImageReady(img)) {
+      // Scale so the sprite height matches the rendered hex height, then anchor
+      // at the bottom of the hex footprint so the upper overhang overlaps tiles
+      // behind.
+      const scale = (3 * size) / img.naturalHeight;
+      const drawW = img.naturalWidth * scale;
+      const drawH = img.naturalHeight * scale;
+      const drawX = sx - drawW / 2;
+      const drawY = sy + size - drawH;
+      ctx.drawImage(img, drawX, drawY, drawW, drawH);
+    } else {
+      ctx.fillStyle = TERRAIN_COLORS[t.terrain];
+      ctx.fill();
+    }
     if (!visible) {
       ctx.fillStyle = FOG_OVERLAY;
       ctx.fill();
     }
-    if (size > 6) ctx.stroke();
 
     // Tile improvements & roads (only worth drawing when reasonably zoomed in).
     if (size > 10) {
