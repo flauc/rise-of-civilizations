@@ -22,6 +22,9 @@ import {
   TECH_DEFS,
   UNIT_DEFS,
   UNIT_MAX_HP,
+  buildingInfo,
+  techUnlocks,
+  unitInfo,
   type City,
   type GameState,
   type ImprovementKind,
@@ -96,6 +99,7 @@ export function createUI(handlers: UIHandlers): UI {
   const cityPanel = div("city-panel", "panel hidden");
   const research = div("research", "panel hidden");
   const civics = div("civics", "panel hidden");
+  const production = div("production", "panel hidden");
   const log = div("log", "");
   const banner = div("banner", "");
   const gameover = div("gameover", "hidden");
@@ -114,6 +118,8 @@ export function createUI(handlers: UIHandlers): UI {
 
   let researchOpen = false;
   let civicsOpen = false;
+  let productionOpen = false;
+  let prodCityId: number | null = null;
   let bannerTimer = 0;
   let lastState: GameState | null = null;
 
@@ -144,24 +150,29 @@ export function createUI(handlers: UIHandlers): UI {
       : 0;
     const cul = citiesOf(state, player.id).reduce((n, c) => n + getCityYields(state, c).culture, 0);
     const civicDef = getCivic(player.researchingCivic ?? undefined);
-    const civicLabel = civicDef
-      ? `${civicDef.name} (${Math.floor(player.cultureProgress)}/${civicDef.cost})`
-      : "— none —";
     const civicPct = civicDef ? Math.min(100, (player.cultureProgress / civicDef.cost) * 100) : 0;
     const gov = getGovernment(player.government);
     const civ = getCiv(player.civId);
+    const rName = researchingDef ? researchingDef.name : "Choose…";
+    const cName = civicDef ? civicDef.name : "Choose…";
+    const civTitle = civ ? `${civ.name} — ${civ.abilityName}: ${civ.abilityDesc}` : "";
+
     topbar.innerHTML = `
-      <span><b>Turn ${state.turn}</b></span>
-      <span><span class="dot" style="background:${player.color}"></span><b>${player.name}</b>${
-        civ ? ` <span title="${civ.abilityName}: ${civ.abilityDesc}" style="color:#9fc0dc;cursor:help">· ${civ.name} ⓘ</span>` : ""
-      }</span>
-      <span>🪙 <b>${Math.floor(player.gold)}</b></span>
-      <span style="min-width:150px">🔬 <b>${researchLabel}</b> <span style="color:#9fc0dc">+${sci}</span>
-        <div class="bar" style="width:140px"><i style="width:${researchPct}%"></i></div></span>
-      <span style="min-width:150px">🎭 <b>${civicLabel}</b> <span style="color:#9fc0dc">+${cul}</span>
-        <div class="bar" style="width:140px"><i style="width:${civicPct}%;background:#c07ad0"></i></div></span>
-      <button class="btn" id="research-btn">Research</button>
-      <button class="btn" id="civics-btn" title="${gov?.name ?? "Government"}">🏛️ Civics</button>`;
+      <div class="tb-grp">
+        <span class="tb-turn">⏱ ${state.turn}</span>
+        <span class="tb-civ" title="${civTitle}"><span class="dot" style="background:${player.color}"></span>${player.name}${civ ? ` · <b>${civ.name}</b>` : ""}</span>
+      </div>
+      <div class="tb-grp tb-res">
+        <span class="chip" title="Gold">🪙 ${Math.floor(player.gold)}</span>
+        <span class="chip" title="Science / turn">🔬 +${sci}</span>
+        <span class="chip" title="Culture / turn">🎭 +${cul}</span>
+      </div>
+      <div class="tb-grp">
+        <button class="tb-pill" id="research-btn" title="Research" style="--p:${researchPct}%">
+          <span class="tb-pl">🔬</span><b>${rName}</b></button>
+        <button class="tb-pill civic" id="civics-btn" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%">
+          <span class="tb-pl">🏛️</span><b>${cName}</b></button>
+      </div>`;
     topbar.querySelector<HTMLButtonElement>("#research-btn")!.addEventListener("click", () => {
       researchOpen = !researchOpen;
       civicsOpen = false;
@@ -187,10 +198,15 @@ export function createUI(handlers: UIHandlers): UI {
       (techs.length === 0
         ? `<div style="margin-top:8px;color:#9fc0dc">All available techs researched.</div>`
         : techs
-            .map(
-              (t) =>
-                `<div class="tech" data-tech="${t}"><span>${TECH_DEFS[t].name}</span><span style="color:#9fc0dc">${TECH_DEFS[t].cost}🔬</span></div>`,
-            )
+            .map((t) => {
+              const u = techUnlocks(t);
+              return (
+                `<div class="tech" data-tech="${t}"><div style="flex:1">` +
+                `<div><b>${TECH_DEFS[t].name}</b></div>` +
+                (u.length ? `<div class="sub">Unlocks: ${u.join(", ")}</div>` : "") +
+                `</div><span class="cost">${TECH_DEFS[t].cost}🔬</span></div>`
+              );
+            })
             .join(""));
     research.querySelector<HTMLButtonElement>("#rclose")!.addEventListener("click", () => {
       researchOpen = false;
@@ -223,7 +239,15 @@ export function createUI(handlers: UIHandlers): UI {
       ? civicList
           .map((id) => {
             const d = getCivic(id)!;
-            return `<div class="tech" data-civic="${id}"><span>${d.name}</span><span style="color:#9fc0dc">${d.cost}🎭</span></div>`;
+            const unlocks: string[] = [];
+            if (d.unlocksGovernment) unlocks.push(`Gov: ${getGovernment(d.unlocksGovernment)?.name}`);
+            if (d.unlocksPolicy) unlocks.push(`Policy: ${getPolicy(d.unlocksPolicy)?.name}`);
+            return (
+              `<div class="tech" data-civic="${id}"><div style="flex:1">` +
+              `<div><b>${d.name}</b></div>` +
+              (unlocks.length ? `<div class="sub">${unlocks.join(" · ")}</div>` : "") +
+              `</div><span class="cost">${d.cost}🎭</span></div>`
+            );
           })
           .join("")
       : `<div style="color:#9fc0dc;font-size:12px">No new civics available yet.</div>`;
@@ -268,6 +292,56 @@ export function createUI(handlers: UIHandlers): UI {
     );
   };
 
+  const renderProduction = (state: GameState): void => {
+    production.classList.toggle("hidden", !productionOpen);
+    if (!productionOpen) return;
+    const city = prodCityId != null ? state.cities.get(prodCityId) : null;
+    if (!city) {
+      productionOpen = false;
+      production.classList.add("hidden");
+      return;
+    }
+    const player = state.players.find((p) => p.id === city.ownerId)!;
+    const options = availableProduction(player, city);
+    const perTurn = Math.max(1, getCityYields(state, city).production);
+    const turns = (cost: number) => Math.max(1, Math.ceil((cost - city.productionStored) / perTurn));
+
+    let html = `<div class="row" style="justify-content:space-between"><b>${city.name} — Choose Production</b><button class="btn" id="pclose">✕</button></div>`;
+    html += options
+      .map((o) => {
+        let glyph: string;
+        let desc: string;
+        if (o.item.kind === "unit") {
+          glyph = UNIT_DEFS[o.item.id].glyph;
+          const i = unitInfo(o.item.id);
+          desc = `${i.role} — ${i.stats}${i.note ? ` · ${i.note}` : ""}`;
+        } else {
+          glyph = "🏛";
+          desc = buildingInfo(o.item.id);
+        }
+        return (
+          `<div class="pcard" data-kind="${o.item.kind}" data-id="${o.item.id}">` +
+          `<span class="pglyph">${glyph}</span>` +
+          `<div style="flex:1"><div><b>${o.name}</b> <span class="sub">· ${turns(o.cost)} turns</span></div>` +
+          `<div class="sub">${desc}</div></div>` +
+          `<span class="cost">${o.cost}⚒️</span></div>`
+        );
+      })
+      .join("");
+    production.innerHTML = html;
+    production.querySelector<HTMLButtonElement>("#pclose")!.addEventListener("click", () => {
+      productionOpen = false;
+      production.classList.add("hidden");
+    });
+    production.querySelectorAll<HTMLDivElement>(".pcard").forEach((el) =>
+      el.addEventListener("click", () => {
+        handlers.onSetProduction({ kind: el.dataset.kind, id: el.dataset.id } as ProductionItem);
+        productionOpen = false;
+        production.classList.add("hidden");
+      }),
+    );
+  };
+
   const renderUnitPanel = (state: GameState, unit: Unit | null, odds?: CombatOdds | null): void => {
     if (!unit) {
       unitPanel.classList.add("hidden");
@@ -277,11 +351,13 @@ export function createUI(handlers: UIHandlers): UI {
     const def = UNIT_DEFS[unit.type];
     const combatant = def.strength > 0 || (def.rangedStrength ?? 0) > 0;
 
+    const info = unitInfo(unit.type);
     let html =
-      `<div class="row" style="justify-content:space-between"><b>${def.name}</b>` +
+      `<div class="row" style="justify-content:space-between"><b style="font-size:15px">${def.name}</b>` +
       (unit.level > 1 ? `<span style="color:#ffd967">Lv ${unit.level}</span>` : "") +
       `</div>` +
-      `<div>Moves <b>${unit.movementLeft}/${def.movement}</b>` +
+      `<div class="sub">${info.role}${info.note ? ` · ${info.note}` : ""}</div>` +
+      `<div style="margin-top:2px">Moves <b>${unit.movementLeft}/${def.movement}</b>` +
       (combatant ? ` · HP <b>${unit.hp}/${UNIT_MAX_HP}</b>` : "") +
       `</div>`;
     if (combatant) {
@@ -371,12 +447,7 @@ export function createUI(handlers: UIHandlers): UI {
       `<div style="margin-top:6px">Growth ${Math.floor(city.foodStored)}/${need}<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
       // production
       `<div style="margin-top:6px">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>` +
-      `<select id="prod">` +
-      `<option value="">— choose production —</option>` +
-      options
-        .map((o) => `<option value="${o.item.kind}:${o.item.id}">${o.name} (${o.cost}⚒️)</option>`)
-        .join("") +
-      `</select>` +
+      `<button class="btn primary" id="open-prod" style="width:100%;margin-top:6px">Choose Production ▸ <span style="color:#cfe3f7;font-weight:400">(${options.length})</span></button>` +
       (city.buildings.length
         ? `<div style="margin-top:6px;color:#9fc0dc;font-size:12px">Built: ${city.buildings.map((b) => BUILDING_DEFS[b].name).join(", ")}</div>`
         : "");
@@ -384,11 +455,10 @@ export function createUI(handlers: UIHandlers): UI {
     cityPanel
       .querySelector<HTMLButtonElement>("#cclose")!
       .addEventListener("click", () => handlers.onCloseCity());
-    cityPanel.querySelector<HTMLSelectElement>("#prod")!.addEventListener("change", (e) => {
-      const v = (e.target as HTMLSelectElement).value;
-      if (!v) return;
-      const [kind, id] = v.split(":");
-      handlers.onSetProduction({ kind, id } as ProductionItem);
+    cityPanel.querySelector<HTMLButtonElement>("#open-prod")!.addEventListener("click", () => {
+      prodCityId = city.id;
+      productionOpen = true;
+      renderProduction(state);
     });
   };
 
@@ -421,6 +491,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderTopbar(view.state);
       renderResearch(view.state);
       renderCivics(view.state);
+      renderProduction(view.state);
       renderUnitPanel(view.state, view.selectedUnit, view.odds);
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state);

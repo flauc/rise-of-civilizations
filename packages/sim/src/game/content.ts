@@ -200,6 +200,60 @@ export function techUnlocked(researched: ReadonlySet<TechId>, tech: TechId): boo
   return TECH_DEFS[tech].prereqs.every((p) => researched.has(p));
 }
 
+// ---- human-readable descriptions (for the UI) ----------------------------
+
+const ROLE: Record<UnitClass, string> = {
+  melee: "Melee infantry",
+  ranged: "Ranged",
+  cavalry: "Cavalry",
+  siege: "Siege engine",
+  recon: "Recon / scout",
+  settler: "Founds a new city",
+  worker: "Builds tile improvements",
+};
+
+export interface UnitInfo {
+  role: string;
+  stats: string;
+  note: string;
+}
+
+export function unitInfo(type: UnitTypeId): UnitInfo {
+  const d = UNIT_DEFS[type];
+  const stats: string[] = [];
+  if (d.strength > 0) stats.push(`⚔ ${d.strength}`);
+  if ((d.rangedStrength ?? 0) > 0) stats.push(`🏹 ${d.rangedStrength} (range ${d.range})`);
+  stats.push(`🥾 ${d.movement}`);
+  const notes: string[] = [];
+  if (d.abilities?.includes("bonus_vs_cavalry")) notes.push("bonus vs cavalry");
+  if (d.abilities?.includes("bonus_vs_city")) notes.push("bonus vs cities");
+  if (d.builder) notes.push("3 build charges");
+  if (d.founder) notes.push("consumed to found a city");
+  return { role: ROLE[d.cls], stats: stats.join(" · "), note: notes.join(" · ") };
+}
+
+export function buildingInfo(id: BuildingId): string {
+  const d = BUILDING_DEFS[id];
+  const y = d.yields;
+  const parts: string[] = [];
+  if (y.food) parts.push(`+${y.food} 🍞`);
+  if (y.production) parts.push(`+${y.production} ⚒️`);
+  if (y.gold) parts.push(`+${y.gold} 🪙`);
+  if (y.science) parts.push(`+${y.science} 🔬`);
+  if (y.culture) parts.push(`+${y.culture} 🎭`);
+  if (d.effect === "walls") parts.push("city walls (+HP & defense)");
+  if (d.effect === "barracks") parts.push("+city defense; new units gain XP");
+  return parts.join(", ") || "—";
+}
+
+/** Names of units/buildings a tech unlocks (for the research picker). */
+export function techUnlocks(techId: TechId): string[] {
+  const out: string[] = [];
+  for (const d of Object.values(UNIT_DEFS)) if (d.reqTech === techId) out.push(d.name);
+  for (const d of Object.values(BUILDING_DEFS)) if (d.reqTech === techId) out.push(d.name);
+  return out;
+}
+
 // ---- Promotions (unchanged from M2) --------------------------------------
 
 export type PromotionId = "shock" | "drill" | "cover" | "accuracy" | "barrage" | "siege" | "medic";
