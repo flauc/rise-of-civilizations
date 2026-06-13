@@ -20,7 +20,7 @@ Earlier milestones: **M1** added cities, tile yields, movement, fog of war, rese
 | `packages/shared` | Pure core: hex math, seeded RNG, map types. No DOM/Node — reused everywhere. |
 | `packages/sim` | Deterministic simulation. M0: procedural world generation (noise → terrain). |
 | `packages/client` | Canvas + TypeScript game client (Vite). The M0 hex renderer lives here. |
-| `packages/server` | Authoritative Bun server (skeleton; built out in M3). |
+| `packages/server` | Authoritative Bun WS server: auth, lobby, simultaneous-turn game host, fog-filtered broadcasts (M3). |
 | `packages/data` | Data-driven content (civs/techs/units/great people) — see `docs/`. Populated M4+. |
 | `packages/ai` | Single-player AI opponents (M5). |
 | `tools/geodata-poc` | Spike that bakes real-world Natural Earth data into a hex map (PLAN.md §3.1.1). |
@@ -38,8 +38,11 @@ bun run dev        # start the client dev server (Vite) -> http://localhost:5173
 bun run build      # production build of the client
 bun run typecheck  # repo-wide TypeScript check
 bun run test       # unit tests (vitest)
-bun run server     # start the Bun server skeleton (needs Bun)
+bun run server     # start the Bun multiplayer server (http://localhost:3001)
 ```
+
+Multiplayer server quick check: `bun run packages/server/src/index.ts`, then in another
+shell `PORT=3030 bun run packages/server/smoke.ts` runs a 2-client over-the-wire test.
 
 The client accepts URL params: `?seed=anything&cols=80&rows=56`.
 

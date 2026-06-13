@@ -314,12 +314,14 @@ The strategy is **vertical slice first**, then widen. Each milestone is playable
 - ✅ Workers build improvements (farm/mine) + roads (cheaper movement); expanded 12-tech tree.
 - ⏳ Deferred to a later step: world/national **wonders** (the roadmap's "first wonders").
 
-**M3 — Multiplayer server (real-time simultaneous first)**
-- Bun WS server, auth, lobby, **server-authoritative** turn resolution.
-- **Real-time simultaneous turns** with a shared turn timer + the combat-lock fairness sub-phase (primary launch mode).
-- Postgres persistence + snapshots + order log; reconnect with snapshot.
-- Then the **async "play-by-cloud"** path on the same engine (long deadlines + notifications).
-- Server-side fog filtering & order validation.
+**M3 — Multiplayer server (real-time simultaneous first)** 🚧 *server core done; browser client pending*
+- ✅ Bun HTTP+WS gateway, auth (register/login/resume via `Bun.password`), in-memory lobby (create/join/start).
+- ✅ **Server-authoritative** sim: orders validated per-owner (`applyCommand(state, cmd, actingPlayerId)`); illegal orders rejected.
+- ✅ **Real-time simultaneous turns** (`startSimultaneousTurn`/`resolveSimultaneousTurn`): all players act, resolve when all ready (barbarians + economy tick, turn advances).
+- ✅ **Server-side fog filtering** (`viewForPlayer`) — clients only receive explored tiles + visible entities (anti-maphack).
+- ✅ Verified end-to-end: vitest core tests + a live **WebSocket smoke test** (2 clients register→create→join→start→found→ready→resolve).
+- ⏳ **Browser client wiring** (lobby UI + netcode replacing local sim) — next sub-step (M3b).
+- ⏳ Postgres persistence (Storage interface + in-memory done; Postgres adapter via `Bun.sql` pending a DB); turn timer + combat-lock sub-phase; async play-by-cloud + notifications.
 
 **M4 — Systems width**
 - Full(er) tech + civic trees & governments/policies.
