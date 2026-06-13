@@ -21,6 +21,7 @@ export interface PlayerPublic {
   color: string;
   isHuman: boolean;
   isBarbarian: boolean;
+  civId?: string;
 }
 
 export interface PlayerView {
@@ -86,6 +87,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
       color: p.color,
       isHuman: p.isHuman,
       isBarbarian: p.isBarbarian,
+      civId: p.civId,
     })),
     cols: state.map.cols,
     rows: state.map.rows,

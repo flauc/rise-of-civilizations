@@ -1,9 +1,10 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City, Player } from "./state";
 import { cityAt, makeUnit, unitAt } from "./state";
-import { addYields, TERRAIN_YIELDS, type Yields } from "./terrain";
+import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { expandTerritory } from "./territory";
+import { civEffectsOf } from "./civs";
 import { cityMaxHp } from "./combat";
 import { offsetNeighbors } from "./movement";
 import {
@@ -22,8 +23,8 @@ export interface CityYields {
 
 const CITY_RADIUS = 2;
 
-/** Tiles within the city's work radius, excluding other cities' centers. */
-function workableTiles(state: GameState, city: City): { col: number; row: number }[] {
+/** Tiles within the city's work radius (owned by it) that a citizen may work. */
+export function workableTiles(state: GameState, city: City): { col: number; row: number }[] {
   const { map } = state;
   const center = offsetToAxial({ col: city.col, row: city.row });
   const tiles: { col: number; row: number }[] = [];
@@ -45,14 +46,15 @@ function workableTiles(state: GameState, city: City): { col: number; row: number
   return tiles;
 }
 
-function tileScore(food: number, production: number, gold: number): number {
-  return food * 1.0 + production * 0.8 + gold * 0.5;
+/** Citizen-assignment desirability of a tile's yields (food-leaning early). */
+export function citizenScore(y: Yields): number {
+  return y.food * 1.0 + y.production * 0.8 + y.gold * 0.5 + y.science * 0.6;
 }
 
 /** Base + improvement yields of a single tile. */
 function tileWorkYields(map: GameState["map"], col: number, row: number): Yields {
   const tile = getTile(map, col, row);
-  if (!tile) return { food: 0, production: 0, gold: 0 };
+  if (!tile) return ZERO_YIELDS;
   return addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement));
 }
 
@@ -66,18 +68,22 @@ export function getCityYields(state: GameState, city: City): CityYields {
   let gold = cBase.gold;
   let science = 1; // base research from every city
 
-  // Best `population` surrounding tiles.
-  const candidates = workableTiles(state, city)
-    .map((t) => ({ y: tileWorkYields(map, t.col, t.row) }))
-    .sort((a, b) =>
-      tileScore(b.y.food, b.y.production, b.y.gold) -
-      tileScore(a.y.food, a.y.production, a.y.gold),
-    );
-  for (let i = 0; i < city.population && i < candidates.length; i++) {
-    const y = candidates[i]!.y;
+  const eff = civEffectsOf(state, city.ownerId);
+  const desertGold = eff.goldPerWorkedDesert ?? 0;
+  if (getTile(map, city.col, city.row)?.terrain === "desert") gold += desertGold;
+  science += cBase.science;
+
+  // Tiles this city's citizens are assigned to (manual or auto-assigned).
+  for (const key of city.workedTiles) {
+    const [col, row] = key.split(",").map(Number) as [number, number];
+    const tile = getTile(map, col, row);
+    if (!tile || tile.ownerCityId !== city.id) continue; // ignore lost tiles
+    const y = tileWorkYields(map, col, row);
     food += y.food;
     production += y.production;
     gold += y.gold;
+    science += y.science;
+    if (tile.terrain === "desert") gold += desertGold;
   }
 
   // Buildings.
@@ -93,11 +99,94 @@ export function getCityYields(state: GameState, city: City): CityYields {
     production += 1;
     science += 1;
   }
+
+  // Civ yield bonuses (percentage).
+  const pct = eff.yieldPercent;
+  if (pct) {
+    food = Math.floor(food * (1 + (pct.food ?? 0) / 100));
+    production = Math.floor(production * (1 + (pct.production ?? 0) / 100));
+    gold = Math.floor(gold * (1 + (pct.gold ?? 0) / 100));
+    science = Math.floor(science * (1 + (pct.science ?? 0) / 100));
+  }
   return { food, production, gold, science };
 }
 
 export function foodToGrow(population: number): number {
   return 15 + 6 * (population - 1);
+}
+
+const keyOf = (t: { col: number; row: number }) => `${t.col},${t.row}`;
+const scoreOfKey = (state: GameState, key: string): number => {
+  const [c, r] = key.split(",").map(Number) as [number, number];
+  return citizenScore(tileWorkYields(state.map, c, r));
+};
+
+/** Clean up a city's worked tiles (drop lost/invalid, cap at population) and
+ *  fill any spare citizens onto the best available tiles. */
+export function autoAssignCitizens(state: GameState, city: City): void {
+  const valid = new Set(workableTiles(state, city).map(keyOf));
+  let worked = [...new Set(city.workedTiles)].filter((k) => valid.has(k));
+  worked.sort((a, b) => scoreOfKey(state, b) - scoreOfKey(state, a));
+  if (worked.length > city.population) worked = worked.slice(0, city.population);
+  const workedSet = new Set(worked);
+  const avail = [...valid]
+    .filter((k) => !workedSet.has(k))
+    .sort((a, b) => scoreOfKey(state, b) - scoreOfKey(state, a));
+  while (worked.length < city.population && avail.length > 0) worked.push(avail.shift()!);
+  city.workedTiles = worked;
+}
+
+/** Assign one spare citizen to the best available tile (used on city growth). */
+export function assignOneCitizen(state: GameState, city: City): void {
+  if (city.workedTiles.length >= city.population) return;
+  const workedSet = new Set(city.workedTiles);
+  let best: string | null = null;
+  let bestScore = -Infinity;
+  for (const t of workableTiles(state, city)) {
+    const k = keyOf(t);
+    if (workedSet.has(k)) continue;
+    const s = scoreOfKey(state, k);
+    if (s > bestScore) {
+      bestScore = s;
+      best = k;
+    }
+  }
+  if (best) city.workedTiles.push(best);
+}
+
+/** Keep only the best `population` worked tiles (used after starvation). */
+export function trimCitizens(state: GameState, city: City): void {
+  if (city.workedTiles.length <= city.population) return;
+  city.workedTiles = [...city.workedTiles]
+    .sort((a, b) => scoreOfKey(state, b) - scoreOfKey(state, a))
+    .slice(0, city.population);
+}
+
+/** Toggle a citizen on/off a tile. Adding past capacity swaps out the worst tile. */
+export function toggleCitizen(state: GameState, city: City, col: number, row: number): boolean {
+  const key = `${col},${row}`;
+  const idx = city.workedTiles.indexOf(key);
+  if (idx >= 0) {
+    city.workedTiles.splice(idx, 1); // un-assign
+    return true;
+  }
+  const valid = new Set(workableTiles(state, city).map(keyOf));
+  if (!valid.has(key)) return false;
+  city.workedTiles.push(key);
+  if (city.workedTiles.length > city.population) {
+    let worstIdx = -1;
+    let worst = Infinity;
+    for (let i = 0; i < city.workedTiles.length; i++) {
+      if (city.workedTiles[i] === key) continue;
+      const s = scoreOfKey(state, city.workedTiles[i]!);
+      if (s < worst) {
+        worst = s;
+        worstIdx = i;
+      }
+    }
+    if (worstIdx >= 0) city.workedTiles.splice(worstIdx, 1);
+  }
+  return true;
 }
 
 /** Spawn a finished unit at the city, or the nearest open adjacent land tile. */
@@ -130,6 +219,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   if (city.foodStored < 0) {
     if (city.population > 1) {
       city.population -= 1;
+      trimCitizens(state, city);
       state.log.push(`${city.name} starved (now pop ${city.population}).`);
     }
     city.foodStored = 0;
@@ -139,6 +229,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       city.foodStored -= need;
       city.population += 1;
       expandTerritory(state, city); // borders grow with the city
+      assignOneCitizen(state, city); // new citizen works the best free tile
       state.log.push(`${city.name} grew to pop ${city.population}.`);
     }
   }

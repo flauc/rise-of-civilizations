@@ -8,6 +8,7 @@ import {
   PROMOTION_POOL,
   type PromotionId,
 } from "./content";
+import { civCombatBonus } from "./civs";
 
 const ROUGH: ReadonlySet<TerrainType> = new Set<TerrainType>(["forest", "jungle", "hills"]);
 
@@ -36,9 +37,10 @@ export function damageFrom(attEff: number, defEff: number): number {
   return Math.max(1, Math.min(75, d));
 }
 
-function attackStrength(unit: Unit, defender: Unit, targetTerrain: TerrainType, ranged: boolean): number {
+function attackStrength(state: GameState, unit: Unit, defender: Unit, targetTerrain: TerrainType, ranged: boolean): number {
   const def = UNIT_DEFS[unit.type];
   let s = ranged ? def.rangedStrength ?? 0 : def.strength;
+  s += civCombatBonus(state, unit);
   if (!ranged && has(unit, "shock") && isOpen(targetTerrain)) s += 3;
   if (!ranged && has(unit, "drill") && ROUGH.has(targetTerrain)) s += 3;
   if (ranged && has(unit, "accuracy") && isOpen(targetTerrain)) s += 3;
@@ -57,6 +59,7 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   if (vsRanged && has(unit, "cover")) s += 4;
   // Anti-cavalry also helps the defender against mounted attackers.
   if (def.abilities?.includes("bonus_vs_cavalry") && UNIT_DEFS[attacker.type].cls === "cavalry") s += 5;
+  s += civCombatBonus(state, unit);
   return Math.max(1, s) * woundFactor(unit.hp);
 }
 
@@ -203,14 +206,14 @@ export function resolveAttack(state: GameState, attacker: Unit, col: number, row
     if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
 
     if (ranged) {
-      const attEff = attackStrength(attacker, enemyUnit, targetTile.terrain, true);
+      const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, true);
       const defEff = defenseStrength(state, enemyUnit, attacker, true);
       enemyUnit.hp -= damageFrom(attEff, defEff);
       awardXp(attacker, 3);
       awardXp(enemyUnit, 2);
       if (enemyUnit.hp <= 0) killUnit(state, enemyUnit);
     } else {
-      const attEff = attackStrength(attacker, enemyUnit, targetTile.terrain, false);
+      const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, false);
       const defEff = defenseStrength(state, enemyUnit, attacker, false);
       enemyUnit.hp -= damageFrom(attEff, defEff);
       attacker.hp -= damageFrom(defEff, attEff);
@@ -297,7 +300,7 @@ export function combatPreview(state: GameState, attacker: Unit, col: number, row
     };
   }
   if (enemyUnit && enemyUnit.ownerId !== attacker.ownerId) {
-    const attEff = attackStrength(attacker, enemyUnit, targetTile.terrain, ranged);
+    const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, ranged);
     const defEff = defenseStrength(state, enemyUnit, attacker, ranged);
     return {
       toDefender: damageFrom(attEff, defEff),

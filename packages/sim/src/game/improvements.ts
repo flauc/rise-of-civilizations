@@ -21,12 +21,13 @@ export const IMPROVEMENT_DEFS: Record<ImprovementKind, ImprovementDef> = {
 
 /** Yield bonus a tile's improvement contributes when worked. */
 export function improvementYields(improvement: string | undefined): Yields {
-  if (!improvement) return { food: 0, production: 0, gold: 0 };
+  if (!improvement) return { food: 0, production: 0, gold: 0, science: 0 };
   const def = IMPROVEMENT_DEFS[improvement as ImprovementKind];
   return {
     food: def?.yields?.food ?? 0,
     production: def?.yields?.production ?? 0,
     gold: def?.yields?.gold ?? 0,
+    science: 0,
   };
 }
 

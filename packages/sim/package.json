@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@roc/shared": "*"
+    "@roc/shared": "*",
+    "@roc/data": "*"
   }
 }

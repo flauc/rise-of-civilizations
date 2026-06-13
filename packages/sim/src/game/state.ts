@@ -35,6 +35,8 @@ export interface City {
   productionStored: number;
   production: ProductionItem | null;
   buildings: BuildingId[];
+  /** Tile keys ("col,row") this city's citizens are assigned to work. */
+  workedTiles: string[];
   isCapital: boolean;
   /** True if this city was founded as a capital (an "original capital" for the
    *  domination victory — stays true even after capture). */
@@ -55,6 +57,8 @@ export interface Player {
   color: string;
   isHuman: boolean;
   isBarbarian: boolean;
+  /** Civilization id (see @roc/data); undefined for barbarians. */
+  civId?: string;
   gold: number;
   researched: Set<TechId>;
   researching: TechId | null;

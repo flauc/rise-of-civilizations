@@ -10,7 +10,8 @@ Single-player **vs a local AI opponent** (and AI barbarians), plus real-time **b
 - **Original, materials-based tech tree** (~33 techs: knapping → smelting → bronze alloying → iron bloomery → carburizing, torsion engines, equestrianism…) — not a Civ clone.
 - **Territory** — cities claim land on founding and their borders grow with population; only owned tiles are worked.
 - **Tribal villages & barbarian camps** — explore to find villages (random perks: free tech, gold, citizens, units, promotions… or an ambush) and camps that spawn raiders and reward you for clearing them.
-- **Game setup & UI** — choose map size, AI opponents and barbarians; minimap, research progress, combat-odds preview on hover, and a victory/defeat screen.
+- **10 playable civilizations** — Rome, Egypt, Greece, Han China, Persia, Maurya, Mali, Aztec, Mongols, Norse — each with a unique ability that actually changes play (free buildings, yield bonuses, cavalry movement, combat bonuses…).
+- **Game setup & UI** — choose your civ, map size, AI opponents and barbarians; minimap, research progress, combat-odds preview on hover, and a victory/defeat screen.
 - **City siege & capture** — cities have HP/defense and walls; reduce a city to 0 HP and take it with a melee unit.
 - **Barbarians** — a hostile AI faction that spawns and raids, auto-running between human turns.
 - **Workers** — build farms/mines and roads (roads speed movement); a 12-tech tree gates units & buildings.

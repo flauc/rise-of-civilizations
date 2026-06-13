@@ -6,8 +6,8 @@
 // actingPlayerId). When all human players are ready, the turn is resolved:
 // barbarians act, economies tick, then the next turn begins for everyone at once.
 
-import { UNIT_DEFS } from "./content";
 import type { GameState } from "./state";
+import { unitMovement } from "./civs";
 import { healAndReset } from "./combat";
 import { processCity } from "./economy";
 import { barbarianTurn } from "./barbarians";
@@ -18,7 +18,7 @@ import { aiTakeTurn } from "./ai";
 /** Begin a fresh turn for ALL players at once: refresh movement, heal, reveal. */
 export function startSimultaneousTurn(state: GameState): void {
   for (const u of state.units.values()) {
-    u.movementLeft = UNIT_DEFS[u.type].movement;
+    u.movementLeft = unitMovement(state, u);
   }
   for (const p of state.players) {
     healAndReset(state, p);

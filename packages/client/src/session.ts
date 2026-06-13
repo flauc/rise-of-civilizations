@@ -47,6 +47,7 @@ export interface LocalGameOptions {
   mapSize?: MapSize;
   aiCount?: number;
   barbarians?: boolean;
+  civId?: string;
 }
 
 export class LocalSession implements Session {
@@ -65,6 +66,7 @@ export class LocalSession implements Session {
       humanSlots: 1,
       playerCount: 1 + aiCount,
       barbarians: opts.barbarians ?? true,
+      civIds: opts.civId ? [opts.civId] : undefined,
     });
     beginTurn(this.state);
   }
@@ -123,6 +125,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     color: p.color,
     isHuman: p.isHuman,
     isBarbarian: p.isBarbarian,
+    civId: p.civId,
     gold: p.id === view.yourId ? view.you.gold : 0,
     researched: new Set(p.id === view.yourId ? view.you.researched : []),
     researching: p.id === view.yourId ? view.you.researching : null,

@@ -1,4 +1,4 @@
-import { cityMaxHp, UNIT_DEFS, UNIT_MAX_HP, type GameState } from "@roc/sim";
+import { cityMaxHp, tileYields, UNIT_DEFS, UNIT_MAX_HP, type GameState } from "@roc/sim";
 import { axialNeighbors, axialToOffset, getTile, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, tileCenterWorld } from "./renderer";
@@ -11,6 +11,8 @@ export interface OverlayState {
   selectedCityId: number | null;
   reachable: Set<string>;
   attackTargets: Set<string>;
+  cityWorkable: Set<string>;
+  cityWorked: Set<string>;
 }
 
 /** "#rrggbb" -> "rgba(r,g,b,a)". */
@@ -147,6 +149,39 @@ export function drawOverlay(
   };
   if (o.reachable.size > 0) highlight(o.reachable, "rgba(255,255,255,0.12)", "rgba(255,255,255,0.35)");
   if (o.attackTargets.size > 0) highlight(o.attackTargets, "rgba(224,83,61,0.28)", "rgba(255,90,70,0.9)");
+
+  // ---- city citizen-assignment view ----
+  if (o.cityWorkable.size > 0) {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const key of o.cityWorkable) {
+      const [col, row] = key.split(",").map(Number) as [number, number];
+      const s = screen(col, row);
+      const worked = o.cityWorked.has(key);
+      hexPath(ctx, s.x, s.y, size * 0.86);
+      if (worked) {
+        ctx.fillStyle = "rgba(255,215,103,0.14)";
+        ctx.fill();
+      }
+      ctx.lineWidth = Math.max(1.5, size * (worked ? 0.1 : 0.05));
+      ctx.strokeStyle = worked ? "#ffd967" : "rgba(255,255,255,0.45)";
+      ctx.stroke();
+      if (size > 17) {
+        const t = getTile(state.map, col, row);
+        if (t) {
+          const y = tileYields(t);
+          const parts: string[] = [];
+          if (y.food) parts.push(`${y.food}F`);
+          if (y.production) parts.push(`${y.production}P`);
+          if (y.gold) parts.push(`${y.gold}G`);
+          if (y.science) parts.push(`${y.science}S`);
+          ctx.font = `${Math.round(size * 0.32)}px system-ui, sans-serif`;
+          ctx.fillStyle = "#fff";
+          ctx.fillText(parts.join(" ") || "—", s.x, s.y + size * 0.5);
+        }
+      }
+    }
+  }
 
   const showLabels = size > 14;
   ctx.textAlign = "center";

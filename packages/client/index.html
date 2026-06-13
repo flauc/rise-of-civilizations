@@ -78,10 +78,25 @@
         left: 50%;
         transform: translateX(-50%);
         display: flex;
-        gap: 16px;
+        gap: 0;
         align-items: center;
-        border-radius: 0 0 12px 12px;
+        padding: 8px 6px;
+        border-radius: 0 0 14px 14px;
         border-top: none;
+        font-size: 13px;
+      }
+      #topbar > span {
+        display: inline-block;
+        line-height: 1.3;
+        padding: 0 14px;
+        white-space: nowrap;
+      }
+      #topbar > span + span,
+      #topbar > button {
+        border-left: 1px solid var(--edge);
+      }
+      #topbar > button {
+        margin-left: 12px;
       }
       .dot {
         display: inline-block;
@@ -100,8 +115,26 @@
       /* City panel */
       #city-panel {
         right: 12px;
-        top: 64px;
-        width: 240px;
+        top: 76px;
+        width: 264px;
+      }
+      .ygrid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 3px 10px;
+        margin-top: 6px;
+        padding: 6px 8px;
+        background: #14283b;
+        border-radius: 8px;
+      }
+      #endturn2 {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: 64px;
+        font-size: 12px;
+        padding: 5px 12px;
+        opacity: 0.85;
       }
       #city-panel select {
         width: 100%;

@@ -7,6 +7,7 @@ import {
   cityDefenseStrength,
   cityMaxHp,
   foodToGrow,
+  getCiv,
   getCityYields,
   territorySize,
   BUILDING_DEFS,
@@ -31,12 +32,19 @@ export interface CombatOdds {
   vsCity: boolean;
 }
 
+export interface Suggestion {
+  kind: "units" | "research" | "production";
+  label: string;
+}
+
 export interface UIView {
   state: GameState;
   selectedUnit: Unit | null;
   selectedCity: City | null;
   /** Combat odds for the attack target currently hovered (if any). */
   odds?: CombatOdds | null;
+  /** Next suggested action (drives the smart action button). */
+  suggestion?: Suggestion | null;
 }
 
 export interface UIHandlers {
@@ -47,11 +55,13 @@ export interface UIHandlers {
   onSetProduction(item: ProductionItem): void;
   onSetResearch(techId: TechId): void;
   onCloseCity(): void;
+  onSuggestion(): void;
 }
 
 export interface UI {
   render(view: UIView): void;
   banner(text: string): void;
+  openResearch(): void;
 }
 
 function div(id: string, cls: string): HTMLDivElement {
@@ -82,12 +92,30 @@ export function createUI(handlers: UIHandlers): UI {
   const endturn = document.createElement("button");
   endturn.id = "endturn";
   endturn.className = "btn primary";
-  endturn.textContent = "End Turn";
-  endturn.addEventListener("click", () => handlers.onEndTurn());
   document.body.appendChild(endturn);
+
+  const endturn2 = document.createElement("button");
+  endturn2.id = "endturn2";
+  endturn2.className = "btn";
+  endturn2.textContent = "End Turn ⏭";
+  endturn2.addEventListener("click", () => handlers.onEndTurn());
+  document.body.appendChild(endturn2);
 
   let researchOpen = false;
   let bannerTimer = 0;
+  let lastState: GameState | null = null;
+
+  const renderAction = (view: UIView): void => {
+    if (view.suggestion) {
+      endturn.textContent = view.suggestion.label;
+      endturn.onclick = () => handlers.onSuggestion();
+      endturn2.classList.remove("hidden");
+    } else {
+      endturn.textContent = "End Turn";
+      endturn.onclick = () => handlers.onEndTurn();
+      endturn2.classList.add("hidden");
+    }
+  };
 
   const renderTopbar = (state: GameState): void => {
     const player = state.players[state.currentPlayerIndex]!;
@@ -102,9 +130,12 @@ export function createUI(handlers: UIHandlers): UI {
     const researchPct = researchingDef
       ? Math.min(100, (player.scienceProgress / researchingDef.cost) * 100)
       : 0;
+    const civ = getCiv(player.civId);
     topbar.innerHTML = `
       <span><b>Turn ${state.turn}</b></span>
-      <span><span class="dot" style="background:${player.color}"></span><b>${player.name}</b></span>
+      <span><span class="dot" style="background:${player.color}"></span><b>${player.name}</b>${
+        civ ? ` <span title="${civ.abilityName}: ${civ.abilityDesc}" style="color:#9fc0dc;cursor:help">· ${civ.name} ⓘ</span>` : ""
+      }</span>
       <span>🪙 <b>${Math.floor(player.gold)}</b></span>
       <span style="min-width:170px">🔬 <b>${researchLabel}</b> <span style="color:#9fc0dc">+${sci}/t</span>
         <div class="bar" style="width:160px"><i style="width:${researchPct}%"></i></div></span>
@@ -226,27 +257,37 @@ export function createUI(handlers: UIHandlers): UI {
       : 0;
     const foodPct = Math.min(100, (city.foodStored / need) * 100);
 
+    const surplus = y.food - city.population * 2;
+    const surplusStr = surplus >= 0 ? `+${surplus}` : `${surplus}`;
+
     cityPanel.innerHTML =
       `<div class="row" style="justify-content:space-between">` +
-      `<b>${city.isCapital ? "★ " : ""}${city.name}</b>` +
+      `<b style="font-size:15px">${city.isCapital ? "★ " : ""}${city.name}</b>` +
       `<button class="btn" id="cclose">✕</button></div>` +
-      `<div>Pop <b>${city.population}</b> · 🍞${y.food} ⚒️${y.production} 🪙${y.gold} 🔬${y.science}</div>` +
-      `<div>🛡️ Def <b>${cityDefenseStrength(state, city)}</b> · ❤️ <b>${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)}</b> · ⬣ <b>${territorySize(state, city)}</b></div>` +
-      `<div style="margin-top:6px">Growth: ${Math.floor(city.foodStored)}/${need}<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
-      `<div style="margin-top:6px">Building: <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>` +
+      `<div style="color:#9fc0dc;margin-top:2px">Pop <b style="color:#fff">${city.population}</b> · ` +
+      `🛡️ ${cityDefenseStrength(state, city)} · ❤️ ${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)} · ⬣ ${territorySize(state, city)}</div>` +
+      // yields grid
+      `<div class="ygrid">` +
+      `<span title="Food (growth)">🍞 <b>${y.food}</b> <span style="color:#9fc0dc">(${surplusStr})</span></span>` +
+      `<span title="Production">⚒️ <b>${y.production}</b></span>` +
+      `<span title="Gold">🪙 <b>${y.gold}</b></span>` +
+      `<span title="Science">🔬 <b>${y.science}</b></span>` +
+      `</div>` +
+      // citizens
+      `<div style="margin-top:6px">👥 Citizens <b>${city.workedTiles.length}/${city.population}</b> assigned ` +
+      `<span style="color:#9fc0dc;font-size:11px">— click tiles to reassign</span></div>` +
+      // growth
+      `<div style="margin-top:6px">Growth ${Math.floor(city.foodStored)}/${need}<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
+      // production
+      `<div style="margin-top:6px">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>` +
       `<select id="prod">` +
       `<option value="">— choose production —</option>` +
       options
-        .map(
-          (o) =>
-            `<option value="${o.item.kind}:${o.item.id}">${o.name} (${o.cost}⚒️)</option>`,
-        )
+        .map((o) => `<option value="${o.item.kind}:${o.item.id}">${o.name} (${o.cost}⚒️)</option>`)
         .join("") +
       `</select>` +
       (city.buildings.length
-        ? `<div style="margin-top:6px;color:#9fc0dc">Built: ${city.buildings
-            .map((b) => BUILDING_DEFS[b].name)
-            .join(", ")}</div>`
+        ? `<div style="margin-top:6px;color:#9fc0dc;font-size:12px">Built: ${city.buildings.map((b) => BUILDING_DEFS[b].name).join(", ")}</div>`
         : "");
 
     cityPanel
@@ -285,12 +326,19 @@ export function createUI(handlers: UIHandlers): UI {
 
   return {
     render(view) {
+      lastState = view.state;
       renderTopbar(view.state);
       renderResearch(view.state);
       renderUnitPanel(view.state, view.selectedUnit, view.odds);
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state);
       renderGameOver(view.state);
+      renderAction(view);
+    },
+    openResearch() {
+      if (!lastState) return;
+      researchOpen = true;
+      renderResearch(lastState);
     },
     banner(text) {
       banner.textContent = text;

@@ -1,10 +1,14 @@
 /// <reference types="vite/client" />
 import {
+  availableTechs,
   cityAt,
+  citiesOf,
   combatPreview,
   computeAttackTargets,
   computeReachable,
   unitAt,
+  unitsOf,
+  workableTiles,
   UNIT_DEFS,
 } from "@roc/sim";
 import { Camera } from "./camera";
@@ -40,9 +44,11 @@ function startGame(session: Session): void {
   let selectedCityId: number | null = null;
   let reachable = new Set<string>();
   let attackTargets = new Set<string>();
+  let cityWorkable = new Set<string>();
   let visible = new Set<string>();
   let gameOverShown = false;
   let hoverOdds: CombatOdds | null = null;
+  let idleCycle = 0;
 
   const st = () => session.getState();
   const minimap = createMinimap((col, row) => {
@@ -68,6 +74,10 @@ function startGame(session: Session): void {
     visible = session.getVisible();
     // Drop selection if the unit no longer exists (died/consumed/captured).
     if (selectedUnitId != null && !st().units.has(selectedUnitId)) selectedUnitId = null;
+    if (selectedCityId != null) {
+      const city = st().cities.get(selectedCityId);
+      cityWorkable = city ? new Set(workableTiles(st(), city).map((t) => `${t.col},${t.row}`)) : new Set();
+    }
     recomputeOverlays();
     if (!fitted) {
       camera.fitToView(computeWorldBounds(st().map), cssWidth, cssHeight, BASE_SIZE * 2);
@@ -89,11 +99,21 @@ function startGame(session: Session): void {
     recomputeOverlays();
     needsRedraw = true;
   }
+  function selectCity(id: number): void {
+    selectedCityId = id;
+    selectedUnitId = null;
+    reachable = new Set();
+    attackTargets = new Set();
+    const city = st().cities.get(id);
+    cityWorkable = city ? new Set(workableTiles(st(), city).map((t) => `${t.col},${t.row}`)) : new Set();
+    needsRedraw = true;
+  }
   function clearSelection(): void {
     selectedUnitId = null;
     selectedCityId = null;
     reachable = new Set();
     attackTargets = new Set();
+    cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
   }
@@ -120,10 +140,50 @@ function startGame(session: Session): void {
     },
     onSetResearch: (techId) => session.order({ type: "setResearch", techId }),
     onCloseCity: () => {
-      selectedCityId = null;
-      needsRedraw = true;
+      clearSelection();
     },
+    onSuggestion: () => actOnSuggestion(),
   });
+
+  type Suggestion = { kind: "units" | "research" | "production"; label: string } | null;
+  function computeSuggestion(): Suggestion {
+    const me = session.getViewerId();
+    const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0);
+    if (idle.length > 0) return { kind: "units", label: `⮕ Next Unit (${idle.length})` };
+    const player = st().players.find((p) => p.id === me);
+    if (player && player.researching == null && availableTechs(player).length > 0) {
+      return { kind: "research", label: "🔬 Choose Research" };
+    }
+    const noProd = citiesOf(st(), me).filter((c) => c.production == null);
+    if (noProd.length > 0) return { kind: "production", label: `⚒️ Set Production (${noProd.length})` };
+    return null;
+  }
+  function centerOn(col: number, row: number): void {
+    const c = tileCenterWorld(col, row);
+    camera.offsetX = cssWidth / 2 - c.x * camera.zoom;
+    camera.offsetY = cssHeight / 2 - c.y * camera.zoom;
+  }
+  function actOnSuggestion(): void {
+    const s = computeSuggestion();
+    if (!s) return session.endTurn();
+    const me = session.getViewerId();
+    if (s.kind === "units") {
+      const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0).sort((a, b) => a.id - b.id);
+      if (idle.length === 0) return;
+      const u = idle[idleCycle++ % idle.length]!;
+      selectUnit(u.id);
+      centerOn(u.col, u.row);
+    } else if (s.kind === "research") {
+      ui.openResearch();
+    } else {
+      const city = citiesOf(st(), me).find((c) => c.production == null);
+      if (city) {
+        selectCity(city.id);
+        centerOn(city.col, city.row);
+      }
+    }
+    needsRedraw = true;
+  }
 
   function handleTap(sx: number, sy: number): void {
     const off = screenToTile(camera, st().map, sx, sy);
@@ -131,22 +191,26 @@ function startGame(session: Session): void {
     const me = session.getViewerId();
     const key = `${off.col},${off.row}`;
     const u = unitAt(st(), off.col, off.row);
+    const c = cityAt(st(), off.col, off.row);
+
+    // Citizen assignment: with a city selected, tapping a workable tile toggles it.
+    if (selectedCityId != null && cityWorkable.has(key)) {
+      session.order({ type: "assignCitizen", cityId: selectedCityId, col: off.col, row: off.row });
+      return;
+    }
 
     if (u && u.ownerId === me) {
-      selectUnit(u.id);
+      // Tap an already-selected unit that shares a tile with our city -> select the city.
+      if (selectedUnitId === u.id && c && c.ownerId === me) selectCity(c.id);
+      else selectUnit(u.id);
     } else if (selectedUnitId != null && attackTargets.has(key)) {
       session.order({ type: "attack", attackerId: selectedUnitId, col: off.col, row: off.row });
     } else if (selectedUnitId != null && reachable.has(key)) {
       session.order({ type: "move", unitId: selectedUnitId, col: off.col, row: off.row });
+    } else if (c && c.ownerId === me) {
+      selectCity(c.id);
     } else {
-      const c = cityAt(st(), off.col, off.row);
-      if (c && c.ownerId === me) {
-        selectedCityId = c.id;
-        selectedUnitId = null;
-        reachable = new Set();
-        attackTargets = new Set();
-        needsRedraw = true;
-      } else clearSelection();
+      clearSelection();
     }
   }
 
@@ -206,6 +270,7 @@ function startGame(session: Session): void {
       const me = session.getViewerId();
       const explored = st().players.find((p) => p.id === me)?.explored ?? new Set<string>();
       drawScene(ctx!, st().map, camera, { dpr, cssWidth, cssHeight, fog: { visible, explored } });
+      const selCity = selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null;
       drawOverlay(ctx!, camera, st(), {
         viewingPlayerId: me,
         visible,
@@ -214,13 +279,16 @@ function startGame(session: Session): void {
         selectedCityId,
         reachable,
         attackTargets,
+        cityWorkable,
+        cityWorked: selCity ? new Set(selCity.workedTiles) : new Set(),
       });
       minimap.draw(st(), me, explored, visible, camera, cssWidth, cssHeight);
       ui.render({
         state: st(),
         selectedUnit: selectedUnitId != null ? st().units.get(selectedUnitId) ?? null : null,
-        selectedCity: selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null,
+        selectedCity: selCity,
         odds: hoverOdds,
+        suggestion: computeSuggestion(),
       });
     }
     requestAnimationFrame(frame);

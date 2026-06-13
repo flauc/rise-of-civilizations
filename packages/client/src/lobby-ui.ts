@@ -3,7 +3,7 @@
 // join/start) with the same game options on create.
 
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
-import type { GameSummary } from "@roc/sim";
+import { CIVILIZATIONS, type GameSummary } from "@roc/sim";
 
 const DEFAULT_WS = `ws://${location.hostname || "localhost"}:3001/ws`;
 
@@ -33,6 +33,10 @@ export function createLobby(onStart: (session: Session) => void): void {
       </div>
 
       <div id="sp-panel" class="hidden" style="margin-top:12px">
+        <div class="frow"><span>Civilization</span><select id="sp-civ" class="lobby-in">${CIVILIZATIONS.map(
+          (c) => `<option value="${c.id}">${c.name} — ${c.leader}</option>`,
+        ).join("")}</select></div>
+        <div id="sp-civ-desc" style="color:#9fc0dc;font-size:12px;margin-top:4px"></div>
         <div class="frow"><span>Map size</span>${mapSelect("sp-map")}</div>
         <div class="frow"><span>AI opponents</span>${aiSelect("sp-ai", 1)}</div>
         <label class="frow" style="cursor:pointer"><span>Barbarians</span><input type="checkbox" id="sp-barb" checked /></label>
@@ -81,14 +85,23 @@ export function createLobby(onStart: (session: Session) => void): void {
   const val = (id: string) => $<HTMLSelectElement>(id).value;
 
   // ---- single player ----
+  const showCivDesc = () => {
+    const civ = CIVILIZATIONS.find((c) => c.id === val("sp-civ"));
+    $("sp-civ-desc").innerHTML = civ
+      ? `<b>${civ.abilityName}:</b> ${civ.abilityDesc}<br/>UU: ${civ.uniqueUnit} · ${civ.uniqueInfra}`
+      : "";
+  };
   $("sp").addEventListener("click", () => {
     $("sp-panel").classList.remove("hidden");
     $("mp-panel").classList.add("hidden");
+    showCivDesc();
   });
+  $("sp-civ").addEventListener("change", showCivDesc);
   $("sp-start").addEventListener("click", () => {
     close();
     onStart(
       new LocalSession({
+        civId: val("sp-civ"),
         mapSize: val("sp-map") as MapSize,
         aiCount: Number(val("sp-ai")),
         barbarians: $<HTMLInputElement>("sp-barb").checked,

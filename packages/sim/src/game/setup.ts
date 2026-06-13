@@ -1,4 +1,5 @@
-import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, hashSeed, makeRng, offsetToAxial } from "@roc/shared";
+import { CIV_IDS } from "@roc/data";
 import { generateMap } from "../worldgen";
 import type { GameState, Player } from "./state";
 import { makeUnit } from "./state";
@@ -20,6 +21,8 @@ export interface NewGameOptions {
   humanSlots?: number;
   barbarians?: boolean;
   turnLimit?: number;
+  /** Civilization id per slot; unspecified slots get a random unique civ. */
+  civIds?: (string | undefined)[];
 }
 
 const PLAYER_COLORS = ["#e0533d", "#3d7fe0", "#49b85a", "#e0b53d", "#a05ad0", "#3dc8c8", "#d060aa", "#e08a3d"];
@@ -110,6 +113,20 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   const withBarbarians = opts.barbarians ?? true;
 
   const map = generateMap({ cols, rows, seed });
+
+  // Assign civs: honour requested ids, fill the rest with random unique civs.
+  const requested = opts.civIds ?? [];
+  const rng = makeRng(hashSeed(`${seed}:civs`));
+  const pool = CIV_IDS.filter((id) => !requested.includes(id));
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    const tmp = pool[i]!;
+    pool[i] = pool[j]!;
+    pool[j] = tmp;
+  }
+  let poolIdx = 0;
+  const civForSlot = (i: number): string | undefined => requested[i] ?? pool[poolIdx++];
+
   const players: Player[] = [];
   for (let i = 0; i < count; i++) {
     const baseName = opts.playerNames?.[i] ?? `Player ${i + 1}`;
@@ -119,6 +136,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       color: PLAYER_COLORS[i] ?? "#aaaaaa",
       isHuman: i < humanSlots,
       isBarbarian: false,
+      civId: civForSlot(i),
       gold: 0,
       researched: new Set(STARTING_TECHS),
       researching: null,

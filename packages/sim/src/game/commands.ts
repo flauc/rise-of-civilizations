@@ -1,10 +1,10 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
-import type { GameState, ProductionItem } from "./state";
+import type { City, GameState, ProductionItem } from "./state";
 import { cityAt, currentPlayer, playerById, unitsOf, citiesOf } from "./state";
 import { isPassableLand } from "./terrain";
 import { computeReachable } from "./movement";
 import { updateExplored } from "./visibility";
-import { processCity, availableProduction } from "./economy";
+import { processCity, availableProduction, autoAssignCitizens, toggleCitizen } from "./economy";
 import {
   cityMaxHp,
   healAndReset,
@@ -14,10 +14,11 @@ import {
 import { barbarianTurn } from "./barbarians";
 import { buildImprovement, type ImprovementKind } from "./improvements";
 import { applyVictoryCheck } from "./victory";
-import { foundTerritory } from "./territory";
+import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter } from "./features";
+import { civEffectsOf, unitMovement } from "./civs";
 import { aiTakeTurn } from "./ai";
-import { UNIT_DEFS, TECH_DEFS, techUnlocked, type PromotionId, type TechId } from "./content";
+import { UNIT_DEFS, TECH_DEFS, techUnlocked, type BuildingId, type PromotionId, type TechId } from "./content";
 
 export type Command =
   | { type: "move"; unitId: number; col: number; row: number }
@@ -26,6 +27,7 @@ export type Command =
   | { type: "build"; unitId: number; improvement: ImprovementKind }
   | { type: "promote"; unitId: number; promotion: PromotionId }
   | { type: "setProduction"; cityId: number; item: ProductionItem }
+  | { type: "assignCitizen"; cityId: number; col: number; row: number }
   | { type: "setResearch"; techId: TechId }
   | { type: "endTurn" };
 
@@ -48,7 +50,7 @@ const MIN_CITY_DISTANCE = 3;
 export function beginTurn(state: GameState): void {
   const player = currentPlayer(state);
   for (const u of unitsOf(state, player.id)) {
-    u.movementLeft = UNIT_DEFS[u.type].movement;
+    u.movementLeft = unitMovement(state, u);
   }
   healAndReset(state, player);
   for (const c of citiesOf(state, player.id)) {
@@ -137,7 +139,7 @@ export function applyCommand(
       const isCapital = citiesOf(state, player.id).length === 0;
       const name = CITY_NAMES[state.cities.size % CITY_NAMES.length]!;
       const id = state.nextEntityId++;
-      const city = {
+      const city: City = {
         id,
         ownerId: player.id,
         name,
@@ -148,15 +150,26 @@ export function applyCommand(
         productionStored: 0,
         production: { kind: "unit", id: "warrior" } as ProductionItem,
         buildings: [],
+        workedTiles: [],
         isCapital,
         foundedAsCapital: isCapital,
         hp: 0,
         lastAttackedTurn: 0,
         rangedAttackUsed: false,
       };
-      city.hp = cityMaxHp(city);
       state.cities.set(id, city);
       foundTerritory(state, city);
+      // Civ founding bonuses (e.g. Rome's free Monument).
+      const eff = civEffectsOf(state, player.id);
+      if (eff.newCityFreeBuilding && !city.buildings.includes(eff.newCityFreeBuilding as BuildingId)) {
+        city.buildings.push(eff.newCityFreeBuilding as BuildingId);
+      }
+      if (eff.newCityExtraPopulation) {
+        city.population += eff.newCityExtraPopulation;
+        expandTerritory(state, city, eff.newCityExtraPopulation);
+      }
+      autoAssignCitizens(state, city); // assign the founding citizens to tiles
+      city.hp = cityMaxHp(city);
       state.units.delete(unit.id);
       state.log.push(`${player.name} founded ${name}.`);
       updateExplored(state, player.id);
@@ -190,6 +203,14 @@ export function applyCommand(
       );
       if (!allowed) return fail("cannot build that");
       city.production = cmd.item;
+      return ok;
+    }
+
+    case "assignCitizen": {
+      const city = state.cities.get(cmd.cityId);
+      if (!city) return fail("no such city");
+      if (city.ownerId !== player.id) return fail("not your city");
+      if (!toggleCitizen(state, city, cmd.col, cmd.row)) return fail("tile not workable");
       return ok;
     }
 

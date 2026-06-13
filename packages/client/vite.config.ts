@@ -11,6 +11,7 @@ export default defineConfig({
         new URL("../shared/src/index.ts", import.meta.url),
       ),
       "@roc/sim": fileURLToPath(new URL("../sim/src/index.ts", import.meta.url)),
+      "@roc/data": fileURLToPath(new URL("../data/src/index.ts", import.meta.url)),
     },
   },
   server: {

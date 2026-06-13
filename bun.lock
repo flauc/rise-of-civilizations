@@ -47,6 +47,7 @@
       "name": "@roc/sim",
       "version": "0.0.0",
       "dependencies": {
+        "@roc/data": "*",
         "@roc/shared": "*",
       },
     },
