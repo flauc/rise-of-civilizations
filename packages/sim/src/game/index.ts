@@ -11,3 +11,4 @@ export * from "./setup";
 export * from "./commands";
 export * from "./simturn";
 export * from "./serialize";
+export * from "./victory";

@@ -13,6 +13,7 @@ import {
 } from "./combat";
 import { barbarianTurn } from "./barbarians";
 import { buildImprovement, type ImprovementKind } from "./improvements";
+import { applyVictoryCheck } from "./victory";
 import { UNIT_DEFS, TECH_DEFS, techUnlocked, type PromotionId, type TechId } from "./content";
 
 export type Command =
@@ -56,6 +57,7 @@ export function beginTurn(state: GameState): void {
 
 /** Advance to the next player and auto-run non-human (barbarian) turns. */
 export function endTurn(state: GameState): void {
+  if (state.gameOver) return;
   const advance = (): void => {
     state.currentPlayerIndex = (state.currentPlayerIndex + 1) % state.players.length;
     if (state.currentPlayerIndex === 0) state.turn += 1;
@@ -67,6 +69,7 @@ export function endTurn(state: GameState): void {
     if (currentPlayer(state).isBarbarian) barbarianTurn(state);
     advance();
   }
+  applyVictoryCheck(state);
 }
 
 /**
@@ -140,6 +143,7 @@ export function applyCommand(
         production: { kind: "unit", id: "warrior" } as ProductionItem,
         buildings: [],
         isCapital,
+        foundedAsCapital: isCapital,
         hp: 0,
         lastAttackedTurn: 0,
         rangedAttackUsed: false,

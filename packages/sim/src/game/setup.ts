@@ -13,6 +13,7 @@ export interface NewGameOptions {
   seed?: number | string;
   playerNames?: [string, string];
   barbarians?: boolean;
+  turnLimit?: number;
 }
 
 const PLAYER_COLORS = ["#e0533d", "#3d7fe0"];
@@ -125,6 +126,8 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     currentPlayerIndex: 0,
     nextEntityId: 1,
     log: [],
+    gameOver: null,
+    turnLimit: opts.turnLimit ?? 120,
   };
 
   const starts = [

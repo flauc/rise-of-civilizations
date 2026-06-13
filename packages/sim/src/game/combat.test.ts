@@ -56,7 +56,7 @@ describe("M2 combat", () => {
     const city = {
       id, ownerId: 1, name: "Target", col: 10, row: 8, population: 1,
       foodStored: 0, productionStored: 0, production: null, buildings: [],
-      isCapital: true, hp: 0, lastAttackedTurn: 0, rangedAttackUsed: false,
+      isCapital: true, foundedAsCapital: true, hp: 0, lastAttackedTurn: 0, rangedAttackUsed: false,
     };
     city.hp = 0; // already battered to 0
     state.cities.set(id, city);

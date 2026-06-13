@@ -314,22 +314,22 @@ The strategy is **vertical slice first**, then widen. Each milestone is playable
 - ✅ Workers build improvements (farm/mine) + roads (cheaper movement); expanded 12-tech tree.
 - ⏳ Deferred to a later step: world/national **wonders** (the roadmap's "first wonders").
 
-**M3 — Multiplayer server (real-time simultaneous first)** 🚧 *server core done; browser client pending*
+**M3 — Multiplayer server (real-time simultaneous first)** ✅ *playable in-browser; persistence/timer pending*
 - ✅ Bun HTTP+WS gateway, auth (register/login/resume via `Bun.password`), in-memory lobby (create/join/start).
 - ✅ **Server-authoritative** sim: orders validated per-owner (`applyCommand(state, cmd, actingPlayerId)`); illegal orders rejected.
 - ✅ **Real-time simultaneous turns** (`startSimultaneousTurn`/`resolveSimultaneousTurn`): all players act, resolve when all ready (barbarians + economy tick, turn advances).
 - ✅ **Server-side fog filtering** (`viewForPlayer`) — clients only receive explored tiles + visible entities (anti-maphack).
 - ✅ Verified end-to-end: vitest core tests + a live **WebSocket smoke test** (2 clients register→create→join→start→found→ready→resolve).
-- ⏳ **Browser client wiring** (lobby UI + netcode replacing local sim) — next sub-step (M3b).
+- ✅ **M3b — browser multiplayer**: lobby UI (single-player + connect/register/login/create/join/start), a `Session` abstraction (`LocalSession` keeps single-player; `OnlineSession` renders server views + sends orders), verified live in-browser (register → create → start → render fog-filtered map → found-city order round-trips through the server).
 - ⏳ Postgres persistence (Storage interface + in-memory done; Postgres adapter via `Bun.sql` pending a DB); turn timer + combat-lock sub-phase; async play-by-cloud + notifications.
 
-**M4 — Systems width**
-- Full(er) tech + civic trees & governments/policies.
-- Religion, culture/tourism, trade routes, diplomacy & city-states.
-- 10 launch civilizations (data-driven), each with UU/UI/ability.
-- **First Legends (heroes)** wired into recruitment + abilities (core feature).
-- **Real-world geodata map pipeline** in `tools/` + first curated Earth/Mediterranean presets.
-- 3–4 victory conditions wired up.
+**M4 — Systems width** 🚧 *in progress*
+- ✅ **Victory conditions** (domination — last-standing or all original capitals; score at the turn limit) with detection + in-game game-over banner; `gameOver` flows through the server view.
+- ⏳ Full(er) tech + civic trees & governments/policies.
+- ⏳ Religion, culture/tourism, trade routes, diplomacy & city-states.
+- ⏳ 10 launch civilizations (data-driven), each with UU/UI/ability.
+- ⏳ **First Legends (heroes)** wired into recruitment + abilities (core feature).
+- ⏳ **Real-world geodata map pipeline** integrated into `tools/` + first curated Earth/Mediterranean presets.
 
 **M5 — Content, AI, polish**
 - Basic single-player **AI** opponents (economy + military behavior).

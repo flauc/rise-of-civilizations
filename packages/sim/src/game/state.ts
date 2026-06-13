@@ -36,9 +36,17 @@ export interface City {
   production: ProductionItem | null;
   buildings: BuildingId[];
   isCapital: boolean;
+  /** True if this city was founded as a capital (an "original capital" for the
+   *  domination victory — stays true even after capture). */
+  foundedAsCapital: boolean;
   hp: number;
   lastAttackedTurn: number;
   rangedAttackUsed: boolean;
+}
+
+export interface GameOver {
+  winnerId: number;
+  condition: "domination" | "score";
 }
 
 export interface Player {
@@ -63,6 +71,8 @@ export interface GameState {
   currentPlayerIndex: number;
   nextEntityId: number;
   log: string[];
+  gameOver: GameOver | null;
+  turnLimit: number;
 }
 
 /** Construct a unit with all combat fields defaulted. movementLeft starts 0

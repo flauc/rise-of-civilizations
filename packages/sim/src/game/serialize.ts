@@ -1,5 +1,5 @@
 import { getTile } from "@roc/shared";
-import type { GameState, Unit, City } from "./state";
+import type { GameState, Unit, City, GameOver } from "./state";
 import { computeVisible } from "./visibility";
 import type { TechId } from "./content";
 
@@ -38,6 +38,7 @@ export interface PlayerView {
   units: Unit[];
   cities: City[];
   log: string[];
+  gameOver: GameOver | null;
 }
 
 /** Build the state a player is allowed to see (fog of war enforced here). */
@@ -89,6 +90,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     units,
     cities,
     log: state.log.slice(-12),
+    gameOver: state.gameOver,
   };
 }
 
@@ -100,6 +102,8 @@ export interface SerializedState {
   currentPlayerIndex: number;
   nextEntityId: number;
   log: string[];
+  gameOver: GameOver | null;
+  turnLimit: number;
   players: Array<
     Omit<GameState["players"][number], "researched" | "explored"> & {
       researched: string[];
@@ -117,6 +121,8 @@ export function serializeState(state: GameState): SerializedState {
     currentPlayerIndex: state.currentPlayerIndex,
     nextEntityId: state.nextEntityId,
     log: state.log,
+    gameOver: state.gameOver,
+    turnLimit: state.turnLimit,
     players: state.players.map((p) => ({
       ...p,
       researched: [...p.researched],
@@ -134,6 +140,8 @@ export function deserializeState(s: SerializedState): GameState {
     currentPlayerIndex: s.currentPlayerIndex,
     nextEntityId: s.nextEntityId,
     log: s.log,
+    gameOver: s.gameOver,
+    turnLimit: s.turnLimit,
     players: s.players.map((p) => ({
       ...p,
       researched: new Set(p.researched as TechId[]),
