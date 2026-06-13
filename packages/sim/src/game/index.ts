@@ -12,3 +12,6 @@ export * from "./commands";
 export * from "./simturn";
 export * from "./serialize";
 export * from "./victory";
+export * from "./territory";
+export * from "./features";
+export * from "./ai";

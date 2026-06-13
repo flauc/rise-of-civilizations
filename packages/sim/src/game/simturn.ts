@@ -13,6 +13,7 @@ import { processCity } from "./economy";
 import { barbarianTurn } from "./barbarians";
 import { updateExplored } from "./visibility";
 import { applyVictoryCheck } from "./victory";
+import { aiTakeTurn } from "./ai";
 
 /** Begin a fresh turn for ALL players at once: refresh movement, heal, reveal. */
 export function startSimultaneousTurn(state: GameState): void {
@@ -31,10 +32,12 @@ export function startSimultaneousTurn(state: GameState): void {
 /** Resolve the current turn: barbarians act, economies tick, advance to next. */
 export function resolveSimultaneousTurn(state: GameState): void {
   if (state.gameOver) return;
-  // Non-human factions (barbarians) take their actions using the movement they
-  // were granted at the start of this turn.
+  // Non-human factions act using the movement granted at the start of this turn:
+  // AI civs play a full turn; barbarians raid.
   for (const p of state.players) {
-    if (!p.isHuman) barbarianTurn(state, p.id);
+    if (p.isHuman) continue;
+    if (p.isBarbarian) barbarianTurn(state, p.id);
+    else aiTakeTurn(state, p.id);
   }
   // Economy for human players.
   for (const p of state.players) {

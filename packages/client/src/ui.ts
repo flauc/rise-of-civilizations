@@ -8,6 +8,7 @@ import {
   cityMaxHp,
   foodToGrow,
   getCityYields,
+  territorySize,
   BUILDING_DEFS,
   IMPROVEMENT_DEFS,
   PROMOTION_DEFS,
@@ -209,7 +210,7 @@ export function createUI(handlers: UIHandlers): UI {
       `<b>${city.isCapital ? "★ " : ""}${city.name}</b>` +
       `<button class="btn" id="cclose">✕</button></div>` +
       `<div>Pop <b>${city.population}</b> · 🍞${y.food} ⚒️${y.production} 🪙${y.gold} 🔬${y.science}</div>` +
-      `<div>🛡️ Def <b>${cityDefenseStrength(state, city)}</b> · ❤️ <b>${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)}</b></div>` +
+      `<div>🛡️ Def <b>${cityDefenseStrength(state, city)}</b> · ❤️ <b>${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)}</b> · ⬣ <b>${territorySize(state, city)}</b></div>` +
       `<div style="margin-top:6px">Growth: ${Math.floor(city.foodStored)}/${need}<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
       `<div style="margin-top:6px">Building: <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>` +
       `<select id="prod">` +

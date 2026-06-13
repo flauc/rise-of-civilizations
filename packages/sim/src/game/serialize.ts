@@ -11,6 +11,8 @@ export interface TileView {
   terrain: string;
   improvement?: string;
   road?: boolean;
+  ownerCityId?: number;
+  feature?: string;
 }
 
 export interface PlayerPublic {
@@ -55,6 +57,8 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     const tv: TileView = { col, row, terrain: t.terrain };
     if (t.improvement) tv.improvement = t.improvement;
     if (t.road) tv.road = true;
+    if (t.ownerCityId !== undefined) tv.ownerCityId = t.ownerCityId;
+    if (t.feature) tv.feature = t.feature;
     tiles.push(tv);
   }
 

@@ -168,6 +168,7 @@ function startGame(session: Session): void {
       drawOverlay(ctx!, camera, st(), {
         viewingPlayerId: me,
         visible,
+        explored,
         selectedUnitId,
         selectedCityId,
         reachable,

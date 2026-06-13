@@ -50,9 +50,9 @@ describe("M1 game model", () => {
     const state = newGame();
     const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
     applyCommand(state, { type: "foundCity", unitId: settler.id });
-    applyCommand(state, { type: "setResearch", techId: "pottery" });
+    applyCommand(state, { type: "setResearch", techId: "cultivation" });
     for (let i = 0; i < 24; i++) applyCommand(state, { type: "endTurn" });
     expect(currentPlayer(state).id).toBeDefined();
-    expect(state.players[0]!.researched.has("pottery")).toBe(true);
+    expect(state.players[0]!.researched.has("cultivation")).toBe(true);
   });
 });

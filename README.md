@@ -4,9 +4,12 @@ A turn-based 4X strategy game (Ancient Era → Age of Exploration), Canvas + Typ
 
 ## Status: M2 — combat & military ✅
 
-A hotseat 2-player war game (plus AI barbarians):
+Single-player **vs a local AI opponent** (and AI barbarians), plus real-time **browser multiplayer**:
 - **Combat** — HP-based, melee vs. ranged, terrain defense, wounded penalty; units gain **XP**, level up, and pick **promotions**.
-- **10 unit classes** — settler, worker, scout, warrior, slinger, archer, spearman (anti-cavalry), swordsman, horseman, catapult (anti-city siege).
+- **~29 units across roles & eras** — from clubmen, javelineers and slingers to hoplites, war chariots, horse archers, cataphracts, legionaries, war elephants and siege engines; some available at once, others unlocked by tech.
+- **Original, materials-based tech tree** (~33 techs: knapping → smelting → bronze alloying → iron bloomery → carburizing, torsion engines, equestrianism…) — not a Civ clone.
+- **Territory** — cities claim land on founding and their borders grow with population; only owned tiles are worked.
+- **Tribal villages & barbarian camps** — explore to find villages (random perks: free tech, gold, citizens, units, promotions… or an ambush) and camps that spawn raiders and reward you for clearing them.
 - **City siege & capture** — cities have HP/defense and walls; reduce a city to 0 HP and take it with a melee unit.
 - **Barbarians** — a hostile AI faction that spawns and raids, auto-running between human turns.
 - **Workers** — build farms/mines and roads (roads speed movement); a 12-tech tree gates units & buildings.
@@ -22,7 +25,7 @@ Earlier milestones: **M1** added cities, tile yields, movement, fog of war, rese
 | `packages/client` | Canvas + TypeScript game client (Vite). The M0 hex renderer lives here. |
 | `packages/server` | Authoritative Bun WS server: auth, lobby, simultaneous-turn game host, fog-filtered broadcasts (M3). |
 | `packages/data` | Data-driven content (civs/techs/units/great people) — see `docs/`. Populated M4+. |
-| `packages/ai` | Single-player AI opponents (M5). |
+| `packages/ai` | On-device AI: `AiController` interface + `HeuristicAi` (rules-based, no API). |
 | `tools/geodata-poc` | Spike that bakes real-world Natural Earth data into a hex map (PLAN.md §3.1.1). |
 
 ## Prerequisites

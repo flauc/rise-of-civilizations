@@ -40,7 +40,8 @@ export class LocalSession implements Session {
   private cb: () => void = () => {};
 
   constructor(opts: { seed?: string; cols?: number; rows?: number } = {}) {
-    this.state = createGame(opts);
+    // Single-player = 1 human vs 1 AI civ (+ barbarians).
+    this.state = createGame({ ...opts, humanSlots: 1 });
     beginTurn(this.state);
   }
   hasState(): boolean {
@@ -86,6 +87,8 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     const tile: Tile = { col: t.col, row: t.row, terrain: t.terrain as TerrainType };
     if (t.improvement) tile.improvement = t.improvement;
     if (t.road) tile.road = true;
+    if (t.ownerCityId !== undefined) tile.ownerCityId = t.ownerCityId;
+    if (t.feature) tile.feature = t.feature;
     tiles[t.row * view.cols + t.col] = tile;
     explored.add(`${t.col},${t.row}`);
   }

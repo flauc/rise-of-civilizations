@@ -44,6 +44,10 @@ export interface Tile {
   improvement?: string;
   /** Whether a road runs through this tile. */
   road?: boolean;
+  /** Id of the city whose territory this tile belongs to; undefined if neutral. */
+  ownerCityId?: number;
+  /** A map feature on this tile: "village" (perk when entered) or "barb_camp". */
+  feature?: string;
 }
 
 export interface GameMap {

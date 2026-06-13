@@ -1,5 +1,8 @@
 # Technology Tree
 
+> ⚠️ **Implementation note:** the *shipped* tech tree (`packages/sim/src/game/content.ts`) was deliberately rebuilt to be **original and materials-based** (Stone Knapping → Smelting → Bronze Alloying → Iron Bloomery → Carburizing, Torsion Engines, Equestrianism, etc.) rather than the Civ-style draft below. This document is kept as historical design context; the code is the source of truth.
+
+
 The **Science** tree: ~85 techs across the five eras (Stone → Bronze → Classical → Medieval → Exploration). Research is funded by the empire's Science yield. The parallel **Civics** tree (governments & policies) is summarized at the bottom and detailed in [PLAN.md §3.5](PLAN.md).
 
 **Eureka system:** most techs have a **eureka** — an in-world action that grants a chunk of free progress (encourages playing toward your tech). Babylon's civ ability interacts with this (see [CIVILIZATIONS.md](CIVILIZATIONS.md)).

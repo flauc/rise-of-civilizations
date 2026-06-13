@@ -3,6 +3,7 @@ import type { GameState, City, Player } from "./state";
 import { cityAt, makeUnit, unitAt } from "./state";
 import { addYields, TERRAIN_YIELDS, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
+import { expandTerritory } from "./territory";
 import { cityMaxHp } from "./combat";
 import { offsetNeighbors } from "./movement";
 import {
@@ -33,6 +34,9 @@ function workableTiles(state: GameState, city: City): { col: number; row: number
       if (axialDistance(center, offsetToAxial({ col: c, row: r })) > CITY_RADIUS) {
         continue;
       }
+      const tile = getTile(map, c, r);
+      // Only tiles inside this city's territory can be worked.
+      if (!tile || tile.ownerCityId !== city.id) continue;
       const other = cityAt(state, c, r);
       if (other && other.id !== city.id) continue;
       tiles.push({ col: c, row: r });
@@ -134,6 +138,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
     if (city.foodStored >= need) {
       city.foodStored -= need;
       city.population += 1;
+      expandTerritory(state, city); // borders grow with the city
       state.log.push(`${city.name} grew to pop ${city.population}.`);
     }
   }

@@ -5,7 +5,8 @@ import { makeUnit } from "./state";
 import { isPassableLand, TERRAIN_YIELDS } from "./terrain";
 import { offsetNeighbors } from "./movement";
 import { updateExplored } from "./visibility";
-import type { UnitTypeId } from "./content";
+import { STARTING_TECHS, type UnitTypeId } from "./content";
+import { placeFeatures } from "./features";
 
 export interface NewGameOptions {
   cols?: number;
@@ -14,6 +15,8 @@ export interface NewGameOptions {
   playerNames?: [string, string];
   barbarians?: boolean;
   turnLimit?: number;
+  /** Number of human slots (default 2). Remaining player slots are AI civs. */
+  humanSlots?: number;
 }
 
 const PLAYER_COLORS = ["#e0533d", "#3d7fe0"];
@@ -88,16 +91,17 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? "rise-m2";
   const names = opts.playerNames ?? ["Player 1", "Player 2"];
   const withBarbarians = opts.barbarians ?? true;
+  const humanSlots = opts.humanSlots ?? names.length;
 
   const map = generateMap({ cols, rows, seed });
   const players: Player[] = names.map((name, i) => ({
     id: i,
-    name,
+    name: i < humanSlots ? name : `${name} (AI)`,
     color: PLAYER_COLORS[i] ?? "#aaaaaa",
-    isHuman: true,
+    isHuman: i < humanSlots,
     isBarbarian: false,
     gold: 0,
-    researched: new Set(["agriculture"]),
+    researched: new Set(STARTING_TECHS),
     researching: null,
     scienceProgress: 0,
     explored: new Set<string>(),
@@ -110,7 +114,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       isHuman: false,
       isBarbarian: true,
       gold: 0,
-      researched: new Set(["agriculture"]),
+      researched: new Set(STARTING_TECHS),
       researching: null,
       scienceProgress: 0,
       explored: new Set<string>(),
@@ -143,6 +147,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   });
 
   if (withBarbarians) spawnBarbarians(state, starts);
+  placeFeatures(state, starts, withBarbarians);
 
   for (const p of players) updateExplored(state, p.id);
   return state;

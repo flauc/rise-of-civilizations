@@ -14,6 +14,9 @@ import {
 import { barbarianTurn } from "./barbarians";
 import { buildImprovement, type ImprovementKind } from "./improvements";
 import { applyVictoryCheck } from "./victory";
+import { foundTerritory } from "./territory";
+import { onUnitEnter } from "./features";
+import { aiTakeTurn } from "./ai";
 import { UNIT_DEFS, TECH_DEFS, techUnlocked, type PromotionId, type TechId } from "./content";
 
 export type Command =
@@ -66,7 +69,9 @@ export function endTurn(state: GameState): void {
   advance();
   let guard = 0;
   while (!currentPlayer(state).isHuman && guard++ < state.players.length + 1) {
-    if (currentPlayer(state).isBarbarian) barbarianTurn(state);
+    const p = currentPlayer(state);
+    if (p.isBarbarian) barbarianTurn(state);
+    else aiTakeTurn(state, p.id);
     advance();
   }
   applyVictoryCheck(state);
@@ -101,6 +106,7 @@ export function applyCommand(
       unit.col = cmd.col;
       unit.row = cmd.row;
       unit.movementLeft = Math.max(0, unit.movementLeft - entry.cost);
+      onUnitEnter(state, unit); // resolve villages / barbarian camps
       updateExplored(state, player.id);
       return ok;
     }
@@ -150,6 +156,7 @@ export function applyCommand(
       };
       city.hp = cityMaxHp(city);
       state.cities.set(id, city);
+      foundTerritory(state, city);
       state.units.delete(unit.id);
       state.log.push(`${player.name} founded ${name}.`);
       updateExplored(state, player.id);

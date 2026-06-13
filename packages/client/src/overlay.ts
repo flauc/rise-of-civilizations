@@ -1,14 +1,24 @@
 import { cityMaxHp, UNIT_DEFS, UNIT_MAX_HP, type GameState } from "@roc/sim";
+import { axialNeighbors, axialToOffset, getTile, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, tileCenterWorld } from "./renderer";
 
 export interface OverlayState {
   viewingPlayerId: number;
   visible: Set<string>;
+  explored: Set<string>;
   selectedUnitId: number | null;
   selectedCityId: number | null;
   reachable: Set<string>;
   attackTargets: Set<string>;
+}
+
+/** "#rrggbb" -> "rgba(r,g,b,a)". */
+function rgba(hex: string, a: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
 }
 
 function hexPath(ctx: CanvasRenderingContext2D, sx: number, sy: number, size: number): void {
@@ -58,6 +68,70 @@ export function drawOverlay(
   };
   const colorOf = (ownerId: number) =>
     state.players.find((p) => p.id === ownerId)?.color ?? "#aaa";
+
+  // ---- territory (cultural borders) ----
+  const tileOwnerPlayer = new Map<number, number>(); // cityId -> playerId
+  for (const c of state.cities.values()) tileOwnerPlayer.set(c.id, c.ownerId);
+  const ownerPlayerAt = (col: number, row: number): number | undefined => {
+    const t = getTile(state.map, col, row);
+    return t?.ownerCityId !== undefined ? tileOwnerPlayer.get(t.ownerCityId) : undefined;
+  };
+  for (const t of state.map.tiles) {
+    if (t.ownerCityId === undefined) continue;
+    const key = `${t.col},${t.row}`;
+    if (!o.explored.has(key)) continue;
+    const owner = tileOwnerPlayer.get(t.ownerCityId);
+    if (owner === undefined) continue;
+    const color = colorOf(owner);
+    const s = screen(t.col, t.row);
+    hexPath(ctx, s.x, s.y, size * 0.98);
+    ctx.fillStyle = rgba(color, 0.14);
+    ctx.fill();
+    // Outline tiles on the border (neighbor owned by a different player / none).
+    let isBorder = false;
+    for (const a of axialNeighbors(offsetToAxial({ col: t.col, row: t.row }))) {
+      const off = axialToOffset(a);
+      if (ownerPlayerAt(off.col, off.row) !== owner) {
+        isBorder = true;
+        break;
+      }
+    }
+    if (isBorder) {
+      ctx.lineWidth = Math.max(1.5, size * 0.09);
+      ctx.strokeStyle = rgba(color, 0.85);
+      hexPath(ctx, s.x, s.y, size * 0.9);
+      ctx.stroke();
+    }
+  }
+
+  // ---- map features (villages / barbarian camps) ----
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const t of state.map.tiles) {
+    if (!t.feature) continue;
+    if (!o.explored.has(`${t.col},${t.row}`)) continue;
+    const s = screen(t.col, t.row);
+    if (t.feature === "village") {
+      ctx.fillStyle = "#cfa867";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, size * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#1a2c40";
+      ctx.font = `bold ${Math.round(size * 0.42)}px system-ui, sans-serif`;
+      ctx.fillText("?", s.x, s.y + 1);
+    } else if (t.feature === "barb_camp") {
+      ctx.fillStyle = "#b23b2e";
+      ctx.beginPath();
+      ctx.moveTo(s.x, s.y - size * 0.32);
+      ctx.lineTo(s.x + size * 0.3, s.y + size * 0.26);
+      ctx.lineTo(s.x - size * 0.3, s.y + size * 0.26);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${Math.round(size * 0.34)}px system-ui, sans-serif`;
+      ctx.fillText("!", s.x, s.y + size * 0.06);
+    }
+  }
 
   const highlight = (set: Set<string>, fill: string, stroke: string) => {
     ctx.lineWidth = Math.max(1, size * 0.05);

@@ -325,14 +325,19 @@ The strategy is **vertical slice first**, then widen. Each milestone is playable
 
 **M4 — Systems width** 🚧 *in progress*
 - ✅ **Victory conditions** (domination — last-standing or all original capitals; score at the turn limit) with detection + in-game game-over banner; `gameOver` flows through the server view.
-- ⏳ Full(er) tech + civic trees & governments/policies.
+- ✅ **Original tech tree** (not a Civ clone): ~33 techs organised around real materials/techniques (Stone Knapping, Fire-Hardening, Smelting, Bronze Alloying, Carburizing, Torsion Engines, Equestrianism…). See `packages/sim/src/game/content.ts` (supersedes the earlier Civ-style draft in TECHNOLOGIES.md).
+- ✅ **Deep unit roster** (~29 land units across roles & eras: clubman/warrior/slinger/javelineer/hunter → fire-hardened spear/war-dogs/archer → axeman/maceman/spearman/hoplite/chariots/riders/horse-archer → swordsman/longsword/pikeman/cataphract/crossbow/legionary/war-elephant + siege ram/catapult/ballista). Some available immediately, others tech-gated. AI is class-based so it adapts.
+- ✅ **Reworked buildings** (Granary/Workshop/Forge/Walls/Barracks/Stable/Market/Archive/Academy/Aqueduct/Harbor/Monument), tech-gated.
+- ✅ **Territory / cultural borders**: cities claim their tile + ring on founding and expand outward as population grows; only owned tiles can be worked; borders rendered (tinted region + outline), shown in the city panel, and sent through the fog-filtered server view.
+- ✅ **Map features** — **tribal Villages** (random perk on entry: learn a tech, gold, production/citizen boost, free unit, free promotion, or a barbarian ambush) and **Barbarian Camps** (periodically spawn raiders; clear them with a military unit for a reward). Deterministic (seeded) so the server & clients agree. Rendered as ? / ! markers; flow through the server view.
+- ⏳ Civics trees & governments/policies; **game-creation menu** + deeper in-game UI; civ data layer.
 - ⏳ Religion, culture/tourism, trade routes, diplomacy & city-states.
 - ⏳ 10 launch civilizations (data-driven), each with UU/UI/ability.
 - ⏳ **First Legends (heroes)** wired into recruitment + abilities (core feature).
 - ⏳ **Real-world geodata map pipeline** integrated into `tools/` + first curated Earth/Mediterranean presets.
 
-**M5 — Content, AI, polish**
-- Basic single-player **AI** opponents (economy + military behavior).
+**M5 — Content, AI, polish** 🚧 *AI started*
+- ✅ Basic single-player **AI** opponent (rules/utility controller — expands, researches, builds, defends & attacks). Runs **on-device** (pure TS in the browser/server), no API. Behind an `AiController` interface so an on-device learned model (ONNX/TF.js in a worker) can drop in later. Single Player = 1 human vs 1 AI (+ barbarians).
 - Expand civ roster toward 60+, more wonders/units, Great People, and the full Legends roster.
 - More curated geodata maps (Americas, Europe, East Asia) + start-bias overlays.
 - Balance pass, tutorials/onboarding, PWA install, performance tuning for low-end mobile.
