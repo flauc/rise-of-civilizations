@@ -59,13 +59,13 @@ describe("M1 game model", () => {
     enemy.movementLeft = 2;
 
     // Moving into the city tile is forbidden.
-    const moveRes = applyCommand(state, { type: "move", unitId: enemy.id, col: city.col, row: city.row });
+    const moveRes = applyCommand(state, { type: "move", unitId: enemy.id, col: city.col, row: city.row }, enemy.ownerId);
     expect(moveRes.ok).toBe(false);
     expect(enemy.col).toBe(city.col + 1);
     expect(enemy.row).toBe(city.row);
 
     // Attacking the city from the adjacent tile is allowed.
-    const attackRes = applyCommand(state, { type: "attack", attackerId: enemy.id, col: city.col, row: city.row });
+    const attackRes = applyCommand(state, { type: "attack", attackerId: enemy.id, col: city.col, row: city.row }, enemy.ownerId);
     expect(attackRes.ok).toBe(true);
   });
 

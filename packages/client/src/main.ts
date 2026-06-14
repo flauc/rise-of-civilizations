@@ -29,6 +29,8 @@ import { createLobby } from "./lobby-ui";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadUnitAtlas } from "./unit-assets";
 import { loadCityAtlas } from "./city-assets";
+import { loadImprovementAtlas } from "./improvement-assets";
+import { loadFeatureAtlas } from "./feature-assets";
 import type { Session } from "./session";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -65,7 +67,7 @@ function startGame(session: Session): void {
 
   function recomputeOverlays(): void {
     const u = selectedUnitId != null ? st().units.get(selectedUnitId) : undefined;
-    if (!u) {
+    if (!u || u.ownerId !== session.getViewerId()) {
       reachable = new Set();
       attackTargets = new Set();
       return;
@@ -85,7 +87,18 @@ function startGame(session: Session): void {
     }
     recomputeOverlays();
     if (!fitted) {
-      camera.fitToView(computeWorldBounds(st().map), cssWidth, cssHeight, BASE_SIZE * 2);
+      // Center the camera on the player's starting settler (or first unit).
+      const me = session.getViewerId();
+      const myUnits = unitsOf(st(), me);
+      const startUnit = myUnits.find((u) => u.type === "settler") ?? myUnits[0];
+      if (startUnit) {
+        camera.zoom = 2.2;
+        const c = tileCenterWorld(startUnit.col, startUnit.row);
+        camera.offsetX = cssWidth / 2 - c.x * camera.zoom;
+        camera.offsetY = cssHeight / 2 - c.y * camera.zoom;
+      } else {
+        camera.fitToView(computeWorldBounds(st().map), cssWidth, cssHeight, BASE_SIZE * 2);
+      }
       fitted = true;
     }
     const over = st().gameOver;
@@ -218,10 +231,16 @@ function startGame(session: Session): void {
       return;
     }
 
-    if (u && u.ownerId === me) {
-      // Tap an already-selected unit that shares a tile with our city -> select the city.
-      if (selectedUnitId === u.id && c && c.ownerId === me) selectCity(c.id);
-      else selectUnit(u.id);
+    if (u) {
+      // When one of our units is selected, tapping an enemy unit on an attack tile
+      // issues an attack; otherwise tapping any unit selects it.
+      if (u.ownerId !== me && selectedUnitId != null && attackTargets.has(key)) {
+        session.order({ type: "attack", attackerId: selectedUnitId, col: off.col, row: off.row });
+      } else if (u.ownerId === me && selectedUnitId === u.id && c && c.ownerId === me) {
+        selectCity(c.id);
+      } else {
+        selectUnit(u.id);
+      }
     } else if (selectedUnitId != null && attackTargets.has(key)) {
       session.order({ type: "attack", attackerId: selectedUnitId, col: off.col, row: off.row });
     } else if (selectedUnitId != null && reachable.has(key)) {
@@ -292,6 +311,12 @@ function startGame(session: Session): void {
   const cityAtlas = loadCityAtlas(() => {
     needsRedraw = true;
   });
+  const improvementAtlas = loadImprovementAtlas(() => {
+    needsRedraw = true;
+  });
+  const featureAtlas = loadFeatureAtlas(() => {
+    needsRedraw = true;
+  });
 
   function frame(): void {
     if (needsRedraw && session.hasState()) {
@@ -304,6 +329,7 @@ function startGame(session: Session): void {
         cssHeight,
         fog: { visible, explored },
         terrainAtlas,
+        improvementAtlas,
       });
       const selCity = selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null;
       drawOverlay(ctx!, camera, st(), {
@@ -318,12 +344,14 @@ function startGame(session: Session): void {
         cityWorked: selCity ? new Set(selCity.workedTiles) : new Set(),
         unitAtlas,
         cityAtlas,
+        featureAtlas,
       });
       minimap.draw(st(), me, explored, visible, camera, cssWidth, cssHeight);
       ui.render({
         state: st(),
         selectedUnit: selectedUnitId != null ? st().units.get(selectedUnitId) ?? null : null,
         selectedCity: selCity,
+        viewerId: me,
         odds: hoverOdds,
         suggestion: computeSuggestion(),
       });

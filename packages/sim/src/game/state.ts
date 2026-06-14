@@ -87,6 +87,8 @@ export interface Religion {
   beliefs: string[];
 }
 
+export type BarbarianActivity = "none" | "low" | "normal" | "high";
+
 export interface GameState {
   map: GameMap;
   players: Player[];
@@ -99,6 +101,8 @@ export interface GameState {
   gameOver: GameOver | null;
   turnLimit: number;
   religions: Religion[];
+  /** Barbarian intensity setting for this game. */
+  barbarianActivity: BarbarianActivity;
 }
 
 /** Construct a unit with all combat fields defaulted. movementLeft starts 0

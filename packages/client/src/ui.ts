@@ -62,6 +62,8 @@ export interface UIView {
   state: GameState;
   selectedUnit: Unit | null;
   selectedCity: City | null;
+  /** The player this client is rendering for. */
+  viewerId: number;
   /** Combat odds for the attack target currently hovered (if any). */
   odds?: CombatOdds | null;
   /** Next suggested action (drives the smart action button). */
@@ -519,7 +521,7 @@ export function createUI(handlers: UIHandlers): UI {
     });
   };
 
-  const renderUnitPanel = (state: GameState, unit: Unit | null, odds?: CombatOdds | null): void => {
+  const renderUnitPanel = (state: GameState, unit: Unit | null, viewerId: number, odds?: CombatOdds | null): void => {
     if (!unit) {
       unitPanel.classList.add("hidden");
       return;
@@ -527,12 +529,17 @@ export function createUI(handlers: UIHandlers): UI {
     unitPanel.classList.remove("hidden");
     const def = UNIT_DEFS[unit.type];
     const combatant = def.strength > 0 || (def.rangedStrength ?? 0) > 0;
+    const own = unit.ownerId === viewerId;
+    const owner = state.players.find((p) => p.id === unit.ownerId);
 
     const info = unitInfo(unit.type);
     let html =
       `<div class="row" style="justify-content:space-between"><b style="font-size:15px">${def.name}</b>` +
       (unit.level > 1 ? `<span style="color:#ffd967">Lv ${unit.level}</span>` : "") +
       `</div>` +
+      (owner && !own
+        ? `<div class="sub"><span class="dot" style="background:${owner.color};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px"></span>${owner.name}</div>`
+        : "") +
       `<div class="sub">${info.role}${info.note ? ` · ${info.note}` : ""}</div>` +
       `<div style="margin-top:2px">Moves <b>${unit.movementLeft}/${def.movement}</b>` +
       (combatant ? ` · HP <b>${unit.hp}/${unitMaxHp(unit)}</b>` : "") +
@@ -555,24 +562,26 @@ export function createUI(handlers: UIHandlers): UI {
         `</div>`;
     }
 
-    const actions: string[] = [];
-    if (def.founder) actions.push(`<button class="btn primary" id="found">Found City</button>`);
-    if (def.builder) {
-      html += `<div style="margin-top:4px">Charges <b>${unit.charges}</b></div>`;
-      for (const k of buildableHere(state, unit)) {
-        actions.push(`<button class="btn" data-build="${k}">Build ${IMPROVEMENT_DEFS[k].name}</button>`);
+    if (own) {
+      const actions: string[] = [];
+      if (def.founder) actions.push(`<button class="btn primary" id="found">Found City</button>`);
+      if (def.builder) {
+        html += `<div style="margin-top:4px">Charges <b>${unit.charges}</b></div>`;
+        for (const k of buildableHere(state, unit)) {
+          actions.push(`<button class="btn" data-build="${k}">Build ${IMPROVEMENT_DEFS[k].name}</button>`);
+        }
       }
-    }
-    if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
+      if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
 
-    if (unit.unspentPromotions > 0) {
-      html +=
-        `<div style="margin-top:8px;color:#ffd967">Promote (${unit.unspentPromotions}):</div>` +
-        `<div class="row" style="margin-top:4px">` +
-        availablePromotions(unit)
-          .map((p) => `<button class="btn" data-promote="${p}" title="${PROMOTION_DEFS[p].desc}">${PROMOTION_DEFS[p].name}</button>`)
-          .join("") +
-        `</div>`;
+      if (unit.unspentPromotions > 0) {
+        html +=
+          `<div style="margin-top:8px;color:#ffd967">Promote (${unit.unspentPromotions}):</div>` +
+          `<div class="row" style="margin-top:4px">` +
+          availablePromotions(unit)
+            .map((p) => `<button class="btn" data-promote="${p}" title="${PROMOTION_DEFS[p].desc}">${PROMOTION_DEFS[p].name}</button>`)
+            .join("") +
+          `</div>`;
+      }
     }
 
     unitPanel.innerHTML = html;
@@ -674,7 +683,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderCivics(view.state);
       renderReligion(view.state);
       renderProduction(view.state);
-      renderUnitPanel(view.state, view.selectedUnit, view.odds);
+      renderUnitPanel(view.state, view.selectedUnit, view.viewerId, view.odds);
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state);
       renderGameOver(view.state);

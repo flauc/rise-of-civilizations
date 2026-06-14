@@ -101,6 +101,8 @@ export const CITY_SUBSET: AssetEntry[] = [
 ];
 
 export const BUILDING_SUBSET: AssetEntry[] = [
+  { id: "village", name: "Village", description: "a small tribal village with a few thatched-roof huts, no walls, no fortifications, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "farm", name: "Farm", description: "a small cultivated farm plot with neat rows of golden crops and a tiny wooden shed, no walls, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "granary", name: "Granary", description: "a small grain store with earthen walls", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "barracks", name: "Barracks", description: "a simple military training hall", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "market", name: "Market", description: "a covered marketplace with stalls", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },

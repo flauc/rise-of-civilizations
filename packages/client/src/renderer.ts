@@ -12,6 +12,7 @@ import {
 import { Camera, type Bounds } from "./camera";
 import { TERRAIN_COLORS, HEX_STROKE, HEX_HOVER_STROKE } from "./palette";
 import { isImageReady, type TerrainAtlas } from "./terrain-assets";
+import { farmFrameFor, type ImprovementAtlas } from "./improvement-assets";
 
 // Hex size (center-to-corner) in world units at zoom 1.
 export const BASE_SIZE = 26;
@@ -85,6 +86,7 @@ export interface RenderOptions {
   hovered?: Offset | undefined;
   fog?: FogState | undefined;
   terrainAtlas?: TerrainAtlas | undefined;
+  improvementAtlas?: ImprovementAtlas | undefined;
 }
 
 const UNEXPLORED_FILL = "#0a1320";
@@ -180,8 +182,14 @@ export function drawScene(
         ctx.stroke();
       }
       if (t.improvement === "farm") {
-        ctx.fillStyle = "#d8c24a";
-        ctx.fillRect(sx - size * 0.28, sy - size * 0.28, size * 0.56, size * 0.56);
+        const farmImg = farmFrameFor(opts.improvementAtlas, t.col, t.row);
+        if (farmImg) {
+          const farmSize = size * 0.7;
+          ctx.drawImage(farmImg, sx - farmSize / 2, sy - farmSize / 2, farmSize, farmSize);
+        } else {
+          ctx.fillStyle = "#d8c24a";
+          ctx.fillRect(sx - size * 0.28, sy - size * 0.28, size * 0.56, size * 0.56);
+        }
       } else if (t.improvement === "mine") {
         ctx.fillStyle = "#3a3a3f";
         ctx.beginPath();

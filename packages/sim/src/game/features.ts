@@ -11,6 +11,7 @@ import {
   playerById,
   unitAt,
   unitsOf,
+  type BarbarianActivity,
   type GameState,
   type Player,
   type Unit,
@@ -21,7 +22,30 @@ import { expandTerritory } from "./territory";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
 
-const BARBARIAN_UNIT_CAP = 12;
+function barbarianUnitCap(state: GameState): number {
+  switch (state.barbarianActivity) {
+    case "low":
+      return 6;
+    case "high":
+      return 20;
+    case "normal":
+    default:
+      return 12;
+  }
+}
+
+function barbarianCampCadence(state: GameState, tileCol: number, tileRow: number): number {
+  const base = 4 + (hashSeed(`cadence:${tileCol},${tileRow}`) % 3); // 4–6
+  switch (state.barbarianActivity) {
+    case "low":
+      return base + 2; // 6–8
+    case "high":
+      return Math.max(1, base - 2); // 2–4
+    case "normal":
+    default:
+      return base;
+  }
+}
 
 function barbarianId(state: GameState): number | undefined {
   return state.players.find((p) => p.isBarbarian)?.id;
@@ -136,12 +160,13 @@ export function onUnitEnter(state: GameState, unit: Unit): void {
 
 /** Camps periodically spawn raiders (called during the barbarians' turn). */
 export function spawnFromCamps(state: GameState, barbId: number): void {
-  if (unitsOf(state, barbId).length >= BARBARIAN_UNIT_CAP) return;
+  const cap = barbarianUnitCap(state);
+  if (unitsOf(state, barbId).length >= cap) return;
   for (const tile of state.map.tiles) {
     if (tile.feature !== "barb_camp") continue;
-    const cadence = 4 + (hashSeed(`cadence:${tile.col},${tile.row}`) % 3); // every 4–6 turns
+    const cadence = barbarianCampCadence(state, tile.col, tile.row);
     if (state.turn % cadence !== 0) continue;
-    if (unitsOf(state, barbId).length >= BARBARIAN_UNIT_CAP) return;
+    if (unitsOf(state, barbId).length >= cap) return;
     const type: UnitTypeId = makeRng(hashSeed(`camp:${tile.col},${tile.row}:${state.turn}`)).next() < 0.5 ? "warrior" : "slinger";
     spawnUnitNear(state, barbId, type, tile.col, tile.row);
   }
@@ -152,12 +177,19 @@ export function spawnFromCamps(state: GameState, barbId: number): void {
 export function placeFeatures(
   state: GameState,
   starts: ({ col: number; row: number } | null)[],
-  withBarbarians: boolean,
+  activity: BarbarianActivity,
 ): void {
   const { map } = state;
   const area = map.cols * map.rows;
   const villageCount = Math.max(2, Math.floor(area / 70));
-  const campCount = withBarbarians ? Math.max(1, Math.floor(area / 220)) : 0;
+  const campCount =
+    activity === "none"
+      ? 0
+      : activity === "low"
+        ? Math.max(1, Math.floor(area / 350))
+        : activity === "high"
+          ? Math.max(1, Math.floor(area / 140))
+          : Math.max(1, Math.floor(area / 220));
 
   // Eligible land tiles, away from starts and not already featured/occupied.
   const eligible: { col: number; row: number; key: number }[] = [];

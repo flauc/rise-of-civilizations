@@ -8,6 +8,7 @@ import { offsetNeighbors } from "./movement";
 import { updateExplored } from "./visibility";
 import { STARTING_TECHS, type UnitTypeId } from "./content";
 import { placeFeatures } from "./features";
+import type { BarbarianActivity } from "./state";
 
 export interface NewGameOptions {
   cols?: number;
@@ -19,10 +20,17 @@ export interface NewGameOptions {
   playerCount?: number;
   /** How many of the slots are human (default = all). The rest are AI civs. */
   humanSlots?: number;
-  barbarians?: boolean;
+  /** Barbarian intensity. `false` = none, `true` = normal. */
+  barbarians?: boolean | BarbarianActivity;
   turnLimit?: number;
   /** Civilization id per slot; unspecified slots get a random unique civ. */
   civIds?: (string | undefined)[];
+}
+
+function normalizeBarbarians(v: boolean | BarbarianActivity | undefined): BarbarianActivity {
+  if (v === false) return "none";
+  if (v === true) return "normal";
+  return v ?? "normal";
 }
 
 const PLAYER_COLORS = ["#e0533d", "#3d7fe0", "#49b85a", "#e0b53d", "#a05ad0", "#3dc8c8", "#d060aa", "#e08a3d"];
@@ -110,7 +118,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   const seed = opts.seed ?? "rise";
   const count = Math.max(1, opts.playerCount ?? opts.playerNames?.length ?? 2);
   const humanSlots = opts.humanSlots ?? count;
-  const withBarbarians = opts.barbarians ?? true;
+  const activity = normalizeBarbarians(opts.barbarians);
 
   const map = generateMap({ cols, rows, seed });
 
@@ -151,7 +159,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     });
   }
   const barbId = count;
-  if (withBarbarians) {
+  if (activity !== "none") {
     players.push({
       id: barbId,
       name: "Barbarians",
@@ -184,6 +192,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     gameOver: null,
     turnLimit: opts.turnLimit ?? 120,
     religions: [],
+    barbarianActivity: activity,
   };
 
   const starts = findStarts(state, count);
@@ -193,8 +202,8 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     if (adj) spawn(state, i, "warrior", adj.col, adj.row);
   });
 
-  if (withBarbarians) spawnBarbarians(state, barbId, starts);
-  placeFeatures(state, starts, withBarbarians);
+  if (activity !== "none") spawnBarbarians(state, barbId, starts, activity);
+  placeFeatures(state, starts, activity);
 
   for (const p of players) updateExplored(state, p.id);
   return state;

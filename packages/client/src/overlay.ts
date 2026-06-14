@@ -1,9 +1,10 @@
 import { cityMaxHp, tileYields, UNIT_DEFS, unitMaxHp, type GameState } from "@roc/sim";
-import { axialNeighbors, axialToOffset, getTile, offsetToAxial } from "@roc/shared";
+import { axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
+import { villageFrameFor, type FeatureAtlas } from "./feature-assets";
 
 export interface OverlayState {
   viewingPlayerId: number;
@@ -17,6 +18,7 @@ export interface OverlayState {
   cityWorked: Set<string>;
   unitAtlas?: UnitAtlas;
   cityAtlas?: CityAtlas;
+  featureAtlas?: FeatureAtlas;
 }
 
 /** "#rrggbb" -> "rgba(r,g,b,a)". */
@@ -118,13 +120,19 @@ export function drawOverlay(
     if (!o.explored.has(`${t.col},${t.row}`)) continue;
     const s = screen(t.col, t.row);
     if (t.feature === "village") {
-      ctx.fillStyle = "#cfa867";
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, size * 0.3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#1a2c40";
-      ctx.font = `bold ${Math.round(size * 0.42)}px system-ui, sans-serif`;
-      ctx.fillText("?", s.x, s.y + 1);
+      const villageImg = villageFrameFor(o.featureAtlas, t.col, t.row);
+      if (villageImg) {
+        const vSize = size * 0.85;
+        ctx.drawImage(villageImg, s.x - vSize / 2, s.y - vSize / 2, vSize, vSize);
+      } else {
+        ctx.fillStyle = "#cfa867";
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, size * 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#1a2c40";
+        ctx.font = `bold ${Math.round(size * 0.42)}px system-ui, sans-serif`;
+        ctx.fillText("?", s.x, s.y + 1);
+      }
     } else if (t.feature === "barb_camp") {
       ctx.fillStyle = "#b23b2e";
       ctx.beginPath();
@@ -202,14 +210,14 @@ export function drawOverlay(
     const imgX = s.x - imgSize / 2;
     const imgY = s.y - imgSize / 2;
 
-    // Pick an animation frame that is stable for a short interval but varies
-    // across cities so they don't blink in perfect unison.
+    // Pick a frame that stays stable unless the city's population (and therefore
+    // its tier) changes.
     const tierIndex = cityImageIndex(city.population);
     const frames = o.cityAtlas?.images[tierIndex] ?? [];
     const readyFrames = frames.filter((img): img is HTMLImageElement => img !== undefined && isImageReady(img));
     const cityImg =
       readyFrames.length > 0
-        ? readyFrames[(Math.floor(performance.now() / 300) + city.id) % readyFrames.length]
+        ? readyFrames[hashSeed(`${city.id},${city.population}`) % readyFrames.length]
         : undefined;
     const hasCityImg = cityImg !== undefined;
 
