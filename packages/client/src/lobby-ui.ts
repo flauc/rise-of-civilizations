@@ -19,6 +19,17 @@ function aiSelect(id: string, def = 1): string {
     .map((n) => `<option value="${n}"${n === def ? " selected" : ""}>${n}</option>`)
     .join("")}</select>`;
 }
+function barbarianSelect(id: string, def: string): string {
+  const opts = [
+    { value: "none", label: "None" },
+    { value: "low", label: "Low" },
+    { value: "normal", label: "Normal" },
+    { value: "high", label: "High" },
+  ];
+  return `<select id="${id}" class="lobby-in">${opts
+    .map((o) => `<option value="${o.value}"${o.value === def ? " selected" : ""}>${o.label}</option>`)
+    .join("")}</select>`;
+}
 
 export function createLobby(onStart: (session: Session) => void): void {
   const root = document.createElement("div");
@@ -39,7 +50,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         <div id="sp-civ-desc" style="color:#9fc0dc;font-size:12px;margin-top:4px"></div>
         <div class="frow"><span>Map size</span>${mapSelect("sp-map")}</div>
         <div class="frow"><span>AI opponents</span>${aiSelect("sp-ai", 1)}</div>
-        <label class="frow" style="cursor:pointer"><span>Barbarians</span><input type="checkbox" id="sp-barb" checked /></label>
+        <div class="frow"><span>Barbarians</span>${barbarianSelect("sp-barb", "normal")}</div>
         <button class="btn primary" id="sp-start" style="width:100%;margin-top:8px">Start Game</button>
       </div>
 
@@ -57,6 +68,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         <div id="games" class="hidden" style="margin-top:8px">
           <div class="frow"><span>Map size</span>${mapSelect("mp-map")}</div>
           <div class="frow"><span>AI opponents</span>${aiSelect("mp-ai", 0)}</div>
+          <div class="frow"><span>Barbarians</span>${barbarianSelect("mp-barb", "normal")}</div>
           <div class="row" style="justify-content:space-between;margin-top:6px">
             <b>Games</b>
             <span><button class="btn" id="refresh">Refresh</button>
@@ -104,7 +116,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         civId: val("sp-civ"),
         mapSize: val("sp-map") as MapSize,
         aiCount: Number(val("sp-ai")),
-        barbarians: $<HTMLInputElement>("sp-barb").checked,
+        barbarians: val("sp-barb") as "none" | "low" | "normal" | "high",
         seed: "rise-" + Math.random().toString(36).slice(2, 8),
       }),
     );
@@ -186,6 +198,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       cols: dims.cols,
       rows: dims.rows,
       aiCount: Number(val("mp-ai")),
+      barbarians: val("mp-barb") as "none" | "low" | "normal" | "high",
     });
   });
 }

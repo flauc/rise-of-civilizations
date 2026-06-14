@@ -3,6 +3,7 @@
 // and the Bun server import these.
 
 import type { Command } from "./game/commands";
+import type { BarbarianActivity } from "./game/state";
 import type { PlayerView } from "./game/serialize";
 
 export interface GameSummary {
@@ -18,7 +19,7 @@ export type ClientMessage =
   | { t: "login"; handle: string; password: string }
   | { t: "resume"; token: string }
   | { t: "listGames" }
-  | { t: "createGame"; name: string; seed?: string; cols?: number; rows?: number; aiCount?: number }
+  | { t: "createGame"; name: string; seed?: string; cols?: number; rows?: number; aiCount?: number; barbarians?: BarbarianActivity }
   | { t: "joinGame"; gameId: string }
   | { t: "startGame"; gameId: string }
   | { t: "order"; cmd: Command }

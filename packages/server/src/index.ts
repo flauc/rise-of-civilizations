@@ -68,6 +68,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         cols: msg.cols,
         rows: msg.rows,
         aiCount: msg.aiCount,
+        barbarians: msg.barbarians,
       });
       ws.data.gameId = game.id;
       ws.data.playerId = game.slots[0]!.playerId;

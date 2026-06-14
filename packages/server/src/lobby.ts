@@ -1,6 +1,6 @@
 // In-memory lobby + match registry. Pure TS (no Bun) so it's unit-testable.
 
-import { createGame, type GameSummary } from "@roc/sim";
+import { createGame, type BarbarianActivity, type GameSummary } from "@roc/sim";
 import { GameHost } from "./gamehost";
 
 export interface Slot {
@@ -19,6 +19,7 @@ export interface LobbyGame {
   cols?: number;
   rows?: number;
   aiCount: number;
+  barbarians: BarbarianActivity;
   slots: Slot[];
   host?: GameHost;
 }
@@ -30,6 +31,7 @@ export interface CreateOptions {
   cols?: number;
   rows?: number;
   aiCount?: number;
+  barbarians?: BarbarianActivity;
 }
 
 function randomId(): string {
@@ -53,6 +55,7 @@ export class Lobby {
       cols: opts.cols,
       rows: opts.rows,
       aiCount: Math.max(0, Math.min(4, opts.aiCount ?? 0)),
+      barbarians: opts.barbarians ?? "normal",
       slots,
     };
     this.games.set(id, game);
@@ -93,7 +96,7 @@ export class Lobby {
       playerNames: names,
       playerCount: CAPACITY + game.aiCount,
       humanSlots: CAPACITY,
-      barbarians: true,
+      barbarians: game.barbarians,
     });
     game.host = new GameHost(state);
     game.status = "active";

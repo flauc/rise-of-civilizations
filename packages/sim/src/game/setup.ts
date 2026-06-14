@@ -93,10 +93,16 @@ function spawnBarbarians(
   state: GameState,
   barbId: number,
   starts: { col: number; row: number }[],
+  activity: BarbarianActivity,
 ): void {
   const { map } = state;
   const placed: { col: number; row: number }[] = [];
-  const types: UnitTypeId[] = ["warrior", "slinger", "warrior", "spearman"];
+  const types: UnitTypeId[] =
+    activity === "low"
+      ? ["warrior", "slinger"]
+      : activity === "high"
+        ? ["warrior", "slinger", "warrior", "spearman", "warrior", "archer"]
+        : ["warrior", "slinger", "warrior", "spearman"];
   let ti = 0;
   const farFromStarts = (col: number, row: number) =>
     starts.every((s) => axialDistance(offsetToAxial(s), offsetToAxial({ col, row })) > 5);

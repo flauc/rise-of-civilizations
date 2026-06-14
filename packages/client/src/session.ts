@@ -11,6 +11,7 @@ import {
   computeVisible,
   createGame,
   currentPlayer,
+  type BarbarianActivity,
   type ClientMessage,
   type Command,
   type GameState,
@@ -46,7 +47,7 @@ export interface LocalGameOptions {
   seed?: string;
   mapSize?: MapSize;
   aiCount?: number;
-  barbarians?: boolean;
+  barbarians?: boolean | BarbarianActivity;
   civId?: string;
 }
 
@@ -152,6 +153,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     gameOver: view.gameOver,
     turnLimit: 0,
     religions: view.religions,
+    barbarianActivity: view.barbarianActivity ?? "normal",
   };
   return { state, visible: new Set(view.visible) };
 }

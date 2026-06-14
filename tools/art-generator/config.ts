@@ -101,6 +101,7 @@ export const CITY_SUBSET: AssetEntry[] = [
 ];
 
 export const BUILDING_SUBSET: AssetEntry[] = [
+  { id: "barb_camp", name: "Barbarian Camp", description: "a primitive barbarian encampment with crude tents, a bonfire, and wooden spikes, no walls, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "village", name: "Village", description: "a small tribal village with a few thatched-roof huts, no walls, no fortifications, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "farm", name: "Farm", description: "a small cultivated farm plot with neat rows of golden crops and a tiny wooden shed, no walls, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "granary", name: "Granary", description: "a small grain store with earthen walls", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },

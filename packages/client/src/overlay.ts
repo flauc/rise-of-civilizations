@@ -4,7 +4,7 @@ import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
-import { villageFrameFor, type FeatureAtlas } from "./feature-assets";
+import { barbCampFrameFor, villageFrameFor, type FeatureAtlas } from "./feature-assets";
 
 export interface OverlayState {
   viewingPlayerId: number;
@@ -134,16 +134,22 @@ export function drawOverlay(
         ctx.fillText("?", s.x, s.y + 1);
       }
     } else if (t.feature === "barb_camp") {
-      ctx.fillStyle = "#b23b2e";
-      ctx.beginPath();
-      ctx.moveTo(s.x, s.y - size * 0.32);
-      ctx.lineTo(s.x + size * 0.3, s.y + size * 0.26);
-      ctx.lineTo(s.x - size * 0.3, s.y + size * 0.26);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "#fff";
-      ctx.font = `bold ${Math.round(size * 0.34)}px system-ui, sans-serif`;
-      ctx.fillText("!", s.x, s.y + size * 0.06);
+      const campImg = barbCampFrameFor(o.featureAtlas, t.col, t.row);
+      if (campImg) {
+        const cSize = size * 0.85;
+        ctx.drawImage(campImg, s.x - cSize / 2, s.y - cSize / 2, cSize, cSize);
+      } else {
+        ctx.fillStyle = "#b23b2e";
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y - size * 0.32);
+        ctx.lineTo(s.x + size * 0.3, s.y + size * 0.26);
+        ctx.lineTo(s.x - size * 0.3, s.y + size * 0.26);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.font = `bold ${Math.round(size * 0.34)}px system-ui, sans-serif`;
+        ctx.fillText("!", s.x, s.y + size * 0.06);
+      }
     }
   }
 
