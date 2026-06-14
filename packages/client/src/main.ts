@@ -173,7 +173,22 @@ function startGame(session: Session): void {
     onConvertCitizen: (cityId, specialistId, delta) =>
       session.order({ type: "convertCitizen", cityId, specialistId, delta }),
     onStartWork: (kind, col, row) => session.order({ type: "startWork", kind, col, row }),
+    onStartWonder: (wonderId, hostCityId) => session.order({ type: "startWonder", wonderId, hostCityId }),
     onCancelWork: (workId) => session.order({ type: "cancelWork", workId }),
+    onSelectUnit: (id) => {
+      const u = st().units.get(id);
+      if (u) {
+        selectUnit(id);
+        centerOn(u.col, u.row);
+      }
+    },
+    onSelectCity: (id) => {
+      const c = st().cities.get(id);
+      if (c) {
+        selectCity(id);
+        centerOn(c.col, c.row);
+      }
+    },
     onSetProduction: (item) => {
       if (selectedCityId != null) session.order({ type: "setProduction", cityId: selectedCityId, item });
     },

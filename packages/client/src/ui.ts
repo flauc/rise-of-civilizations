@@ -1,5 +1,6 @@
 import { renderTechTreeInto } from "./techtree";
 import { createWiki } from "./wiki";
+import { createEmpire } from "./empire";
 import type { SaveRecord } from "./save-db";
 import {
   availableCivics,
@@ -164,7 +165,10 @@ export interface UIHandlers {
   onPromote(promotion: PromotionId): void;
   onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
   onStartWork(kind: string, col: number, row: number): void;
+  onStartWonder(wonderId: string, hostCityId: number): void;
   onCancelWork(workId: number): void;
+  onSelectUnit(unitId: number): void;
+  onSelectCity(cityId: number): void;
   onSetProduction(item: ProductionItem): void;
   onSetResearch(techId: TechId): void;
   onSetCivic(civicId: string): void;
@@ -262,6 +266,7 @@ export function createUI(handlers: UIHandlers): UI {
   let chosenBeliefs: string[] = [];
   let bannerTimer = 0;
   let lastState: GameState | null = null;
+  let lastViewerId = -1;
   let lastLogLength = 0;
   let logInitialized = false;
   let villageQueue: string[] = [];
@@ -1091,9 +1096,29 @@ export function createUI(handlers: UIHandlers): UI {
     gameover.querySelector<HTMLButtonElement>("#go-menu")?.addEventListener("click", () => location.reload());
   };
 
+  // Empire overview (Units / Cities / Specialists & Wonders) + its toggle button.
+  const empire = createEmpire({
+    onSelectUnit: (id) => handlers.onSelectUnit(id),
+    onSelectCity: (id) => handlers.onSelectCity(id),
+    onConvertCitizen: (cityId, sid, delta) => handlers.onConvertCitizen(cityId, sid, delta),
+    onStartWonder: (wid, host) => handlers.onStartWonder(wid, host),
+    onCancelWork: (wid) => handlers.onCancelWork(wid),
+  });
+  const empireBtn = document.createElement("button");
+  empireBtn.id = "empire-btn";
+  empireBtn.className = "btn";
+  empireBtn.textContent = "🏛️ Empire";
+  empireBtn.style.cssText = "position:fixed;left:12px;top:64px;z-index:20;font-size:13px";
+  empireBtn.addEventListener("click", () => {
+    if (lastState) empire.toggle(lastState, lastViewerId);
+  });
+  document.body.appendChild(empireBtn);
+
   return {
     render(view) {
       lastState = view.state;
+      lastViewerId = view.viewerId;
+      empire.render(view.state, view.viewerId);
       renderTopbar(view.state);
       renderResearch(view.state);
       renderTechTree(view.state);
