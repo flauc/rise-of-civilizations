@@ -2,6 +2,7 @@ import { cityMaxHp, tileYields, UNIT_DEFS, unitMaxHp, type GameState } from "@ro
 import { axialNeighbors, axialToOffset, getTile, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
+import { isImageReady, type UnitAtlas } from "./unit-assets";
 
 export interface OverlayState {
   viewingPlayerId: number;
@@ -13,6 +14,7 @@ export interface OverlayState {
   attackTargets: Set<string>;
   cityWorkable: Set<string>;
   cityWorked: Set<string>;
+  unitAtlas?: UnitAtlas;
 }
 
 /** "#rrggbb" -> "rgba(r,g,b,a)". */
@@ -220,37 +222,75 @@ export function drawOverlay(
     const own = unit.ownerId === o.viewingPlayerId;
     if (!own && !o.visible.has(`${unit.col},${unit.row}`)) continue;
     const s = screen(unit.col, unit.row);
-    const r = size * 0.42;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = colorOf(unit.ownerId);
-    ctx.fill();
+    const half = size * 0.42;
+    const imgSize = half * 1.8;
+    const imgX = s.x - imgSize / 2;
+    const imgY = s.y - imgSize / 2;
+
+    // Unit sprite (or fallback glyph).
+    const unitImg = o.unitAtlas?.images[unit.type];
+    if (unitImg && isImageReady(unitImg)) {
+      ctx.drawImage(unitImg, imgX, imgY, imgSize, imgSize);
+    } else if (showLabels) {
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${Math.round(size * 0.5)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(UNIT_DEFS[unit.type].glyph, s.x, s.y + 1);
+    }
+
+    // Selection highlight around the sprite.
     if (o.selectedUnitId === unit.id) {
       ctx.lineWidth = Math.max(2, size * 0.1);
       ctx.strokeStyle = "#ffd967";
-    } else {
-      ctx.lineWidth = Math.max(1, size * 0.05);
-      ctx.strokeStyle = "#ffffff";
+      ctx.strokeRect(imgX - 1, imgY - 1, imgSize + 2, imgSize + 2);
     }
-    ctx.stroke();
+
+    // Fatigue overlay when the unit has no movement left.
     if (own && unit.movementLeft <= 0) {
       ctx.fillStyle = "rgba(0,0,0,0.35)";
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(imgX, imgY, imgSize, imgSize);
     }
-    if (showLabels) {
-      ctx.fillStyle = "#fff";
-      ctx.font = `bold ${Math.round(size * 0.5)}px system-ui, sans-serif`;
-      ctx.fillText(UNIT_DEFS[unit.type].glyph, s.x, s.y + 1);
-    }
+
     // Promotion-available star.
     if (own && unit.unspentPromotions > 0 && size > 12) {
       ctx.fillStyle = "#ffd967";
       ctx.font = `${Math.round(size * 0.5)}px system-ui, sans-serif`;
-      ctx.fillText("★", s.x + r * 0.9, s.y - r * 0.9);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("★", s.x + half * 0.9, s.y - half * 0.9);
+    }
+
+    // Player-color label above the unit (colored dot + unit name).
+    if (size >= 10) {
+      const label = UNIT_DEFS[unit.type].name;
+      const fontSize = Math.max(8, Math.round(size * 0.32));
+      ctx.font = `${fontSize}px system-ui, sans-serif`;
+      const textW = ctx.measureText(label).width;
+      const dotR = Math.max(2, size * 0.08);
+      const pad = Math.max(2, size * 0.06);
+      const labelH = Math.max(fontSize + pad * 2, dotR * 2 + pad * 2);
+      const labelW = textW + dotR * 3 + pad * 2;
+      const labelX = s.x - labelW / 2;
+      const labelY = imgY - labelH - pad;
+
+      ctx.fillStyle = "rgba(0,0,0,0.65)";
+      ctx.beginPath();
+      ctx.roundRect(labelX, labelY, labelW, labelH, labelH / 2);
+      ctx.fill();
+
+      ctx.fillStyle = colorOf(unit.ownerId);
+      ctx.beginPath();
+      ctx.arc(labelX + pad + dotR, labelY + labelH / 2, dotR, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, labelX + pad + dotR * 2 + pad, labelY + labelH / 2);
+      ctx.textAlign = "center";
     }
     const unitHpMax = unitMaxHp(unit);
-    if (unit.hp < unitHpMax) drawHpBar(ctx, s.x, s.y + r + size * 0.1, r * 1.8, unit.hp / unitHpMax);
+    if (unit.hp < unitHpMax) drawHpBar(ctx, s.x, s.y + half + size * 0.1, half * 1.8, unit.hp / unitHpMax);
   }
 }

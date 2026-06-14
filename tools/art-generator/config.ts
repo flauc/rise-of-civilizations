@@ -48,7 +48,7 @@ export const TERRAIN_SUBSET: AssetEntry[] = [
 ];
 
 export const UNIT_SUBSET: AssetEntry[] = [
-  { id: "settler", name: "Settler", description: "a family with pack animals ready to found a city", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "settler", name: "Settler", description: "a lone pioneer figure on foot, no animals, wagons, or companions, ready to found a city", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "worker", name: "Worker", description: "a laborer with tools building improvements", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "scout", name: "Scout", description: "a lightly armed explorer with a cloak", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "clubman", name: "Clubman", description: "a stone-age warrior wielding a wooden club", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
@@ -89,7 +89,7 @@ export function promptFor(entry: AssetEntry): string {
     return `Create a flat 2D hand-painted hexagonal strategy game tile for "${entry.name}". ${entry.description}. Match the visual style of the attached reference tile: slightly stylized, saturated but natural colors, readable at small sizes, and framed inside a vertical 2:3 pointy-top hex. IMPORTANT: do not include roads, paths, houses, huts, fences, farms, or any buildings or man-made structures — those will be added as separate tile improvements. Render as a flat 2D illustration with no 3D perspective, no realistic depth, no depth-of-field, and no camera angle shifts. Keep the same overall composition, camera angle, and hex footprint as the reference; vary only subtle natural details like texture, lighting, and vegetation so the grid remains uniform. The artwork must be fully self-contained and look correct in isolation; avoid paths, rivers, shadows, or objects that appear to continue off the tile edges. Preserve the soft shadow along the bottom edges of the hex, similar to the reference tile.`;
   }
   if (entry.category === "unit") {
-    return `Create a small unit token/icon for a turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a near-top-down or three-quarter view, centered, on a clean solid white background. No text, no UI, no border.`;
+    return `Create a small standalone unit token/icon for a turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a near-top-down or three-quarter view, centered, as an isolated figure on a clean solid white background. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath the figure. The unit should float cleanly on the white background with nothing else in the frame.`;
   }
   return `Create a small building icon for a turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the building from a three-quarter view, centered, on a clean solid white background. No text, no UI, no border.`;
 }

@@ -27,6 +27,7 @@ import { createUI, type CombatOdds } from "./ui";
 import { createMinimap } from "./minimap";
 import { createLobby } from "./lobby-ui";
 import { loadTerrainAtlas } from "./terrain-assets";
+import { loadUnitAtlas } from "./unit-assets";
 import type { Session } from "./session";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -284,6 +285,9 @@ function startGame(session: Session): void {
   const terrainAtlas = loadTerrainAtlas(() => {
     needsRedraw = true;
   });
+  const unitAtlas = loadUnitAtlas(() => {
+    needsRedraw = true;
+  });
 
   function frame(): void {
     if (needsRedraw && session.hasState()) {
@@ -308,6 +312,7 @@ function startGame(session: Session): void {
         attackTargets,
         cityWorkable,
         cityWorked: selCity ? new Set(selCity.workedTiles) : new Set(),
+        unitAtlas,
       });
       minimap.draw(st(), me, explored, visible, camera, cssWidth, cssHeight);
       ui.render({
