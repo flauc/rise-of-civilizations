@@ -1,17 +1,55 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { applyVictoryCheck, checkVictory, playerScore } from "./victory";
-import { unitsOf } from "./state";
+import { citiesOf, unitsOf } from "./state";
 
 describe("victory", () => {
   it("declares domination when only one human remains", () => {
     const state = createGame({ seed: "vic", cols: 36, rows: 24, barbarians: false });
     // Wipe out player 1 entirely.
     for (const u of unitsOf(state, 1)) state.units.delete(u.id);
+    for (const c of citiesOf(state, 1)) state.cities.delete(c.id);
     const v = checkVictory(state);
     expect(v).toEqual({ winnerId: 0, condition: "domination" });
     applyVictoryCheck(state);
     expect(state.gameOver?.winnerId).toBe(0);
+  });
+
+  it("declares conquest domination when one player controls every city", () => {
+    const state = createGame({
+      seed: "vic-conquest",
+      cols: 36,
+      rows: 24,
+      barbarians: false,
+      humanSlots: 1,
+      playerCount: 2,
+    });
+    // Clear player 1's cities so the AI controls every city.
+    for (const c of citiesOf(state, 1)) state.cities.delete(c.id);
+    // Give the AI (player 0) a second city so conquest can fire.
+    const secondCity = citiesOf(state, 0)[0]!;
+    const id = state.nextEntityId++;
+    state.cities.set(id, {
+      id,
+      ownerId: 0,
+      name: "Second",
+      col: secondCity.col + 2,
+      row: secondCity.row,
+      population: 1,
+      foodStored: 0,
+      productionStored: 0,
+      production: null,
+      buildings: [],
+      workedTiles: [],
+      isCapital: false,
+      foundedAsCapital: false,
+      hp: 0,
+      lastAttackedTurn: 0,
+      rangedAttackUsed: false,
+    });
+    const v = checkVictory(state);
+    expect(v?.condition).toBe("domination");
+    expect(v?.winnerId).toBe(0);
   });
 
   it("declares a score victory at the turn limit", () => {

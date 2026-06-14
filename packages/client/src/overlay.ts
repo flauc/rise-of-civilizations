@@ -1,4 +1,4 @@
-import { cityMaxHp, tileYields, UNIT_DEFS, UNIT_MAX_HP, type GameState } from "@roc/sim";
+import { cityMaxHp, tileYields, UNIT_DEFS, unitMaxHp, type GameState } from "@roc/sim";
 import { axialNeighbors, axialToOffset, getTile, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, tileCenterWorld } from "./renderer";
@@ -250,6 +250,7 @@ export function drawOverlay(
       ctx.font = `${Math.round(size * 0.5)}px system-ui, sans-serif`;
       ctx.fillText("★", s.x + r * 0.9, s.y - r * 0.9);
     }
-    if (unit.hp < UNIT_MAX_HP) drawHpBar(ctx, s.x, s.y + r + size * 0.1, r * 1.8, unit.hp / UNIT_MAX_HP);
+    const unitHpMax = unitMaxHp(unit);
+    if (unit.hp < unitHpMax) drawHpBar(ctx, s.x, s.y + r + size * 0.1, r * 1.8, unit.hp / unitHpMax);
   }
 }

@@ -30,6 +30,22 @@ export function checkVictory(state: GameState): GameOver | null {
     return { winnerId: alive[0]!.id, condition: "domination" };
   }
 
+  // Domination — conquest: one non-barbarian player controls every city on the map.
+  // Require the sole owner to hold at least two cities so the game doesn't end
+  // immediately on turn 1 before every civ has had a chance to found its capital.
+  const ownerCityCounts = new Map<number, number>();
+  for (const c of state.cities.values()) {
+    const owner = state.players.find((p) => p.id === c.ownerId);
+    if (!owner || owner.isBarbarian) continue;
+    ownerCityCounts.set(owner.id, (ownerCityCounts.get(owner.id) ?? 0) + 1);
+  }
+  if (ownerCityCounts.size === 1) {
+    const [winnerId, cityCount] = [...ownerCityCounts][0]!;
+    if (cityCount >= 2) {
+      return { winnerId, condition: "domination" };
+    }
+  }
+
   // Domination — one player controls every original capital.
   const capitals = [...state.cities.values()].filter((c) => c.foundedAsCapital);
   if (capitals.length >= 2) {

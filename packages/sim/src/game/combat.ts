@@ -9,6 +9,7 @@ import {
   type PromotionId,
 } from "./content";
 import { civCombatBonus } from "./civs";
+import { applyVictoryCheck } from "./victory";
 
 const ROUGH: ReadonlySet<TerrainType> = new Set<TerrainType>(["forest", "jungle", "hills"]);
 
@@ -18,9 +19,19 @@ function terrainDefense(t: TerrainType): number {
   return 0;
 }
 
+/** Maximum HP for a unit, increasing by 5% per level above 1. */
+export function unitMaxHp(unit: Unit): number {
+  return Math.floor(UNIT_MAX_HP * (1 + 0.05 * (unit.level - 1)));
+}
+
+/** Combat-strength multiplier from experience level (+5% per level). */
+function levelMultiplier(unit: Unit): number {
+  return 1 + 0.05 * (unit.level - 1);
+}
+
 /** Wounded units fight weaker: 1.0 at full HP down to 0.5 at 0 HP. */
-function woundFactor(hp: number): number {
-  return 0.5 + (0.5 * Math.max(0, hp)) / UNIT_MAX_HP;
+function woundFactor(hp: number, maxHp: number): number {
+  return 0.5 + (0.5 * Math.max(0, hp)) / maxHp;
 }
 
 function isOpen(t: TerrainType): boolean {
@@ -39,7 +50,7 @@ export function damageFrom(attEff: number, defEff: number): number {
 
 function attackStrength(state: GameState, unit: Unit, defender: Unit, targetTerrain: TerrainType, ranged: boolean): number {
   const def = UNIT_DEFS[unit.type];
-  let s = ranged ? def.rangedStrength ?? 0 : def.strength;
+  let s = (ranged ? def.rangedStrength ?? 0 : def.strength) * levelMultiplier(unit);
   s += civCombatBonus(state, unit);
   if (!ranged && has(unit, "shock") && isOpen(targetTerrain)) s += 3;
   if (!ranged && has(unit, "drill") && ROUGH.has(targetTerrain)) s += 3;
@@ -47,12 +58,12 @@ function attackStrength(state: GameState, unit: Unit, defender: Unit, targetTerr
   if (ranged && has(unit, "barrage") && ROUGH.has(targetTerrain)) s += 3;
   // Anti-cavalry bonus on the attack.
   if (def.abilities?.includes("bonus_vs_cavalry") && UNIT_DEFS[defender.type].cls === "cavalry") s += 5;
-  return s * woundFactor(unit.hp);
+  return s * woundFactor(unit.hp, unitMaxHp(unit));
 }
 
 function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged: boolean): number {
   const def = UNIT_DEFS[unit.type];
-  let s = def.strength;
+  let s = def.strength * levelMultiplier(unit);
   const tile = getTile(state.map, unit.col, unit.row);
   if (tile) s += terrainDefense(tile.terrain);
   if (tile?.road) s += 0; // roads don't add defense
@@ -60,7 +71,7 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   // Anti-cavalry also helps the defender against mounted attackers.
   if (def.abilities?.includes("bonus_vs_cavalry") && UNIT_DEFS[attacker.type].cls === "cavalry") s += 5;
   s += civCombatBonus(state, unit);
-  return Math.max(1, s) * woundFactor(unit.hp);
+  return Math.max(1, s) * woundFactor(unit.hp, unitMaxHp(unit));
 }
 
 // ---- cities --------------------------------------------------------------
@@ -82,7 +93,7 @@ export function cityDefenseStrength(state: GameState, city: City): number {
   // Strongest garrison lends some strength.
   const garrison = unitAt(state, city.col, city.row);
   if (garrison && garrison.ownerId === city.ownerId) {
-    s += UNIT_DEFS[garrison.type].strength * 0.5 * woundFactor(garrison.hp);
+    s += UNIT_DEFS[garrison.type].strength * levelMultiplier(garrison) * 0.5 * woundFactor(garrison.hp, unitMaxHp(garrison));
   }
   return Math.max(1, Math.round(s));
 }
@@ -107,6 +118,8 @@ function awardXp(unit: Unit, amount: number): void {
   while (unit.xp >= xpForNextLevel(unit.level)) {
     unit.xp -= xpForNextLevel(unit.level);
     unit.level += 1;
+    const newMax = unitMaxHp(unit);
+    unit.hp = Math.min(newMax, unit.hp + Math.round(newMax * 0.2));
     if (PROMOTION_POOL[def.cls].length > 0) unit.unspentPromotions += 1;
   }
 }
@@ -153,6 +166,7 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
   attacker.row = city.row;
   const taker = playerById(state, attacker.ownerId);
   state.log.push(`${taker?.name ?? "Someone"} captured ${city.name}${oldOwner ? ` from ${oldOwner.name}` : ""}.`);
+  applyVictoryCheck(state);
 }
 
 /** Resolve an attack by `attacker` against whatever is on (col,row). */
@@ -182,14 +196,14 @@ export function resolveAttack(state: GameState, attacker: Unit, col: number, row
     enemyCity.lastAttackedTurn = state.turn;
 
     if (ranged) {
-      const attEff = (def.rangedStrength ?? 0) * woundFactor(attacker.hp) * mult;
+      const attEff = (def.rangedStrength ?? 0) * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker)) * mult;
       enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
       awardXp(attacker, 3);
     } else {
       if (enemyCity.hp <= 0) {
         captureCity(state, enemyCity, attacker);
       } else {
-        const attEff = def.strength * woundFactor(attacker.hp) * mult;
+        const attEff = def.strength * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker)) * mult;
         enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
         attacker.hp -= damageFrom(cityDef, attEff);
         awardXp(attacker, 4);
@@ -292,7 +306,7 @@ export function combatPreview(state: GameState, attacker: Unit, col: number, row
   if (enemyCity && enemyCity.ownerId !== attacker.ownerId) {
     const cityDef = cityDefenseStrength(state, enemyCity);
     const mult = vsCityMultiplier(attacker);
-    const attEff = (ranged ? def.rangedStrength ?? 0 : def.strength) * woundFactor(attacker.hp) * mult;
+    const attEff = (ranged ? def.rangedStrength ?? 0 : def.strength) * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker)) * mult;
     return {
       toDefender: damageFrom(attEff, cityDef),
       toAttacker: ranged ? 0 : damageFrom(cityDef, attEff),
@@ -322,11 +336,11 @@ export function healAndReset(state: GameState, player: Player): void {
     if (u.attackedLastTurn) continue;
     let heal = 8;
     if (cityAt(state, u.col, u.row)?.ownerId === player.id) heal += 12;
-    u.hp = Math.min(UNIT_MAX_HP, u.hp + heal);
+    u.hp = Math.min(unitMaxHp(u), u.hp + heal);
     if (u.promotions.includes("medic")) {
       for (const other of own) {
         if (other.id !== u.id && dist(u, other) === 1) {
-          other.hp = Math.min(UNIT_MAX_HP, other.hp + 10);
+          other.hp = Math.min(unitMaxHp(other), other.hp + 10);
         }
       }
     }

@@ -13,6 +13,7 @@ import {
   cityDefenseStrength,
   cityMaxHp,
   foodToGrow,
+  unitMaxHp,
   getCiv,
   getCityYields,
   territorySize,
@@ -21,7 +22,6 @@ import {
   PROMOTION_DEFS,
   TECH_DEFS,
   UNIT_DEFS,
-  UNIT_MAX_HP,
   buildingInfo,
   techUnlocks,
   unitInfo,
@@ -358,12 +358,13 @@ export function createUI(handlers: UIHandlers): UI {
       `</div>` +
       `<div class="sub">${info.role}${info.note ? ` · ${info.note}` : ""}</div>` +
       `<div style="margin-top:2px">Moves <b>${unit.movementLeft}/${def.movement}</b>` +
-      (combatant ? ` · HP <b>${unit.hp}/${UNIT_MAX_HP}</b>` : "") +
+      (combatant ? ` · HP <b>${unit.hp}/${unitMaxHp(unit)}</b>` : "") +
       `</div>`;
     if (combatant) {
+      const levelMult = 1 + 0.05 * (unit.level - 1);
       html +=
-        `<div style="color:#9fc0dc">⚔️ ${def.strength}` +
-        ((def.rangedStrength ?? 0) > 0 ? ` · 🏹 ${def.rangedStrength} (rng ${def.range})` : "") +
+        `<div style="color:#9fc0dc">⚔️ ${Math.floor(def.strength * levelMult)}` +
+        ((def.rangedStrength ?? 0) > 0 ? ` · 🏹 ${Math.floor((def.rangedStrength ?? 0) * levelMult)} (rng ${def.range})` : "") +
         ` · XP ${unit.xp}</div>`;
     }
     if (unit.promotions.length) {

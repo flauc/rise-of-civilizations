@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn } from "./commands";
-import { damageFrom, resolveAttack, cityMaxHp } from "./combat";
-import { makeUnit, type GameState, type Unit } from "./state";
+import { damageFrom, resolveAttack, cityMaxHp, unitMaxHp } from "./combat";
+import { citiesOf, makeUnit, type GameState, type Unit } from "./state";
 
 function bareGame(): GameState {
   // No barbarians, no starting units to keep scenarios controlled.
@@ -81,5 +81,76 @@ describe("M2 combat", () => {
     // Should not throw and should keep a human as the active player after a cycle.
     // (endTurn auto-runs the barbarian slot.)
     expect(() => beginTurn(state)).not.toThrow();
+  });
+
+  it("unit max HP increases by 5% per level", () => {
+    const state = bareGame();
+    const u = place(state, 0, "warrior", 5, 5);
+    expect(unitMaxHp(u)).toBe(100);
+    u.level = 2;
+    expect(unitMaxHp(u)).toBe(105);
+    u.level = 3;
+    expect(unitMaxHp(u)).toBe(110);
+  });
+
+  it("leveling up heals the unit for 20% of its new max HP", () => {
+    const state = bareGame();
+    const archer = place(state, 0, "archer", 5, 5);
+    const target = place(state, 1, "warrior", 7, 5);
+    archer.xp = 9; // one XP away from level 2
+    archer.hp = 50;
+    resolveAttack(state, archer, target.col, target.row);
+    expect(archer.level).toBe(2);
+    expect(unitMaxHp(archer)).toBe(105);
+    // 50 + 20% of 105 = 50 + 21 = 71, capped at new max.
+    expect(archer.hp).toBe(71);
+  });
+
+  it("a higher-level unit deals more damage than a same-type level 1 unit", () => {
+    const state = bareGame();
+    const lv1Archer = place(state, 0, "archer", 6, 5);
+    const lv2Archer = place(state, 0, "archer", 6, 4);
+    lv2Archer.level = 2;
+    const targetA = place(state, 1, "warrior", 7, 5);
+    const targetB = place(state, 1, "warrior", 7, 4);
+    resolveAttack(state, lv1Archer, targetA.col, targetA.row);
+    const targetHpAfterLv1 = targetA.hp;
+    resolveAttack(state, lv2Archer, targetB.col, targetB.row);
+    expect(targetB.hp).toBeLessThan(targetHpAfterLv1);
+  });
+
+  it("ends the game immediately when a player's last city is captured", () => {
+    const state = bareGame();
+    // Player 0 owns two cities; player 1 owns one city (their last).
+    const p1City = citiesOf(state, 1)[0]!;
+    const p0City = citiesOf(state, 0)[0]!;
+    // Give player 0 a second city.
+    const id = state.nextEntityId++;
+    state.cities.set(id, {
+      id,
+      ownerId: 0,
+      name: "P0-Second",
+      col: p0City.col + 2,
+      row: p0City.row,
+      population: 1,
+      foodStored: 0,
+      productionStored: 0,
+      production: null,
+      buildings: [],
+      workedTiles: [],
+      isCapital: false,
+      foundedAsCapital: false,
+      hp: 0,
+      lastAttackedTurn: 0,
+      rangedAttackUsed: false,
+    });
+    p1City.hp = 0; // already battered
+    const swordsman = place(state, 0, "swordsman", p1City.col + 1, p1City.row);
+    swordsman.movementLeft = 2;
+    swordsman.attackedThisTurn = false;
+    expect(state.gameOver).toBeNull();
+    resolveAttack(state, swordsman, p1City.col, p1City.row);
+    expect(state.gameOver).not.toBeNull();
+    expect(state.gameOver?.winnerId).toBe(0);
   });
 });
