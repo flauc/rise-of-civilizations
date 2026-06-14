@@ -28,6 +28,7 @@ import { createMinimap } from "./minimap";
 import { createLobby } from "./lobby-ui";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadUnitAtlas } from "./unit-assets";
+import { loadCityAtlas } from "./city-assets";
 import type { Session } from "./session";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -288,6 +289,9 @@ function startGame(session: Session): void {
   const unitAtlas = loadUnitAtlas(() => {
     needsRedraw = true;
   });
+  const cityAtlas = loadCityAtlas(() => {
+    needsRedraw = true;
+  });
 
   function frame(): void {
     if (needsRedraw && session.hasState()) {
@@ -313,6 +317,7 @@ function startGame(session: Session): void {
         cityWorkable,
         cityWorked: selCity ? new Set(selCity.workedTiles) : new Set(),
         unitAtlas,
+        cityAtlas,
       });
       minimap.draw(st(), me, explored, visible, camera, cssWidth, cssHeight);
       ui.render({

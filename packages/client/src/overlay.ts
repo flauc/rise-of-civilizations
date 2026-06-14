@@ -3,6 +3,7 @@ import { axialNeighbors, axialToOffset, getTile, offsetToAxial } from "@roc/shar
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
+import { cityImageIndex, type CityAtlas } from "./city-assets";
 
 export interface OverlayState {
   viewingPlayerId: number;
@@ -15,6 +16,7 @@ export interface OverlayState {
   cityWorkable: Set<string>;
   cityWorked: Set<string>;
   unitAtlas?: UnitAtlas;
+  cityAtlas?: CityAtlas;
 }
 
 /** "#rrggbb" -> "rgba(r,g,b,a)". */
@@ -194,27 +196,59 @@ export function drawOverlay(
     const own = city.ownerId === o.viewingPlayerId;
     if (!own && !o.visible.has(`${city.col},${city.row}`)) continue;
     const s = screen(city.col, city.row);
-    const r = size * 0.62;
-    ctx.beginPath();
-    ctx.rect(s.x - r, s.y - r, r * 2, r * 2);
-    ctx.fillStyle = colorOf(city.ownerId);
-    ctx.fill();
-    ctx.lineWidth = city.isCapital ? Math.max(2, size * 0.09) : Math.max(1.5, size * 0.05);
-    ctx.strokeStyle = city.isCapital ? "#ffd967" : "#ffffff";
-    ctx.stroke();
+    const half = size * 0.62;
+    const cityImg = o.cityAtlas?.images[cityImageIndex(city.population)];
+    const hasCityImg = cityImg && isImageReady(cityImg);
+    const imgSize = half * 1.9;
+    const imgX = s.x - imgSize / 2;
+    const imgY = s.y - imgSize / 2;
+
+    if (hasCityImg) {
+      ctx.drawImage(cityImg, imgX, imgY, imgSize, imgSize);
+    } else {
+      ctx.fillStyle = colorOf(city.ownerId);
+      ctx.fillRect(s.x - half, s.y - half, half * 2, half * 2);
+    }
+
+    const selected = o.selectedCityId === city.id;
+
     if (showLabels) {
-      ctx.fillStyle = "#fff";
-      ctx.font = `bold ${Math.round(size * 0.6)}px system-ui, sans-serif`;
-      ctx.fillText(String(city.population), s.x, s.y + 1);
-      ctx.font = `${Math.round(Math.min(13, size * 0.42))}px system-ui, sans-serif`;
-      const w = ctx.measureText(city.name).width + 8;
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.fillRect(s.x - w / 2, s.y - r - size * 0.62, w, size * 0.5);
-      ctx.fillStyle = "#fff";
-      ctx.fillText(city.name, s.x, s.y - r - size * 0.37);
+      // City name + population label (same pill style as unit labels).
+      const label = `${city.name} (${city.population})`;
+      const fontSize = Math.max(8, Math.round(size * 0.32));
+      ctx.font = `${fontSize}px system-ui, sans-serif`;
+      const textW = ctx.measureText(label).width;
+      const dotR = Math.max(2, size * 0.08);
+      const pad = Math.max(2, size * 0.06);
+      const labelH = Math.max(fontSize + pad * 2, dotR * 2 + pad * 2);
+      const labelW = textW + dotR * 3 + pad * 2;
+      const labelX = s.x - labelW / 2;
+      const labelY = (hasCityImg ? imgY : s.y - half) - labelH - pad;
+
+      ctx.fillStyle = selected ? "#ffd967" : "rgba(0,0,0,0.65)";
+      ctx.beginPath();
+      ctx.roundRect(labelX, labelY, labelW, labelH, labelH / 2);
+      ctx.fill();
+
+      if (selected) {
+        ctx.lineWidth = Math.max(1, size * 0.05);
+        ctx.strokeStyle = "#fff";
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = selected ? "#332200" : colorOf(city.ownerId);
+      ctx.beginPath();
+      ctx.arc(labelX + pad + dotR, labelY + labelH / 2, dotR, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = selected ? "#332200" : "#fff";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, labelX + pad + dotR * 2 + pad, labelY + labelH / 2);
+      ctx.textAlign = "center";
     }
     const maxHp = cityMaxHp(city);
-    if (city.hp < maxHp) drawHpBar(ctx, s.x, s.y + r + size * 0.12, r * 2, city.hp / maxHp);
+    if (city.hp < maxHp) drawHpBar(ctx, s.x, s.y + half + size * 0.12, half * 2, city.hp / maxHp);
   }
 
   // Units.
@@ -240,15 +274,7 @@ export function drawOverlay(
     }
 
     const selected = o.selectedUnitId === unit.id;
-
-    // Fatigue indicator when the unit has no movement left.
-    if (own && unit.movementLeft <= 0) {
-      const r = Math.max(3, size * 0.12);
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.beginPath();
-      ctx.arc(imgX + imgSize - r, imgY + imgSize - r, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    const fatigued = own && unit.movementLeft <= 0;
 
     // Promotion-available star.
     if (own && unit.unspentPromotions > 0 && size > 12) {
@@ -272,6 +298,8 @@ export function drawOverlay(
       const labelX = s.x - labelW / 2;
       const labelY = imgY - labelH - pad;
 
+      ctx.globalAlpha = !selected && fatigued ? 0.5 : 1;
+
       ctx.fillStyle = selected ? "#ffd967" : "rgba(0,0,0,0.65)";
       ctx.beginPath();
       ctx.roundRect(labelX, labelY, labelW, labelH, labelH / 2);
@@ -293,6 +321,7 @@ export function drawOverlay(
       ctx.textBaseline = "middle";
       ctx.fillText(label, labelX + pad + dotR * 2 + pad, labelY + labelH / 2);
       ctx.textAlign = "center";
+      ctx.globalAlpha = 1;
     }
     const unitHpMax = unitMaxHp(unit);
     if (unit.hp < unitHpMax) drawHpBar(ctx, s.x, s.y + half + size * 0.1, half * 1.8, unit.hp / unitHpMax);

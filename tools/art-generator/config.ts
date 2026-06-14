@@ -87,6 +87,19 @@ export const UNIT_SUBSET: AssetEntry[] = [
   { id: "ballista", name: "Ballista", description: "a large bolt-shooting ballista siege engine", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
 ];
 
+export const CITY_SUBSET: AssetEntry[] = [
+  { id: "city_1", name: "Hamlet", description: "about 1 small ancient mud-brick house, no walls, no fortifications, no defensive structures, same hand-painted stylized ancient mud-brick style as the other city tiers", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "city_2", name: "Small Village", description: "about 2 ancient mud-brick houses grouped together, no walls, no fortifications, same hand-painted stylized ancient mud-brick style as the other city tiers", category: "building", aspectRatio: "1:1", size: { width: 144, height: 144 } },
+  { id: "city_3", name: "Village", description: "about 3 ancient mud-brick houses grouped together, no walls, no fortifications, same hand-painted stylized ancient mud-brick style as the other city tiers", category: "building", aspectRatio: "1:1", size: { width: 160, height: 160 } },
+  { id: "city_4", name: "Large Village", description: "about 4 ancient mud-brick houses grouped together, no walls, no fortifications, same hand-painted stylized ancient mud-brick style as the other city tiers", category: "building", aspectRatio: "1:1", size: { width: 176, height: 176 } },
+  { id: "city_5", name: "Small Town", description: "about 5 ancient mud-brick houses grouped together, no walls, no fortifications, same hand-painted stylized ancient mud-brick style as the other city tiers", category: "building", aspectRatio: "1:1", size: { width: 192, height: 192 } },
+  { id: "city_6", name: "Town", description: "about 6 ancient mud-brick houses grouped together, no walls, no fortifications, same hand-painted stylized ancient mud-brick style as the other city tiers", category: "building", aspectRatio: "1:1", size: { width: 208, height: 208 } },
+  { id: "city_7", name: "Large Town", description: "about 7 ancient mud-brick houses grouped together, no walls, no fortifications, same hand-painted stylized ancient mud-brick style as the other city tiers", category: "building", aspectRatio: "1:1", size: { width: 224, height: 224 } },
+  { id: "city_8", name: "Small City", description: "about 8 ancient mud-brick houses grouped together, no walls, no fortifications, same hand-painted stylized ancient mud-brick style as the other city tiers", category: "building", aspectRatio: "1:1", size: { width: 240, height: 240 } },
+  { id: "city_9", name: "City", description: "about 9 ancient mud-brick houses grouped together, no walls, no fortifications, same hand-painted stylized ancient mud-brick style as the other city tiers", category: "building", aspectRatio: "1:1", size: { width: 256, height: 256 } },
+  { id: "city_10", name: "Great City", description: "about 10 ancient mud-brick houses grouped together, no walls, no fortifications, same hand-painted stylized ancient mud-brick style as the other city tiers", category: "building", aspectRatio: "1:1", size: { width: 272, height: 272 } },
+];
+
 export const BUILDING_SUBSET: AssetEntry[] = [
   { id: "granary", name: "Granary", description: "a small grain store with earthen walls", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "barracks", name: "Barracks", description: "a simple military training hall", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
@@ -97,7 +110,7 @@ export const BUILDING_SUBSET: AssetEntry[] = [
 ];
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...BUILDING_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -116,5 +129,5 @@ export function promptFor(entry: AssetEntry): string {
   if (entry.category === "unit") {
     return `Create a small standalone unit token/icon for an ancient turn-based strategy game spanning the Stone Age to the Classical era. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a near-top-down or three-quarter view, centered, in a static idle pose standing still and facing toward the right side of the image, as an isolated figure on a clean solid white background. Use only materials and technology appropriate to the unit's era and description; no anachronistic weapons, armor, or equipment. No walking, running, attacking, or action motion; no motion blur or dynamic swinging of limbs/weapons. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath the figure. The unit should float cleanly on the white background with nothing else in the frame.`;
   }
-  return `Create a small building icon for a turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the building from a three-quarter view, centered, on a clean solid white background. No text, no UI, no border.`;
+  return `Create a small standalone building icon for a turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated building on a clean solid white background. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The building should float cleanly on the white background with nothing else in the frame.`;
 }

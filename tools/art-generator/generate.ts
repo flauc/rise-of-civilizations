@@ -32,6 +32,7 @@ import {
   TERRAIN_SUBSET,
   UNIT_SUBSET,
   BUILDING_SUBSET,
+  CITY_SUBSET,
 } from "./config";
 
 interface Options {
@@ -162,6 +163,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
         else if (name === "units") entries.push(...UNIT_SUBSET);
         else if (name === "buildings") entries.push(...BUILDING_SUBSET);
+        else if (name === "cities") entries.push(...CITY_SUBSET);
         else if (name === "all") entries.push(...allEntries());
         else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, all.`);
         break;
