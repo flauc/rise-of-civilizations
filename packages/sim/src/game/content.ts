@@ -28,7 +28,8 @@ export type UnitAbility = "bonus_vs_cavalry" | "bonus_vs_city";
 
 export type BuildingId =
   | "granary" | "workshop" | "forge" | "walls" | "barracks" | "stable"
-  | "market" | "library" | "academy" | "aqueduct" | "harbor" | "monument" | "amphitheater";
+  | "market" | "library" | "academy" | "aqueduct" | "harbor" | "monument" | "amphitheater"
+  | "shrine" | "temple";
 
 export type TechId =
   // Dawn
@@ -118,7 +119,7 @@ export interface BuildingDef {
   name: string;
   cost: number;
   reqTech?: TechId;
-  yields: { food?: number; production?: number; gold?: number; science?: number; culture?: number };
+  yields: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
   effect?: "walls" | "barracks";
 }
 
@@ -138,6 +139,8 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   harbor: B({ id: "harbor", name: "Harbor", cost: 24, reqTech: "sailcloth", yields: { gold: 2 } }),
   monument: B({ id: "monument", name: "Monument", cost: 22, reqTech: "monumental_architecture", yields: { culture: 2 } }),
   amphitheater: B({ id: "amphitheater", name: "Amphitheater", cost: 26, reqTech: "ritual_burial", yields: { culture: 3 } }),
+  shrine: B({ id: "shrine", name: "Shrine", cost: 18, reqTech: "ritual_burial", yields: { faith: 2 } }),
+  temple: B({ id: "temple", name: "Temple", cost: 28, reqTech: "writing", yields: { faith: 2, culture: 1 } }),
 };
 
 export interface TechDef {
@@ -241,6 +244,7 @@ export function buildingInfo(id: BuildingId): string {
   if (y.gold) parts.push(`+${y.gold} 🪙`);
   if (y.science) parts.push(`+${y.science} 🔬`);
   if (y.culture) parts.push(`+${y.culture} 🎭`);
+  if (y.faith) parts.push(`+${y.faith} ☮️`);
   if (d.effect === "walls") parts.push("city walls (+HP & defense)");
   if (d.effect === "barracks") parts.push("+city defense; new units gain XP");
   return parts.join(", ") || "—";

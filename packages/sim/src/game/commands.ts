@@ -16,6 +16,7 @@ import { buildImprovement, type ImprovementKind } from "./improvements";
 import { applyVictoryCheck } from "./victory";
 import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter } from "./features";
+import { foundReligion, spreadReligion } from "./religion";
 import {
   civEffectsOf,
   unitMovement,
@@ -41,6 +42,7 @@ export type Command =
   | { type: "setCivic"; civicId: string }
   | { type: "setGovernment"; governmentId: string }
   | { type: "togglePolicy"; policyId: string }
+  | { type: "foundReligion"; cityId: number; name: string; beliefs: string[] }
   | { type: "endTurn" };
 
 export interface CommandResult {
@@ -64,6 +66,8 @@ export function beginTurn(state: GameState): void {
     c.rangedAttackUsed = false;
     processCity(state, c, player);
   }
+  // Religion spreads once per round (at the start of player 0's turn).
+  if (state.currentPlayerIndex === 0) spreadReligion(state);
   updateExplored(state, player.id);
 }
 
@@ -261,6 +265,10 @@ export function applyCommand(
       if (player.policies.length >= slots) return fail("no free policy slots");
       player.policies.push(cmd.policyId);
       return ok;
+    }
+
+    case "foundReligion": {
+      return foundReligion(state, player.id, cmd.cityId, cmd.name, cmd.beliefs);
     }
   }
 }

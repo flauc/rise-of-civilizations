@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
+import { beginTurn, applyCommand } from "./commands";
 import { applyVictoryCheck, checkVictory, playerScore } from "./victory";
 import { citiesOf, unitsOf } from "./state";
 
@@ -24,9 +25,13 @@ describe("victory", () => {
       humanSlots: 1,
       playerCount: 2,
     });
-    // Clear player 1's cities so the AI controls every city.
+    // Found player 0's capital (createGame only spawns settlers).
+    beginTurn(state);
+    const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    // Clear player 1's cities so player 0 controls every city.
     for (const c of citiesOf(state, 1)) state.cities.delete(c.id);
-    // Give the AI (player 0) a second city so conquest can fire.
+    // Give player 0 a second city so conquest can fire.
     const secondCity = citiesOf(state, 0)[0]!;
     const id = state.nextEntityId++;
     state.cities.set(id, {

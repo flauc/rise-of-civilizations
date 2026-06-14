@@ -13,6 +13,7 @@ import { processCity } from "./economy";
 import { barbarianTurn } from "./barbarians";
 import { updateExplored } from "./visibility";
 import { applyVictoryCheck } from "./victory";
+import { spreadReligion } from "./religion";
 import { aiTakeTurn } from "./ai";
 
 /** Begin a fresh turn for ALL players at once: refresh movement, heal, reveal. */
@@ -46,6 +47,7 @@ export function resolveSimultaneousTurn(state: GameState): void {
       if (c.ownerId === p.id) processCity(state, c, p);
     }
   }
+  spreadReligion(state);
   state.turn += 1;
   startSimultaneousTurn(state);
   applyVictoryCheck(state);

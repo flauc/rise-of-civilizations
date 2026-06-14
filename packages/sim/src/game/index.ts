@@ -14,5 +14,6 @@ export * from "./simturn";
 export * from "./serialize";
 export * from "./victory";
 export * from "./territory";
+export * from "./religion";
 export * from "./features";
 export * from "./ai";

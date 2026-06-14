@@ -10,6 +10,7 @@ import {
   getCivic,
   getGovernment,
   getPolicy,
+  getBelief,
   nextCityNameForCiv,
   type CivDef,
   type CivEffects,
@@ -52,6 +53,9 @@ export function playerEffects(state: GameState, playerId: number): CivEffects {
   mergeInto(acc, getCiv(p.civId)?.effects);
   mergeInto(acc, getGovernment(p.government)?.effects);
   for (const policyId of p.policies) mergeInto(acc, getPolicy(policyId)?.effects);
+  // Founder beliefs of the player's religion apply to their empire.
+  const religion = p.foundedReligionId ? state.religions.find((r) => r.id === p.foundedReligionId) : undefined;
+  if (religion) for (const b of religion.beliefs) mergeInto(acc, getBelief(b)?.effects);
   return acc;
 }
 

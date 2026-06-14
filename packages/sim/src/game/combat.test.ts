@@ -121,9 +121,19 @@ describe("M2 combat", () => {
 
   it("ends the game immediately when a player's last city is captured", () => {
     const state = bareGame();
+    const mkCity = (ownerId: number, name: string, col: number, row: number) => {
+      const cid = state.nextEntityId++;
+      const c = {
+        id: cid, ownerId, name, col, row, population: 1, foodStored: 0, productionStored: 0,
+        production: null, buildings: [], workedTiles: [], isCapital: true, foundedAsCapital: true,
+        hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false,
+      };
+      state.cities.set(cid, c);
+      return c;
+    };
     // Player 0 owns two cities; player 1 owns one city (their last).
-    const p1City = citiesOf(state, 1)[0]!;
-    const p0City = citiesOf(state, 0)[0]!;
+    const p0City = mkCity(0, "P0-Capital", 5, 5);
+    const p1City = mkCity(1, "P1-Capital", 14, 5);
     // Give player 0 a second city.
     const id = state.nextEntityId++;
     state.cities.set(id, {

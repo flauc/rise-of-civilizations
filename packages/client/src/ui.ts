@@ -8,6 +8,13 @@ import {
   getCivic,
   getGovernment,
   getPolicy,
+  BELIEFS,
+  getBelief,
+  religionById,
+  cityFollowerCount,
+  canFoundReligion,
+  availableReligionNames,
+  FAITH_TO_FOUND,
   buildableHere,
   citiesOf,
   cityDefenseStrength,
@@ -42,7 +49,7 @@ export interface CombatOdds {
 }
 
 export interface Suggestion {
-  kind: "units" | "research" | "civic" | "production";
+  kind: "units" | "research" | "civic" | "religion" | "production";
   label: string;
 }
 
@@ -66,6 +73,7 @@ export interface UIHandlers {
   onSetCivic(civicId: string): void;
   onSetGovernment(governmentId: string): void;
   onTogglePolicy(policyId: string): void;
+  onFoundReligion(cityId: number, name: string, beliefs: string[]): void;
   onCloseCity(): void;
   onSuggestion(): void;
 }
@@ -75,6 +83,7 @@ export interface UI {
   banner(text: string): void;
   openResearch(): void;
   openCivics(): void;
+  openReligion(): void;
 }
 
 function div(id: string, cls: string): HTMLDivElement {
@@ -99,6 +108,7 @@ export function createUI(handlers: UIHandlers): UI {
   const cityPanel = div("city-panel", "panel hidden");
   const research = div("research", "panel hidden");
   const civics = div("civics", "panel hidden");
+  const religionPanel = div("religion", "panel hidden");
   const production = div("production", "panel hidden");
   const log = div("log", "");
   const banner = div("banner", "");
@@ -118,8 +128,10 @@ export function createUI(handlers: UIHandlers): UI {
 
   let researchOpen = false;
   let civicsOpen = false;
+  let religionOpen = false;
   let productionOpen = false;
   let prodCityId: number | null = null;
+  let chosenBeliefs: string[] = [];
   let bannerTimer = 0;
   let lastState: GameState | null = null;
 
@@ -166,12 +178,15 @@ export function createUI(handlers: UIHandlers): UI {
         <span class="chip" title="Gold">🪙 ${Math.floor(player.gold)}</span>
         <span class="chip" title="Science / turn">🔬 +${sci}</span>
         <span class="chip" title="Culture / turn">🎭 +${cul}</span>
+        <span class="chip" title="Faith stored">☮️ ${Math.floor(player.faith)}</span>
       </div>
       <div class="tb-grp">
         <button class="tb-pill" id="research-btn" title="Research" style="--p:${researchPct}%">
           <span class="tb-pl">🔬</span><b>${rName}</b></button>
         <button class="tb-pill civic" id="civics-btn" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%">
           <span class="tb-pl">🏛️</span><b>${cName}</b></button>
+        <button class="tb-pill" id="religion-btn" title="Religion">
+          <span class="tb-pl">☮️</span><b>Faith</b></button>
       </div>`;
     topbar.querySelector<HTMLButtonElement>("#research-btn")!.addEventListener("click", () => {
       researchOpen = !researchOpen;
@@ -182,8 +197,18 @@ export function createUI(handlers: UIHandlers): UI {
     topbar.querySelector<HTMLButtonElement>("#civics-btn")!.addEventListener("click", () => {
       civicsOpen = !civicsOpen;
       researchOpen = false;
+      religionOpen = false;
       renderCivics(state);
       renderResearch(state);
+      renderReligion(state);
+    });
+    topbar.querySelector<HTMLButtonElement>("#religion-btn")!.addEventListener("click", () => {
+      religionOpen = !religionOpen;
+      researchOpen = false;
+      civicsOpen = false;
+      renderReligion(state);
+      renderResearch(state);
+      renderCivics(state);
     });
   };
 
@@ -342,6 +367,72 @@ export function createUI(handlers: UIHandlers): UI {
     );
   };
 
+  const renderReligion = (state: GameState): void => {
+    religionPanel.classList.toggle("hidden", !religionOpen);
+    if (!religionOpen) return;
+    const player = state.players[state.currentPlayerIndex]!;
+    const totalCities = state.cities.size;
+    let html = `<div class="row" style="justify-content:space-between"><b>Religion</b><button class="btn" id="relclose">✕</button></div>`;
+    const myRel = religionById(state, player.foundedReligionId);
+
+    if (myRel) {
+      const holy = state.cities.get(myRel.holyCityId);
+      html += `<div style="margin-top:4px"><b style="font-size:15px">☮️ ${myRel.name}</b></div>`;
+      html += `<div class="sub">Holy city: ${holy?.name ?? "—"} · Following <b style="color:#fff">${cityFollowerCount(state, myRel.id)}/${totalCities}</b> cities</div>`;
+      html += `<div class="csub">Beliefs</div>`;
+      html += myRel.beliefs.length
+        ? myRel.beliefs.map((b) => `<div class="sub">• <b style="color:#fff">${getBelief(b)?.name}</b> — ${getBelief(b)?.desc}</div>`).join("")
+        : `<div class="sub">No beliefs chosen.</div>`;
+    } else if (canFoundReligion(state, player.id)) {
+      const holy = [...state.cities.values()].find((c) => c.ownerId === player.id);
+      const names = availableReligionNames(state);
+      html += `<div class="csub">Found a Religion</div>`;
+      html += `<div class="sub">Holy city: <b style="color:#fff">${holy?.name}</b></div>`;
+      html += `<div style="margin-top:6px">Name <select id="rel-name" class="lobby-in" style="width:100%">${names.map((n) => `<option>${n}</option>`).join("")}</select></div>`;
+      html += `<div class="csub">Choose up to 2 beliefs (${chosenBeliefs.length}/2)</div>`;
+      html += BELIEFS.map((b) => {
+        const on = chosenBeliefs.includes(b.id);
+        return `<div class="tech" data-belief="${b.id}" style="${on ? "border-color:#ffd967;background:#27331d" : ""}"><div style="flex:1"><b>${b.name}</b><div class="sub">${b.desc}</div></div>${on ? "✓" : ""}</div>`;
+      }).join("");
+      html += `<button class="btn primary" id="found-rel" style="width:100%;margin-top:8px">Found Religion ☮️</button>`;
+    } else {
+      const pct = Math.min(100, (player.faith / FAITH_TO_FOUND) * 100);
+      const allFounded = state.religions.length >= state.players.filter((p) => !p.isBarbarian).length;
+      html += `<div class="csub">Faith</div>`;
+      html += `<div>${Math.floor(player.faith)}/${FAITH_TO_FOUND} to found a religion<div class="bar"><i style="width:${pct}%;background:#7ad0a0"></i></div></div>`;
+      html += `<div class="sub" style="margin-top:6px">Build Shrines and Temples to generate faith.${allFounded ? " All religions have been founded." : ""}</div>`;
+    }
+
+    if (state.religions.length) {
+      html += `<div class="csub">World religions</div>`;
+      html += state.religions.map((r) => `<div class="sub">${r.name} — ${cityFollowerCount(state, r.id)} cities</div>`).join("");
+    }
+
+    religionPanel.innerHTML = html;
+    religionPanel.querySelector<HTMLButtonElement>("#relclose")!.addEventListener("click", () => {
+      religionOpen = false;
+      religionPanel.classList.add("hidden");
+    });
+    religionPanel.querySelectorAll<HTMLDivElement>("[data-belief]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const id = el.dataset.belief!;
+        const i = chosenBeliefs.indexOf(id);
+        if (i >= 0) chosenBeliefs.splice(i, 1);
+        else if (chosenBeliefs.length < 2) chosenBeliefs.push(id);
+        renderReligion(state);
+      }),
+    );
+    religionPanel.querySelector<HTMLButtonElement>("#found-rel")?.addEventListener("click", () => {
+      const holy = [...state.cities.values()].find((c) => c.ownerId === player.id);
+      if (!holy) return;
+      const name = religionPanel.querySelector<HTMLSelectElement>("#rel-name")?.value ?? "";
+      handlers.onFoundReligion(holy.id, name, [...chosenBeliefs]);
+      chosenBeliefs = [];
+      religionOpen = false;
+      religionPanel.classList.add("hidden");
+    });
+  };
+
   const renderUnitPanel = (state: GameState, unit: Unit | null, odds?: CombatOdds | null): void => {
     if (!unit) {
       unitPanel.classList.add("hidden");
@@ -433,7 +524,9 @@ export function createUI(handlers: UIHandlers): UI {
       `<b style="font-size:15px">${city.isCapital ? "★ " : ""}${city.name}</b>` +
       `<button class="btn" id="cclose">✕</button></div>` +
       `<div style="color:#9fc0dc;margin-top:2px">Pop <b style="color:#fff">${city.population}</b> · ` +
-      `🛡️ ${cityDefenseStrength(state, city)} · ❤️ ${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)} · ⬣ ${territorySize(state, city)}</div>` +
+      `🛡️ ${cityDefenseStrength(state, city)} · ❤️ ${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)} · ⬣ ${territorySize(state, city)}` +
+      (city.religion ? ` · ☮️ ${religionById(state, city.religion)?.name ?? ""}` : "") +
+      `</div>` +
       // yields grid
       `<div class="ygrid">` +
       `<span title="Food (growth)">🍞 <b>${y.food}</b> <span style="color:#9fc0dc">(${surplusStr})</span></span>` +
@@ -492,6 +585,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderTopbar(view.state);
       renderResearch(view.state);
       renderCivics(view.state);
+      renderReligion(view.state);
       renderProduction(view.state);
       renderUnitPanel(view.state, view.selectedUnit, view.odds);
       renderCityPanel(view.state, view.selectedCity);
@@ -508,6 +602,11 @@ export function createUI(handlers: UIHandlers): UI {
       if (!lastState) return;
       civicsOpen = true;
       renderCivics(lastState);
+    },
+    openReligion() {
+      if (!lastState) return;
+      religionOpen = true;
+      renderReligion(lastState);
     },
     banner(text) {
       banner.textContent = text;

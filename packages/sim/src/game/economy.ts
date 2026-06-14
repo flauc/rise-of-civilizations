@@ -20,6 +20,7 @@ export interface CityYields {
   gold: number;
   science: number;
   culture: number;
+  faith: number;
 }
 
 const CITY_RADIUS = 2;
@@ -69,6 +70,7 @@ export function getCityYields(state: GameState, city: City): CityYields {
   let gold = cBase.gold;
   let science = 1; // base research from every city
   let culture = 1; // base culture from every city
+  let faith = 0; // faith only comes from shrines/temples
 
   const eff = civEffectsOf(state, city.ownerId);
   const desertGold = eff.goldPerWorkedDesert ?? 0;
@@ -96,6 +98,7 @@ export function getCityYields(state: GameState, city: City): CityYields {
     gold += def.yields.gold ?? 0;
     science += def.yields.science ?? 0;
     culture += def.yields.culture ?? 0;
+    faith += def.yields.faith ?? 0;
   }
 
   if (city.isCapital) {
@@ -112,7 +115,7 @@ export function getCityYields(state: GameState, city: City): CityYields {
     gold = Math.floor(gold * (1 + (pct.gold ?? 0) / 100));
     science = Math.floor(science * (1 + (pct.science ?? 0) / 100));
   }
-  return { food, production, gold, science, culture };
+  return { food, production, gold, science, culture, faith };
 }
 
 export function foodToGrow(population: number): number {
@@ -272,6 +275,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       owner.researching = null;
     }
   }
+  owner.faith += y.faith;
   owner.cultureProgress += y.culture;
   if (owner.researchingCivic) {
     const def = getCivic(owner.researchingCivic);

@@ -254,9 +254,10 @@
         color: #cfe3f7;
         font-size: 16px;
       }
-      /* Research / civics / production modal */
+      /* Research / civics / religion / production modal */
       #research,
       #civics,
+      #religion,
       #production {
         left: 50%;
         top: 50%;
@@ -297,7 +298,7 @@
         background: #213a52;
         border-radius: 8px;
       }
-      #civics .csub {
+      .csub {
         margin-top: 10px;
         margin-bottom: 2px;
         color: #c79ad6;
@@ -309,7 +310,7 @@
       #civics .row {
         gap: 6px;
       }
-      #civics .tech {
+      .tech {
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -319,20 +320,7 @@
         margin-top: 6px;
         cursor: pointer;
       }
-      #civics .tech:hover {
-        background: #1d344c;
-      }
-      #research .tech {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px;
-        border: 1px solid var(--edge);
-        border-radius: 8px;
-        margin-top: 6px;
-        cursor: pointer;
-      }
-      #research .tech:hover {
+      .tech:hover {
         background: #1d344c;
       }
       /* transient banner */
@@ -395,6 +383,7 @@
         }
         #research,
         #civics,
+        #religion,
         #production {
           width: calc(100vw - 20px);
         }

@@ -2,6 +2,7 @@
 import {
   availableCivics,
   availableTechs,
+  canFoundReligion,
   cityAt,
   citiesOf,
   combatPreview,
@@ -144,13 +145,14 @@ function startGame(session: Session): void {
     onSetCivic: (civicId) => session.order({ type: "setCivic", civicId }),
     onSetGovernment: (governmentId) => session.order({ type: "setGovernment", governmentId }),
     onTogglePolicy: (policyId) => session.order({ type: "togglePolicy", policyId }),
+    onFoundReligion: (cityId, name, beliefs) => session.order({ type: "foundReligion", cityId, name, beliefs }),
     onCloseCity: () => {
       clearSelection();
     },
     onSuggestion: () => actOnSuggestion(),
   });
 
-  type Suggestion = { kind: "units" | "research" | "civic" | "production"; label: string } | null;
+  type Suggestion = { kind: "units" | "research" | "civic" | "religion" | "production"; label: string } | null;
   function computeSuggestion(): Suggestion {
     const me = session.getViewerId();
     const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0);
@@ -161,6 +163,9 @@ function startGame(session: Session): void {
     }
     if (player && player.researchingCivic == null && availableCivics(player).length > 0) {
       return { kind: "civic", label: "🎭 Choose Civic" };
+    }
+    if (canFoundReligion(st(), me)) {
+      return { kind: "religion", label: "☮️ Found Religion" };
     }
     const noProd = citiesOf(st(), me).filter((c) => c.production == null);
     if (noProd.length > 0) return { kind: "production", label: `⚒️ Set Production (${noProd.length})` };
@@ -185,6 +190,8 @@ function startGame(session: Session): void {
       ui.openResearch();
     } else if (s.kind === "civic") {
       ui.openCivics();
+    } else if (s.kind === "religion") {
+      ui.openReligion();
     } else {
       const city = citiesOf(st(), me).find((c) => c.production == null);
       if (city) {

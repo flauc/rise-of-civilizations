@@ -13,6 +13,8 @@ import { computeReachable } from "./movement";
 import { computeAttackTargets } from "./combat";
 import { availableProduction, availableTechs } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
+import { canFoundReligion, availableReligionNames } from "./religion";
+import { BELIEFS } from "@roc/data";
 import { buildableHere } from "./improvements";
 import { isPassableLand } from "./terrain";
 import { UNIT_DEFS, isMilitary, type TechId } from "./content";
@@ -239,6 +241,16 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   }
   for (const pol of unlockedPolicies(player)) {
     if (!player.policies.includes(pol)) applyCommand(state, { type: "togglePolicy", policyId: pol }, playerId);
+  }
+
+  // Found a religion once enough faith is stored.
+  if (canFoundReligion(state, playerId)) {
+    const city = citiesOf(state, playerId)[0];
+    if (city) {
+      const name = availableReligionNames(state)[0] ?? "";
+      const beliefs = BELIEFS.slice(0, 2).map((b) => b.id);
+      applyCommand(state, { type: "foundReligion", cityId: city.id, name, beliefs }, playerId);
+    }
   }
 
   for (const city of citiesOf(state, playerId)) {

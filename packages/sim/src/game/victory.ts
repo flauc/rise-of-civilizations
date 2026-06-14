@@ -55,6 +55,20 @@ export function checkVictory(state: GameState): GameOver | null {
     }
   }
 
+  // Religious — a religion is the majority faith in every civ that has cities.
+  for (const religion of state.religions) {
+    const civsWithCities = state.players.filter(
+      (p) => !p.isBarbarian && [...state.cities.values()].some((c) => c.ownerId === p.id),
+    );
+    if (civsWithCities.length < 2) continue;
+    const dominantEverywhere = civsWithCities.every((p) => {
+      const cities = [...state.cities.values()].filter((c) => c.ownerId === p.id);
+      const following = cities.filter((c) => c.religion === religion.id).length;
+      return following * 2 > cities.length; // strict majority
+    });
+    if (dominantEverywhere) return { winnerId: religion.founderId, condition: "religious" };
+  }
+
   // Score — decided at the turn limit.
   if (state.turn >= state.turnLimit && humans.length > 0) {
     let best = humans[0]!;

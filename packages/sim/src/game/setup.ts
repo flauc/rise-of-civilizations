@@ -146,6 +146,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       cultureProgress: 0,
       government: "chiefdom",
       policies: [],
+      faith: 0,
       explored: new Set<string>(),
     });
   }
@@ -166,6 +167,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       cultureProgress: 0,
       government: "chiefdom",
       policies: [],
+      faith: 0,
       explored: new Set<string>(),
     });
   }
@@ -181,6 +183,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     log: [],
     gameOver: null,
     turnLimit: opts.turnLimit ?? 120,
+    religions: [],
   };
 
   const starts = findStarts(state, count);

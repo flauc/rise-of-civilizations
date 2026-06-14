@@ -1062,3 +1062,32 @@ const POLICY_BY_ID = new Map(POLICIES.map((p) => [p.id, p]));
 export const getCivic = (id: string | undefined) => (id ? CIVIC_BY_ID.get(id) : undefined);
 export const getGovernment = (id: string | undefined) => (id ? GOV_BY_ID.get(id) : undefined);
 export const getPolicy = (id: string | undefined) => (id ? POLICY_BY_ID.get(id) : undefined);
+
+// ===========================================================================
+// Religion: beliefs (chosen when founding) and a pool of religion names.
+// ===========================================================================
+
+export interface BeliefDef {
+  id: string;
+  name: string;
+  desc: string;
+  effects: CivEffects;
+}
+
+export const BELIEFS: BeliefDef[] = [
+  { id: "tithe", name: "Tithe", desc: "+15% gold.", effects: { yieldPercent: { gold: 15 } } },
+  { id: "scholarship", name: "Scholarship", desc: "+15% science.", effects: { yieldPercent: { science: 15 } } },
+  { id: "divine_inspiration", name: "Divine Inspiration", desc: "+10% production.", effects: { yieldPercent: { production: 10 } } },
+  { id: "fertility_rites", name: "Fertility Rites", desc: "+15% food.", effects: { yieldPercent: { food: 15 } } },
+  { id: "warrior_code", name: "Warrior Code", desc: "Melee units +2 combat.", effects: { unitClassCombat: { melee: 2 } } },
+  { id: "holy_warriors", name: "Holy Warriors", desc: "Cavalry units +2 combat.", effects: { unitClassCombat: { cavalry: 2 } } },
+  { id: "sacred_paths", name: "Sacred Paths", desc: "Cavalry +1 movement.", effects: { cavalryMovementBonus: 1 } },
+];
+
+export const RELIGION_NAMES: string[] = [
+  "Sun Cult", "Sky Father", "Ancestor Veneration", "The Great Spirit", "Old Gods",
+  "Path of Light", "Earth Mother", "Storm Lords", "The Eternal Flame", "Moon Worship",
+];
+
+const BELIEF_BY_ID = new Map(BELIEFS.map((b) => [b.id, b]));
+export const getBelief = (id: string | undefined) => (id ? BELIEF_BY_ID.get(id) : undefined);

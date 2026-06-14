@@ -37,6 +37,8 @@ export interface City {
   buildings: BuildingId[];
   /** Tile keys ("col,row") this city's citizens are assigned to work. */
   workedTiles: string[];
+  /** Dominant religion id in this city (undefined = none). */
+  religion?: string;
   isCapital: boolean;
   /** True if this city was founded as a capital (an "original capital" for the
    *  domination victory — stays true even after capture). */
@@ -48,7 +50,7 @@ export interface City {
 
 export interface GameOver {
   winnerId: number;
-  condition: "domination" | "score";
+  condition: "domination" | "score" | "religious";
 }
 
 export interface Player {
@@ -70,7 +72,19 @@ export interface Player {
   government: string;
   /** Active policy-card ids (capped at the government's slot count). */
   policies: string[];
+  // Religion
+  faith: number;
+  /** Religion id this player founded (if any). */
+  foundedReligionId?: string;
   explored: Set<string>;
+}
+
+export interface Religion {
+  id: string;
+  name: string;
+  founderId: number;
+  holyCityId: number;
+  beliefs: string[];
 }
 
 export interface GameState {
@@ -84,6 +98,7 @@ export interface GameState {
   log: string[];
   gameOver: GameOver | null;
   turnLimit: number;
+  religions: Religion[];
 }
 
 /** Construct a unit with all combat fields defaulted. movementLeft starts 0

@@ -153,6 +153,7 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
     for (const t of state.map.tiles) if (t.ownerCityId === city.id) t.ownerCityId = undefined;
     state.cities.delete(city.id);
     state.log.push(`Barbarians razed ${city.name}!`);
+    applyVictoryCheck(state);
     return;
   }
 

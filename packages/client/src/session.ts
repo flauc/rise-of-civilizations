@@ -135,6 +135,8 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     cultureProgress: p.id === view.yourId ? view.you.cultureProgress : 0,
     government: p.id === view.yourId ? view.you.government : "chiefdom",
     policies: p.id === view.yourId ? [...view.you.policies] : [],
+    faith: p.id === view.yourId ? view.you.faith : 0,
+    foundedReligionId: p.id === view.yourId ? view.you.foundedReligionId : undefined,
     explored: p.id === view.yourId ? explored : new Set<string>(),
   }));
 
@@ -149,6 +151,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     log: view.log,
     gameOver: view.gameOver,
     turnLimit: 0,
+    religions: view.religions,
   };
   return { state, visible: new Set(view.visible) };
 }
