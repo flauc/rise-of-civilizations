@@ -12,8 +12,11 @@ import {
   unitsOf,
   workableTiles,
   UNIT_DEFS,
+  TERRAIN_NAMES,
+  isRough,
   serializeState,
 } from "@roc/sim";
+import { getTile } from "@roc/shared";
 import { Camera } from "./camera";
 import {
   computeWorldBounds,
@@ -24,7 +27,7 @@ import {
 } from "./renderer";
 import { drawOverlay } from "./overlay";
 import { attachInput } from "./input";
-import { createUI, type CombatOdds } from "./ui";
+import { createUI, type CombatOdds, type TileTip } from "./ui";
 import { createMinimap } from "./minimap";
 import { createLobby } from "./lobby-ui";
 import { loadTerrainAtlas } from "./terrain-assets";
@@ -51,6 +54,7 @@ function startGame(session: Session): void {
 
   let selectedUnitId: number | null = null;
   let selectedCityId: number | null = null;
+  let selectedTile: { col: number; row: number } | null = null;
   let reachable = new Set<string>();
   let attackTargets = new Set<string>();
   let cityWorkable = new Set<string>();
@@ -117,21 +121,34 @@ function startGame(session: Session): void {
   function selectUnit(id: number): void {
     selectedUnitId = id;
     selectedCityId = null;
+    selectedTile = null;
     recomputeOverlays();
     needsRedraw = true;
   }
   function selectCity(id: number): void {
     selectedCityId = id;
     selectedUnitId = null;
+    selectedTile = null;
     reachable = new Set();
     attackTargets = new Set();
     const city = st().cities.get(id);
     cityWorkable = city ? new Set(workableTiles(st(), city).map((t) => `${t.col},${t.row}`)) : new Set();
     needsRedraw = true;
   }
+  function selectTile(col: number, row: number): void {
+    selectedTile = { col, row };
+    selectedUnitId = null;
+    selectedCityId = null;
+    reachable = new Set();
+    attackTargets = new Set();
+    cityWorkable = new Set();
+    hoverOdds = null;
+    needsRedraw = true;
+  }
   function clearSelection(): void {
     selectedUnitId = null;
     selectedCityId = null;
+    selectedTile = null;
     reachable = new Set();
     attackTargets = new Set();
     cityWorkable = new Set();
@@ -165,6 +182,9 @@ function startGame(session: Session): void {
     onTogglePolicy: (policyId) => session.order({ type: "togglePolicy", policyId }),
     onFoundReligion: (cityId, name, beliefs) => session.order({ type: "foundReligion", cityId, name, beliefs }),
     onCloseCity: () => {
+      clearSelection();
+    },
+    onCloseTile: () => {
       clearSelection();
     },
     onSuggestion: () => actOnSuggestion(),
@@ -284,28 +304,47 @@ function startGame(session: Session): void {
       session.order({ type: "move", unitId: selectedUnitId, col: off.col, row: off.row });
     } else if (c && c.ownerId === me) {
       selectCity(c.id);
+    } else if (isExplored(off.col, off.row)) {
+      // Nothing actionable here — inspect the tile instead of just deselecting.
+      selectTile(off.col, off.row);
     } else {
       clearSelection();
     }
   }
 
+  function isExplored(col: number, row: number): boolean {
+    const me = session.getViewerId();
+    return st().players.find((p) => p.id === me)?.explored?.has(`${col},${row}`) ?? false;
+  }
+
+  /** Limited tile info for the cursor-following hover tooltip. */
+  function tipFor(col: number, row: number): TileTip | null {
+    if (!isExplored(col, row)) return { name: "Unexplored", rough: null };
+    const tile = getTile(st().map, col, row);
+    if (!tile) return null;
+    let name = TERRAIN_NAMES[tile.terrain];
+    if (tile.feature === "village") name = "Village";
+    else if (tile.feature === "barb_camp") name = "Barbarian Camp";
+    return { name, rough: isRough(tile.terrain) };
+  }
+
   function onHover(sx: number, sy: number): void {
+    const off = screenToTile(camera, st().map, sx, sy);
+    ui.setTileTip(off ? tipFor(off.col, off.row) : null, sx, sy);
+
     let next: CombatOdds | null = null;
-    if (selectedUnitId != null) {
-      const off = screenToTile(camera, st().map, sx, sy);
-      if (off && attackTargets.has(`${off.col},${off.row}`)) {
-        const u = st().units.get(selectedUnitId);
-        const prev = u ? combatPreview(st(), u, off.col, off.row) : null;
-        if (prev) {
-          const city = cityAt(st(), off.col, off.row);
-          const enemy = unitAt(st(), off.col, off.row);
-          next = {
-            targetName: city ? city.name : enemy ? UNIT_DEFS[enemy.type].name : "target",
-            toDefender: prev.toDefender,
-            toAttacker: prev.toAttacker,
-            vsCity: prev.vsCity,
-          };
-        }
+    if (selectedUnitId != null && off && attackTargets.has(`${off.col},${off.row}`)) {
+      const u = st().units.get(selectedUnitId);
+      const prev = u ? combatPreview(st(), u, off.col, off.row) : null;
+      if (prev) {
+        const city = cityAt(st(), off.col, off.row);
+        const enemy = unitAt(st(), off.col, off.row);
+        next = {
+          targetName: city ? city.name : enemy ? UNIT_DEFS[enemy.type].name : "target",
+          toDefender: prev.toDefender,
+          toAttacker: prev.toAttacker,
+          vsCity: prev.vsCity,
+        };
       }
     }
     if (next?.targetName !== hoverOdds?.targetName || next?.toDefender !== hoverOdds?.toDefender) {
@@ -318,6 +357,7 @@ function startGame(session: Session): void {
     onChange: () => (needsRedraw = true),
     onHover,
     onHoverEnd: () => {
+      ui.setTileTip(null, 0, 0);
       if (hoverOdds) {
         hoverOdds = null;
         needsRedraw = true;
@@ -388,6 +428,10 @@ function startGame(session: Session): void {
         state: st(),
         selectedUnit: selectedUnitId != null ? st().units.get(selectedUnitId) ?? null : null,
         selectedCity: selCity,
+        selectedTile:
+          selectedTile && isExplored(selectedTile.col, selectedTile.row)
+            ? getTile(st().map, selectedTile.col, selectedTile.row) ?? null
+            : null,
         viewerId: me,
         odds: hoverOdds,
         suggestion: computeSuggestion(),

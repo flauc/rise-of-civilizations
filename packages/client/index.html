@@ -23,7 +23,7 @@
         margin: 0;
         height: 100%;
         overflow: hidden;
-        background: #0b1622;
+        background: #0a1624;
         color: #cfe3f7;
       }
       #game {
@@ -31,6 +31,7 @@
         width: 100vw;
         height: 100vh;
         touch-action: none;
+        background: #0a1624;
       }
       .btn {
         font: inherit;
@@ -168,6 +169,70 @@
         bottom: 12px;
         min-width: 180px;
       }
+      /* Selected-tile panel (shares the bottom-left slot with the unit panel) */
+      #tile-panel {
+        left: 12px;
+        bottom: 12px;
+        width: 240px;
+      }
+      .tinfo-yields {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 12px;
+        margin-top: 6px;
+        padding: 6px 8px;
+        background: #14283b;
+        border-radius: 8px;
+      }
+      .tinfo-list {
+        margin: 8px 0 0;
+        padding: 0;
+        list-style: none;
+        font-size: 12px;
+        line-height: 1.5;
+      }
+      .tinfo-list li {
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+      }
+      .tinfo-good {
+        color: #7ad08a;
+      }
+      .tinfo-bad {
+        color: #e0907d;
+      }
+      .tinfo-neutral {
+        color: #9fc0dc;
+      }
+      #tile-panel .tinfo-toggle {
+        margin-top: 8px;
+        width: 100%;
+      }
+      /* Hover tooltip — limited tile info that follows the cursor */
+      #tile-tip {
+        position: fixed;
+        z-index: 40;
+        pointer-events: none;
+        background: rgba(8, 16, 26, 0.92);
+        border: 1px solid var(--edge);
+        border-radius: 8px;
+        padding: 4px 9px;
+        font-size: 12px;
+        line-height: 1.35;
+        white-space: nowrap;
+        text-shadow: 0 1px 2px #000;
+        transform: translate(-50%, calc(-100% - 14px));
+      }
+      #tile-tip b {
+        color: #fff;
+      }
+      #tile-tip .tt-rough {
+        color: #e0b07d;
+      }
+      #tile-tip .tt-open {
+        color: #9fc0dc;
+      }
       /* City panel */
       #city-panel {
         right: 12px;
@@ -227,11 +292,11 @@
         position: fixed;
         right: 12px;
         bottom: 12px;
-        border: 1px solid var(--edge);
-        border-radius: 8px;
-        background: var(--panel);
+        border-radius: 50%;
+        background: #0a1624;
         touch-action: none;
         cursor: pointer;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
       }
       /* Victory / defeat overlay */
       #gameover {
@@ -537,6 +602,7 @@
           max-width: 116px;
         }
         #unit-panel,
+        #tile-panel,
         #city-panel {
           left: 6px;
           right: 6px;

@@ -38,6 +38,13 @@ import {
   buildingInfo,
   techUnlocks,
   unitInfo,
+  tileYields,
+  moveCost,
+  isRough,
+  isWaterTerrain,
+  isPassableLand,
+  terrainDefense,
+  TERRAIN_NAMES,
   type City,
   type GameState,
   type ImprovementKind,
@@ -46,6 +53,7 @@ import {
   type TechId,
   type Unit,
 } from "@roc/sim";
+import type { Tile } from "@roc/shared";
 
 export interface CombatOdds {
   targetName: string;
@@ -59,10 +67,77 @@ export interface Suggestion {
   label: string;
 }
 
+/** Limited info shown in the cursor-following hover tooltip. */
+export interface TileTip {
+  name: string;
+  /** true = rough, false = open, null = unknown/unexplored (chip hidden). */
+  rough: boolean | null;
+}
+
+type TileLine = { kind: "good" | "bad" | "neutral"; text: string };
+interface TileReport {
+  name: string;
+  subtitle: string;
+  yields: ReturnType<typeof tileYields>;
+  lines: TileLine[];
+}
+
+/** Build the human-readable benefits/deficits breakdown for a tile. */
+function tileReport(state: GameState, tile: Tile): TileReport {
+  const t = tile.terrain;
+  const y = tileYields(tile);
+  const water = isWaterTerrain(t);
+  const passable = isPassableLand(t);
+  const rough = isRough(t);
+  const def = terrainDefense(t);
+
+  let name = TERRAIN_NAMES[t];
+  if (tile.feature === "village") name = `${TERRAIN_NAMES[t]} · Village`;
+  else if (tile.feature === "barb_camp") name = `${TERRAIN_NAMES[t]} · Barbarian Camp`;
+
+  let subtitle: string;
+  if (water) subtitle = "Water · naval units only";
+  else if (!passable) subtitle = "Impassable to land units";
+  else if (tile.road) subtitle = "Open · road (fast movement)";
+  else if (rough) subtitle = `Rough · ${moveCost(t)} moves to enter`;
+  else subtitle = "Open · 1 move to enter";
+
+  const lines: TileLine[] = [];
+  if (y.food) lines.push({ kind: "good", text: `+${y.food} food${y.food >= 2 ? " — quick city growth" : ""}` });
+  if (y.production) lines.push({ kind: "good", text: `+${y.production} production` });
+  if (y.gold) lines.push({ kind: "good", text: `+${y.gold} gold` });
+  if (y.science) lines.push({ kind: "good", text: `+${y.science} science` });
+  if (def > 0) lines.push({ kind: "good", text: `+${def} combat defense for units standing here` });
+  if (tile.improvement) {
+    const imp = IMPROVEMENT_DEFS[tile.improvement as ImprovementKind]?.name ?? tile.improvement;
+    lines.push({ kind: "good", text: `${imp} improvement boosts its yields` });
+  }
+  if (tile.road) lines.push({ kind: "good", text: "Road speeds movement through this tile" });
+  if (tile.feature === "village") lines.push({ kind: "good", text: "Village — a reward when one of your units enters" });
+
+  if (!y.food && !water) lines.push({ kind: "bad", text: "No food — cannot feed a growing city" });
+  if (rough) lines.push({ kind: "bad", text: "Rough ground — slow for units to cross" });
+  if (!passable && !water) lines.push({ kind: "bad", text: "Land units cannot enter" });
+  if (water) lines.push({ kind: "bad", text: "Needs a naval unit to cross" });
+  else if (def === 0 && passable) lines.push({ kind: "neutral", text: "No defensive cover for units" });
+  if (tile.feature === "barb_camp") lines.push({ kind: "bad", text: "Barbarian camp — clear it for a reward" });
+
+  if (tile.ownerCityId != null) {
+    const city = state.cities.get(tile.ownerCityId);
+    if (city) lines.push({ kind: "neutral", text: `Within ${city.name}'s territory` });
+  } else if (passable && !water) {
+    lines.push({ kind: "neutral", text: "Unclaimed — found or expand a city to work it" });
+  }
+
+  return { name, subtitle, yields: y, lines };
+}
+
 export interface UIView {
   state: GameState;
   selectedUnit: Unit | null;
   selectedCity: City | null;
+  /** Inspected tile, shown when no unit/city is selected. */
+  selectedTile?: Tile | null;
   /** The player this client is rendering for. */
   viewerId: number;
   /** Combat odds for the attack target currently hovered (if any). */
@@ -85,6 +160,7 @@ export interface UIHandlers {
   onTogglePolicy(policyId: string): void;
   onFoundReligion(cityId: number, name: string, beliefs: string[]): void;
   onCloseCity(): void;
+  onCloseTile(): void;
   onSuggestion(): void;
   onSave(name: string): Promise<void>;
   onMenuOpen(): void;
@@ -99,6 +175,8 @@ export interface UI {
   openReligion(): void;
   openTechTree(): void;
   setMpSaves(saves: SaveRecord[]): void;
+  /** Show/move the cursor-following hover tooltip (null hides it). */
+  setTileTip(tip: TileTip | null, x: number, y: number): void;
 }
 
 function div(id: string, cls: string): HTMLDivElement {
@@ -126,6 +204,8 @@ function prodName(item: ProductionItem): string {
 export function createUI(handlers: UIHandlers): UI {
   const topbar = div("topbar", "panel");
   const unitPanel = div("unit-panel", "panel hidden");
+  const tilePanel = div("tile-panel", "panel hidden");
+  const tileTip = div("tile-tip", "hidden");
   const cityPanel = div("city-panel", "panel hidden");
   const research = div("research", "panel hidden");
   const techtree = div("techtree", "panel hidden");
@@ -162,6 +242,7 @@ export function createUI(handlers: UIHandlers): UI {
   let civicsOpen = false;
   let religionOpen = false;
   let productionOpen = false;
+  let tileExpanded = false;
   let prodCityId: number | null = null;
   let chosenBeliefs: string[] = [];
   let bannerTimer = 0;
@@ -713,6 +794,52 @@ export function createUI(handlers: UIHandlers): UI {
     );
   };
 
+  const renderTilePanel = (state: GameState, tile: Tile | null): void => {
+    if (!tile) {
+      tilePanel.classList.add("hidden");
+      return;
+    }
+    tilePanel.classList.remove("hidden");
+    const r = tileReport(state, tile);
+    const y = r.yields;
+    const chip = (icon: string, n: number) =>
+      `<span style="${n ? "" : "opacity:.35"}" title="${icon}">${icon} <b>${n}</b></span>`;
+
+    let html =
+      `<div class="row" style="justify-content:space-between">` +
+      `<b style="font-size:15px">${r.name}</b>` +
+      `<button class="btn" id="tile-close">✕</button></div>` +
+      `<div class="sub" style="margin-top:2px">${r.subtitle}</div>` +
+      `<div class="tinfo-yields">` +
+      chip("🍞", y.food) +
+      chip("⚒️", y.production) +
+      chip("🪙", y.gold) +
+      chip("🔬", y.science) +
+      `</div>` +
+      `<button class="btn tinfo-toggle" id="tile-toggle">${tileExpanded ? "Hide details ▴" : "Benefits & deficits ▾"}</button>`;
+
+    if (tileExpanded) {
+      html +=
+        `<ul class="tinfo-list">` +
+        r.lines
+          .map((l) => {
+            const mark = l.kind === "good" ? "▲" : l.kind === "bad" ? "▼" : "•";
+            return `<li><span class="tinfo-${l.kind}">${mark}</span><span>${l.text}</span></li>`;
+          })
+          .join("") +
+        `</ul>`;
+    }
+
+    tilePanel.innerHTML = html;
+    tilePanel
+      .querySelector<HTMLButtonElement>("#tile-close")!
+      .addEventListener("click", () => handlers.onCloseTile());
+    tilePanel.querySelector<HTMLButtonElement>("#tile-toggle")!.addEventListener("click", () => {
+      tileExpanded = !tileExpanded;
+      renderTilePanel(state, tile);
+    });
+  };
+
   const renderCityPanel = (state: GameState, city: City | null): void => {
     if (!city) {
       cityPanel.classList.add("hidden");
@@ -803,6 +930,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderReligion(view.state);
       renderProduction(view.state);
       renderUnitPanel(view.state, view.selectedUnit, view.viewerId, view.odds);
+      renderTilePanel(view.state, view.selectedTile ?? null);
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state);
       renderGameOver(view.state);
@@ -849,6 +977,22 @@ export function createUI(handlers: UIHandlers): UI {
     setMpSaves(saves) {
       mpSaves = saves;
       if (saveOpen && lastState) renderSaveModal(lastState);
+    },
+    setTileTip(tip, x, y) {
+      if (!tip) {
+        tileTip.classList.add("hidden");
+        return;
+      }
+      tileTip.classList.remove("hidden");
+      const rough =
+        tip.rough === null
+          ? ""
+          : tip.rough
+            ? ` · <span class="tt-rough">Rough</span>`
+            : ` · <span class="tt-open">Open</span>`;
+      tileTip.innerHTML = `<b>${tip.name}</b>${rough}`;
+      tileTip.style.left = `${x}px`;
+      tileTip.style.top = `${y}px`;
     },
     banner(text) {
       showBanner(text);
