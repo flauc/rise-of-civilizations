@@ -330,7 +330,7 @@ function startGame(session: Session): void {
 
   function onHover(sx: number, sy: number): void {
     const off = screenToTile(camera, st().map, sx, sy);
-    ui.setTileTip(off ? tipFor(off.col, off.row) : null, sx, sy);
+    ui.setTileTip(off ? tipFor(off.col, off.row) : null);
 
     let next: CombatOdds | null = null;
     if (selectedUnitId != null && off && attackTargets.has(`${off.col},${off.row}`)) {
@@ -357,7 +357,7 @@ function startGame(session: Session): void {
     onChange: () => (needsRedraw = true),
     onHover,
     onHoverEnd: () => {
-      ui.setTileTip(null, 0, 0);
+      ui.setTileTip(null);
       if (hoverOdds) {
         hoverOdds = null;
         needsRedraw = true;

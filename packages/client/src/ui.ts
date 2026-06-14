@@ -175,8 +175,8 @@ export interface UI {
   openReligion(): void;
   openTechTree(): void;
   setMpSaves(saves: SaveRecord[]): void;
-  /** Show/move the cursor-following hover tooltip (null hides it). */
-  setTileTip(tip: TileTip | null, x: number, y: number): void;
+  /** Show the docked hover tooltip with limited tile info (null hides it). */
+  setTileTip(tip: TileTip | null): void;
 }
 
 function div(id: string, cls: string): HTMLDivElement {
@@ -978,7 +978,7 @@ export function createUI(handlers: UIHandlers): UI {
       mpSaves = saves;
       if (saveOpen && lastState) renderSaveModal(lastState);
     },
-    setTileTip(tip, x, y) {
+    setTileTip(tip) {
       if (!tip) {
         tileTip.classList.add("hidden");
         return;
@@ -991,8 +991,6 @@ export function createUI(handlers: UIHandlers): UI {
             ? ` · <span class="tt-rough">Rough</span>`
             : ` · <span class="tt-open">Open</span>`;
       tileTip.innerHTML = `<b>${tip.name}</b>${rough}`;
-      tileTip.style.left = `${x}px`;
-      tileTip.style.top = `${y}px`;
     },
     banner(text) {
       showBanner(text);
