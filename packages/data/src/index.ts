@@ -28,6 +28,8 @@ export interface CivDef {
   effects: CivEffects;
   /** Historically-grounded city names used when this civ founds cities. */
   cityNames: string[];
+  /** A short, flavorful quote attributed to the leader. */
+  leaderQuote?: string;
 }
 
 export interface CivicDef {
@@ -1010,6 +1012,95 @@ export const CIVILIZATIONS: CivDef[] = [
     cityNames: ["Honolulu", "Hilo", "Kailua", "Lahaina", "Waipahu", "Pearl City", "Kahului", "Kona", "Molokai", "Kauai"],
   },
 ];
+
+const LEADER_QUOTES: Record<string, string> = {
+  sumer: "I will set up my name where the names of famous men are written.",
+  akkad: "The king's shadow is long, but his word is longer still.",
+  babylon: "That the strong might not oppress the weak, I have inscribed my law upon stone.",
+  assyria: "I am learned, I have seen what is hidden from others; wisdom is my counsel.",
+  hittites: "Let the storm-god strike where Hatti's chariots roll.",
+  elam: "Between the highlands and the plain, we build temples that touch the sky.",
+  phoenicia: "I found a city and a people; let legend do the rest.",
+  lydia: "Count no man happy until his final day has closed.",
+  median_empire: "From the Zagros to the steppe, the Medes ride as one.",
+  persia: "Diversity in counsel, unity in command.",
+  parthia: "Poison cannot kill what has been tempered by patience.",
+  sassanid_persia: "Justice is the soul of kingship; without it, empire is mere plunder.",
+  egypt: "I have restored that which was in ruins; I have made the obscure magnificent.",
+  kush_nubia: "Rome may take our gold, but never our pride.",
+  carthage: "I will either find a way, or make one.",
+  aksum: "By this cross, Aksum is made one beneath heaven.",
+  ethiopia_zagwe: "From living rock we carve a prayer that stone may outlast empire.",
+  mali: "Gold is the dust beneath the feet of the righteous pilgrim.",
+  ghana_empire: "The gold of Wagadu flows only where trade is guarded by spears.",
+  songhai: "The scholar's ink is holier than the martyr's blood.",
+  great_zimbabwe: "Great Zimbabwe stands because its stones speak of many hands made one.",
+  kanem_bornu: "A kingdom is a garden; neglect it, and the desert returns.",
+  minoans: "Where the bull dances, the seas obey.",
+  mycenaean_greece: "A thousand ships for honor; one throne for the victor.",
+  greece: "What you leave behind is not what is engraved in stone monuments, but what is woven into the lives of others.",
+  sparta: "Molon labe — come and take them.",
+  macedon: "There is nothing impossible to him who will try.",
+  etruscans: "Rome's gates shall open to Etruscan courage, or not at all.",
+  rome: "I have done my duty; now I may rest.",
+  celts_gauls: "United Gaul is a single people, and the Republic shall know it.",
+  byzantium: "The emperor is never weary of conferring benefits on his subjects.",
+  norse: "A coward's fate is worse than a warrior's wound.",
+  franks: "To have another language is to possess a second soul.",
+  goths: "Goth and Roman may differ in custom, but a just reign unites both.",
+  anglo_saxon_england: "A wise man seeks wisdom until his last breath.",
+  france: "I am not afraid; I was born to do this.",
+  castile_spain: "I will cleanse my kingdom and send its light across the western sea.",
+  portugal: "The sea is dangerous and its storms terrible, but these obstacles have never yet been sufficient reason to remain ashore.",
+  venice: "Venice does not ask permission; Venice sets the price.",
+  genoa: "The sea is our wall, and our galleys its gates.",
+  dutch_republic: "I cannot approve of princes ruling the conscience of their subjects.",
+  holy_roman_empire: "The empire is a forge; I am its hammer.",
+  kievan_rus: "Law and faith together raise Kiev above the northern forests.",
+  poland_lithuania: "I choose not a crown, but a people.",
+  hungary: "A kingdom without a library is a body without a soul.",
+  han_china: "I have unified all under heaven; let a thousand ages remember.",
+  china_tang_song: "With a bronze mirror, one sees one's face; with history, one's age.",
+  china_ming: "The dragon throne commands the seas; let the treasure fleets sail.",
+  maurya: "The only true conquest is the conquest of the self.",
+  gupta_india: "Prosperity is the lotus that blooms from just rule.",
+  chola: "Every temple bell is a verse in the empire's hymn.",
+  japan: "The nation is a garden; trim too little and weeds grow, too much and flowers die.",
+  korea: "The letters I give my people are the voice of every soul.",
+  tibet: "Between the snows and the sky, let wisdom and law find a throne.",
+  dai_viet_vietnam: "From Lam Son's bamboo groves, a nation's will is forged.",
+  khmer: "I have built hospitals and roads; compassion is the true monument.",
+  srivijaya: "Where the monsoon blows, Srivijaya's ships carry more than cargo.",
+  majapahit: "Majapahit is the mandala around which the archipelago turns.",
+  pagan_burma: "Pagodas rise from faith, but kingdoms stand on discipline.",
+  ayutthaya_siam: "The bell of justice hangs at my gate; any may ring it.",
+  scythians: "I warned you I would satiate your thirst with blood.",
+  xiongnu: "The steppe bows only to the arrow that knows its target.",
+  huns: "It is not enough to be victorious; the world must know it trembles.",
+  gokturks: "From the wolf's stock, we build an empire of the sky.",
+  seljuks: "Behold the fate of princes; glory is dust, and power a loan.",
+  mongols: "If you had not committed great sins, God would not have sent a punishment like me upon you.",
+  timurids: "I am the scourge of God appointed to chastise you.",
+  ottomans: "The city is fallen; from this day forth, it is a capital of empires.",
+  olmec: "In stone we carve the first face of the people.",
+  maya: "I have taken my seat in the sky; let time read my name.",
+  zapotec: "Lightning speaks for the rain-giver; we are its voice.",
+  teotihuacan: "The avenue of the dead leads to the heart of the sun.",
+  toltec: "Let the feathered serpent guide us from war to wisdom.",
+  aztec: "The sun himself weeps when the warrior's song is stilled.",
+  inca: "I have turned the world upside down and made it Inca.",
+  muisca: "Beneath the lake's mirror, gold is only the shadow of the gods.",
+  mississippian_cahokia: "The mound is the earth; the sun above, our ancestor.",
+  haudenosaunee: "In peace we plant, in council we thrive, in unity we endure.",
+  pueblo: "We are the people of the sun; our walls hold both home and prayer.",
+  polynesia: "Across the wide ocean we carried our gods, our seed, and our name.",
+  maori: "I have returned from the land of the long white cloud.",
+  hawaii: "The life of the land is perpetuated in righteousness.",
+};
+
+for (const civ of CIVILIZATIONS) {
+  civ.leaderQuote = LEADER_QUOTES[civ.id];
+}
 
 const BY_ID = new Map(CIVILIZATIONS.map((c) => [c.id, c]));
 

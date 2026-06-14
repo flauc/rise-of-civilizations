@@ -89,7 +89,7 @@ export interface RenderOptions {
   improvementAtlas?: ImprovementAtlas | undefined;
 }
 
-const UNEXPLORED_FILL = "#0a1320";
+const UNEXPLORED_FILL = "#0a1624";
 const FOG_OVERLAY = "rgba(8,16,26,0.5)";
 
 /** Draws the visible map; returns how many tiles were rendered (for the HUD). */
@@ -100,10 +100,12 @@ export function drawScene(
   opts: RenderOptions,
 ): number {
   const { dpr, cssWidth, cssHeight, hovered } = opts;
+  // Clear/fill in device pixels first so there is no sub-pixel gap on fractional-DPR displays.
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+  ctx.fillStyle = "#0a1624";
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, cssWidth, cssHeight);
-  ctx.fillStyle = "#0b1622";
-  ctx.fillRect(0, 0, cssWidth, cssHeight);
 
   const size = BASE_SIZE * camera.zoom;
   const footprint = tileFootprint(size); // square hex footprint (width == height)

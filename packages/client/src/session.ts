@@ -37,12 +37,14 @@ export interface Session {
 
 // ---- local (single-player hotseat) --------------------------------------
 
-export type MapSize = "small" | "medium" | "large";
+export type MapSize = "small" | "medium" | "large" | "huge" | "giant";
 
 export const MAP_DIMENSIONS: Record<MapSize, { cols: number; rows: number }> = {
   small: { cols: 36, rows: 24 },
   medium: { cols: 52, rows: 34 },
   large: { cols: 68, rows: 44 },
+  huge: { cols: 84, rows: 56 },
+  giant: { cols: 100, rows: 68 },
 };
 
 export interface LocalGameOptions {

@@ -67,7 +67,7 @@ The client accepts URL params: `?seed=anything&cols=80&rows=56`.
 ## Main menu
 
 The game opens on a **Start Screen** with three options:
-- **Single Player** — choose your civilization, map size, number of AI opponents, and barbarian intensity, then start a local game.
+- **Single Player** — choose your civilization, map size (Small / Medium / Large / Huge / Giant), number of AI opponents, and barbarian intensity, then start a local game.
 - **Multiplayer** — connect to a Bun server, register or log in, then create or join a lobby.
 - **Load Game** — resume a single-player save stored in your browser's IndexedDB.
 

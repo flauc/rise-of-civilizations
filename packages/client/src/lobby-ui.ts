@@ -29,6 +29,8 @@ function mapSelect(id: string, value: MapSize): string {
     { value: "small", label: "Small" },
     { value: "medium", label: "Medium" },
     { value: "large", label: "Large" },
+    { value: "huge", label: "Huge" },
+    { value: "giant", label: "Giant" },
   ];
   return `<select id="${id}" class="menu-in">${sizes
     .map((s) => `<option value="${s.value}"${s.value === value ? " selected" : ""}>${s.label}</option>`)
@@ -77,15 +79,22 @@ export function createLobby(onStart: (session: Session) => void): void {
 
   const root = document.createElement("div");
   root.id = "lobby";
-  root.innerHTML = `<div id="menu-card" class="menu-card"></div>`;
+  root.innerHTML = `
+    <div class="lobby-layout">
+      <div class="lobby-left" id="lobby-left"></div>
+      <div class="lobby-right" id="lobby-right"></div>
+    </div>`;
 
   const style = document.createElement("style");
   style.textContent = `
-    #lobby{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 30%,#14283b 0%,#0b1622 70%);z-index:50}
-    .menu-card{width:420px;max-width:92vw;max-height:92vh;overflow:auto;background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:28px;box-shadow:0 20px 60px rgba(0,0,0,.45);backdrop-filter:blur(3px)}
-    .menu-title{font-size:28px;font-weight:800;text-align:center;color:#fff;letter-spacing:.5px;margin-bottom:4px}
-    .menu-subtitle{text-align:center;color:#9fc0dc;font-size:14px;margin-bottom:24px}
-    .menu-version{text-align:center;color:#6b8aa8;font-size:12px;margin-top:18px}
+    #lobby{position:fixed;inset:0;z-index:50;background:#0b1622}
+    .lobby-layout{display:flex;height:100%;width:100%}
+    .lobby-left{width:380px;max-width:92vw;flex-shrink:0;display:flex;flex-direction:column;background:linear-gradient(180deg,#132536 0%,#0d1b27 100%);border-right:1px solid var(--edge);padding:28px;overflow:auto;box-shadow:4px 0 24px rgba(0,0,0,.35)}
+    .lobby-right{flex:1;position:relative;display:flex;flex-direction:column;justify-content:flex-end;padding:48px 56px;background:radial-gradient(circle at 70% 30%,#1a3a52 0%,#0b1622 60%);overflow:hidden}
+    .lobby-right::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,22,34,0) 0%,rgba(11,22,34,.75) 100%);pointer-events:none}
+    .lobby-title{font-size:26px;font-weight:800;color:#fff;letter-spacing:.5px;margin-bottom:4px}
+    .lobby-subtitle{color:#9fc0dc;font-size:13px;margin-bottom:24px}
+    .lobby-version{margin-top:auto;color:#6b8aa8;font-size:12px;text-align:center;padding-top:18px}
     .menu-actions{display:flex;flex-direction:column;gap:10px;margin-top:8px}
     .menu-btn{width:100%;padding:12px 14px;font:inherit;font-size:15px;color:#eaf3fb;background:#213a52;border:1px solid var(--edge);border-radius:10px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;transition:background .12s,border-color .12s}
     .menu-btn:hover{background:#2b4d6c;border-color:rgba(255,255,255,.22)}
@@ -111,12 +120,30 @@ export function createLobby(onStart: (session: Session) => void): void {
     .save-row .name{font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .save-row .meta{color:#9fc0dc;font-size:11.5px;margin-top:2px}
     .save-row .actions{display:flex;gap:6px;flex-shrink:0}
-    .hidden{display:none !important}`;
+    .hidden{display:none !important}
+    .showcase{position:relative;z-index:1;max-width:720px}
+    .showcase-label{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#9fc0dc;margin-bottom:10px;opacity:.85}
+    .showcase-civ{font-size:52px;font-weight:900;color:#fff;line-height:1.05;text-shadow:0 4px 24px rgba(0,0,0,.45)}
+    .showcase-leader{font-size:22px;color:#ffd967;margin-top:8px;font-weight:600}
+    .showcase-quote{font-size:20px;color:#e8f4ff;line-height:1.5;margin-top:22px;font-style:italic;max-width:640px;text-shadow:0 2px 12px rgba(0,0,0,.4)}
+    .showcase-quote::before{content:"“";margin-right:4px;opacity:.7}
+    .showcase-quote::after{content:"”";margin-left:4px;opacity:.7}
+    .showcase-ability{margin-top:26px;background:rgba(11,22,34,.55);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:16px 18px;backdrop-filter:blur(4px)}
+    .showcase-ability-name{font-size:15px;font-weight:700;color:#fff;margin-bottom:4px}
+    .showcase-ability-desc{font-size:13px;color:#b8d4ec;line-height:1.4}
+    .showcase-uniques{margin-top:10px;font-size:12px;color:#9fc0dc}
+    .showcase-art{position:absolute;top:48px;right:56px;width:260px;height:320px;border:2px dashed rgba(255,255,255,.15);border-radius:16px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.45);font-size:13px;text-align:center;background:rgba(255,255,255,.03);z-index:1}
+    .showcase-reroll{position:absolute;top:48px;right:56px;z-index:2;margin-top:338px;width:260px}
+    @media(max-width:860px){
+      .lobby-left{width:100%;border-right:none}
+      .lobby-right{display:none}
+    }`;
   document.head.appendChild(style);
   document.body.appendChild(root);
 
-  const card = root.querySelector<HTMLDivElement>("#menu-card")!;
-  const $ = <T extends HTMLElement>(sel: string) => card.querySelector<T>(sel)!;
+  const left = root.querySelector<HTMLDivElement>("#lobby-left")!;
+  const right = root.querySelector<HTMLDivElement>("#lobby-right")!;
+  const $ = <T extends HTMLElement>(sel: string) => left.querySelector<T>(sel)!;
   const $input = (sel: string) => $<HTMLInputElement>(sel);
   const $select = (sel: string) => $<HTMLSelectElement>(sel);
   const $btn = (sel: string) => $<HTMLButtonElement>(sel);
@@ -124,6 +151,29 @@ export function createLobby(onStart: (session: Session) => void): void {
     root.remove();
     style.remove();
   };
+
+  function pickRandomCiv(): typeof CIVILIZATIONS[number] {
+    return CIVILIZATIONS[Math.floor(Math.random() * CIVILIZATIONS.length)]!;
+  }
+
+  function renderShowcase(): void {
+    const civ = pickRandomCiv();
+    right.innerHTML = `
+      <div class="showcase-art">Leader art<br/>coming soon</div>
+      <button class="menu-btn secondary showcase-reroll" id="showcase-reroll"><span class="icon">🎲</span> Show another civilization</button>
+      <div class="showcase">
+        <div class="showcase-label">Featured Civilization</div>
+        <div class="showcase-civ">${escapeHtml(civ.name)}</div>
+        <div class="showcase-leader">${escapeHtml(civ.leader)}</div>
+        <div class="showcase-quote">${escapeHtml(civ.leaderQuote || "")}</div>
+        <div class="showcase-ability">
+          <div class="showcase-ability-name">${escapeHtml(civ.abilityName)}</div>
+          <div class="showcase-ability-desc">${escapeHtml(civ.abilityDesc)}</div>
+          <div class="showcase-uniques">Unique Unit: <b>${escapeHtml(civ.uniqueUnit)}</b> · Unique Infrastructure: <b>${escapeHtml(civ.uniqueInfra)}</b></div>
+        </div>
+      </div>`;
+    right.querySelector<HTMLButtonElement>("#showcase-reroll")?.addEventListener("click", renderShowcase);
+  }
 
   function showScreen(screen: Screen): void {
     state.screen = screen;
@@ -138,29 +188,29 @@ export function createLobby(onStart: (session: Session) => void): void {
         renderMultiplayer();
         break;
       case "load":
-        renderLoadGame();
+        void renderLoadGame();
         break;
     }
   }
 
   function renderStartScreen(): void {
-    card.innerHTML = `
-      <div class="menu-title">Rise of Civilizations</div>
-      <div class="menu-subtitle">Ancient Era → Age of Exploration</div>
+    left.innerHTML = `
+      <div class="lobby-title">Rise of Civilizations</div>
+      <div class="lobby-subtitle">Ancient Era → Age of Exploration</div>
       <div class="menu-actions">
         <button class="menu-btn primary" data-screen="sp"><span class="icon">🎮</span> Single Player</button>
         <button class="menu-btn" data-screen="mp"><span class="icon">🌐</span> Multiplayer</button>
         <button class="menu-btn" data-screen="load"><span class="icon">💾</span> Load Game</button>
       </div>
-      <div class="menu-version">Turn-based 4X strategy</div>`;
-    card.querySelectorAll<HTMLButtonElement>("[data-screen]").forEach((el) =>
+      <div class="lobby-version">Turn-based 4X strategy</div>`;
+    left.querySelectorAll<HTMLButtonElement>("[data-screen]").forEach((el) =>
       el.addEventListener("click", () => showScreen(el.dataset.screen as Screen)),
     );
   }
 
   function renderSinglePlayer(): void {
     const civ = CIVILIZATIONS.find((c) => c.id === state.sp.civId) ?? CIVILIZATIONS[0]!;
-    card.innerHTML = `
+    left.innerHTML = `
       <button class="menu-btn secondary" id="back" style="width:auto;padding:8px 12px;font-size:13px"><span class="icon">←</span> Back</button>
       <div class="menu-section">
         <div class="menu-section-title">Choose Your Civilization</div>
@@ -197,9 +247,9 @@ export function createLobby(onStart: (session: Session) => void): void {
       onStart(
         new LocalSession({
           civId: state.sp.civId,
-          mapSize: state.sp.mapSize,
-          aiCount: state.sp.aiCount,
-          barbarians: state.sp.barbarians,
+          mapSize: $select("#sp-map").value as MapSize,
+          aiCount: Number($select("#sp-ai").value),
+          barbarians: $select("#sp-barb").value as "none" | "low" | "normal" | "high",
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
       );
@@ -210,7 +260,7 @@ export function createLobby(onStart: (session: Session) => void): void {
   let joinedGameId: string | null = null;
 
   function renderMultiplayer(): void {
-    card.innerHTML = `
+    left.innerHTML = `
       <button class="menu-btn secondary" id="back" style="width:auto;padding:8px 12px;font-size:13px"><span class="icon">←</span> Back</button>
       <div class="menu-section">
         <div class="menu-section-title">Server</div>
@@ -325,7 +375,7 @@ export function createLobby(onStart: (session: Session) => void): void {
   }
 
   async function renderLoadGame(): Promise<void> {
-    card.innerHTML = `
+    left.innerHTML = `
       <button class="menu-btn secondary" id="back" style="width:auto;padding:8px 12px;font-size:13px"><span class="icon">←</span> Back</button>
       <div class="menu-section">
         <div class="menu-section-title">Load Saved Game</div>
@@ -392,5 +442,6 @@ export function createLobby(onStart: (session: Session) => void): void {
     );
   }
 
+  renderShowcase();
   showScreen("start");
 }

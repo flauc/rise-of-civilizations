@@ -1,4 +1,4 @@
-import { axialToOffset, pixelToAxial } from "@roc/shared";
+import { axialToOffset, offsetToAxial, pixelToAxial } from "@roc/shared";
 import type { GameState } from "@roc/sim";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH } from "./renderer";
@@ -16,70 +16,180 @@ export interface Minimap {
   ): void;
 }
 
-const MM_WIDTH = 196;
+const MM_SIZE = 220;
+const RADIUS = MM_SIZE / 2;
+const MIN_HALF_WINDOW = 9;
+const EXPLORATION_BUFFER = 5;
+const BG = "#0a1624";
 
-/** A small overview map. Click to recenter the main camera (via onSelect). */
+/** Compute axial distance between two offset coordinates. */
+function offsetDistance(a: { col: number; row: number }, b: { col: number; row: number }): number {
+  const aa = offsetToAxial(a);
+  const ba = offsetToAxial(b);
+  return (Math.abs(aa.q - ba.q) + Math.abs(aa.q + aa.r - ba.q - ba.r) + Math.abs(aa.r - ba.r)) / 2;
+}
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * A circular, player-centered minimap. It shows only a small window around the
+ * camera, grows slightly as the player explores, and uses a heavy radial fade
+ * so the boundary between explored and unexplored/out-of-bounds is invisible.
+ * The background matches the game canvas so the widget itself does not stand
+ * out or reveal map edges.
+ */
 export function createMinimap(onSelect: (col: number, row: number) => void): Minimap {
   const canvas = document.createElement("canvas");
   canvas.id = "minimap";
   document.body.appendChild(canvas);
   const ctx = canvas.getContext("2d")!;
-  let cols = 0;
-  let rows = 0;
-  let cellW = 0;
-  let cellH = 0;
+
+  canvas.width = MM_SIZE;
+  canvas.height = MM_SIZE;
 
   canvas.addEventListener("pointerdown", (e) => {
     const r = canvas.getBoundingClientRect();
-    const col = Math.floor(((e.clientX - r.left) / r.width) * cols);
-    const row = Math.floor(((e.clientY - r.top) / r.height) * rows);
-    if (col >= 0 && row >= 0 && col < cols && row < rows) onSelect(col, row);
+    const px = e.clientX - r.left - RADIUS;
+    const py = e.clientY - r.top - RADIUS;
+    if (px * px + py * py > RADIUS * RADIUS) return;
+    onSelect(lastCenter.col + px / lastCellW, lastCenter.row + py / lastCellH);
   });
+
+  let lastCenter = { col: 0, row: 0 };
+  let lastCellW = 1;
+  let lastCellH = 1;
 
   const colorOf = (state: GameState, ownerId: number) =>
     state.players.find((p) => p.id === ownerId)?.color ?? "#aaa";
 
   return {
     draw(state, viewerId, explored, visible, camera, cssWidth, cssHeight) {
-      cols = state.map.cols;
-      rows = state.map.rows;
-      const mmH = Math.round(MM_WIDTH * (rows / cols) * 0.82);
-      if (canvas.width !== MM_WIDTH || canvas.height !== mmH) {
-        canvas.width = MM_WIDTH;
-        canvas.height = mmH;
-      }
-      cellW = MM_WIDTH / cols;
-      cellH = mmH / rows;
+      const cols = state.map.cols;
+      const rows = state.map.rows;
 
-      ctx.fillStyle = "#0a1320";
-      ctx.fillRect(0, 0, MM_WIDTH, mmH);
+      // Camera center in tile coordinates.
+      const centerWorld = {
+        x: camera.screenToWorldX(cssWidth / 2),
+        y: camera.screenToWorldY(cssHeight / 2) / VSQUISH,
+      };
+      const centerAxial = pixelToAxial(centerWorld, BASE_SIZE);
+      const camCenter = axialToOffset({ q: Math.round(centerAxial.q), r: Math.round(centerAxial.r) });
 
-      // terrain
-      for (const t of state.map.tiles) {
-        const key = `${t.col},${t.row}`;
-        if (!explored.has(key)) continue;
-        const x = t.col * cellW;
-        const y = t.row * cellH;
-        ctx.fillStyle = TERRAIN_COLORS[t.terrain];
-        ctx.fillRect(x, y, cellW + 0.6, cellH + 0.6);
-        if (!visible.has(key)) {
-          ctx.fillStyle = "rgba(8,16,26,0.45)";
-          ctx.fillRect(x, y, cellW + 0.6, cellH + 0.6);
+      // Explored spread determines how large the minimap window is.
+      let exploredSpread = 0;
+      let exploredCentroid = { col: cols / 2, row: rows / 2 };
+      if (explored.size > 0) {
+        let sumCol = 0;
+        let sumRow = 0;
+        for (const key of explored) {
+          const [col, row] = key.split(",").map(Number) as [number, number];
+          sumCol += col;
+          sumRow += row;
+        }
+        exploredCentroid = { col: sumCol / explored.size, row: sumRow / explored.size };
+        for (const key of explored) {
+          const [col, row] = key.split(",").map(Number) as [number, number];
+          exploredSpread = Math.max(exploredSpread, offsetDistance(exploredCentroid, { col, row }));
         }
       }
-      // cities (bigger) and units (dots)
-      const dot = (col: number, row: number, color: string, size: number) => {
-        ctx.fillStyle = color;
-        ctx.fillRect(col * cellW - size / 2 + cellW / 2, row * cellH - size / 2 + cellH / 2, size, size);
-      };
-      for (const c of state.cities.values()) {
-        if (c.ownerId === viewerId || visible.has(`${c.col},${c.row}`)) dot(c.col, c.row, colorOf(state, c.ownerId), 4);
-      }
-      for (const u of state.units.values()) {
-        if (u.ownerId === viewerId || visible.has(`${u.col},${u.row}`)) dot(u.col, u.row, colorOf(state, u.ownerId), 2.5);
+
+      // While the empire is tiny, gently pull the minimap center toward the
+      // explored centroid so the start area is visible; afterwards follow the camera.
+      const center =
+        explored.size < 40
+          ? {
+              col: exploredCentroid.col * 0.55 + camCenter.col * 0.45,
+              row: exploredCentroid.row * 0.55 + camCenter.row * 0.45,
+            }
+          : camCenter;
+
+      // Window grows with exploration but never reaches the map edge.
+      const mapHalf = Math.min(cols, rows) / 2;
+      const maxHalfWindow = Math.max(MIN_HALF_WINDOW, mapHalf - 4);
+      const halfWindow = Math.min(maxHalfWindow, Math.max(MIN_HALF_WINDOW, exploredSpread + EXPLORATION_BUFFER));
+      const windowW = halfWindow * 2;
+      const windowH = halfWindow * 2;
+      const cellW = MM_SIZE / windowW;
+      const cellH = MM_SIZE / windowH;
+
+      lastCenter = center;
+      lastCellW = cellW;
+      lastCellH = cellH;
+
+      // Clear to transparent; the CSS backing provides the game background color.
+      ctx.clearRect(0, 0, MM_SIZE, MM_SIZE);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(RADIUS, RADIUS, RADIUS - 1, 0, Math.PI * 2);
+      ctx.clip();
+
+      // Inner background matches the game background exactly.
+      ctx.fillStyle = BG;
+      ctx.fillRect(0, 0, MM_SIZE, MM_SIZE);
+
+      const startCol = Math.floor(center.col - halfWindow);
+      const startRow = Math.floor(center.row - halfWindow);
+      const fadeStart = RADIUS * 0.35;
+      const fadeEnd = RADIUS * 0.78;
+
+      // Terrain with per-tile radial fade so explored edges blend into fog.
+      for (let r = 0; r < windowH; r++) {
+        for (let c = 0; c < windowW; c++) {
+          const col = startCol + c;
+          const row = startRow + r;
+          if (col < 0 || row < 0 || col >= cols || row >= rows) continue;
+          const key = `${col},${row}`;
+          if (!explored.has(key)) continue;
+
+          const px = c * cellW + cellW / 2;
+          const py = r * cellH + cellH / 2;
+          const dist = Math.sqrt((px - RADIUS) ** 2 + (py - RADIUS) ** 2);
+          const alpha = 1 - smoothstep(fadeStart, fadeEnd, dist);
+          if (alpha <= 0.02) continue;
+
+          const tile = state.map.tiles[row * cols + col];
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = TERRAIN_COLORS[tile!.terrain];
+          ctx.fillRect(c * cellW, r * cellH, cellW + 0.6, cellH + 0.6);
+          if (!visible.has(key)) {
+            ctx.fillStyle = "rgba(5,10,16,0.5)";
+            ctx.fillRect(c * cellW, r * cellH, cellW + 0.6, cellH + 0.6);
+          }
+          ctx.globalAlpha = 1;
+        }
       }
 
-      // viewport rectangle
+      // Cities and units, also faded by distance.
+      const dot = (col: number, row: number, color: string, size: number) => {
+        const c = col - startCol;
+        const r = row - startRow;
+        if (c < 0 || r < 0 || c >= windowW || r >= windowH) return;
+        const px = c * cellW + cellW / 2;
+        const py = r * cellH + cellH / 2;
+        const dist = Math.sqrt((px - RADIUS) ** 2 + (py - RADIUS) ** 2);
+        const alpha = 1 - smoothstep(fadeStart, fadeEnd, dist);
+        if (alpha <= 0.02) return;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = color;
+        ctx.fillRect(c * cellW - size / 2 + cellW / 2, r * cellH - size / 2 + cellH / 2, size, size);
+        ctx.globalAlpha = 1;
+      };
+      for (const city of state.cities.values()) {
+        if (city.ownerId === viewerId || visible.has(`${city.col},${city.row}`)) {
+          dot(city.col, city.row, colorOf(state, city.ownerId), 4);
+        }
+      }
+      for (const unit of state.units.values()) {
+        if (unit.ownerId === viewerId || visible.has(`${unit.col},${unit.row}`)) {
+          dot(unit.col, unit.row, colorOf(state, unit.ownerId), 2.5);
+        }
+      }
+
+      // Viewport rectangle.
       const corner = (sx: number, sy: number) => {
         const a = pixelToAxial(
           { x: camera.screenToWorldX(sx), y: camera.screenToWorldY(sy) / VSQUISH },
@@ -89,13 +199,37 @@ export function createMinimap(onSelect: (col: number, row: number) => void): Min
       };
       const tl = corner(0, 0);
       const br = corner(cssWidth, cssHeight);
-      const rx = Math.max(0, tl.col * cellW);
-      const ry = Math.max(0, tl.row * cellH);
-      const rw = Math.min(MM_WIDTH, (br.col - tl.col) * cellW);
-      const rh = Math.min(mmH, (br.row - tl.row) * cellH);
+      const rx = (tl.col - startCol) * cellW;
+      const ry = (tl.row - startRow) * cellH;
+      const rw = (br.col - tl.col) * cellW;
+      const rh = (br.row - tl.row) * cellH;
       ctx.strokeStyle = "rgba(255,255,255,0.8)";
       ctx.lineWidth = 1;
       ctx.strokeRect(rx + 0.5, ry + 0.5, Math.max(2, rw), Math.max(2, rh));
+
+      ctx.restore();
+
+      // Strong radial vignette to hide the circular window edge.
+      const gradient = ctx.createRadialGradient(
+        RADIUS,
+        RADIUS,
+        RADIUS * 0.25,
+        RADIUS,
+        RADIUS,
+        RADIUS * 0.92,
+      );
+      gradient.addColorStop(0, "rgba(11,22,34,0)");
+      gradient.addColorStop(0.5, "rgba(11,22,34,0.45)");
+      gradient.addColorStop(1, "rgba(11,22,34,0.92)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, MM_SIZE, MM_SIZE);
+
+      // Subtle outer ring.
+      ctx.strokeStyle = "rgba(255,255,255,0.08)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(RADIUS, RADIUS, RADIUS - 0.5, 0, Math.PI * 2);
+      ctx.stroke();
     },
   };
 }
