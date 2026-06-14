@@ -42,8 +42,14 @@ export interface Tile {
   terrain: TerrainType;
   /** Built tile improvement id (e.g. "farm", "mine"); undefined if none. */
   improvement?: string;
+  /** Improvement tier 1–3 (undefined treated as 1 when an improvement exists). */
+  improvementLevel?: number;
   /** Whether a road runs through this tile. */
   road?: boolean;
+  /** Road tier 1–3 (undefined treated as 1 when a road exists). */
+  roadLevel?: number;
+  /** A defensive structure occupying this tile (blocks enemy entry until destroyed). */
+  structure?: { kind: "wall" | "tower"; tier: number; hp: number; maxHp: number };
   /** Id of the city whose territory this tile belongs to; undefined if neutral. */
   ownerCityId?: number;
   /** A map feature on this tile: "village" (perk when entered) or "barb_camp". */

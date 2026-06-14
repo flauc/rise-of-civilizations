@@ -197,7 +197,7 @@ function xpForNextLevel(level: number): number {
 
 function awardXp(unit: Unit, amount: number): void {
   const def = UNIT_DEFS[unit.type];
-  if (def.cls === "settler" || def.cls === "worker") return;
+  if (def.cls === "settler" || def.cls === "trader") return;
   let mult = 1;
   if (has(unit, "veteran") || has(unit, "veteran_marksman")) mult += 0.25;
   unit.xp += Math.ceil(amount * mult);

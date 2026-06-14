@@ -4,8 +4,10 @@ import { cityAt, makeUnit, unitAt } from "./state";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { expandTerritory } from "./territory";
+import { getWonder } from "@roc/data";
 import { civEffectsOf, getCivic } from "./civs";
 import { cityTradeYields } from "./trade";
+import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
 import { offsetNeighbors } from "./movement";
 import {
@@ -58,7 +60,7 @@ export function citizenScore(y: Yields): number {
 function tileWorkYields(map: GameState["map"], col: number, row: number): Yields {
   const tile = getTile(map, col, row);
   if (!tile) return ZERO_YIELDS;
-  return addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement));
+  return addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement, tile.improvementLevel));
 }
 
 /** Compute a city's per-turn yields, auto-assigning the best worked tiles. */
@@ -78,8 +80,10 @@ export function getCityYields(state: GameState, city: City): CityYields {
   if (getTile(map, city.col, city.row)?.terrain === "desert") gold += desertGold;
   science += cBase.science;
 
-  // Tiles this city's citizens are assigned to (manual or auto-assigned).
-  for (const key of city.workedTiles) {
+  // Tiles this city's citizens are assigned to. Citizens trained as specialists
+  // no longer work tiles, so only the first `workerSlots` assignments count.
+  const cap = workerSlots(city);
+  for (const key of city.workedTiles.slice(0, cap)) {
     const [col, row] = key.split(",").map(Number) as [number, number];
     const tile = getTile(map, col, row);
     if (!tile || tile.ownerCityId !== city.id) continue; // ignore lost tiles
@@ -90,6 +94,9 @@ export function getCityYields(state: GameState, city: City): CityYields {
     science += y.science;
     if (tile.terrain === "desert") gold += desertGold;
   }
+
+  // Specialists give a small flat craft upkeep to their city between/while at work.
+  production += Math.floor(city.specialists.length * 0.25);
 
   // Buildings.
   for (const b of city.buildings) {
@@ -115,6 +122,23 @@ export function getCityYields(state: GameState, city: City): CityYields {
   gold += trade.gold;
   science += trade.science;
 
+  // Wonders: empire-wide (every owned city) + host-city effects.
+  const empireWonders = new Set<string>();
+  for (const c of state.cities.values()) {
+    if (c.ownerId === city.ownerId) for (const w of c.wonders) empireWonders.add(w);
+  }
+  const applyW = (e: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number } | undefined): void => {
+    if (!e) return;
+    food += e.food ?? 0;
+    production += e.production ?? 0;
+    gold += e.gold ?? 0;
+    science += e.science ?? 0;
+    culture += e.culture ?? 0;
+    faith += e.faith ?? 0;
+  };
+  for (const id of empireWonders) applyW(getWonder(id)?.effect.yieldPerCity);
+  for (const id of city.wonders) applyW(getWonder(id)?.effect.yieldHostCity);
+
   // Civ / government / policy yield bonuses (percentage).
   const pct = eff.yieldPercent;
   if (pct) {
@@ -139,21 +163,22 @@ const scoreOfKey = (state: GameState, key: string): number => {
 /** Clean up a city's worked tiles (drop lost/invalid, cap at population) and
  *  fill any spare citizens onto the best available tiles. */
 export function autoAssignCitizens(state: GameState, city: City): void {
+  const cap = workerSlots(city);
   const valid = new Set(workableTiles(state, city).map(keyOf));
   let worked = [...new Set(city.workedTiles)].filter((k) => valid.has(k));
   worked.sort((a, b) => scoreOfKey(state, b) - scoreOfKey(state, a));
-  if (worked.length > city.population) worked = worked.slice(0, city.population);
+  if (worked.length > cap) worked = worked.slice(0, cap);
   const workedSet = new Set(worked);
   const avail = [...valid]
     .filter((k) => !workedSet.has(k))
     .sort((a, b) => scoreOfKey(state, b) - scoreOfKey(state, a));
-  while (worked.length < city.population && avail.length > 0) worked.push(avail.shift()!);
+  while (worked.length < cap && avail.length > 0) worked.push(avail.shift()!);
   city.workedTiles = worked;
 }
 
 /** Assign one spare citizen to the best available tile (used on city growth). */
 export function assignOneCitizen(state: GameState, city: City): void {
-  if (city.workedTiles.length >= city.population) return;
+  if (city.workedTiles.length >= workerSlots(city)) return;
   const workedSet = new Set(city.workedTiles);
   let best: string | null = null;
   let bestScore = -Infinity;
@@ -169,12 +194,13 @@ export function assignOneCitizen(state: GameState, city: City): void {
   if (best) city.workedTiles.push(best);
 }
 
-/** Keep only the best `population` worked tiles (used after starvation). */
+/** Keep only the best worked tiles the city's free citizens can staff. */
 export function trimCitizens(state: GameState, city: City): void {
-  if (city.workedTiles.length <= city.population) return;
+  const cap = workerSlots(city);
+  if (city.workedTiles.length <= cap) return;
   city.workedTiles = [...city.workedTiles]
     .sort((a, b) => scoreOfKey(state, b) - scoreOfKey(state, a))
-    .slice(0, city.population);
+    .slice(0, cap);
 }
 
 /** Toggle a citizen on/off a tile. Adding past capacity swaps out the worst tile. */
@@ -188,7 +214,7 @@ export function toggleCitizen(state: GameState, city: City, col: number, row: nu
   const valid = new Set(workableTiles(state, city).map(keyOf));
   if (!valid.has(key)) return false;
   city.workedTiles.push(key);
-  if (city.workedTiles.length > city.population) {
+  if (city.workedTiles.length > workerSlots(city)) {
     let worstIdx = -1;
     let worst = Infinity;
     for (let i = 0; i < city.workedTiles.length; i++) {

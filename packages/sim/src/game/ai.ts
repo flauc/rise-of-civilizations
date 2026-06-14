@@ -16,7 +16,8 @@ import { availableCivics, availableGovernments, unlockedPolicies, getGovernment 
 import { canFoundReligion, availableReligionNames } from "./religion";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
 import { BELIEFS } from "@roc/data";
-import { buildableHere } from "./improvements";
+import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
+import { nextTierAt, worksOfCity } from "./works";
 import { isPassableLand } from "./terrain";
 import { UNIT_DEFS, isMilitary, type TechId } from "./content";
 import {
@@ -104,12 +105,7 @@ function chooseProduction(state: GameState, player: Player, city: City): Product
     const s = opts.find((o) => o.item.id === "settler");
     if (s) return s.item;
   }
-  // 3. A worker to improve tiles.
-  if (!has("worker")) {
-    const w = opts.find((o) => o.item.id === "worker");
-    if (w) return w.item;
-  }
-  // 3b. A trader once we have somewhere to trade with.
+  // 3. A trader once we have somewhere to trade with.
   if (cityCount >= 2 && !has("trader")) {
     const t = opts.find((o) => o.item.id === "trader");
     if (t) return t.item;
@@ -157,32 +153,34 @@ function aiSettler(state: GameState, unit: Unit, pid: number): void {
   }
 }
 
-function aiWorker(state: GameState, unit: Unit, pid: number): void {
-  const buildHere = () => {
-    const here = buildableHere(state, unit);
-    const kind = here.includes("farm") ? "farm" : here.includes("mine") ? "mine" : null;
-    if (kind) {
-      applyCommand(state, { type: "build", unitId: unit.id, improvement: kind }, pid);
-      return true;
-    }
-    return false;
-  };
-  if (buildHere()) return;
-  // Walk toward a workable tile near one of our cities.
-  for (const city of citiesOf(state, unit.ownerId)) {
-    for (let dr = -2; dr <= 2; dr++) {
-      for (let dc = -2; dc <= 2; dc++) {
-        const col = city.col + dc;
-        const row = city.row + dr;
-        const tile = getTile(state.map, col, row);
-        if (!tile || tile.improvement) continue;
-        if (tile.terrain === "grassland" || tile.terrain === "plains" || tile.terrain === "hills") {
-          if (stepToward(state, unit, col, row, pid)) {
-            buildHere();
-            return;
-          }
-        }
-      }
+/** Train craftsmen and queue public works for one city. */
+function aiManageCity(state: GameState, city: City, player: Player, pid: number): void {
+  const unlocked = availableSpecialists(player);
+  const countOf = (id: SpecialistId) => city.specialists.filter((s) => s.type === id).length;
+  // Keep a couple of citizens as craftsmen once the city is large enough.
+  const wants: SpecialistId[] = [];
+  if (city.population >= 2 && unlocked.includes("carpenter") && countOf("carpenter") < 1) wants.push("carpenter");
+  if (city.population >= 4 && unlocked.includes("mason") && countOf("mason") < 1) wants.push("mason");
+  for (const id of wants) {
+    if (workerSlots(city) > 1) applyCommand(state, { type: "convertCitizen", cityId: city.id, specialistId: id, delta: 1 }, pid);
+  }
+  // Queue a Work if the city has idle craftsmen and few pending projects.
+  if (worksOfCity(state, city.id).length >= 2) return;
+  const haveDiscipline = (d: string) =>
+    city.specialists.some((s) => SPECIALIST_DEFS[s.type as SpecialistId]?.discipline === d);
+  for (let dr = -2; dr <= 2; dr++) {
+    for (let dc = -2; dc <= 2; dc++) {
+      const col = city.col + dc;
+      const row = city.row + dr;
+      const tile = getTile(state.map, col, row);
+      if (!tile || tile.ownerCityId === undefined) continue;
+      const owner = state.cities.get(tile.ownerCityId);
+      if (!owner || owner.ownerId !== pid) continue;
+      let kind: string | null = null;
+      if (haveDiscipline("carpentry") && nextTierAt(tile, "farm")) kind = "farm";
+      else if (haveDiscipline("carpentry") && nextTierAt(tile, "lumber_camp")) kind = "lumber_camp";
+      else if (haveDiscipline("masonry") && nextTierAt(tile, "mine")) kind = "mine";
+      if (kind && applyCommand(state, { type: "startWork", kind, col, row }, pid).ok) return;
     }
   }
 }
@@ -290,13 +288,13 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
       const item = chooseProduction(state, player, city);
       if (item) applyCommand(state, { type: "setProduction", cityId: city.id, item }, playerId);
     }
+    aiManageCity(state, city, player, playerId);
   }
 
   for (const unit of unitsOf(state, playerId)) {
     if (!state.units.has(unit.id)) continue;
     const def = UNIT_DEFS[unit.type];
     if (def.founder) aiSettler(state, unit, playerId);
-    else if (def.builder) aiWorker(state, unit, playerId);
     else if (def.trader) aiTrader(state, unit, playerId);
     else aiMilitary(state, unit, playerId);
   }

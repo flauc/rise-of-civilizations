@@ -1,5 +1,5 @@
 import { getTile } from "@roc/shared";
-import type { BarbarianActivity, GameState, Unit, City, GameOver, Religion, TradeRoute } from "./state";
+import type { BarbarianActivity, GameState, Unit, City, GameOver, Religion, TradeRoute, Work } from "./state";
 import { computeVisible } from "./visibility";
 import type { TechId } from "./content";
 
@@ -43,6 +43,10 @@ export interface PlayerView {
   religions: Religion[];
   /** The viewer's own trade routes (for the map overlay + city panel). */
   tradeRoutes: TradeRoute[];
+  /** The viewer's own public works in progress. */
+  works: Work[];
+  /** Wonders already completed in the world. */
+  completedWonders: string[];
   players: PlayerPublic[];
   cols: number;
   rows: number;
@@ -101,6 +105,8 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     },
     religions: state.religions.map((r) => ({ ...r, beliefs: [...r.beliefs] })),
     tradeRoutes: state.tradeRoutes.filter((r) => r.ownerId === playerId).map((r) => ({ ...r })),
+    works: state.works.filter((w) => w.ownerId === playerId).map((w) => ({ ...w, cityIds: [...w.cityIds] })),
+    completedWonders: [...state.completedWonders],
     players: state.players.map((p) => ({
       id: p.id,
       name: p.name,
@@ -133,6 +139,8 @@ export interface SerializedState {
   turnLimit: number;
   religions: Religion[];
   tradeRoutes: TradeRoute[];
+  works: Work[];
+  completedWonders: string[];
   barbarianActivity: BarbarianActivity;
   players: Array<
     Omit<GameState["players"][number], "researched" | "explored"> & {
@@ -155,6 +163,8 @@ export function serializeState(state: GameState): SerializedState {
     turnLimit: state.turnLimit,
     religions: state.religions,
     tradeRoutes: state.tradeRoutes,
+    works: state.works,
+    completedWonders: state.completedWonders,
     barbarianActivity: state.barbarianActivity,
     players: state.players.map((p) => ({
       ...p,
@@ -177,6 +187,8 @@ export function deserializeState(s: SerializedState): GameState {
     turnLimit: s.turnLimit,
     religions: s.religions,
     tradeRoutes: s.tradeRoutes ?? [],
+    works: s.works ?? [],
+    completedWonders: s.completedWonders ?? [],
     barbarianActivity: s.barbarianActivity ?? "normal",
     players: s.players.map((p) => ({
       ...p,

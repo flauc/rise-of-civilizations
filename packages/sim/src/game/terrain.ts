@@ -1,4 +1,5 @@
 import type { Tile, TerrainType } from "@roc/shared";
+import { improvementYields } from "./improvements";
 
 export type { TerrainType } from "@roc/shared";
 
@@ -37,12 +38,9 @@ export const TERRAIN_YIELDS: Record<TerrainType, Yields> = {
   mountains: { food: 0, production: 0, gold: 0, science: 2 },
 };
 
-/** Total yields of a tile (terrain + improvement). */
+/** Total yields of a tile (terrain + tier-aware improvement). */
 export function tileYields(tile: Tile): Yields {
-  const base = TERRAIN_YIELDS[tile.terrain];
-  if (tile.improvement === "farm") return { ...base, food: base.food + 1 };
-  if (tile.improvement === "mine") return { ...base, production: base.production + 1 };
-  return base;
+  return addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement, tile.improvementLevel));
 }
 
 const WATER: ReadonlySet<TerrainType> = new Set<TerrainType>([

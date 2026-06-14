@@ -39,7 +39,7 @@ describe("religion", () => {
     const nid = s.nextEntityId++;
     s.cities.set(nid, {
       id: nid, ownerId: 0, name: "Nearby", col: holy.col + 2, row: holy.row, population: 1,
-      foodStored: 0, productionStored: 0, production: null, buildings: [], workedTiles: [],
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
       isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false,
     });
     expect(s.cities.get(nid)!.religion).toBeUndefined();

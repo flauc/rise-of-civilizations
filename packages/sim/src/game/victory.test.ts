@@ -45,6 +45,8 @@ describe("victory", () => {
       productionStored: 0,
       production: null,
       buildings: [],
+      specialists: [],
+      wonders: [],
       workedTiles: [],
       isCapital: false,
       foundedAsCapital: false,

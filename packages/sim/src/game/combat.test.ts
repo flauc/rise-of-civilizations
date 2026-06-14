@@ -56,7 +56,7 @@ describe("M2 combat", () => {
     const id = state.nextEntityId++;
     const city = {
       id, ownerId: 1, name: "Target", col: 10, row: 8, population: 1,
-      foodStored: 0, productionStored: 0, production: null, buildings: [], workedTiles: [],
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
       isCapital: true, foundedAsCapital: true, hp: 0, lastAttackedTurn: 0, rangedAttackUsed: false,
     };
     city.hp = 0; // already battered to 0
@@ -126,7 +126,7 @@ describe("M2 combat", () => {
       const cid = state.nextEntityId++;
       const c = {
         id: cid, ownerId, name, col, row, population: 1, foodStored: 0, productionStored: 0,
-        production: null, buildings: [], workedTiles: [], isCapital: true, foundedAsCapital: true,
+        production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true,
         hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false,
       };
       state.cities.set(cid, c);
@@ -148,6 +148,8 @@ describe("M2 combat", () => {
       productionStored: 0,
       production: null,
       buildings: [],
+      specialists: [],
+      wonders: [],
       workedTiles: [],
       isCapital: false,
       foundedAsCapital: false,

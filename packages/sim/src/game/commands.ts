@@ -13,8 +13,15 @@ import {
   unitMaxHp,
 } from "./combat";
 import { barbarianTurn } from "./barbarians";
-import { buildImprovement, type ImprovementKind } from "./improvements";
 import { applyVictoryCheck } from "./victory";
+import { convertCitizen, type SpecialistId } from "./specialists";
+import {
+  advanceWorks,
+  assignCityToWonder,
+  cancelWork,
+  startWonder,
+  startWork,
+} from "./works";
 import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter } from "./features";
 import { foundReligion, spreadReligion } from "./religion";
@@ -37,8 +44,12 @@ export type Command =
   | { type: "move"; unitId: number; col: number; row: number }
   | { type: "attack"; attackerId: number; col: number; row: number }
   | { type: "foundCity"; unitId: number }
-  | { type: "build"; unitId: number; improvement: ImprovementKind }
   | { type: "promote"; unitId: number; promotion: PromotionId }
+  | { type: "convertCitizen"; cityId: number; specialistId: string; delta: number }
+  | { type: "startWork"; kind: string; col: number; row: number }
+  | { type: "startWonder"; wonderId: string; hostCityId: number }
+  | { type: "assignCityToWonder"; workId: number; cityId: number; on: boolean }
+  | { type: "cancelWork"; workId: number }
   | { type: "setProduction"; cityId: number; item: ProductionItem }
   | { type: "assignCitizen"; cityId: number; col: number; row: number }
   | { type: "setResearch"; techId: TechId }
@@ -71,6 +82,7 @@ export function beginTurn(state: GameState): void {
     c.rangedAttackUsed = false;
     processCity(state, c, player);
   }
+  advanceWorks(state, player.id); // specialists labour on public works
   // Religion spreads once per round (at the start of player 0's turn).
   if (state.currentPlayerIndex === 0) spreadReligion(state);
   updateExplored(state, player.id);
@@ -167,6 +179,8 @@ export function applyCommand(
         productionStored: 0,
         production: { kind: "unit", id: "warrior" } as ProductionItem,
         buildings: [],
+        specialists: [],
+        wonders: [],
         workedTiles: [],
         isCapital,
         foundedAsCapital: isCapital,
@@ -193,11 +207,27 @@ export function applyCommand(
       return ok;
     }
 
-    case "build": {
-      const unit = state.units.get(cmd.unitId);
-      if (!unit) return fail("no such unit");
-      if (unit.ownerId !== player.id) return fail("not your unit");
-      return buildImprovement(state, unit, cmd.improvement);
+    case "convertCitizen": {
+      const city = state.cities.get(cmd.cityId);
+      if (!city) return fail("no such city");
+      if (city.ownerId !== player.id) return fail("not your city");
+      return convertCitizen(state, city, cmd.specialistId as SpecialistId, cmd.delta);
+    }
+
+    case "startWork": {
+      return startWork(state, player.id, cmd.kind, cmd.col, cmd.row);
+    }
+
+    case "startWonder": {
+      return startWonder(state, player.id, cmd.wonderId, cmd.hostCityId);
+    }
+
+    case "assignCityToWonder": {
+      return assignCityToWonder(state, cmd.workId, cmd.cityId, cmd.on, player.id);
+    }
+
+    case "cancelWork": {
+      return cancelWork(state, cmd.workId, player.id);
     }
 
     case "promote": {

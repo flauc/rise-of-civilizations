@@ -15,6 +15,7 @@ import { updateExplored } from "./visibility";
 import { applyVictoryCheck } from "./victory";
 import { spreadReligion } from "./religion";
 import { pruneTradeRoutes } from "./trade";
+import { advanceWorks } from "./works";
 import { aiTakeTurn } from "./ai";
 
 /** Begin a fresh turn for ALL players at once: refresh movement, heal, reveal. */
@@ -48,6 +49,7 @@ export function resolveSimultaneousTurn(state: GameState): void {
     for (const c of state.cities.values()) {
       if (c.ownerId === p.id) processCity(state, c, p);
     }
+    advanceWorks(state, p.id); // specialists labour on public works
   }
   spreadReligion(state);
   state.turn += 1;

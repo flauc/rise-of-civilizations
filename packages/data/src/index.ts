@@ -1182,3 +1182,68 @@ export const RELIGION_NAMES: string[] = [
 
 const BELIEF_BY_ID = new Map(BELIEFS.map((b) => [b.id, b]));
 export const getBelief = (id: string | undefined) => (id ? BELIEF_BY_ID.get(id) : undefined);
+
+// ---- Wonders (great Works built by pooled specialists) -------------------
+// Requirement keys are specialist disciplines: "carpentry" | "survey" |
+// "masonry" | "architecture" | "engineering". Kept as loose strings so this
+// package stays dependency-free.
+
+export interface WonderEffect {
+  /** Flat per-turn yield added to EVERY city the owner controls. */
+  yieldPerCity?: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
+  /** Flat per-turn yield added to the host city only. */
+  yieldHostCity?: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
+  /** Grant the owner a free, already-available technology on completion. */
+  freeTech?: boolean;
+}
+
+export interface WonderDef {
+  id: string;
+  name: string;
+  desc: string;
+  /** Labour required, by specialist discipline, to raise the wonder. */
+  requirement: Record<string, number>;
+  effect: WonderEffect;
+}
+
+export const WONDER_DEFS: WonderDef[] = [
+  {
+    id: "great_pyramid",
+    name: "Great Pyramid",
+    desc: "A monumental tomb whose construction organises a whole society. +1 production in every city.",
+    requirement: { masonry: 18, architecture: 10 },
+    effect: { yieldPerCity: { production: 1 } },
+  },
+  {
+    id: "hanging_gardens",
+    name: "Hanging Gardens",
+    desc: "Terraced gardens fed by ingenious irrigation. +1 food in every city.",
+    requirement: { carpentry: 10, architecture: 10, engineering: 6 },
+    effect: { yieldPerCity: { food: 1 } },
+  },
+  {
+    id: "great_library",
+    name: "Great Library",
+    desc: "A vast repository of the world's knowledge. +3 science in the host city, and a free technology on completion.",
+    requirement: { architecture: 12, engineering: 8 },
+    effect: { yieldHostCity: { science: 3 }, freeTech: true },
+  },
+  {
+    id: "colossus",
+    name: "Colossus",
+    desc: "A towering bronze statue guarding a great harbour. +3 gold in the host city.",
+    requirement: { masonry: 10, engineering: 10 },
+    effect: { yieldHostCity: { gold: 3 } },
+  },
+  {
+    id: "great_lighthouse",
+    name: "Great Lighthouse",
+    desc: "A beacon that draws trade from across the sea. +1 gold in every city.",
+    requirement: { masonry: 8, architecture: 8, engineering: 8 },
+    effect: { yieldPerCity: { gold: 1 } },
+  },
+];
+
+const WONDER_BY_ID = new Map(WONDER_DEFS.map((w) => [w.id, w]));
+export const getWonder = (id: string | undefined) => (id ? WONDER_BY_ID.get(id) : undefined);
+export const WONDER_IDS: string[] = WONDER_DEFS.map((w) => w.id);

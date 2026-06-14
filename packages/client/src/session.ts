@@ -164,6 +164,8 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     turnLimit: 0,
     religions: view.religions,
     tradeRoutes: view.tradeRoutes ?? [],
+    works: view.works ?? [],
+    completedWonders: view.completedWonders ?? [],
     barbarianActivity: view.barbarianActivity ?? "normal",
   };
   return { state, visible: new Set(view.visible) };

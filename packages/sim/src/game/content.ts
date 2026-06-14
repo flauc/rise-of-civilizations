@@ -7,7 +7,7 @@
 
 export type UnitTypeId =
   // civilian
-  | "settler" | "worker" | "trader"
+  | "settler" | "trader"
   // recon
   | "scout"
   // dawn melee/ranged (no tech)
@@ -23,7 +23,7 @@ export type UnitTypeId =
   // siege
   | "battering_ram" | "catapult" | "ballista";
 
-export type UnitClass = "settler" | "worker" | "trader" | "recon" | "melee" | "ranged" | "cavalry" | "siege";
+export type UnitClass = "settler" | "trader" | "recon" | "melee" | "ranged" | "cavalry" | "siege";
 export type UnitAbility = "bonus_vs_cavalry" | "bonus_vs_city";
 
 export type BuildingId =
@@ -70,7 +70,6 @@ const U = (d: UnitDef): UnitDef => d;
 
 export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
   settler: U({ id: "settler", name: "Settler", glyph: "S", cls: "settler", movement: 2, sight: 2, cost: 24, strength: 0, founder: true }),
-  worker: U({ id: "worker", name: "Worker", glyph: "B", cls: "worker", movement: 2, sight: 2, cost: 16, strength: 0, builder: true }),
   trader: U({ id: "trader", name: "Trader", glyph: "$", cls: "trader", movement: 3, sight: 2, cost: 30, strength: 0, reqTech: "the_wheel", trader: true }),
   scout: U({ id: "scout", name: "Scout", glyph: "C", cls: "recon", movement: 3, sight: 3, cost: 10, strength: 4 }),
 
@@ -219,7 +218,6 @@ const ROLE: Record<UnitClass, string> = {
   siege: "Siege engine",
   recon: "Recon / scout",
   settler: "Founds a new city",
-  worker: "Builds tile improvements",
   trader: "Establishes trade routes",
 };
 
@@ -546,6 +544,5 @@ export const PROMOTION_POOL: Record<UnitClass, PromotionId[]> = {
     "demolition",
   ],
   settler: ["pioneer", "colonist", "explorer"],
-  worker: ["engineer", "foreman", "survival_training"],
   trader: [],
 };

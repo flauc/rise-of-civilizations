@@ -65,7 +65,7 @@ function renderCivilizations(): string {
   return section("Civilizations", `<div class="wiki-grid">${list}</div>`);
 }
 
-const CLASS_ORDER = ["melee", "ranged", "cavalry", "siege", "recon", "settler", "worker"] as const;
+const CLASS_ORDER = ["melee", "ranged", "cavalry", "siege", "recon", "settler", "trader"] as const;
 
 function renderUnits(): string {
   const byClass = new Map<string, typeof UNIT_DEFS[keyof typeof UNIT_DEFS][]>();
@@ -89,7 +89,7 @@ function renderUnits(): string {
         }
         const notes: string[] = [];
         if (u.founder) notes.push("Founds cities");
-        if (u.builder) notes.push("Builds improvements");
+        if (u.trader) notes.push("Establishes trade routes");
         if (u.reqTech) notes.push(`Requires ${u.reqTech}`);
         if (u.abilities?.length) notes.push(u.abilities.join(", "));
         return (

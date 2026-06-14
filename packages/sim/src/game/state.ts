@@ -24,6 +24,18 @@ export type ProductionItem =
   | { kind: "unit"; id: UnitTypeId }
   | { kind: "building"; id: BuildingId };
 
+/** A craft a specialist practises; Works require labour of specific disciplines. */
+export type Discipline = "carpentry" | "survey" | "masonry" | "architecture" | "engineering";
+
+/** A citizen trained into a craft (lives on its City, never on the map). */
+export interface Specialist {
+  id: number;
+  /** SpecialistId (see specialists.ts). */
+  type: string;
+  xp: number;
+  level: number;
+}
+
 export interface City {
   id: number;
   ownerId: number;
@@ -35,6 +47,10 @@ export interface City {
   productionStored: number;
   production: ProductionItem | null;
   buildings: BuildingId[];
+  /** Craftsmen trained from this city's population. */
+  specialists: Specialist[];
+  /** Wonder ids completed and hosted in this city. */
+  wonders: string[];
   /** Tile keys ("col,row") this city's citizens are assigned to work. */
   workedTiles: string[];
   /** Dominant religion id in this city (undefined = none). */
@@ -87,6 +103,28 @@ export interface Religion {
   beliefs: string[];
 }
 
+/** A public-works project: develop/upgrade a tile, or raise a wonder. */
+export interface Work {
+  id: number;
+  ownerId: number;
+  /** "farm"|"mine"|"quarry"|"lumber_camp"|"road"|"wall"|"tower"|"wonder" (see works.ts). */
+  kind: string;
+  /** Target tier (1–3) for tile/defensive works. */
+  tier?: number;
+  /** Target tile for tile/defensive works. */
+  target?: { col: number; row: number };
+  /** Wonder id (for wonder works). */
+  wonderId?: string;
+  /** City whose population/queue owns this work. */
+  hostCityId: number;
+  /** Cities contributing specialist labour (>=1). */
+  cityIds: number[];
+  /** Labour required, by discipline. */
+  requirement: Partial<Record<Discipline, number>>;
+  /** Labour accumulated so far, by discipline. */
+  progress: Partial<Record<Discipline, number>>;
+}
+
 /** A trade route carrying goods from one of a player's cities to another. */
 export interface TradeRoute {
   id: number;
@@ -113,6 +151,10 @@ export interface GameState {
   religions: Religion[];
   /** Active trade routes between cities (all players). */
   tradeRoutes: TradeRoute[];
+  /** In-progress public-works projects (all players). */
+  works: Work[];
+  /** Wonder ids already completed somewhere in the world (each is world-unique). */
+  completedWonders: string[];
   /** Barbarian intensity setting for this game. */
   barbarianActivity: BarbarianActivity;
 }

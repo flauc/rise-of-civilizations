@@ -167,12 +167,13 @@ function startGame(session: Session): void {
       if (selectedUnitId != null) session.order({ type: "foundCity", unitId: selectedUnitId });
       clearSelection();
     },
-    onBuild: (kind) => {
-      if (selectedUnitId != null) session.order({ type: "build", unitId: selectedUnitId, improvement: kind });
-    },
     onPromote: (promotion) => {
       if (selectedUnitId != null) session.order({ type: "promote", unitId: selectedUnitId, promotion });
     },
+    onConvertCitizen: (cityId, specialistId, delta) =>
+      session.order({ type: "convertCitizen", cityId, specialistId, delta }),
+    onStartWork: (kind, col, row) => session.order({ type: "startWork", kind, col, row }),
+    onCancelWork: (workId) => session.order({ type: "cancelWork", workId }),
     onSetProduction: (item) => {
       if (selectedCityId != null) session.order({ type: "setProduction", cityId: selectedCityId, item });
     },

@@ -22,11 +22,16 @@ import {
   CIVICS_REQUIRED_TECH,
   RELIGION_REQUIRED_TECH,
   FAITH_TO_FOUND,
-  buildableHere,
   cityAt,
   tradeRouteDestinations,
   tradeRouteYield,
   tradeRoutesFrom,
+  SPECIALIST_DEFS,
+  availableSpecialists,
+  workerSlots,
+  nextTierAt,
+  workName,
+  worksOfCity,
   citiesOf,
   cityDefenseStrength,
   cityMaxHp,
@@ -156,8 +161,10 @@ export interface UIView {
 export interface UIHandlers {
   onEndTurn(): void;
   onFoundCity(): void;
-  onBuild(kind: ImprovementKind): void;
   onPromote(promotion: PromotionId): void;
+  onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
+  onStartWork(kind: string, col: number, row: number): void;
+  onCancelWork(workId: number): void;
   onSetProduction(item: ProductionItem): void;
   onSetResearch(techId: TechId): void;
   onSetCivic(civicId: string): void;
@@ -808,12 +815,6 @@ export function createUI(handlers: UIHandlers): UI {
     if (own) {
       const actions: string[] = [];
       if (def.founder) actions.push(`<button class="btn primary" id="found">Found City</button>`);
-      if (def.builder) {
-        html += `<div style="margin-top:4px">Charges <b>${unit.charges}</b></div>`;
-        for (const k of buildableHere(state, unit)) {
-          actions.push(`<button class="btn" data-build="${k}">Build ${IMPROVEMENT_DEFS[k].name}</button>`);
-        }
-      }
       if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
 
       if (def.trader) {
@@ -873,9 +874,6 @@ export function createUI(handlers: UIHandlers): UI {
 
     unitPanel.innerHTML = html;
     unitPanel.querySelector<HTMLButtonElement>("#found")?.addEventListener("click", () => handlers.onFoundCity());
-    unitPanel.querySelectorAll<HTMLButtonElement>("[data-build]").forEach((el) =>
-      el.addEventListener("click", () => handlers.onBuild(el.dataset.build as ImprovementKind)),
-    );
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-promote]").forEach((el) =>
       el.addEventListener("click", () => handlers.onPromote(el.dataset.promote as PromotionId)),
     );
@@ -884,7 +882,9 @@ export function createUI(handlers: UIHandlers): UI {
     );
   };
 
-  const renderTilePanel = (state: GameState, tile: Tile | null): void => {
+  const WORK_KINDS = ["farm", "lumber_camp", "mine", "quarry", "road", "wall", "tower"];
+
+  const renderTilePanel = (state: GameState, tile: Tile | null, viewerId = -1): void => {
     if (!tile) {
       tilePanel.classList.add("hidden");
       return;
@@ -920,14 +920,44 @@ export function createUI(handlers: UIHandlers): UI {
         `</ul>`;
     }
 
+    // Develop (start a public work) — only for tiles in the viewer's territory.
+    const ownsTile = tile.ownerCityId !== undefined && state.cities.get(tile.ownerCityId)?.ownerId === viewerId;
+    const existing = state.works.find((w) => w.target && w.target.col === tile.col && w.target.row === tile.row);
+    if (existing) {
+      const req = Object.values(existing.requirement).reduce((a, b) => a + (b ?? 0), 0);
+      const done = Object.values(existing.progress).reduce((a, b) => a + (b ?? 0), 0);
+      const pct = req > 0 ? Math.floor((done / req) * 100) : 0;
+      html +=
+        `<div class="csub">🛠️ Under construction</div>` +
+        `<div class="sub">${workName(existing.kind, existing.tier ?? 1)} — ${pct}%</div>` +
+        `<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div>` +
+        `<button class="btn" id="work-cancel" data-work-id="${existing.id}" style="margin-top:6px">Cancel</button>`;
+    } else if (ownsTile) {
+      const btns = WORK_KINDS.map((k) => {
+        const tier = nextTierAt(tile, k);
+        if (tier === null) return "";
+        const verb = tier > 1 ? "Upgrade → " : "";
+        return `<button class="btn" data-work="${k}">${verb}${workName(k, tier)}</button>`;
+      }).filter(Boolean);
+      if (btns.length) {
+        html += `<div class="csub">Develop</div><div class="row" style="flex-wrap:wrap;gap:6px">${btns.join("")}</div>`;
+      }
+    }
+
     tilePanel.innerHTML = html;
     tilePanel
       .querySelector<HTMLButtonElement>("#tile-close")!
       .addEventListener("click", () => handlers.onCloseTile());
     tilePanel.querySelector<HTMLButtonElement>("#tile-toggle")!.addEventListener("click", () => {
       tileExpanded = !tileExpanded;
-      renderTilePanel(state, tile);
+      renderTilePanel(state, tile, viewerId);
     });
+    tilePanel.querySelectorAll<HTMLButtonElement>("[data-work]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onStartWork(el.dataset.work!, tile.col, tile.row)),
+    );
+    tilePanel.querySelector<HTMLButtonElement>("#work-cancel")?.addEventListener("click", () =>
+      handlers.onCancelWork(Number(existing!.id)),
+    );
   };
 
   const renderCityPanel = (state: GameState, city: City | null): void => {
@@ -950,6 +980,42 @@ export function createUI(handlers: UIHandlers): UI {
     const surplus = y.food - city.population * 2;
     const surplusStr = surplus >= 0 ? `+${surplus}` : `${surplus}`;
 
+    // Specialists: train/release craftsmen from this city's population.
+    const free = workerSlots(city);
+    const avail = availableSpecialists(player);
+    const specHtml =
+      `<div class="csub">🛠️ Specialists <span style="color:#9fc0dc">(${city.specialists.length} trained · ${free} free)</span></div>` +
+      avail
+        .map((id) => {
+          const def = SPECIALIST_DEFS[id];
+          const mine = city.specialists.filter((s) => s.type === id);
+          const avg = mine.length ? mine.reduce((a, s) => a + s.level, 0) / mine.length : 0;
+          return (
+            `<div class="row" style="justify-content:space-between;gap:6px;margin-top:4px">` +
+            `<span title="${def.latin} — ${def.desc}">${def.name} <b style="color:#fff">×${mine.length}</b>` +
+            (mine.length ? ` <span class="sub">avg Lv ${avg.toFixed(1)}</span>` : "") +
+            `</span>` +
+            `<span style="display:flex;gap:4px">` +
+            `<button class="btn" data-spec-minus="${id}"${mine.length ? "" : " disabled"}>−</button>` +
+            `<button class="btn" data-spec-plus="${id}"${free > 0 ? "" : " disabled"}>＋</button>` +
+            `</span></div>`
+          );
+        })
+        .join("");
+    const cityWorks = worksOfCity(state, city.id);
+    const worksHtml = cityWorks.length
+      ? `<div class="csub">Public works</div>` +
+        cityWorks
+          .map((w) => {
+            const req = Object.values(w.requirement).reduce((a, b) => a + (b ?? 0), 0);
+            const done = Object.values(w.progress).reduce((a, b) => a + (b ?? 0), 0);
+            const pct = req > 0 ? Math.floor((done / req) * 100) : 0;
+            const label = w.kind === "wonder" ? "Wonder" : workName(w.kind, w.tier ?? 1);
+            return `<div class="sub" style="margin-top:3px">${label} — ${pct}%<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div></div>`;
+          })
+          .join("")
+      : "";
+
     cityPanel.innerHTML =
       `<div class="row" style="justify-content:space-between">` +
       `<b style="font-size:15px">${city.isCapital ? "★ " : ""}${city.name}</b>` +
@@ -966,8 +1032,10 @@ export function createUI(handlers: UIHandlers): UI {
       `<span title="Science">🔬 <b>${y.science}</b></span>` +
       `</div>` +
       // citizens
-      `<div style="margin-top:6px">👥 Citizens <b>${city.workedTiles.length}/${city.population}</b> assigned ` +
+      `<div style="margin-top:6px">👥 Citizens <b>${Math.min(city.workedTiles.length, free)}/${free}</b> working tiles ` +
       `<span style="color:#9fc0dc;font-size:11px">— click tiles to reassign</span></div>` +
+      specHtml +
+      worksHtml +
       // growth
       `<div style="margin-top:6px">Growth ${Math.floor(city.foodStored)}/${need}<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
       // production
@@ -987,6 +1055,12 @@ export function createUI(handlers: UIHandlers): UI {
     cityPanel
       .querySelector<HTMLButtonElement>("#cclose")!
       .addEventListener("click", () => handlers.onCloseCity());
+    cityPanel.querySelectorAll<HTMLButtonElement>("[data-spec-plus]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onConvertCitizen(city.id, el.dataset.specPlus!, 1)),
+    );
+    cityPanel.querySelectorAll<HTMLButtonElement>("[data-spec-minus]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onConvertCitizen(city.id, el.dataset.specMinus!, -1)),
+    );
     cityPanel.querySelector<HTMLButtonElement>("#open-prod")!.addEventListener("click", () => {
       prodCityId = city.id;
       productionOpen = true;
@@ -1027,7 +1101,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderReligion(view.state);
       renderProduction(view.state);
       renderUnitPanel(view.state, view.selectedUnit, view.viewerId, view.odds);
-      renderTilePanel(view.state, view.selectedTile ?? null);
+      renderTilePanel(view.state, view.selectedTile ?? null, view.viewerId);
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state);
       renderGameOver(view.state);
