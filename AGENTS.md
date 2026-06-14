@@ -181,8 +181,8 @@ A standalone AI art generator lives in `tools/art-generator/`:
 - `tools/art-generator/generate.ts` — CLI that calls Google Gemini Nano Banana 2
   with a prompt + reference tile, then resizes and masks the result with
   ImageMagick.
-- `tools/art-generator/config.ts` — asset subsets (terrain, units, buildings),
-  prompt templates, and target sizes.
+- `tools/art-generator/config.ts` — asset subsets (terrain, units, buildings,
+  resources), prompt templates, and target sizes.
 
 Typical commands:
 
@@ -192,11 +192,16 @@ bun run tools/art-generator/generate.ts --tile forest --size 2K
 bun run tools/art-generator/generate.ts --leader rome --size 1K
 bun run tools/art-generator/generate.ts --subset leaders
 bun run tools/art-generator/generate.ts --subset units
+bun run tools/art-generator/generate.ts --subset resources
 bun run tools/art-generator/generate.ts --all
 
 # Generate 5 randomized variants per terrain tile and copy to the client
 bun run tools/art-generator/generate.ts --subset terrain --variations 5 --size 512
 # (then copy assets/generated/tiles/*.png to packages/client/public/hex-terrain/)
+
+# Generate resource icons and copy them to the client
+bun run tools/art-generator/generate.ts --subset resources --size 512
+# (then copy assets/generated/resources/*.png to packages/client/public/resources/)
 
 # Add extra variants without overwriting the existing base tile
 bun run tools/art-generator/generate.ts --tile plains --variations 4 --skip-base --size 512

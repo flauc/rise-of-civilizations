@@ -35,6 +35,7 @@ import { loadUnitAtlas } from "./unit-assets";
 import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
 import { loadFeatureAtlas } from "./feature-assets";
+import { loadResourceAtlas } from "./resource-assets";
 import type { Session } from "./session";
 import type { CheatAction } from "./god-mode";
 import { listSaves, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
@@ -419,6 +420,9 @@ function startGame(session: Session): void {
   const featureAtlas = loadFeatureAtlas(() => {
     needsRedraw = true;
   });
+  const resourceAtlas = loadResourceAtlas(() => {
+    needsRedraw = true;
+  });
 
   function frame(): void {
     if (needsRedraw && session.hasState()) {
@@ -432,6 +436,7 @@ function startGame(session: Session): void {
         fog: { visible, explored },
         terrainAtlas,
         improvementAtlas,
+        resourceAtlas,
       });
       const selCity = selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null;
       drawOverlay(ctx!, camera, st(), {

@@ -15,7 +15,8 @@ import { Camera, type Bounds } from "./camera";
 import { TERRAIN_COLORS, HEX_STROKE, HEX_HOVER_STROKE } from "./palette";
 import { isImageReady, type TerrainAtlas } from "./terrain-assets";
 import { farmFrameFor, type ImprovementAtlas } from "./improvement-assets";
-import { RESOURCE_DEFS, resourceActive, type GameState } from "@roc/sim";
+import { RESOURCE_DEFS, resourceActive, type GameState, type ResourceId } from "@roc/sim";
+import { type ResourceAtlas } from "./resource-assets";
 
 // Hex size (center-to-corner) in world units at zoom 1.
 export const BASE_SIZE = 26;
@@ -222,6 +223,7 @@ export interface RenderOptions {
   fog?: FogState | undefined;
   terrainAtlas?: TerrainAtlas | undefined;
   improvementAtlas?: ImprovementAtlas | undefined;
+  resourceAtlas?: ResourceAtlas | undefined;
 }
 
 const UNEXPLORED_FILL = "#0a1624";
@@ -342,15 +344,25 @@ export function drawScene(
         ctx.fill();
       }
       if (t.resource) {
-        const def = RESOURCE_DEFS[t.resource as keyof typeof RESOURCE_DEFS];
-        if (def) {
+        const img = opts.resourceAtlas?.images[t.resource as ResourceId];
+        if (img && isImageReady(img)) {
+          const iconSize = size * 0.75;
           ctx.save();
-          ctx.font = `bold ${Math.round(size * 0.3)}px system-ui, sans-serif`;
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillStyle = resourceActive(t) ? "#ffffff" : "#888888";
-          ctx.fillText(def.name.slice(0, 2).toUpperCase(), sx, sy - size * 0.45);
+          ctx.globalAlpha = resourceActive(t) ? 1 : 0.55;
+          ctx.drawImage(img, sx - iconSize / 2, sy - iconSize / 2, iconSize, iconSize);
           ctx.restore();
+        } else {
+          // Fallback text initials while the atlas is still loading.
+          const def = RESOURCE_DEFS[t.resource as ResourceId];
+          if (def) {
+            ctx.save();
+            ctx.font = `bold ${Math.round(size * 0.3)}px system-ui, sans-serif`;
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = resourceActive(t) ? "#ffffff" : "#888888";
+            ctx.fillText(def.name.slice(0, 2).toUpperCase(), sx, sy - size * 0.45);
+            ctx.restore();
+          }
         }
       }
     }

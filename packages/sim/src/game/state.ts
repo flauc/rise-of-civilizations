@@ -32,6 +32,8 @@ export interface Specialist {
   id: number;
   /** SpecialistId (see specialists.ts). */
   type: string;
+  /** Personal name (historic, civ-flavored); optional for legacy saves. */
+  name?: string;
   xp: number;
   level: number;
 }

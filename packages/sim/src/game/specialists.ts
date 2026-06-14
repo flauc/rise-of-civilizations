@@ -3,7 +3,9 @@
 // labour of its discipline to the city's Works each turn, and levels up with
 // experience. See docs/SPECIALISTS-AND-WORKS.md.
 
+import { specialistNameCandidates } from "@roc/data";
 import type { City, Discipline, GameState, Player, Specialist } from "./state";
+import { playerById } from "./state";
 import type { TechId } from "./content";
 
 export type SpecialistId = "carpenter" | "agrimensor" | "mason" | "architect" | "engineer";
@@ -99,6 +101,34 @@ export interface SpecialistResult {
   error?: string;
 }
 
+/** Choose a historic, civ-flavored name for a new craftsman, avoiding names the
+ *  player's living specialists already use (appending a numeral if all taken). */
+export function pickSpecialistName(state: GameState, ownerId: number, type: SpecialistId): string {
+  const civId = playerById(state, ownerId)?.civId;
+  const discipline = SPECIALIST_DEFS[type].discipline;
+  const used = new Set<string>();
+  for (const c of state.cities.values()) {
+    if (c.ownerId !== ownerId) continue;
+    for (const s of c.specialists) if (s.name) used.add(s.name);
+  }
+  const candidates = specialistNameCandidates(civId, discipline);
+  for (const name of candidates) if (!used.has(name)) return name;
+  // All taken — append the next regnal numeral to a base name.
+  const base = candidates[0] ?? SPECIALIST_DEFS[type].name;
+  for (let n = 2; n < 99; n++) {
+    const name = `${base} ${roman(n)}`;
+    if (!used.has(name)) return name;
+  }
+  return base;
+}
+
+const ROMAN: [number, string][] = [[10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]];
+function roman(n: number): string {
+  let out = "";
+  for (const [v, s] of ROMAN) while (n >= v) { out += s; n -= v; }
+  return out;
+}
+
 /**
  * Train (delta > 0) or release (delta < 0) one craftsman of `id`.
  * Training pulls a citizen off a worked tile if the city is at capacity;
@@ -114,7 +144,8 @@ export function convertCitizen(
   if (delta > 0) {
     if (!player || !specialistUnlocked(player, id)) return { ok: false, error: "specialist not unlocked" };
     if (city.specialists.length >= city.population) return { ok: false, error: "no free citizens" };
-    city.specialists.push({ id: state.nextEntityId++, type: id, xp: 0, level: 1 });
+    const name = pickSpecialistName(state, city.ownerId, id);
+    city.specialists.push({ id: state.nextEntityId++, type: id, name, xp: 0, level: 1 });
     // If we've over-committed the population, drop the lowest-value worked tile.
     while (city.workedTiles.length + city.specialists.length > city.population && city.workedTiles.length > 0) {
       city.workedTiles.pop();

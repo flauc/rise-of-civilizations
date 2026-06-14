@@ -15,7 +15,7 @@ import {
   SPECIALIST_DEFS,
   SPECIALIST_IDS,
 } from "@roc/sim";
-import { WONDER_DEFS } from "@roc/data";
+import { WONDER_DEFS, MASTER_CRAFTSMEN, getCiv } from "@roc/data";
 import type { TerrainType } from "@roc/sim";
 
 export type WikiCategory =
@@ -295,8 +295,40 @@ function renderSpecialists(): string {
       "Wonders",
       `<p>Wonders are the grandest Works: world-unique projects needing several disciplines at once, so a host city must field a mixed crew of craftsmen — and several cities can pool their specialists to finish faster. Each grants a powerful, permanent bonus.</p>` +
         `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Wonder</th><th>Requires</th><th>Effect</th></tr></thead><tbody>${wonderRows}</tbody></table></div>`,
-    )
+    ) +
+    renderMasterCraftsmen()
   );
+}
+
+const CRAFT_ORDER: { discipline: string; title: string }[] = [
+  { discipline: "architecture", title: "Architects" },
+  { discipline: "engineering", title: "Military Engineers" },
+  { discipline: "masonry", title: "Masons" },
+  { discipline: "survey", title: "Surveyors" },
+  { discipline: "carpentry", title: "Carpenters" },
+];
+
+function renderMasterCraftsmen(): string {
+  let body =
+    `<p>Your craftsmen are named, where history allows, after a real master of their craft and people; where no record survives, after a master of another land or from an authentic pool of period names. The figures below are real.</p>`;
+  for (const { discipline, title } of CRAFT_ORDER) {
+    const people = MASTER_CRAFTSMEN.filter((m) => m.discipline === discipline);
+    if (people.length === 0) continue;
+    const rows = people
+      .map((m) => {
+        const civ = m.civId ? getCiv(m.civId)?.name ?? "" : "";
+        return (
+          `<tr><td><b>${escapeHtml(m.name)}</b></td>` +
+          `<td>${escapeHtml(civ)}</td>` +
+          `<td>${escapeHtml(m.note)}</td></tr>`
+        );
+      })
+      .join("");
+    body +=
+      `<div class="wiki-table-wrap"><div class="wiki-table-title">${escapeHtml(title)}</div>` +
+      `<table class="wiki-table"><thead><tr><th>Name</th><th>People</th><th>Historical note</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+  return section("Master Craftsmen", body);
 }
 
 function renderVictory(): string {

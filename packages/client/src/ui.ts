@@ -33,6 +33,7 @@ import {
   workerSlots,
   nextTierAt,
   workName,
+  canStartWork,
   worksOfCity,
   citiesOf,
   unitsOf,
@@ -1001,14 +1002,26 @@ export function createUI(handlers: UIHandlers): UI {
         `<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div>` +
         `<button class="btn" id="work-cancel" data-work-id="${existing.id}" style="margin-top:6px">Cancel</button>`;
     } else if (ownsTile) {
+      let needHint = "";
       const btns = WORK_KINDS.map((k) => {
         const tier = nextTierAt(tile, k);
         if (tier === null) return "";
         const verb = tier > 1 ? "Upgrade → " : "";
-        return `<button class="btn" data-work="${k}">${verb}${workName(k, tier)}</button>`;
+        const can = canStartWork(state, viewerId, k, tile.col, tile.row);
+        if (can.ok) {
+          return `<button class="btn" data-work="${k}">${verb}${workName(k, tier)}</button>`;
+        }
+        // A missing-craftsman block is shown as a locked button so the player
+        // knows the option exists but needs the right specialist first.
+        if (can.error && can.error.startsWith("No ")) {
+          needHint = can.error;
+          return `<button class="btn" disabled title="${can.error}" style="opacity:.5;cursor:not-allowed">${verb}${workName(k, tier)} 🔒</button>`;
+        }
+        return "";
       }).filter(Boolean);
       if (btns.length) {
         html += `<div class="csub">Develop</div><div class="row" style="flex-wrap:wrap;gap:6px">${btns.join("")}</div>`;
+        if (needHint) html += `<div class="sub" style="margin-top:4px;color:#e0b07d">🔒 ${needHint}.</div>`;
       }
     }
 
@@ -1158,19 +1171,17 @@ export function createUI(handlers: UIHandlers): UI {
         .map((id) => {
           const def = SPECIALIST_DEFS[id];
           const mine = city.specialists.filter((s) => s.type === id);
-          const avg = mine.length ? mine.reduce((a, s) => a + s.level, 0) / mine.length : 0;
           return (
             `<div class="row" style="justify-content:space-between;gap:6px;margin-top:4px">` +
-            `<span title="${def.latin} — ${def.desc}">${def.name} <b style="color:#fff">×${mine.length}</b>` +
-            (mine.length ? ` <span class="sub">avg Lv ${avg.toFixed(1)}</span>` : "") +
-            `</span>` +
+            `<span title="${def.latin} — ${def.desc}">${def.name} <b style="color:#fff">×${mine.length}</b></span>` +
             `<span style="display:flex;gap:4px">` +
             `<button class="btn" data-spec-minus="${id}"${mine.length ? "" : " disabled"}>−</button>` +
             `<button class="btn" data-spec-plus="${id}"${free > 0 ? "" : " disabled"}>＋</button>` +
             `</span></div>`
           );
         })
-        .join("");
+        .join("") +
+      `<div class="sub" style="margin-top:4px;opacity:.8">Open 🏛️ Empire → Specialists to see each craftsman by name.</div>`;
     const cityWorks = worksOfCity(state, city.id);
     const worksHtml = cityWorks.length
       ? `<div class="csub">Public works</div>` +

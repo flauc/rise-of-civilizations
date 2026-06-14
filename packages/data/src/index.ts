@@ -1247,3 +1247,138 @@ export const WONDER_DEFS: WonderDef[] = [
 const WONDER_BY_ID = new Map(WONDER_DEFS.map((w) => [w.id, w]));
 export const getWonder = (id: string | undefined) => (id ? WONDER_BY_ID.get(id) : undefined);
 export const WONDER_IDS: string[] = WONDER_DEFS.map((w) => w.id);
+
+// ---- Specialist names ----------------------------------------------------
+// Craftsmen are named (best effort) after a real historical master of their
+// craft and civilization; failing that, after a master of another civilization,
+// and finally from a culturally-matched pool of authentic period given-names.
+// Disciplines: "carpentry" | "survey" | "masonry" | "architecture" | "engineering".
+
+export interface MasterCraftsman {
+  name: string;
+  discipline: string;
+  /** Civilization id this figure is associated with (if any). */
+  civId?: string;
+  /** Short historical note for the encyclopedia. */
+  note: string;
+}
+
+/** Real, documented master craftsmen — the wiki gallery and primary name source. */
+export const MASTER_CRAFTSMEN: MasterCraftsman[] = [
+  // Architecture
+  { name: "Imhotep", discipline: "architecture", civId: "egypt", note: "Vizier to King Djoser; designed the Step Pyramid at Saqqara (c. 2650 BCE) — the earliest architect known to history by name." },
+  { name: "Hemiunu", discipline: "architecture", civId: "egypt", note: "Vizier and overseer of works for Khufu, traditionally credited with planning the Great Pyramid of Giza." },
+  { name: "Ineni", discipline: "architecture", civId: "egypt", note: "Royal architect under Thutmose I who oversaw the first hidden tombs cut in the Valley of the Kings." },
+  { name: "Ictinus", discipline: "architecture", civId: "greece", note: "Co-architect of the Parthenon (447–432 BCE) and the Temple of Apollo at Bassae." },
+  { name: "Callicrates", discipline: "architecture", civId: "greece", note: "Athenian architect of the Parthenon and the elegant Temple of Athena Nike." },
+  { name: "Mnesikles", discipline: "architecture", civId: "greece", note: "Designed the Propylaea, the great columned gateway to the Athenian Acropolis." },
+  { name: "Hippodamus", discipline: "architecture", civId: "greece", note: "Of Miletus; the 'father of urban planning', who devised the orthogonal grid adopted across the Greek world." },
+  { name: "Sostratus", discipline: "architecture", civId: "greece", note: "Of Cnidus; credited with the Lighthouse (Pharos) of Alexandria, one of the Seven Wonders." },
+  { name: "Vitruvius", discipline: "architecture", civId: "rome", note: "Architect and military engineer under Augustus; wrote De architectura, the only surviving classical treatise on building." },
+  { name: "Apollodorus", discipline: "architecture", civId: "rome", note: "Of Damascus; Trajan's architect — designed his Forum and Column and the great timber bridge over the Danube." },
+  { name: "Cossutius", discipline: "architecture", civId: "rome", note: "Roman architect who resumed the colossal Temple of Olympian Zeus in Athens for Antiochus IV." },
+  // Engineering
+  { name: "Archimedes", discipline: "engineering", civId: "greece", note: "Engineer of Syracuse; devised compound pulleys, the water screw, and the siege machines that long held off Rome." },
+  { name: "Ctesibius", discipline: "engineering", civId: "greece", note: "Alexandrian inventor and father of pneumatics; built force pumps and precise water clocks." },
+  { name: "Heron", discipline: "engineering", civId: "greece", note: "Of Alexandria; described the aeolipile steam device, automata, and the dioptra surveying instrument." },
+  { name: "Eupalinos", discipline: "engineering", civId: "greece", note: "Of Megara; drove the 1,000-metre Tunnel of Samos from both ends to meet in the middle (6th c. BCE)." },
+  { name: "Frontinus", discipline: "engineering", civId: "rome", note: "Sextus Julius Frontinus, water commissioner of Rome; wrote De aquaeductu on the city's aqueducts." },
+  { name: "Zhang Heng", discipline: "engineering", civId: "han_china", note: "Han polymath who built a water-powered armillary sphere and the first seismoscope (132 CE)." },
+  { name: "Du Shi", discipline: "engineering", civId: "han_china", note: "Han governor who harnessed water power to drive bellows for casting iron (c. 31 CE)." },
+  { name: "Ma Jun", discipline: "engineering", civId: "han_china", note: "Mechanical engineer of the late Han credited with the south-pointing chariot and improved silk looms." },
+  // Surveying
+  { name: "Hyginus", discipline: "survey", civId: "rome", note: "Hyginus Gromaticus, Roman land-surveyor who wrote on the laying-out of colonies and military camps." },
+  { name: "Siculus Flaccus", discipline: "survey", civId: "rome", note: "Roman agrimensor whose treatise on the conditions of land survives in the Corpus Agrimensorum." },
+  { name: "Eratosthenes", discipline: "survey", civId: "greece", note: "Chief librarian at Alexandria who measured the Earth's circumference using shadows and geometry." },
+  // Masonry
+  { name: "Senenmut", discipline: "masonry", civId: "egypt", note: "Steward to Hatshepsut who supervised the building of her terraced temple at Deir el-Bahari." },
+  { name: "Kha", discipline: "masonry", civId: "egypt", note: "Overseer of works at Deir el-Medina; his intact tomb preserved a gilded cubit rod and a builder's toolkit." },
+  { name: "Gudea", discipline: "masonry", civId: "sumer", note: "Ruler of Lagash famed for a vast temple-building program; his statues depict him with a builder's plan and rule." },
+  { name: "Ur-Nammu", discipline: "masonry", civId: "sumer", note: "King of Ur who raised the great ziggurat of Ur and standardised building measures across Sumer." },
+  { name: "Hiram", discipline: "masonry", civId: "phoenicia", note: "Master craftsman sent from Tyre to cast the bronze pillars and fittings of Solomon's Temple." },
+  // Carpentry
+  { name: "Lu Ban", discipline: "carpentry", civId: "han_china", note: "Legendary Chinese master carpenter and engineer, later revered as the patron of builders and craftsmen." },
+];
+
+/** Cultural regions used to pick authentic given-names per civilization. */
+export type CraftRegion =
+  | "mesopotamian" | "anatolian" | "iranian" | "levantine" | "egyptian" | "african"
+  | "aegean" | "italic" | "northern_european" | "medieval_european"
+  | "east_asian" | "southeast_asian" | "south_asian" | "steppe"
+  | "mesoamerican" | "andean" | "north_american" | "oceanian";
+
+/** Map every civilization to a cultural region (defaults to mesopotamian). */
+export const CIV_REGION: Record<string, CraftRegion> = {
+  sumer: "mesopotamian", akkad: "mesopotamian", babylon: "mesopotamian", assyria: "mesopotamian", elam: "mesopotamian",
+  hittites: "anatolian", lydia: "anatolian",
+  median_empire: "iranian", persia: "iranian", parthia: "iranian", sassanid_persia: "iranian",
+  phoenicia: "levantine", carthage: "levantine",
+  egypt: "egyptian", kush_nubia: "egyptian",
+  mali: "african", ghana_empire: "african", songhai: "african", great_zimbabwe: "african",
+  kanem_bornu: "african", aksum: "african", ethiopia_zagwe: "african",
+  minoans: "aegean", mycenaean_greece: "aegean", greece: "aegean", sparta: "aegean", macedon: "aegean",
+  etruscans: "italic", rome: "italic",
+  celts_gauls: "northern_european", norse: "northern_european", franks: "northern_european",
+  goths: "northern_european", anglo_saxon_england: "northern_european",
+  byzantium: "medieval_european", france: "medieval_european", castile_spain: "medieval_european",
+  portugal: "medieval_european", venice: "medieval_european", genoa: "medieval_european",
+  dutch_republic: "medieval_european", holy_roman_empire: "medieval_european", kievan_rus: "medieval_european",
+  poland_lithuania: "medieval_european", hungary: "medieval_european",
+  han_china: "east_asian", china_tang_song: "east_asian", china_ming: "east_asian",
+  japan: "east_asian", korea: "east_asian", tibet: "east_asian",
+  dai_viet_vietnam: "southeast_asian", khmer: "southeast_asian", srivijaya: "southeast_asian",
+  majapahit: "southeast_asian", pagan_burma: "southeast_asian", ayutthaya_siam: "southeast_asian",
+  maurya: "south_asian", gupta_india: "south_asian", chola: "south_asian",
+  scythians: "steppe", xiongnu: "steppe", huns: "steppe", gokturks: "steppe",
+  seljuks: "steppe", mongols: "steppe", timurids: "steppe", ottomans: "steppe",
+  olmec: "mesoamerican", maya: "mesoamerican", zapotec: "mesoamerican",
+  teotihuacan: "mesoamerican", toltec: "mesoamerican", aztec: "mesoamerican",
+  inca: "andean", muisca: "andean",
+  mississippian_cahokia: "north_american", haudenosaunee: "north_american", pueblo: "north_american",
+  polynesia: "oceanian", maori: "oceanian", hawaii: "oceanian",
+};
+
+export function craftRegionForCiv(civId: string | undefined): CraftRegion {
+  return (civId && CIV_REGION[civId]) || "mesopotamian";
+}
+
+/** Authentic period given-names by cultural region (fallback name pool). */
+export const REGION_CRAFT_NAMES: Record<CraftRegion, string[]> = {
+  mesopotamian: ["Ur-Nammu", "Gudea", "Eannatum", "Shulgi", "Ur-Bau", "Lu-Nanna", "Ur-Ningirsu", "Enannatum", "Ibbi-Sin", "Naram-Sin", "Ur-Nanshe", "Sin-iddinam", "Warad-Sin", "Lugal-ushumgal"],
+  anatolian: ["Hattusili", "Mursili", "Suppiluliuma", "Tudhaliya", "Muwatalli", "Arnuwanda", "Telipinu", "Labarna", "Kurunta", "Alyattes", "Gyges", "Sadyattes", "Pithana", "Anitta"],
+  iranian: ["Darius", "Cyrus", "Bardiya", "Otanes", "Gobryas", "Hydarnes", "Aspathines", "Intaphrenes", "Mardonius", "Artabanus", "Vishtaspa", "Pharnaspes", "Datis", "Megabyzus"],
+  levantine: ["Hiram", "Abibaal", "Ithobaal", "Eshmunazar", "Bodashtart", "Mago", "Hanno", "Hamilcar", "Hasdrubal", "Adherbal", "Bomilcar", "Maharbal", "Gisco", "Bostar"],
+  egyptian: ["Imhotep", "Ineni", "Hemiunu", "Senenmut", "Kha", "Nakht", "Ptahhotep", "Amenhotep", "Rahotep", "Khaemwaset", "Bak", "Thutmose", "Nebamun", "Userhat"],
+  african: ["Sundiata", "Sakura", "Sulayman", "Kankan", "Naré", "Fakoli", "Tiramakhan", "Mari Djata", "Ezana", "Kaleb", "Gadarat", "Ousanas", "Tunka Manin", "Askia"],
+  aegean: ["Ictinus", "Callicrates", "Mnesikles", "Daedalus", "Theodoros", "Rhoikos", "Metagenes", "Chersiphron", "Pheidias", "Hippodamos", "Pytheos", "Satyros", "Polykleitos", "Deinokrates"],
+  italic: ["Marcus", "Lucius", "Gaius", "Quintus", "Titus", "Publius", "Aulus", "Gnaeus", "Servius", "Decimus", "Vitruvius", "Cossutius", "Postumius", "Mucius"],
+  northern_european: ["Bjorn", "Leif", "Erik", "Sigurd", "Ivar", "Halfdan", "Gunnar", "Thorstein", "Ulf", "Arne", "Harald", "Rolf", "Brennus", "Cunobelin"],
+  medieval_european: ["Guillaume", "Pierre", "Jean", "Arnolfo", "Lorenzo", "Giovanni", "Konrad", "Heinrich", "Dietrich", "Willem", "Jan", "Wojciech", "Géza", "Yaroslav"],
+  east_asian: ["Lu Ban", "Zhang Heng", "Du Shi", "Ma Jun", "Yu Hao", "Li Chun", "Yuwen Kai", "Shen Kuo", "Li Jie", "Gongshu", "Cai Lun", "Ding Huan", "Sun Wu", "Mo Di"],
+  southeast_asian: ["Jayavarman", "Suryavarman", "Yasovarman", "Indravarman", "Gajah Mada", "Hayam Wuruk", "Anawrahta", "Kyansittha", "Airlangga", "Kertanegara", "Ramkhamhaeng", "Naresuan"],
+  south_asian: ["Vishvakarma", "Mandana", "Devadatta", "Ananta", "Govinda", "Narahari", "Dhruva", "Bhoja", "Nagabhata", "Harisena", "Vishnugupta", "Sthapati"],
+  steppe: ["Bumin", "Istemi", "Bilge", "Kultegin", "Tonyukuk", "Attila", "Bleda", "Modu", "Subotai", "Jebe", "Alp Arslan", "Tughril", "Osman", "Timur"],
+  mesoamerican: ["Tlacaelel", "Nezahualcoyotl", "Itzcoatl", "Axayacatl", "Tizoc", "Cuauhtemoc", "Pakal", "Kan Bahlam", "Jasaw", "Yax Nuun", "Siyaj", "Waxaklajuun"],
+  andean: ["Pachacuti", "Viracocha", "Tupac", "Sinchi Roca", "Mayta Capac", "Lloque", "Yawar", "Amaru", "Inca Roca", "Huayna"],
+  north_american: ["Hiawatha", "Deganawida", "Tadodaho", "Atotarho", "Sganyodaiyo", "Donnacona", "Tamanend", "Powhatan", "Onatah", "Tecumseh"],
+  oceanian: ["Kupe", "Hotu Matua", "Pa'ao", "Tupaia", "Ru", "Rangi", "Tane", "Maui", "Hema", "Tama", "Kahiki", "Manaia"],
+};
+
+const MASTER_BY_DISCIPLINE = new Map<string, MasterCraftsman[]>();
+for (const m of MASTER_CRAFTSMEN) {
+  const arr = MASTER_BY_DISCIPLINE.get(m.discipline) ?? [];
+  arr.push(m);
+  MASTER_BY_DISCIPLINE.set(m.discipline, arr);
+}
+
+/**
+ * Ordered candidate names for a craftsman: real masters of this civ & craft
+ * first, then masters of the craft from any civ, then the region's name pool.
+ */
+export function specialistNameCandidates(civId: string | undefined, discipline: string): string[] {
+  const masters = MASTER_BY_DISCIPLINE.get(discipline) ?? [];
+  const sameCiv = masters.filter((m) => m.civId === civId).map((m) => m.name);
+  const otherMasters = masters.filter((m) => m.civId !== civId).map((m) => m.name);
+  const region = REGION_CRAFT_NAMES[craftRegionForCiv(civId)] ?? [];
+  return [...sameCiv, ...otherMasters, ...region];
+}

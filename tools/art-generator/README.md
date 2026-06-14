@@ -70,15 +70,17 @@ assets/generated/
     tiles/       # Unprocessed model output
     units/
     buildings/
+    resources/   # Unprocessed model output
   tiles/         # Final hex-masked tiles (256x384)
   units/         # Final transparent-background tokens (128x128)
   buildings/     # Final transparent-background icons (128x128)
+  resources/     # Final transparent-background icons (96x96)
 ```
 
 ## How it works
 
 1. **Prompt construction** — Each asset has a default prompt in
-   `config.ts`. Tiles ask for a hand-painted pointy-top hex; units/buildings ask
+   `config.ts`. Tiles ask for a hand-painted pointy-top hex; units/buildings/resources ask
    for a centered icon on a solid white background.
 2. **Reference image** — The prompt is sent together with one of the existing
    `Hex Samples/` tiles so the model can match the game's style.
@@ -91,6 +93,8 @@ assets/generated/
    - **Units/buildings:** a white background is color-keyed to transparent
      (or `rembg` is used if requested), the image is trimmed, then padded to
      128x128.
+   - **Resources:** same transparent-background treatment as units, but padded
+     to 96x96 so they read as small map tokens.
 
 ## Customizing
 
@@ -100,6 +104,7 @@ Add more assets by editing the arrays in `config.ts`:
 - `UNIT_SUBSET` — a representative set of unit IDs from
   `packages/sim/src/game/content.ts`.
 - `BUILDING_SUBSET` — building IDs from the same file.
+- `RESOURCE_SUBSET` — resource IDs from `packages/sim/src/game/resources.ts`.
 
 You can also change target sizes, aspect ratios, reference tile mappings, and
 prompt templates there.

@@ -7,7 +7,7 @@
 
 import { axialDistance, getTile, offsetToAxial, type Tile } from "@roc/shared";
 import { getWonder, WONDER_DEFS } from "@roc/data";
-import type { City, Discipline, GameState, Work } from "./state";
+import type { City, Discipline, GameState, Specialist, Work } from "./state";
 import { citiesOf, playerById } from "./state";
 import { isPassableLand } from "./terrain";
 import { availableTechs } from "./economy";
@@ -182,8 +182,60 @@ function tileOwnedBy(state: GameState, tile: Tile, playerId: number): boolean {
   return !!city && city.ownerId === playerId;
 }
 
-/** Start (or upgrade) a tile/defensive work. Tier is inferred from the tile. */
-export function startWork(state: GameState, playerId: number, kind: string, col: number, row: number): WorkResult {
+/** Specialist disciplines a work of `kind` needs trained before it can begin. */
+export function workDisciplines(kind: string): Discipline[] {
+  if (isEconKind(kind)) return [ECON_DISCIPLINE[kind]];
+  if (isDefenseKind(kind)) return ["masonry", "engineering"];
+  return [];
+}
+
+/** Disciplines a city can currently supply from its trained craftsmen. */
+export function cityDisciplines(city: City): Set<Discipline> {
+  const set = new Set<Discipline>();
+  for (const s of city.specialists) {
+    const d = SPECIALIST_DEFS[s.type as SpecialistId]?.discipline;
+    if (d) set.add(d);
+  }
+  return set;
+}
+
+/** The display name of the specialist that practises a discipline (e.g. "Mason"). */
+export function specialistNameForDiscipline(d: Discipline): string {
+  for (const id of Object.keys(SPECIALIST_DEFS) as SpecialistId[]) {
+    if (SPECIALIST_DEFS[id].discipline === d) return SPECIALIST_DEFS[id].name;
+  }
+  return d;
+}
+
+function disciplinesError(missing: Discipline[]): string {
+  return `No ${missing.map(specialistNameForDiscipline).join(" or ")} to do the work — train one first`;
+}
+
+/** Nearest of the player's cities that has every discipline in `disciplines`. */
+function nearestCapableCity(
+  state: GameState,
+  playerId: number,
+  col: number,
+  row: number,
+  disciplines: Discipline[],
+): City | null {
+  const tileAx = offsetToAxial({ col, row });
+  let best: City | null = null;
+  let bestD = Infinity;
+  for (const c of citiesOf(state, playerId)) {
+    const have = cityDisciplines(c);
+    if (!disciplines.every((d) => have.has(d))) continue;
+    const d = axialDistance(tileAx, offsetToAxial({ col: c.col, row: c.row }));
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/** Validate a tile/defensive work without mutating (drives the build UI). */
+export function canStartWork(state: GameState, playerId: number, kind: string, col: number, row: number): WorkResult {
   if (!isEconKind(kind) && !isDefenseKind(kind)) return { ok: false, error: "unknown work" };
   const tile = getTile(state.map, col, row);
   if (!tile) return { ok: false, error: "no such tile" };
@@ -193,8 +245,23 @@ export function startWork(state: GameState, playerId: number, kind: string, col:
   }
   const tier = nextTierAt(tile, kind);
   if (tier === null) return { ok: false, error: "cannot build that here" };
-  const host = nearestOwningCity(state, playerId, col, row);
-  if (!host) return { ok: false, error: "no city to build from" };
+  const needs = workDisciplines(kind);
+  const host = nearestCapableCity(state, playerId, col, row, needs);
+  if (!host) {
+    // Distinguish "no city at all" from "no city with the right craftsmen".
+    if (!nearestOwningCity(state, playerId, col, row)) return { ok: false, error: "no city to build from" };
+    return { ok: false, error: disciplinesError(needs) };
+  }
+  return { ok: true };
+}
+
+/** Start (or upgrade) a tile/defensive work. Tier is inferred from the tile. */
+export function startWork(state: GameState, playerId: number, kind: string, col: number, row: number): WorkResult {
+  const can = canStartWork(state, playerId, kind, col, row);
+  if (!can.ok) return can;
+  const tile = getTile(state.map, col, row)!;
+  const tier = nextTierAt(tile, kind)!;
+  const host = nearestCapableCity(state, playerId, col, row, workDisciplines(kind))!;
   const id = state.nextEntityId++;
   state.works.push({
     id,
@@ -210,8 +277,8 @@ export function startWork(state: GameState, playerId: number, kind: string, col:
   return { ok: true, workId: id };
 }
 
-/** Begin a wonder hosted by one of the player's cities. */
-export function startWonder(state: GameState, playerId: number, wonderId: string, hostCityId: number): WorkResult {
+/** Validate starting a wonder without mutating (drives the wonder UI). */
+export function canStartWonder(state: GameState, playerId: number, wonderId: string, hostCityId: number): WorkResult {
   const def = getWonder(wonderId);
   if (!def) return { ok: false, error: "no such wonder" };
   if (state.completedWonders.includes(wonderId)) return { ok: false, error: "wonder already built" };
@@ -220,6 +287,17 @@ export function startWonder(state: GameState, playerId: number, wonderId: string
   if (state.works.some((w) => w.ownerId === playerId && w.wonderId === wonderId)) {
     return { ok: false, error: "already building that wonder" };
   }
+  const have = cityDisciplines(host);
+  const missing = (Object.keys(def.requirement) as Discipline[]).filter((d) => !have.has(d));
+  if (missing.length) return { ok: false, error: `${host.name} needs ${missing.map(specialistNameForDiscipline).join(", ")}` };
+  return { ok: true };
+}
+
+/** Begin a wonder hosted by one of the player's cities. */
+export function startWonder(state: GameState, playerId: number, wonderId: string, hostCityId: number): WorkResult {
+  const can = canStartWonder(state, playerId, wonderId, hostCityId);
+  if (!can.ok) return can;
+  const def = getWonder(wonderId)!;
   const id = state.nextEntityId++;
   state.works.push({
     id,
@@ -261,6 +339,18 @@ export function worksOf(state: GameState, playerId: number): Work[] {
 
 export function worksOfCity(state: GameState, cityId: number): Work[] {
   return state.works.filter((w) => w.cityIds.includes(cityId));
+}
+
+/** The work a specialist labours on this turn (first incomplete city work that
+ *  still needs its discipline), or null if it is idle. */
+export function currentWorkFor(state: GameState, city: City, specialist: Specialist): Work | null {
+  const disc = SPECIALIST_DEFS[specialist.type as SpecialistId]?.discipline;
+  if (!disc) return null;
+  for (const w of state.works) {
+    if (!w.cityIds.includes(city.id)) continue;
+    if ((w.requirement[disc] ?? 0) > (w.progress[disc] ?? 0)) return w;
+  }
+  return null;
 }
 
 function needs(w: Work, d: Discipline): boolean {

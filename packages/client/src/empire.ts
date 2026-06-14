@@ -15,6 +15,8 @@ import {
   worksOf,
   worksOfCity,
   workName,
+  canStartWonder,
+  currentWorkFor,
   type GameState,
   type City,
 } from "@roc/sim";
@@ -50,6 +52,13 @@ const STYLE = `
 .emp-bar{height:7px;background:#1a2c40;border-radius:4px;overflow:hidden;margin-top:3px}
 .emp-bar>i{display:block;height:100%;background:#c9a24a}
 .emp-empty{color:#9fc0dc;margin-top:14px}
+.emp-spec-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px}
+.emp-spec-list{margin:3px 0 2px;border-left:2px solid #24384c;padding-left:9px}
+.emp-spec{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:2px 0}
+.emp-spec-name{color:#eaf3fb;font-size:13px}
+.emp-spec-meta{color:#9fc0dc;font-size:12px;white-space:nowrap}
+.emp-stars{color:#ffd967;letter-spacing:1px}
+.emp-idle{color:#7e93a6;font-style:italic}
 `;
 
 export interface Empire {
@@ -153,18 +162,34 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     for (const c of cities) {
       const free = workerSlots(c);
       const avail = availableSpecialists(state.players.find((p) => p.id === viewerId)!);
+      const jobOf = (w: ReturnType<typeof currentWorkFor>): string => {
+        if (!w) return `<span class="emp-idle">idle</span>`;
+        const label = w.kind === "wonder" ? getWonder(w.wonderId)?.name ?? "a wonder" : workName(w.kind, w.tier ?? 1);
+        return `→ ${label}`;
+      };
       const steppers = avail
         .map((id) => {
           const def = SPECIALIST_DEFS[id];
-          const mine = c.specialists.filter((s) => s.type === id);
-          const avg = mine.length ? (mine.reduce((a, s) => a + s.level, 0) / mine.length).toFixed(1) : "—";
-          return (
-            `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:5px">` +
-            `<span title="${def.latin} — ${def.desc}">${def.name} <b style="color:#fff">×${mine.length}</b> <span class="emp-sub">Lv ${avg}</span></span>` +
+          const mine = c.specialists.filter((s) => s.type === id).sort((a, b) => b.level - a.level);
+          // Group header with train/release steppers …
+          const header =
+            `<div class="emp-spec-head">` +
+            `<span title="${def.latin} — ${def.desc}"><b style="color:#fff">${def.name}</b>` +
+            (mine.length ? ` <span class="emp-sub">×${mine.length}</span>` : ` <span class="emp-sub">—</span>`) +
+            `</span>` +
             `<span class="emp-stepper"><button class="btn" data-spec-minus="${id}" data-city="${c.id}"${mine.length ? "" : " disabled"}>−</button>` +
-            `<button class="btn" data-spec-plus="${id}" data-city="${c.id}"${free > 0 ? "" : " disabled"}>＋</button></span>` +
-            `</div>`
-          );
+            `<button class="btn" data-spec-plus="${id}" data-city="${c.id}"${free > 0 ? "" : " disabled"}>＋</button></span></div>`;
+          // … then every craftsman of this kind, by name, level and current job.
+          const list = mine
+            .map((s) => {
+              const stars = "★".repeat(Math.min(5, s.level));
+              return (
+                `<div class="emp-spec"><span class="emp-spec-name">${s.name ?? def.name}</span>` +
+                `<span class="emp-spec-meta"><span class="emp-stars" title="Level ${s.level}">${stars}</span> ${jobOf(currentWorkFor(state, c, s))}</span></div>`
+              );
+            })
+            .join("");
+          return header + (mine.length ? `<div class="emp-spec-list">${list}</div>` : "");
         })
         .join("");
       const works = worksOfCity(state, c.id)
@@ -202,12 +227,18 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         const req = Object.values(inProg.requirement).reduce((a, b) => a + (b ?? 0), 0);
         const done = Object.values(inProg.progress).reduce((a, b) => a + (b ?? 0), 0);
         action = `<span class="emp-pill">${req > 0 ? Math.floor((done / req) * 100) : 0}%</span>`;
-      } else if (cities.length > 0) {
-        action =
-          `<span class="emp-stepper"><select data-wonder-city="${w.id}" class="emp-pill" style="background:#14283b;color:#eaf3fb;border:1px solid var(--edge)">` +
-          cities.map((c) => `<option value="${c.id}">${c.name}</option>`).join("") +
-          `</select><button class="btn" data-wonder="${w.id}">Start</button></span>`;
-      } else action = "";
+      } else {
+        // Only cities that already field every required craft may host the wonder.
+        const capable = cities.filter((c) => canStartWonder(state, viewerId, w.id, c.id).ok);
+        if (capable.length > 0) {
+          action =
+            `<span class="emp-stepper"><select data-wonder-city="${w.id}" class="emp-pill" style="background:#14283b;color:#eaf3fb;border:1px solid var(--edge)">` +
+            capable.map((c) => `<option value="${c.id}">${c.name}</option>`).join("") +
+            `</select><button class="btn" data-wonder="${w.id}">Start</button></span>`;
+        } else {
+          action = `<span class="emp-pill" style="color:#e0b07d" title="A city needs all of these craftsmen to host it">🔒 need crew</span>`;
+        }
+      }
       html +=
         `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)">` +
         `<div class="grow"><div class="emp-name" style="font-size:14px">${w.name}</div>` +

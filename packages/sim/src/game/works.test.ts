@@ -82,6 +82,18 @@ describe("specialists & works", () => {
     void city;
   });
 
+  it("refuses to start a work when no suitable craftsman is trained", () => {
+    const { s, city } = gameWithCity();
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    // No carpenter trained yet → starting a farm must be rejected.
+    const res = applyCommand(s, { type: "startWork", kind: "farm", col: tile.col, row: tile.row });
+    expect(res.ok).toBe(false);
+    expect(s.works.length).toBe(0);
+    // Train a carpenter and it becomes allowed.
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    expect(applyCommand(s, { type: "startWork", kind: "farm", col: tile.col, row: tile.row }).ok).toBe(true);
+  });
+
   it("refuses to train more craftsmen than the city has citizens", () => {
     const { s, city } = gameWithCity();
     city.population = 1;
