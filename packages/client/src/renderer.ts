@@ -2,6 +2,7 @@ import {
   axialRound,
   axialToOffset,
   axialToPixel,
+  hashSeed,
   offsetToAxial,
   pixelToAxial,
   type GameMap,
@@ -143,7 +144,11 @@ export function drawScene(
       ctx.fill();
       continue; // hide terrain entirely
     }
-    const img = opts.terrainAtlas?.images[t.terrain];
+    const variants = opts.terrainAtlas?.images[t.terrain];
+    const img =
+      variants && variants.length > 0
+        ? variants[hashSeed(`${t.col},${t.row},${t.terrain}`) % variants.length]
+        : undefined;
     if (img && isImageReady(img)) {
       // The sprite is a 256x384 image whose bottom 256x256 is the square hex
       // footprint and whose top 128px is transparent overhang. Map the sprite

@@ -10,6 +10,7 @@ function gameWithCity() {
   beginTurn(s);
   const settler = unitsOf(s, 0).find((u) => u.type === "settler")!;
   applyCommand(s, { type: "foundCity", unitId: settler.id });
+  s.players[0]!.researched.add("ritual_burial"); // religion is gated behind Ritual & Burial
   return s;
 }
 

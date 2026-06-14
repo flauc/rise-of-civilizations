@@ -44,6 +44,9 @@ interface Options {
   outDir: string;
   postProcess: boolean;
   useRembg: boolean;
+  variations: number;
+  includeBase: boolean;
+  concurrency: number;
   dryRun: boolean;
 }
 
@@ -74,6 +77,9 @@ Options:
   --out-dir <path>       Output directory (default: "${DEFAULT_OUTPUT_DIR}")
   --no-post              Skip ImageMagick post-processing
   --rembg                Use rembg for background removal when available
+  --variations <n>       Generate n variants per asset (default: 1)
+  --skip-base            Only generate numbered variants (_1.._n), leave base file
+  --concurrency <n>      Max parallel API calls (default: 3)
   --dry-run              Do not call the API or write files
   --help                 Show this message
 
@@ -115,6 +121,9 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
     outDir: DEFAULT_OUTPUT_DIR,
     postProcess: true,
     useRembg: false,
+    variations: 1,
+    includeBase: true,
+    concurrency: 3,
     dryRun: false,
   };
 
@@ -183,6 +192,21 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         break;
       case "--rembg":
         options.useRembg = true;
+        break;
+      case "--variations": {
+        const n = Number(next());
+        if (!Number.isInteger(n) || n < 1) fail("--variations must be a positive integer");
+        options.variations = n;
+        break;
+      }
+      case "--concurrency": {
+        const n = Number(next());
+        if (!Number.isInteger(n) || n < 1) fail("--concurrency must be a positive integer");
+        options.concurrency = n;
+        break;
+      }
+      case "--skip-base":
+        options.includeBase = false;
         break;
       case "--dry-run":
         options.dryRun = true;
@@ -256,13 +280,12 @@ interface GeminiResponse {
   error?: { message: string; code?: number };
 }
 
-async function generateImage(entry: AssetEntry, options: Options): Promise<Buffer> {
+async function generateImage(entry: AssetEntry, options: Options, prompt: string): Promise<Buffer> {
   const referenceFile = options.referenceOverride ?? referencePath(entry, options.referenceDir);
   if (!(await fileExists(referenceFile))) {
     throw new Error(`Reference tile not found: ${referenceFile}`);
   }
 
-  const prompt = promptFor(entry);
   const imageData = await toBase64(referenceFile);
 
   const url = `${options.baseUrl}/models/${options.model}:generateContent?key=${options.apiKey}`;
@@ -387,8 +410,12 @@ async function postProcessToken(rawPath: string, outPath: string, entry: AssetEn
   ]);
 }
 
+function variantSuffix(index: number): string {
+  return index === 0 ? "" : `_${index}`;
+}
+
 async function processEntry(entry: AssetEntry, options: Options, magickAvailable: boolean): Promise<void> {
-  console.log(`\n[${entry.category}] ${entry.name} (${entry.id})`);
+  console.log(`\n[${entry.category}] ${entry.name} (${entry.id}) × ${options.variations}`);
 
   const referenceFile = options.referenceOverride ?? referencePath(entry, options.referenceDir);
   console.log(`  reference: ${referenceFile}`);
@@ -396,41 +423,56 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
   const categoryDir = entry.category === "building" ? "buildings" : `${entry.category}s`;
   const rawDir = join(options.outDir, "raw", categoryDir);
   const finalDir = join(options.outDir, categoryDir);
-  const rawPath = join(rawDir, `${entry.id}.png`);
-  const finalPath = join(finalDir, `${entry.id}.png`);
 
   if (!options.dryRun) {
     await mkdir(rawDir, { recursive: true });
     await mkdir(finalDir, { recursive: true });
   }
 
-  const image = await generateImage(entry, options);
-  if (!options.dryRun) {
-    await writeFile(rawPath, image);
-    console.log(`  raw saved: ${rawPath}`);
-  }
+  const basePrompt = promptFor(entry);
+  const startVariant = options.includeBase ? 0 : 1;
 
-  if (!options.postProcess) {
-    console.log(`  post-processing skipped`);
-    return;
-  }
+  for (let v = startVariant; v < startVariant + options.variations; v++) {
+    try {
+      const suffix = variantSuffix(v);
+      const rawPath = join(rawDir, `${entry.id}${suffix}.png`);
+      const finalPath = join(finalDir, `${entry.id}${suffix}.png`);
 
-  if (!magickAvailable) {
-    console.warn(`  ImageMagick (magick) not found; skipping post-processing.`);
-    return;
-  }
+      const prompt = options.variations > 1
+        ? `${basePrompt} (variant ${v + 1} of ${options.variations})`
+        : basePrompt;
 
-  if (options.dryRun) {
-    console.log(`  dry-run: skipping post-processing`);
-    return;
-  }
+      const image = await generateImage(entry, options, prompt);
+      if (!options.dryRun) {
+        await writeFile(rawPath, image);
+        console.log(`  raw saved: ${rawPath}`);
+      }
 
-  if (entry.category === "tile") {
-    await postProcessTile(rawPath, finalPath, entry, referenceFile);
-  } else {
-    await postProcessToken(rawPath, finalPath, entry, options.useRembg);
+      if (!options.postProcess) {
+        console.log(`  post-processing skipped`);
+        continue;
+      }
+
+      if (!magickAvailable) {
+        console.warn(`  ImageMagick (magick) not found; skipping post-processing.`);
+        continue;
+      }
+
+      if (options.dryRun) {
+        console.log(`  dry-run: skipping post-processing`);
+        continue;
+      }
+
+      if (entry.category === "tile") {
+        await postProcessTile(rawPath, finalPath, entry, referenceFile);
+      } else {
+        await postProcessToken(rawPath, finalPath, entry, options.useRembg);
+      }
+      console.log(`  final saved: ${finalPath}`);
+    } catch (err) {
+      console.error(`  variant ${v + 1} FAILED: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
-  console.log(`  final saved: ${finalPath}`);
 }
 
 async function main(): Promise<void> {
@@ -445,16 +487,27 @@ async function main(): Promise<void> {
     console.warn("Warning: ImageMagick (magick) not found in PATH. Post-processing will be skipped.");
   }
 
-  console.log(`Generating ${entries.length} asset(s) with model ${options.model} (${options.imageSize})`);
+  console.log(`Generating ${entries.length} asset(s) / ${entries.length * options.variations} image call(s) with model ${options.model} (${options.imageSize})`);
 
-  for (const entry of entries) {
+  async function runWithConcurrency<T>(items: T[], concurrency: number, fn: (item: T) => Promise<void>): Promise<void> {
+    const queue = [...items];
+    async function worker(): Promise<void> {
+      while (queue.length > 0) {
+        const item = queue.shift()!;
+        await fn(item);
+      }
+    }
+    await Promise.all(Array.from({ length: concurrency }, worker));
+  }
+
+  await runWithConcurrency(entries, options.concurrency, async (entry) => {
     try {
       await processEntry(entry, options, magickAvailable);
     } catch (err) {
       console.error(`  FAILED: ${err instanceof Error ? err.message : String(err)}`);
       if (env.GENERATOR_FAIL_FAST) exit(1);
     }
-  }
+  });
 
   console.log("\nDone.");
 }

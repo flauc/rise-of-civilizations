@@ -298,6 +298,84 @@
         background: #213a52;
         border-radius: 8px;
       }
+      .locked-note {
+        margin-top: 10px;
+        padding: 10px 12px;
+        background: #2a2030;
+        border: 1px solid #5a4a66;
+        border-radius: 8px;
+        color: #e6d2b8;
+        font-size: 13px;
+      }
+      /* Full tech tree */
+      #techtree {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 94vw;
+        height: 88vh;
+        max-height: none;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      #techtree > div:first-child {
+        flex: none;
+      }
+      #techtree .tt-scroll {
+        margin-top: 8px;
+      }
+      #techtree > div:last-child {
+        flex: 1;
+        overflow: auto;
+      }
+      .tt-node {
+        position: absolute;
+        box-sizing: border-box;
+        padding: 7px 9px;
+        border-radius: 9px;
+        border: 2px solid var(--edge);
+        background: #16273a;
+        overflow: hidden;
+      }
+      .tt-name {
+        font-weight: 700;
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tt-cost {
+        font-size: 11px;
+        color: #9fc0dc;
+      }
+      .tt-unlocks {
+        margin-top: 3px;
+        font-size: 10.5px;
+        line-height: 1.3;
+        color: #b9c9d8;
+        max-height: 40px;
+        overflow: hidden;
+      }
+      .tt-done {
+        border-color: #4a9a4e;
+        background: #16301c;
+      }
+      .tt-researching {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(255, 217, 103, 0.25);
+      }
+      .tt-available {
+        border-color: #3d7fe0;
+        cursor: pointer;
+      }
+      .tt-available:hover {
+        background: #1d3a55;
+      }
+      .tt-locked {
+        opacity: 0.5;
+      }
       .csub {
         margin-top: 10px;
         margin-bottom: 2px;

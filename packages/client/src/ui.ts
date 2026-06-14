@@ -1,3 +1,4 @@
+import { renderTechTreeInto } from "./techtree";
 import {
   availableCivics,
   availableGovernments,
@@ -13,7 +14,11 @@ import {
   religionById,
   cityFollowerCount,
   canFoundReligion,
+  religionUnlocked,
+  civicsUnlocked,
   availableReligionNames,
+  CIVICS_REQUIRED_TECH,
+  RELIGION_REQUIRED_TECH,
   FAITH_TO_FOUND,
   buildableHere,
   citiesOf,
@@ -84,6 +89,7 @@ export interface UI {
   openResearch(): void;
   openCivics(): void;
   openReligion(): void;
+  openTechTree(): void;
 }
 
 function div(id: string, cls: string): HTMLDivElement {
@@ -107,6 +113,7 @@ export function createUI(handlers: UIHandlers): UI {
   const unitPanel = div("unit-panel", "panel hidden");
   const cityPanel = div("city-panel", "panel hidden");
   const research = div("research", "panel hidden");
+  const techtree = div("techtree", "panel hidden");
   const civics = div("civics", "panel hidden");
   const religionPanel = div("religion", "panel hidden");
   const production = div("production", "panel hidden");
@@ -127,6 +134,7 @@ export function createUI(handlers: UIHandlers): UI {
   document.body.appendChild(endturn2);
 
   let researchOpen = false;
+  let techtreeOpen = false;
   let civicsOpen = false;
   let religionOpen = false;
   let productionOpen = false;
@@ -220,6 +228,7 @@ export function createUI(handlers: UIHandlers): UI {
     research.innerHTML =
       `<div class="row" style="justify-content:space-between"><b>Choose research</b>` +
       `<button class="btn" id="rclose">✕</button></div>` +
+      `<button class="btn" id="open-techtree" style="width:100%;margin:6px 0">🌳 View Full Tech Tree</button>` +
       (techs.length === 0
         ? `<div style="margin-top:8px;color:#9fc0dc">All available techs researched.</div>`
         : techs
@@ -237,12 +246,36 @@ export function createUI(handlers: UIHandlers): UI {
       researchOpen = false;
       research.classList.add("hidden");
     });
+    research.querySelector<HTMLButtonElement>("#open-techtree")!.addEventListener("click", () => {
+      researchOpen = false;
+      research.classList.add("hidden");
+      techtreeOpen = true;
+      renderTechTree(state);
+    });
     research.querySelectorAll<HTMLDivElement>(".tech").forEach((el) => {
       el.addEventListener("click", () => {
         handlers.onSetResearch(el.dataset.tech as TechId);
         researchOpen = false;
         research.classList.add("hidden");
       });
+    });
+  };
+
+  const renderTechTree = (state: GameState): void => {
+    techtree.classList.toggle("hidden", !techtreeOpen);
+    if (!techtreeOpen) return;
+    const viewerId = state.players[state.currentPlayerIndex]!.id;
+    const inner = document.createElement("div");
+    renderTechTreeInto(inner, state, viewerId, (techId) => {
+      handlers.onSetResearch(techId);
+      techtreeOpen = false;
+      techtree.classList.add("hidden");
+    });
+    techtree.innerHTML = `<div class="row" style="justify-content:space-between"><b>Technology Tree</b><button class="btn" id="ttclose">✕</button></div>`;
+    techtree.appendChild(inner);
+    techtree.querySelector<HTMLButtonElement>("#ttclose")!.addEventListener("click", () => {
+      techtreeOpen = false;
+      techtree.classList.add("hidden");
     });
   };
 
@@ -258,6 +291,17 @@ export function createUI(handlers: UIHandlers): UI {
 
     let html =
       `<div class="row" style="justify-content:space-between"><b>Civics & Government</b><button class="btn" id="vclose">✕</button></div>`;
+
+    if (!civicsUnlocked(player)) {
+      html +=
+        `<div class="locked-note">🔒 Civics unlock after researching <b>${TECH_DEFS[CIVICS_REQUIRED_TECH].name}</b>.</div>`;
+      civics.innerHTML = html;
+      civics.querySelector<HTMLButtonElement>("#vclose")!.addEventListener("click", () => {
+        civicsOpen = false;
+        civics.classList.add("hidden");
+      });
+      return;
+    }
 
     html += `<div class="csub">Develop a civic</div>`;
     html += civicList.length
@@ -374,6 +418,19 @@ export function createUI(handlers: UIHandlers): UI {
     const totalCities = state.cities.size;
     let html = `<div class="row" style="justify-content:space-between"><b>Religion</b><button class="btn" id="relclose">✕</button></div>`;
     const myRel = religionById(state, player.foundedReligionId);
+
+    if (!myRel && !religionUnlocked(state, player.id)) {
+      html += `<div class="locked-note">🔒 Religion unlocks after researching <b>${TECH_DEFS[RELIGION_REQUIRED_TECH].name}</b>. Then build Shrines/Temples to earn faith.</div>`;
+      if (state.religions.length) {
+        html += `<div class="csub">World religions</div>` + state.religions.map((r) => `<div class="sub">${r.name} — ${cityFollowerCount(state, r.id)} cities</div>`).join("");
+      }
+      religionPanel.innerHTML = html;
+      religionPanel.querySelector<HTMLButtonElement>("#relclose")!.addEventListener("click", () => {
+        religionOpen = false;
+        religionPanel.classList.add("hidden");
+      });
+      return;
+    }
 
     if (myRel) {
       const holy = state.cities.get(myRel.holyCityId);
@@ -584,6 +641,7 @@ export function createUI(handlers: UIHandlers): UI {
       lastState = view.state;
       renderTopbar(view.state);
       renderResearch(view.state);
+      renderTechTree(view.state);
       renderCivics(view.state);
       renderReligion(view.state);
       renderProduction(view.state);
@@ -607,6 +665,11 @@ export function createUI(handlers: UIHandlers): UI {
       if (!lastState) return;
       religionOpen = true;
       renderReligion(lastState);
+    },
+    openTechTree() {
+      if (!lastState) return;
+      techtreeOpen = true;
+      renderTechTree(lastState);
     },
     banner(text) {
       banner.textContent = text;

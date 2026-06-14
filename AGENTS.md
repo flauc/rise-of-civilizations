@@ -191,7 +191,18 @@ bun run tools/art-generator/generate.ts --unit archer
 bun run tools/art-generator/generate.ts --tile forest --size 2K
 bun run tools/art-generator/generate.ts --subset units
 bun run tools/art-generator/generate.ts --all
+
+# Generate 5 randomized variants per terrain tile and copy to the client
+bun run tools/art-generator/generate.ts --subset terrain --variations 5 --size 512
+# (then copy assets/generated/tiles/*.png to packages/client/public/hex-terrain/)
+
+# Add extra variants without overwriting the existing base tile
+bun run tools/art-generator/generate.ts --tile plains --variations 4 --skip-base --size 512
 ```
+
+The client renderer loads all `hex-terrain/<terrain>.png` plus
+`<terrain>_1.png` … `<terrain>_4.png` variants and picks one deterministically
+per tile coordinate, so maps look less repetitive.
 
 It requires `GEMINI_API_KEY` and ImageMagick (`magick`). See
 `tools/art-generator/README.md` for setup and customization.

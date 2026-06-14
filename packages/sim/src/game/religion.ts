@@ -4,6 +4,7 @@
 
 import { axialDistance, offsetToAxial } from "@roc/shared";
 import { RELIGION_NAMES, getBelief, BELIEFS } from "@roc/data";
+import { RELIGION_REQUIRED_TECH } from "./content";
 import type { City, GameState, Religion } from "./state";
 import { citiesOf, playerById } from "./state";
 
@@ -27,10 +28,16 @@ export function availableReligionNames(state: GameState): string[] {
   return RELIGION_NAMES.filter((n) => !used.has(n));
 }
 
+/** Religion becomes available only after researching this technology. */
+export function religionUnlocked(state: GameState, playerId: number): boolean {
+  return playerById(state, playerId)?.researched.has(RELIGION_REQUIRED_TECH) ?? false;
+}
+
 export function canFoundReligion(state: GameState, playerId: number): boolean {
   const p = playerById(state, playerId);
   if (!p || p.isBarbarian || p.foundedReligionId) return false;
   return (
+    religionUnlocked(state, playerId) &&
     p.faith >= FAITH_TO_FOUND &&
     citiesOf(state, playerId).length > 0 &&
     state.religions.length < religionsCap(state)

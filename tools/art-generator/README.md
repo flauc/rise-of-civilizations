@@ -40,6 +40,9 @@ bun run tools/art-generator/generate.ts --subset terrain
 bun run tools/art-generator/generate.ts --subset units
 bun run tools/art-generator/generate.ts --subset buildings
 bun run tools/art-generator/generate.ts --all
+
+# Multiple variants (for randomized tiles)
+bun run tools/art-generator/generate.ts --subset terrain --variations 5
 ```
 
 Common options:
@@ -51,6 +54,9 @@ Common options:
 | `--reference-dir <path>` | Folder containing reference hex tiles |
 | `--reference <path>` | Use a single reference tile for every generation |
 | `--out-dir <path>` | Output folder (default: `assets/generated`) |
+| `--variations <n>` | Generate n variants per asset (default: 1) |
+| `--skip-base` | Only create numbered variants (`_1`..`_n`), leave the base file intact |
+| `--concurrency <n>` | Max parallel API calls (default: 3) |
 | `--no-post` | Skip ImageMagick post-processing |
 | `--rembg` | Use `rembg` for unit/building background removal |
 | `--dry-run` | Print what would happen without calling the API |

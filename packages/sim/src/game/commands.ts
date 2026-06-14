@@ -21,6 +21,7 @@ import {
   civEffectsOf,
   unitMovement,
   civicUnlocked,
+  civicsUnlocked,
   availableGovernments,
   unlockedPolicies,
   getCivic,
@@ -235,6 +236,7 @@ export function applyCommand(
     }
 
     case "setCivic": {
+      if (!civicsUnlocked(player)) return fail("civics not unlocked yet");
       if (player.civicsResearched.has(cmd.civicId)) return fail("already adopted");
       if (!civicUnlocked(player.civicsResearched, cmd.civicId)) return fail("prereqs not met");
       const def = getCivic(cmd.civicId);

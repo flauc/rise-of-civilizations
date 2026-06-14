@@ -17,7 +17,7 @@ import {
   type CivicDef,
   type GovernmentDef,
 } from "@roc/data";
-import { UNIT_DEFS } from "./content";
+import { UNIT_DEFS, CIVICS_REQUIRED_TECH } from "./content";
 import type { GameState, Player, Unit } from "./state";
 import { playerById } from "./state";
 
@@ -78,11 +78,17 @@ export function civCombatBonus(state: GameState, unit: Unit): number {
 
 // ---- civics tree ---------------------------------------------------------
 
+/** Civics become available only after researching this technology. */
+export function civicsUnlocked(player: Player): boolean {
+  return player.researched.has(CIVICS_REQUIRED_TECH);
+}
+
 export function civicUnlocked(researched: ReadonlySet<string>, civicId: string): boolean {
   return (getCivic(civicId)?.prereqs ?? []).every((p) => researched.has(p));
 }
 
 export function availableCivics(player: Player): string[] {
+  if (!civicsUnlocked(player)) return [];
   return CIVICS.filter((c) => !player.civicsResearched.has(c.id) && civicUnlocked(player.civicsResearched, c.id)).map((c) => c.id);
 }
 

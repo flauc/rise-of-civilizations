@@ -199,6 +199,10 @@ export const ALL_TECHS: TechId[] = Object.keys(TECH_DEFS) as TechId[];
 /** Techs every civ begins the game already knowing. */
 export const STARTING_TECHS: TechId[] = ["knapping", "foraging"];
 
+/** Systems gated behind a specific technology (not available from the start). */
+export const CIVICS_REQUIRED_TECH: TechId = "writing";
+export const RELIGION_REQUIRED_TECH: TechId = "ritual_burial";
+
 export function techUnlocked(researched: ReadonlySet<TechId>, tech: TechId): boolean {
   return TECH_DEFS[tech].prereqs.every((p) => researched.has(p));
 }
