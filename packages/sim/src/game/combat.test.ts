@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn } from "./commands";
-import { damageFrom, resolveAttack, cityMaxHp, unitMaxHp } from "./combat";
+import { damageFrom, resolveAttack, cityMaxHp, unitMaxHp, availablePromotions } from "./combat";
+import { PROMOTION_DEFS } from "./content";
 import { citiesOf, makeUnit, type GameState, type Unit } from "./state";
 
 function bareGame(): GameState {
@@ -162,5 +163,59 @@ describe("M2 combat", () => {
     resolveAttack(state, swordsman, p1City.col, p1City.row);
     expect(state.gameOver).not.toBeNull();
     expect(state.gameOver?.winnerId).toBe(0);
+  });
+
+  it("toughness increases max HP", () => {
+    const state = bareGame();
+    const u = place(state, 0, "warrior", 5, 5);
+    expect(unitMaxHp(u)).toBe(100);
+    u.promotions.push("toughness");
+    expect(unitMaxHp(u)).toBe(115);
+  });
+
+  it("charge deals more damage on the first attack", () => {
+    const state = bareGame();
+    const normal = place(state, 0, "warrior", 5, 5);
+    const charger = place(state, 0, "warrior", 5, 6);
+    charger.promotions.push("charge");
+    const targetA = place(state, 1, "warrior", 6, 5);
+    const targetB = place(state, 1, "warrior", 6, 6);
+    resolveAttack(state, normal, targetA.col, targetA.row);
+    resolveAttack(state, charger, targetB.col, targetB.row);
+    expect(targetB.hp).toBeLessThan(targetA.hp);
+  });
+
+  it("only tier-1 promotions are available at level 2", () => {
+    const state = bareGame();
+    const archer = place(state, 0, "archer", 5, 5);
+    archer.level = 2;
+    const options = availablePromotions(archer);
+    expect(options.length).toBeGreaterThan(0);
+    expect(options.some((p) => PROMOTION_DEFS[p].tier === 2)).toBe(false);
+    expect(options.some((p) => PROMOTION_DEFS[p].tier === 3)).toBe(false);
+  });
+
+  it("tier-2 promotions become available at level 3", () => {
+    const state = bareGame();
+    const archer = place(state, 0, "archer", 5, 5);
+    archer.level = 3;
+    const options = availablePromotions(archer);
+    expect(options.some((p) => PROMOTION_DEFS[p].tier === 2)).toBe(true);
+    expect(options.some((p) => PROMOTION_DEFS[p].tier === 3)).toBe(false);
+  });
+
+  it("extended_range lets archers attack one tile farther", () => {
+    const state = bareGame();
+    const archer = place(state, 0, "archer", 5, 5);
+    const farTarget = place(state, 1, "warrior", 8, 5); // distance 3
+    const closeTarget = place(state, 1, "warrior", 7, 5); // distance 2
+    // Without promotion, only distance 2 is reachable.
+    expect(resolveAttack(state, archer, farTarget.col, farTarget.row).ok).toBe(false);
+    expect(resolveAttack(state, archer, closeTarget.col, closeTarget.row).ok).toBe(true);
+
+    const archer2 = place(state, 0, "archer", 10, 5);
+    archer2.promotions.push("extended_range");
+    const farTarget2 = place(state, 1, "warrior", 13, 5); // distance 3
+    expect(resolveAttack(state, archer2, farTarget2.col, farTarget2.row).ok).toBe(true);
   });
 });

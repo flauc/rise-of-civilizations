@@ -262,32 +262,284 @@ export function techUnlocks(techId: TechId): string[] {
   return out;
 }
 
-// ---- Promotions (unchanged from M2) --------------------------------------
+// ---- Promotions -----------------------------------------------------------
 
-export type PromotionId = "shock" | "drill" | "cover" | "accuracy" | "barrage" | "siege" | "medic";
+export type PromotionId =
+  // shared combat
+  | "shock"
+  | "drill"
+  | "cover"
+  | "medic"
+  // melee
+  | "blitz"
+  | "commando"
+  | "amphibious"
+  | "woodland_warrior"
+  | "charge"
+  | "toughness"
+  | "discipline"
+  | "formation"
+  | "city_assault"
+  | "brawler"
+  | "veteran"
+  | "eagle_eye"
+  | "forager"
+  | "stalwart"
+  | "besieger"
+  | "pathfinder"
+  // cavalry
+  | "flanking"
+  | "mobility"
+  | "cavalry_charge"
+  | "trample"
+  | "mounted_archer"
+  | "outrider"
+  | "raider"
+  | "swift_healer"
+  | "breakthrough"
+  | "harrier"
+  | "nomad"
+  | "lancer"
+  | "skirmisher"
+  | "pursuit"
+  | "bloodlust"
+  | "intimidation"
+  // ranged
+  | "accuracy"
+  | "barrage"
+  | "extended_range"
+  | "volley"
+  | "sniper"
+  | "logistics"
+  | "scouting"
+  | "camouflage"
+  | "field_medic"
+  | "suppression"
+  | "sharpshooter"
+  | "elevation"
+  | "poison_arrows"
+  | "rapid_reload"
+  | "trailblazer"
+  | "hunter"
+  | "veteran_marksman"
+  | "night_owl"
+  // siege
+  | "siege"
+  | "city_breacher"
+  | "heavy_caliber"
+  | "entrenchment"
+  | "counter_battery"
+  | "rapid_deployment"
+  | "survey"
+  | "demolition"
+  // recon
+  | "tracking"
+  | "guerrilla"
+  | "survivalist"
+  | "spy"
+  | "ambush"
+  | "ranger"
+  | "eagle_eye_recon"
+  // civilian
+  | "pioneer"
+  | "colonist"
+  | "explorer"
+  | "engineer"
+  | "foreman"
+  | "survival_training";
 
 export interface PromotionDef {
   id: PromotionId;
   name: string;
   desc: string;
+  tier: 1 | 2 | 3;
 }
 
 export const PROMOTION_DEFS: Record<PromotionId, PromotionDef> = {
-  shock: { id: "shock", name: "Shock", desc: "+3 when attacking on open ground" },
-  drill: { id: "drill", name: "Drill", desc: "+3 when attacking in rough terrain" },
-  cover: { id: "cover", name: "Cover", desc: "+4 defense vs ranged attacks" },
-  accuracy: { id: "accuracy", name: "Accuracy", desc: "+3 ranged vs targets on open ground" },
-  barrage: { id: "barrage", name: "Barrage", desc: "+3 ranged vs targets in rough terrain" },
-  siege: { id: "siege", name: "Siege", desc: "+50% vs cities" },
-  medic: { id: "medic", name: "Medic", desc: "Heals self and adjacent allies each turn" },
+  // shared
+  shock: { id: "shock", name: "Shock", desc: "+3 strength attacking on open ground" , tier: 1 },
+  drill: { id: "drill", name: "Drill", desc: "+3 strength attacking in rough terrain" , tier: 1 },
+  cover: { id: "cover", name: "Cover", desc: "+4 defense vs ranged attacks" , tier: 1 },
+  medic: { id: "medic", name: "Medic", desc: "Heals self +10 and adjacent allies +10 each turn" , tier: 1 },
+
+  // melee
+  blitz: { id: "blitz", name: "Blitz", desc: "+2 strength" , tier: 2 },
+  commando: { id: "commando", name: "Commando", desc: "+1 movement; roads cost no movement" , tier: 2 },
+  amphibious: { id: "amphibious", name: "Amphibious", desc: "+3 strength near water tiles" , tier: 2 },
+  woodland_warrior: { id: "woodland_warrior", name: "Woodland Warrior", desc: "+3 strength in forest/jungle; forests cost 1 less movement" , tier: 2 },
+  charge: { id: "charge", name: "Charge", desc: "+4 strength on the first attack each turn" , tier: 2 },
+  toughness: { id: "toughness", name: "Toughness", desc: "+15 max HP" , tier: 2 },
+  discipline: { id: "discipline", name: "Discipline", desc: "+2 strength when adjacent to a friendly unit" , tier: 2 },
+  formation: { id: "formation", name: "Formation", desc: "+4 defense vs cavalry attacks" , tier: 2 },
+  city_assault: { id: "city_assault", name: "City Assault", desc: "+4 strength vs cities" , tier: 3 },
+  brawler: { id: "brawler", name: "Brawler", desc: "+3 strength when defending" , tier: 2 },
+  veteran: { id: "veteran", name: "Veteran", desc: "+25% XP gain" , tier: 3 },
+  eagle_eye: { id: "eagle_eye", name: "Eagle Eye", desc: "+1 sight" , tier: 2 },
+  forager: { id: "forager", name: "Forager", desc: "Heals +8 HP after killing a unit or clearing a camp" , tier: 3 },
+  stalwart: { id: "stalwart", name: "Stalwart", desc: "-4 damage taken from the first attack against it each turn" , tier: 2 },
+  besieger: { id: "besieger", name: "Besieger", desc: "+3 defense when adjacent to an enemy city" , tier: 2 },
+  pathfinder: { id: "pathfinder", name: "Pathfinder", desc: "Roads cost no movement; hills cost 1 less movement" , tier: 2 },
+
+  // cavalry
+  flanking: { id: "flanking", name: "Flanking", desc: "+2 strength per adjacent friendly unit (max +6)" , tier: 2 },
+  mobility: { id: "mobility", name: "Mobility", desc: "+1 movement" , tier: 2 },
+  cavalry_charge: { id: "cavalry_charge", name: "Cavalry Charge", desc: "+4 strength on the first attack each turn" , tier: 2 },
+  trample: { id: "trample", name: "Trample", desc: "+4 strength vs wounded units" , tier: 2 },
+  mounted_archer: { id: "mounted_archer", name: "Mounted Archer", desc: "+1 movement; ranged cavalry gains +2 ranged strength" , tier: 2 },
+  outrider: { id: "outrider", name: "Outrider", desc: "+1 sight" , tier: 2 },
+  raider: { id: "raider", name: "Raider", desc: "+25 gold when clearing barbarian camps" , tier: 3 },
+  swift_healer: { id: "swift_healer", name: "Swift Healer", desc: "Heals +5 HP each turn" , tier: 2 },
+  breakthrough: { id: "breakthrough", name: "Breakthrough", desc: "+1 movement after killing a unit" , tier: 3 },
+  harrier: { id: "harrier", name: "Harrier", desc: "+3 strength vs ranged units" , tier: 2 },
+  nomad: { id: "nomad", name: "Nomad", desc: "Plains and desert cost 1 movement; +1 sight on open ground" , tier: 3 },
+  lancer: { id: "lancer", name: "Lancer", desc: "+3 strength vs melee units" , tier: 2 },
+  skirmisher: { id: "skirmisher", name: "Skirmisher", desc: "+3 defense when not adjacent to an enemy" , tier: 2 },
+  pursuit: { id: "pursuit", name: "Pursuit", desc: "+3 strength when attacking a damaged unit" , tier: 2 },
+  bloodlust: { id: "bloodlust", name: "Bloodlust", desc: "Heals +12 HP on kill" , tier: 3 },
+  intimidation: { id: "intimidation", name: "Intimidation", desc: "Enemy units adjacent have -2 strength" , tier: 3 },
+
+  // ranged
+  accuracy: { id: "accuracy", name: "Accuracy", desc: "+3 ranged strength vs targets on open ground" , tier: 1 },
+  barrage: { id: "barrage", name: "Barrage", desc: "+3 ranged strength vs targets in rough terrain" , tier: 1 },
+  extended_range: { id: "extended_range", name: "Extended Range", desc: "+1 range" , tier: 2 },
+  volley: { id: "volley", name: "Volley", desc: "+2 ranged strength" , tier: 2 },
+  sniper: { id: "sniper", name: "Sniper", desc: "+4 ranged strength vs wounded units" , tier: 2 },
+  logistics: { id: "logistics", name: "Logistics", desc: "+1 movement" , tier: 2 },
+  scouting: { id: "scouting", name: "Scouting", desc: "+1 sight" , tier: 1 },
+  camouflage: { id: "camouflage", name: "Camouflage", desc: "+3 defense in rough terrain" , tier: 2 },
+  field_medic: { id: "field_medic", name: "Field Medic", desc: "Adjacent allied units heal +5 extra each turn" , tier: 2 },
+  suppression: { id: "suppression", name: "Suppression", desc: "Targets deal -3 damage when retaliating" , tier: 2 },
+  sharpshooter: { id: "sharpshooter", name: "Sharpshooter", desc: "+3 ranged strength vs melee units" , tier: 2 },
+  elevation: { id: "elevation", name: "Elevation", desc: "+2 ranged strength when on a hill" , tier: 2 },
+  poison_arrows: { id: "poison_arrows", name: "Poison Arrows", desc: "Targets heal -5 HP next turn" , tier: 3 },
+  rapid_reload: { id: "rapid_reload", name: "Rapid Reload", desc: "+1 movement after attacking" , tier: 3 },
+  trailblazer: { id: "trailblazer", name: "Trailblazer", desc: "Forest/jungle movement cost reduced by 1" , tier: 2 },
+  hunter: { id: "hunter", name: "Hunter", desc: "+3 ranged strength vs cavalry" , tier: 2 },
+  veteran_marksman: { id: "veteran_marksman", name: "Veteran Marksman", desc: "+25% XP gain" , tier: 3 },
+  night_owl: { id: "night_owl", name: "Night Owl", desc: "+1 sight" , tier: 2 },
+
+  // siege
+  siege: { id: "siege", name: "Siege", desc: "+50% strength vs cities" , tier: 1 },
+  city_breacher: { id: "city_breacher", name: "City Breacher", desc: "+4 additional strength vs cities" , tier: 2 },
+  heavy_caliber: { id: "heavy_caliber", name: "Heavy Caliber", desc: "+3 ranged strength vs units" , tier: 2 },
+  entrenchment: { id: "entrenchment", name: "Entrenchment", desc: "+4 defense if the unit did not move this turn" , tier: 2 },
+  counter_battery: { id: "counter_battery", name: "Counter Battery", desc: "+4 ranged strength vs ranged/siege units" , tier: 2 },
+  rapid_deployment: { id: "rapid_deployment", name: "Rapid Deployment", desc: "+1 movement" , tier: 2 },
+  survey: { id: "survey", name: "Survey", desc: "+1 sight" , tier: 2 },
+  demolition: { id: "demolition", name: "Demolition", desc: "+3 strength vs units in cities or forts" , tier: 2 },
+
+  // recon
+  tracking: { id: "tracking", name: "Tracking", desc: "+1 movement" , tier: 1 },
+  guerrilla: { id: "guerrilla", name: "Guerrilla", desc: "+3 strength in rough terrain; ignores rough terrain penalties" , tier: 2 },
+  survivalist: { id: "survivalist", name: "Survivalist", desc: "Heals +8 HP each turn" , tier: 2 },
+  spy: { id: "spy", name: "Spy", desc: "+1 sight" , tier: 2 },
+  ambush: { id: "ambush", name: "Ambush", desc: "+4 strength on the first attack each turn" , tier: 2 },
+  ranger: { id: "ranger", name: "Ranger", desc: "+2 strength; +1 sight" , tier: 2 },
+  eagle_eye_recon: { id: "eagle_eye_recon", name: "Eagle Eye", desc: "+2 sight" , tier: 3 },
+
+  // civilian
+  pioneer: { id: "pioneer", name: "Pioneer", desc: "+1 sight; +1 movement" , tier: 1 },
+  colonist: { id: "colonist", name: "Colonist", desc: "+20 HP" , tier: 1 },
+  explorer: { id: "explorer", name: "Explorer", desc: "+2 sight" , tier: 1 },
+  engineer: { id: "engineer", name: "Engineer", desc: "+1 movement; +1 build charge" , tier: 1 },
+  foreman: { id: "foreman", name: "Foreman", desc: "+1 movement" , tier: 1 },
+  survival_training: { id: "survival_training", name: "Survival Training", desc: "+15 HP; +1 sight" , tier: 1 },
 };
 
 export const PROMOTION_POOL: Record<UnitClass, PromotionId[]> = {
-  melee: ["shock", "drill", "cover", "medic"],
-  cavalry: ["shock", "drill", "cover", "medic"],
-  recon: ["shock", "cover", "medic"],
-  ranged: ["accuracy", "barrage", "cover", "medic"],
-  siege: ["siege", "accuracy", "medic"],
-  settler: [],
-  worker: [],
+  melee: [
+    "shock",
+    "drill",
+    "cover",
+    "medic",
+    "blitz",
+    "commando",
+    "amphibious",
+    "woodland_warrior",
+    "charge",
+    "toughness",
+    "discipline",
+    "formation",
+    "city_assault",
+    "brawler",
+    "veteran",
+    "eagle_eye",
+    "forager",
+    "stalwart",
+    "besieger",
+    "pathfinder",
+  ],
+  cavalry: [
+    "shock",
+    "drill",
+    "cover",
+    "medic",
+    "flanking",
+    "mobility",
+    "cavalry_charge",
+    "trample",
+    "mounted_archer",
+    "outrider",
+    "raider",
+    "swift_healer",
+    "breakthrough",
+    "harrier",
+    "nomad",
+    "lancer",
+    "skirmisher",
+    "pursuit",
+    "bloodlust",
+    "intimidation",
+  ],
+  recon: [
+    "shock",
+    "cover",
+    "medic",
+    "scouting",
+    "tracking",
+    "guerrilla",
+    "survivalist",
+    "spy",
+    "ambush",
+    "ranger",
+    "eagle_eye_recon",
+  ],
+  ranged: [
+    "accuracy",
+    "barrage",
+    "cover",
+    "medic",
+    "extended_range",
+    "volley",
+    "sniper",
+    "logistics",
+    "scouting",
+    "camouflage",
+    "field_medic",
+    "suppression",
+    "sharpshooter",
+    "elevation",
+    "poison_arrows",
+    "rapid_reload",
+    "trailblazer",
+    "hunter",
+    "veteran_marksman",
+    "night_owl",
+  ],
+  siege: [
+    "siege",
+    "accuracy",
+    "medic",
+    "extended_range",
+    "volley",
+    "city_breacher",
+    "heavy_caliber",
+    "entrenchment",
+    "counter_battery",
+    "rapid_deployment",
+    "survey",
+    "demolition",
+  ],
+  settler: ["pioneer", "colonist", "explorer"],
+  worker: ["engineer", "foreman", "survival_training"],
 };

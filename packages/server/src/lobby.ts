@@ -1,6 +1,6 @@
 // In-memory lobby + match registry. Pure TS (no Bun) so it's unit-testable.
 
-import { createGame, type BarbarianActivity, type GameSummary } from "@roc/sim";
+import { createGame, type BarbarianActivity, type GameState, type GameSummary } from "@roc/sim";
 import { GameHost } from "./gamehost";
 
 export interface Slot {
@@ -106,6 +106,15 @@ export class Lobby {
   /** Which player slot a user occupies in a game (if any). */
   slotOf(gameId: string, userId: string): Slot | undefined {
     return this.games.get(gameId)?.slots.find((s) => s.userId === userId);
+  }
+
+  /** Replace an active game's host with a restored state. */
+  restore(gameId: string, state: GameState): { error: string } | { ok: true } {
+    const game = this.games.get(gameId);
+    if (!game) return { error: "no such game" };
+    if (game.status !== "active") return { error: "game not active" };
+    game.host = GameHost.fromState(state);
+    return { ok: true };
   }
 
   list(): GameSummary[] {

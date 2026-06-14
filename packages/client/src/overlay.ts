@@ -151,6 +151,29 @@ export function drawOverlay(
         ctx.fillText("!", s.x, s.y + size * 0.06);
       }
     }
+
+    // Small label at the bottom of the tile for villages / camps.
+    if (size > 14) {
+      const label = t.feature === "village" ? "Village" : "Camp";
+      const fontSize = Math.max(7, Math.round(size * 0.22));
+      ctx.font = `${fontSize}px system-ui, sans-serif`;
+      const textW = ctx.measureText(label).width;
+      const pad = Math.max(1, size * 0.04);
+      const labelH = fontSize + pad * 2;
+      const labelW = textW + pad * 4;
+      const labelX = s.x - labelW / 2;
+      const labelY = s.y + size * 0.55;
+
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.beginPath();
+      ctx.roundRect(labelX, labelY, labelW, labelH, labelH / 2);
+      ctx.fill();
+
+      ctx.fillStyle = t.feature === "village" ? "#cfa867" : "#e07060";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, s.x, labelY + labelH / 2);
+    }
   }
 
   const highlight = (set: Set<string>, fill: string, stroke: string) => {
@@ -314,9 +337,10 @@ export function drawOverlay(
       ctx.fillText("★", s.x + half * 0.9, s.y - half * 0.9);
     }
 
-    // Player-color label above the unit (colored dot + unit name).
+    // Player-color label above the unit (colored dot + unit name + level stars).
     if (size >= 10) {
-      const label = UNIT_DEFS[unit.type].name;
+      const stars = unit.level > 1 ? " ★".repeat(unit.level - 1) : "";
+      const label = UNIT_DEFS[unit.type].name + stars;
       const fontSize = Math.max(8, Math.round(size * 0.32));
       ctx.font = `${fontSize}px system-ui, sans-serif`;
       const textW = ctx.measureText(label).width;

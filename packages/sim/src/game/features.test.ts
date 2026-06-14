@@ -44,4 +44,15 @@ describe("map features", () => {
     }
     expect(spawnedMore).toBe(true);
   });
+
+  it("disabling barbarians removes barbarian players, units, and camps", () => {
+    const state = createGame({ seed: "feat-none", cols: 44, rows: 30, barbarians: "none" });
+    expect(state.barbarianActivity).toBe("none");
+    expect(state.players.some((p) => p.isBarbarian)).toBe(false);
+    expect(state.map.tiles.some((t) => t.feature === "barb_camp")).toBe(false);
+    const barbUnits = [...state.units.values()].filter((u) =>
+      state.players.find((p) => p.id === u.ownerId)?.isBarbarian,
+    ).length;
+    expect(barbUnits).toBe(0);
+  });
 });

@@ -12,6 +12,7 @@ import {
   unitsOf,
   workableTiles,
   UNIT_DEFS,
+  serializeState,
 } from "@roc/sim";
 import { Camera } from "./camera";
 import {
@@ -32,6 +33,7 @@ import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
 import { loadFeatureAtlas } from "./feature-assets";
 import type { Session } from "./session";
+import { listSaves, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -56,6 +58,7 @@ function startGame(session: Session): void {
   let gameOverShown = false;
   let hoverOdds: CombatOdds | null = null;
   let idleCycle = 0;
+  let mpSaves: SaveRecord[] = [];
 
   const st = () => session.getState();
   const minimap = createMinimap((col, row) => {
@@ -165,6 +168,40 @@ function startGame(session: Session): void {
       clearSelection();
     },
     onSuggestion: () => actOnSuggestion(),
+    onSave: async (name) => {
+      const state = session.getState();
+      const serialized = serializeState(state);
+      if (session.isOnline) {
+        const online = session as import("./session").OnlineSession;
+        const blob = await online.requestExport();
+        const record = makeSaveRecord("mp", JSON.parse(blob) as ReturnType<typeof serializeState>, {
+          name,
+          gameId: online.gameId,
+        });
+        await saveGame(record);
+      } else {
+        const record = makeSaveRecord("sp", serialized, { name });
+        await saveGame(record);
+      }
+    },
+    onMenuOpen: () => {
+      if (!session.isOnline) return;
+      const me = session.getViewerId();
+      if (me !== 0) return;
+      const online = session as import("./session").OnlineSession;
+      const gameId = online.gameId;
+      // Refresh MP saves matching this game.
+      listSaves()
+        .then((saves) => {
+          mpSaves = gameId ? saves.filter((s) => s.mode === "mp" && s.gameId === gameId) : [];
+          ui.setMpSaves(mpSaves);
+        })
+        .catch(() => ui.setMpSaves([]));
+    },
+    onLoadMpSave: async (blob) => {
+      const online = session as import("./session").OnlineSession;
+      await online.loadGame(blob);
+    },
   });
 
   type Suggestion = { kind: "units" | "research" | "civic" | "religion" | "production"; label: string } | null;
@@ -354,6 +391,7 @@ function startGame(session: Session): void {
         viewerId: me,
         odds: hoverOdds,
         suggestion: computeSuggestion(),
+        mpSaves,
       });
     }
     requestAnimationFrame(frame);

@@ -254,17 +254,28 @@
         color: #cfe3f7;
         font-size: 16px;
       }
-      /* Research / civics / religion / production modal */
+      /* Research / civics / religion / production / save modal */
       #research,
       #civics,
       #religion,
-      #production {
+      #production,
+      #save-modal {
         left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);
         width: 320px;
         max-height: 80vh;
         overflow: auto;
+        z-index: 40;
+      }
+      #save-modal input.lobby-in {
+        font: inherit;
+        font-size: 13px;
+        color: #eaf3fb;
+        background: #14283b;
+        border: 1px solid var(--edge);
+        border-radius: 8px;
+        padding: 7px 10px;
       }
       .tech .sub {
         margin-top: 2px;

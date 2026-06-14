@@ -1,5 +1,7 @@
 import type { Tile, TerrainType } from "@roc/shared";
 
+export type { TerrainType } from "@roc/shared";
+
 export interface Yields {
   food: number;
   production: number;

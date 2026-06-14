@@ -7,10 +7,22 @@ import {
   type GameMap,
   type Offset,
 } from "@roc/shared";
-import { moveCost, isPassableLand } from "./terrain";
+import { moveCost, isPassableLand, type TerrainType } from "./terrain";
 import type { GameState, Unit } from "./state";
 import { cityAt } from "./state";
 import { UNIT_DEFS } from "./content";
+
+/** Effective movement cost to enter a tile for a specific unit. */
+function unitMoveCost(unit: Unit, terrain: TerrainType, road: boolean): number {
+  if (road && (unit.promotions.includes("pathfinder") || unit.promotions.includes("commando"))) return 0;
+  if (terrain === "hills" && unit.promotions.includes("pathfinder")) return 1;
+  if ((terrain === "forest" || terrain === "jungle") &&
+    (unit.promotions.includes("woodland_warrior") || unit.promotions.includes("trailblazer") || unit.promotions.includes("guerrilla"))) {
+    return 1;
+  }
+  if (road) return 1;
+  return moveCost(terrain);
+}
 
 /** In-bounds offset neighbors of a tile (odd-r), routed through shared axial math. */
 export function offsetNeighbors(map: GameMap, col: number, row: number): Offset[] {
@@ -74,7 +86,7 @@ export function computeReachable(
       if (occ.has(`${n.col},${n.row}`)) continue;
       const city = cityAt(state, n.col, n.row);
       if (city && city.ownerId !== unit.ownerId) continue;
-      const enterCost = tile.road ? 1 : moveCost(tile.terrain);
+      const enterCost = unitMoveCost(unit, tile.terrain, tile.road ?? false);
       const step = curCost + enterCost;
       if (step <= budget && step < (best.get(nk) ?? Infinity)) {
         best.set(nk, step);
@@ -99,5 +111,18 @@ export function computeReachable(
 }
 
 export function unitSight(unit: Unit): number {
-  return UNIT_DEFS[unit.type].sight;
+  let sight = UNIT_DEFS[unit.type].sight;
+  if (unit.promotions.includes("eagle_eye")) sight += 1;
+  if (unit.promotions.includes("outrider")) sight += 1;
+  if (unit.promotions.includes("scouting")) sight += 1;
+  if (unit.promotions.includes("night_owl")) sight += 1;
+  if (unit.promotions.includes("survey")) sight += 1;
+  if (unit.promotions.includes("spy")) sight += 1;
+  if (unit.promotions.includes("nomad")) sight += 1;
+  if (unit.promotions.includes("ranger")) sight += 1;
+  if (unit.promotions.includes("eagle_eye_recon")) sight += 2;
+  if (unit.promotions.includes("explorer")) sight += 2;
+  if (unit.promotions.includes("pioneer")) sight += 1;
+  if (unit.promotions.includes("survival_training")) sight += 1;
+  return sight;
 }

@@ -23,7 +23,9 @@ export type ClientMessage =
   | { t: "joinGame"; gameId: string }
   | { t: "startGame"; gameId: string }
   | { t: "order"; cmd: Command }
-  | { t: "ready" }; // end-of-turn: ready for simultaneous resolution
+  | { t: "ready" } // end-of-turn: ready for simultaneous resolution
+  | { t: "exportState" } // host requests the full authoritative state for saving
+  | { t: "loadGame"; blob: string }; // host uploads a full SerializedState blob to restore
 
 export type ServerMessage =
   | { t: "authOk"; token: string; userId: string; handle: string }
@@ -32,4 +34,6 @@ export type ServerMessage =
   | { t: "joined"; gameId: string; slot: number; playerId: number }
   | { t: "started"; gameId: string }
   | { t: "state"; view: PlayerView; awaiting: number[] }
-  | { t: "orderRejected"; reason: string };
+  | { t: "orderRejected"; reason: string }
+  | { t: "exported"; blob: string } // full SerializedState JSON blob, sent only to host
+  | { t: "loaded"; gameId: string }; // confirms the server restored the uploaded save

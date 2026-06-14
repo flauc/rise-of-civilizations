@@ -11,12 +11,14 @@ import {
   computeVisible,
   createGame,
   currentPlayer,
+  deserializeState,
   type BarbarianActivity,
   type ClientMessage,
   type Command,
   type GameState,
   type Player,
   type PlayerView,
+  type SerializedState,
   type ServerMessage,
 } from "@roc/sim";
 import type { TerrainType, Tile } from "@roc/shared";
@@ -49,6 +51,8 @@ export interface LocalGameOptions {
   aiCount?: number;
   barbarians?: boolean | BarbarianActivity;
   civId?: string;
+  /** Resume from a previously serialized single-player save. */
+  savedState?: SerializedState;
 }
 
 export class LocalSession implements Session {
@@ -57,19 +61,23 @@ export class LocalSession implements Session {
   private cb: () => void = () => {};
 
   constructor(opts: LocalGameOptions = {}) {
-    const dims = MAP_DIMENSIONS[opts.mapSize ?? "medium"];
-    const aiCount = Math.max(0, opts.aiCount ?? 1);
-    // Single-player = 1 human vs N AI civs (+ optional barbarians).
-    this.state = createGame({
-      seed: opts.seed ?? "rise",
-      cols: dims.cols,
-      rows: dims.rows,
-      humanSlots: 1,
-      playerCount: 1 + aiCount,
-      barbarians: opts.barbarians ?? true,
-      civIds: opts.civId ? [opts.civId] : undefined,
-    });
-    beginTurn(this.state);
+    if (opts.savedState) {
+      this.state = deserializeState(opts.savedState);
+    } else {
+      const dims = MAP_DIMENSIONS[opts.mapSize ?? "medium"];
+      const aiCount = Math.max(0, opts.aiCount ?? 1);
+      // Single-player = 1 human vs N AI civs (+ optional barbarians).
+      this.state = createGame({
+        seed: opts.seed ?? "rise",
+        cols: dims.cols,
+        rows: dims.rows,
+        humanSlots: 1,
+        playerCount: 1 + aiCount,
+        barbarians: opts.barbarians ?? true,
+        civIds: opts.civId ? [opts.civId] : undefined,
+      });
+      beginTurn(this.state);
+    }
   }
   hasState(): boolean {
     return true;
@@ -170,6 +178,12 @@ export class OnlineSession implements Session {
   private awaitingIds: number[] = [];
   private cb: () => void = () => {};
   private handlers = new Set<(m: ServerEvent) => void>();
+  private exportResolve: ((blob: string) => void) | null = null;
+  private exportReject: ((reason: string) => void) | null = null;
+  private loadResolve: (() => void) | null = null;
+  private loadReject: ((reason: string) => void) | null = null;
+  /** Server game id; set by lobby-ui when the game starts. */
+  gameId?: string;
 
   constructor(private readonly url: string) {}
 
@@ -191,6 +205,21 @@ export class OnlineSession implements Session {
       this.viewerId = msg.view.yourId;
       this.awaitingIds = msg.awaiting;
       this.cb();
+    } else if (msg.t === "exported") {
+      this.exportResolve?.(msg.blob);
+      this.exportResolve = null;
+      this.exportReject = null;
+    } else if (msg.t === "loaded") {
+      this.loadResolve?.();
+      this.loadResolve = null;
+      this.loadReject = null;
+    } else if (msg.t === "error") {
+      this.exportReject?.(msg.message);
+      this.exportResolve = null;
+      this.exportReject = null;
+      this.loadReject?.(msg.message);
+      this.loadResolve = null;
+      this.loadReject = null;
     }
     for (const h of this.handlers) h(msg);
   }
@@ -229,5 +258,23 @@ export class OnlineSession implements Session {
   }
   awaiting(): number[] {
     return this.awaitingIds;
+  }
+
+  /** Ask the server to export the full authoritative state. Host only. */
+  requestExport(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      this.exportResolve = resolve;
+      this.exportReject = reject;
+      this.send({ t: "exportState" });
+    });
+  }
+
+  /** Upload a full save blob to restore the server game. Host only. */
+  loadGame(blob: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      this.loadResolve = resolve;
+      this.loadReject = reject;
+      this.send({ t: "loadGame", blob });
+    });
   }
 }

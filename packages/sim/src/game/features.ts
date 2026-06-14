@@ -17,6 +17,7 @@ import {
   type Unit,
 } from "./state";
 import { UNIT_DEFS, isMilitary, type UnitTypeId } from "./content";
+import { unitMaxHp } from "./combat";
 import { availableTechs } from "./economy";
 import { expandTerritory } from "./territory";
 import { offsetNeighbors } from "./movement";
@@ -136,8 +137,12 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
 
 /** Reward for clearing a barbarian camp with a military unit. */
 export function clearBarbCamp(state: GameState, unit: Unit, player: Player): void {
-  const gold = 40 + Math.floor(makeRng(hashSeed(`camp:${unit.col},${unit.row}:${state.turn}`)).next() * 30);
+  const base = 40 + Math.floor(makeRng(hashSeed(`camp:${unit.col},${unit.row}:${state.turn}`)).next() * 30);
+  const gold = base + (unit.promotions.includes("raider") ? 25 : 0);
   player.gold += gold;
+  if (unit.promotions.includes("forager")) {
+    unit.hp = Math.min(unitMaxHp(unit), unit.hp + 8);
+  }
   state.log.push(`${player.name} cleared a barbarian camp (+${gold} gold).`);
 }
 

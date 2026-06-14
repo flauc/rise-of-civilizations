@@ -64,6 +64,21 @@ The client accepts URL params: `?seed=anything&cols=80&rows=56`.
 - **Found City** (Settler), **Build** farm/mine/road (Worker), **Promote** (leveled units): buttons in the unit panel.
 - **Production/Research:** city panel dropdown / "Research" button. **Pan/zoom:** drag, wheel, or pinch.
 
+## Main menu
+
+The game opens on a **Start Screen** with three options:
+- **Single Player** — choose your civilization, map size, number of AI opponents, and barbarian intensity, then start a local game.
+- **Multiplayer** — connect to a Bun server, register or log in, then create or join a lobby.
+- **Load Game** — resume a single-player save stored in your browser's IndexedDB.
+
+Each sub-screen has a **Back** button to return to the Start Screen, and form choices are remembered while you navigate.
+
+## Saving and loading
+
+- Games are saved to your browser's **IndexedDB**, so saves stay on the machine that created them.
+- **Single-player:** open the in-game **Menu** (☰) to save, or click **Load Game** from the main menu to resume a saved single-player game.
+- **Multiplayer:** only the **host** can save or load. The host opens the Menu, saves the full authoritative state locally, and can later load that save back into the same server game. Other players receive the restored state automatically.
+
 ## Roadmap
 
 See [docs/PLAN.md §5](docs/PLAN.md). Next up: **M3** — the Bun multiplayer server: auth, lobby, real-time simultaneous turns, Postgres persistence, and server-side fog/order validation.

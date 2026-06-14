@@ -62,12 +62,24 @@ export function playerEffects(state: GameState, playerId: number): CivEffects {
 /** Back-compat alias used by economy/founding (civ + gov + policies). */
 export const civEffectsOf = playerEffects;
 
-/** A unit's effective movement allowance including bonuses (e.g. Mongols/Maneuver). */
+/** A unit's effective movement allowance including promotions and civ bonuses. */
 export function unitMovement(state: GameState, unit: Unit): number {
-  const base = UNIT_DEFS[unit.type].movement;
+  let base = UNIT_DEFS[unit.type].movement;
   if (UNIT_DEFS[unit.type].cls === "cavalry") {
-    return base + (playerEffects(state, unit.ownerId).cavalryMovementBonus ?? 0);
+    base += playerEffects(state, unit.ownerId).cavalryMovementBonus ?? 0;
   }
+  const promotions = unit.promotions;
+  if (promotions.includes("mobility")) base += 1;
+  if (promotions.includes("commando")) base += 1;
+  if (promotions.includes("logistics")) base += 1;
+  if (promotions.includes("rapid_deployment")) base += 1;
+  if (promotions.includes("tracking")) base += 1;
+  if (promotions.includes("pioneer")) base += 1;
+  if (promotions.includes("engineer")) base += 1;
+  if (promotions.includes("foreman")) base += 1;
+  if (promotions.includes("mounted_archer")) base += 1;
+  if (promotions.includes("breakthrough")) base += 1;
+  if (promotions.includes("rapid_reload")) base += 1;
   return base;
 }
 

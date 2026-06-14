@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { MemoryStorage } from "./storage";
 import { Lobby } from "./lobby";
+import { deserializeState, serializeState } from "@roc/sim";
 
 describe("storage", () => {
   it("creates users (case-insensitive handle) and sessions", async () => {
@@ -50,5 +51,25 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(viewA.units.some((u) => u.ownerId === 1)).toBe(false);
     // A sees their own founded city.
     expect(viewA.cities.some((c) => c.ownerId === 0)).toBe(true);
+  });
+
+  it("restores an active game from a serialized state blob", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Restorable", "uA", "Alice", { seed: "seed-restore" });
+    lobby.join(g.id, "uB", "Bob");
+    expect(lobby.start(g.id)).toEqual({ ok: true });
+
+    const original = lobby.get(g.id)!.host!.state;
+    const blob = JSON.stringify(serializeState(original));
+    const restoredState = deserializeState(JSON.parse(blob));
+
+    // Mutate the live state so we can verify restore really replaces it.
+    original.turn = 9999;
+    expect(lobby.get(g.id)!.host!.state.turn).toBe(9999);
+
+    const r = lobby.restore(g.id, restoredState);
+    expect(r).toEqual({ ok: true });
+    expect(lobby.get(g.id)!.host!.state.turn).toBe(restoredState.turn);
+    expect(lobby.get(g.id)!.host!.state.turn).not.toBe(9999);
   });
 });

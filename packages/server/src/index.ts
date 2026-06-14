@@ -6,6 +6,7 @@
 // per-owner and broadcasts fog-filtered state.
 
 import type { ClientMessage, ServerMessage } from "@roc/sim";
+import { deserializeState, serializeState } from "@roc/sim";
 import { MemoryStorage } from "./storage";
 import { Lobby } from "./lobby";
 import { login, register, resume } from "./auth";
@@ -15,6 +16,7 @@ interface Conn {
   handle?: string;
   gameId?: string;
   playerId?: number;
+  slot?: number;
 }
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -39,6 +41,10 @@ function broadcastState(gameId: string): void {
     if (ws.data.playerId === undefined) continue;
     send(ws, { t: "state", view: host.view(ws.data.playerId), awaiting: host.awaiting() });
   }
+}
+
+function isHost(ws: ServerWebSocket<Conn>): boolean {
+  return ws.data.slot === 0;
 }
 
 async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<void> {
@@ -72,6 +78,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       });
       ws.data.gameId = game.id;
       ws.data.playerId = game.slots[0]!.playerId;
+      ws.data.slot = 0;
       addConn(game.id, ws);
       send(ws, { t: "joined", gameId: game.id, slot: 0, playerId: ws.data.playerId });
       return;
@@ -82,6 +89,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       if ("error" in r) return send(ws, { t: "error", message: r.error });
       ws.data.gameId = msg.gameId;
       ws.data.playerId = r.playerId;
+      ws.data.slot = r.slot;
       addConn(msg.gameId, ws);
       send(ws, { t: "joined", gameId: msg.gameId, slot: r.slot, playerId: r.playerId });
       return;
@@ -107,6 +115,29 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       host.ready_(ws.data.playerId);
       broadcastState(ws.data.gameId!);
       return;
+    }
+    case "exportState": {
+      const game = ws.data.gameId ? lobby.get(ws.data.gameId) : undefined;
+      const host = game?.host;
+      if (!host || ws.data.playerId === undefined) return send(ws, { t: "error", message: "not in a game" });
+      if (!isHost(ws)) return send(ws, { t: "error", message: "only the host can export" });
+      const blob = JSON.stringify(serializeState(host.state));
+      return send(ws, { t: "exported", blob });
+    }
+    case "loadGame": {
+      const game = ws.data.gameId ? lobby.get(ws.data.gameId) : undefined;
+      if (!game || ws.data.playerId === undefined) return send(ws, { t: "error", message: "not in a game" });
+      if (!isHost(ws)) return send(ws, { t: "error", message: "only the host can load" });
+      let state;
+      try {
+        state = deserializeState(JSON.parse(msg.blob) as ReturnType<typeof serializeState>);
+      } catch {
+        return send(ws, { t: "error", message: "invalid save blob" });
+      }
+      const r = lobby.restore(game.id, state);
+      if ("error" in r) return send(ws, { t: "error", message: r.error });
+      broadcastState(game.id);
+      return send(ws, { t: "loaded", gameId: game.id });
     }
   }
 }

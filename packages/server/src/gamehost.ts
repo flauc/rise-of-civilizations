@@ -24,10 +24,15 @@ export class GameHost {
   private readonly ready = new Set<number>();
   private readonly humanIds: number[];
 
-  constructor(state: GameState) {
+  constructor(state: GameState, startTurn = true) {
     this.state = state;
     this.humanIds = state.players.filter((p) => p.isHuman).map((p) => p.id);
-    startSimultaneousTurn(state);
+    if (startTurn) startSimultaneousTurn(state);
+  }
+
+  /** Restore a host from a saved state without refreshing the turn. */
+  static fromState(state: GameState): GameHost {
+    return new GameHost(state, false);
   }
 
   /** Apply a player's order (move/attack/found/build/promote/production/research). */

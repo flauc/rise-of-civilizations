@@ -10,6 +10,7 @@ import {
   healAndReset,
   resolveAttack,
   availablePromotions,
+  unitMaxHp,
 } from "./combat";
 import { barbarianTurn } from "./barbarians";
 import { buildImprovement, type ImprovementKind } from "./improvements";
@@ -204,6 +205,14 @@ export function applyCommand(
       if (!availablePromotions(unit).includes(cmd.promotion)) return fail("invalid promotion");
       unit.promotions.push(cmd.promotion);
       unit.unspentPromotions -= 1;
+      if (cmd.promotion === "engineer") unit.charges += 1;
+      if (cmd.promotion === "colonist" || cmd.promotion === "survival_training") {
+        // HP-boosting promotions also heal the unit by the same amount.
+        unit.hp = Math.min(unitMaxHp(unit), unit.hp + 15);
+      }
+      if (cmd.promotion === "toughness") {
+        unit.hp = Math.min(unitMaxHp(unit), unit.hp + 15);
+      }
       return ok;
     }
 

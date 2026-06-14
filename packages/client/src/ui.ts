@@ -1,4 +1,5 @@
 import { renderTechTreeInto } from "./techtree";
+import type { SaveRecord } from "./save-db";
 import {
   availableCivics,
   availableGovernments,
@@ -68,6 +69,8 @@ export interface UIView {
   odds?: CombatOdds | null;
   /** Next suggested action (drives the smart action button). */
   suggestion?: Suggestion | null;
+  /** Multiplayer saves available to the host for loading. */
+  mpSaves?: SaveRecord[];
 }
 
 export interface UIHandlers {
@@ -83,6 +86,9 @@ export interface UIHandlers {
   onFoundReligion(cityId: number, name: string, beliefs: string[]): void;
   onCloseCity(): void;
   onSuggestion(): void;
+  onSave(name: string): Promise<void>;
+  onMenuOpen(): void;
+  onLoadMpSave(blob: string): Promise<void>;
 }
 
 export interface UI {
@@ -92,6 +98,7 @@ export interface UI {
   openCivics(): void;
   openReligion(): void;
   openTechTree(): void;
+  setMpSaves(saves: SaveRecord[]): void;
 }
 
 function div(id: string, cls: string): HTMLDivElement {
@@ -100,6 +107,12 @@ function div(id: string, cls: string): HTMLDivElement {
   el.className = cls;
   document.body.appendChild(el);
   return el;
+}
+
+function escapeHtml(text: string): string {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 function prodCost(item: ProductionItem): number {
@@ -120,8 +133,9 @@ export function createUI(handlers: UIHandlers): UI {
   const religionPanel = div("religion", "panel hidden");
   const production = div("production", "panel hidden");
   const log = div("log", "");
-  const banner = div("banner", "");
+  const bannerEl = div("banner", "");
   const gameover = div("gameover", "hidden");
+  const saveModal = div("save-modal", "panel hidden");
   const villageOverlay = div("village-overlay", "");
   const villageDialog = div("village-dialog", "");
   villageDialog.innerHTML =
@@ -155,11 +169,21 @@ export function createUI(handlers: UIHandlers): UI {
   let lastLogLength = 0;
   let logInitialized = false;
   let villageQueue: string[] = [];
+  let saveOpen = false;
+  let isSaving = false;
+  let mpSaves: SaveRecord[] = [];
 
   const showVillageDialog = (msg: string): void => {
     villageMsg.textContent = msg;
     villageOverlay.classList.add("show");
     villageDialog.classList.add("show");
+  };
+
+  const showBanner = (text: string): void => {
+    bannerEl.textContent = text;
+    bannerEl.classList.add("show");
+    window.clearTimeout(bannerTimer);
+    bannerTimer = window.setTimeout(() => bannerEl.classList.remove("show"), 1400);
   };
 
   const closeVillageDialog = (): void => {
@@ -226,6 +250,8 @@ export function createUI(handlers: UIHandlers): UI {
           <span class="tb-pl">🏛️</span><b>${cName}</b></button>
         <button class="tb-pill" id="religion-btn" title="Religion">
           <span class="tb-pl">☮️</span><b>Faith</b></button>
+        <button class="tb-pill" id="menu-btn" title="Menu">
+          <span class="tb-pl">☰</span><b>Menu</b></button>
       </div>`;
     topbar.querySelector<HTMLButtonElement>("#research-btn")!.addEventListener("click", () => {
       researchOpen = !researchOpen;
@@ -249,6 +275,84 @@ export function createUI(handlers: UIHandlers): UI {
       renderResearch(state);
       renderCivics(state);
     });
+    topbar.querySelector<HTMLButtonElement>("#menu-btn")!.addEventListener("click", () => {
+      saveOpen = !saveOpen;
+      if (saveOpen) handlers.onMenuOpen();
+      renderSaveModal(state);
+    });
+  };
+
+  const renderSaveModal = (state: GameState): void => {
+    saveModal.classList.toggle("hidden", !saveOpen);
+    if (!saveOpen) return;
+    const player = state.players[state.currentPlayerIndex]!;
+    const isHost = state.players[0]?.id === player.id;
+    let html =
+      `<div class="row" style="justify-content:space-between"><b>Game Menu</b>` +
+      `<button class="btn" id="save-close">✕</button></div>` +
+      `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
+      `<input id="save-name" class="lobby-in" value="" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
+      `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
+      (isSaving ? "Saving…" : "💾 Save") +
+      `</button>`;
+    if (isHost && mpSaves.length > 0) {
+      html += `<div style="margin-top:12px;border-top:1px solid var(--edge);padding-top:10px"><b>Load MP Save</b></div>`;
+      html += mpSaves
+        .map(
+          (s) =>
+            `<div class="gi" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:6px;border:1px solid var(--edge);border-radius:8px">` +
+            `<span>${escapeHtml(s.name)}<br/><span style="color:#9fc0dc;font-size:11px">Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}</span></span>` +
+            `<button class="btn" data-load-mp="${s.id}">Load</button>` +
+            `</div>`,
+        )
+        .join("");
+    }
+    html += `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+    saveModal.innerHTML = html;
+    const input = saveModal.querySelector<HTMLInputElement>("#save-name")!;
+    input.focus();
+    saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
+      saveOpen = false;
+      renderSaveModal(state);
+    });
+    saveModal.querySelector<HTMLButtonElement>("#save-confirm")!.addEventListener("click", async () => {
+      const name = input.value.trim();
+      if (!name) {
+        saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = "Enter a save name.";
+        return;
+      }
+      isSaving = true;
+      renderSaveModal(state);
+      try {
+        await handlers.onSave(name);
+        saveOpen = false;
+        renderSaveModal(state);
+        showBanner("Game saved");
+      } catch (err) {
+        isSaving = false;
+        renderSaveModal(state);
+        saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+      }
+    });
+    saveModal.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
+      el.addEventListener("click", async () => {
+        const id = el.dataset.loadMp;
+        const record = mpSaves.find((s) => s.id === id);
+        if (!record) return;
+        isSaving = true;
+        renderSaveModal(state);
+        try {
+          await handlers.onLoadMpSave(record.blob);
+          saveOpen = false;
+          renderSaveModal(state);
+          showBanner("MP save loaded");
+        } catch (err) {
+          isSaving = false;
+          renderSaveModal(state);
+          saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+        }
+      }),
+    );
   };
 
   const renderResearch = (state: GameState): void => {
@@ -533,9 +637,9 @@ export function createUI(handlers: UIHandlers): UI {
     const owner = state.players.find((p) => p.id === unit.ownerId);
 
     const info = unitInfo(unit.type);
+    const stars = unit.level > 1 ? " ★".repeat(unit.level - 1) : "";
     let html =
-      `<div class="row" style="justify-content:space-between"><b style="font-size:15px">${def.name}</b>` +
-      (unit.level > 1 ? `<span style="color:#ffd967">Lv ${unit.level}</span>` : "") +
+      `<div class="row" style="justify-content:space-between"><b style="font-size:15px">${def.name}<span style="color:#ffd967">${stars}</span></b>` +
       `</div>` +
       (owner && !own
         ? `<div class="sub"><span class="dot" style="background:${owner.color};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px"></span>${owner.name}</div>`
@@ -552,7 +656,10 @@ export function createUI(handlers: UIHandlers): UI {
         ` · XP ${unit.xp}</div>`;
     }
     if (unit.promotions.length) {
-      html += `<div style="color:#9fc0dc">${unit.promotions.map((p) => PROMOTION_DEFS[p].name).join(", ")}</div>`;
+      html +=
+        `<div style="margin-top:6px;color:#9fc0dc"><b>Promotions:</b> ` +
+        `${unit.promotions.map((p) => `<span title="${PROMOTION_DEFS[p].desc}">${PROMOTION_DEFS[p].name}</span>`).join(", ")}` +
+        `</div>`;
     }
     if (odds) {
       html +=
@@ -574,12 +681,24 @@ export function createUI(handlers: UIHandlers): UI {
       if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
 
       if (unit.unspentPromotions > 0) {
+        const promoOptions = availablePromotions(unit);
         html +=
           `<div style="margin-top:8px;color:#ffd967">Promote (${unit.unspentPromotions}):</div>` +
-          `<div class="row" style="margin-top:4px">` +
-          availablePromotions(unit)
-            .map((p) => `<button class="btn" data-promote="${p}" title="${PROMOTION_DEFS[p].desc}">${PROMOTION_DEFS[p].name}</button>`)
-            .join("") +
+          `<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">` +
+          (promoOptions.length
+            ? promoOptions
+                .map((p) => {
+                  const def = PROMOTION_DEFS[p];
+                  const stars = "★".repeat(def.tier);
+                  return (
+                    `<button class="btn" data-promote="${p}" style="text-align:left;display:flex;flex-direction:column;gap:2px;padding:8px 10px">` +
+                    `<span><b style="color:#fff">${def.name}</b> <span style="color:#ffd967;letter-spacing:1px">${stars}</span></span>` +
+                    `<span style="font-size:12px;color:#9fc0dc;font-weight:400;line-height:1.4">${def.desc}</span>` +
+                    `</button>`
+                  );
+                })
+                .join("")
+            : `<div class="sub">No promotions available at this level.</div>`) +
           `</div>`;
       }
     }
@@ -687,6 +806,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state);
       renderGameOver(view.state);
+      renderSaveModal(view.state);
       renderAction(view);
 
       // Show a modal dialog for newly discovered village rewards.
@@ -726,11 +846,12 @@ export function createUI(handlers: UIHandlers): UI {
       techtreeOpen = true;
       renderTechTree(lastState);
     },
+    setMpSaves(saves) {
+      mpSaves = saves;
+      if (saveOpen && lastState) renderSaveModal(lastState);
+    },
     banner(text) {
-      banner.textContent = text;
-      banner.classList.add("show");
-      window.clearTimeout(bannerTimer);
-      bannerTimer = window.setTimeout(() => banner.classList.remove("show"), 1400);
+      showBanner(text);
     },
   };
 }
