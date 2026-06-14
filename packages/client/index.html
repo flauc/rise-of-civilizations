@@ -448,6 +448,55 @@
       #banner.show {
         opacity: 1;
       }
+      /* village reward dialog */
+      #village-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 60;
+      }
+      #village-overlay.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #village-dialog {
+        position: fixed;
+        left: 50%;
+        top: 38%;
+        transform: translate(-50%, -50%);
+        width: min(380px, calc(100vw - 32px));
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 14px;
+        padding: 18px 20px;
+        text-align: center;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 61;
+      }
+      #village-dialog.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #village-dialog .village-title {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--accent);
+        margin-bottom: 10px;
+      }
+      #village-dialog .village-msg {
+        font-size: 15px;
+        line-height: 1.5;
+        color: #cfe3f7;
+        margin-bottom: 18px;
+      }
+      #village-dialog .btn {
+        padding: 8px 20px;
+      }
       /* log */
       #log {
         position: fixed;

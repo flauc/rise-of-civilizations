@@ -46,6 +46,29 @@ describe("M1 game model", () => {
     expect(cities[0]!.isCapital).toBe(true);
   });
 
+  it("enemy units cannot enter a city but can attack it from an adjacent tile", () => {
+    const state = newGame();
+    const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    const city = citiesOf(state, 0)[0]!;
+
+    // Teleport an enemy warrior next to the city.
+    const enemy = unitsOf(state, 1).find((u) => u.type === "warrior")!;
+    enemy.col = city.col + 1;
+    enemy.row = city.row;
+    enemy.movementLeft = 2;
+
+    // Moving into the city tile is forbidden.
+    const moveRes = applyCommand(state, { type: "move", unitId: enemy.id, col: city.col, row: city.row });
+    expect(moveRes.ok).toBe(false);
+    expect(enemy.col).toBe(city.col + 1);
+    expect(enemy.row).toBe(city.row);
+
+    // Attacking the city from the adjacent tile is allowed.
+    const attackRes = applyCommand(state, { type: "attack", attackerId: enemy.id, col: city.col, row: city.row });
+    expect(attackRes.ok).toBe(true);
+  });
+
   it("accumulates science and completes research over several turns", () => {
     const state = newGame();
     const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;

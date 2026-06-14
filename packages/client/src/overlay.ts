@@ -197,20 +197,35 @@ export function drawOverlay(
     if (!own && !o.visible.has(`${city.col},${city.row}`)) continue;
     const s = screen(city.col, city.row);
     const half = size * 0.62;
-    const cityImg = o.cityAtlas?.images[cityImageIndex(city.population)];
-    const hasCityImg = cityImg && isImageReady(cityImg);
-    const imgSize = half * 1.9;
+    const pop = Math.min(city.population, 12);
+    const imgSize = half * (1.3 + pop * 0.12);
     const imgX = s.x - imgSize / 2;
     const imgY = s.y - imgSize / 2;
+
+    // Pick an animation frame that is stable for a short interval but varies
+    // across cities so they don't blink in perfect unison.
+    const tierIndex = cityImageIndex(city.population);
+    const frames = o.cityAtlas?.images[tierIndex] ?? [];
+    const readyFrames = frames.filter((img): img is HTMLImageElement => img !== undefined && isImageReady(img));
+    const cityImg =
+      readyFrames.length > 0
+        ? readyFrames[(Math.floor(performance.now() / 300) + city.id) % readyFrames.length]
+        : undefined;
+    const hasCityImg = cityImg !== undefined;
 
     if (hasCityImg) {
       ctx.drawImage(cityImg, imgX, imgY, imgSize, imgSize);
     } else {
       ctx.fillStyle = colorOf(city.ownerId);
-      ctx.fillRect(s.x - half, s.y - half, half * 2, half * 2);
+      ctx.fillRect(imgX, imgY, imgSize, imgSize);
     }
 
     const selected = o.selectedCityId === city.id;
+    if (selected) {
+      ctx.lineWidth = Math.max(2, size * 0.1);
+      ctx.strokeStyle = "#ffd967";
+      ctx.strokeRect(imgX - 1, imgY - 1, imgSize + 2, imgSize + 2);
+    }
 
     if (showLabels) {
       // City name + population label (same pill style as unit labels).
@@ -223,7 +238,7 @@ export function drawOverlay(
       const labelH = Math.max(fontSize + pad * 2, dotR * 2 + pad * 2);
       const labelW = textW + dotR * 3 + pad * 2;
       const labelX = s.x - labelW / 2;
-      const labelY = (hasCityImg ? imgY : s.y - half) - labelH - pad;
+      const labelY = imgY - labelH - pad;
 
       ctx.fillStyle = selected ? "#ffd967" : "rgba(0,0,0,0.65)";
       ctx.beginPath();
@@ -248,7 +263,7 @@ export function drawOverlay(
       ctx.textAlign = "center";
     }
     const maxHp = cityMaxHp(city);
-    if (city.hp < maxHp) drawHpBar(ctx, s.x, s.y + half + size * 0.12, half * 2, city.hp / maxHp);
+    if (city.hp < maxHp) drawHpBar(ctx, s.x, s.y + imgSize / 2 + size * 0.12, imgSize, city.hp / maxHp);
   }
 
   // Units.

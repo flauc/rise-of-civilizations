@@ -120,6 +120,14 @@ export function createUI(handlers: UIHandlers): UI {
   const log = div("log", "");
   const banner = div("banner", "");
   const gameover = div("gameover", "hidden");
+  const villageOverlay = div("village-overlay", "");
+  const villageDialog = div("village-dialog", "");
+  villageDialog.innerHTML =
+    `<div class="village-title">🏘️ Village Discovered</div>` +
+    `<div class="village-msg" id="village-msg"></div>` +
+    `<button class="btn primary" id="village-ok">OK</button>`;
+  const villageMsg = villageDialog.querySelector<HTMLDivElement>("#village-msg")!;
+  const villageOk = villageDialog.querySelector<HTMLButtonElement>("#village-ok")!;
 
   const endturn = document.createElement("button");
   endturn.id = "endturn";
@@ -142,6 +150,27 @@ export function createUI(handlers: UIHandlers): UI {
   let chosenBeliefs: string[] = [];
   let bannerTimer = 0;
   let lastState: GameState | null = null;
+  let lastLogLength = 0;
+  let logInitialized = false;
+  let villageQueue: string[] = [];
+
+  const showVillageDialog = (msg: string): void => {
+    villageMsg.textContent = msg;
+    villageOverlay.classList.add("show");
+    villageDialog.classList.add("show");
+  };
+
+  const closeVillageDialog = (): void => {
+    villageOverlay.classList.remove("show");
+    villageDialog.classList.remove("show");
+    villageQueue.shift();
+    if (villageQueue.length > 0) {
+      window.setTimeout(() => showVillageDialog(villageQueue[0]!), 150);
+    }
+  };
+
+  villageOk.addEventListener("click", closeVillageDialog);
+  villageOverlay.addEventListener("click", closeVillageDialog);
 
   const renderAction = (view: UIView): void => {
     if (view.suggestion) {
@@ -650,6 +679,23 @@ export function createUI(handlers: UIHandlers): UI {
       renderLog(view.state);
       renderGameOver(view.state);
       renderAction(view);
+
+      // Show a modal dialog for newly discovered village rewards.
+      if (!logInitialized) {
+        lastLogLength = view.state.log.length;
+        logInitialized = true;
+      } else if (view.state.log.length > lastLogLength) {
+        const newEntries = view.state.log.slice(lastLogLength);
+        const villageEntries = newEntries.filter((m) => /village|trap|ambushed/i.test(m));
+        if (villageEntries.length > 0) {
+          const wasEmpty = villageQueue.length === 0;
+          villageQueue.push(...villageEntries);
+          if (wasEmpty && !villageDialog.classList.contains("show")) {
+            showVillageDialog(villageQueue[0]!);
+          }
+        }
+        lastLogLength = view.state.log.length;
+      }
     },
     openResearch() {
       if (!lastState) return;

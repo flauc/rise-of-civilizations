@@ -9,6 +9,7 @@ import {
 } from "@roc/shared";
 import { moveCost, isPassableLand } from "./terrain";
 import type { GameState, Unit } from "./state";
+import { cityAt } from "./state";
 import { UNIT_DEFS } from "./content";
 
 /** In-bounds offset neighbors of a tile (odd-r), routed through shared axial math. */
@@ -71,6 +72,8 @@ export function computeReachable(
       if (!tile || !isPassableLand(tile.terrain)) continue;
       const nk = key(n);
       if (occ.has(`${n.col},${n.row}`)) continue;
+      const city = cityAt(state, n.col, n.row);
+      if (city && city.ownerId !== unit.ownerId) continue;
       const enterCost = tile.road ? 1 : moveCost(tile.terrain);
       const step = curCost + enterCost;
       if (step <= budget && step < (best.get(nk) ?? Infinity)) {
@@ -87,6 +90,8 @@ export function computeReachable(
     if (!tile || !isPassableLand(tile.terrain)) continue;
     const nk = `${n.col},${n.row}`;
     if (occ.has(nk)) continue;
+    const city = cityAt(state, n.col, n.row);
+    if (city && city.ownerId !== unit.ownerId) continue;
     if (!result.has(nk)) result.set(nk, { cost: budget });
   }
 
