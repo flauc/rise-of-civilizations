@@ -2,8 +2,10 @@
 // single-player setup, multiplayer lobby, and loading saved games.
 
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
+import { createWiki } from "./wiki";
 import { CIVILIZATIONS, type GameSummary, type SerializedState } from "@roc/sim";
 import { deleteSave, listSaves, loadSave, type SaveRecord } from "./save-db";
+import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 
 const DEFAULT_WS = `ws://${location.hostname || "localhost"}:3001/ws`;
 
@@ -77,6 +79,10 @@ export function createLobby(onStart: (session: Session) => void): void {
     },
   };
 
+  const leaderAtlas = loadLeaderAtlas();
+
+  const wiki = createWiki();
+
   const root = document.createElement("div");
   root.id = "lobby";
   root.innerHTML = `
@@ -132,7 +138,9 @@ export function createLobby(onStart: (session: Session) => void): void {
     .showcase-ability-name{font-size:15px;font-weight:700;color:#fff;margin-bottom:4px}
     .showcase-ability-desc{font-size:13px;color:#b8d4ec;line-height:1.4}
     .showcase-uniques{margin-top:10px;font-size:12px;color:#9fc0dc}
-    .showcase-art{position:absolute;top:48px;right:56px;width:260px;height:320px;border:2px dashed rgba(255,255,255,.15);border-radius:16px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.45);font-size:13px;text-align:center;background:rgba(255,255,255,.03);z-index:1}
+    .showcase-art-wrapper{position:absolute;top:48px;right:56px;width:260px;height:320px;border-radius:16px;overflow:hidden;z-index:1;box-shadow:0 8px 32px rgba(0,0,0,.35)}
+    .showcase-art{width:100%;height:100%;object-fit:cover;display:block;border-radius:16px}
+    .showcase-art-placeholder{position:absolute;inset:0;border:2px dashed rgba(255,255,255,.15);border-radius:16px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.45);font-size:13px;text-align:center;background:rgba(255,255,255,.03)}
     .showcase-reroll{position:absolute;top:48px;right:56px;z-index:2;margin-top:338px;width:260px}
     @media(max-width:860px){
       .lobby-left{width:100%;border-right:none}
@@ -156,11 +164,15 @@ export function createLobby(onStart: (session: Session) => void): void {
     return CIVILIZATIONS[Math.floor(Math.random() * CIVILIZATIONS.length)]!;
   }
 
-  function renderShowcase(): void {
-    const civ = pickRandomCiv();
+  function renderShowcase(civId?: string): void {
+    const civ = (civId ? CIVILIZATIONS.find((c) => c.id === civId) : undefined) ?? pickRandomCiv();
+    const src = leaderAtlas.images[civ.id]?.src ?? `${import.meta.env.BASE_URL}leaders/${civ.id}.png`;
     right.innerHTML = `
-      <div class="showcase-art">Leader art<br/>coming soon</div>
-      <button class="menu-btn secondary showcase-reroll" id="showcase-reroll"><span class="icon">🎲</span> Show another civilization</button>
+      <div class="showcase-art-wrapper">
+        <img id="showcase-art" class="showcase-art hidden" src="${src}" alt="" />
+        <div id="showcase-art-placeholder" class="showcase-art-placeholder">Leader art<br/>coming soon</div>
+      </div>
+      <button class="menu-btn secondary showcase-reroll" id="showcase-reroll">Show another civilization</button>
       <div class="showcase">
         <div class="showcase-label">Featured Civilization</div>
         <div class="showcase-civ">${escapeHtml(civ.name)}</div>
@@ -172,7 +184,22 @@ export function createLobby(onStart: (session: Session) => void): void {
           <div class="showcase-uniques">Unique Unit: <b>${escapeHtml(civ.uniqueUnit)}</b> · Unique Infrastructure: <b>${escapeHtml(civ.uniqueInfra)}</b></div>
         </div>
       </div>`;
-    right.querySelector<HTMLButtonElement>("#showcase-reroll")?.addEventListener("click", renderShowcase);
+    const img = right.querySelector<HTMLImageElement>("#showcase-art");
+    const placeholder = right.querySelector<HTMLDivElement>("#showcase-art-placeholder");
+    if (img && placeholder) {
+      const reveal = (): void => {
+        if (isImageReady(img)) {
+          img.classList.remove("hidden");
+          placeholder.classList.add("hidden");
+        }
+      };
+      img.onload = reveal;
+      img.onerror = () => {
+        // Keep the placeholder visible when the portrait is missing.
+      };
+      reveal();
+    }
+    right.querySelector<HTMLButtonElement>("#showcase-reroll")?.addEventListener("click", () => renderShowcase());
   }
 
   function showScreen(screen: Screen): void {
@@ -198,14 +225,16 @@ export function createLobby(onStart: (session: Session) => void): void {
       <div class="lobby-title">Rise of Civilizations</div>
       <div class="lobby-subtitle">Ancient Era → Age of Exploration</div>
       <div class="menu-actions">
-        <button class="menu-btn primary" data-screen="sp"><span class="icon">🎮</span> Single Player</button>
-        <button class="menu-btn" data-screen="mp"><span class="icon">🌐</span> Multiplayer</button>
-        <button class="menu-btn" data-screen="load"><span class="icon">💾</span> Load Game</button>
+        <button class="menu-btn primary" data-screen="sp">Single Player</button>
+        <button class="menu-btn" data-screen="mp">Multiplayer</button>
+        <button class="menu-btn" data-screen="load">Load Game</button>
+        <button class="menu-btn" id="lobby-wiki">Wiki</button>
       </div>
       <div class="lobby-version">Turn-based 4X strategy</div>`;
     left.querySelectorAll<HTMLButtonElement>("[data-screen]").forEach((el) =>
       el.addEventListener("click", () => showScreen(el.dataset.screen as Screen)),
     );
+    left.querySelector<HTMLButtonElement>("#lobby-wiki")?.addEventListener("click", () => wiki.open());
   }
 
   function renderSinglePlayer(): void {
@@ -239,7 +268,10 @@ export function createLobby(onStart: (session: Session) => void): void {
     $("#sp-civ").addEventListener("change", () => {
       state.sp.civId = $select("#sp-civ").value;
       updateCivDesc();
+      renderShowcase(state.sp.civId);
     });
+
+    renderShowcase(state.sp.civId);
     $("#back").addEventListener("click", () => showScreen("start"));
     $("#back2").addEventListener("click", () => showScreen("start"));
     $("#sp-start").addEventListener("click", () => {

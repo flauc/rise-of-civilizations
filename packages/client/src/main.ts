@@ -181,6 +181,10 @@ function startGame(session: Session): void {
     onSetGovernment: (governmentId) => session.order({ type: "setGovernment", governmentId }),
     onTogglePolicy: (policyId) => session.order({ type: "togglePolicy", policyId }),
     onFoundReligion: (cityId, name, beliefs) => session.order({ type: "foundReligion", cityId, name, beliefs }),
+    onEstablishTrade: (destCityId) => {
+      if (selectedUnitId != null) session.order({ type: "establishTradeRoute", unitId: selectedUnitId, destCityId });
+      clearSelection();
+    },
     onCloseCity: () => {
       clearSelection();
     },
@@ -419,6 +423,7 @@ function startGame(session: Session): void {
         attackTargets,
         cityWorkable,
         cityWorked: selCity ? new Set(selCity.workedTiles) : new Set(),
+        tradeRoutes: st().tradeRoutes,
         unitAtlas,
         cityAtlas,
         featureAtlas,

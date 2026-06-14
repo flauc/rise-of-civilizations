@@ -189,6 +189,8 @@ Typical commands:
 ```bash
 bun run tools/art-generator/generate.ts --unit archer
 bun run tools/art-generator/generate.ts --tile forest --size 2K
+bun run tools/art-generator/generate.ts --leader rome --size 1K
+bun run tools/art-generator/generate.ts --subset leaders
 bun run tools/art-generator/generate.ts --subset units
 bun run tools/art-generator/generate.ts --all
 
@@ -199,6 +201,10 @@ bun run tools/art-generator/generate.ts --subset terrain --variations 5 --size 5
 # Add extra variants without overwriting the existing base tile
 bun run tools/art-generator/generate.ts --tile plains --variations 4 --skip-base --size 512
 ```
+
+Leader portraits are generated as a `leader` asset subset and copied from
+`assets/generated/leaders/` to `packages/client/public/leaders/` so the Start
+Screen can load them.
 
 The client renderer loads all `hex-terrain/<terrain>.png` plus
 `<terrain>_1.png` … `<terrain>_4.png` variants and picks one deterministically

@@ -163,6 +163,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     gameOver: view.gameOver,
     turnLimit: 0,
     religions: view.religions,
+    tradeRoutes: view.tradeRoutes ?? [],
     barbarianActivity: view.barbarianActivity ?? "normal",
   };
   return { state, visible: new Set(view.visible) };

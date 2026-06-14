@@ -1,4 +1,5 @@
 import { renderTechTreeInto } from "./techtree";
+import { createWiki } from "./wiki";
 import type { SaveRecord } from "./save-db";
 import {
   availableCivics,
@@ -22,6 +23,10 @@ import {
   RELIGION_REQUIRED_TECH,
   FAITH_TO_FOUND,
   buildableHere,
+  cityAt,
+  tradeRouteDestinations,
+  tradeRouteYield,
+  tradeRoutesFrom,
   citiesOf,
   cityDefenseStrength,
   cityMaxHp,
@@ -159,6 +164,7 @@ export interface UIHandlers {
   onSetGovernment(governmentId: string): void;
   onTogglePolicy(policyId: string): void;
   onFoundReligion(cityId: number, name: string, beliefs: string[]): void;
+  onEstablishTrade(destCityId: number): void;
   onCloseCity(): void;
   onCloseTile(): void;
   onSuggestion(): void;
@@ -203,6 +209,7 @@ function prodName(item: ProductionItem): string {
 
 export function createUI(handlers: UIHandlers): UI {
   const topbar = div("topbar", "panel");
+  const leaderAvatar = div("leader-avatar", "");
   const unitPanel = div("unit-panel", "panel hidden");
   const tilePanel = div("tile-panel", "panel hidden");
   const tileTip = div("tile-tip", "hidden");
@@ -216,6 +223,7 @@ export function createUI(handlers: UIHandlers): UI {
   const bannerEl = div("banner", "");
   const gameover = div("gameover", "hidden");
   const saveModal = div("save-modal", "panel hidden");
+  const wiki = createWiki();
   const villageOverlay = div("village-overlay", "");
   const villageDialog = div("village-dialog", "");
   villageDialog.innerHTML =
@@ -250,7 +258,8 @@ export function createUI(handlers: UIHandlers): UI {
   let lastLogLength = 0;
   let logInitialized = false;
   let villageQueue: string[] = [];
-  let saveOpen = false;
+  let menuOpen = false;
+  let menuView: "menu" | "save" = "menu";
   let isSaving = false;
   let mpSaves: SaveRecord[] = [];
 
@@ -334,6 +343,17 @@ export function createUI(handlers: UIHandlers): UI {
         <button class="tb-pill" id="menu-btn" title="Menu">
           <span class="tb-pl">☰</span><b>Menu</b></button>
       </div>`;
+
+    if (civ) {
+      leaderAvatar.classList.remove("empty");
+      leaderAvatar.innerHTML =
+        `<img src="${import.meta.env.BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" title="${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)}" onerror="this.style.visibility='hidden'">` +
+        `<div class="leader-avatar-label"><b>${escapeHtml(civ.name)}</b><span>${escapeHtml(civ.leader)}</span></div>`;
+    } else {
+      leaderAvatar.classList.add("empty");
+      leaderAvatar.innerHTML = "";
+    }
+
     topbar.querySelector<HTMLButtonElement>("#research-btn")!.addEventListener("click", () => {
       researchOpen = !researchOpen;
       civicsOpen = false;
@@ -357,44 +377,97 @@ export function createUI(handlers: UIHandlers): UI {
       renderCivics(state);
     });
     topbar.querySelector<HTMLButtonElement>("#menu-btn")!.addEventListener("click", () => {
-      saveOpen = !saveOpen;
-      if (saveOpen) handlers.onMenuOpen();
-      renderSaveModal(state);
+      menuOpen = !menuOpen;
+      menuView = "menu";
+      if (menuOpen) handlers.onMenuOpen();
+      renderMenu(state);
     });
   };
 
-  const renderSaveModal = (state: GameState): void => {
-    saveModal.classList.toggle("hidden", !saveOpen);
-    if (!saveOpen) return;
+  const renderMenu = (state: GameState): void => {
+    saveModal.classList.toggle("hidden", !menuOpen);
+    if (!menuOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const isHost = state.players[0]?.id === player.id;
+
+    if (menuView === "menu") {
+      let html =
+        `<div class="row" style="justify-content:space-between"><b>Game Menu</b>` +
+        `<button class="btn" id="save-close">Close</button></div>` +
+        `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
+        `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
+        `<button class="btn primary" id="menu-save">Save Game</button>` +
+        `<button class="btn" id="menu-wiki">Open Wiki</button>` +
+        `<button class="btn" id="menu-leave">Leave Game</button>` +
+        `</div>`;
+      if (isHost && mpSaves.length > 0) {
+        html += `<div style="margin-top:16px;border-top:1px solid var(--edge);padding-top:12px"><b>Host MP Saves</b></div>`;
+        html += mpSaves
+          .map(
+            (s) =>
+              `<div class="gi" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:6px;border:1px solid var(--edge);border-radius:8px">` +
+              `<span>${escapeHtml(s.name)}<br/><span style="color:#9fc0dc;font-size:11px">Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}</span></span>` +
+              `<button class="btn" data-load-mp="${s.id}">Load</button>` +
+              `</div>`,
+          )
+          .join("");
+      }
+      html += `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+      saveModal.innerHTML = html;
+      saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
+        menuOpen = false;
+        renderMenu(state);
+      });
+      saveModal.querySelector<HTMLButtonElement>("#menu-save")!.addEventListener("click", () => {
+        menuView = "save";
+        renderMenu(state);
+      });
+      saveModal.querySelector<HTMLButtonElement>("#menu-wiki")!.addEventListener("click", () => {
+        menuOpen = false;
+        renderMenu(state);
+        wiki.open();
+      });
+      saveModal.querySelector<HTMLButtonElement>("#menu-leave")!.addEventListener("click", () => {
+        if (confirm("Leave this game and return to the main menu?")) location.reload();
+      });
+      saveModal.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
+        el.addEventListener("click", async () => {
+          const id = el.dataset.loadMp;
+          const record = mpSaves.find((s) => s.id === id);
+          if (!record) return;
+          isSaving = true;
+          renderMenu(state);
+          try {
+            await handlers.onLoadMpSave(record.blob);
+            menuOpen = false;
+            renderMenu(state);
+            showBanner("MP save loaded");
+          } catch (err) {
+            isSaving = false;
+            renderMenu(state);
+            saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+          }
+        }),
+      );
+      return;
+    }
+
+    // Save form view
     let html =
-      `<div class="row" style="justify-content:space-between"><b>Game Menu</b>` +
-      `<button class="btn" id="save-close">✕</button></div>` +
+      `<div class="row" style="justify-content:space-between"><b>Save Game</b>` +
+      `<button class="btn" id="save-close">Cancel</button></div>` +
       `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
       `<input id="save-name" class="lobby-in" value="" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
       `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
-      (isSaving ? "Saving…" : "💾 Save") +
-      `</button>`;
-    if (isHost && mpSaves.length > 0) {
-      html += `<div style="margin-top:12px;border-top:1px solid var(--edge);padding-top:10px"><b>Load MP Save</b></div>`;
-      html += mpSaves
-        .map(
-          (s) =>
-            `<div class="gi" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:6px;border:1px solid var(--edge);border-radius:8px">` +
-            `<span>${escapeHtml(s.name)}<br/><span style="color:#9fc0dc;font-size:11px">Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}</span></span>` +
-            `<button class="btn" data-load-mp="${s.id}">Load</button>` +
-            `</div>`,
-        )
-        .join("");
-    }
-    html += `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+      (isSaving ? "Saving…" : "Save") +
+      `</button>` +
+      `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
     saveModal.innerHTML = html;
     const input = saveModal.querySelector<HTMLInputElement>("#save-name")!;
     input.focus();
     saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
-      saveOpen = false;
-      renderSaveModal(state);
+      menuView = "menu";
+      renderMenu(state);
     });
     saveModal.querySelector<HTMLButtonElement>("#save-confirm")!.addEventListener("click", async () => {
       const name = input.value.trim();
@@ -403,37 +476,19 @@ export function createUI(handlers: UIHandlers): UI {
         return;
       }
       isSaving = true;
-      renderSaveModal(state);
+      renderMenu(state);
       try {
         await handlers.onSave(name);
-        saveOpen = false;
-        renderSaveModal(state);
+        menuOpen = false;
+        menuView = "menu";
+        renderMenu(state);
         showBanner("Game saved");
       } catch (err) {
         isSaving = false;
-        renderSaveModal(state);
+        renderMenu(state);
         saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
       }
     });
-    saveModal.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
-      el.addEventListener("click", async () => {
-        const id = el.dataset.loadMp;
-        const record = mpSaves.find((s) => s.id === id);
-        if (!record) return;
-        isSaving = true;
-        renderSaveModal(state);
-        try {
-          await handlers.onLoadMpSave(record.blob);
-          saveOpen = false;
-          renderSaveModal(state);
-          showBanner("MP save loaded");
-        } catch (err) {
-          isSaving = false;
-          renderSaveModal(state);
-          saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
-        }
-      }),
-    );
   };
 
   const renderResearch = (state: GameState): void => {
@@ -761,6 +816,38 @@ export function createUI(handlers: UIHandlers): UI {
       }
       if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
 
+      if (def.trader) {
+        const origin = cityAt(state, unit.col, unit.row);
+        const dests = tradeRouteDestinations(state, unit);
+        if (origin && dests.length > 0) {
+          html += `<div class="csub">🐪 Trade route from ${origin.name}</div>`;
+          html +=
+            `<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">` +
+            dests
+              .map((c) => {
+                const y = tradeRouteYield(state, {
+                  id: 0,
+                  ownerId: unit.ownerId,
+                  fromCityId: origin.id,
+                  toCityId: c.id,
+                });
+                const extra =
+                  (y.food ? ` +${y.food}🍞` : "") +
+                  (y.production ? ` +${y.production}⚒️` : "") +
+                  (y.science ? ` +${y.science}🔬` : "");
+                return (
+                  `<button class="btn" data-trade-dest="${c.id}" style="text-align:left;display:flex;justify-content:space-between;gap:8px">` +
+                  `<span><b style="color:#fff">${c.name}</b></span>` +
+                  `<span class="sub">+${y.gold}🪙${extra}</span></button>`
+                );
+              })
+              .join("") +
+            `</div>`;
+        } else {
+          html += `<div class="locked-note">🐪 Move this Trader into one of your cities, then it can open a trade route to another city.</div>`;
+        }
+      }
+
       if (unit.unspentPromotions > 0) {
         const promoOptions = availablePromotions(unit);
         html +=
@@ -791,6 +878,9 @@ export function createUI(handlers: UIHandlers): UI {
     );
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-promote]").forEach((el) =>
       el.addEventListener("click", () => handlers.onPromote(el.dataset.promote as PromotionId)),
+    );
+    unitPanel.querySelectorAll<HTMLButtonElement>("[data-trade-dest]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onEstablishTrade(Number(el.dataset.tradeDest))),
     );
   };
 
@@ -883,6 +973,13 @@ export function createUI(handlers: UIHandlers): UI {
       // production
       `<div style="margin-top:6px">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>` +
       `<button class="btn primary" id="open-prod" style="width:100%;margin-top:6px">Choose Production ▸ <span style="color:#cfe3f7;font-weight:400">(${options.length})</span></button>` +
+      (() => {
+        const routes = tradeRoutesFrom(state, city.id);
+        if (!routes.length) return "";
+        const totalGold = routes.reduce((s, r) => s + tradeRouteYield(state, r).gold, 0);
+        const names = routes.map((r) => state.cities.get(r.toCityId)?.name ?? "?").join(", ");
+        return `<div style="margin-top:6px;color:#9fc0dc;font-size:12px">🐪 Trade routes (${routes.length}): ${names} — +${totalGold}🪙</div>`;
+      })() +
       (city.buildings.length
         ? `<div style="margin-top:6px;color:#9fc0dc;font-size:12px">Built: ${city.buildings.map((b) => BUILDING_DEFS[b].name).join(", ")}</div>`
         : "");
@@ -934,7 +1031,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state);
       renderGameOver(view.state);
-      renderSaveModal(view.state);
+      renderMenu(view.state);
       renderAction(view);
 
       // Show a modal dialog for newly discovered village rewards.
@@ -976,7 +1073,7 @@ export function createUI(handlers: UIHandlers): UI {
     },
     setMpSaves(saves) {
       mpSaves = saves;
-      if (saveOpen && lastState) renderSaveModal(lastState);
+      if (menuOpen && lastState) renderMenu(lastState);
     },
     setTileTip(tip) {
       if (!tip) {

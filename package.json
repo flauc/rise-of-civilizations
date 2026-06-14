@@ -14,7 +14,8 @@
     "server": "bun run --filter @roc/server start",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "generate-art": "bun run tools/art-generator/generate.ts"
+    "generate-art": "bun run tools/art-generator/generate.ts",
+    "generate-leaders": "bun run tools/art-generator/generate.ts --subset leaders"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

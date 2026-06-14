@@ -1,4 +1,4 @@
-import { cityMaxHp, tileYields, UNIT_DEFS, unitMaxHp, type GameState } from "@roc/sim";
+import { cityMaxHp, tileYields, UNIT_DEFS, unitMaxHp, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
@@ -16,6 +16,8 @@ export interface OverlayState {
   attackTargets: Set<string>;
   cityWorkable: Set<string>;
   cityWorked: Set<string>;
+  /** The viewer's trade routes, drawn as dashed lines between cities. */
+  tradeRoutes?: TradeRoute[];
   unitAtlas?: UnitAtlas;
   cityAtlas?: CityAtlas;
   featureAtlas?: FeatureAtlas;
@@ -174,6 +176,50 @@ export function drawOverlay(
       ctx.textBaseline = "middle";
       ctx.fillText(label, s.x, labelY + labelH / 2);
     }
+  }
+
+  // ---- trade routes (dashed lines between the viewer's connected cities) ----
+  if (o.tradeRoutes && o.tradeRoutes.length > 0) {
+    ctx.save();
+    for (const r of o.tradeRoutes) {
+      if (r.ownerId !== o.viewingPlayerId) continue;
+      const from = state.cities.get(r.fromCityId);
+      const to = state.cities.get(r.toCityId);
+      if (!from || !to) continue;
+      const a = screen(from.col, from.row);
+      const b = screen(to.col, to.row);
+      ctx.setLineDash([Math.max(4, size * 0.34), Math.max(3, size * 0.24)]);
+      // dark backing for contrast over terrain
+      ctx.lineWidth = Math.max(3, size * 0.13);
+      ctx.strokeStyle = "rgba(20,14,6,0.55)";
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      // golden caravan trail
+      ctx.lineWidth = Math.max(1.5, size * 0.07);
+      ctx.strokeStyle = "rgba(255,206,110,0.9)";
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      // small marker at the midpoint
+      if (size > 10) {
+        ctx.setLineDash([]);
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        ctx.fillStyle = "rgba(255,206,110,0.95)";
+        ctx.beginPath();
+        ctx.arc(mx, my, Math.max(2, size * 0.12), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#2a1c08";
+        ctx.font = `${Math.max(7, Math.round(size * 0.22))}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("$", mx, my + 1);
+      }
+    }
+    ctx.restore();
   }
 
   const highlight = (set: Set<string>, fill: string, stroke: string) => {

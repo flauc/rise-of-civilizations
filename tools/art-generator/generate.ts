@@ -33,6 +33,7 @@ import {
   UNIT_SUBSET,
   BUILDING_SUBSET,
   CITY_SUBSET,
+  LEADER_SUBSET,
 } from "./config";
 
 interface Options {
@@ -59,16 +60,19 @@ Usage:
   bun run tools/art-generator/generate.ts --unit archer
   bun run tools/art-generator/generate.ts --tile forest
   bun run tools/art-generator/generate.ts --building granary
+  bun run tools/art-generator/generate.ts --leader rome
   bun run tools/art-generator/generate.ts --subset terrain
   bun run tools/art-generator/generate.ts --subset units
   bun run tools/art-generator/generate.ts --subset buildings
+  bun run tools/art-generator/generate.ts --subset leaders
   bun run tools/art-generator/generate.ts --all
 
 Options:
   --unit <id>            Generate a specific unit
   --tile <id>            Generate a specific terrain tile
   --building <id>        Generate a specific building icon
-  --subset <name>        Generate a subset: terrain, units, buildings, all
+  --leader <id>          Generate a specific civilization leader portrait
+  --subset <name>        Generate a subset: terrain, units, buildings, cities, leaders, all
   --list                 List all available asset IDs and exit
   --model <id>           Gemini model (default: ${DEFAULT_MODEL})
   --size <512|1K|2K|4K>  Gemini image size (default: ${DEFAULT_IMAGE_SIZE})
@@ -158,14 +162,22 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--leader": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "leader") fail(`Unknown leader: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--subset": {
         const name = next();
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
         else if (name === "units") entries.push(...UNIT_SUBSET);
         else if (name === "buildings") entries.push(...BUILDING_SUBSET);
         else if (name === "cities") entries.push(...CITY_SUBSET);
+        else if (name === "leaders") entries.push(...LEADER_SUBSET);
         else if (name === "all") entries.push(...allEntries());
-        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, all.`);
+        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, cities, leaders, or all.`);
         break;
       }
       case "--all":
@@ -408,6 +420,23 @@ async function postProcessToken(rawPath: string, outPath: string, entry: AssetEn
   ]);
 }
 
+async function postProcessPortrait(rawPath: string, outPath: string, entry: AssetEntry): Promise<void> {
+  // Leader portraits keep their background. Just crop/resize to the target
+  // portrait frame so they fit the Start Screen card uniformly.
+  await runCmd("magick", [
+    rawPath,
+    "-resize",
+    `${entry.size.width}x${entry.size.height}^`,
+    "-gravity",
+    "center",
+    "-extent",
+    `${entry.size.width}x${entry.size.height}`,
+    "-define",
+    "png:color-type=6",
+    outPath,
+  ]);
+}
+
 function variantSuffix(index: number): string {
   return index === 0 ? "" : `_${index}`;
 }
@@ -463,6 +492,8 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
 
       if (entry.category === "tile") {
         await postProcessTile(rawPath, finalPath, entry);
+      } else if (entry.category === "leader") {
+        await postProcessPortrait(rawPath, finalPath, entry);
       } else {
         await postProcessToken(rawPath, finalPath, entry, options.useRembg);
       }
