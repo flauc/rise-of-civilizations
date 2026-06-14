@@ -364,10 +364,24 @@ async function postProcessTile(rawPath: string, outPath: string, entry: AssetEnt
   const maskedPath = `${rawPath}.masked.png`;
   await runCmd("magick", [rawPath, maskPath, "-compose", "CopyOpacity", "-composite", maskedPath]);
 
+  // Resize to the target canvas, then hard-mask everything outside the bottom
+  // width×width square. This keeps the hex footprint and its bottom-edge shadow
+  // intact while making the top overhang transparent.
   await runCmd("magick", [
     maskedPath,
     "-resize",
     `${entry.size.width}x${entry.size.height}!`,
+    "-gravity",
+    "South",
+    "-crop",
+    `${entry.size.width}x${entry.size.width}+0+0`,
+    "+repage",
+    "-background",
+    "none",
+    "-gravity",
+    "South",
+    "-extent",
+    `${entry.size.width}x${entry.size.height}`,
     "-define",
     "png:color-type=6",
     outPath,

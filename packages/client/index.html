@@ -376,6 +376,34 @@
       .tt-locked {
         opacity: 0.5;
       }
+      /* edges */
+      .tt-edge {
+        stroke: #3a5269;
+        opacity: 0.5;
+        transition: opacity 0.1s, stroke 0.1s;
+      }
+      .tt-edge-done {
+        stroke: #4a8a4e;
+        opacity: 0.75;
+      }
+      .tt-edge-hl {
+        stroke: #ffd967 !important;
+        opacity: 1 !important;
+        stroke-width: 3 !important;
+      }
+      .tt-edge-dim {
+        opacity: 0.06 !important;
+      }
+      /* prerequisite-chain highlight */
+      .tt-node.tt-hl {
+        opacity: 1 !important;
+        border-color: #ffd967 !important;
+        box-shadow: 0 0 0 2px rgba(255, 217, 103, 0.35);
+        z-index: 2;
+      }
+      .tt-node.tt-dim {
+        opacity: 0.16 !important;
+      }
       .csub {
         margin-top: 10px;
         margin-bottom: 2px;
