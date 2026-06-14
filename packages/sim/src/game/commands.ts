@@ -18,6 +18,7 @@ import { applyVictoryCheck } from "./victory";
 import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter } from "./features";
 import { foundReligion, spreadReligion } from "./religion";
+import { establishTradeRoute, pruneTradeRoutes } from "./trade";
 import {
   civEffectsOf,
   unitMovement,
@@ -45,6 +46,7 @@ export type Command =
   | { type: "setGovernment"; governmentId: string }
   | { type: "togglePolicy"; policyId: string }
   | { type: "foundReligion"; cityId: number; name: string; beliefs: string[] }
+  | { type: "establishTradeRoute"; unitId: number; destCityId: number }
   | { type: "endTurn" };
 
 export interface CommandResult {
@@ -60,6 +62,7 @@ const MIN_CITY_DISTANCE = 3;
 /** Begin the current player's turn: refresh movement, heal, run economy, reveal. */
 export function beginTurn(state: GameState): void {
   const player = currentPlayer(state);
+  pruneTradeRoutes(state); // drop routes whose cities were lost/captured
   for (const u of unitsOf(state, player.id)) {
     u.movementLeft = unitMovement(state, u);
   }
@@ -280,6 +283,10 @@ export function applyCommand(
 
     case "foundReligion": {
       return foundReligion(state, player.id, cmd.cityId, cmd.name, cmd.beliefs);
+    }
+
+    case "establishTradeRoute": {
+      return establishTradeRoute(state, cmd.unitId, cmd.destCityId, player.id);
     }
   }
 }

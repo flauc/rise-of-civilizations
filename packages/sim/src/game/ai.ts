@@ -14,6 +14,7 @@ import { computeAttackTargets } from "./combat";
 import { availableProduction, availableTechs } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
 import { canFoundReligion, availableReligionNames } from "./religion";
+import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
 import { BELIEFS } from "@roc/data";
 import { buildableHere } from "./improvements";
 import { isPassableLand } from "./terrain";
@@ -108,6 +109,11 @@ function chooseProduction(state: GameState, player: Player, city: City): Product
     const w = opts.find((o) => o.item.id === "worker");
     if (w) return w.item;
   }
+  // 3b. A trader once we have somewhere to trade with.
+  if (cityCount >= 2 && !has("trader")) {
+    const t = opts.find((o) => o.item.id === "trader");
+    if (t) return t.item;
+  }
   // 4. Economy buildings.
   for (const b of ["granary", "library", "walls"] as const) {
     const o = opts.find((x) => x.item.kind === "building" && x.item.id === b);
@@ -178,6 +184,32 @@ function aiWorker(state: GameState, unit: Unit, pid: number): void {
         }
       }
     }
+  }
+}
+
+function aiTrader(state: GameState, unit: Unit, pid: number): void {
+  const tryEstablish = (): boolean => {
+    if (!canEstablishTradeRoute(state, unit)) return false;
+    const dest = tradeRouteDestinations(state, unit)[0];
+    if (!dest) return false;
+    return applyCommand(state, { type: "establishTradeRoute", unitId: unit.id, destCityId: dest.id }, pid).ok;
+  };
+  if (tryEstablish()) return;
+  // Walk to the nearest of our cities, then set out a route from there.
+  const cities = citiesOf(state, unit.ownerId);
+  if (cities.length < 2) return;
+  let best: City | null = null;
+  let bestD = Infinity;
+  for (const c of cities) {
+    const d = axialDistance(ax(unit), ax(c));
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  if (best && (best.col !== unit.col || best.row !== unit.row)) {
+    stepToward(state, unit, best.col, best.row, pid);
+    tryEstablish();
   }
 }
 
@@ -265,6 +297,7 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     const def = UNIT_DEFS[unit.type];
     if (def.founder) aiSettler(state, unit, playerId);
     else if (def.builder) aiWorker(state, unit, playerId);
+    else if (def.trader) aiTrader(state, unit, playerId);
     else aiMilitary(state, unit, playerId);
   }
 }

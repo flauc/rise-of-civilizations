@@ -14,6 +14,7 @@ import { barbarianTurn } from "./barbarians";
 import { updateExplored } from "./visibility";
 import { applyVictoryCheck } from "./victory";
 import { spreadReligion } from "./religion";
+import { pruneTradeRoutes } from "./trade";
 import { aiTakeTurn } from "./ai";
 
 /** Begin a fresh turn for ALL players at once: refresh movement, heal, reveal. */
@@ -33,6 +34,7 @@ export function startSimultaneousTurn(state: GameState): void {
 /** Resolve the current turn: barbarians act, economies tick, advance to next. */
 export function resolveSimultaneousTurn(state: GameState): void {
   if (state.gameOver) return;
+  pruneTradeRoutes(state); // drop routes whose cities were lost/captured
   // Non-human factions act using the movement granted at the start of this turn:
   // AI civs play a full turn; barbarians raid.
   for (const p of state.players) {

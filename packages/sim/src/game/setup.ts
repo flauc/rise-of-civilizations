@@ -198,6 +198,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     gameOver: null,
     turnLimit: opts.turnLimit ?? 120,
     religions: [],
+    tradeRoutes: [],
     barbarianActivity: activity,
   };
 

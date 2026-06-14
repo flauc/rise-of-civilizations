@@ -7,7 +7,7 @@
 
 export type UnitTypeId =
   // civilian
-  | "settler" | "worker"
+  | "settler" | "worker" | "trader"
   // recon
   | "scout"
   // dawn melee/ranged (no tech)
@@ -23,7 +23,7 @@ export type UnitTypeId =
   // siege
   | "battering_ram" | "catapult" | "ballista";
 
-export type UnitClass = "settler" | "worker" | "recon" | "melee" | "ranged" | "cavalry" | "siege";
+export type UnitClass = "settler" | "worker" | "trader" | "recon" | "melee" | "ranged" | "cavalry" | "siege";
 export type UnitAbility = "bonus_vs_cavalry" | "bonus_vs_city";
 
 export type BuildingId =
@@ -61,6 +61,8 @@ export interface UnitDef {
   reqTech?: TechId;
   founder?: boolean;
   builder?: boolean;
+  /** Consumed to establish a trade route between two of your cities. */
+  trader?: boolean;
   abilities?: UnitAbility[];
 }
 
@@ -69,6 +71,7 @@ const U = (d: UnitDef): UnitDef => d;
 export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
   settler: U({ id: "settler", name: "Settler", glyph: "S", cls: "settler", movement: 2, sight: 2, cost: 24, strength: 0, founder: true }),
   worker: U({ id: "worker", name: "Worker", glyph: "B", cls: "worker", movement: 2, sight: 2, cost: 16, strength: 0, builder: true }),
+  trader: U({ id: "trader", name: "Trader", glyph: "$", cls: "trader", movement: 3, sight: 2, cost: 30, strength: 0, reqTech: "the_wheel", trader: true }),
   scout: U({ id: "scout", name: "Scout", glyph: "C", cls: "recon", movement: 3, sight: 3, cost: 10, strength: 4 }),
 
   clubman: U({ id: "clubman", name: "Clubman", glyph: "c", cls: "melee", movement: 2, sight: 2, cost: 10, strength: 6 }),
@@ -217,6 +220,7 @@ const ROLE: Record<UnitClass, string> = {
   recon: "Recon / scout",
   settler: "Founds a new city",
   worker: "Builds tile improvements",
+  trader: "Establishes trade routes",
 };
 
 export interface UnitInfo {
@@ -236,6 +240,7 @@ export function unitInfo(type: UnitTypeId): UnitInfo {
   if (d.abilities?.includes("bonus_vs_city")) notes.push("bonus vs cities");
   if (d.builder) notes.push("3 build charges");
   if (d.founder) notes.push("consumed to found a city");
+  if (d.trader) notes.push("consumed to set up a trade route");
   return { role: ROLE[d.cls], stats: stats.join(" · "), note: notes.join(" · ") };
 }
 
@@ -542,4 +547,5 @@ export const PROMOTION_POOL: Record<UnitClass, PromotionId[]> = {
   ],
   settler: ["pioneer", "colonist", "explorer"],
   worker: ["engineer", "foreman", "survival_training"],
+  trader: [],
 };

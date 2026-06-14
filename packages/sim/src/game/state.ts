@@ -87,6 +87,16 @@ export interface Religion {
   beliefs: string[];
 }
 
+/** A trade route carrying goods from one of a player's cities to another. */
+export interface TradeRoute {
+  id: number;
+  ownerId: number;
+  /** Origin city — receives the bulk of the route's yields. */
+  fromCityId: number;
+  /** Destination city — receives a smaller share. */
+  toCityId: number;
+}
+
 export type BarbarianActivity = "none" | "low" | "normal" | "high";
 
 export interface GameState {
@@ -101,6 +111,8 @@ export interface GameState {
   gameOver: GameOver | null;
   turnLimit: number;
   religions: Religion[];
+  /** Active trade routes between cities (all players). */
+  tradeRoutes: TradeRoute[];
   /** Barbarian intensity setting for this game. */
   barbarianActivity: BarbarianActivity;
 }

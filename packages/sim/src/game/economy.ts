@@ -5,6 +5,7 @@ import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { expandTerritory } from "./territory";
 import { civEffectsOf, getCivic } from "./civs";
+import { cityTradeYields } from "./trade";
 import { cityMaxHp } from "./combat";
 import { offsetNeighbors } from "./movement";
 import {
@@ -106,6 +107,13 @@ export function getCityYields(state: GameState, city: City): CityYields {
     science += 1;
     culture += 1;
   }
+
+  // Trade routes (origin city gets the bulk; destination a small share).
+  const trade = cityTradeYields(state, city);
+  food += trade.food;
+  production += trade.production;
+  gold += trade.gold;
+  science += trade.science;
 
   // Civ / government / policy yield bonuses (percentage).
   const pct = eff.yieldPercent;

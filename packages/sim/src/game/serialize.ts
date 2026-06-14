@@ -1,5 +1,5 @@
 import { getTile } from "@roc/shared";
-import type { BarbarianActivity, GameState, Unit, City, GameOver, Religion } from "./state";
+import type { BarbarianActivity, GameState, Unit, City, GameOver, Religion, TradeRoute } from "./state";
 import { computeVisible } from "./visibility";
 import type { TechId } from "./content";
 
@@ -41,6 +41,8 @@ export interface PlayerView {
     foundedReligionId?: string;
   };
   religions: Religion[];
+  /** The viewer's own trade routes (for the map overlay + city panel). */
+  tradeRoutes: TradeRoute[];
   players: PlayerPublic[];
   cols: number;
   rows: number;
@@ -98,6 +100,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
       foundedReligionId: me?.foundedReligionId,
     },
     religions: state.religions.map((r) => ({ ...r, beliefs: [...r.beliefs] })),
+    tradeRoutes: state.tradeRoutes.filter((r) => r.ownerId === playerId).map((r) => ({ ...r })),
     players: state.players.map((p) => ({
       id: p.id,
       name: p.name,
@@ -129,6 +132,7 @@ export interface SerializedState {
   gameOver: GameOver | null;
   turnLimit: number;
   religions: Religion[];
+  tradeRoutes: TradeRoute[];
   barbarianActivity: BarbarianActivity;
   players: Array<
     Omit<GameState["players"][number], "researched" | "explored"> & {
@@ -150,6 +154,7 @@ export function serializeState(state: GameState): SerializedState {
     gameOver: state.gameOver,
     turnLimit: state.turnLimit,
     religions: state.religions,
+    tradeRoutes: state.tradeRoutes,
     barbarianActivity: state.barbarianActivity,
     players: state.players.map((p) => ({
       ...p,
@@ -171,6 +176,7 @@ export function deserializeState(s: SerializedState): GameState {
     gameOver: s.gameOver,
     turnLimit: s.turnLimit,
     religions: s.religions,
+    tradeRoutes: s.tradeRoutes ?? [],
     barbarianActivity: s.barbarianActivity ?? "normal",
     players: s.players.map((p) => ({
       ...p,
