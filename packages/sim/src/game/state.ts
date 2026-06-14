@@ -97,6 +97,11 @@ export interface Player {
   explored: Set<string>;
   /** Stockpiles of strategic resources (and counts of all owned resources). */
   resources: Record<string, number>;
+  // Diplomacy
+  /** Ids of major civs this player has met (enables diplomacy with them). */
+  met: number[];
+  /** Ids of civs this player is currently at war with (drives areEnemies). */
+  atWar: number[];
 }
 
 export interface Religion {
@@ -129,6 +134,72 @@ export interface Work {
   progress: Partial<Record<Discipline, number>>;
 }
 
+// ---- diplomacy -----------------------------------------------------------
+
+export type DiploStatus = "peace" | "war";
+export type PactTier = "none" | "non_aggression" | "defensive" | "alliance";
+
+/** One side of a proposed/active exchange. */
+export type DealItem =
+  | { kind: "gold"; amount: number }
+  | { kind: "goldPerTurn"; amount: number; turns: number }
+  | { kind: "resource"; id: string; turns: number }
+  | { kind: "peace" }
+  | { kind: "openBorders" }
+  | { kind: "pact"; tier: Exclude<PactTier, "none">; turns: number }
+  | { kind: "declareWarOn"; civId: number };
+
+/** A timed obligation created by an accepted deal (e.g. gold/turn for N turns). */
+export interface DealObligation {
+  fromId: number;
+  item: DealItem;
+  untilTurn: number;
+}
+
+/** Shared relationship record for a met pair of major civs (a < b). */
+export interface Relation {
+  a: number;
+  b: number;
+  status: DiploStatus;
+  metTurn: number;
+  lastStatusChangeTurn: number;
+  /** Earliest turn war may be re-declared after a peace (cooldown); undefined = now. */
+  warAllowedTurn?: number;
+  openBorders: boolean;
+  pact: PactTier;
+  pactUntilTurn?: number;
+  deals: DealObligation[];
+}
+
+export interface AttitudeModifier {
+  reason: string;
+  value: number;
+  expiresTurn?: number;
+}
+
+/** A civ's directional opinion of another (AI-held; 'from' is usually an AI). */
+export interface Attitude {
+  from: number;
+  to: number;
+  modifiers: AttitudeModifier[];
+}
+
+/** A newly-met civ awaiting the viewer's acknowledgement (drives the dialog). */
+export interface ContactEvent {
+  youId: number;
+  otherId: number;
+  isPlayerCiv: boolean;
+}
+
+/** A consensual offer awaiting the recipient's accept/reject. */
+export interface Proposal {
+  id: number;
+  fromId: number;
+  toId: number;
+  give: DealItem[];
+  want: DealItem[];
+}
+
 /** A trade route carrying goods from one of a player's cities to another. */
 export interface TradeRoute {
   id: number;
@@ -159,6 +230,17 @@ export interface GameState {
   works: Work[];
   /** Wonder ids already completed somewhere in the world (each is world-unique). */
   completedWonders: string[];
+  // Diplomacy
+  /** Relationship records for met pairs of major civs. */
+  relations: Relation[];
+  /** Directional attitudes (AI-held opinions). */
+  attitudes: Attitude[];
+  /** Warmonger reputation per player (raised by aggression, decays over time). */
+  reputation: Record<number, number>;
+  /** First-contact events awaiting the human's acknowledgement. */
+  contactQueue: ContactEvent[];
+  /** Consensual offers awaiting a response. */
+  diploProposals: Proposal[];
   /** Barbarian intensity setting for this game. */
   barbarianActivity: BarbarianActivity;
 }
@@ -223,5 +305,7 @@ export function cityAt(state: GameState, col: number, row: number): City | undef
 
 export function areEnemies(a: Player, b: Player): boolean {
   if (a.id === b.id) return false;
-  return true; // M2: everyone is hostile to everyone (no diplomacy yet)
+  // Barbarians are hostile to everyone; otherwise hostility requires a declared war.
+  if (a.isBarbarian || b.isBarbarian) return true;
+  return a.atWar.includes(b.id);
 }

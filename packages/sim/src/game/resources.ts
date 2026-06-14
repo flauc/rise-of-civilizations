@@ -360,7 +360,7 @@ const RESOURCE_DENSITY: Record<ResourceId, number> = {
 };
 
 function resourceFitsTerrain(def: ResourceDef, terrain: TerrainType): boolean {
-  if (terrain === "mountains") return false;
+  if (terrain === "mountains" || terrain === "volcano") return false;
   return def.validTerrain.includes(terrain);
 }
 
@@ -381,7 +381,7 @@ export function placeResources(
     const eligible: { col: number; row: number; key: number }[] = [];
     for (const tile of map.tiles) {
       if (tile.resource || tile.feature) continue;
-      if (tile.terrain === "mountains") continue;
+      if (tile.terrain === "mountains" || tile.terrain === "volcano") continue;
       if (!resourceFitsTerrain(def, tile.terrain)) continue;
       if (tile.ownerCityId !== undefined) continue; // unclaimed only
       if (starts.some((s) => s && s.col === tile.col && s.row === tile.row)) continue;

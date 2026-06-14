@@ -27,6 +27,17 @@ import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter } from "./features";
 import { foundReligion, spreadReligion } from "./religion";
 import { establishTradeRoute, pruneTradeRoutes } from "./trade";
+import {
+  declareWar,
+  makePeace,
+  denounce,
+  gift,
+  demandTribute,
+  proposeDeal,
+  respondProposal,
+  diplomacyTick,
+} from "./diplomacy";
+import type { DealItem } from "./state";
 import { gatherPlayerResources } from "./resources";
 import {
   civEffectsOf,
@@ -60,6 +71,14 @@ export type Command =
   | { type: "togglePolicy"; policyId: string }
   | { type: "foundReligion"; cityId: number; name: string; beliefs: string[] }
   | { type: "establishTradeRoute"; unitId: number; destCityId: number }
+  | { type: "declareWar"; targetId: number }
+  | { type: "makePeace"; targetId: number }
+  | { type: "denounce"; targetId: number }
+  | { type: "giftTo"; targetId: number; gold?: number; resource?: string }
+  | { type: "demandTribute"; targetId: number; gold?: number; resource?: string }
+  | { type: "proposeDeal"; targetId: number; give: DealItem[]; want: DealItem[] }
+  | { type: "respondProposal"; proposalId: number; accept: boolean }
+  | { type: "acknowledgeContact"; otherId: number }
   | { type: "endTurn" };
 
 export interface CommandResult {
@@ -87,8 +106,11 @@ export function beginTurn(state: GameState): void {
   }
   advanceWorks(state, player.id); // specialists labour on public works
   towerBombardment(state, player.id); // towers fire on adjacent enemies
-  // Religion spreads once per round (at the start of player 0's turn).
-  if (state.currentPlayerIndex === 0) spreadReligion(state);
+  // Religion spreads + diplomacy ticks once per round (at the start of player 0's turn).
+  if (state.currentPlayerIndex === 0) {
+    spreadReligion(state);
+    diplomacyTick(state);
+  }
   updateExplored(state, player.id);
 }
 
@@ -321,6 +343,27 @@ export function applyCommand(
 
     case "establishTradeRoute": {
       return establishTradeRoute(state, cmd.unitId, cmd.destCityId, player.id);
+    }
+
+    case "declareWar":
+      return declareWar(state, player.id, cmd.targetId);
+    case "makePeace":
+      return makePeace(state, player.id, cmd.targetId);
+    case "denounce":
+      return denounce(state, player.id, cmd.targetId);
+    case "giftTo":
+      return gift(state, player.id, cmd.targetId, cmd.gold ?? 0, cmd.resource);
+    case "demandTribute":
+      return demandTribute(state, player.id, cmd.targetId, cmd.gold ?? 0, cmd.resource);
+    case "proposeDeal":
+      return proposeDeal(state, player.id, cmd.targetId, cmd.give, cmd.want);
+    case "respondProposal":
+      return respondProposal(state, player.id, cmd.proposalId, cmd.accept);
+    case "acknowledgeContact": {
+      state.contactQueue = state.contactQueue.filter(
+        (e) => !(e.youId === player.id && e.otherId === cmd.otherId),
+      );
+      return ok;
     }
   }
 }

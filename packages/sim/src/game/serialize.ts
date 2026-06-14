@@ -1,7 +1,23 @@
 import { getTile } from "@roc/shared";
-import type { BarbarianActivity, GameState, Unit, City, GameOver, Religion, TradeRoute, Work } from "./state";
+import type {
+  Attitude, BarbarianActivity, City, ContactEvent, GameOver, GameState,
+  Proposal, Relation, Religion, TradeRoute, Unit, Work,
+} from "./state";
 import { computeVisible } from "./visibility";
+import { attitudeLabel, attitudeScore } from "./diplomacy";
 import type { TechId } from "./content";
+
+export interface DiploView {
+  met: number[];
+  /** Relations involving the viewer (full detail). */
+  relations: Relation[];
+  /** Each met civ's opinion of the viewer. */
+  attitudeToYou: { from: number; score: number; label: string }[];
+  reputation: Record<number, number>;
+  contacts: ContactEvent[];
+  /** Pending proposals where the viewer is sender or recipient. */
+  proposals: Proposal[];
+}
 
 // ---- per-player view (fog enforced server-side; never leak unexplored data) --
 
@@ -49,6 +65,8 @@ export interface PlayerView {
   works: Work[];
   /** Wonders already completed in the world. */
   completedWonders: string[];
+  /** Diplomacy known to the viewer. */
+  diplomacy: DiploView;
   players: PlayerPublic[];
   cols: number;
   rows: number;
@@ -59,6 +77,28 @@ export interface PlayerView {
   log: string[];
   gameOver: GameOver | null;
   barbarianActivity: BarbarianActivity;
+}
+
+function buildDiploView(state: GameState, playerId: number): DiploView {
+  const me = state.players.find((p) => p.id === playerId);
+  const met = me ? [...me.met] : [];
+  const relations = state.relations
+    .filter((r) => r.a === playerId || r.b === playerId)
+    .map((r) => ({ ...r, deals: r.deals.map((d) => ({ ...d })) }));
+  const attitudeToYou = met.map((cid) => {
+    const score = attitudeScore(state, cid, playerId);
+    return { from: cid, score, label: attitudeLabel(score) };
+  });
+  const reputation: Record<number, number> = {};
+  for (const cid of [playerId, ...met]) reputation[cid] = state.reputation[cid] ?? 0;
+  return {
+    met,
+    relations,
+    attitudeToYou,
+    reputation,
+    contacts: state.contactQueue.filter((e) => e.youId === playerId).map((e) => ({ ...e })),
+    proposals: state.diploProposals.filter((p) => p.toId === playerId || p.fromId === playerId).map((p) => ({ ...p })),
+  };
 }
 
 /** Build the state a player is allowed to see (fog of war enforced here). */
@@ -111,6 +151,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     tradeRoutes: state.tradeRoutes.filter((r) => r.ownerId === playerId).map((r) => ({ ...r })),
     works: state.works.filter((w) => w.ownerId === playerId).map((w) => ({ ...w, cityIds: [...w.cityIds] })),
     completedWonders: [...state.completedWonders],
+    diplomacy: buildDiploView(state, playerId),
     players: state.players.map((p) => ({
       id: p.id,
       name: p.name,
@@ -145,6 +186,11 @@ export interface SerializedState {
   tradeRoutes: TradeRoute[];
   works: Work[];
   completedWonders: string[];
+  relations: Relation[];
+  attitudes: Attitude[];
+  reputation: Record<number, number>;
+  contactQueue: ContactEvent[];
+  diploProposals: Proposal[];
   barbarianActivity: BarbarianActivity;
   players: Array<
     Omit<GameState["players"][number], "researched" | "explored"> & {
@@ -169,6 +215,11 @@ export function serializeState(state: GameState): SerializedState {
     tradeRoutes: state.tradeRoutes,
     works: state.works,
     completedWonders: state.completedWonders,
+    relations: state.relations,
+    attitudes: state.attitudes,
+    reputation: state.reputation,
+    contactQueue: state.contactQueue,
+    diploProposals: state.diploProposals,
     barbarianActivity: state.barbarianActivity,
     players: state.players.map((p) => ({
       ...p,
@@ -193,9 +244,16 @@ export function deserializeState(s: SerializedState): GameState {
     tradeRoutes: s.tradeRoutes ?? [],
     works: s.works ?? [],
     completedWonders: s.completedWonders ?? [],
+    relations: s.relations ?? [],
+    attitudes: s.attitudes ?? [],
+    reputation: s.reputation ?? {},
+    contactQueue: s.contactQueue ?? [],
+    diploProposals: s.diploProposals ?? [],
     barbarianActivity: s.barbarianActivity ?? "normal",
     players: s.players.map((p) => ({
       ...p,
+      met: p.met ?? [],
+      atWar: p.atWar ?? [],
       researched: new Set(p.researched as TechId[]),
       explored: new Set(p.explored),
     })),

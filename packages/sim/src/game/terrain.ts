@@ -36,6 +36,8 @@ export const TERRAIN_YIELDS: Record<TerrainType, Yields> = {
   jungle: { food: 1, production: 1, gold: 0, science: 1 },
   hills: { food: 0, production: 2, gold: 0, science: 0 },
   mountains: { food: 0, production: 0, gold: 0, science: 2 },
+  mesa: { food: 0, production: 2, gold: 0, science: 0 },
+  volcano: { food: 0, production: 2, gold: 0, science: 1 },
 };
 
 /** Total yields of a tile (terrain + tier-aware improvement). */
@@ -66,9 +68,11 @@ export const TERRAIN_NAMES: Record<TerrainType, string> = {
   jungle: "Jungle",
   hills: "Hills",
   mountains: "Mountains",
+  mesa: "Mesa",
+  volcano: "Volcano",
 };
 
-const ROUGH: ReadonlySet<TerrainType> = new Set<TerrainType>(["forest", "jungle", "hills"]);
+const ROUGH: ReadonlySet<TerrainType> = new Set<TerrainType>(["forest", "jungle", "hills", "mesa"]);
 
 /** Rough terrain costs more to enter but grants a defensive bonus. */
 export function isRough(t: TerrainType): boolean {
@@ -77,15 +81,15 @@ export function isRough(t: TerrainType): boolean {
 
 /** Defensive combat bonus a defender gets standing on this terrain. */
 export function terrainDefense(t: TerrainType): number {
-  if (t === "hills") return 3;
+  if (t === "hills" || t === "mesa") return 3;
   if (t === "forest" || t === "jungle") return 2;
   return 0;
 }
 
 /** Land movement cost to ENTER a tile; Infinity = impassable to land units. */
 export function moveCost(t: TerrainType): number {
-  if (isWaterTerrain(t) || t === "mountains") return Infinity;
-  if (t === "forest" || t === "jungle" || t === "hills") return 2;
+  if (isWaterTerrain(t) || t === "mountains" || t === "volcano") return Infinity;
+  if (t === "forest" || t === "jungle" || t === "hills" || t === "mesa") return 2;
   return 1;
 }
 

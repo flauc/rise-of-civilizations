@@ -5,10 +5,20 @@ import { damageFrom, resolveAttack, cityMaxHp, unitMaxHp, availablePromotions } 
 import { PROMOTION_DEFS } from "./content";
 import { citiesOf, makeUnit, type GameState, type Unit } from "./state";
 
+function warAll(state: GameState): void {
+  // Combat scenarios assume open hostility — put every major civ at war.
+  for (const a of state.players) {
+    for (const b of state.players) {
+      if (a.id !== b.id && !a.atWar.includes(b.id)) a.atWar.push(b.id);
+    }
+  }
+}
+
 function bareGame(): GameState {
   // No barbarians, no starting units to keep scenarios controlled.
   const state = createGame({ seed: "combat", cols: 30, rows: 20, barbarians: false });
   state.units.clear();
+  warAll(state);
   return state;
 }
 

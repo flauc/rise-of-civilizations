@@ -139,6 +139,18 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     explored.add(`${t.col},${t.row}`);
   }
 
+  // Diplomacy: the viewer's atWar set is derived from the relations it can see.
+  const dip = view.diplomacy;
+  const atWarOf = (pid: number): number[] => {
+    const out: number[] = [];
+    for (const r of dip?.relations ?? []) {
+      if (r.status !== "war") continue;
+      if (r.a === pid) out.push(r.b);
+      else if (r.b === pid) out.push(r.a);
+    }
+    return out;
+  };
+
   const players: Player[] = view.players.map((p) => ({
     id: p.id,
     name: p.name,
@@ -146,6 +158,8 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     isHuman: p.isHuman,
     isBarbarian: p.isBarbarian,
     civId: p.civId,
+    met: p.id === view.yourId ? [...(dip?.met ?? [])] : [],
+    atWar: atWarOf(p.id),
     gold: p.id === view.yourId ? view.you.gold : 0,
     researched: new Set(p.id === view.yourId ? view.you.researched : []),
     researching: p.id === view.yourId ? view.you.researching : null,
@@ -176,6 +190,15 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     tradeRoutes: view.tradeRoutes ?? [],
     works: view.works ?? [],
     completedWonders: view.completedWonders ?? [],
+    relations: dip?.relations ?? [],
+    attitudes: (dip?.attitudeToYou ?? []).map((a) => ({
+      from: a.from,
+      to: view.yourId,
+      modifiers: [{ reason: "opinion", value: a.score }],
+    })),
+    reputation: dip?.reputation ?? {},
+    contactQueue: dip?.contacts ?? [],
+    diploProposals: dip?.proposals ?? [],
     barbarianActivity: view.barbarianActivity ?? "normal",
   };
   return { state, visible: new Set(view.visible) };

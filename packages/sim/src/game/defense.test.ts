@@ -9,6 +9,8 @@ import { citiesOf, makeUnit, unitsOf } from "./state";
 
 function setup() {
   const s = createGame({ seed: "def-test", cols: 40, rows: 28, barbarians: false, humanSlots: 2, playerCount: 2 });
+  s.players[0]!.atWar.push(1); // structures only block/fight declared enemies
+  s.players[1]!.atWar.push(0);
   beginTurn(s);
   const settler = unitsOf(s, 0).find((u) => u.type === "settler")!;
   applyCommand(s, { type: "foundCity", unitId: settler.id });

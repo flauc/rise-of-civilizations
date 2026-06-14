@@ -2,6 +2,7 @@ import { axialDistance, offsetToAxial } from "@roc/shared";
 import type { GameState } from "./state";
 import { citiesOf, unitsOf } from "./state";
 import { unitSight } from "./movement";
+import { detectContacts } from "./diplomacy";
 
 const CITY_SIGHT = 3;
 
@@ -35,5 +36,6 @@ export function updateExplored(state: GameState, playerId: number): Set<string> 
   const visible = computeVisible(state, playerId);
   const player = state.players.find((p) => p.id === playerId);
   if (player) for (const k of visible) player.explored.add(k);
+  detectContacts(state, playerId, visible); // first contact with newly-sighted civs
   return visible;
 }

@@ -52,7 +52,9 @@ describe("M1 game model", () => {
     applyCommand(state, { type: "foundCity", unitId: settler.id });
     const city = citiesOf(state, 0)[0]!;
 
-    // Teleport an enemy warrior next to the city.
+    // Teleport an enemy warrior next to the city, and declare war so it may attack.
+    state.players[0]!.atWar.push(1);
+    state.players[1]!.atWar.push(0);
     const enemy = unitsOf(state, 1).find((u) => u.type === "warrior")!;
     enemy.col = city.col + 1;
     enemy.row = city.row;

@@ -164,6 +164,8 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       faith: 0,
       explored: new Set<string>(),
       resources: {},
+      met: [],
+      atWar: [],
     });
   }
   const barbId = count;
@@ -186,6 +188,8 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       faith: 0,
       explored: new Set<string>(),
       resources: {},
+      met: [],
+      atWar: [],
     });
   }
 
@@ -204,6 +208,11 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     tradeRoutes: [],
     works: [],
     completedWonders: [],
+    relations: [],
+    attitudes: [],
+    reputation: {},
+    contactQueue: [],
+    diploProposals: [],
     barbarianActivity: activity,
   };
 

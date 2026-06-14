@@ -1,6 +1,8 @@
 import { renderTechTreeInto } from "./techtree";
 import { createWiki } from "./wiki";
 import { createEmpire } from "./empire";
+import { createDiplomacy } from "./diplomacy";
+import type { DealItem } from "@roc/sim";
 import type { SaveRecord } from "./save-db";
 import type { CheatAction } from "./god-mode";
 import {
@@ -188,6 +190,14 @@ export interface UIHandlers {
   onCancelWork(workId: number): void;
   onSelectUnit(unitId: number): void;
   onSelectCity(cityId: number): void;
+  onDeclareWar(targetId: number): void;
+  onMakePeace(targetId: number): void;
+  onDenounce(targetId: number): void;
+  onGift(targetId: number, gold: number): void;
+  onDemandTribute(targetId: number, gold: number): void;
+  onProposeDeal(targetId: number, give: DealItem[], want: DealItem[]): void;
+  onRespondProposal(proposalId: number, accept: boolean): void;
+  onAcknowledgeContact(otherId: number): void;
   onSetProduction(item: ProductionItem): void;
   onSetResearch(techId: TechId): void;
   onSetCivic(civicId: string): void;
@@ -1280,12 +1290,35 @@ export function createUI(handlers: UIHandlers): UI {
     onCancelWork: (wid) => handlers.onCancelWork(wid),
   });
 
+  // Diplomacy: first-contact dialog + Contacts/negotiation screen + toggle button.
+  const diplomacy = createDiplomacy({
+    onDeclareWar: (t) => handlers.onDeclareWar(t),
+    onMakePeace: (t) => handlers.onMakePeace(t),
+    onDenounce: (t) => handlers.onDenounce(t),
+    onGift: (t, g) => handlers.onGift(t, g),
+    onDemandTribute: (t, g) => handlers.onDemandTribute(t, g),
+    onProposeDeal: (t, give, want) => handlers.onProposeDeal(t, give, want),
+    onRespondProposal: (id, acc) => handlers.onRespondProposal(id, acc),
+    onAcknowledgeContact: (o) => handlers.onAcknowledgeContact(o),
+  });
+  const diploBtn = document.createElement("button");
+  diploBtn.id = "diplo-btn";
+  diploBtn.className = "btn";
+  diploBtn.textContent = "🕊️";
+  diploBtn.title = "Diplomacy";
+  diploBtn.style.cssText = "position:fixed;left:12px;top:64px;z-index:20;font-size:15px;padding:6px 10px";
+  diploBtn.addEventListener("click", () => {
+    if (lastState) diplomacy.toggleContacts(lastState, lastViewerId);
+  });
+  document.body.appendChild(diploBtn);
+
   return {
     render(view) {
       lastState = view.state;
       lastViewerId = view.viewerId;
       lastView = view;
       empire.render(view.state, view.viewerId);
+      diplomacy.render(view.state, view.viewerId);
       renderTopbar(view.state);
       renderResearch(view.state);
       renderTechTree(view.state);

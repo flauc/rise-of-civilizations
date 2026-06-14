@@ -15,6 +15,7 @@ import { availableProduction, availableTechs } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
 import { canFoundReligion, availableReligionNames } from "./religion";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
+import { aiConsiderDiplomacy } from "./diplomacy";
 import { availablePromotions } from "./combat";
 import { BELIEFS, WONDER_DEFS } from "@roc/data";
 import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
@@ -315,6 +316,8 @@ function aiMilitary(state: GameState, unit: Unit, pid: number): void {
 export function aiTakeTurn(state: GameState, playerId: number): void {
   const player = playerById(state, playerId);
   if (!player) return;
+
+  aiConsiderDiplomacy(state, playerId); // declare/sue for war, court friends
 
   if (!player.researching) {
     const techs = availableTechs(player);

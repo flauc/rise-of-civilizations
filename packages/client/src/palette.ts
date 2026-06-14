@@ -15,6 +15,8 @@ export const TERRAIN_COLORS: Record<TerrainType, string> = {
   jungle: "#356b3f",
   hills: "#7a8a4e",
   mountains: "#6d6f76",
+  mesa: "#a67c52",
+  volcano: "#4a3a3a",
 };
 
 export const HEX_STROKE = "rgba(0,0,0,0.18)";

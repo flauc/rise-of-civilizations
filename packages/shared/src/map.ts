@@ -14,7 +14,9 @@ export type TerrainType =
   | "forest"
   | "jungle"
   | "hills"
-  | "mountains";
+  | "mountains"
+  | "mesa"
+  | "volcano";
 
 export const TERRAIN_TYPES: readonly TerrainType[] = [
   "ocean",
@@ -29,6 +31,8 @@ export const TERRAIN_TYPES: readonly TerrainType[] = [
   "jungle",
   "hills",
   "mountains",
+  "mesa",
+  "volcano",
 ];
 
 /** Is this terrain water (impassable to land units, navigable by ships)? */

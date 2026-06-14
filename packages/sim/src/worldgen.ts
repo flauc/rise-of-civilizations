@@ -66,6 +66,16 @@ export function generateMap(opts: WorldGenOptions): GameMap {
           m,
           equatorness,
         );
+        // Scatter distinctive elevated terrain for visual and strategic variety.
+        if (terrain === "mountains" && rng.next() < 0.08) {
+          terrain = "volcano";
+        } else if (
+          terrain === "hills" &&
+          (equatorness > 0.75 || m < 0.3) &&
+          rng.next() < 0.25
+        ) {
+          terrain = "mesa";
+        }
       }
       tiles[row * cols + col] = { col, row, terrain };
     }

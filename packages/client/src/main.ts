@@ -191,6 +191,14 @@ function startGame(session: Session): void {
         centerOn(c.col, c.row);
       }
     },
+    onDeclareWar: (t) => session.order({ type: "declareWar", targetId: t }),
+    onMakePeace: (t) => session.order({ type: "makePeace", targetId: t }),
+    onDenounce: (t) => session.order({ type: "denounce", targetId: t }),
+    onGift: (t, g) => session.order({ type: "giftTo", targetId: t, gold: g }),
+    onDemandTribute: (t, g) => session.order({ type: "demandTribute", targetId: t, gold: g }),
+    onProposeDeal: (t, give, want) => session.order({ type: "proposeDeal", targetId: t, give, want }),
+    onRespondProposal: (id, accept) => session.order({ type: "respondProposal", proposalId: id, accept }),
+    onAcknowledgeContact: (o) => session.order({ type: "acknowledgeContact", otherId: o }),
     onSetProduction: (item) => {
       if (selectedCityId != null) session.order({ type: "setProduction", cityId: selectedCityId, item });
     },

@@ -22,6 +22,8 @@ const TERRAIN_IMAGE_NAMES: Record<TerrainType, string> = {
   jungle: "jungle",
   hills: "hills",
   mountains: "mountains",
+  mesa: "mesa",
+  volcano: "volcano",
 };
 
 // The generator can output up to this many variants per tile:
@@ -68,6 +70,8 @@ export function loadTerrainAtlas(onLoad?: () => void): TerrainAtlas {
     jungle: [],
     hills: [],
     mountains: [],
+    mesa: [],
+    volcano: [],
   };
 
   let remaining = 0;

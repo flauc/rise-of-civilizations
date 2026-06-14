@@ -16,6 +16,7 @@ export * from "./victory";
 export * from "./territory";
 export * from "./religion";
 export * from "./trade";
+export * from "./diplomacy";
 export * from "./specialists";
 export * from "./works";
 export * from "./features";
