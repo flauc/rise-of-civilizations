@@ -12,7 +12,10 @@ import {
   moveCost,
   isPassableLand,
   MILITARY_CLASSES,
+  SPECIALIST_DEFS,
+  SPECIALIST_IDS,
 } from "@roc/sim";
+import { WONDER_DEFS } from "@roc/data";
 import type { TerrainType } from "@roc/sim";
 
 export type WikiCategory =
@@ -20,6 +23,7 @@ export type WikiCategory =
   | "units"
   | "gameplay"
   | "terrain"
+  | "specialists"
   | "combat"
   | "cities"
   | "religion"
@@ -35,6 +39,7 @@ const CATEGORIES: CategoryDef[] = [
   { id: "units", name: "Units" },
   { id: "gameplay", name: "Gameplay" },
   { id: "terrain", name: "Terrain" },
+  { id: "specialists", name: "Specialists & Works" },
   { id: "combat", name: "Combat" },
   { id: "cities", name: "Cities" },
   { id: "religion", name: "Religion" },
@@ -166,7 +171,7 @@ function renderTerrain(): string {
     ) +
     section(
       "Improvements",
-      `<p>Workers can build Farms (+1 food) and Mines (+1 production) on eligible tiles to boost a city's output.</p>`,
+      `<p>Tiles are developed by city <b>specialists</b> rather than by roaming workers — see the <b>Specialists &amp; Works</b> section. Every improvement has three tiers, each a separate project that must be contracted to craftsmen.</p>`,
     )
   );
 }
@@ -242,6 +247,58 @@ function renderReligion(): string {
   );
 }
 
+function renderSpecialists(): string {
+  const specRows = SPECIALIST_IDS.map((id) => {
+    const d = SPECIALIST_DEFS[id];
+    const unlock = d.reqTech ? escapeHtml(String(d.reqTech)) : "From start";
+    return (
+      `<tr>` +
+      `<td><b>${escapeHtml(d.name)}</b></td>` +
+      `<td><i>${escapeHtml(d.latin)}</i></td>` +
+      `<td>${escapeHtml(d.discipline)}</td>` +
+      `<td>${unlock}</td>` +
+      `<td>${escapeHtml(d.desc)}</td>` +
+      `</tr>`
+    );
+  }).join("");
+
+  const wonderRows = WONDER_DEFS.map((w) => {
+    const needs = Object.entries(w.requirement)
+      .map(([disc, n]) => `${escapeHtml(disc)} ${n}`)
+      .join(" · ");
+    return (
+      `<tr>` +
+      `<td><b>${escapeHtml(w.name)}</b></td>` +
+      `<td>${needs}</td>` +
+      `<td>${escapeHtml(w.desc)}</td>` +
+      `</tr>`
+    );
+  }).join("");
+
+  return (
+    section(
+      "Craftsmen, not Workers",
+      `<p>There is no Worker unit. Instead each city trains <b>specialists</b> — craftsmen — out of its own population. A citizen is either <b>working a tile</b> for its yields <i>or</i> apprenticed as a craftsman, never both, so every specialist carries a real opportunity cost.</p>` +
+        `<p>Specialists <b>learn on the job</b>: each turn they contribute labour to a project they earn experience, and as they level up they build faster (a veteran works up to three times as quickly as a fresh apprentice).</p>` +
+        `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Specialist</th><th>Basis</th><th>Discipline</th><th>Unlock</th><th>Role</th></tr></thead><tbody>${specRows}</tbody></table></div>`,
+    ) +
+    section(
+      "Public Works",
+      `<p>Specialists execute <b>Works</b> — projects on any tile inside your territory. Economic improvements (farms, mines, quarries, lumber camps, roads, pastures, plantations and more) each come in <b>three tiers</b>; building tier 1 and upgrading to tiers 2 and 3 are separate projects, each contracting craftsmen again.</p>` +
+        `<p>The labour a Work needs scales with its tier <b>and with distance from the building city</b>: developing your heartland is cheap, while pushing roads and farms out to the frontier is a serious investment. A city's craftsmen work through its project queue in order — finish one, start the next. Open the <b>🏛️ Empire</b> screen to train craftsmen and manage every city's works.</p>`,
+    ) +
+    section(
+      "Walls, Towers & Forts",
+      `<p>A <b>Mason</b> and a <b>Military Engineer</b> together raise defensive structures on a tile. <b>Walls</b> (Palisade → Stone Wall → Great Wall) block enemy movement: an enemy must destroy the wall — attacking it like a unit — before the tile can be crossed. <b>Towers</b> (Watchtower → Fort → Citadel) block movement <i>and</i> bombard an adjacent enemy each turn. Both shelter a friendly defender standing on the tile, and regenerate health while not under attack.</p>`,
+    ) +
+    section(
+      "Wonders",
+      `<p>Wonders are the grandest Works: world-unique projects needing several disciplines at once, so a host city must field a mixed crew of craftsmen — and several cities can pool their specialists to finish faster. Each grants a powerful, permanent bonus.</p>` +
+        `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Wonder</th><th>Requires</th><th>Effect</th></tr></thead><tbody>${wonderRows}</tbody></table></div>`,
+    )
+  );
+}
+
 function renderVictory(): string {
   return (
     section(
@@ -264,6 +321,7 @@ const RENDERERS: Record<WikiCategory, () => string> = {
   units: renderUnits,
   gameplay: renderGameplay,
   terrain: renderTerrain,
+  specialists: renderSpecialists,
   combat: renderCombat,
   cities: renderCities,
   religion: renderReligion,
