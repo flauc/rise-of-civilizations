@@ -15,9 +15,12 @@ import { availableProduction, availableTechs } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
 import { canFoundReligion, availableReligionNames } from "./religion";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
-import { BELIEFS } from "@roc/data";
+import { availablePromotions } from "./combat";
+import { BELIEFS, WONDER_DEFS } from "@roc/data";
 import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
-import { nextTierAt, worksOfCity } from "./works";
+import { nextTierAt, worksOf, worksOfCity, workDiscipline } from "./works";
+import { offsetNeighbors } from "./movement";
+import { RESOURCE_DEFS, resourceActive } from "./resources";
 import { isPassableLand } from "./terrain";
 import { UNIT_DEFS, isMilitary, type TechId } from "./content";
 import {
@@ -110,8 +113,12 @@ function chooseProduction(state: GameState, player: Player, city: City): Product
     const t = opts.find((o) => o.item.id === "trader");
     if (t) return t.item;
   }
-  // 4. Economy buildings.
-  for (const b of ["granary", "library", "walls"] as const) {
+  // 4. Buildings — broad priority order (skips any already built / not unlocked).
+  const BUILD_ORDER = [
+    "granary", "workshop", "library", "market", "walls", "barracks", "forge",
+    "shrine", "temple", "monument", "stable", "aqueduct", "academy", "amphitheater", "harbor",
+  ] as const;
+  for (const b of BUILD_ORDER) {
     const o = opts.find((x) => x.item.kind === "building" && x.item.id === b);
     if (o) return o.item;
   }
@@ -157,17 +164,38 @@ function aiSettler(state: GameState, unit: Unit, pid: number): void {
 function aiManageCity(state: GameState, city: City, player: Player, pid: number): void {
   const unlocked = availableSpecialists(player);
   const countOf = (id: SpecialistId) => city.specialists.filter((s) => s.type === id).length;
-  // Keep a couple of citizens as craftsmen once the city is large enough.
+  const haveDiscipline = (d: string) =>
+    city.specialists.some((s) => SPECIALIST_DEFS[s.type as SpecialistId]?.discipline === d);
+
+  // Train a balanced crew, scaling with size and always leaving free workers.
   const wants: SpecialistId[] = [];
   if (city.population >= 2 && unlocked.includes("carpenter") && countOf("carpenter") < 1) wants.push("carpenter");
-  if (city.population >= 4 && unlocked.includes("mason") && countOf("mason") < 1) wants.push("mason");
+  if (city.population >= 3 && unlocked.includes("mason") && countOf("mason") < 1) wants.push("mason");
+  if (city.population >= 5 && unlocked.includes("carpenter") && countOf("carpenter") < 2) wants.push("carpenter");
+  if (city.population >= 6 && unlocked.includes("engineer") && countOf("engineer") < 1) wants.push("engineer");
+  if (city.population >= 7 && unlocked.includes("architect") && countOf("architect") < 1) wants.push("architect");
   for (const id of wants) {
     if (workerSlots(city) > 1) applyCommand(state, { type: "convertCitizen", cityId: city.id, specialistId: id, delta: 1 }, pid);
   }
-  // Queue a Work if the city has idle craftsmen and few pending projects.
-  if (worksOfCity(state, city.id).length >= 2) return;
-  const haveDiscipline = (d: string) =>
-    city.specialists.some((s) => SPECIALIST_DEFS[s.type as SpecialistId]?.discipline === d);
+
+  if (worksOfCity(state, city.id).length >= 2) return; // don't over-queue
+
+  // Defensive structure: a capital/large city with both crafts fortifies a
+  // border tile (towers bombard; walls just block).
+  if (city.population >= 6 && haveDiscipline("masonry") && haveDiscipline("engineering")) {
+    const hasStructureNearby = state.map.tiles.some(
+      (t) => t.structure && t.ownerCityId === city.id,
+    );
+    if (!hasStructureNearby) {
+      for (const n of offsetNeighbors(state.map, city.col, city.row)) {
+        const tile = getTile(state.map, n.col, n.row);
+        if (!tile || tile.ownerCityId !== city.id || tile.improvement || tile.structure) continue;
+        if (nextTierAt(tile, "tower") && applyCommand(state, { type: "startWork", kind: "tower", col: n.col, row: n.row }, pid).ok) return;
+      }
+    }
+  }
+
+  // Economic works: improve resources first, then food/production tiles.
   for (let dr = -2; dr <= 2; dr++) {
     for (let dc = -2; dc <= 2; dc++) {
       const col = city.col + dc;
@@ -177,11 +205,49 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
       const owner = state.cities.get(tile.ownerCityId);
       if (!owner || owner.ownerId !== pid) continue;
       let kind: string | null = null;
-      if (haveDiscipline("carpentry") && nextTierAt(tile, "farm")) kind = "farm";
-      else if (haveDiscipline("carpentry") && nextTierAt(tile, "lumber_camp")) kind = "lumber_camp";
-      else if (haveDiscipline("masonry") && nextTierAt(tile, "mine")) kind = "mine";
+      // Prioritize improving a resource with the correct improvement.
+      if (tile.resource && !resourceActive(tile)) {
+        const rdef = RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS];
+        if (rdef) {
+          const needed = rdef.improvement;
+          if (haveDiscipline(workDiscipline(needed)) && nextTierAt(tile, needed)) {
+            kind = needed;
+          }
+        }
+      }
+      if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "farm")) kind = "farm";
+      else if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "lumber_camp")) kind = "lumber_camp";
+      else if (!kind && haveDiscipline("masonry") && nextTierAt(tile, "mine")) kind = "mine";
+      else if (!kind && haveDiscipline("survey") && nextTierAt(tile, "road")) kind = "road";
       if (kind && applyCommand(state, { type: "startWork", kind, col, row }, pid).ok) return;
     }
+  }
+}
+
+/** Start a wonder in a capable city once per empire (architecture + engineering on hand). */
+function aiWonders(state: GameState, pid: number): void {
+  if (worksOf(state, pid).some((w) => w.kind === "wonder")) return; // one at a time
+  const host = citiesOf(state, pid).find(
+    (c) =>
+      c.specialists.some((s) => SPECIALIST_DEFS[s.type as SpecialistId]?.discipline === "architecture") &&
+      c.specialists.some((s) => SPECIALIST_DEFS[s.type as SpecialistId]?.discipline === "engineering"),
+  );
+  if (!host) return;
+  const wonder = WONDER_DEFS.find(
+    (w) => !state.completedWonders.includes(w.id) && !worksOf(state, pid).some((x) => x.wonderId === w.id),
+  );
+  if (wonder) applyCommand(state, { type: "startWonder", wonderId: wonder.id, hostCityId: host.id }, pid);
+}
+
+/** Spend a unit's earned promotions on sensible picks. */
+function aiPromote(state: GameState, unit: Unit, pid: number): void {
+  let guard = 0;
+  while (unit.unspentPromotions > 0 && guard++ < 4) {
+    const opts = availablePromotions(unit);
+    if (opts.length === 0) break;
+    const pref = ["medic", "shock", "cover", "drill", "blitz", "accuracy", "siege"];
+    const pick = pref.find((p) => opts.includes(p as never)) ?? opts[0]!;
+    if (!applyCommand(state, { type: "promote", unitId: unit.id, promotion: pick as never }, pid).ok) break;
   }
 }
 
@@ -290,10 +356,12 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     }
     aiManageCity(state, city, player, playerId);
   }
+  aiWonders(state, playerId);
 
   for (const unit of unitsOf(state, playerId)) {
     if (!state.units.has(unit.id)) continue;
     const def = UNIT_DEFS[unit.type];
+    if (unit.unspentPromotions > 0) aiPromote(state, unit, playerId);
     if (def.founder) aiSettler(state, unit, playerId);
     else if (def.trader) aiTrader(state, unit, playerId);
     else aiMilitary(state, unit, playerId);

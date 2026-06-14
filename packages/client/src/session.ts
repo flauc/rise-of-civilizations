@@ -22,6 +22,7 @@ import {
   type ServerMessage,
 } from "@roc/sim";
 import type { TerrainType, Tile } from "@roc/shared";
+import { applyCheat, type CheatAction, type CheatResult } from "./god-mode";
 
 export interface Session {
   readonly isOnline: boolean;
@@ -30,6 +31,8 @@ export interface Session {
   getViewerId(): number;
   getVisible(): Set<string>;
   order(cmd: Command): void;
+  /** Cheats are only available in single-player local sessions. */
+  cheat?(action: CheatAction): CheatResult;
   endTurn(): void;
   onUpdate(cb: () => void): void;
   awaiting(): number[];
@@ -97,6 +100,11 @@ export class LocalSession implements Session {
     applyCommand(this.state, cmd);
     this.cb();
   }
+  cheat(action: CheatAction): CheatResult {
+    const res = applyCheat(this.state, this.getViewerId(), action);
+    this.cb();
+    return res;
+  }
   endTurn(): void {
     applyCommand(this.state, { type: "endTurn" });
     this.cb();
@@ -126,6 +134,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     if (t.road) tile.road = true;
     if (t.ownerCityId !== undefined) tile.ownerCityId = t.ownerCityId;
     if (t.feature) tile.feature = t.feature;
+    if (t.resource) tile.resource = t.resource;
     tiles[t.row * view.cols + t.col] = tile;
     explored.add(`${t.col},${t.row}`);
   }
@@ -149,6 +158,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     faith: p.id === view.yourId ? view.you.faith : 0,
     foundedReligionId: p.id === view.yourId ? view.you.foundedReligionId : undefined,
     explored: p.id === view.yourId ? explored : new Set<string>(),
+    resources: p.id === view.yourId ? { ...view.you.resources } : {},
   }));
 
   const state: GameState = {

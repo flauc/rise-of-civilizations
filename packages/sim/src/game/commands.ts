@@ -27,6 +27,7 @@ import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter } from "./features";
 import { foundReligion, spreadReligion } from "./religion";
 import { establishTradeRoute, pruneTradeRoutes } from "./trade";
+import { gatherPlayerResources } from "./resources";
 import {
   civEffectsOf,
   unitMovement,
@@ -79,6 +80,7 @@ export function beginTurn(state: GameState): void {
     u.movementLeft = unitMovement(state, u);
   }
   healAndReset(state, player);
+  gatherPlayerResources(state, player.id);
   for (const c of citiesOf(state, player.id)) {
     c.rangedAttackUsed = false;
     processCity(state, c, player);

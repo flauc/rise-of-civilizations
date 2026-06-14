@@ -19,4 +19,5 @@ export * from "./trade";
 export * from "./specialists";
 export * from "./works";
 export * from "./features";
+export * from "./resources";
 export * from "./ai";

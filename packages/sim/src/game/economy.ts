@@ -3,6 +3,7 @@ import type { GameState, City, Player } from "./state";
 import { cityAt, makeUnit, unitAt } from "./state";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
+import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
 import { expandTerritory } from "./territory";
 import { getWonder } from "@roc/data";
 import { civEffectsOf, getCivic } from "./civs";
@@ -60,7 +61,10 @@ export function citizenScore(y: Yields): number {
 function tileWorkYields(map: GameState["map"], col: number, row: number): Yields {
   const tile = getTile(map, col, row);
   if (!tile) return ZERO_YIELDS;
-  return addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement, tile.improvementLevel));
+  return addYields(
+    addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement, tile.improvementLevel)),
+    resourceYields(tile),
+  );
 }
 
 /** Compute a city's per-turn yields, auto-assigning the best worked tiles. */
@@ -254,9 +258,10 @@ function placeUnit(state: GameState, city: City, type: keyof typeof UNIT_DEFS): 
 export function processCity(state: GameState, city: City, owner: Player): void {
   const y = getCityYields(state, city);
 
-  // Food / growth.
+  // Food / growth (happiness can reduce surplus growth but not increase it).
   const surplus = y.food - city.population * 2;
-  city.foodStored += surplus;
+  const growthMult = cityGrowthMultiplier(state, city);
+  city.foodStored += surplus > 0 ? Math.floor(surplus * growthMult) : surplus;
   if (city.foodStored < 0) {
     if (city.population > 1) {
       city.population -= 1;
@@ -285,13 +290,27 @@ export function processCity(state: GameState, city: City, owner: Player): void {
     if (city.productionStored >= cost) {
       city.productionStored -= cost;
       if (city.production.kind === "unit") {
+        const udef = UNIT_DEFS[city.production.id];
         placeUnit(state, city, city.production.id);
-        state.log.push(`${city.name} trained a ${UNIT_DEFS[city.production.id].name}.`);
+        if (udef.reqResource) {
+          owner.resources[udef.reqResource.resource] = Math.max(
+            0,
+            (owner.resources[udef.reqResource.resource] ?? 0) - udef.reqResource.count,
+          );
+        }
+        state.log.push(`${city.name} trained a ${udef.name}.`);
       } else {
+        const bdef = BUILDING_DEFS[city.production.id];
         if (!city.buildings.includes(city.production.id)) {
           city.buildings.push(city.production.id);
         }
-        state.log.push(`${city.name} built a ${BUILDING_DEFS[city.production.id].name}.`);
+        if (bdef.reqResource) {
+          owner.resources[bdef.reqResource.resource] = Math.max(
+            0,
+            (owner.resources[bdef.reqResource.resource] ?? 0) - bdef.reqResource.count,
+          );
+        }
+        state.log.push(`${city.name} built a ${bdef.name}.`);
       }
       city.production = null;
     }
@@ -349,10 +368,12 @@ export function availableProduction(player: Player, city: City): ProductionOptio
   const out: ProductionOption[] = [];
   for (const def of Object.values(UNIT_DEFS)) {
     if (def.reqTech && !player.researched.has(def.reqTech)) continue;
+    if (def.reqResource && resourceStock(player, def.reqResource.resource) < def.reqResource.count) continue;
     out.push({ item: { kind: "unit", id: def.id }, name: def.name, cost: def.cost });
   }
   for (const def of Object.values(BUILDING_DEFS)) {
     if (def.reqTech && !player.researched.has(def.reqTech)) continue;
+    if (def.reqResource && resourceStock(player, def.reqResource.resource) < def.reqResource.count) continue;
     if (city.buildings.includes(def.id)) continue;
     out.push({
       item: { kind: "building", id: def.id },

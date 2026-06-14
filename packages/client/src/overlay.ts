@@ -1,4 +1,4 @@
-import { cityMaxHp, tileYields, UNIT_DEFS, unitMaxHp, type GameState, type TradeRoute } from "@roc/sim";
+import { cityMaxHp, tileYields, resourceYields, addYields, UNIT_DEFS, unitMaxHp, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
@@ -293,7 +293,7 @@ export function drawOverlay(
       if (size > 17) {
         const t = getTile(state.map, col, row);
         if (t) {
-          const y = tileYields(t);
+          const y = addYields(tileYields(t), resourceYields(t));
           const parts: string[] = [];
           if (y.food) parts.push(`${y.food}F`);
           if (y.production) parts.push(`${y.production}P`);

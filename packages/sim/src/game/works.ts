@@ -19,7 +19,16 @@ import {
 } from "./specialists";
 import { DEFENSE_NAMES, STRUCTURE_HP, type DefenseKind } from "./fortifications";
 
-export type EconKind = "farm" | "mine" | "quarry" | "lumber_camp" | "road";
+export type EconKind =
+  | "farm"
+  | "mine"
+  | "quarry"
+  | "lumber_camp"
+  | "pasture"
+  | "plantation"
+  | "camp"
+  | "fishing_boats"
+  | "road";
 export type { DefenseKind };
 export type WorkKind = EconKind | DefenseKind | "wonder";
 
@@ -31,16 +40,34 @@ const ECON_DISCIPLINE: Record<EconKind, Discipline> = {
   lumber_camp: "carpentry",
   mine: "masonry",
   quarry: "masonry",
+  pasture: "carpentry",
+  plantation: "carpentry",
+  camp: "carpentry",
+  fishing_boats: "survey",
   road: "survey",
 };
-const ECON_BASE: Record<EconKind, number> = { farm: 3, lumber_camp: 3, mine: 4, quarry: 4, road: 2 };
+const ECON_BASE: Record<EconKind, number> = {
+  farm: 3,
+  lumber_camp: 3,
+  mine: 4,
+  quarry: 4,
+  pasture: 3,
+  plantation: 3,
+  camp: 3,
+  fishing_boats: 3,
+  road: 2,
+};
 const DEFENSE_BASE: Record<DefenseKind, number> = { wall: 4, tower: 5 };
 
 const ECON_TERRAIN: Record<EconKind, ReadonlySet<string> | null> = {
   farm: new Set(["grassland", "plains"]),
   lumber_camp: new Set(["forest", "jungle"]),
-  mine: new Set(["hills"]),
+  mine: new Set(["hills", "desert"]),
   quarry: new Set(["hills", "desert"]),
+  pasture: new Set(["grassland", "plains", "tundra", "hills", "desert"]),
+  plantation: new Set(["grassland", "plains", "hills", "forest", "jungle", "desert"]),
+  camp: new Set(["forest", "jungle", "tundra"]),
+  fishing_boats: new Set(["coast", "lake", "ocean"]),
   road: null, // any passable land
 };
 
@@ -50,10 +77,19 @@ export const ECON_NAMES: Record<EconKind, [string, string, string]> = {
   lumber_camp: ["Lumber Camp", "Sawmill", "Timberworks"],
   mine: ["Mine", "Deep Mine", "Great Mine"],
   quarry: ["Quarry", "Stoneworks", "Marble Works"],
+  pasture: ["Pasture", "Ranch", "Stud Farm"],
+  plantation: ["Plantation", "Estate", "Great Plantation"],
+  camp: ["Camp", "Trapper Post", "Hunting Lodge"],
+  fishing_boats: ["Fishing Boats", "Fishing Fleet", "Commercial Fishery"],
 };
 
 export function isEconKind(kind: string): kind is EconKind {
   return kind in ECON_BASE;
+}
+
+/** Discipline required for an economic work kind. */
+export function workDiscipline(kind: EconKind): Discipline {
+  return ECON_DISCIPLINE[kind];
 }
 export function isDefenseKind(kind: string): kind is DefenseKind {
   return kind in DEFENSE_BASE;

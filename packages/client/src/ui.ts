@@ -2,6 +2,7 @@ import { renderTechTreeInto } from "./techtree";
 import { createWiki } from "./wiki";
 import { createEmpire } from "./empire";
 import type { SaveRecord } from "./save-db";
+import type { CheatAction } from "./god-mode";
 import {
   availableCivics,
   availableGovernments,
@@ -34,6 +35,7 @@ import {
   workName,
   worksOfCity,
   citiesOf,
+  unitsOf,
   cityDefenseStrength,
   cityMaxHp,
   foodToGrow,
@@ -50,6 +52,10 @@ import {
   techUnlocks,
   unitInfo,
   tileYields,
+  resourceYields,
+  resourceActive,
+  RESOURCE_DEFS,
+  addYields,
   moveCost,
   isRough,
   isWaterTerrain,
@@ -63,6 +69,7 @@ import {
   type PromotionId,
   type TechId,
   type Unit,
+  type UnitTypeId,
 } from "@roc/sim";
 import type { Tile } from "@roc/shared";
 
@@ -96,7 +103,7 @@ interface TileReport {
 /** Build the human-readable benefits/deficits breakdown for a tile. */
 function tileReport(state: GameState, tile: Tile): TileReport {
   const t = tile.terrain;
-  const y = tileYields(tile);
+  const y = addYields(tileYields(tile), resourceYields(tile));
   const water = isWaterTerrain(t);
   const passable = isPassableLand(t);
   const rough = isRough(t);
@@ -124,6 +131,15 @@ function tileReport(state: GameState, tile: Tile): TileReport {
     lines.push({ kind: "good", text: `${imp} improvement boosts its yields` });
   }
   if (tile.road) lines.push({ kind: "good", text: "Road speeds movement through this tile" });
+  if (tile.resource) {
+    const rdef = RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS];
+    const rname = rdef?.name ?? tile.resource;
+    lines.push({ kind: "good", text: `Resource: ${rname}` });
+    if (!resourceActive(tile)) {
+      const needed = rdef?.improvement ?? "improvement";
+      lines.push({ kind: "bad", text: `Needs a ${needed} to activate` });
+    }
+  }
   if (tile.feature === "village") lines.push({ kind: "good", text: "Village — a reward when one of your units enters" });
 
   if (!y.food && !water) lines.push({ kind: "bad", text: "No food — cannot feed a growing city" });
@@ -157,6 +173,8 @@ export interface UIView {
   suggestion?: Suggestion | null;
   /** Multiplayer saves available to the host for loading. */
   mpSaves?: SaveRecord[];
+  /** True when the local session supports God Mode cheats. */
+  cheatsEnabled?: boolean;
 }
 
 export interface UIHandlers {
@@ -182,6 +200,7 @@ export interface UIHandlers {
   onSave(name: string): Promise<void>;
   onMenuOpen(): void;
   onLoadMpSave(blob: string): Promise<void>;
+  onCheat(action: CheatAction): void;
 }
 
 export interface UI {
@@ -191,6 +210,7 @@ export interface UI {
   openCivics(): void;
   openReligion(): void;
   openTechTree(): void;
+  openGodMode(): void;
   setMpSaves(saves: SaveRecord[]): void;
   /** Show the docked hover tooltip with limited tile info (null hides it). */
   setTileTip(tip: TileTip | null): void;
@@ -234,6 +254,9 @@ export function createUI(handlers: UIHandlers): UI {
   const bannerEl = div("banner", "");
   const gameover = div("gameover", "hidden");
   const saveModal = div("save-modal", "panel hidden");
+  const godPanel = div("god-panel", "panel hidden");
+  godPanel.style.cssText =
+    "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(320px,calc(100vw - 32px));max-height:min(520px,80vh);overflow:auto;z-index:40"; 
   const wiki = createWiki();
   const villageOverlay = div("village-overlay", "");
   const villageDialog = div("village-dialog", "");
@@ -274,6 +297,9 @@ export function createUI(handlers: UIHandlers): UI {
   let menuView: "menu" | "save" = "menu";
   let isSaving = false;
   let mpSaves: SaveRecord[] = [];
+  let godModeEnabled = false;
+  let godModeOpen = false;
+  let lastView: UIView | null = null;
 
   const showVillageDialog = (msg: string): void => {
     villageMsg.textContent = msg;
@@ -314,14 +340,12 @@ export function createUI(handlers: UIHandlers): UI {
 
   const renderTopbar = (state: GameState): void => {
     const player = state.players[state.currentPlayerIndex]!;
+    const viewerId = lastViewerId >= 0 ? lastViewerId : player.id;
     const sci = citiesOf(state, player.id).reduce(
       (n, c) => n + getCityYields(state, c).science,
       0,
     );
     const researchingDef = player.researching ? TECH_DEFS[player.researching] : null;
-    const researchLabel = researchingDef
-      ? `${researchingDef.name} (${Math.floor(player.scienceProgress)}/${researchingDef.cost})`
-      : "— none —";
     const researchPct = researchingDef
       ? Math.min(100, (player.scienceProgress / researchingDef.cost) * 100)
       : 0;
@@ -334,6 +358,11 @@ export function createUI(handlers: UIHandlers): UI {
     const cName = civicDef ? civicDef.name : "Choose…";
     const civTitle = civ ? `${civ.name} — ${civ.abilityName}: ${civ.abilityDesc}` : "";
 
+    const myCities = citiesOf(state, viewerId);
+    const cityCount = myCities.length;
+    const specCount = myCities.reduce((n, c) => n + c.specialists.length, 0);
+    const unitCount = unitsOf(state, viewerId).length;
+
     topbar.innerHTML = `
       <div class="tb-grp">
         <span class="tb-turn">⏱ ${state.turn}</span>
@@ -341,17 +370,19 @@ export function createUI(handlers: UIHandlers): UI {
       </div>
       <div class="tb-grp tb-res">
         <span class="chip" title="Gold">🪙 ${Math.floor(player.gold)}</span>
-        <span class="chip" title="Science / turn">🔬 +${sci}</span>
-        <span class="chip" title="Culture / turn">🎭 +${cul}</span>
-        <span class="chip" title="Faith stored">☮️ ${Math.floor(player.faith)}</span>
+        <button class="tb-pill" id="research-btn" title="Research" style="--p:${researchPct}%">
+          <span class="tb-pl">🔬</span><b>${rName}</b><span class="tb-score">+${sci}</span></button>
+        <button class="tb-pill civic" id="civics-btn" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%">
+          <span class="tb-pl">🏛️</span><b>${cName}</b><span class="tb-score">+${cul}</span></button>
+        <button class="tb-pill" id="religion-btn" title="Religion">
+          <span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b></button>
       </div>
       <div class="tb-grp">
-        <button class="tb-pill" id="research-btn" title="Research" style="--p:${researchPct}%">
-          <span class="tb-pl">🔬</span><b>${rName}</b></button>
-        <button class="tb-pill civic" id="civics-btn" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%">
-          <span class="tb-pl">🏛️</span><b>${cName}</b></button>
-        <button class="tb-pill" id="religion-btn" title="Religion">
-          <span class="tb-pl">☮️</span><b>Faith</b></button>
+        <button class="tb-pill empire" id="empire-btn" title="Empire">
+          <span class="tb-pl">🏙️</span><b>${cityCount}</b><span class="tb-div">·</span>
+          <span class="tb-pl">👷</span><b>${specCount}</b><span class="tb-div">·</span>
+          <span class="tb-pl">⚔️</span><b>${unitCount}</b>
+        </button>
         <button class="tb-pill" id="menu-btn" title="Menu">
           <span class="tb-pl">☰</span><b>Menu</b></button>
       </div>`;
@@ -388,6 +419,15 @@ export function createUI(handlers: UIHandlers): UI {
       renderResearch(state);
       renderCivics(state);
     });
+    topbar.querySelector<HTMLButtonElement>("#empire-btn")!.addEventListener("click", () => {
+      researchOpen = false;
+      civicsOpen = false;
+      religionOpen = false;
+      renderResearch(state);
+      renderCivics(state);
+      renderReligion(state);
+      empire.toggle(state, viewerId);
+    });
     topbar.querySelector<HTMLButtonElement>("#menu-btn")!.addEventListener("click", () => {
       menuOpen = !menuOpen;
       menuView = "menu";
@@ -403,6 +443,12 @@ export function createUI(handlers: UIHandlers): UI {
     const isHost = state.players[0]?.id === player.id;
 
     if (menuView === "menu") {
+      const godMenuBtn =
+        !lastView?.cheatsEnabled
+          ? ""
+          : godModeEnabled
+            ? `<button class="btn" id="menu-god">⚡ God Mode</button>`
+            : `<button class="btn" id="menu-enable-god">Enable God Mode</button>`;
       let html =
         `<div class="row" style="justify-content:space-between"><b>Game Menu</b>` +
         `<button class="btn" id="save-close">Close</button></div>` +
@@ -410,6 +456,7 @@ export function createUI(handlers: UIHandlers): UI {
         `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
         `<button class="btn primary" id="menu-save">Save Game</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki</button>` +
+        godMenuBtn +
         `<button class="btn" id="menu-leave">Leave Game</button>` +
         `</div>`;
       if (isHost && mpSaves.length > 0) {
@@ -438,6 +485,22 @@ export function createUI(handlers: UIHandlers): UI {
         menuOpen = false;
         renderMenu(state);
         wiki.open();
+      });
+      saveModal.querySelector<HTMLButtonElement>("#menu-enable-god")?.addEventListener("click", () => {
+        godModeEnabled = true;
+        godModeOpen = true;
+        menuOpen = false;
+        renderMenu(state);
+        if (lastView) {
+          renderTilePanel(lastView.state, lastView.selectedTile ?? null, lastView.viewerId, lastView.cheatsEnabled ?? false);
+          renderGodMode(lastView);
+        }
+      });
+      saveModal.querySelector<HTMLButtonElement>("#menu-god")?.addEventListener("click", () => {
+        menuOpen = false;
+        renderMenu(state);
+        godModeOpen = true;
+        if (lastView) renderGodMode(lastView);
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-leave")!.addEventListener("click", () => {
         if (confirm("Leave this game and return to the main menu?")) location.reload();
@@ -889,7 +952,7 @@ export function createUI(handlers: UIHandlers): UI {
 
   const WORK_KINDS = ["farm", "lumber_camp", "mine", "quarry", "road", "wall", "tower"];
 
-  const renderTilePanel = (state: GameState, tile: Tile | null, viewerId = -1): void => {
+  const renderTilePanel = (state: GameState, tile: Tile | null, viewerId = -1, cheatsEnabled = false): void => {
     if (!tile) {
       tilePanel.classList.add("hidden");
       return;
@@ -949,6 +1012,11 @@ export function createUI(handlers: UIHandlers): UI {
       }
     }
 
+    if (cheatsEnabled && godModeEnabled) {
+      html += `<div class="csub">God Mode</div>`;
+      html += `<div class="row" style="flex-wrap:wrap;gap:6px"><button class="btn" id="tile-god">⚡ Cheats…</button></div>`;
+    }
+
     tilePanel.innerHTML = html;
     tilePanel
       .querySelector<HTMLButtonElement>("#tile-close")!
@@ -963,6 +1031,102 @@ export function createUI(handlers: UIHandlers): UI {
     tilePanel.querySelector<HTMLButtonElement>("#work-cancel")?.addEventListener("click", () =>
       handlers.onCancelWork(Number(existing!.id)),
     );
+    tilePanel.querySelector<HTMLButtonElement>("#tile-god")?.addEventListener("click", () => {
+      godModeOpen = true;
+      if (lastView) renderGodMode(lastView);
+    });
+  };
+
+  function renderGodMode(view: UIView): void {
+    godPanel.classList.toggle("hidden", !godModeOpen);
+    if (!godModeOpen) return;
+    const tile = view.selectedTile;
+    const tileOk = !!tile && isPassableLand(tile.terrain);
+    const unitOptions = Object.entries(UNIT_DEFS)
+      .map(([id, d]) => `<option value="${id}">${escapeHtml(d.name)}</option>`)
+      .join("");
+
+    let html =
+      `<div class="row" style="justify-content:space-between"><b>⚡ God Mode</b>` +
+      `<button class="btn" id="god-close">✕</button></div>` +
+      `<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">` +
+      `<button class="btn" data-cheat="unlockTechs">🔓 Unlock All Techs</button>` +
+      `<button class="btn" data-cheat="completeWorks">⏩ Complete All Works</button>` +
+      `<button class="btn" data-cheat="healUnits">❤️ Heal All Units</button>` +
+      `<button class="btn" data-cheat="revealMap">👁 Reveal Map</button>` +
+      `<button class="btn" data-cheat="addGold" data-amount="100">🪙 +100 Gold</button>`;
+
+    if (tileOk) {
+      html +=
+        `<div class="csub">Selected Tile (${escapeHtml(TERRAIN_NAMES[tile.terrain])})</div>` +
+        `<button class="btn" data-cheat="buildRoad" data-level="1">🛤️ Build Dirt Road</button>` +
+        `<button class="btn" data-cheat="buildRoad" data-level="2">🛤️ Build Paved Road</button>` +
+        `<button class="btn" data-cheat="buildRoad" data-level="3">🛤️ Build Imperial Road</button>` +
+        `<button class="btn" data-cheat="foundCity">🏙️ Found City</button>` +
+        `<div style="display:flex;gap:6px;align-items:center;margin-top:4px">` +
+        `<select id="cheat-unit" class="lobby-in" style="flex:1">${unitOptions}</select>` +
+        `<button class="btn" data-cheat="spawnUnit">Spawn Unit</button>` +
+        `</div>`;
+    } else {
+      html +=
+        `<div class="csub">Selected Tile</div>` +
+        `<div class="sub">Select a passable land tile to use tile cheats.</div>`;
+    }
+    html += `</div>`;
+
+    godPanel.innerHTML = html;
+    godPanel.querySelector<HTMLButtonElement>("#god-close")!.addEventListener("click", () => {
+      godModeOpen = false;
+      renderGodMode(view);
+    });
+    godPanel.querySelectorAll<HTMLButtonElement>("[data-cheat]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const type = el.dataset.cheat!;
+        switch (type) {
+          case "unlockTechs":
+            handlers.onCheat({ type: "unlockTechs" });
+            break;
+          case "completeWorks":
+            handlers.onCheat({ type: "completeWorks" });
+            break;
+          case "healUnits":
+            handlers.onCheat({ type: "healUnits" });
+            break;
+          case "revealMap":
+            handlers.onCheat({ type: "revealMap" });
+            break;
+          case "addGold":
+            handlers.onCheat({ type: "addGold", amount: Number(el.dataset.amount) });
+            break;
+          case "buildRoad": {
+            if (!tile) break;
+            handlers.onCheat({
+              type: "buildRoad",
+              col: tile.col,
+              row: tile.row,
+              level: Number(el.dataset.level) as 1 | 2 | 3,
+            });
+            break;
+          }
+          case "foundCity": {
+            if (!tile) break;
+            handlers.onCheat({ type: "foundCity", col: tile.col, row: tile.row });
+            break;
+          }
+          case "spawnUnit": {
+            if (!tile) break;
+            const sel = godPanel.querySelector<HTMLSelectElement>("#cheat-unit")!;
+            handlers.onCheat({
+              type: "spawnUnit",
+              unitType: sel.value as UnitTypeId,
+              col: tile.col,
+              row: tile.row,
+            });
+            break;
+          }
+        }
+      });
+    });
   };
 
   const renderCityPanel = (state: GameState, city: City | null): void => {
@@ -1096,7 +1260,7 @@ export function createUI(handlers: UIHandlers): UI {
     gameover.querySelector<HTMLButtonElement>("#go-menu")?.addEventListener("click", () => location.reload());
   };
 
-  // Empire overview (Units / Cities / Specialists & Wonders) + its toggle button.
+  // Empire overview (Units / Cities / Specialists & Wonders) side panel.
   const empire = createEmpire({
     onSelectUnit: (id) => handlers.onSelectUnit(id),
     onSelectCity: (id) => handlers.onSelectCity(id),
@@ -1104,20 +1268,12 @@ export function createUI(handlers: UIHandlers): UI {
     onStartWonder: (wid, host) => handlers.onStartWonder(wid, host),
     onCancelWork: (wid) => handlers.onCancelWork(wid),
   });
-  const empireBtn = document.createElement("button");
-  empireBtn.id = "empire-btn";
-  empireBtn.className = "btn";
-  empireBtn.textContent = "🏛️ Empire";
-  empireBtn.style.cssText = "position:fixed;left:12px;top:64px;z-index:20;font-size:13px";
-  empireBtn.addEventListener("click", () => {
-    if (lastState) empire.toggle(lastState, lastViewerId);
-  });
-  document.body.appendChild(empireBtn);
 
   return {
     render(view) {
       lastState = view.state;
       lastViewerId = view.viewerId;
+      lastView = view;
       empire.render(view.state, view.viewerId);
       renderTopbar(view.state);
       renderResearch(view.state);
@@ -1126,7 +1282,8 @@ export function createUI(handlers: UIHandlers): UI {
       renderReligion(view.state);
       renderProduction(view.state);
       renderUnitPanel(view.state, view.selectedUnit, view.viewerId, view.odds);
-      renderTilePanel(view.state, view.selectedTile ?? null, view.viewerId);
+      renderTilePanel(view.state, view.selectedTile ?? null, view.viewerId, view.cheatsEnabled ?? false);
+      renderGodMode(view);
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state);
       renderGameOver(view.state);
@@ -1173,6 +1330,10 @@ export function createUI(handlers: UIHandlers): UI {
     setMpSaves(saves) {
       mpSaves = saves;
       if (menuOpen && lastState) renderMenu(lastState);
+    },
+    openGodMode() {
+      godModeOpen = true;
+      if (lastView) renderGodMode(lastView);
     },
     setTileTip(tip) {
       if (!tip) {

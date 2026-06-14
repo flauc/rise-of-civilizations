@@ -13,6 +13,7 @@ export interface TileView {
   road?: boolean;
   ownerCityId?: number;
   feature?: string;
+  resource?: string;
 }
 
 export interface PlayerPublic {
@@ -39,6 +40,7 @@ export interface PlayerView {
     policies: string[];
     faith: number;
     foundedReligionId?: string;
+    resources: Record<string, number>;
   };
   religions: Religion[];
   /** The viewer's own trade routes (for the map overlay + city panel). */
@@ -75,6 +77,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     if (t.road) tv.road = true;
     if (t.ownerCityId !== undefined) tv.ownerCityId = t.ownerCityId;
     if (t.feature) tv.feature = t.feature;
+    if (t.resource) tv.resource = t.resource;
     tiles.push(tv);
   }
 
@@ -102,6 +105,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
       policies: me ? [...me.policies] : [],
       faith: me?.faith ?? 0,
       foundedReligionId: me?.foundedReligionId,
+      resources: me?.resources ?? {},
     },
     religions: state.religions.map((r) => ({ ...r, beliefs: [...r.beliefs] })),
     tradeRoutes: state.tradeRoutes.filter((r) => r.ownerId === playerId).map((r) => ({ ...r })),

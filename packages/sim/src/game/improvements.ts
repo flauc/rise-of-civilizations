@@ -4,7 +4,15 @@ import type { Yields } from "./terrain";
 // (see works.ts). This module holds their per-tier yields; the unit-driven build
 // path (Workers) has been removed.
 
-export type ImprovementKind = "farm" | "mine" | "quarry" | "lumber_camp";
+export type ImprovementKind =
+  | "farm"
+  | "mine"
+  | "quarry"
+  | "lumber_camp"
+  | "pasture"
+  | "plantation"
+  | "camp"
+  | "fishing_boats";
 
 export interface ImprovementDef {
   kind: ImprovementKind;
@@ -15,20 +23,44 @@ export interface ImprovementDef {
 
 export const IMPROVEMENT_DEFS: Record<ImprovementKind, ImprovementDef> = {
   farm: {
-    kind: "farm", name: "Farm",
+    kind: "farm",
+    name: "Farm",
     tiers: [{ food: 1 }, { food: 2 }, { food: 3 }],
   },
   lumber_camp: {
-    kind: "lumber_camp", name: "Lumber Camp",
+    kind: "lumber_camp",
+    name: "Lumber Camp",
     tiers: [{ production: 1 }, { production: 2 }, { production: 3 }],
   },
   mine: {
-    kind: "mine", name: "Mine",
+    kind: "mine",
+    name: "Mine",
     tiers: [{ production: 1 }, { production: 2 }, { production: 3, gold: 1 }],
   },
   quarry: {
-    kind: "quarry", name: "Quarry",
+    kind: "quarry",
+    name: "Quarry",
     tiers: [{ production: 1 }, { production: 1, gold: 1 }, { production: 2, gold: 2 }],
+  },
+  pasture: {
+    kind: "pasture",
+    name: "Pasture",
+    tiers: [{ food: 1 }, { food: 1, production: 1 }, { food: 2, production: 1 }],
+  },
+  plantation: {
+    kind: "plantation",
+    name: "Plantation",
+    tiers: [{ gold: 1 }, { gold: 1, food: 1 }, { gold: 2, food: 1 }],
+  },
+  camp: {
+    kind: "camp",
+    name: "Camp",
+    tiers: [{ food: 1 }, { food: 1, gold: 1 }, { food: 2, gold: 1 }],
+  },
+  fishing_boats: {
+    kind: "fishing_boats",
+    name: "Fishing Boats",
+    tiers: [{ food: 1, gold: 1 }, { food: 1, gold: 2 }, { food: 2, gold: 2 }],
   },
 };
 

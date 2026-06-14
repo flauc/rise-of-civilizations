@@ -31,9 +31,9 @@ export interface EmpireHandlers {
 type Tab = "units" | "cities" | "specialists";
 
 const STYLE = `
-#empire{position:fixed;inset:0;z-index:55;background:rgba(8,16,24,.9);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center}
-#empire.hidden{display:none !important}
-.emp-box{width:min(960px,94vw);height:min(760px,90vh);background:#0d1b27;border:1px solid var(--edge);border-radius:14px;display:flex;flex-direction:column;overflow:hidden}
+#empire{position:fixed;top:0;right:0;bottom:0;left:auto;width:min(460px,92vw);z-index:55;background:#0d1b27;border-left:1px solid var(--edge);box-shadow:-8px 0 24px rgba(0,0,0,.35);display:flex;flex-direction:column;transform:translateX(0);transition:transform .2s ease,pointer-events 0s}
+#empire.hidden{transform:translateX(100%);pointer-events:none}
+.emp-box{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden}
 .emp-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--edge)}
 .emp-tab{padding:7px 14px;border-radius:8px;cursor:pointer;color:#b8d4ec;background:transparent;border:1px solid transparent;font:inherit;font-size:14px}
 .emp-tab.active{background:#213a52;border-color:var(--edge);color:#fff;font-weight:700}

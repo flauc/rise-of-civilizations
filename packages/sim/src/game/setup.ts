@@ -8,6 +8,7 @@ import { offsetNeighbors } from "./movement";
 import { updateExplored } from "./visibility";
 import { STARTING_TECHS, type UnitTypeId } from "./content";
 import { placeFeatures } from "./features";
+import { placeResources } from "./resources";
 import type { BarbarianActivity } from "./state";
 
 export interface NewGameOptions {
@@ -162,6 +163,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       policies: [],
       faith: 0,
       explored: new Set<string>(),
+      resources: {},
     });
   }
   const barbId = count;
@@ -183,6 +185,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       policies: [],
       faith: 0,
       explored: new Set<string>(),
+      resources: {},
     });
   }
 
@@ -213,6 +216,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
 
   if (activity !== "none") spawnBarbarians(state, barbId, starts, activity);
   placeFeatures(state, starts, activity);
+  placeResources(state, starts, seed);
 
   for (const p of players) updateExplored(state, p.id);
   return state;

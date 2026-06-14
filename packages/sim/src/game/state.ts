@@ -93,6 +93,8 @@ export interface Player {
   /** Religion id this player founded (if any). */
   foundedReligionId?: string;
   explored: Set<string>;
+  /** Stockpiles of strategic resources (and counts of all owned resources). */
+  resources: Record<string, number>;
 }
 
 export interface Religion {

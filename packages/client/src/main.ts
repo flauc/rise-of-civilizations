@@ -36,6 +36,7 @@ import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
 import { loadFeatureAtlas } from "./feature-assets";
 import type { Session } from "./session";
+import type { CheatAction } from "./god-mode";
 import { listSaves, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -242,6 +243,10 @@ function startGame(session: Session): void {
       const online = session as import("./session").OnlineSession;
       await online.loadGame(blob);
     },
+    onCheat: (action) => {
+      const res = session.cheat?.(action);
+      if (res && !res.ok) ui.banner(res.error ?? "Cheat failed");
+    },
   });
 
   type Suggestion = { kind: "units" | "research" | "civic" | "religion" | "production"; label: string } | null;
@@ -420,7 +425,7 @@ function startGame(session: Session): void {
       needsRedraw = false;
       const me = session.getViewerId();
       const explored = st().players.find((p) => p.id === me)?.explored ?? new Set<string>();
-      drawScene(ctx!, st().map, camera, {
+      drawScene(ctx!, st(), camera, {
         dpr,
         cssWidth,
         cssHeight,
@@ -457,6 +462,7 @@ function startGame(session: Session): void {
         odds: hoverOdds,
         suggestion: computeSuggestion(),
         mpSaves,
+        cheatsEnabled: !session.isOnline,
       });
     }
     requestAnimationFrame(frame);

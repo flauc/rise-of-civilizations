@@ -34,6 +34,12 @@ import {
   BUILDING_SUBSET,
   CITY_SUBSET,
   LEADER_SUBSET,
+  ROAD_SUBSET,
+  DIRT_ROAD_SUBSET,
+  STONE_ROAD_SUBSET,
+  ADVANCED_STONE_ROAD_SUBSET,
+  RIVER_SUBSET,
+  RESOURCE_SUBSET,
 } from "./config";
 
 interface Options {
@@ -61,10 +67,18 @@ Usage:
   bun run tools/art-generator/generate.ts --tile forest
   bun run tools/art-generator/generate.ts --building granary
   bun run tools/art-generator/generate.ts --leader rome
+  bun run tools/art-generator/generate.ts --road dirt_road_3
+  bun run tools/art-generator/generate.ts --river river_15
+  bun run tools/art-generator/generate.ts --resource wheat
   bun run tools/art-generator/generate.ts --subset terrain
   bun run tools/art-generator/generate.ts --subset units
   bun run tools/art-generator/generate.ts --subset buildings
   bun run tools/art-generator/generate.ts --subset leaders
+  bun run tools/art-generator/generate.ts --subset dirt-roads
+  bun run tools/art-generator/generate.ts --subset stone-roads
+  bun run tools/art-generator/generate.ts --subset advanced-stone-roads
+  bun run tools/art-generator/generate.ts --subset rivers
+  bun run tools/art-generator/generate.ts --subset resources
   bun run tools/art-generator/generate.ts --all
 
 Options:
@@ -72,7 +86,10 @@ Options:
   --tile <id>            Generate a specific terrain tile
   --building <id>        Generate a specific building icon
   --leader <id>          Generate a specific civilization leader portrait
-  --subset <name>        Generate a subset: terrain, units, buildings, cities, leaders, all
+  --road <id>            Generate a specific road segment
+  --river <id>           Generate a specific river segment
+  --resource <id>        Generate a specific resource icon
+  --subset <name>        Generate a subset: terrain, units, buildings, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, all
   --list                 List all available asset IDs and exit
   --model <id>           Gemini model (default: ${DEFAULT_MODEL})
   --size <512|1K|2K|4K>  Gemini image size (default: ${DEFAULT_IMAGE_SIZE})
@@ -169,6 +186,27 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--road": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "road") fail(`Unknown road: ${id}`);
+        entries.push(e);
+        break;
+      }
+      case "--river": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "river") fail(`Unknown river: ${id}`);
+        entries.push(e);
+        break;
+      }
+      case "--resource": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "resource") fail(`Unknown resource: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--subset": {
         const name = next();
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
@@ -176,8 +214,13 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "buildings") entries.push(...BUILDING_SUBSET);
         else if (name === "cities") entries.push(...CITY_SUBSET);
         else if (name === "leaders") entries.push(...LEADER_SUBSET);
+        else if (name === "dirt-roads") entries.push(...DIRT_ROAD_SUBSET);
+        else if (name === "stone-roads") entries.push(...STONE_ROAD_SUBSET);
+        else if (name === "advanced-stone-roads") entries.push(...ADVANCED_STONE_ROAD_SUBSET);
+        else if (name === "rivers") entries.push(...RIVER_SUBSET);
+        else if (name === "resources") entries.push(...RESOURCE_SUBSET);
         else if (name === "all") entries.push(...allEntries());
-        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, cities, leaders, or all.`);
+        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, or all.`);
         break;
       }
       case "--all":
@@ -490,7 +533,7 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
         continue;
       }
 
-      if (entry.category === "tile") {
+      if (entry.category === "tile" || entry.category === "road" || entry.category === "river") {
         await postProcessTile(rawPath, finalPath, entry);
       } else if (entry.category === "leader") {
         await postProcessPortrait(rawPath, finalPath, entry);

@@ -54,6 +54,8 @@ export interface Tile {
   ownerCityId?: number;
   /** A map feature on this tile: "village" (perk when entered) or "barb_camp". */
   feature?: string;
+  /** A natural resource on this tile (e.g. "iron", "bananas", "silk"). */
+  resource?: string;
 }
 
 export interface GameMap {

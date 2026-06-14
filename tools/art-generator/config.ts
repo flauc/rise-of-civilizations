@@ -7,6 +7,7 @@
 
 import { join } from "node:path";
 import { CIVILIZATIONS } from "@roc/data";
+import { RESOURCE_DEFS } from "@roc/sim";
 
 export interface TargetSize {
   readonly width: number;
@@ -20,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource";
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -111,6 +112,15 @@ export const LEADER_SUBSET: AssetEntry[] = CIVILIZATIONS.map((civ) => ({
   referenceTile: DEFAULT_REFERENCE_TILE,
 }));
 
+export const RESOURCE_SUBSET: AssetEntry[] = Object.values(RESOURCE_DEFS).map((r) => ({
+  id: r.id,
+  name: r.name,
+  description: `${r.type} resource found on ${r.validTerrain.join("/")}; requires a ${r.improvement} to activate`,
+  aspectRatio: "1:1",
+  size: { width: 96, height: 96 },
+  category: "resource" as const,
+}));
+
 export const BUILDING_SUBSET: AssetEntry[] = [
   { id: "barb_camp", name: "Barbarian Camp", description: "a primitive barbarian encampment with crude tents, a bonfire, and wooden spikes, no walls, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "village", name: "Village", description: "a small tribal village with a few thatched-roof huts, no walls, no fortifications, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
@@ -124,7 +134,7 @@ export const BUILDING_SUBSET: AssetEntry[] = [
 ];
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...LEADER_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -136,6 +146,65 @@ export function referencePath(entry: AssetEntry, referenceDir = DEFAULT_REFERENC
   return join(referenceDir, fileName);
 }
 
+const ROAD_TYPES: readonly { readonly id: string; readonly name: string; readonly material: string }[] = [
+  { id: "dirt_road", name: "Dirt Road", material: "packed dirt" },
+  { id: "stone_road", name: "Stone Road", material: "cobblestone" },
+  { id: "advanced_stone_road", name: "Advanced Stone Road", material: "cut flagstone" },
+];
+
+/** Side names used when describing a hex edge mask to the image model. */
+const SIDE_NAMES = ["right", "upper-right", "upper-left", "left", "lower-left", "lower-right"] as const;
+
+/** Bitmask of every distinct road/river connection pattern up to hex rotation (0 side skipped). */
+export const CONNECTION_MASKS: readonly number[] = [1, 3, 5, 7, 9, 11, 13, 15, 21, 23, 27, 31, 63];
+
+function connectedSideNames(mask: number): string[] {
+  return SIDE_NAMES.filter((_, i) => (mask & (1 << i)) !== 0);
+}
+
+function describeConnection(mask: number, kind: "road" | "river", material?: string): string {
+  const sides = connectedSideNames(mask);
+  if (sides.length === 0) return "";
+  const type = kind === "road" ? (material ? `${material} road` : "road") : "river";
+  if (sides.length === 6) return `a ${type} hub connecting all six sides`;
+  if (sides.length === 1) return `a ${type} dead-end entering from the ${sides[0]} side`;
+  const list = sides.slice(0, -1).join(", ") + " and " + sides[sides.length - 1];
+  return `a ${type} connecting the ${list} sides`;
+}
+
+function makeRoadEntries(): AssetEntry[] {
+  const entries: AssetEntry[] = [];
+  for (const type of ROAD_TYPES) {
+    for (const mask of CONNECTION_MASKS) {
+      entries.push({
+        id: `${type.id}_${mask}`,
+        name: `${type.name} (${mask.toString(2).padStart(6, "0")})`,
+        description: describeConnection(mask, "road", type.material),
+        aspectRatio: "1:1",
+        size: { width: 256, height: 256 },
+        category: "road",
+        referenceTile: DEFAULT_REFERENCE_TILE,
+      });
+    }
+  }
+  return entries;
+}
+
+export const ROAD_SUBSET: AssetEntry[] = makeRoadEntries();
+export const DIRT_ROAD_SUBSET: AssetEntry[] = ROAD_SUBSET.filter((e) => e.id.startsWith("dirt_road_"));
+export const STONE_ROAD_SUBSET: AssetEntry[] = ROAD_SUBSET.filter((e) => e.id.startsWith("stone_road_"));
+export const ADVANCED_STONE_ROAD_SUBSET: AssetEntry[] = ROAD_SUBSET.filter((e) => e.id.startsWith("advanced_stone_road_"));
+
+export const RIVER_SUBSET: AssetEntry[] = CONNECTION_MASKS.map((mask) => ({
+  id: `river_${mask}`,
+  name: `River (${mask.toString(2).padStart(6, "0")})`,
+  description: describeConnection(mask, "river"),
+  aspectRatio: "1:1",
+  size: { width: 256, height: 256 },
+  category: "river",
+  referenceTile: DEFAULT_REFERENCE_TILE,
+}));
+
 export function promptFor(entry: AssetEntry): string {
   if (entry.category === "tile") {
     return `Create a flat 2D hand-painted hexagonal strategy game tile for "${entry.name}". ${entry.description}. Match the visual style of the attached reference tile: slightly stylized, saturated but natural colors, readable at small sizes, and framed inside a vertical 2:3 pointy-top hex. IMPORTANT: do not include roads, paths, houses, huts, fences, farms, or any buildings or man-made structures — those will be added as separate tile improvements. Render as a flat 2D illustration with no 3D perspective, no realistic depth, no depth-of-field, and no camera angle shifts. Keep the same overall composition, camera angle, and hex footprint as the reference; vary only subtle natural details like texture, lighting, and vegetation so the grid remains uniform. The artwork must be fully self-contained and look correct in isolation; avoid paths, rivers, shadows, or objects that appear to continue off the tile edges. Preserve the soft shadow along the bottom edges of the hex, similar to the reference tile.`;
@@ -143,8 +212,17 @@ export function promptFor(entry: AssetEntry): string {
   if (entry.category === "leader") {
     return `Create a stylized hand-painted portrait of ${entry.name}, ruler of ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a centered bust or head-and-shoulders portrait facing slightly toward the viewer, set against a soft painted background such as ancient parchment, a mural, or a neutral textured wall. Do not make the background transparent. Use clothing, regalia, and materials appropriate to the civilization's era and geography. No text, no UI, no border, no frame, no modern objects, no ground plane, no terrain, and no cast shadow underneath the figure.`;
   }
+  if (entry.category === "road") {
+    return `Create a small hand-painted road segment for a turn-based strategy game. Subject: ${entry.description}. Render ONLY the narrow ${entry.description.includes("dirt") ? "dirt" : entry.description.includes("cobblestone") ? "stone" : "stone"} road/path on a fully transparent background. The road should be a thin, continuous path that reaches exactly the named hex edges and does NOT fill the hex. Match the painted, slightly stylized look of the attached reference tile. No terrain, no grass, no ground, no sky, no buildings, no text, no UI, no border, and no cast shadow. The background must remain transparent.`;
+  }
+  if (entry.category === "river") {
+    return `Create a small hand-painted river segment for a turn-based strategy game. Subject: ${entry.description}. Render ONLY the water channel on a fully transparent background. The river should be a thin, continuous waterway that reaches exactly the named hex edges and does NOT fill the hex. Match the painted, slightly stylized look of the attached reference tile. No terrain, no grass, no ground, no sky, no buildings, no text, no UI, no border, and no cast shadow. The background must remain transparent.`;
+  }
   if (entry.category === "unit") {
     return `Create a small standalone unit token/icon for an ancient turn-based strategy game spanning the Stone Age to the Classical era. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a near-top-down or three-quarter view, centered, in a static idle pose standing still and facing toward the right side of the image, as an isolated figure on a clean solid white background. Use only materials and technology appropriate to the unit's era and description; no anachronistic weapons, armor, or equipment. No walking, running, attacking, or action motion; no motion blur or dynamic swinging of limbs/weapons. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath the figure. The unit should float cleanly on the white background with nothing else in the frame.`;
+  }
+  if (entry.category === "resource") {
+    return `Create a tiny standalone map resource icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the resource as a small, clear symbol or object from a near-top-down or three-quarter view, centered, as an isolated item on a clean solid white background. Keep it smaller than a unit icon so it reads as a map token. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The resource icon should float cleanly on the white background with nothing else in the frame.`;
   }
   return `Create a small standalone building icon for a turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated building on a clean solid white background. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The building should float cleanly on the white background with nothing else in the frame.`;
 }

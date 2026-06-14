@@ -15,6 +15,7 @@ Single-player **vs a local AI opponent** (and AI barbarians), plus real-time **b
 - **City siege & capture** — cities have HP/defense and walls; reduce a city to 0 HP and take it with a melee unit.
 - **Barbarians** — a hostile AI faction that spawns and raids, auto-running between human turns.
 - **Workers** — build farms/mines and roads (roads speed movement); a 12-tech tree gates units & buildings.
+- **Resources & Amenities** — bonus, luxury, and strategic resources spawn on tiles; luxuries keep cities happy, while Iron, Horses, Elephants, and Copper unlock key units. See [`docs/RESOURCES-AND-AMENITIES.md`](docs/RESOURCES-AND-AMENITIES.md).
 
 Earlier milestones: **M1** added cities, tile yields, movement, fog of war, research, and hotseat turns; **M0** delivered the monorepo, hex math + seeded RNG, the procedural world generator, and the canvas renderer. All built on an authoritative `sim` (commands validated against game state — the same model the M3 server will own).
 
