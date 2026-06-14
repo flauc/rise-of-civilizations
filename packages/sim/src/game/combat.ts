@@ -10,6 +10,7 @@ import {
   type PromotionId,
 } from "./content";
 import { isRough, terrainDefense } from "./terrain";
+import { structureDefense, towerBombard } from "./fortifications";
 import { civCombatBonus } from "./civs";
 import { applyVictoryCheck } from "./victory";
 
@@ -129,6 +130,11 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   let s = def.strength * levelMultiplier(unit);
   const tile = getTile(state.map, unit.col, unit.row);
   if (tile) s += terrainDefense(tile.terrain);
+  // A friendly defensive structure on the tile shelters its defender.
+  if (tile?.structure && tile.ownerCityId !== undefined) {
+    const o = state.cities.get(tile.ownerCityId);
+    if (o && o.ownerId === unit.ownerId) s += structureDefense(tile.structure.tier);
+  }
   if (tile?.road) s += 0; // roads don't add defense
   if (vsRanged && has(unit, "cover")) s += 4;
   // Anti-cavalry also helps the defender against mounted attackers.
@@ -340,7 +346,7 @@ export function resolveAttack(state: GameState, attacker: Unit, col: number, row
         killUnit(state, attacker);
         return { ok: true };
       }
-      if (defenderDead && !cityAt(state, col, row) && !unitAt(state, col, row)) {
+      if (defenderDead && !cityAt(state, col, row) && !unitAt(state, col, row) && !targetTile.structure) {
         attacker.col = col; // advance into vacated tile
         attacker.row = row;
       }
@@ -349,7 +355,74 @@ export function resolveAttack(state: GameState, attacker: Unit, col: number, row
     return { ok: true };
   }
 
+  // ---- attack a defensive structure (wall / tower) ----
+  const struct = targetTile.structure;
+  if (struct && struct.hp > 0 && targetTile.ownerCityId !== undefined) {
+    const sCity = state.cities.get(targetTile.ownerCityId);
+    if (sCity && sCity.ownerId !== attacker.ownerId) {
+      const owner = playerById(state, sCity.ownerId);
+      if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
+      const structDef = 6 + struct.tier * 4 + terrainDefense(targetTile.terrain);
+      const base =
+        (ranged ? def.rangedStrength ?? 0 : def.strength) *
+        levelMultiplier(attacker) *
+        woundFactor(attacker.hp, unitMaxHp(attacker));
+      const attEff = (base + cityAttackBonus(attacker)) * vsCityMultiplier(attacker);
+      struct.hp = Math.max(0, struct.hp - damageFrom(attEff, structDef));
+      if (!ranged) attacker.hp -= damageFrom(structDef * 0.5, attEff); // melee takes some back
+      awardXp(attacker, 3);
+      if (struct.hp <= 0) {
+        targetTile.structure = undefined;
+        attackerOwner.gold += 10;
+        state.log.push(`${attackerOwner.name} stormed a fortification.`);
+      }
+      if (attacker.hp <= 0) {
+        killUnit(state, attacker);
+        return { ok: true };
+      }
+      finishAttack(state, attacker);
+      return { ok: true };
+    }
+  }
+
   return { ok: false, error: "nothing to attack there" };
+}
+
+/**
+ * Towers bombard: each standing tower owned by `playerId` makes one free ranged
+ * hit on the weakest adjacent enemy unit. Called at the owner's turn start.
+ */
+export function towerBombardment(state: GameState, playerId: number): void {
+  const owner = playerById(state, playerId);
+  if (!owner) return;
+  for (const t of state.map.tiles) {
+    if (!t.structure || t.structure.kind !== "tower" || t.structure.hp <= 0) continue;
+    if (t.ownerCityId === undefined) continue;
+    const c = state.cities.get(t.ownerCityId);
+    if (!c || c.ownerId !== playerId) continue;
+    let target: Unit | null = null;
+    for (const u of state.units.values()) {
+      const uo = playerById(state, u.ownerId);
+      if (!uo || !areEnemies(owner, uo)) continue;
+      if (dist({ col: t.col, row: t.row }, u) !== 1) continue;
+      if (!target || u.hp < target.hp) target = u;
+    }
+    if (target) {
+      const dmg = damageFrom(towerBombard(t.structure.tier), defenseStrengthVsBombard(state, target));
+      target.hp -= dmg;
+      state.log.push(`A tower bombarded ${UNIT_DEFS[target.type].name} for ${dmg}.`);
+      if (target.hp <= 0) killUnit(state, target);
+    }
+  }
+}
+
+/** Simplified defense value used when a tower bombards a unit. */
+function defenseStrengthVsBombard(state: GameState, unit: Unit): number {
+  const tile = getTile(state.map, unit.col, unit.row);
+  let s = UNIT_DEFS[unit.type].strength * levelMultiplier(unit);
+  if (tile) s += terrainDefense(tile.terrain);
+  if (has(unit, "cover")) s += 4;
+  return Math.max(1, s) * woundFactor(unit.hp, unitMaxHp(unit));
 }
 
 function killUnit(state: GameState, unit: Unit): void {
@@ -384,6 +457,16 @@ export function computeAttackTargets(state: GameState, unit: Unit): Set<string> 
     if (c.ownerId === unit.ownerId) continue;
     const o = playerById(state, c.ownerId);
     if (o && areEnemies(owner, o) && dist(from, c) <= range) out.add(`${c.col},${c.row}`);
+  }
+  // Enemy defensive structures can be attacked (and must be, to pass them).
+  for (const t of state.map.tiles) {
+    if (!t.structure || t.structure.hp <= 0 || t.ownerCityId === undefined) continue;
+    const c = state.cities.get(t.ownerCityId);
+    if (!c || c.ownerId === unit.ownerId) continue;
+    const o = playerById(state, c.ownerId);
+    if (o && areEnemies(owner, o) && dist(from, t) <= range && !unitAt(state, t.col, t.row)) {
+      out.add(`${t.col},${t.row}`);
+    }
   }
   return out;
 }

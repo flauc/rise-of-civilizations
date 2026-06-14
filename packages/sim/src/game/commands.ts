@@ -10,6 +10,7 @@ import {
   healAndReset,
   resolveAttack,
   availablePromotions,
+  towerBombardment,
   unitMaxHp,
 } from "./combat";
 import { barbarianTurn } from "./barbarians";
@@ -83,6 +84,7 @@ export function beginTurn(state: GameState): void {
     processCity(state, c, player);
   }
   advanceWorks(state, player.id); // specialists labour on public works
+  towerBombardment(state, player.id); // towers fire on adjacent enemies
   // Religion spreads once per round (at the start of player 0's turn).
   if (state.currentPlayerIndex === 0) spreadReligion(state);
   updateExplored(state, player.id);

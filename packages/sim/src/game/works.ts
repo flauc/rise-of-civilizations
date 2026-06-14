@@ -17,9 +17,10 @@ import {
   specialistLabour,
   type SpecialistId,
 } from "./specialists";
+import { DEFENSE_NAMES, STRUCTURE_HP, type DefenseKind } from "./fortifications";
 
 export type EconKind = "farm" | "mine" | "quarry" | "lumber_camp" | "road";
-export type DefenseKind = "wall" | "tower";
+export type { DefenseKind };
 export type WorkKind = EconKind | DefenseKind | "wonder";
 
 const MAX_TIER = 3;
@@ -43,24 +44,12 @@ const ECON_TERRAIN: Record<EconKind, ReadonlySet<string> | null> = {
   road: null, // any passable land
 };
 
-// Defensive-structure stats by tier (1–3).
-export const STRUCTURE_HP: Record<DefenseKind, [number, number, number]> = {
-  wall: [40, 80, 140],
-  tower: [60, 110, 170],
-};
-export const STRUCTURE_DEFENSE: [number, number, number] = [3, 5, 7];
-export const TOWER_BOMBARD: [number, number, number] = [8, 12, 16];
-
 export const ECON_NAMES: Record<EconKind, [string, string, string]> = {
   road: ["Dirt Road", "Paved Road", "Imperial Road"],
   farm: ["Farm", "Irrigated Farm", "Estate"],
   lumber_camp: ["Lumber Camp", "Sawmill", "Timberworks"],
   mine: ["Mine", "Deep Mine", "Great Mine"],
   quarry: ["Quarry", "Stoneworks", "Marble Works"],
-};
-export const DEFENSE_NAMES: Record<DefenseKind, [string, string, string]> = {
-  wall: ["Palisade", "Stone Wall", "Great Wall"],
-  tower: ["Watchtower", "Fort", "Citadel"],
 };
 
 export function isEconKind(kind: string): kind is EconKind {

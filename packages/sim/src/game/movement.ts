@@ -49,6 +49,14 @@ function occupancy(state: GameState, exclude: Unit): Set<string> {
   return occ;
 }
 
+/** A standing enemy defensive structure blocks entry until it is destroyed. */
+export function enemyStructureBlocks(state: GameState, col: number, row: number, playerId: number): boolean {
+  const tile = getTile(state.map, col, row);
+  if (!tile?.structure || tile.structure.hp <= 0 || tile.ownerCityId === undefined) return false;
+  const owner = state.cities.get(tile.ownerCityId);
+  return !!owner && owner.ownerId !== playerId;
+}
+
 /**
  * Tiles a unit can reach this turn (Dijkstra over land), keyed by "col,row".
  * Honors the "always allowed at least one step" rule into an adjacent passable
@@ -86,6 +94,7 @@ export function computeReachable(
       if (occ.has(`${n.col},${n.row}`)) continue;
       const city = cityAt(state, n.col, n.row);
       if (city && city.ownerId !== unit.ownerId) continue;
+      if (enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
       const enterCost = unitMoveCost(unit, tile.terrain, tile.road ?? false);
       const step = curCost + enterCost;
       if (step <= budget && step < (best.get(nk) ?? Infinity)) {
@@ -104,6 +113,7 @@ export function computeReachable(
     if (occ.has(nk)) continue;
     const city = cityAt(state, n.col, n.row);
     if (city && city.ownerId !== unit.ownerId) continue;
+    if (enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
     if (!result.has(nk)) result.set(nk, { cost: budget });
   }
 

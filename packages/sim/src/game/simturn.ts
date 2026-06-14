@@ -8,7 +8,7 @@
 
 import type { GameState } from "./state";
 import { unitMovement } from "./civs";
-import { healAndReset } from "./combat";
+import { healAndReset, towerBombardment } from "./combat";
 import { processCity } from "./economy";
 import { barbarianTurn } from "./barbarians";
 import { updateExplored } from "./visibility";
@@ -28,6 +28,7 @@ export function startSimultaneousTurn(state: GameState): void {
     for (const c of state.cities.values()) {
       if (c.ownerId === p.id) c.rangedAttackUsed = false;
     }
+    towerBombardment(state, p.id);
     updateExplored(state, p.id);
   }
 }

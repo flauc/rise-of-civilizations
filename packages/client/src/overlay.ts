@@ -178,6 +178,43 @@ export function drawOverlay(
     }
   }
 
+  // ---- defensive structures (walls / towers) ----
+  for (const t of state.map.tiles) {
+    if (!t.structure || t.structure.hp <= 0) continue;
+    if (!o.explored.has(`${t.col},${t.row}`)) continue;
+    const ownerPid = t.ownerCityId !== undefined ? tileOwnerPlayer.get(t.ownerCityId) : undefined;
+    const color = ownerPid !== undefined ? colorOf(ownerPid) : "#999";
+    const s = screen(t.col, t.row);
+    const isTower = t.structure.kind === "tower";
+    const half = size * 0.34;
+    ctx.fillStyle = "rgba(20,20,24,0.85)";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(1.5, size * 0.06);
+    if (isTower) {
+      // a little crenellated tower
+      ctx.beginPath();
+      ctx.rect(s.x - half * 0.6, s.y - half, half * 1.2, half * 2);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      // a low wall segment
+      ctx.beginPath();
+      ctx.rect(s.x - half, s.y - half * 0.5, half * 2, half);
+      ctx.fill();
+      ctx.stroke();
+    }
+    if (size > 12) {
+      ctx.fillStyle = "#fff";
+      ctx.font = `bold ${Math.round(size * 0.34)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(isTower ? "♜" : "▦", s.x, s.y + 1);
+    }
+    if (t.structure.hp < t.structure.maxHp) {
+      drawHpBar(ctx, s.x, s.y + half + size * 0.12, half * 2, t.structure.hp / t.structure.maxHp);
+    }
+  }
+
   // ---- trade routes (dashed lines between the viewer's connected cities) ----
   if (o.tradeRoutes && o.tradeRoutes.length > 0) {
     ctx.save();
