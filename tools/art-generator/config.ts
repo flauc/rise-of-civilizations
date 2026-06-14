@@ -48,18 +48,43 @@ export const TERRAIN_SUBSET: AssetEntry[] = [
 ];
 
 export const UNIT_SUBSET: AssetEntry[] = [
-  { id: "settler", name: "Settler", description: "a lone prehistoric settler on foot wearing simple animal hides, carrying basic hide and woven belongings, no animals, wagons, or companions", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "worker", name: "Worker", description: "a stone-age laborer in hide clothing using a simple flint or bone tool", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "scout", name: "Scout", description: "a prehistoric explorer in animal hides carrying a simple wooden staff", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // civilian
+  { id: "settler", name: "Settler", description: "a lone ancient settler on foot wearing simple hide and woven clothing, carrying basic belongings, no animals, wagons, or companions", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "worker", name: "Worker", description: "an ancient laborer in simple clothing using a basic flint, bone, or bronze tool", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // recon
+  { id: "scout", name: "Scout", description: "a lightly armed ancient explorer in hides with a simple wooden staff", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // dawn melee / ranged
   { id: "clubman", name: "Clubman", description: "a stone-age warrior wielding a simple wooden club, no metal", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "warrior", name: "Warrior", description: "a tribal prehistoric fighter with a stone axe or wooden club, no shield, no metal armor or helmet", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "slinger", name: "Slinger", description: "a prehistoric skirmisher with a simple leather sling, no metal", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "archer", name: "Archer", description: "a prehistoric hunter with a simple wooden bow and flint-tipped arrows", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "spearman", name: "Spearman", description: "a tribal fighter with a sharpened wooden or stone-tipped spear, no shield, no metal", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "swordsman", name: "Swordsman", description: "an iron-age soldier with a short sword and shield", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "light_chariot", name: "Light Chariot", description: "a fast two-wheeled chariot pulled by horses", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "rider", name: "Rider", description: "a mounted cavalry scout", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "catapult", name: "Catapult", description: "a classical stone-throwing siege engine", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "warrior", name: "Warrior", description: "a tribal early fighter with a stone axe or wooden club, no shield, no metal armor or helmet", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "slinger", name: "Slinger", description: "a skirmisher with a simple leather sling, no metal", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "javelineer", name: "Javelineer", description: "a light ranged fighter holding a throwing javelin, wearing hide or simple cloth", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "hunter", name: "Hunter", description: "a tracker with a simple wooden bow or spear and hide clothing", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // early tech
+  { id: "firehard_spear", name: "Fire-Hardened Spearman", description: "an early spearman with a fire-hardened wooden spear and simple hide armor, no metal", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "war_dog", name: "War Dogs", description: "a pair of trained war dogs with simple hide harnesses, no metal", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "archer", name: "Archer", description: "a bronze-age bowman drawing a composite bow with flint or bronze tipped arrows", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // bronze
+  { id: "axeman", name: "Bronze Axeman", description: "a bronze-age warrior with a bronze axe and simple leather or bronze armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "maceman", name: "Maceman", description: "a bronze-age warrior with a stone or bronze mace and hide or leather armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "spearman", name: "Spearman", description: "a bronze-age spearman with a long bronze spear and a simple shield", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "hoplite", name: "Hoplite", description: "a classical hoplite with bronze cuirass, crested helmet, large round shield, and long spear", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // cavalry
+  { id: "light_chariot", name: "Light Chariot", description: "a fast two-wheeled wooden chariot pulled by horses with a driver holding a bow or javelin", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "war_chariot", name: "War Chariot", description: "a heavier two-wheeled wooden chariot pulled by horses with an armored crew", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "rider", name: "Rider", description: "a mounted cavalry rider on horseback with a spear or axe and simple armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "horse_archer", name: "Horse Archer", description: "a mounted archer on horseback drawing a composite bow", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // iron / classical
+  { id: "swordsman", name: "Swordsman", description: "an iron-age swordsman with a short iron sword, shield, and leather or bronze armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "longswordsman", name: "Longswordsman", description: "a classical warrior with a long iron sword and chain or scale armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "pikeman", name: "Pikeman", description: "an infantry soldier with a long iron-tipped pike and simple armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "cataphract", name: "Cataphract", description: "a heavily armored mounted rider on a barded horse with a lance or sword", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "crossbowman", name: "Crossbowman", description: "a soldier aiming a crossbow, wearing simple medieval-style armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "legionary", name: "Legionary", description: "a Roman-style legionary with a short iron gladius, rectangular shield, and segmented armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "war_elephant", name: "War Elephant", description: "a war elephant with a wooden howdah and crew, used in battle", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // siege
+  { id: "battering_ram", name: "Battering Ram", description: "a wooden siege ram with a roofed frame and crew pushing it", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "catapult", name: "Catapult", description: "a classical torsion catapult stone-throwing siege engine", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "ballista", name: "Ballista", description: "a large bolt-shooting ballista siege engine", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
 ];
 
 export const BUILDING_SUBSET: AssetEntry[] = [
@@ -89,7 +114,7 @@ export function promptFor(entry: AssetEntry): string {
     return `Create a flat 2D hand-painted hexagonal strategy game tile for "${entry.name}". ${entry.description}. Match the visual style of the attached reference tile: slightly stylized, saturated but natural colors, readable at small sizes, and framed inside a vertical 2:3 pointy-top hex. IMPORTANT: do not include roads, paths, houses, huts, fences, farms, or any buildings or man-made structures — those will be added as separate tile improvements. Render as a flat 2D illustration with no 3D perspective, no realistic depth, no depth-of-field, and no camera angle shifts. Keep the same overall composition, camera angle, and hex footprint as the reference; vary only subtle natural details like texture, lighting, and vegetation so the grid remains uniform. The artwork must be fully self-contained and look correct in isolation; avoid paths, rivers, shadows, or objects that appear to continue off the tile edges. Preserve the soft shadow along the bottom edges of the hex, similar to the reference tile.`;
   }
   if (entry.category === "unit") {
-    return `Create a small standalone unit token/icon for a prehistoric turn-based strategy game set around 5000 BCE. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a near-top-down or three-quarter view, centered, in a static idle pose standing still and facing toward the right side of the image, as an isolated figure on a clean solid white background. Use only stone, wood, bone, leather, and hide materials; no metal, no shields, no helmets, no advanced armor, no wheels, no sails, and no domesticated beasts of burden. No walking, running, attacking, or action motion; no motion blur or dynamic swinging of limbs/weapons. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath the figure. The unit should float cleanly on the white background with nothing else in the frame.`;
+    return `Create a small standalone unit token/icon for an ancient turn-based strategy game spanning the Stone Age to the Classical era. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a near-top-down or three-quarter view, centered, in a static idle pose standing still and facing toward the right side of the image, as an isolated figure on a clean solid white background. Use only materials and technology appropriate to the unit's era and description; no anachronistic weapons, armor, or equipment. No walking, running, attacking, or action motion; no motion blur or dynamic swinging of limbs/weapons. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath the figure. The unit should float cleanly on the white background with nothing else in the frame.`;
   }
   return `Create a small building icon for a turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the building from a three-quarter view, centered, on a clean solid white background. No text, no UI, no border.`;
 }

@@ -239,17 +239,15 @@ export function drawOverlay(
       ctx.fillText(UNIT_DEFS[unit.type].glyph, s.x, s.y + 1);
     }
 
-    // Selection highlight around the sprite.
-    if (o.selectedUnitId === unit.id) {
-      ctx.lineWidth = Math.max(2, size * 0.1);
-      ctx.strokeStyle = "#ffd967";
-      ctx.strokeRect(imgX - 1, imgY - 1, imgSize + 2, imgSize + 2);
-    }
+    const selected = o.selectedUnitId === unit.id;
 
-    // Fatigue overlay when the unit has no movement left.
+    // Fatigue indicator when the unit has no movement left.
     if (own && unit.movementLeft <= 0) {
-      ctx.fillStyle = "rgba(0,0,0,0.35)";
-      ctx.fillRect(imgX, imgY, imgSize, imgSize);
+      const r = Math.max(3, size * 0.12);
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.beginPath();
+      ctx.arc(imgX + imgSize - r, imgY + imgSize - r, r, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     // Promotion-available star.
@@ -274,17 +272,23 @@ export function drawOverlay(
       const labelX = s.x - labelW / 2;
       const labelY = imgY - labelH - pad;
 
-      ctx.fillStyle = "rgba(0,0,0,0.65)";
+      ctx.fillStyle = selected ? "#ffd967" : "rgba(0,0,0,0.65)";
       ctx.beginPath();
       ctx.roundRect(labelX, labelY, labelW, labelH, labelH / 2);
       ctx.fill();
 
-      ctx.fillStyle = colorOf(unit.ownerId);
+      if (selected) {
+        ctx.lineWidth = Math.max(1, size * 0.05);
+        ctx.strokeStyle = "#fff";
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = selected ? "#332200" : colorOf(unit.ownerId);
       ctx.beginPath();
       ctx.arc(labelX + pad + dotR, labelY + labelH / 2, dotR, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = selected ? "#332200" : "#fff";
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
       ctx.fillText(label, labelX + pad + dotR * 2 + pad, labelY + labelH / 2);
