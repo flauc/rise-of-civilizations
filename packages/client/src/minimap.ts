@@ -1,7 +1,7 @@
 import { axialToOffset, pixelToAxial } from "@roc/shared";
 import type { GameState } from "@roc/sim";
 import { Camera } from "./camera";
-import { BASE_SIZE } from "./renderer";
+import { BASE_SIZE, VSQUISH } from "./renderer";
 import { TERRAIN_COLORS } from "./palette";
 
 export interface Minimap {
@@ -81,7 +81,10 @@ export function createMinimap(onSelect: (col: number, row: number) => void): Min
 
       // viewport rectangle
       const corner = (sx: number, sy: number) => {
-        const a = pixelToAxial({ x: camera.screenToWorldX(sx), y: camera.screenToWorldY(sy) }, BASE_SIZE);
+        const a = pixelToAxial(
+          { x: camera.screenToWorldX(sx), y: camera.screenToWorldY(sy) / VSQUISH },
+          BASE_SIZE,
+        );
         return axialToOffset({ q: Math.round(a.q), r: Math.round(a.r) });
       };
       const tl = corner(0, 0);

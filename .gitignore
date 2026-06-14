@@ -6,3 +6,4 @@ dist/
 .env.*
 tools/geodata-poc/*.hexmap.json
 Hex Samples
+assets/generated/

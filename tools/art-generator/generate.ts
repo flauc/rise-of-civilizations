@@ -11,10 +11,12 @@
 //   bun run tools/art-generator/generate.ts --subset terrain
 //   bun run tools/art-generator/generate.ts --all
 
-import { readFile, writeFile, mkdir, access } from "node:fs/promises";
+import { readFile, writeFile, mkdir, access, unlink } from "node:fs/promises";
 import { constants } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
+const { argv, env, exit, platform } = process as NodeJS.Process;
+
 import {
   type AssetEntry,
   type ImageSize,
@@ -30,7 +32,7 @@ import {
   TERRAIN_SUBSET,
   UNIT_SUBSET,
   BUILDING_SUBSET,
-} from "./config.ts";
+} from "./config";
 
 interface Options {
   model: string;
@@ -78,20 +80,21 @@ Options:
 Environment:
   GEMINI_API_KEY         Required for image generation
   GEMINI_BASE_URL        Optional API base URL override
-                         (default: https://generativelanguage.googleapis.com)
+                         (default: https://generativelanguage.googleapis.com/v1beta)
 `.trim();
 }
 
 function fail(message: string): never {
   console.error(message);
-  process.exit(1);
+  exit(1);
+  throw new Error(message);
 }
 
 function parseArgs(): { entries: AssetEntry[]; options: Options } {
-  const args = process.argv.slice(2);
+  const args = argv.slice(2);
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
     console.log(usage());
-    process.exit(0);
+    exit(0);
   }
 
   if (args.includes("--list")) {
@@ -99,15 +102,15 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
     for (const e of allEntries()) {
       console.log(`  ${e.category.padEnd(8)} ${e.id.padEnd(16)} ${e.name}`);
     }
-    process.exit(0);
+    exit(0);
   }
 
   const entries: AssetEntry[] = [];
   const options: Options = {
     model: DEFAULT_MODEL,
     imageSize: DEFAULT_IMAGE_SIZE,
-    apiKey: process.env.GEMINI_API_KEY ?? "",
-    baseUrl: process.env.GEMINI_BASE_URL ?? "https://generativelanguage.googleapis.com",
+    apiKey: env.GEMINI_API_KEY ?? "",
+    baseUrl: env.GEMINI_BASE_URL ?? "https://generativelanguage.googleapis.com/v1beta",
     referenceDir: DEFAULT_REFERENCE_DIR,
     outDir: DEFAULT_OUTPUT_DIR,
     postProcess: true,
@@ -227,7 +230,7 @@ async function runCmd(command: string, args: string[], stdin?: Buffer): Promise<
 async function commandExists(command: string): Promise<boolean> {
   try {
     // `where` on Windows, `which` elsewhere.
-    const check = process.platform === "win32" ? "where" : "which";
+    const check = platform === "win32" ? "where" : "which";
     await runCmd(check, [command]);
     return true;
   } catch {
@@ -245,6 +248,7 @@ interface GeminiResponse {
     content?: {
       parts?: Array<{
         text?: string;
+        inlineData?: { mimeType: string; data: string };
         inline_data?: { mime_type: string; data: string };
       }>;
     };
@@ -261,7 +265,7 @@ async function generateImage(entry: AssetEntry, options: Options): Promise<Buffe
   const prompt = promptFor(entry);
   const imageData = await toBase64(referenceFile);
 
-  const url = `${options.baseUrl}/v1/models/${options.model}:generateContent?key=${options.apiKey}`;
+  const url = `${options.baseUrl}/models/${options.model}:generateContent?key=${options.apiKey}`;
   const body = {
     contents: [
       {
@@ -274,11 +278,9 @@ async function generateImage(entry: AssetEntry, options: Options): Promise<Buffe
     ],
     generationConfig: {
       responseModalities: ["TEXT", "IMAGE"],
-      responseFormat: {
-        image: {
-          aspectRatio: entry.aspectRatio,
-          imageSize: options.imageSize,
-        },
+      imageConfig: {
+        aspectRatio: entry.aspectRatio,
+        imageSize: options.imageSize,
       },
     },
   };
@@ -295,16 +297,17 @@ async function generateImage(entry: AssetEntry, options: Options): Promise<Buffe
     body: JSON.stringify(body),
   });
 
-  const data = (await res.json()) as GeminiResponse;
-  if (!res.ok || data.error) {
-    throw new Error(`Gemini API error: ${data.error?.message ?? JSON.stringify(data)}`);
+  const data = (await res.json()) as GeminiResponse | null;
+  if (!res.ok || data?.error) {
+    throw new Error(`Gemini API error: ${data?.error?.message ?? JSON.stringify(data)}`);
   }
 
-  const candidate = data.candidates?.[0];
+  const candidate = data?.candidates?.[0];
   const parts = candidate?.content?.parts ?? [];
   for (const part of parts) {
-    if (part.inline_data?.data) {
-      return Buffer.from(part.inline_data.data, "base64");
+    const imageData = part.inlineData?.data ?? part.inline_data?.data;
+    if (imageData) {
+      return Buffer.from(imageData, "base64");
     }
   }
 
@@ -348,11 +351,7 @@ async function postProcessTile(rawPath: string, outPath: string, entry: AssetEnt
   ]);
 
   // Best-effort cleanup of temp files.
-  try {
-    await Promise.all([runCmd("rm", [maskPath]), runCmd("rm", [maskedPath])]);
-  } catch {
-    // Ignore cleanup failures on Windows; temp files can be deleted manually.
-  }
+  await Promise.all([unlink(maskPath).catch(() => {}), unlink(maskedPath).catch(() => {})]);
 }
 
 async function postProcessToken(rawPath: string, outPath: string, entry: AssetEntry, useRembg: boolean): Promise<void> {
@@ -377,7 +376,7 @@ async function postProcessToken(rawPath: string, outPath: string, entry: AssetEn
     "-resize",
     `${entry.size.width}x${entry.size.height}>`,
     "-background",
-    "transparent",
+    "none",
     "-gravity",
     "center",
     "-extent",
@@ -453,7 +452,7 @@ async function main(): Promise<void> {
       await processEntry(entry, options, magickAvailable);
     } catch (err) {
       console.error(`  FAILED: ${err instanceof Error ? err.message : String(err)}`);
-      if (process.env.GENERATOR_FAIL_FAST) process.exit(1);
+      if (env.GENERATOR_FAIL_FAST) exit(1);
     }
   }
 
@@ -462,5 +461,5 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   console.error(err);
-  process.exit(1);
+  exit(1);
 });

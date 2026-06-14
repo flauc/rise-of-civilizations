@@ -3,7 +3,7 @@
   "compilerOptions": {
     "noEmit": true,
     "baseUrl": ".",
-    "types": [],
+    "types": ["node"],
     "paths": {
       "@roc/shared": ["packages/shared/src/index.ts"],
       "@roc/sim": ["packages/sim/src/index.ts"],
@@ -11,5 +11,5 @@
       "@roc/ai": ["packages/ai/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "packages/client/vite.config.ts"]
+  "include": ["packages/*/src", "packages/client/vite.config.ts", "tools/art-generator/*.ts"]
 }

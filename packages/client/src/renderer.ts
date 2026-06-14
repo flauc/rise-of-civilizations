@@ -15,9 +15,21 @@ import { isImageReady, type TerrainAtlas } from "./terrain-assets";
 // Hex size (center-to-corner) in world units at zoom 1.
 export const BASE_SIZE = 26;
 
+// The terrain sprites use a SQUARE-footprint pointy-top hex (width == height),
+// not a regular hex (which is taller than wide). We render on a regular-hex
+// grid but compress the vertical axis by this factor so the on-screen hex
+// footprint becomes square and the art tessellates perfectly.
+export const VSQUISH = Math.sqrt(3) / 2;
+
+/** Footprint width of a tile (== height after squish) for a given hex size. */
+export function tileFootprint(size: number): number {
+  return Math.sqrt(3) * size;
+}
+
 /** World-space pixel center of an offset (col,row) tile. */
 export function tileCenterWorld(col: number, row: number): Point {
-  return axialToPixel(offsetToAxial({ col, row }), BASE_SIZE);
+  const p = axialToPixel(offsetToAxial({ col, row }), BASE_SIZE);
+  return { x: p.x, y: p.y * VSQUISH };
 }
 
 /** Bounding box (world space) of the whole map, including hex extents. */
@@ -33,12 +45,12 @@ export function computeWorldBounds(map: GameMap): Bounds {
     if (c.x > maxX) maxX = c.x;
     if (c.y > maxY) maxY = c.y;
   }
-  const w = BASE_SIZE * Math.sqrt(3);
+  const w = tileFootprint(BASE_SIZE);
   return {
-    minX: minX - w,
-    minY: minY - BASE_SIZE,
-    maxX: maxX + w,
-    maxY: maxY + BASE_SIZE,
+    minX: minX - w / 2,
+    minY: minY - w, // leave room for terrain overhang (mountains)
+    maxX: maxX + w / 2,
+    maxY: maxY + w / 2,
   };
 }
 
@@ -51,7 +63,7 @@ export function screenToTile(
 ): Offset | undefined {
   const world: Point = {
     x: camera.screenToWorldX(sx),
-    y: camera.screenToWorldY(sy),
+    y: camera.screenToWorldY(sy) / VSQUISH, // undo the vertical squish for hit-testing
   };
   const off = axialToOffset(axialRound(pixelToAxial(world, BASE_SIZE)));
   if (off.col < 0 || off.row < 0 || off.col >= map.cols || off.row >= map.rows) {
@@ -91,12 +103,13 @@ export function drawScene(
   ctx.fillRect(0, 0, cssWidth, cssHeight);
 
   const size = BASE_SIZE * camera.zoom;
-  const margin = size * 2;
-  // pre-compute corner unit offsets (pointy-top) at current screen size
+  const footprint = tileFootprint(size); // square hex footprint (width == height)
+  const margin = footprint * 2;
+  // pre-compute corner unit offsets (pointy-top, vertically squished to square)
   const corners: Point[] = [];
   for (let i = 0; i < 6; i++) {
     const a = (Math.PI / 180) * (60 * i - 30);
-    corners.push({ x: size * Math.cos(a), y: size * Math.sin(a) });
+    corners.push({ x: size * Math.cos(a), y: size * Math.sin(a) * VSQUISH });
   }
 
   ctx.lineWidth = Math.max(0.5, size * 0.03);
@@ -132,14 +145,15 @@ export function drawScene(
     }
     const img = opts.terrainAtlas?.images[t.terrain];
     if (img && isImageReady(img)) {
-      // Scale so the sprite height matches the rendered hex height, then anchor
-      // at the bottom of the hex footprint so the upper overhang overlaps tiles
-      // behind.
-      const scale = (3 * size) / img.naturalHeight;
-      const drawW = img.naturalWidth * scale;
+      // The sprite is a 256x384 image whose bottom 256x256 is the square hex
+      // footprint and whose top 128px is transparent overhang. Map the sprite
+      // width to the footprint width, and anchor the footprint's bottom vertex
+      // at sy + footprint/2 so the overhang overlaps the tiles above.
+      const scale = footprint / img.naturalWidth;
+      const drawW = img.naturalWidth * scale; // == footprint
       const drawH = img.naturalHeight * scale;
       const drawX = sx - drawW / 2;
-      const drawY = sy + size - drawH;
+      const drawY = sy + footprint / 2 - drawH;
       ctx.drawImage(img, drawX, drawY, drawW, drawH);
     } else {
       ctx.fillStyle = TERRAIN_COLORS[t.terrain];

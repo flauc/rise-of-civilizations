@@ -1,7 +1,7 @@
 import { cityMaxHp, tileYields, UNIT_DEFS, unitMaxHp, type GameState } from "@roc/sim";
 import { axialNeighbors, axialToOffset, getTile, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
-import { BASE_SIZE, tileCenterWorld } from "./renderer";
+import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
 
 export interface OverlayState {
   viewingPlayerId: number;
@@ -28,7 +28,7 @@ function hexPath(ctx: CanvasRenderingContext2D, sx: number, sy: number, size: nu
   for (let i = 0; i < 6; i++) {
     const a = (Math.PI / 180) * (60 * i - 30);
     const x = sx + size * Math.cos(a);
-    const y = sy + size * Math.sin(a);
+    const y = sy + size * Math.sin(a) * VSQUISH; // match the squished terrain hexes
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }

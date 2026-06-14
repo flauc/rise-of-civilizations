@@ -174,6 +174,28 @@ Add or update tests when changing deterministic simulation behavior. The server 
 - **Do not commit secrets:** `.env` and `.env.*` are gitignored.
 - **External assets:** Prefer public-domain / CC0 sources; record license per asset. See `docs/ASSETS-AND-DATA-SOURCES.md`.
 
+## Art generation
+
+A standalone AI art generator lives in `tools/art-generator/`:
+
+- `tools/art-generator/generate.ts` — CLI that calls Google Gemini Nano Banana 2
+  with a prompt + reference tile, then resizes and masks the result with
+  ImageMagick.
+- `tools/art-generator/config.ts` — asset subsets (terrain, units, buildings),
+  prompt templates, and target sizes.
+
+Typical commands:
+
+```bash
+bun run tools/art-generator/generate.ts --unit archer
+bun run tools/art-generator/generate.ts --tile forest --size 2K
+bun run tools/art-generator/generate.ts --subset units
+bun run tools/art-generator/generate.ts --all
+```
+
+It requires `GEMINI_API_KEY` and ImageMagick (`magick`). See
+`tools/art-generator/README.md` for setup and customization.
+
 ## Deployment notes
 
 - The client is a static Vite build (`dist/`).
