@@ -346,49 +346,31 @@ async function getImageSize(path: string): Promise<{ width: number; height: numb
   return { width: w, height: h };
 }
 
-async function postProcessTile(rawPath: string, outPath: string, entry: AssetEntry, referenceFile: string): Promise<void> {
-  const { width, height } = await getImageSize(rawPath);
+async function hexMaskPath(width: number, height: number, outPath: string): Promise<void> {
+  // Pointy-top hex inscribed in the bottom width×width square of the canvas.
+  // The bottom vertex sits at the bottom edge; the top vertex is at height - width.
+  const cx = width / 2;
+  const topY = height - width;
+  const quarter = width / 4;
+  const threeQuarter = (3 * width) / 4;
+  const polygon = `${cx},${topY} ${width},${topY + quarter} ${width},${topY + threeQuarter} ${cx},${height} 0,${topY + threeQuarter} 0,${topY + quarter}`;
+  await runCmd("magick", ["-size", `${width}x${height}`, "xc:black", "-fill", "white", "-draw", `polygon ${polygon}`, outPath]);
+}
+
+async function postProcessTile(rawPath: string, outPath: string, entry: AssetEntry): Promise<void> {
+  const resizedPath = `${rawPath}.resized.png`;
   const maskPath = `${rawPath}.mask.png`;
 
-  // Resize the reference tile's alpha channel to the generated image size and
-  // use it as an opacity mask so the outer hex corners become transparent.
-  await runCmd("magick", [
-    referenceFile,
-    "-resize",
-    `${width}x${height}!`,
-    "-alpha",
-    "extract",
-    maskPath,
-  ]);
+  // Scale the generated image to the target tile canvas first.
+  await runCmd("magick", [rawPath, "-resize", `${entry.size.width}x${entry.size.height}!`, resizedPath]);
 
-  const maskedPath = `${rawPath}.masked.png`;
-  await runCmd("magick", [rawPath, maskPath, "-compose", "CopyOpacity", "-composite", maskedPath]);
-
-  // Resize to the target canvas, then hard-mask everything outside the bottom
-  // width×width square. This keeps the hex footprint and its bottom-edge shadow
-  // intact while making the top overhang transparent.
-  await runCmd("magick", [
-    maskedPath,
-    "-resize",
-    `${entry.size.width}x${entry.size.height}!`,
-    "-gravity",
-    "South",
-    "-crop",
-    `${entry.size.width}x${entry.size.width}+0+0`,
-    "+repage",
-    "-background",
-    "none",
-    "-gravity",
-    "South",
-    "-extent",
-    `${entry.size.width}x${entry.size.height}`,
-    "-define",
-    "png:color-type=6",
-    outPath,
-  ]);
+  // Create a precise hex mask at the target size and apply it. This removes any
+  // background bleed around the hex edges and makes the top overhang transparent.
+  await hexMaskPath(entry.size.width, entry.size.height, maskPath);
+  await runCmd("magick", [resizedPath, maskPath, "-compose", "CopyOpacity", "-composite", "-define", "png:color-type=6", outPath]);
 
   // Best-effort cleanup of temp files.
-  await Promise.all([unlink(maskPath).catch(() => {}), unlink(maskedPath).catch(() => {})]);
+  await Promise.all([unlink(resizedPath).catch(() => {}), unlink(maskPath).catch(() => {})]);
 }
 
 async function postProcessToken(rawPath: string, outPath: string, entry: AssetEntry, useRembg: boolean): Promise<void> {
@@ -478,7 +460,7 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
       }
 
       if (entry.category === "tile") {
-        await postProcessTile(rawPath, finalPath, entry, referenceFile);
+        await postProcessTile(rawPath, finalPath, entry);
       } else {
         await postProcessToken(rawPath, finalPath, entry, options.useRembg);
       }

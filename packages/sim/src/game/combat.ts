@@ -8,16 +8,9 @@ import {
   PROMOTION_POOL,
   type PromotionId,
 } from "./content";
+import { isRough, terrainDefense } from "./terrain";
 import { civCombatBonus } from "./civs";
 import { applyVictoryCheck } from "./victory";
-
-const ROUGH: ReadonlySet<TerrainType> = new Set<TerrainType>(["forest", "jungle", "hills"]);
-
-function terrainDefense(t: TerrainType): number {
-  if (t === "hills") return 3;
-  if (t === "forest" || t === "jungle") return 2;
-  return 0;
-}
 
 /** Maximum HP for a unit, increasing by 5% per level above 1. */
 export function unitMaxHp(unit: Unit): number {
@@ -35,7 +28,7 @@ function woundFactor(hp: number, maxHp: number): number {
 }
 
 function isOpen(t: TerrainType): boolean {
-  return !ROUGH.has(t);
+  return !isRough(t);
 }
 
 function has(unit: Unit, p: PromotionId): boolean {
@@ -53,9 +46,9 @@ function attackStrength(state: GameState, unit: Unit, defender: Unit, targetTerr
   let s = (ranged ? def.rangedStrength ?? 0 : def.strength) * levelMultiplier(unit);
   s += civCombatBonus(state, unit);
   if (!ranged && has(unit, "shock") && isOpen(targetTerrain)) s += 3;
-  if (!ranged && has(unit, "drill") && ROUGH.has(targetTerrain)) s += 3;
+  if (!ranged && has(unit, "drill") && isRough(targetTerrain)) s += 3;
   if (ranged && has(unit, "accuracy") && isOpen(targetTerrain)) s += 3;
-  if (ranged && has(unit, "barrage") && ROUGH.has(targetTerrain)) s += 3;
+  if (ranged && has(unit, "barrage") && isRough(targetTerrain)) s += 3;
   // Anti-cavalry bonus on the attack.
   if (def.abilities?.includes("bonus_vs_cavalry") && UNIT_DEFS[defender.type].cls === "cavalry") s += 5;
   return s * woundFactor(unit.hp, unitMaxHp(unit));

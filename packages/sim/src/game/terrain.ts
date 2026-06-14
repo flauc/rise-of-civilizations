@@ -53,6 +53,35 @@ export function isWaterTerrain(t: TerrainType): boolean {
   return WATER.has(t);
 }
 
+export const TERRAIN_NAMES: Record<TerrainType, string> = {
+  ocean: "Ocean",
+  coast: "Coast",
+  lake: "Lake",
+  plains: "Plains",
+  grassland: "Grassland",
+  desert: "Desert",
+  tundra: "Tundra",
+  snow: "Snow",
+  forest: "Forest",
+  jungle: "Jungle",
+  hills: "Hills",
+  mountains: "Mountains",
+};
+
+const ROUGH: ReadonlySet<TerrainType> = new Set<TerrainType>(["forest", "jungle", "hills"]);
+
+/** Rough terrain costs more to enter but grants a defensive bonus. */
+export function isRough(t: TerrainType): boolean {
+  return ROUGH.has(t);
+}
+
+/** Defensive combat bonus a defender gets standing on this terrain. */
+export function terrainDefense(t: TerrainType): number {
+  if (t === "hills") return 3;
+  if (t === "forest" || t === "jungle") return 2;
+  return 0;
+}
+
 /** Land movement cost to ENTER a tile; Infinity = impassable to land units. */
 export function moveCost(t: TerrainType): number {
   if (isWaterTerrain(t) || t === "mountains") return Infinity;
