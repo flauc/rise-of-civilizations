@@ -4,7 +4,7 @@
   "description": "A turn-based 4X strategy game from the Ancient Era to the Age of Exploration.",
   "start_url": "./",
   "display": "standalone",
-  "orientation": "landscape",
+  "orientation": "any",
   "background_color": "#0a1624",
   "theme_color": "#0a1624",
   "categories": ["games", "strategy"],
