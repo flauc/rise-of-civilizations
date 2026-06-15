@@ -360,7 +360,7 @@ const RENDERERS: Record<WikiCategory, () => string> = {
   victory: renderVictory,
 };
 
-export function createWiki(): { open(): void; close(): void; toggle(): void } {
+export function createWiki(): { open(): void; close(): void; toggle(): void; isOpen(): boolean } {
   let open = false;
   let category: WikiCategory = "gameplay";
 
@@ -467,5 +467,6 @@ export function createWiki(): { open(): void; close(): void; toggle(): void } {
       root.classList.toggle("hidden", !open);
       if (open) render();
     },
+    isOpen: () => open,
   };
 }

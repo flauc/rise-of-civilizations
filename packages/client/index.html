@@ -75,9 +75,9 @@
       }
       /* Top status bar — stretches from the left to the leader avatar */
       #topbar {
-        top: 6px;
-        left: 6px;
-        right: 96px;
+        top: max(6px, env(safe-area-inset-top));
+        left: max(6px, env(safe-area-inset-left));
+        right: calc(96px + env(safe-area-inset-right));
         transform: none;
         max-width: none;
         display: flex;
@@ -88,13 +88,14 @@
         padding: 6px 12px;
         border-radius: 12px;
         font-size: 13px;
+        z-index: 20;
       }
       #leader-avatar {
         position: fixed;
-        top: 6px;
-        right: 6px;
+        top: max(6px, env(safe-area-inset-top));
+        right: max(6px, env(safe-area-inset-right));
         width: 84px;
-        z-index: 12;
+        z-index: 21;
         display: flex;
         flex-direction: column;
       }
@@ -211,15 +212,17 @@
       }
       /* Selected-unit panel */
       #unit-panel {
-        left: 12px;
-        bottom: 12px;
+        left: max(12px, env(safe-area-inset-left));
+        bottom: max(12px, env(safe-area-inset-bottom));
         min-width: 180px;
+        z-index: 10;
       }
       /* Selected-tile panel (shares the bottom-left slot with the unit panel) */
       #tile-panel {
-        left: 12px;
-        bottom: 12px;
+        left: max(12px, env(safe-area-inset-left));
+        bottom: max(12px, env(safe-area-inset-bottom));
         width: 240px;
+        z-index: 10;
       }
       .tinfo-yields {
         display: flex;
@@ -259,8 +262,8 @@
          bottom-right corner so it never covers the map under the cursor */
       #tile-tip {
         position: fixed;
-        right: 12px;
-        bottom: 178px;
+        right: max(12px, env(safe-area-inset-right));
+        bottom: calc(178px + env(safe-area-inset-bottom));
         z-index: 30;
         pointer-events: none;
         background: rgba(8, 16, 26, 0.92);
@@ -283,9 +286,10 @@
       }
       /* City panel */
       #city-panel {
-        right: 12px;
-        top: 76px;
+        right: max(12px, env(safe-area-inset-right));
+        top: calc(132px + env(safe-area-inset-top));
         width: 264px;
+        z-index: 10;
       }
       .ygrid {
         display: grid;
@@ -300,10 +304,11 @@
         position: fixed;
         left: 50%;
         transform: translateX(-50%);
-        bottom: 64px;
+        bottom: calc(64px + env(safe-area-inset-bottom));
         font-size: 12px;
         padding: 5px 12px;
         opacity: 0.85;
+        z-index: 25;
       }
       #city-panel select {
         width: 100%;
@@ -331,20 +336,22 @@
         position: fixed;
         left: 50%;
         transform: translateX(-50%);
-        bottom: 12px;
+        bottom: max(12px, env(safe-area-inset-bottom));
         font-size: 15px;
         padding: 12px 18px;
+        z-index: 25;
       }
       /* Minimap */
       #minimap {
         position: fixed;
-        right: 12px;
-        bottom: 12px;
+        right: max(12px, env(safe-area-inset-right));
+        bottom: max(12px, env(safe-area-inset-bottom));
         border-radius: 50%;
         background: #0a1624;
         touch-action: none;
         cursor: pointer;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+        z-index: 25;
       }
       /* Victory / defeat overlay */
       #gameover {
@@ -443,6 +450,7 @@
         overflow: hidden;
         display: flex;
         flex-direction: column;
+        z-index: 41;
       }
       #techtree > div:first-child {
         flex: none;
@@ -621,69 +629,259 @@
       #village-dialog .btn {
         padding: 8px 20px;
       }
-      /* log */
+      /* log — hidden on the HUD; shown via the Game Log dialog */
       #log {
+        display: none;
+      }
+      #log-overlay {
         position: fixed;
-        left: 12px;
-        top: 64px;
-        max-width: 320px;
-        font-size: 12px;
-        color: #9fc0dc;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        opacity: 0;
         pointer-events: none;
-        text-shadow: 0 1px 2px #000;
+        transition: opacity 0.2s;
+        z-index: 60;
+      }
+      #log-overlay.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #log-dialog {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: min(520px, calc(100vw - 32px));
+        max-height: 80vh;
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 14px;
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 61;
+      }
+      #log-dialog.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .log-dialog-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 12px;
+      }
+      #log-dialog-content {
+        flex: 1;
+        overflow: auto;
+        font-size: 13px;
+        line-height: 1.5;
+        color: #cfe3f7;
+      }
+      #log-dialog-content div {
+        padding: 6px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      #log-dialog-content div:last-child {
+        border-bottom: none;
+      }
+      #log-dialog .btn {
+        margin-top: 14px;
+        align-self: center;
       }
       .hidden {
         display: none !important;
       }
 
+      #bottom-bar {
+        display: none;
+      }
+
       /* ---- mobile / narrow screens: panels become bottom sheets ---- */
       @media (max-width: 640px) {
         #topbar {
-          font-size: 12px;
-          gap: 6px 10px;
-          padding: 6px 8px;
-          right: 62px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 6px 10px;
+          top: max(6px, env(safe-area-inset-top));
+          left: calc(54px + env(safe-area-inset-left));
+          right: max(6px, env(safe-area-inset-right));
+          font-size: 13px;
         }
-        .tb-civ {
-          max-width: 28vw;
-        }
-        .tb-pill {
-          max-width: 90px;
-        }
-        #leader-avatar {
-          width: 50px;
-        }
-        #leader-avatar img {
-          width: 50px;
-          height: 58px;
-        }
-        #leader-avatar .leader-avatar-label {
+        #topbar .tb-grp:nth-child(2),
+        #topbar .tb-grp:nth-child(3) {
           display: none;
         }
+        .tb-civ {
+          max-width: 58vw;
+        }
+        #minimap {
+          display: none;
+        }
+        #leader-avatar {
+          display: flex;
+          position: fixed;
+          top: max(6px, env(safe-area-inset-top));
+          left: max(6px, env(safe-area-inset-left));
+          right: auto;
+          width: 44px;
+          z-index: 25;
+        }
+        #leader-avatar img {
+          width: 44px;
+          height: 52px;
+          border-radius: 8px;
+        }
+        #bottom-bar {
+          position: fixed;
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          bottom: max(6px, env(safe-area-inset-bottom));
+          right: max(6px, env(safe-area-inset-right));
+          left: auto;
+          top: auto;
+          padding: 4px 6px;
+          border-radius: 10px;
+          z-index: 25;
+          transform: none;
+        }
+        .bb-grp {
+          display: flex;
+          gap: 4px;
+        }
+        .bb-chip,
+        .bb-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 3px;
+          min-width: 28px;
+          height: 32px;
+          padding: 0 4px;
+          border-radius: 8px;
+          background: #213a52;
+          border: 1px solid var(--edge);
+          color: #eaf3fb;
+          font: inherit;
+          font-size: 10px;
+          line-height: 1;
+          cursor: pointer;
+          user-select: none;
+          position: relative;
+          overflow: hidden;
+        }
+        .bb-chip {
+          cursor: default;
+          background: #16293c;
+        }
+        .bb-btn::after {
+          content: "";
+          position: absolute;
+          left: 0;
+          bottom: 0;
+          height: 2px;
+          width: var(--p, 0%);
+          background: var(--accent);
+        }
+        .bb-btn[data-bb="civics"]::after {
+          background: #c07ad0;
+        }
+        .bb-btn i {
+          font-style: normal;
+          color: #9fc0dc;
+          font-size: 10px;
+        }
         #unit-panel,
-        #tile-panel,
-        #city-panel {
-          left: 6px;
-          right: 6px;
+        #tile-panel {
+          left: max(6px, env(safe-area-inset-left));
+          right: max(6px, env(safe-area-inset-right));
           width: auto;
           min-width: 0;
           top: auto;
-          bottom: 100px;
-          max-height: 46vh;
+          bottom: calc(74px + env(safe-area-inset-bottom));
+          max-height: min(46vh, 320px);
           overflow: auto;
+          z-index: 10;
+        }
+        #city-panel {
+          left: max(6px, env(safe-area-inset-left));
+          right: max(6px, env(safe-area-inset-right));
+          width: auto;
+          min-width: 0;
+          top: auto;
+          bottom: calc(74px + env(safe-area-inset-bottom));
+          max-height: none;
+          overflow: visible;
+          z-index: 10;
+        }
+        #endturn {
+          left: max(6px, env(safe-area-inset-left));
+          right: auto;
+          bottom: max(6px, env(safe-area-inset-bottom));
+          transform: none;
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          padding: 0;
+          font-size: 0;
+        }
+        #endturn::before {
+          content: "⏵";
+          font-size: 20px;
+          line-height: 1;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+        }
+        #endturn2 {
+          left: calc(54px + env(safe-area-inset-left));
+          right: auto;
+          bottom: max(6px, env(safe-area-inset-bottom));
+          transform: none;
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          padding: 0;
+          font-size: 0;
+        }
+        #endturn2::before {
+          content: "⏭";
+          font-size: 20px;
+          line-height: 1;
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
         }
         #research,
         #civics,
         #religion,
-        #production {
+        #production,
+        #save-modal {
           width: calc(100vw - 20px);
+          max-width: calc(100vw - 20px);
         }
-        #minimap {
-          width: 116px;
+        #save-modal {
+          padding: 12px;
+        }
+        #save-modal .btn {
+          width: 100%;
         }
         #log {
-          max-width: 50vw;
+          top: calc(56px + env(safe-area-inset-top));
+          left: max(6px, env(safe-area-inset-left));
+          max-width: 60vw;
           font-size: 11px;
+        }
+        #tile-tip {
+          display: none;
         }
         .btn {
           padding: 9px 13px;

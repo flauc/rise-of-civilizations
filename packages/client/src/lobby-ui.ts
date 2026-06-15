@@ -145,8 +145,21 @@ export function createLobby(onStart: (session: Session) => void): void {
     .showcase-art-placeholder{position:absolute;inset:0;border:2px dashed rgba(255,255,255,.15);border-radius:16px;display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.45);font-size:13px;text-align:center;background:rgba(255,255,255,.03)}
     .showcase-reroll{position:absolute;top:48px;right:56px;z-index:2;margin-top:338px;width:260px}
     @media(max-width:860px){
-      .lobby-left{width:100%;border-right:none}
-      .lobby-right{display:none}
+      #lobby{overflow-y:auto}
+      .lobby-layout{flex-direction:column;height:auto;min-height:100%}
+      .lobby-left{width:100%;border-right:none;padding:max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));overflow:visible}
+      .lobby-right{position:relative;flex:none;width:100%;padding:24px max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left));justify-content:flex-start;overflow:visible;order:-1;background:radial-gradient(circle at 50% 0%,#1a3a52 0%,#0b1622 70%)}
+      .showcase{max-width:none}
+      .showcase-art-wrapper{position:static;width:100%;max-width:260px;height:auto;margin:0 auto 16px;border-radius:14px}
+      .showcase-art{height:auto;border-radius:14px}
+      .showcase-civ{font-size:34px}
+      .showcase-leader{font-size:20px}
+      .showcase-quote{font-size:16px;margin-top:14px}
+      .showcase-ability{margin-top:18px;padding:14px}
+      .showcase-reroll{position:static;width:100%;max-width:260px;margin:16px auto 0;order:1}
+      #sp-civ-desc{display:none}
+      .menu-btn{padding:14px 16px}
+      .menu-in{padding:10px 12px}
     }`;
   document.head.appendChild(style);
   document.body.appendChild(root);
@@ -231,8 +244,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         <button class="menu-btn" data-screen="mp">Multiplayer</button>
         <button class="menu-btn" data-screen="load">Load Game</button>
         <button class="menu-btn" id="lobby-wiki">Wiki</button>
-      </div>
-      <div class="lobby-version">Turn-based 4X strategy</div>`;
+      </div>`;
     left.querySelectorAll<HTMLButtonElement>("[data-screen]").forEach((el) =>
       el.addEventListener("click", () => showScreen(el.dataset.screen as Screen)),
     );

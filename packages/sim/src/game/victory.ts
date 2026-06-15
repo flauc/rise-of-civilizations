@@ -30,6 +30,18 @@ export function checkVictory(state: GameState): GameOver | null {
     return { winnerId: alive[0]!.id, condition: "domination" };
   }
 
+  // Domination — last major civ standing (humans + AI, excluding barbarians).
+  const majors = state.players.filter((p) => !p.isBarbarian);
+  const aliveMajor = majors.filter((p) => isAlive(state, p));
+  if (majors.length > 1 && aliveMajor.length === 1) {
+    return { winnerId: aliveMajor[0]!.id, condition: "domination" };
+  }
+
+  // Extinction — every major civilization has been wiped out.
+  if (aliveMajor.length === 0 && majors.length > 0) {
+    return { condition: "extinction" };
+  }
+
   // Domination — conquest: one non-barbarian player controls every city on the map.
   // Require the sole owner to hold at least two cities so the game doesn't end
   // immediately on turn 1 before every civ has had a chance to found its capital.
@@ -92,7 +104,11 @@ export function applyVictoryCheck(state: GameState): void {
   const result = checkVictory(state);
   if (result) {
     state.gameOver = result;
-    const winner = state.players.find((p) => p.id === result.winnerId);
-    state.log.push(`${winner?.name ?? "Someone"} wins by ${result.condition}!`);
+    if (result.condition === "extinction") {
+      state.log.push("Every civilization has fallen — there is no winner.");
+    } else {
+      const winner = state.players.find((p) => p.id === result.winnerId);
+      state.log.push(`${winner?.name ?? "Someone"} wins by ${result.condition}!`);
+    }
   }
 }

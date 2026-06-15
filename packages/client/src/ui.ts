@@ -251,6 +251,7 @@ function prodName(item: ProductionItem): string {
 
 export function createUI(handlers: UIHandlers): UI {
   const topbar = div("topbar", "panel");
+  const bottomBar = div("bottom-bar", "panel");
   const leaderAvatar = div("leader-avatar", "");
   const unitPanel = div("unit-panel", "panel hidden");
   const tilePanel = div("tile-panel", "panel hidden");
@@ -277,6 +278,21 @@ export function createUI(handlers: UIHandlers): UI {
     `<button class="btn primary" id="village-ok">OK</button>`;
   const villageMsg = villageDialog.querySelector<HTMLDivElement>("#village-msg")!;
   const villageOk = villageDialog.querySelector<HTMLButtonElement>("#village-ok")!;
+
+  const logOverlay = div("log-overlay", "");
+  const logDialog = div("log-dialog", "");
+  logDialog.innerHTML =
+    `<div class="log-dialog-title">Game Log</div>` +
+    `<div class="log-dialog-content" id="log-dialog-content"></div>` +
+    `<button class="btn primary" id="log-close">Close</button>`;
+  const logDialogContent = logDialog.querySelector<HTMLDivElement>("#log-dialog-content")!;
+  const logClose = logDialog.querySelector<HTMLButtonElement>("#log-close")!;
+  const hideLogDialog = (): void => {
+    logOverlay.classList.remove("show");
+    logDialog.classList.remove("show");
+  };
+  logClose.addEventListener("click", hideLogDialog);
+  logOverlay.addEventListener("click", hideLogDialog);
 
   const endturn = document.createElement("button");
   endturn.id = "endturn";
@@ -311,6 +327,24 @@ export function createUI(handlers: UIHandlers): UI {
   let godModeEnabled = false;
   let godModeOpen = false;
   let lastView: UIView | null = null;
+
+  const closePickers = (state: GameState): void => {
+    researchOpen = false;
+    civicsOpen = false;
+    religionOpen = false;
+    productionOpen = false;
+    techtreeOpen = false;
+    renderResearch(state);
+    renderCivics(state);
+    renderReligion(state);
+    renderProduction(state);
+    renderTechTree(state);
+  };
+  const closeSideSheets = (): void => {
+    empire.close();
+    diplomacy.close();
+    wiki.close();
+  };
 
   const showVillageDialog = (msg: string): void => {
     villageMsg.textContent = msg;
@@ -411,44 +445,103 @@ export function createUI(handlers: UIHandlers): UI {
     }
 
     topbar.querySelector<HTMLButtonElement>("#research-btn")!.addEventListener("click", () => {
+      const opening = !researchOpen;
       researchOpen = !researchOpen;
       civicsOpen = false;
+      religionOpen = false;
+      if (opening) {
+        closeSideSheets();
+        menuOpen = false;
+        renderMenu(state);
+      }
       renderResearch(state);
       renderCivics(state);
+      renderReligion(state);
     });
     topbar.querySelector<HTMLButtonElement>("#civics-btn")!.addEventListener("click", () => {
+      const opening = !civicsOpen;
       civicsOpen = !civicsOpen;
       researchOpen = false;
       religionOpen = false;
+      if (opening) {
+        closeSideSheets();
+        menuOpen = false;
+        renderMenu(state);
+      }
       renderCivics(state);
       renderResearch(state);
       renderReligion(state);
     });
     topbar.querySelector<HTMLButtonElement>("#religion-btn")!.addEventListener("click", () => {
+      const opening = !religionOpen;
       religionOpen = !religionOpen;
       researchOpen = false;
       civicsOpen = false;
+      if (opening) {
+        closeSideSheets();
+        menuOpen = false;
+        renderMenu(state);
+      }
       renderReligion(state);
       renderResearch(state);
       renderCivics(state);
     });
     topbar.querySelector<HTMLButtonElement>("#empire-btn")!.addEventListener("click", () => {
-      researchOpen = false;
-      civicsOpen = false;
-      religionOpen = false;
-      renderResearch(state);
-      renderCivics(state);
-      renderReligion(state);
+      const opening = !empire.isOpen();
+      if (opening) {
+        closeSideSheets();
+        closePickers(state);
+        menuOpen = false;
+        renderMenu(state);
+      }
       empire.toggle(state, viewerId);
     });
     topbar.querySelector<HTMLButtonElement>("#diplo-pill")!.addEventListener("click", () => {
+      const opening = !diplomacy.isOpen();
+      if (opening) {
+        closeSideSheets();
+        closePickers(state);
+        menuOpen = false;
+        renderMenu(state);
+      }
       diplomacy.toggleContacts(state, viewerId);
     });
     topbar.querySelector<HTMLButtonElement>("#menu-btn")!.addEventListener("click", () => {
+      const opening = !menuOpen;
+      if (opening) {
+        closeSideSheets();
+        closePickers(state);
+      }
       menuOpen = !menuOpen;
       menuView = "menu";
       if (menuOpen) handlers.onMenuOpen();
       renderMenu(state);
+    });
+
+    // Mobile bottom bar: mirrors the topbar actions as icon-only buttons.
+    bottomBar.innerHTML =
+      `<div class="bb-grp">` +
+      `<span class="bb-chip" title="Gold">🪙 ${Math.floor(player.gold)}</span>` +
+      `<button class="bb-btn" data-bb="research" title="Research" style="--p:${researchPct}%"><span>🔬</span><i>+${sci}</i></button>` +
+      `<button class="bb-btn" data-bb="civics" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%"><span>🏛️</span><i>+${cul}</i></button>` +
+      `<button class="bb-btn" data-bb="religion" title="Religion"><span>☮️</span><i>${Math.floor(player.faith)}</i></button>` +
+      `<button class="bb-btn" data-bb="empire" title="Empire"><span>🏙️</span><i>${cityCount}</i></button>` +
+      `<button class="bb-btn" data-bb="diplo" title="Diplomacy"><span>🕊️</span><i>${player.met.length}</i></button>` +
+      `<button class="bb-btn" data-bb="menu" title="Menu"><span>☰</span></button>` +
+      `</div>`;
+    const bbMap: Record<string, string> = {
+      research: "#research-btn",
+      civics: "#civics-btn",
+      religion: "#religion-btn",
+      empire: "#empire-btn",
+      diplo: "#diplo-pill",
+      menu: "#menu-btn",
+    };
+    bottomBar.querySelectorAll<HTMLButtonElement>("[data-bb]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const target = bbMap[el.dataset.bb ?? ""];
+        if (target) topbar.querySelector<HTMLButtonElement>(target)?.click();
+      });
     });
   };
 
@@ -472,6 +565,7 @@ export function createUI(handlers: UIHandlers): UI {
         `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
         `<button class="btn primary" id="menu-save">Save Game</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki</button>` +
+        `<button class="btn" id="menu-log">📜 Game Log</button>` +
         godMenuBtn +
         `<button class="btn" id="menu-leave">Leave Game</button>` +
         `</div>`;
@@ -499,13 +593,26 @@ export function createUI(handlers: UIHandlers): UI {
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-wiki")!.addEventListener("click", () => {
         menuOpen = false;
+        closeSideSheets();
+        closePickers(state);
         renderMenu(state);
         wiki.open();
+      });
+      saveModal.querySelector<HTMLButtonElement>("#menu-log")!.addEventListener("click", () => {
+        logDialogContent.innerHTML = state.log
+          .slice()
+          .reverse()
+          .map((entry) => `<div>${escapeHtml(entry)}</div>`)
+          .join("");
+        logOverlay.classList.add("show");
+        logDialog.classList.add("show");
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-enable-god")?.addEventListener("click", () => {
         godModeEnabled = true;
         godModeOpen = true;
         menuOpen = false;
+        closeSideSheets();
+        closePickers(state);
         renderMenu(state);
         if (lastView) {
           renderTilePanel(lastView.state, lastView.selectedTile ?? null, lastView.viewerId, lastView.cheatsEnabled ?? false);
@@ -514,6 +621,8 @@ export function createUI(handlers: UIHandlers): UI {
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-god")?.addEventListener("click", () => {
         menuOpen = false;
+        closeSideSheets();
+        closePickers(state);
         renderMenu(state);
         godModeOpen = true;
         if (lastView) renderGodMode(lastView);
@@ -611,6 +720,9 @@ export function createUI(handlers: UIHandlers): UI {
     research.querySelector<HTMLButtonElement>("#open-techtree")!.addEventListener("click", () => {
       researchOpen = false;
       research.classList.add("hidden");
+      closeSideSheets();
+      menuOpen = false;
+      renderMenu(state);
       techtreeOpen = true;
       renderTechTree(state);
     });
@@ -1259,6 +1371,9 @@ export function createUI(handlers: UIHandlers): UI {
     cityPanel.querySelector<HTMLButtonElement>("#open-prod")!.addEventListener("click", () => {
       prodCityId = city.id;
       productionOpen = true;
+      closeSideSheets();
+      menuOpen = false;
+      renderMenu(state);
       renderProduction(state);
     });
   };
@@ -1276,12 +1391,18 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
     const viewerId = state.players[state.currentPlayerIndex]?.id;
-    const winner = state.players.find((p) => p.id === state.gameOver!.winnerId);
+    const gameOver = state.gameOver;
+    const winner = gameOver.winnerId !== undefined ? state.players.find((p) => p.id === gameOver.winnerId) : undefined;
     const won = winner?.id === viewerId;
     gameover.classList.remove("hidden");
+    const title = gameOver.condition === "extinction" ? "Draw" : won ? "Victory!" : "Defeat";
+    const sub =
+      gameOver.condition === "extinction"
+        ? `<div class="sub">Every civilization has fallen on turn ${state.turn}.</div>`
+        : `<div class="sub"><b style="color:${winner?.color}">${winner?.name ?? "Someone"}</b> wins by ${gameOver.condition} on turn ${state.turn}.</div>`;
     gameover.innerHTML =
-      `<div class="title" style="color:${won ? "#ffd967" : "#e0533d"}">${won ? "Victory!" : "Defeat"}</div>` +
-      `<div class="sub"><b style="color:${winner?.color}">${winner?.name ?? "Someone"}</b> wins by ${state.gameOver.condition} on turn ${state.turn}.</div>` +
+      `<div class="title" style="color:${won ? "#ffd967" : "#e0533d"}">${title}</div>` +
+      sub +
       `<button class="btn primary" id="go-menu" style="font-size:15px;padding:10px 18px">Back to Menu</button>`;
     gameover.querySelector<HTMLButtonElement>("#go-menu")?.addEventListener("click", () => location.reload());
   };
@@ -1327,6 +1448,26 @@ export function createUI(handlers: UIHandlers): UI {
       renderGameOver(view.state);
       renderMenu(view.state);
       renderAction(view);
+
+      // Hide the docked city/unit/tile panels whenever a higher-layer sheet or modal
+      // is open so they don't peek through or fight for pointer events.
+      const overlayOpen =
+        empire.isOpen() ||
+        diplomacy.isOpen() ||
+        wiki.isOpen() ||
+        researchOpen ||
+        civicsOpen ||
+        religionOpen ||
+        productionOpen ||
+        techtreeOpen ||
+        menuOpen ||
+        godModeOpen;
+      if (overlayOpen) {
+        cityPanel.classList.add("hidden");
+        unitPanel.classList.add("hidden");
+        tilePanel.classList.add("hidden");
+        tileTip.classList.add("hidden");
+      }
 
       // Show a modal dialog for newly discovered village rewards.
       if (!logInitialized) {

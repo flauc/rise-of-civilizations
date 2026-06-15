@@ -67,8 +67,9 @@ export interface City {
 }
 
 export interface GameOver {
-  winnerId: number;
-  condition: "domination" | "score" | "religious";
+  /** Undefined when no civilization survived (draw / extinction). */
+  winnerId?: number;
+  condition: "domination" | "score" | "religious" | "extinction";
 }
 
 export interface Player {

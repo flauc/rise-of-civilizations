@@ -77,6 +77,7 @@ const STYLE = `
 export interface Diplomacy {
   render(state: GameState, viewerId: number): void;
   toggleContacts(state: GameState, viewerId: number): void;
+  close(): void;
   isOpen(): boolean;
 }
 
@@ -346,6 +347,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       panel.classList.toggle("hidden", !open);
       if (open) { selected = null; resultMsg = ""; renderContacts(state, viewerId); }
     },
+    close,
     isOpen: () => open,
   };
 }

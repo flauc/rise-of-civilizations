@@ -72,4 +72,28 @@ describe("victory", () => {
     const state = createGame({ seed: "vic3", cols: 36, rows: 24, barbarians: false });
     expect(checkVictory(state)).toBeNull();
   });
+
+  it("declares domination when only one major civ remains (even if no humans)", () => {
+    const state = createGame({ seed: "vic-ai", cols: 36, rows: 24, barbarians: false, humanSlots: 0, playerCount: 2 });
+    // Wipe out player 1 entirely.
+    for (const u of unitsOf(state, 1)) state.units.delete(u.id);
+    for (const c of citiesOf(state, 1)) state.cities.delete(c.id);
+    const v = checkVictory(state);
+    expect(v).toEqual({ winnerId: 0, condition: "domination" });
+  });
+
+  it("declares extinction when every major civ is wiped out", () => {
+    const state = createGame({ seed: "vic-ext", cols: 36, rows: 24, barbarians: false, humanSlots: 0, playerCount: 2 });
+    // Wipe out every major player.
+    for (const p of state.players) {
+      if (p.isBarbarian) continue;
+      for (const u of unitsOf(state, p.id)) state.units.delete(u.id);
+      for (const c of citiesOf(state, p.id)) state.cities.delete(c.id);
+    }
+    const v = checkVictory(state);
+    expect(v).toEqual({ condition: "extinction" });
+    applyVictoryCheck(state);
+    expect(state.gameOver).toEqual({ condition: "extinction" });
+    expect(state.log[state.log.length - 1]).toContain("Every civilization has fallen");
+  });
 });

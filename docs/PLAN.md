@@ -7,6 +7,8 @@ A turn-based 4X strategy game (a "Civilization" clone) spanning the **Ancient Er
 - **[TECHNOLOGIES.md](TECHNOLOGIES.md)** — the 85-tech science tree (prereqs, unlocks, eurekas) + civics summary.
 - **[RESOURCES-AND-AMENITIES.md](RESOURCES-AND-AMENITIES.md)** — natural resources (bonus, luxury, strategic), tile yields, and unit/building requirements.
 - **[GREAT-PEOPLE.md](GREAT-PEOPLE.md)** — Great People rosters by class + the Legends (heroes) roster.
+- **[PROMOTIONS.md](PROMOTIONS.md)** — the XP-earned, always-on promotion trees per unit class.
+- **[UNIT-ABILITIES.md](UNIT-ABILITIES.md)** — active, player-triggered combat abilities (Guard, Charge, Fire & Retreat, …) — *design proposal*.
 - **[ASSETS-AND-DATA-SOURCES.md](ASSETS-AND-DATA-SOURCES.md)** — where map geodata & free art/audio come from, with licenses.
 
 ---
@@ -168,6 +170,12 @@ The roster is intentionally rich. Units have: a **class**, **combat strength**, 
 - **Ranged units** strike without taking retaliation; **melee** trades damage.
 - **Zone of control**, **flanking bonuses**, **city sieges** (walls absorb, must be ground down by siege).
 - **Combat is HP-based** (units have hit points; not one-shot) → tactical depth, retreats, healing.
+- **Active special abilities** — a player-triggered tactical layer on top of passive modifiers:
+  spear infantry **Guard** (brace for defense, hard-counter cavalry), cavalry **Charge** (ride
+  *through* a target to the tile behind), horse archers **Fire & Retreat** (Parthian shot), plus
+  Testudo, Shield Wall, Trample, Skirmish, Sunder, Pierce, Emplace, and more. Each class gets a
+  distinct verb that forms a rock-paper-scissors counter web. **Full catalogue & framework:**
+  [UNIT-ABILITIES.md](UNIT-ABILITIES.md).
 
 ### 3.8 Religion
 - A **Great Prophet** founds a religion → choose a Pantheon belief + Founder/Follower/Enhancer beliefs.

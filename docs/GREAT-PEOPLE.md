@@ -144,6 +144,11 @@ Two related "character" systems:
 
 Heroes are **recruitable, powerful, limited units** central to the game's identity. They're earned through a **recruitment path** (faith/culture points, a wonder, or a quest), have **signature abilities**, and a **lifespan/cooldown** so they stay precious and don't snowball. On by default; toggleable off per game.
 
+> The **passive auras** in the table below are the hero's always-on effect. Combat Legends *also*
+> get a **signature *active* ability** (a triggered battlefield power) — see
+> [UNIT-ABILITIES.md §9](UNIT-ABILITIES.md) for the curated roster (e.g. Leonidas → Last Stand,
+> Hannibal → Grand Ambush, Genghis → Terror).
+
 **Type:** `land` / `naval` / `support`. **Recruit via:** the path that fits the hero (Faith, Culture, Conquest, Wonder, Quest). **Lifespan:** turns active before they retire (some rechargeable).
 
 | Legend | Era | Type | Signature ability | Recruit via |
