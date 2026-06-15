@@ -14,9 +14,12 @@ import {
   MILITARY_CLASSES,
   SPECIALIST_DEFS,
   SPECIALIST_IDS,
+  BRIBE_TURNS,
+  BARBARIAN_BRIBE_BASE,
+  barbarianRecruitCost,
 } from "@roc/sim";
 import { WONDER_DEFS, MASTER_CRAFTSMEN, getCiv } from "@roc/data";
-import type { TerrainType } from "@roc/sim";
+import type { TerrainType, Unit } from "@roc/sim";
 
 export type WikiCategory =
   | "civilizations"
@@ -137,6 +140,15 @@ function renderGameplay(): string {
     section(
       "Exploration",
       `<p>Send Scouts and Warriors to reveal the map. Ancient villages reward the first player to enter them, while barbarian camps spawn raiders until cleared.</p>`,
+    ) +
+    section(
+      "Barbarians & Parley",
+      `<p>Barbarian camps spawn raiders that attack everyone. You can fight them — clearing a camp with a military unit pays a gold reward — but once you research <b>Parley</b> (a very early technology, branching off Foraging) you gain two diplomatic options whenever one of your units stands <b>adjacent</b> to a barbarian.</p>` +
+        `<ul>` +
+        `<li><b>Bribe the war-band</b> — buy a <b>${BRIBE_TURNS}-turn truce</b>. Every barbarian from that camp (the whole war-band, including raiders it spawns later) stops attacking <i>you</i> for the duration. Your first bribe costs <b>${BARBARIAN_BRIBE_BASE}🪙</b>, and <b>each subsequent bribe doubles in price</b> (${BARBARIAN_BRIBE_BASE} → ${BARBARIAN_BRIBE_BASE * 2} → ${BARBARIAN_BRIBE_BASE * 4} → …), so peace gets expensive fast.</li>` +
+        `<li><b>Recruit the unit</b> — pay a larger, one-off fee to take the barbarian into your own army. The price scales with the unit's type and level: about <b>5× its build cost</b>, plus 40% per level. For example, a Warrior costs <b>${barbarianRecruitCost({ type: "warrior", level: 1 } as Unit)}🪙</b> and a Slinger <b>${barbarianRecruitCost({ type: "slinger", level: 1 } as Unit)}🪙</b>; a veteran (level 2) Warrior costs <b>${barbarianRecruitCost({ type: "warrior", level: 2 } as Unit)}🪙</b>.</li>` +
+        `</ul>` +
+        `<p>A bribe is a cheap, temporary shield against a horde you can't yet beat; recruiting is a pricier way to turn a raider into a soldier of your own. Truces are per-player — bribing a war-band does not stop it raiding your rivals.</p>`,
     )
   );
 }

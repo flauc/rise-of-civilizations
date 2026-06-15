@@ -43,6 +43,8 @@ import {
   RESOURCE_SUBSET,
   UI_SUBSET,
   ICON_SUBSET,
+  VILLAGE_REWARD_SUBSET,
+  BARBARIAN_REWARD_SUBSET,
 } from "./config";
 
 interface Options {
@@ -76,6 +78,8 @@ Usage:
   bun run tools/art-generator/generate.ts --resource wheat
   bun run tools/art-generator/generate.ts --ui btn_next_move
   bun run tools/art-generator/generate.ts --icon app_icon
+  bun run tools/art-generator/generate.ts --village-reward village_reward_tech
+  bun run tools/art-generator/generate.ts --barbarian-reward barb_camp_cleared
   bun run tools/art-generator/generate.ts --subset terrain
   bun run tools/art-generator/generate.ts --subset units
   bun run tools/art-generator/generate.ts --subset buildings
@@ -99,7 +103,9 @@ Options:
   --resource <id>        Generate a specific resource icon
   --ui <id>              Generate a specific UI element (e.g. btn_next_move)
   --icon <id>            Generate a specific app icon (e.g. app_icon)
-  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, all
+  --village-reward <id>  Generate a specific village reward illustration (e.g. village_reward_tech)
+  --barbarian-reward <id> Generate a specific barbarian reward illustration (e.g. barb_camp_cleared)
+  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, all
   --list                 List all available asset IDs and exit
   --model <id>           Gemini model (default: ${DEFAULT_MODEL})
   --size <512|1K|2K|4K>  Gemini image size (default: ${DEFAULT_IMAGE_SIZE})
@@ -238,6 +244,20 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--village-reward": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "village_reward") fail(`Unknown village reward: ${id}`);
+        entries.push(e);
+        break;
+      }
+      case "--barbarian-reward": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "barbarian_reward") fail(`Unknown barbarian reward: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--subset": {
         const name = next();
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
@@ -253,8 +273,10 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "resources") entries.push(...RESOURCE_SUBSET);
         else if (name === "ui") entries.push(...UI_SUBSET);
         else if (name === "icons") entries.push(...ICON_SUBSET);
+        else if (name === "village-rewards") entries.push(...VILLAGE_REWARD_SUBSET);
+        else if (name === "barbarian-rewards") entries.push(...BARBARIAN_REWARD_SUBSET);
         else if (name === "all") entries.push(...allEntries());
-        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, or all.`);
+        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, or all.`);
         break;
       }
       case "--all":

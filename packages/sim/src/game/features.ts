@@ -105,6 +105,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },
+      reward: "tech",
     });
   } else if (roll < 0.4) {
     const gold = 30 + Math.floor(rng.next() * 40);
@@ -113,6 +114,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },
+      reward: "gold",
     });
   } else if (roll < 0.55 && city) {
     const prod = 20 + Math.floor(rng.next() * 25);
@@ -121,6 +123,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },
+      reward: "production",
     });
   } else if (roll < 0.68 && city) {
     city.population += 1;
@@ -129,6 +132,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },
+      reward: "population",
     });
   } else if (roll < 0.8) {
     const type: UnitTypeId = rng.next() < 0.5 ? "scout" : "warrior";
@@ -137,6 +141,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
         actorId: player.id,
         targetIds: [player.id],
         tile: { col: unit.col, row: unit.row },
+        reward: "unit",
       });
     }
   } else if (roll < 0.92 && isMilitary(unit.type)) {
@@ -145,6 +150,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },
+      reward: "promotion",
     });
   } else if (barbId !== undefined) {
     // Negative: an ambush — barbarians appear nearby.
@@ -161,6 +167,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },
+      reward: "ambush",
     });
   } else {
     player.gold += 25;
@@ -168,6 +175,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },
+      reward: "cache",
     });
   }
 }
@@ -184,6 +192,7 @@ export function clearBarbCamp(state: GameState, unit: Unit, player: Player): voi
     actorId: player.id,
     targetIds: [player.id],
     tile: { col: unit.col, row: unit.row },
+    reward: "camp_cleared",
   });
 }
 

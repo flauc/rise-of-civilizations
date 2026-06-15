@@ -79,6 +79,7 @@ import {
   type ImprovementKind,
   type LogEntry,
   type ProductionItem,
+  type FeatureRewardType,
   type ActiveAbilityId,
   type PromotionId,
   type TechId,
@@ -294,9 +295,12 @@ export function createUI(handlers: UIHandlers): UI {
   const villageOverlay = div("village-overlay", "");
   const villageDialog = div("village-dialog", "");
   villageDialog.innerHTML =
-    `<div class="village-title">🏘️ Village Discovered</div>` +
+    `<img class="village-art" id="village-art" src="" alt="" />` +
+    `<div class="village-title" id="village-title">Village Discovered</div>` +
     `<div class="village-msg" id="village-msg"></div>` +
     `<button class="btn primary" id="village-ok">OK</button>`;
+  const villageArt = villageDialog.querySelector<HTMLImageElement>("#village-art")!;
+  const villageTitle = villageDialog.querySelector<HTMLDivElement>("#village-title")!;
   const villageMsg = villageDialog.querySelector<HTMLDivElement>("#village-msg")!;
   const villageOk = villageDialog.querySelector<HTMLButtonElement>("#village-ok")!;
 
@@ -327,6 +331,36 @@ export function createUI(handlers: UIHandlers): UI {
   endturn2.title = "Skip Move (End Turn)";
   endturn2.addEventListener("click", () => handlers.onEndTurn());
   document.body.appendChild(endturn2);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (villageDialog.classList.contains("show")) {
+        closeVillageDialog();
+        return;
+      }
+      if (logDialog.classList.contains("show")) {
+        hideLogDialog();
+        return;
+      }
+      if (godModeOpen) {
+        godModeOpen = false;
+        if (lastView) renderGodMode(lastView);
+        return;
+      }
+      if (lastState) closePickers(lastState);
+      if (menuOpen) {
+        menuOpen = false;
+        if (lastState) renderMenu(lastState);
+      }
+      closeSideSheets();
+    } else if (e.key === "Enter") {
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+        return;
+      }
+      endturn.click();
+    }
+  });
 
   let researchOpen = false;
   let techtreeOpen = false;
@@ -368,8 +402,23 @@ export function createUI(handlers: UIHandlers): UI {
     wiki.close();
   };
 
-  const showVillageDialog = (msg: string): void => {
+  const rewardImagePath = (reward: FeatureRewardType): string => {
+    if (reward === "camp_cleared") {
+      return "barbarian-rewards/barb_camp_cleared.png";
+    }
+    return `village-rewards/village_reward_${reward}.png`;
+  };
+
+  const showVillageDialog = (msg: string, reward?: FeatureRewardType): void => {
     villageMsg.textContent = msg;
+    if (reward) {
+      villageArt.src = rewardImagePath(reward);
+      villageArt.classList.remove("hidden");
+      villageTitle.textContent = reward === "camp_cleared" ? "Camp Cleared" : "Village Discovered";
+    } else {
+      villageArt.classList.add("hidden");
+      villageTitle.textContent = "Village Discovered";
+    }
     villageOverlay.classList.add("show");
     villageDialog.classList.add("show");
   };
@@ -386,7 +435,7 @@ export function createUI(handlers: UIHandlers): UI {
     villageDialog.classList.remove("show");
     villageQueue.shift();
     if (villageQueue.length > 0) {
-      window.setTimeout(() => showVillageDialog(villageQueue[0]!.message), 150);
+      window.setTimeout(() => showVillageDialog(villageQueue[0]!.message, villageQueue[0]!.reward), 150);
     }
   };
 
@@ -1612,13 +1661,13 @@ export function createUI(handlers: UIHandlers): UI {
       } else if (view.state.log.length > lastLogLength) {
         const newEntries = view.state.log.slice(lastLogLength);
         const villageEntries = newEntries.filter(
-          (m) => /village|trap|ambushed/i.test(m.message) && m.actorId === view.viewerId,
+          (m) => /village|trap|ambushed|barbarian camp/i.test(m.message) && m.actorId === view.viewerId,
         );
         if (villageEntries.length > 0) {
           const wasEmpty = villageQueue.length === 0;
           villageQueue.push(...villageEntries);
           if (wasEmpty && !villageDialog.classList.contains("show")) {
-            showVillageDialog(villageQueue[0]!.message);
+            showVillageDialog(villageQueue[0]!.message, villageQueue[0]!.reward);
           }
         }
         lastLogLength = view.state.log.length;

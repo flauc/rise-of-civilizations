@@ -182,7 +182,7 @@ A standalone AI art generator lives in `tools/art-generator/`:
   with a prompt + reference tile, then resizes and masks the result with
   ImageMagick.
 - `tools/art-generator/config.ts` — asset subsets (terrain, units, buildings,
-  improvements, resources, leaders, ui), prompt templates, and target sizes.
+  improvements, resources, leaders, ui, icons, village-rewards, barbarian-rewards), prompt templates, and target sizes.
 
 Typical commands:
 
@@ -214,6 +214,18 @@ bun run tools/art-generator/generate.ts --tile plains --variations 4 --skip-base
 # Generate UI buttons (next move, skip move, etc.) and copy them to the client
 bun run tools/art-generator/generate.ts --subset ui --size 1K
 # (then copy assets/generated/ui/*.png to packages/client/public/ui/)
+
+# Generate PWA icons and copy them to the client
+bun run tools/art-generator/generate.ts --icon app_icon
+# (then copy assets/generated/icons/*.png to packages/client/public/)
+
+# Generate village reward illustrations and copy them to the client
+bun run tools/art-generator/generate.ts --subset village-rewards
+# (then copy assets/generated/village_rewards/*.png to packages/client/public/village-rewards/)
+
+# Generate barbarian camp cleared illustration and copy it to the client
+bun run tools/art-generator/generate.ts --barbarian-reward barb_camp_cleared
+# (then copy assets/generated/barbarian_rewards/*.png to packages/client/public/barbarian-rewards/)
 ```
 
 Leader portraits are generated as a `leader` asset subset and copied from

@@ -41,6 +41,13 @@ bun run tools/art-generator/generate.ts --ui btn_next_move
 # PWA / app icon
 bun run tools/art-generator/generate.ts --icon app_icon
 
+# Village reward illustrations
+bun run tools/art-generator/generate.ts --village-reward village_reward_tech
+bun run tools/art-generator/generate.ts --subset village-rewards
+
+# Barbarian camp cleared illustration
+bun run tools/art-generator/generate.ts --barbarian-reward barb_camp_cleared
+
 # Whole subsets
 bun run tools/art-generator/generate.ts --subset terrain
 bun run tools/art-generator/generate.ts --subset units
@@ -84,6 +91,8 @@ assets/generated/
   buildings/     # Final transparent-background icons (128x128)
   resources/     # Final transparent-background icons (96x96)
   icons/         # Final PWA icon set (512, 192, 180, maskable 192)
+  village_rewards/ # Final village reward illustrations (160x160)
+  barbarian_rewards/ # Final barbarian reward illustrations (160x160)
 ```
 
 ## How it works

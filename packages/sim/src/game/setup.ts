@@ -26,6 +26,8 @@ export interface NewGameOptions {
   turnLimit?: number;
   /** Civilization id per slot; unspecified slots get a random unique civ. */
   civIds?: (string | undefined)[];
+  /** Player color per slot; unspecified slots get the next unused palette color. */
+  colors?: (string | undefined | null)[];
 }
 
 function normalizeBarbarians(v: boolean | BarbarianActivity | undefined): BarbarianActivity {
@@ -34,9 +36,16 @@ function normalizeBarbarians(v: boolean | BarbarianActivity | undefined): Barbar
   return v ?? "normal";
 }
 
-const PLAYER_COLORS = [
+/**
+ * Distinct player colors. Large enough to give every slot a unique color in the
+ * biggest supported game (12 humans + 12 AI = 24). Exported so the lobby UI can
+ * offer the exact same palette in its per-player color pickers.
+ */
+export const PLAYER_COLORS = [
   "#e0533d", "#3d7fe0", "#49b85a", "#e0b53d", "#a05ad0", "#3dc8c8",
   "#d060aa", "#e08a3d", "#5ad07a", "#7a5ad0", "#d07a5a", "#5a9ad0",
+  "#c83737", "#2f5fb0", "#2e8f46", "#b89020", "#7a3fb0", "#1f9a9a",
+  "#b03f86", "#b86a1f", "#3fa05f", "#5a3fa0", "#a05a3f", "#3f6f9a",
 ];
 
 function startScore(state: GameState, col: number, row: number): number {

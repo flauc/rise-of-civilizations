@@ -21,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward";
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -206,8 +206,95 @@ export const ICON_SUBSET: AssetEntry[] = [
   },
 ];
 
+export const BARBARIAN_REWARD_SUBSET: AssetEntry[] = [
+  {
+    id: "barb_camp_cleared",
+    name: "Barbarian Camp Cleared",
+    description: "a smouldering barbarian camp after a victorious battle: crude tents collapsed, a dying campfire, broken wooden spikes, and a triumphant warrior's spear planted in the ground",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "barbarian_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+];
+
+export const VILLAGE_REWARD_SUBSET: AssetEntry[] = [
+  {
+    id: "village_reward_tech",
+    name: "Village Reward: Tech",
+    description: "a village elder teaching a scroll or clay tablet of ancient knowledge to a visitor, warm torchlight, mud-brick hut interior",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "village_reward_gold",
+    name: "Village Reward: Gold",
+    description: "a small pile of golden coins, a few polished gems, and bronze trinkets spilling from a woven sack inside a tribal hut",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "village_reward_production",
+    name: "Village Reward: Production",
+    description: "sturdy wooden scaffolding, cut stone blocks, raw timber, and building materials stacked beside a construction site",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "village_reward_population",
+    name: "Village Reward: Population",
+    description: "a small group of ancient villagers welcoming a newcomer with bread and water, communal hearth, warm and hopeful",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "village_reward_unit",
+    name: "Village Reward: Unit",
+    description: "a tribal warrior or scout stepping forward from a village clearing, holding a spear or bow, ready to join an expedition",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "village_reward_promotion",
+    name: "Village Reward: Promotion",
+    description: "a battle-hardened warrior raising a weapon in triumph while villagers cheer, sparks or celebratory dust in the air",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "village_reward_ambush",
+    name: "Village Reward: Ambush",
+    description: "a barbarian ambush at night, fierce warriors with crude weapons leaping from behind village huts, flames and smoke",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "village_reward_cache",
+    name: "Village Reward: Cache",
+    description: "a small hidden cache of ancient coins, a bronze dagger, and a few pieces of jewelry buried under woven cloth",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+];
+
 export const UI_SUBSET: AssetEntry[] = [
-  { id: "btn_next_move", name: "Next Move Button", description: "a flat 2D right-pointing triangle play arrow icon, simple hand-painted bronze color, no 3D bevel, no depth, no carved texture, no shadow, no circular button plate, no circular background, no backdrop — only the clean arrow shape on a fully transparent background", category: "ui", aspectRatio: "1:1", size: { width: 96, height: 96 } },
+  { id: "btn_next_move", name: "Next Move Button", description: "a circular play button with a right-pointing triangle arrow icon, polished bronze and stone with carved ancient border trim, hand-painted game UI element in warm metallic tones. No background outside the circular button — only the circular icon on a transparent background", category: "ui", aspectRatio: "1:1", size: { width: 96, height: 96 } },
   { id: "btn_skip_move", name: "Skip Move Button", description: "a circular skip-forward icon with a double right-pointing triangle arrow, dark wooden or slate with subtle carved border, secondary action style, hand-painted game UI element in cool muted tones. No background plate, no shadow, no backdrop — only the circular icon itself on a transparent background", category: "ui", aspectRatio: "1:1", size: { width: 96, height: 96 } },
 ];
 
@@ -223,7 +310,7 @@ export const BUILDING_SUBSET: AssetEntry[] = [
 ];
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -321,6 +408,12 @@ export function promptFor(entry: AssetEntry): string {
   }
   if (entry.category === "icon") {
     return `Create a square mobile app icon for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render as a centered, self-contained square icon filling the frame. No text, no letters, no words, no UI labels, no watermark, no border frame, and no cast shadow outside the icon. The icon should look polished and readable as a small phone home-screen app.`;
+  }
+  if (entry.category === "village_reward") {
+    return `Create a small narrative reward illustration for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render as a centered scene on a clean solid white background. No text, no letters, no UI labels, no watermark, no border frame, and no cast shadow. The illustration should read clearly at small sizes.`;
+  }
+  if (entry.category === "barbarian_reward") {
+    return `Create a small narrative reward illustration for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render as a centered scene on a clean solid white background. No text, no letters, no UI labels, no watermark, no border frame, and no cast shadow. The illustration should read clearly at small sizes.`;
   }
   return `Create a small standalone building icon for a turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated building on a clean solid white background. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The building should float cleanly on the white background with nothing else in the frame.`;
 }

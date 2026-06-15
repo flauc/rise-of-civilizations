@@ -313,14 +313,16 @@
       }
       #endturn2 {
         position: fixed;
-        left: 50%;
-        transform: translateX(-50%);
-        bottom: calc(64px + env(safe-area-inset-bottom));
+        left: calc(50% - 4px);
+        transform: none;
+        bottom: max(12px, env(safe-area-inset-bottom));
         z-index: 25;
-      }
-      .action-btn {
         width: 56px;
         height: 56px;
+      }
+      .action-btn {
+        width: 48px;
+        height: 48px;
         border: none;
         border-radius: 50%;
         background-color: transparent;
@@ -329,15 +331,14 @@
         background-size: contain;
         cursor: pointer;
         padding: 0;
-        filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45));
         transition: filter 0.08s ease, transform 0.08s ease;
       }
       .action-btn:hover {
-        filter: drop-shadow(0 5px 7px rgba(0, 0, 0, 0.55));
+        filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.28)) drop-shadow(0 3px 5px rgba(0, 0, 0, 0.4));
         transform: translateY(-1px);
       }
       .action-btn:active {
-        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+        filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.15)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
         transform: translateY(1px);
       }
       .action-next {
@@ -370,8 +371,8 @@
       /* End turn / next move buttons */
       #endturn {
         position: fixed;
-        left: 50%;
-        transform: translateX(-50%);
+        left: calc(50% - 58px);
+        transform: none;
         bottom: max(12px, env(safe-area-inset-bottom));
         z-index: 25;
       }
@@ -638,6 +639,14 @@
         opacity: 1;
         pointer-events: auto;
       }
+      #village-dialog .village-art {
+        width: 160px;
+        height: 160px;
+        object-fit: contain;
+        margin: 0 auto 10px;
+        display: block;
+        border-radius: 12px;
+      }
       #village-dialog .village-title {
         font-size: 20px;
         font-weight: 700;
@@ -846,14 +855,14 @@
           right: auto;
           bottom: max(6px, env(safe-area-inset-bottom));
           transform: none;
+          width: 40px;
+          height: 40px;
         }
         #endturn2 {
-          left: calc(64px + env(safe-area-inset-left));
+          left: calc(56px + env(safe-area-inset-left));
           right: auto;
           bottom: max(6px, env(safe-area-inset-bottom));
           transform: none;
-        }
-        .action-btn {
           width: 48px;
           height: 48px;
         }

@@ -246,6 +246,18 @@ export interface TradeRoute {
 
 export type BarbarianActivity = "none" | "minimal" | "low" | "normal" | "high";
 
+/** Possible outcomes when a tribal village or barbarian camp feature is resolved. */
+export type FeatureRewardType =
+  | "tech"
+  | "gold"
+  | "production"
+  | "population"
+  | "unit"
+  | "promotion"
+  | "ambush"
+  | "cache"
+  | "camp_cleared";
+
 /** One line in the shared turn log, with metadata for per-player filtering. */
 export interface LogEntry {
   message: string;
@@ -259,6 +271,8 @@ export interface LogEntry {
   turn?: number;
   /** World-wide announcement visible to everyone (victory, extinction). */
   world?: boolean;
+  /** Feature reward category, used by the client to show matching artwork. */
+  reward?: FeatureRewardType;
 }
 
 export interface GameState {
@@ -366,6 +380,7 @@ export function log(
     targetIds?: number[];
     tile?: { col: number; row: number };
     world?: boolean;
+    reward?: FeatureRewardType;
   } = {},
 ): void {
   state.log.push({ message, turn: state.turn, ...opts });
