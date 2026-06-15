@@ -142,6 +142,9 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   const map = generateMap({ cols, rows, seed });
 
   // Assign civs: honour requested ids, fill the rest with random unique civs.
+  // Uniqueness is enforced here so two players can never share a civilization even
+  // if a caller passes a duplicate — a requested civ already in use falls through
+  // to the next random unused civ from the pool.
   const requested = opts.civIds ?? [];
   const rng = makeRng(hashSeed(`${seed}:civs`));
   const pool = CIV_IDS.filter((id) => !requested.includes(id));
@@ -152,7 +155,31 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     pool[j] = tmp;
   }
   let poolIdx = 0;
-  const civForSlot = (i: number): string | undefined => requested[i] ?? pool[poolIdx++];
+  const usedCivs = new Set<string>();
+  const civForSlot = (i: number): string | undefined => {
+    const req = requested[i];
+    const civ = req && !usedCivs.has(req) ? req : pool[poolIdx++];
+    if (civ) usedCivs.add(civ);
+    return civ;
+  };
+
+  // Colors: honour requested colors, fill the rest with unused palette colors.
+  // Uniqueness is enforced here so two players can never share a color even if a
+  // caller passes a duplicate — a requested color already in use falls through to
+  // the next free palette color.
+  const requestedColors = opts.colors ?? [];
+  const usedColors = new Set<string>();
+  let colorIdx = 0;
+  const nextFreeColor = (): string => {
+    while (colorIdx < PLAYER_COLORS.length && usedColors.has(PLAYER_COLORS[colorIdx]!)) colorIdx++;
+    return PLAYER_COLORS[colorIdx++] ?? "#aaaaaa";
+  };
+  const colorForSlot = (i: number): string => {
+    const requestedColor = requestedColors[i];
+    const color = requestedColor && !usedColors.has(requestedColor) ? requestedColor : nextFreeColor();
+    usedColors.add(color);
+    return color;
+  };
 
   const players: Player[] = [];
   for (let i = 0; i < count; i++) {
@@ -160,7 +187,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     players.push({
       id: i,
       name: i < humanSlots ? baseName : `${baseName} (AI)`,
-      color: PLAYER_COLORS[i] ?? "#aaaaaa",
+      color: colorForSlot(i),
       isHuman: i < humanSlots,
       isBarbarian: false,
       civId: civForSlot(i),

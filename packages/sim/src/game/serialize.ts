@@ -83,6 +83,21 @@ export interface PlayerView {
   barbarianActivity: BarbarianActivity;
 }
 
+/**
+ * Whether a log entry is something `playerId` is allowed to see: world-wide news,
+ * their own actions, actions aimed at them, or events on a tile they've explored.
+ * Used to keep the game log free of other players' private moves (e.g. AI actions
+ * happening out of sight). `known` is the player's explored tiles — since every
+ * currently-visible tile is also explored, that set is sufficient.
+ */
+export function isLogEntryVisible(entry: LogEntry, playerId: number, known: Set<string>): boolean {
+  if (entry.world) return true;
+  if (entry.actorId === playerId) return true;
+  if (entry.targetIds?.includes(playerId)) return true;
+  if (entry.tile && known.has(`${entry.tile.col},${entry.tile.row}`)) return true;
+  return false;
+}
+
 function buildDiploView(state: GameState, playerId: number): DiploView {
   const me = state.players.find((p) => p.id === playerId);
   const met = me ? [...me.met] : [];
@@ -134,24 +149,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     if (c.ownerId === playerId || visible.has(`${c.col},${c.row}`)) cities.push(c);
   }
 
-  const log: LogEntry[] = [];
-  for (const entry of state.log) {
-    if (entry.world) {
-      log.push(entry);
-      continue;
-    }
-    if (entry.actorId === playerId) {
-      log.push(entry);
-      continue;
-    }
-    if (entry.targetIds?.includes(playerId)) {
-      log.push(entry);
-      continue;
-    }
-    if (entry.tile && (visible.has(`${entry.tile.col},${entry.tile.row}`) || explored.has(`${entry.tile.col},${entry.tile.row}`))) {
-      log.push(entry);
-    }
-  }
+  const log = state.log.filter((entry) => isLogEntryVisible(entry, playerId, explored));
 
   return {
     turn: state.turn,

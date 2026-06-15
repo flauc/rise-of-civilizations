@@ -105,7 +105,9 @@ export const CITY_SUBSET: AssetEntry[] = [
 export const LEADER_SUBSET: AssetEntry[] = CIVILIZATIONS.map((civ) => ({
   id: civ.id,
   name: civ.leader,
-  description: `${civ.name} — ${civ.abilityName}: ${civ.abilityDesc}`,
+  // Keep only the ability name so the model does not paint stat overlays
+  // (+20%, +2, etc.) onto the portrait.
+  description: `${civ.name} under ${civ.leader}, celebrated for ${civ.abilityName}`,
   aspectRatio: "3:4",
   size: { width: 320, height: 400 },
   category: "leader" as const,
@@ -386,7 +388,7 @@ export function promptFor(entry: AssetEntry): string {
     return `Create a flat 2D hand-painted hexagonal strategy game tile for "${entry.name}". ${entry.description}. Match the visual style of the attached reference tile: slightly stylized, saturated but natural colors, readable at small sizes, and framed inside a vertical 2:3 pointy-top hex. IMPORTANT: do not include roads, paths, houses, huts, fences, farms, or any buildings or man-made structures — those will be added as separate tile improvements. Render as a flat 2D illustration with no 3D perspective, no realistic depth, no depth-of-field, and no camera angle shifts. Keep the same overall composition, camera angle, and hex footprint as the reference; vary only subtle natural details like texture, lighting, and vegetation so the grid remains uniform. The artwork must be fully self-contained and look correct in isolation; avoid paths, rivers, shadows, or objects that appear to continue off the tile edges. Preserve the soft shadow along the bottom edges of the hex, similar to the reference tile.`;
   }
   if (entry.category === "leader") {
-    return `Create a stylized hand-painted portrait of ${entry.name}, ruler of ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a centered bust or head-and-shoulders portrait facing slightly toward the viewer, set against a soft painted background such as ancient parchment, a mural, or a neutral textured wall. Do not make the background transparent. Use clothing, regalia, and materials appropriate to the civilization's era and geography. No text, no UI, no border, no frame, no modern objects, no ground plane, no terrain, and no cast shadow underneath the figure.`;
+    return `Create a stylized hand-painted portrait of ${entry.name}, ruler of ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a centered bust or head-and-shoulders portrait facing slightly toward the viewer, set against a soft painted background such as ancient parchment, a mural, or a neutral textured wall. Do not make the background transparent. Use clothing, regalia, and materials appropriate to the civilization's era and geography. NO text, NO letters, NO numbers, NO percentages, NO plus signs, NO symbols, NO UI elements, NO ability descriptions, NO stat boxes, NO border, NO frame, NO modern objects, NO ground plane, NO terrain, and NO cast shadow underneath the figure.`;
   }
   if (entry.category === "road") {
     return `Create a small hand-painted road segment for a turn-based strategy game. Subject: ${entry.description}. Render ONLY the narrow ${entry.description.includes("dirt") ? "dirt" : entry.description.includes("cobblestone") ? "stone" : "stone"} road/path on a fully transparent background. The road should be a thin, continuous path that reaches exactly the named hex edges and does NOT fill the hex. Match the painted, slightly stylized look of the attached reference tile. No terrain, no grass, no ground, no sky, no buildings, no text, no UI, no border, and no cast shadow. The background must remain transparent.`;

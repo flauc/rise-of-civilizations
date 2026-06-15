@@ -20,11 +20,16 @@ export interface LobbyGame {
   rows?: number;
   aiCount: number;
   barbarians: BarbarianActivity;
+  /** Civ id per AI opponent; null = a random unique civ. */
+  aiCivIds: (string | null)[];
+  /** Color per player slot (humans first, then AI); null = auto-assigned. */
+  colors: (string | null)[];
   slots: Slot[];
   host?: GameHost;
 }
 
 const MAX_CAPACITY = 12;
+const MAX_AI = 12;
 
 export interface CreateOptions {
   seed?: string;
@@ -33,6 +38,8 @@ export interface CreateOptions {
   capacity?: number;
   aiCount?: number;
   barbarians?: BarbarianActivity;
+  aiCivIds?: (string | null)[];
+  colors?: (string | null)[];
 }
 
 function randomId(): string {
@@ -45,6 +52,10 @@ export class Lobby {
   create(name: string, ownerUserId: string, ownerHandle: string, opts: CreateOptions = {}): LobbyGame {
     const id = randomId();
     const capacity = Math.max(1, Math.min(MAX_CAPACITY, opts.capacity ?? 2));
+    // Prefer an explicit aiCivIds list (one entry per AI) so the host's per-AI civ
+    // choices survive; otherwise fall back to a plain count of random-civ AIs.
+    const aiCount = Math.max(0, Math.min(MAX_AI, opts.aiCivIds?.length ?? opts.aiCount ?? 0));
+    const aiCivIds = (opts.aiCivIds ?? Array.from({ length: aiCount }, () => null)).slice(0, aiCount);
     const slots: Slot[] = Array.from({ length: capacity }, (_, i) => ({ slot: i, playerId: i }));
     slots[0]!.userId = ownerUserId;
     slots[0]!.handle = ownerHandle;
@@ -56,8 +67,10 @@ export class Lobby {
       capacity,
       cols: opts.cols,
       rows: opts.rows,
-      aiCount: Math.max(0, Math.min(4, opts.aiCount ?? 0)),
+      aiCount,
       barbarians: opts.barbarians ?? "normal",
+      aiCivIds,
+      colors: (opts.colors ?? []).slice(0, capacity + aiCount),
       slots,
     };
     this.games.set(id, game);
@@ -88,6 +101,11 @@ export class Lobby {
     if (!game) return { error: "no such game" };
     if (game.status === "active") return { ok: true };
     const names = game.slots.map((s, i) => s.handle ?? `Player ${i + 1}`);
+    // Civ ids align to the player slots: humans (random unique) then the AI civs.
+    const civIds = [
+      ...names.map(() => undefined),
+      ...game.aiCivIds.map((c) => c ?? undefined),
+    ];
     const state = createGame({
       seed: game.seed,
       cols: game.cols,
@@ -96,6 +114,8 @@ export class Lobby {
       playerCount: names.length + game.aiCount,
       humanSlots: names.length,
       barbarians: game.barbarians,
+      civIds,
+      colors: game.colors,
     });
     game.host = new GameHost(state);
     game.status = "active";

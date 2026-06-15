@@ -20,7 +20,20 @@ export type ClientMessage =
   | { t: "login"; handle: string; password: string }
   | { t: "resume"; token: string }
   | { t: "listGames" }
-  | { t: "createGame"; name: string; seed?: string; cols?: number; rows?: number; capacity?: number; aiCount?: number; barbarians?: BarbarianActivity }
+  | {
+      t: "createGame";
+      name: string;
+      seed?: string;
+      cols?: number;
+      rows?: number;
+      capacity?: number;
+      aiCount?: number;
+      barbarians?: BarbarianActivity;
+      /** Civ id per AI opponent; null/undefined = a random unique civ. */
+      aiCivIds?: (string | null)[];
+      /** Color per player slot (humans first, then AI); null/undefined = auto. */
+      colors?: (string | null)[];
+    }
   | { t: "joinGame"; gameId: string }
   | { t: "startGame"; gameId: string }
   | { t: "order"; cmd: Command }

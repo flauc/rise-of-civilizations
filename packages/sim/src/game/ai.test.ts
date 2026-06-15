@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getTile } from "@roc/shared";
+import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import { createGame } from "./setup";
 import { applyCommand, beginTurn } from "./commands";
 import { startSimultaneousTurn, resolveSimultaneousTurn } from "./simturn";
@@ -7,8 +7,32 @@ import { aiTakeTurn } from "./ai";
 import { worksOf } from "./works";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
+import { ensureContact, declareWar } from "./diplomacy";
 import { UNIT_DEFS } from "./content";
-import { citiesOf, unitsOf, type GameState } from "./state";
+import { citiesOf, unitAt, unitsOf, type GameState } from "./state";
+
+const dist = (a: { col: number; row: number }, b: { col: number; row: number }) =>
+  axialDistance(offsetToAxial(a), offsetToAxial(b));
+
+/** First unoccupied passable-land tile exactly `depth` land-steps from `start`. */
+function landTileAtDepth(s: GameState, start: { col: number; row: number }, depth: number): { col: number; row: number } | null {
+  const seen = new Set([`${start.col},${start.row}`]);
+  let frontier = [{ col: start.col, row: start.row, d: 0 }];
+  while (frontier.length) {
+    const cur = frontier.shift()!;
+    if (cur.d === depth && !unitAt(s, cur.col, cur.row)) return { col: cur.col, row: cur.row };
+    if (cur.d >= depth) continue;
+    for (const n of offsetNeighbors(s.map, cur.col, cur.row)) {
+      const k = `${n.col},${n.row}`;
+      if (seen.has(k)) continue;
+      const t = getTile(s.map, n.col, n.row);
+      if (!t || !isPassableLand(t.terrain)) continue;
+      seen.add(k);
+      frontier.push({ col: n.col, row: n.row, d: cur.d + 1 });
+    }
+  }
+  return null;
+}
 
 /** Run end-turns until the AI (player 1) has founded a city. */
 function aiWithCity(seed: string): GameState {
@@ -90,6 +114,38 @@ describe("AI opponent", () => {
     expect(s.players[0]!.resources.iron ?? 0).toBeGreaterThan(before); // stockpiled
     expect(unit.stance ?? null).toBeNull(); // stance expired at turn start
     expect(unit.movementLeft).toBe(0); // pin enforced at turn start
+  });
+
+  it("scouts instead of shadowing a peaceful neighbour, then pursues once at war", () => {
+    const s = aiWithCity("ai-scout");
+    const ai = s.players[1]!;
+    const warrior = unitsOf(s, 1).find((u) => UNIT_DEFS[u.type].strength > 0 && !UNIT_DEFS[u.type].founder);
+    expect(warrior).toBeTruthy();
+
+    // Park a human unit 3 land-steps away (reachable, but not adjacent to attack).
+    const spot = landTileAtDepth(s, warrior!, 3);
+    expect(spot).toBeTruthy();
+    const human = unitsOf(s, 0).find((u) => UNIT_DEFS[u.type].strength > 0)!;
+    human.col = spot!.col;
+    human.row = spot!.row;
+
+    // Fully explore the map for the AI so scouting is a no-op: at peace, the unit
+    // has no reason to move toward the (peaceful) human at all.
+    for (let row = 0; row < s.map.rows; row++)
+      for (let col = 0; col < s.map.cols; col++) ai.explored.add(`${col},${row}`);
+
+    const d0 = dist(warrior!, human);
+    warrior!.movementLeft = UNIT_DEFS[warrior!.type].movement;
+    aiTakeTurn(s, 1);
+    expect(dist(warrior!, human)).toBeGreaterThanOrEqual(d0); // did NOT chase a peaceful unit
+
+    // Declare war → the AI should now close on the enemy.
+    ensureContact(s, 0, 1);
+    expect(declareWar(s, 1, 0).ok).toBe(true);
+    const d1 = dist(warrior!, human);
+    warrior!.movementLeft = UNIT_DEFS[warrior!.type].movement;
+    aiTakeTurn(s, 1);
+    expect(dist(warrior!, human)).toBeLessThan(d1); // pursues once hostile
   });
 
   it("spends earned promotions on its units", () => {

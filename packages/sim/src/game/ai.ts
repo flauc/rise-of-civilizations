@@ -16,7 +16,7 @@ import { availableProduction, availableTechs } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
 import { canFoundReligion, availableReligionNames } from "./religion";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
-import { aiConsiderDiplomacy } from "./diplomacy";
+import { aiConsiderDiplomacy, atWar } from "./diplomacy";
 import { availablePromotions } from "./combat";
 import { BELIEFS, WONDER_DEFS } from "@roc/data";
 import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
@@ -69,14 +69,21 @@ function stepToward(state: GameState, unit: Unit, goalCol: number, goalRow: numb
   return applyCommand(state, { type: "move", unitId: unit.id, col: c, row: r }, pid).ok;
 }
 
-function nearestEnemy(state: GameState, unit: Unit, pid: number): { col: number; row: number } | null {
+/** Barbarians are always fair game; civs only when we're actually at war. */
+function isHostile(state: GameState, pid: number, otherId: number): boolean {
+  if (otherId === pid) return false;
+  if (playerById(state, otherId)?.isBarbarian) return true;
+  return atWar(state, pid, otherId);
+}
+
+function nearestHostile(state: GameState, unit: Unit, pid: number): { col: number; row: number } | null {
   const me = playerById(state, pid);
   if (!me) return null;
   let best: { col: number; row: number } | null = null;
   let bestD = Infinity;
   const from = ax(unit);
   const consider = (col: number, row: number, owner: number) => {
-    if (owner === pid) return;
+    if (!isHostile(state, pid, owner)) return;
     const d = axialDistance(from, ax({ col, row }));
     if (d < bestD) {
       bestD = d;
@@ -86,6 +93,34 @@ function nearestEnemy(state: GameState, unit: Unit, pid: number): { col: number;
   for (const u of state.units.values()) consider(u.col, u.row, u.ownerId);
   for (const c of state.cities.values()) consider(c.col, c.row, c.ownerId);
   return best;
+}
+
+/** Nearest land tile this player hasn't explored yet — a scouting goal. */
+function nearestUnexplored(state: GameState, unit: Unit, pid: number): { col: number; row: number } | null {
+  const me = playerById(state, pid);
+  if (!me) return null;
+  let best: { col: number; row: number } | null = null;
+  let bestD = Infinity;
+  const from = ax(unit);
+  for (let row = 0; row < state.map.rows; row++) {
+    for (let col = 0; col < state.map.cols; col++) {
+      if (me.explored.has(`${col},${row}`)) continue;
+      const tile = getTile(state.map, col, row);
+      if (!tile || !isPassableLand(tile.terrain)) continue;
+      const d = axialDistance(from, ax({ col, row }));
+      if (d < bestD) {
+        bestD = d;
+        best = { col, row };
+      }
+    }
+  }
+  return best;
+}
+
+/** When not at war, wander toward the unexplored frontier instead of idling. */
+function aiExplore(state: GameState, unit: Unit, pid: number): void {
+  const goal = nearestUnexplored(state, unit, pid);
+  if (goal) stepToward(state, unit, goal.col, goal.row, pid);
 }
 
 // ---- production choice ---------------------------------------------------
@@ -337,17 +372,20 @@ function aiMilitary(state: GameState, unit: Unit, pid: number): void {
     }
   }
 
-  // Defend a threatened city, else pressure the nearest enemy.
+  // Defend a threatened city against hostiles (barbarians or war enemies). We
+  // ignore peaceful neighbours so AI armies don't shadow units they can't fight.
   for (const city of citiesOf(state, unit.ownerId)) {
     for (const e of state.units.values()) {
-      if (e.ownerId !== unit.ownerId && axialDistance(ax(city), ax(e)) <= 3) {
+      if (isHostile(state, pid, e.ownerId) && axialDistance(ax(city), ax(e)) <= 3) {
         stepToward(state, unit, e.col, e.row, pid);
         return;
       }
     }
   }
-  const enemy = nearestEnemy(state, unit, pid);
+  // Pressure the nearest hostile if there is one; otherwise scout the map.
+  const enemy = nearestHostile(state, unit, pid);
   if (enemy) stepToward(state, unit, enemy.col, enemy.row, pid);
+  else aiExplore(state, unit, pid);
 }
 
 /** Play a full turn for an AI-controlled civ. */

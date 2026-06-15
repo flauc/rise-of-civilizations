@@ -1,5 +1,36 @@
 import { describe, it, expect } from "vitest";
-import { createGame, serializeState, deserializeState } from "@roc/sim";
+import { createGame, serializeState, deserializeState, viewForPlayer } from "@roc/sim";
+
+describe("player view log filtering", () => {
+  it("hides other players' private actions from the game log", () => {
+    const state = createGame({ seed: "log-view", cols: 30, rows: 20, playerCount: 2, humanSlots: 1, barbarians: false });
+    const explored = [...state.players[0]!.explored];
+    const [exCol, exRow] = explored[0]!.split(",").map(Number) as [number, number];
+    // A tile player 0 has NOT explored.
+    let hiddenKey = "";
+    for (let row = 0; row < state.map.rows && !hiddenKey; row++)
+      for (let col = 0; col < state.map.cols && !hiddenKey; col++)
+        if (!state.players[0]!.explored.has(`${col},${row}`)) hiddenKey = `${col},${row}`;
+    const [hidCol, hidRow] = hiddenKey.split(",").map(Number) as [number, number];
+
+    state.log = [
+      { message: "my own move", turn: 1, actorId: 0 },
+      { message: "secret AI move", turn: 1, actorId: 1 },
+      { message: "world-wide news", turn: 1, world: true },
+      { message: "AI attacks me", turn: 1, actorId: 1, targetIds: [0] },
+      { message: "AI acts on my explored tile", turn: 1, actorId: 1, tile: { col: exCol, row: exRow } },
+      { message: "AI acts in the fog", turn: 1, actorId: 1, tile: { col: hidCol, row: hidRow } },
+    ];
+
+    const messages = viewForPlayer(state, 0).log.map((e) => e.message);
+    expect(messages).toContain("my own move");
+    expect(messages).toContain("world-wide news");
+    expect(messages).toContain("AI attacks me");
+    expect(messages).toContain("AI acts on my explored tile");
+    expect(messages).not.toContain("secret AI move");
+    expect(messages).not.toContain("AI acts in the fog");
+  });
+});
 
 describe("serialize round-trip", () => {
   it("preserves full game state through serialization", () => {

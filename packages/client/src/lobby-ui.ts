@@ -3,7 +3,7 @@
 
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
 import { createWiki } from "./wiki";
-import { CIVILIZATIONS, type GameSummary, type SerializedState } from "@roc/sim";
+import { CIVILIZATIONS, PLAYER_COLORS, type GameSummary, type SerializedState } from "@roc/sim";
 import { deleteSave, listSaves, loadSave, type SaveRecord } from "./save-db";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 
@@ -13,21 +13,69 @@ const DEFAULT_WS =
 
 type Screen = "start" | "sp" | "mp" | "load";
 
+type BarbLevel = "none" | "minimal" | "low" | "normal" | "high";
+
+/** "random" = let the sim assign a random unique civ when the game starts. */
+const RANDOM_CIV = "random";
+
+/** One AI opponent's configuration in the setup roster. */
+interface AiConfig {
+  civId: string | typeof RANDOM_CIV;
+  color: string;
+}
+
+const MAX_AI = 12;
+
 interface MenuState {
   screen: Screen;
   sp: {
     civId: string;
+    color: string;
     mapSize: MapSize;
-    aiCount: number;
-    barbarians: "none" | "minimal" | "low" | "normal" | "high";
+    ais: AiConfig[];
+    barbarians: BarbLevel;
   };
   mp: {
     url: string;
     handle: string;
     password: string;
     capacity: number;
+    /** Color per human slot (length tracks capacity). */
+    humanColors: string[];
+    ais: AiConfig[];
     userId: string;
   };
+}
+
+/** First palette color not already taken (falls back to gray if exhausted). */
+function firstFreeColor(used: Set<string>): string {
+  return PLAYER_COLORS.find((c) => !used.has(c)) ?? "#aaaaaa";
+}
+
+/**
+ * Civ <option> list, optionally led by a "Random" entry for AI slots. Civs in
+ * `taken` (chosen by another player) are disabled so no two players can share one;
+ * the slot's own current selection is always selectable.
+ */
+function civOptions(selected: string, includeRandom: boolean, taken: Set<string>): string {
+  const opts = includeRandom
+    ? [`<option value="${RANDOM_CIV}"${selected === RANDOM_CIV ? " selected" : ""}>🎲 Random civilization</option>`]
+    : [];
+  for (const c of CIVILIZATIONS) {
+    const isTaken = taken.has(c.id) && c.id !== selected;
+    opts.push(
+      `<option value="${c.id}"${c.id === selected ? " selected" : ""}${isTaken ? " disabled" : ""}>${escapeHtml(c.name)} — ${escapeHtml(c.leader)}${isTaken ? " (taken)" : ""}</option>`,
+    );
+  }
+  return opts.join("");
+}
+
+/** A row of palette swatches; colors used by other players are disabled. */
+function colorPicker(current: string, takenByOthers: Set<string>): string {
+  return `<div class="cp">${PLAYER_COLORS.map((c) => {
+    const taken = takenByOthers.has(c) && c !== current;
+    return `<button type="button" class="cp-dot${c === current ? " sel" : ""}${taken ? " taken" : ""}" data-color="${c}"${taken ? " disabled" : ""} style="--c:${c}"${taken ? ' title="Taken by another player"' : ""}></button>`;
+  }).join("")}</div>`;
 }
 
 function mapSelect(id: string, value: MapSize): string {
@@ -40,12 +88,6 @@ function mapSelect(id: string, value: MapSize): string {
   ];
   return `<select id="${id}" class="menu-in">${sizes
     .map((s) => `<option value="${s.value}"${s.value === value ? " selected" : ""}>${s.label}</option>`)
-    .join("")}</select>`;
-}
-
-function aiSelect(id: string, value: number): string {
-  return `<select id="${id}" class="menu-in">${[0, 1, 2, 3, 4]
-    .map((n) => `<option value="${n}"${n === value ? " selected" : ""}>${n}</option>`)
     .join("")}</select>`;
 }
 
@@ -79,8 +121,9 @@ export function createLobby(onStart: (session: Session) => void): void {
     screen: "start",
     sp: {
       civId: CIVILIZATIONS[0]!.id,
+      color: PLAYER_COLORS[0]!,
       mapSize: "medium",
-      aiCount: 1,
+      ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],
       barbarians: "normal",
     },
     mp: {
@@ -88,6 +131,8 @@ export function createLobby(onStart: (session: Session) => void): void {
       handle: "",
       password: "",
       capacity: 2,
+      humanColors: [PLAYER_COLORS[0]!, PLAYER_COLORS[1]!],
+      ais: [],
       userId: "",
     },
   };
@@ -133,6 +178,20 @@ export function createLobby(onStart: (session: Session) => void): void {
     .menu-status{color:#ffb38a;margin-top:10px;min-height:20px;font-size:13px}
     .menu-back-row{display:flex;gap:10px;margin-top:18px}
     .menu-back-row .menu-btn{width:auto;flex:1}
+    .roster-row{display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid var(--edge);border-radius:10px;background:#14283b;margin-top:8px}
+    .roster-head{display:flex;align-items:center;gap:8px}
+    .roster-head .roster-civ{flex:1;min-width:0}
+    .roster-tag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#9fc0dc;background:rgba(255,255,255,.06);border-radius:6px;padding:3px 7px;white-space:nowrap}
+    .roster-tag.you{color:#bfe6c9;background:rgba(74,160,95,.18)}
+    .roster-note{font-size:12px;color:#9fc0dc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .roster-remove{flex-shrink:0;width:28px;height:28px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#ffb38a;cursor:pointer;font-size:13px;line-height:1}
+    .roster-remove:hover{background:rgba(255,120,90,.15);border-color:rgba(255,120,90,.4)}
+    .roster-add{margin-top:10px}
+    .cp{display:flex;flex-wrap:wrap;gap:5px}
+    .cp-dot{width:18px;height:18px;border-radius:50%;background:var(--c);border:2px solid transparent;cursor:pointer;padding:0;transition:transform .08s}
+    .cp-dot.sel{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.3)}
+    .cp-dot.taken{opacity:.22;cursor:not-allowed}
+    .cp-dot:hover:not(.taken):not(.sel){transform:scale(1.18)}
     .save-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
     .save-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;border:1px solid var(--edge);border-radius:10px;background:#14283b}
     .save-row .info{min-width:0}
@@ -266,20 +325,16 @@ export function createLobby(onStart: (session: Session) => void): void {
   }
 
   function renderSinglePlayer(): void {
-    const civ = CIVILIZATIONS.find((c) => c.id === state.sp.civId) ?? CIVILIZATIONS[0]!;
     left.innerHTML = `
       <button class="menu-btn secondary" id="back" style="width:auto;padding:8px 12px;font-size:13px"><span class="icon">←</span> Back</button>
       <div class="menu-section">
-        <div class="menu-section-title">Choose Your Civilization</div>
-        <select id="sp-civ" class="menu-in">${CIVILIZATIONS.map(
-          (c) => `<option value="${c.id}"${c.id === state.sp.civId ? " selected" : ""}>${c.name} — ${c.leader}</option>`,
-        ).join("")}</select>
-        <div id="sp-civ-desc" class="menu-hint"><b>${civ.abilityName}:</b> ${civ.abilityDesc}<br/>UU: ${civ.uniqueUnit} · ${civ.uniqueInfra}</div>
+        <div class="menu-section-title">Players & Opponents</div>
+        <div id="sp-roster"></div>
+        <div id="sp-civ-desc" class="menu-hint"></div>
       </div>
       <div class="menu-section">
         <div class="menu-section-title">Game Options</div>
         <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
-        <div class="menu-row"><span>AI opponents</span>${aiSelect("sp-ai", state.sp.aiCount)}</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
       </div>
       <div class="menu-back-row">
@@ -288,17 +343,85 @@ export function createLobby(onStart: (session: Session) => void): void {
       </div>`;
 
     const updateCivDesc = () => {
-      const c = CIVILIZATIONS.find((x) => x.id === $select("#sp-civ").value);
+      const c = CIVILIZATIONS.find((x) => x.id === state.sp.civId);
       $("#sp-civ-desc").innerHTML = c
         ? `<b>${c.abilityName}:</b> ${c.abilityDesc}<br/>UU: ${c.uniqueUnit} · ${c.uniqueInfra}`
         : "";
     };
-    $("#sp-civ").addEventListener("change", () => {
-      state.sp.civId = $select("#sp-civ").value;
-      updateCivDesc();
-      renderShowcase(state.sp.civId);
-    });
 
+    const renderRoster = (): void => {
+      const used = new Set<string>([state.sp.color, ...state.sp.ais.map((a) => a.color)]);
+      // Concretely-chosen civs (ignoring "random") — used to disable duplicates.
+      const takenCivs = new Set<string>([
+        state.sp.civId,
+        ...state.sp.ais.map((a) => a.civId).filter((c) => c !== RANDOM_CIV),
+      ]);
+      const human = `
+        <div class="roster-row" data-row="human">
+          <div class="roster-head">
+            <span class="roster-tag you">You</span>
+            <select class="menu-in roster-civ" data-civ="human">${civOptions(state.sp.civId, false, takenCivs)}</select>
+          </div>
+          ${colorPicker(state.sp.color, used)}
+        </div>`;
+      const ais = state.sp.ais
+        .map(
+          (ai, i) => `
+        <div class="roster-row" data-row="ai-${i}">
+          <div class="roster-head">
+            <span class="roster-tag">AI ${i + 1}</span>
+            <select class="menu-in roster-civ" data-civ="ai-${i}">${civOptions(ai.civId, true, takenCivs)}</select>
+            <button type="button" class="roster-remove" data-remove="${i}" title="Remove opponent">✕</button>
+          </div>
+          ${colorPicker(ai.color, used)}
+        </div>`,
+        )
+        .join("");
+      const add =
+        state.sp.ais.length < MAX_AI
+          ? `<button type="button" class="menu-btn roster-add" id="sp-add-ai">+ Add AI opponent</button>`
+          : `<div class="menu-hint">Maximum of ${MAX_AI} AI opponents reached.</div>`;
+      $("#sp-roster").innerHTML = human + ais + add;
+      wireRoster();
+    };
+
+    const wireRoster = (): void => {
+      const root = $("#sp-roster");
+      root.querySelectorAll<HTMLSelectElement>(".roster-civ").forEach((sel) =>
+        sel.addEventListener("change", () => {
+          if (sel.dataset.civ === "human") {
+            state.sp.civId = sel.value;
+            updateCivDesc();
+            renderShowcase(state.sp.civId);
+          } else {
+            state.sp.ais[Number(sel.dataset.civ!.slice(3))]!.civId = sel.value;
+          }
+          renderRoster(); // refresh "taken" civ states across all dropdowns
+        }),
+      );
+      root.querySelectorAll<HTMLButtonElement>(".cp-dot").forEach((dot) =>
+        dot.addEventListener("click", () => {
+          const rowKey = (dot.closest("[data-row]") as HTMLElement).dataset.row!;
+          if (rowKey === "human") state.sp.color = dot.dataset.color!;
+          else state.sp.ais[Number(rowKey.slice(3))]!.color = dot.dataset.color!;
+          renderRoster();
+        }),
+      );
+      root.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          state.sp.ais.splice(Number(btn.dataset.remove), 1);
+          renderRoster();
+        }),
+      );
+      root.querySelector<HTMLButtonElement>("#sp-add-ai")?.addEventListener("click", () => {
+        const used = new Set<string>([state.sp.color, ...state.sp.ais.map((a) => a.color)]);
+        state.sp.ais.push({ civId: RANDOM_CIV, color: firstFreeColor(used) });
+        renderRoster();
+      });
+    };
+
+    updateCivDesc();
+    renderRoster();
     renderShowcase(state.sp.civId, false);
     $("#back").addEventListener("click", () => showScreen("start"));
     $("#back2").addEventListener("click", () => showScreen("start"));
@@ -308,8 +431,9 @@ export function createLobby(onStart: (session: Session) => void): void {
         new LocalSession({
           civId: state.sp.civId,
           mapSize: $select("#sp-map").value as MapSize,
-          aiCount: Number($select("#sp-ai").value),
-          barbarians: $select("#sp-barb").value as "none" | "minimal" | "low" | "normal" | "high",
+          aiCivIds: state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
+          colors: [state.sp.color, ...state.sp.ais.map((a) => a.color)],
+          barbarians: $select("#sp-barb").value as BarbLevel,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
       );
@@ -340,8 +464,9 @@ export function createLobby(onStart: (session: Session) => void): void {
         <div class="menu-section-title">Lobby</div>
         <div class="menu-row"><span>Map size</span>${mapSelect("mp-map", "medium")}</div>
         <div class="menu-row"><span>Human players</span>${capacitySelect("mp-capacity", state.mp.capacity)}</div>
-        <div class="menu-row"><span>AI opponents</span>${aiSelect("mp-ai", 0)}</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("mp-barb", "normal")}</div>
+        <div class="menu-section-title" style="margin-top:14px">Players & Opponents</div>
+        <div id="mp-roster"></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
           <b>Games</b>
           <span style="display:flex;gap:6px">
@@ -360,6 +485,94 @@ export function createLobby(onStart: (session: Session) => void): void {
     urlEl.addEventListener("change", () => (state.mp.url = urlEl.value));
     handleEl.addEventListener("input", () => (state.mp.handle = handleEl.value));
     pwEl.addEventListener("input", () => (state.mp.password = pwEl.value));
+
+    // Keep human-slot and AI colors unique, sizing the human list to capacity.
+    const reconcileColors = (): void => {
+      const used = new Set<string>();
+      const humans: string[] = [];
+      for (let i = 0; i < state.mp.capacity; i++) {
+        let c = state.mp.humanColors[i];
+        if (!c || used.has(c)) c = firstFreeColor(used);
+        used.add(c);
+        humans.push(c);
+      }
+      state.mp.humanColors = humans;
+      for (const ai of state.mp.ais) {
+        if (!ai.color || used.has(ai.color)) ai.color = firstFreeColor(used);
+        used.add(ai.color);
+      }
+    };
+
+    const renderRoster = (): void => {
+      reconcileColors();
+      const used = new Set<string>([...state.mp.humanColors, ...state.mp.ais.map((a) => a.color)]);
+      const humans = state.mp.humanColors
+        .map(
+          (color, i) => `
+        <div class="roster-row" data-row="human-${i}">
+          <div class="roster-head">
+            <span class="roster-tag you">Player ${i + 1}</span>
+            <span class="roster-note">${i === 0 ? "Host" : "Open slot"} · random civ</span>
+          </div>
+          ${colorPicker(color, used)}
+        </div>`,
+        )
+        .join("");
+      const takenCivs = new Set<string>(
+        state.mp.ais.map((a) => a.civId).filter((c) => c !== RANDOM_CIV),
+      );
+      const ais = state.mp.ais
+        .map(
+          (ai, i) => `
+        <div class="roster-row" data-row="ai-${i}">
+          <div class="roster-head">
+            <span class="roster-tag">AI ${i + 1}</span>
+            <select class="menu-in roster-civ" data-civ="${i}">${civOptions(ai.civId, true, takenCivs)}</select>
+            <button type="button" class="roster-remove" data-remove="${i}" title="Remove opponent">✕</button>
+          </div>
+          ${colorPicker(ai.color, used)}
+        </div>`,
+        )
+        .join("");
+      const add =
+        state.mp.ais.length < MAX_AI
+          ? `<button type="button" class="menu-btn roster-add" id="mp-add-ai">+ Add AI opponent</button>`
+          : `<div class="menu-hint">Maximum of ${MAX_AI} AI opponents reached.</div>`;
+      const root = $("#mp-roster");
+      root.innerHTML = humans + ais + add;
+
+      root.querySelectorAll<HTMLSelectElement>(".roster-civ").forEach((sel) =>
+        sel.addEventListener("change", () => {
+          state.mp.ais[Number(sel.dataset.civ)]!.civId = sel.value;
+          renderRoster(); // refresh "taken" civ states across all dropdowns
+        }),
+      );
+      root.querySelectorAll<HTMLButtonElement>(".cp-dot").forEach((dot) =>
+        dot.addEventListener("click", () => {
+          const rowKey = (dot.closest("[data-row]") as HTMLElement).dataset.row!;
+          if (rowKey.startsWith("human-")) state.mp.humanColors[Number(rowKey.slice(6))] = dot.dataset.color!;
+          else state.mp.ais[Number(rowKey.slice(3))]!.color = dot.dataset.color!;
+          renderRoster();
+        }),
+      );
+      root.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          state.mp.ais.splice(Number(btn.dataset.remove), 1);
+          renderRoster();
+        }),
+      );
+      root.querySelector<HTMLButtonElement>("#mp-add-ai")?.addEventListener("click", () => {
+        const used2 = new Set<string>([...state.mp.humanColors, ...state.mp.ais.map((a) => a.color)]);
+        state.mp.ais.push({ civId: RANDOM_CIV, color: firstFreeColor(used2) });
+        renderRoster();
+      });
+    };
+
+    $select("#mp-capacity").addEventListener("change", () => {
+      state.mp.capacity = Math.max(1, Math.min(12, Number($select("#mp-capacity").value)));
+      renderRoster();
+    });
+    renderRoster();
 
     const renderGames = (games: GameSummary[]) => {
       const list = $("#game-list");
@@ -443,16 +656,16 @@ export function createLobby(onStart: (session: Session) => void): void {
     $("#refresh").addEventListener("click", () => mpSession?.send({ t: "listGames" }));
     $("#create").addEventListener("click", () => {
       const dims = MAP_DIMENSIONS[($select("#mp-map").value as MapSize) ?? "medium"];
-      const capacity = Number($select("#mp-capacity").value);
-      state.mp.capacity = Math.max(1, Math.min(12, capacity));
+      reconcileColors();
       mpSession?.send({
         t: "createGame",
         name: `${handleEl.value || "Player"}'s game`,
         cols: dims.cols,
         rows: dims.rows,
         capacity: state.mp.capacity,
-        aiCount: Number($select("#mp-ai").value),
-        barbarians: $select("#mp-barb").value as "none" | "minimal" | "low" | "normal" | "high",
+        aiCivIds: state.mp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
+        colors: [...state.mp.humanColors, ...state.mp.ais.map((a) => a.color)],
+        barbarians: $select("#mp-barb").value as BarbLevel,
       });
     });
   }

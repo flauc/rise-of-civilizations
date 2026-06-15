@@ -88,6 +88,8 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         capacity: msg.capacity,
         aiCount: msg.aiCount,
         barbarians: msg.barbarians,
+        aiCivIds: msg.aiCivIds,
+        colors: msg.colors,
       });
       ws.data.gameId = game.id;
       ws.data.playerId = game.slots[0]!.playerId;

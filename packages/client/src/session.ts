@@ -55,7 +55,12 @@ export interface LocalGameOptions {
   mapSize?: MapSize;
   aiCount?: number;
   barbarians?: boolean | BarbarianActivity;
+  /** The human player's civilization. */
   civId?: string;
+  /** Civ id per AI opponent; null/undefined = a random unique civ. */
+  aiCivIds?: (string | null)[];
+  /** Color per player (index 0 = human, then one per AI); null/undefined = auto. */
+  colors?: (string | null)[];
   /** Resume from a previously serialized single-player save. */
   savedState?: SerializedState;
 }
@@ -70,7 +75,10 @@ export class LocalSession implements Session {
       this.state = deserializeState(opts.savedState);
     } else {
       const dims = MAP_DIMENSIONS[opts.mapSize ?? "medium"];
-      const aiCount = Math.max(0, opts.aiCount ?? 1);
+      const aiCivIds = opts.aiCivIds ?? [];
+      const aiCount = Math.max(0, opts.aiCount ?? aiCivIds.length);
+      // Civ ids align to slots: the human first, then each AI (undefined = random).
+      const civIds = [opts.civId, ...aiCivIds.map((c) => c ?? undefined)].slice(0, 1 + aiCount);
       // Single-player = 1 human vs N AI civs (+ optional barbarians).
       this.state = createGame({
         seed: opts.seed ?? "rise",
@@ -79,7 +87,8 @@ export class LocalSession implements Session {
         humanSlots: 1,
         playerCount: 1 + aiCount,
         barbarians: opts.barbarians ?? true,
-        civIds: opts.civId ? [opts.civId] : undefined,
+        civIds,
+        colors: opts.colors ?? undefined,
       });
       beginTurn(this.state);
     }

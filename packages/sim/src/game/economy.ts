@@ -217,12 +217,16 @@ export function toggleCitizen(state: GameState, city: City, col: number, row: nu
   }
   const valid = new Set(workableTiles(state, city).map(keyOf));
   if (!valid.has(key)) return false;
-  city.workedTiles.push(key);
-  if (city.workedTiles.length > workerSlots(city)) {
+  // No citizen is free to work a tile — every one is committed as a specialist.
+  const cap = workerSlots(city);
+  if (cap <= 0) return false;
+  // At capacity, free up a slot by dropping the worst currently-worked tile so the
+  // new assignment is a swap, not an over-commit. (Without an existing tile to
+  // drop, the new tile must be rejected rather than pushing past `cap`.)
+  if (city.workedTiles.length >= cap) {
     let worstIdx = -1;
     let worst = Infinity;
     for (let i = 0; i < city.workedTiles.length; i++) {
-      if (city.workedTiles[i] === key) continue;
       const s = scoreOfKey(state, city.workedTiles[i]!);
       if (s < worst) {
         worst = s;
@@ -231,6 +235,7 @@ export function toggleCitizen(state: GameState, city: City, col: number, row: nu
     }
     if (worstIdx >= 0) city.workedTiles.splice(worstIdx, 1);
   }
+  city.workedTiles.push(key);
   return true;
 }
 

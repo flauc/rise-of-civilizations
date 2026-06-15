@@ -90,6 +90,40 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(host.state.players.filter((p) => p.isHuman).length).toBe(5);
   });
 
+  it("supports more than 4 AI with per-AI civs and unique colors", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("AI Horde", "uA", "Alice", {
+      seed: "seed-ai",
+      capacity: 1,
+      aiCivIds: ["rome", null, "sumer", null, null, null, null],
+      colors: ["#111111", "#222222"],
+    });
+    expect(g.aiCount).toBe(7);
+
+    expect(lobby.start(g.id)).toEqual({ ok: true });
+    const players = lobby.get(g.id)!.host!.state.players.filter((p) => !p.isBarbarian);
+    expect(players.length).toBe(8); // 1 human + 7 AI
+
+    // The host's chosen human color and AI civ assignments survive.
+    expect(players[0]!.color).toBe("#111111");
+    expect(players[1]!.civId).toBe("rome");
+    expect(players[3]!.civId).toBe("sumer");
+
+    // Every player has a distinct color.
+    const colors = players.map((p) => p.color);
+    expect(new Set(colors).size).toBe(colors.length);
+  });
+
+  it("clamps AI count to at most 12", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Too Many", "uA", "Alice", {
+      seed: "seed-clamp",
+      capacity: 1,
+      aiCount: 50,
+    });
+    expect(g.aiCount).toBe(12);
+  });
+
   it("lets the host delete a game and rejects deletions by others", () => {
     const lobby = new Lobby();
     const g = lobby.create("Deletable", "uA", "Alice", { seed: "seed-del" });

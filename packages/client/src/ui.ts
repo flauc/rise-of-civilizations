@@ -71,6 +71,7 @@ import {
   barbarianBribeCost,
   barbarianRecruitCost,
   isBarbarianPacified,
+  isLogEntryVisible,
   canParleyWith,
   BRIBE_TURNS,
   BARBARIAN_DIPLOMACY_TECH,
@@ -682,8 +683,7 @@ export function createUI(handlers: UIHandlers): UI {
         wiki.open();
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-log")!.addEventListener("click", () => {
-        logDialogContent.innerHTML = state.log
-          .slice()
+        logDialogContent.innerHTML = visibleLog(state, lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? 0))
           .reverse()
           .map((entry) => `<div>${escapeHtml(entry.message)}</div>`)
           .join("");
@@ -1492,8 +1492,7 @@ export function createUI(handlers: UIHandlers): UI {
             `</span></div>`
           );
         })
-        .join("") +
-      `<div class="sub" style="margin-top:4px;opacity:.8">Open 🏛️ Empire → Specialists to see each craftsman by name.</div>`;
+        .join("");
     const cityWorks = worksOfCity(state, city.id);
     const worksHtml = cityWorks.length
       ? `<div class="csub">Public works</div>` +
@@ -1524,8 +1523,7 @@ export function createUI(handlers: UIHandlers): UI {
       `<span title="Science">🔬 <b>${y.science}</b></span>` +
       `</div>` +
       // citizens
-      `<div style="margin-top:6px">👥 Citizens <b>${Math.min(city.workedTiles.length, free)}/${free}</b> working tiles ` +
-      `<span style="color:#9fc0dc;font-size:11px">— click tiles to reassign</span></div>` +
+      `<div style="margin-top:6px">👥 Citizens <b>${Math.min(city.workedTiles.length, free)}/${free}</b> working tiles</div>` +
       specHtml +
       worksHtml +
       // growth
@@ -1563,8 +1561,15 @@ export function createUI(handlers: UIHandlers): UI {
     });
   };
 
-  const renderLog = (state: GameState): void => {
-    log.innerHTML = state.log
+  // The viewer only sees their own moves, world news, events aimed at them, and
+  // things on tiles they've explored — never other players' private actions.
+  const visibleLog = (state: GameState, viewerId: number): LogEntry[] => {
+    const known = state.players.find((p) => p.id === viewerId)?.explored ?? new Set<string>();
+    return state.log.filter((l) => isLogEntryVisible(l, viewerId, known));
+  };
+
+  const renderLog = (state: GameState, viewerId: number): void => {
+    log.innerHTML = visibleLog(state, viewerId)
       .slice(-4)
       .map((l) => `<div>${escapeHtml(l.message)}</div>`)
       .join("");
@@ -1629,7 +1634,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderTilePanel(view.state, view.selectedTile ?? null, view.viewerId, view.cheatsEnabled ?? false);
       renderGodMode(view);
       renderCityPanel(view.state, view.selectedCity);
-      renderLog(view.state);
+      renderLog(view.state, view.viewerId);
       renderGameOver(view.state);
       renderMenu(view.state);
       renderAction(view);

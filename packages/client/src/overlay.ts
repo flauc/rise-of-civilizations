@@ -427,11 +427,6 @@ export function drawOverlay(
     }
 
     const selected = o.selectedCityId === city.id;
-    if (selected) {
-      ctx.lineWidth = Math.max(2, size * 0.1);
-      ctx.strokeStyle = "#ffd967";
-      ctx.strokeRect(imgX - 1, imgY - 1, imgSize + 2, imgSize + 2);
-    }
 
     if (showLabels) {
       // City name + population label (same pill style as unit labels).

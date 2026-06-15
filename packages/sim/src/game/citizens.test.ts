@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { workableTiles, toggleCitizen, getCityYields } from "./economy";
+import { convertCitizen, workerSlots } from "./specialists";
 import { citiesOf, unitsOf } from "./state";
 import { getTile } from "@roc/shared";
 
@@ -36,6 +37,21 @@ describe("citizen assignment", () => {
       expect(city.workedTiles).not.toContain(`${target.col},${target.row}`);
     }
     expect(before).toBeGreaterThanOrEqual(0);
+  });
+
+  it("a citizen committed as a specialist can no longer work a tile", () => {
+    const { s, city } = foundedGame();
+    // Make every citizen a specialist (pop 1 -> 1 carpenter), leaving no free workers.
+    expect(convertCitizen(s, city, "carpenter", 1).ok).toBe(true);
+    expect(workerSlots(city)).toBe(0);
+    // Training pulls the citizen off its tile…
+    expect(city.workedTiles.length).toBe(0);
+
+    // …and the player cannot re-assign that specialist onto a tile.
+    const target = workableTiles(s, city)[0]!;
+    const res = applyCommand(s, { type: "assignCitizen", cityId: city.id, col: target.col, row: target.row });
+    expect(res.ok).toBe(false);
+    expect(city.workedTiles.length).toBe(0);
   });
 
   it("worked tiles contribute their yields (incl. science)", () => {
