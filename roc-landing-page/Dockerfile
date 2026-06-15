@@ -2,10 +2,10 @@
 FROM oven/bun:1 AS build
 WORKDIR /app
 
-COPY roc-landing-page/package.json roc-landing-page/bun.lock ./
+COPY package.json bun.lock ./
 RUN bun install
 
-COPY roc-landing-page/ ./
+COPY . ./
 RUN bun run build
 
 FROM nginx:alpine AS runtime
