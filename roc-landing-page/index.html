@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Rise of Civilizations — a turn-based 4X strategy game from the Ancient Era to the Age of Exploration." />
+    <title>Rise of Civilizations | Forge an Empire Through the Ages</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;800&family=Lato:wght@300;400;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="app">
+      <nav class="site-nav" aria-label="Primary">
+        <a href="#" class="logo">
+          <span class="logo-icon">⚔</span>
+          <span class="logo-text">Rise of Civilizations</span>
+        </a>
+        <button class="nav-toggle" aria-expanded="false" aria-controls="nav-menu" aria-label="Toggle navigation">
+          <span></span><span></span><span></span>
+        </button>
+        <ul id="nav-menu" class="nav-menu">
+          <li><a href="#pillars">4X Gameplay</a></li>
+          <li><a href="#civilizations">Civilizations</a></li>
+          <li><a href="#eras">Ages</a></li>
+          <li><a href="#world">World</a></li>
+          <li><a href="#play" class="nav-cta">Play Now</a></li>
+        </ul>
+      </nav>
+
+      <header class="hero">
+        <div class="hero-hex-bg" aria-hidden="true"></div>
+        <div class="hero-vignette" aria-hidden="true"></div>
+        <div class="hero-content">
+          <p class="hero-pretitle">4000 BCE — 1550 CE</p>
+          <h1 class="hero-title">Forge an Empire<br /><span class="hero-accent">Through the Ages</span></h1>
+          <p class="hero-subtitle">
+            A turn-based 4X strategy game played in your browser. Lead one of 80+ civilizations from the first mud-brick cities to the Age of Exploration.
+          </p>
+          <div class="hero-actions">
+            <a href="#play" class="btn btn-primary">Begin Your Reign</a>
+            <a href="#civilizations" class="btn btn-secondary">Meet the Leaders</a>
+          </div>
+        </div>
+        <div class="hero-stats" aria-hidden="true">
+          <div class="stat"><strong>80+</strong><span>Civilizations</span></div>
+          <div class="stat"><strong>5</strong><span>Eras</span></div>
+          <div class="stat"><strong>85+</strong><span>Technologies</span></div>
+          <div class="stat"><strong>4X</strong><span>Strategy</span></div>
+        </div>
+      </header>
+
+      <main>
+        <section id="pillars" class="pillars section">
+          <div class="container">
+            <h2 class="section-title">The Four Pillars of Empire</h2>
+            <p class="section-lead">Every decision shapes your civilization. Explore unknown frontiers, expand your borders, exploit the land, and exterminate those who stand in your way.</p>
+            <div class="pillars-grid" id="pillars-grid">
+              <!-- populated by JS -->
+            </div>
+          </div>
+        </section>
+
+        <section id="civilizations" class="civilizations section section-dark">
+          <div class="container">
+            <h2 class="section-title">Choose Your Legacy</h2>
+            <p class="section-lead">From Sumerian war-carts to Mongol hordes and Inca terrace farms, each civilization brings a unique leader, ability, unit, and infrastructure.</p>
+
+            <div class="featured-civ" id="featured-civ">
+              <div class="featured-portrait">
+                <img id="featured-img" src="assets/leaders/rome.png" alt="Leader portrait" loading="lazy" />
+              </div>
+              <div class="featured-info">
+                <p class="featured-region" id="featured-region">Europe • Classical Age</p>
+                <h3 id="featured-name">Rome</h3>
+                <p class="featured-leader" id="featured-leader">Led by Trajan</p>
+                <div class="featured-ability">
+                  <strong id="featured-ability-name">All Roads Lead to Rome</strong>
+                  <p id="featured-ability-desc">New cities are founded with a free Monument.</p>
+                </div>
+                <div class="featured-uniques">
+                  <div class="unique"><span>Unique Unit</span><strong id="featured-uu">Legionary</strong></div>
+                  <div class="unique"><span>Infrastructure</span><strong id="featured-ui">Roman Bath</strong></div>
+                </div>
+                <div class="featured-nav">
+                  <button class="btn btn-small" id="prev-civ" aria-label="Previous civilization">←</button>
+                  <span id="civ-counter">1 / 12</span>
+                  <button class="btn btn-small" id="next-civ" aria-label="Next civilization">→</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="leader-marquee" aria-hidden="true">
+            <div class="leader-marquee-track" id="leader-marquee">
+              <!-- populated by JS -->
+            </div>
+          </div>
+        </section>
+
+        <section id="eras" class="eras section">
+          <div class="container">
+            <h2 class="section-title">Five Ages of History</h2>
+            <p class="section-lead">Advance from stone tools to square-rigged galleons. Each era unlocks new units, buildings, governments, and ways to win.</p>
+            <div class="eras-timeline" id="eras-timeline">
+              <!-- populated by JS -->
+            </div>
+          </div>
+        </section>
+
+        <section id="world" class="world section section-dark">
+          <div class="container">
+            <div class="world-layout">
+              <div class="world-copy">
+                <h2 class="section-title">A Living World of Hexes</h2>
+                <p class="section-lead">Procedural maps and real-world geodata presets mean no two games are alike. Deserts, jungles, mountains, rivers, and coastlines shape every empire's story.</p>
+                <ul class="world-list">
+                  <li><img src="assets/terrain/plains.png" alt="" /> Procedural continents, archipelagos, and Earth presets</li>
+                  <li><img src="assets/resources/iron.png" alt="" /> Bonus, luxury, and strategic resources to fight over</li>
+                  <li><img src="assets/units/catapult.png" alt="" /> Combined-arms tactics with melee, ranged, cavalry, and siege</li>
+                  <li><img src="assets/buildings/city_1.png" alt="" /> Districts, wonders, and veteran units with earned names</li>
+                </ul>
+              </div>
+              <div class="world-hexes" aria-hidden="true">
+                <div class="hex-cluster" id="hex-cluster"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="play" class="cta section">
+          <div class="container">
+            <h2 class="section-title">The World Awaits Its Next Ruler</h2>
+            <p class="section-lead">Play single-player against AI, hotseat with friends, or join online multiplayer. Your empire begins with a single settler.</p>
+            <div class="cta-actions">
+              <a href="#" class="btn btn-primary btn-large">Play in Browser</a>
+              <a href="#" class="btn btn-secondary btn-large">Read the Plan</a>
+            </div>
+            <p class="cta-note">No install required. Works on desktop and mobile.</p>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer">
+        <div class="container footer-grid">
+          <div>
+            <p class="footer-logo">Rise of Civilizations</p>
+            <p class="footer-tagline">A browser-first 4X strategy project.</p>
+          </div>
+          <div>
+            <p><strong>Game</strong></p>
+            <ul>
+              <li><a href="#pillars">Gameplay</a></li>
+              <li><a href="#civilizations">Civilizations</a></li>
+              <li><a href="#eras">Ages</a></li>
+            </ul>
+          </div>
+          <div>
+            <p><strong>Project</strong></p>
+            <ul>
+              <li><a href="#">Source Code</a></li>
+              <li><a href="#">Docs</a></li>
+              <li><a href="#">Roadmap</a></li>
+            </ul>
+          </div>
+        </div>
+        <div class="container footer-bottom">
+          <p>All art and game content belongs to the Rise of Civilizations project.</p>
+        </div>
+      </footer>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
