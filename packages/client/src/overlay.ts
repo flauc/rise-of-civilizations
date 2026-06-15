@@ -1,5 +1,5 @@
 import { cityMaxHp, tileYields, resourceYields, addYields, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, type GameState, type TradeRoute } from "@roc/sim";
-import { axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
+import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
@@ -49,6 +49,68 @@ function hpColor(frac: number): string {
   if (frac > 0.6) return "#5fcf61";
   if (frac > 0.3) return "#e0c14a";
   return "#e0533d";
+}
+
+interface Pt { x: number; y: number; }
+
+/** The six screen-space corners of a tile's hex (matches the terrain geometry). */
+function hexCorners(cx: number, cy: number, size: number): Pt[] {
+  const pts: Pt[] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 180) * (60 * i - 30);
+    pts.push({ x: cx + size * Math.cos(a), y: cy + size * Math.sin(a) * VSQUISH });
+  }
+  return pts;
+}
+
+/**
+ * Stroke a rampart along the given hex edges. `sides[k]` is an edge index whose
+ * endpoints are corners[side]..corners[(side+1)%6]. Because adjacent tiles share
+ * the exact same corner world-points, the segments of neighbouring wall/tower
+ * tiles meet seamlessly — the same way roads join at shared edge midpoints.
+ */
+function drawRampart(
+  ctx: CanvasRenderingContext2D,
+  corners: Pt[],
+  sides: number[],
+  color: string,
+  size: number,
+  tier: number,
+): void {
+  if (sides.length === 0) return;
+  const base = Math.max(2, size * 0.13) * (1 + (tier - 1) * 0.2);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  const stroke = (w: number, col: string): void => {
+    ctx.lineWidth = w;
+    ctx.strokeStyle = col;
+    ctx.beginPath();
+    for (const sd of sides) {
+      const a = corners[sd]!;
+      const b = corners[(sd + 1) % 6]!;
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+  };
+  stroke(base * 1.55, "rgba(16,14,12,0.55)"); // soft shadow base
+  stroke(base, "#9a948a"); // stone
+  stroke(base * 0.5, "#c8c2b4"); // lit stone top
+  stroke(base * 0.22, color); // thin owner tint along the crest
+  // Crenellation merlons at higher zoom for a fortified read.
+  if (size > 18) {
+    ctx.fillStyle = "#c8c2b4";
+    const m = base * 0.5;
+    for (const sd of sides) {
+      const a = corners[sd]!;
+      const b = corners[(sd + 1) % 6]!;
+      for (let k = 0.25; k <= 0.75; k += 0.25) {
+        const x = a.x + (b.x - a.x) * k;
+        const y = a.y + (b.y - a.y) * k;
+        ctx.fillRect(x - m / 2, y - m / 2, m, m);
+      }
+    }
+  }
 }
 
 function drawHpBar(
@@ -188,6 +250,9 @@ export function drawOverlay(
   }
 
   // ---- defensive structures (walls / towers) ----
+  // Walls hug the tile edges that face the owner's frontier and connect to
+  // neighbouring walls/towers at shared corners — drawn dynamically (like roads)
+  // from the tile's territory-border edges rather than as a centred icon.
   for (const t of state.map.tiles) {
     if (!t.structure || t.structure.hp <= 0) continue;
     if (!o.explored.has(`${t.col},${t.row}`)) continue;
@@ -195,32 +260,43 @@ export function drawOverlay(
     const color = ownerPid !== undefined ? colorOf(ownerPid) : "#999";
     const s = screen(t.col, t.row);
     const isTower = t.structure.kind === "tower";
-    const half = size * 0.34;
-    ctx.fillStyle = "rgba(20,20,24,0.85)";
-    ctx.strokeStyle = color;
-    ctx.lineWidth = Math.max(1.5, size * 0.06);
+    const tier = t.structure.tier;
+    const corners = hexCorners(s.x, s.y, size);
+
+    // Edges whose neighbour isn't owned by this structure's player are border
+    // edges; that's where the wall is raised. An isolated structure with no
+    // border (fully interior) encloses its own tile so it still reads as a fort.
+    const here = offsetToAxial({ col: t.col, row: t.row });
+    const sides: number[] = [];
+    for (let d = 0; d < 6; d++) {
+      const nb = axialToOffset(axialNeighbor(here, d));
+      if (ownerPlayerAt(nb.col, nb.row) !== ownerPid) sides.push((6 - d) % 6);
+    }
+    if (sides.length === 0) for (let sd = 0; sd < 6; sd++) sides.push(sd);
+
+    drawRampart(ctx, corners, sides, color, size, tier);
+
+    // Towers add a bastion node on the line; they anchor and connect wall runs.
     if (isTower) {
-      // a little crenellated tower
+      const r = size * 0.24 * (1 + (tier - 1) * 0.12);
+      ctx.fillStyle = "rgba(26,24,22,0.92)";
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1.2, size * 0.05);
       ctx.beginPath();
-      ctx.rect(s.x - half * 0.6, s.y - half, half * 1.2, half * 2);
+      ctx.rect(s.x - r, s.y - r, r * 2, r * 2);
       ctx.fill();
       ctx.stroke();
-    } else {
-      // a low wall segment
-      ctx.beginPath();
-      ctx.rect(s.x - half, s.y - half * 0.5, half * 2, half);
-      ctx.fill();
-      ctx.stroke();
+      if (size > 12) {
+        ctx.fillStyle = "#fff";
+        ctx.font = `bold ${Math.round(size * 0.3)}px system-ui, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("♜", s.x, s.y + 1);
+      }
     }
-    if (size > 12) {
-      ctx.fillStyle = "#fff";
-      ctx.font = `bold ${Math.round(size * 0.34)}px system-ui, sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(isTower ? "♜" : "▦", s.x, s.y + 1);
-    }
+
     if (t.structure.hp < t.structure.maxHp) {
-      drawHpBar(ctx, s.x, s.y + half + size * 0.12, half * 2, t.structure.hp / t.structure.maxHp);
+      drawHpBar(ctx, s.x, s.y + size * 0.55, size * 0.9, t.structure.hp / t.structure.maxHp);
     }
   }
 
