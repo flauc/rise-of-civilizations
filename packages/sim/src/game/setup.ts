@@ -166,6 +166,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       resources: {},
       met: [],
       atWar: [],
+      importedLuxuries: [],
     });
   }
   const barbId = count;
@@ -190,6 +191,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       resources: {},
       met: [],
       atWar: [],
+      importedLuxuries: [],
     });
   }
 

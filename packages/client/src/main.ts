@@ -8,6 +8,9 @@ import {
   combatPreview,
   computeAttackTargets,
   computeReachable,
+  peaceWarTargets,
+  incursionTargets,
+  getCiv,
   unitAt,
   unitsOf,
   workableTiles,
@@ -59,6 +62,8 @@ function startGame(session: Session): void {
   let selectedTile: { col: number; row: number } | null = null;
   let reachable = new Set<string>();
   let attackTargets = new Set<string>();
+  let peaceAttack = new Set<string>(); // would-declare-war attacks
+  let incursion = new Map<string, number>(); // foreign peace tiles -> owner id
   let cityWorkable = new Set<string>();
   let visible = new Set<string>();
   let gameOverShown = false;
@@ -79,10 +84,42 @@ function startGame(session: Session): void {
     if (!u || u.ownerId !== session.getViewerId()) {
       reachable = new Set();
       attackTargets = new Set();
+      peaceAttack = new Set();
+      incursion = new Map();
       return;
     }
     reachable = new Set(computeReachable(st(), u).keys());
     attackTargets = computeAttackTargets(st(), u);
+    peaceAttack = peaceWarTargets(st(), u);
+    incursion = incursionTargets(st(), u);
+  }
+
+  function civNameOf(playerId: number): string {
+    const p = st().players.find((pl) => pl.id === playerId);
+    return getCiv(p?.civId)?.name ?? p?.name ?? "them";
+  }
+
+  /** Lightweight confirm modal for war-triggering actions. */
+  function confirmAction(message: string, onYes: () => void): void {
+    let modal = document.getElementById("confirm-modal");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "confirm-modal";
+      modal.style.cssText =
+        "position:fixed;inset:0;z-index:70;background:rgba(6,12,20,.75);display:flex;align-items:center;justify-content:center";
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML =
+      `<div style="width:min(420px,92vw);background:#1a1320;border:1px solid #5a4a66;border-radius:12px;padding:18px;text-align:center">` +
+      `<div style="font-size:30px">⚔️</div>` +
+      `<div style="color:#e6d2b8;margin:10px 0 16px;line-height:1.5">${message}</div>` +
+      `<div style="display:flex;gap:10px;justify-content:center">` +
+      `<button class="btn" id="cf-no">Cancel</button>` +
+      `<button class="btn" id="cf-yes" style="background:#7a2f2f;border-color:#a04040">Declare War</button></div></div>`;
+    modal.style.display = "flex";
+    const dismiss = () => { modal!.style.display = "none"; };
+    modal.querySelector<HTMLButtonElement>("#cf-no")!.onclick = dismiss;
+    modal.querySelector<HTMLButtonElement>("#cf-yes")!.onclick = () => { dismiss(); onYes(); };
   }
 
   function update(): void {
@@ -322,20 +359,39 @@ function startGame(session: Session): void {
       return;
     }
 
+    const attack = () => session.order({ type: "attack", attackerId: selectedUnitId!, col: off.col, row: off.row });
+    const move = () => session.order({ type: "move", unitId: selectedUnitId!, col: off.col, row: off.row });
+    const targetOwner = u && u.ownerId !== me ? u.ownerId : c && c.ownerId !== me ? c.ownerId : null;
+    const warnAttack = (owner: number) =>
+      confirmAction(`Attacking ${civNameOf(owner)} will start a war with them and cancel any deals you have. Continue?`, () => {
+        session.order({ type: "declareWar", targetId: owner });
+        attack();
+      });
+
     if (u) {
       // When one of our units is selected, tapping an enemy unit on an attack tile
       // issues an attack; otherwise tapping any unit selects it.
       if (u.ownerId !== me && selectedUnitId != null && attackTargets.has(key)) {
-        session.order({ type: "attack", attackerId: selectedUnitId, col: off.col, row: off.row });
+        attack();
+      } else if (u.ownerId !== me && selectedUnitId != null && peaceAttack.has(key)) {
+        warnAttack(u.ownerId);
       } else if (u.ownerId === me && selectedUnitId === u.id && c && c.ownerId === me) {
         selectCity(c.id);
       } else {
         selectUnit(u.id);
       }
     } else if (selectedUnitId != null && attackTargets.has(key)) {
-      session.order({ type: "attack", attackerId: selectedUnitId, col: off.col, row: off.row });
+      attack();
+    } else if (selectedUnitId != null && peaceAttack.has(key) && targetOwner != null) {
+      warnAttack(targetOwner);
     } else if (selectedUnitId != null && reachable.has(key)) {
-      session.order({ type: "move", unitId: selectedUnitId, col: off.col, row: off.row });
+      move();
+    } else if (selectedUnitId != null && incursion.has(key)) {
+      const owner = incursion.get(key)!;
+      confirmAction(`Entering ${civNameOf(owner)}'s territory without open borders will start a war with them. Continue?`, () => {
+        session.order({ type: "declareWar", targetId: owner });
+        move();
+      });
     } else if (c && c.ownerId === me) {
       selectCity(c.id);
     } else if (isExplored(off.col, off.row)) {

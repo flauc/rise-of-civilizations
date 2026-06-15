@@ -102,6 +102,8 @@ export interface Player {
   met: number[];
   /** Ids of civs this player is currently at war with (drives areEnemies). */
   atWar: number[];
+  /** Luxury resource ids imported via active deals (grant amenities). */
+  importedLuxuries: string[];
 }
 
 export interface Religion {
@@ -144,6 +146,7 @@ export type DealItem =
   | { kind: "gold"; amount: number }
   | { kind: "goldPerTurn"; amount: number; turns: number }
   | { kind: "resource"; id: string; turns: number }
+  | { kind: "specialist"; specialistType: string; turns: number }
   | { kind: "peace" }
   | { kind: "openBorders" }
   | { kind: "pact"; tier: Exclude<PactTier, "none">; turns: number }
@@ -154,6 +157,8 @@ export interface DealObligation {
   fromId: number;
   item: DealItem;
   untilTurn: number;
+  /** For a lent specialist: the id of the moved craftsman, so it can be returned. */
+  specialistId?: number;
 }
 
 /** Shared relationship record for a met pair of major civs (a < b). */

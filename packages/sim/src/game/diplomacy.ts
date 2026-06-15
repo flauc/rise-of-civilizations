@@ -2,7 +2,7 @@
 // one another, and conduct relations: peace/war, treaties and timed deals.
 // Barbarians are excluded (always hostile). See docs/DIPLOMACY.md.
 
-import { axialDistance, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import { getCiv } from "@roc/data";
 import type {
   Attitude,
@@ -11,8 +11,10 @@ import type {
   Player,
   Relation,
 } from "./state";
-import { citiesOf, playerById, unitsOf } from "./state";
+import { citiesOf, playerById, unitsOf, type City } from "./state";
 import { UNIT_DEFS, isMilitary } from "./content";
+import { RESOURCE_DEFS, tradeableLuxuries, type ResourceId } from "./resources";
+import { SPECIALIST_DEFS, type SpecialistId } from "./specialists";
 
 export interface DiploResult {
   ok: boolean;
@@ -35,6 +37,25 @@ export function relationBetween(state: GameState, a: number, b: number): Relatio
 
 export function haveMet(state: GameState, a: number, b: number): boolean {
   return !!relationBetween(state, a, b);
+}
+
+/**
+ * If (col,row) lies in the territory of a met civ the player is at peace with and
+ * has NO open borders, returns that civ's id — entering it would mean war.
+ * Returns null for own/unowned/at-war/open-border/barbarian territory.
+ */
+export function foreignTerritoryOwner(state: GameState, playerId: number, col: number, row: number): number | null {
+  const tile = getTile(state.map, col, row);
+  if (!tile || tile.ownerCityId === undefined) return null;
+  const city = state.cities.get(tile.ownerCityId);
+  if (!city || city.ownerId === playerId) return null;
+  const me = playerById(state, playerId);
+  const owner = playerById(state, city.ownerId);
+  if (!me || !owner || owner.isBarbarian) return null;
+  if (!me.met.includes(city.ownerId)) return null; // unmet: no diplomacy restriction
+  if (me.atWar.includes(city.ownerId)) return null; // at war: enter freely
+  if (relationBetween(state, playerId, city.ownerId)?.openBorders) return null;
+  return city.ownerId;
 }
 export function atWar(state: GameState, a: number, b: number): boolean {
   return relationBetween(state, a, b)?.status === "war";
@@ -217,12 +238,26 @@ function canPayItems(state: GameState, payerId: number, items: DealItem[]): bool
       gold -= it.amount;
       if (gold < 0) return false;
     } else if (it.kind === "resource") {
-      if ((p.resources[it.id] ?? 0) <= 0) return false;
+      const def = RESOURCE_DEFS[it.id as ResourceId];
+      if (def?.type === "luxury") {
+        if (!tradeableLuxuries(state, payerId).includes(it.id)) return false;
+      } else if ((p.resources[it.id] ?? 0) <= 0) return false;
+    } else if (it.kind === "specialist") {
+      if (!hasSpecialistType(state, payerId, it.specialistType)) return false;
     } else if (it.kind === "declareWarOn") {
       if (!relationBetween(state, payerId, it.civId)) return false;
     }
   }
   return true;
+}
+
+function hasSpecialistType(state: GameState, playerId: number, type: string): boolean {
+  return citiesOf(state, playerId).some((c) => c.specialists.some((s) => s.type === type));
+}
+
+function capitalOf(state: GameState, playerId: number): City | undefined {
+  const cities = citiesOf(state, playerId);
+  return cities.find((c) => c.isCapital) ?? cities[0];
 }
 
 export function gift(state: GameState, aId: number, targetId: number, goldAmt: number, resourceId?: string): DiploResult {
@@ -311,6 +346,51 @@ export function respondProposal(state: GameState, playerId: number, proposalId: 
 function applyExchange(state: GameState, fromId: number, toId: number, give: DealItem[], want: DealItem[]): void {
   for (const it of give) applyItem(state, fromId, toId, it);
   for (const it of want) applyItem(state, toId, fromId, it);
+  recomputeImportedLuxuries(state);
+}
+
+/** Move a craftsman of `type` from the lender to the borrower's capital. */
+function lendSpecialist(state: GameState, fromId: number, toId: number, type: string, untilTurn: number) {
+  const cap = capitalOf(state, toId);
+  if (!cap) return undefined;
+  for (const c of citiesOf(state, fromId)) {
+    const idx = c.specialists.findIndex((s) => s.type === type);
+    if (idx >= 0) {
+      const [spec] = c.specialists.splice(idx, 1);
+      cap.specialists.push(spec!);
+      state.log.push(`${civName(playerById(state, fromId)!)} lent a ${SPECIALIST_DEFS[type as SpecialistId]?.name ?? "specialist"} to ${civName(playerById(state, toId)!)}.`);
+      return { fromId, item: { kind: "specialist", specialistType: type, turns: untilTurn - state.turn } as DealItem, untilTurn, specialistId: spec!.id };
+    }
+  }
+  return undefined;
+}
+
+/** Return a lent craftsman to its lender's capital when the loan ends. */
+function returnSpecialist(state: GameState, ob: { fromId: number; specialistId?: number }): void {
+  if (ob.specialistId === undefined) return;
+  for (const c of state.cities.values()) {
+    const idx = c.specialists.findIndex((s) => s.id === ob.specialistId);
+    if (idx >= 0) {
+      const [spec] = c.specialists.splice(idx, 1);
+      const home = capitalOf(state, ob.fromId);
+      if (home && spec) home.specialists.push(spec);
+      return;
+    }
+  }
+}
+
+/** Rebuild each player's set of luxuries imported through active deals. */
+function recomputeImportedLuxuries(state: GameState): void {
+  for (const p of state.players) p.importedLuxuries = [];
+  for (const r of state.relations) {
+    for (const d of r.deals) {
+      if (d.item.kind !== "resource") continue;
+      if (RESOURCE_DEFS[d.item.id as ResourceId]?.type !== "luxury") continue;
+      const receiver = d.fromId === r.a ? r.b : r.a;
+      const p = playerById(state, receiver);
+      if (p && !p.importedLuxuries.includes(d.item.id)) p.importedLuxuries.push(d.item.id);
+    }
+  }
 }
 
 function applyItem(state: GameState, payerId: number, receiverId: number, item: DealItem): void {
@@ -325,8 +405,14 @@ function applyItem(state: GameState, payerId: number, receiverId: number, item: 
       break;
     case "goldPerTurn":
     case "resource":
-      if (r) r.deals.push({ fromId: payerId, item, untilTurn: state.turn + (item.kind === "resource" ? item.turns : item.turns) });
+      if (r) r.deals.push({ fromId: payerId, item, untilTurn: state.turn + item.turns });
       break;
+    case "specialist": {
+      if (!r) break;
+      const ob = lendSpecialist(state, payerId, receiverId, item.specialistType, state.turn + item.turns);
+      if (ob) r.deals.push(ob);
+      break;
+    }
     case "peace":
       if (r && r.status === "war") setPeace(state, r);
       break;
@@ -361,7 +447,8 @@ export function diplomacyTick(state: GameState): void {
           from.gold -= amt;
           to.gold += amt;
         }
-      } else if (d.item.kind === "resource") {
+      } else if (d.item.kind === "resource" && RESOURCE_DEFS[d.item.id as ResourceId]?.type !== "luxury") {
+        // Strategic resources stockpile; luxuries instead grant amenities (below).
         const from = playerById(state, d.fromId);
         const to = playerById(state, other);
         if (from && to && (from.resources[d.item.id] ?? 0) > 0) {
@@ -370,12 +457,17 @@ export function diplomacyTick(state: GameState): void {
         }
       }
     }
+    // Return lent specialists whose loan has expired, then drop expired deals.
+    for (const d of r.deals) {
+      if (state.turn >= d.untilTurn && d.item.kind === "specialist") returnSpecialist(state, d);
+    }
     r.deals = r.deals.filter((d) => state.turn < d.untilTurn);
     if (r.pactUntilTurn !== undefined && state.turn >= r.pactUntilTurn) {
       r.pact = "none";
       r.pactUntilTurn = undefined;
     }
   }
+  recomputeImportedLuxuries(state);
   for (const at of state.attitudes) {
     at.modifiers = at.modifiers.filter((m) => m.expiresTurn === undefined || state.turn < m.expiresTurn);
   }
@@ -441,6 +533,7 @@ function itemValue(state: GameState, aiId: number, otherId: number, item: DealIt
     case "gold": return item.amount;
     case "goldPerTurn": return item.amount * item.turns * 0.8;
     case "resource": return item.turns * 6;
+    case "specialist": return item.turns * 4;
     case "peace": return atWar(state, aiId, otherId) ? 80 : 0;
     case "openBorders": return 10 + attitudeScore(state, aiId, otherId) * 0.2;
     case "pact": {

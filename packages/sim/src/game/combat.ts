@@ -471,6 +471,28 @@ export function computeAttackTargets(state: GameState, unit: Unit): Set<string> 
   return out;
 }
 
+/** Tiles holding a met, at-peace civ's unit/city in range — attacking one would
+ *  declare war. Used by the client to warn before a surprise attack. */
+export function peaceWarTargets(state: GameState, unit: Unit): Set<string> {
+  const out = new Set<string>();
+  const def = UNIT_DEFS[unit.type];
+  if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return out;
+  if (unit.attackedThisTurn || unit.movementLeft <= 0) return out;
+  const me = playerById(state, unit.ownerId);
+  if (!me) return out;
+  const range = (isRanged(def) ? def.range ?? 1 : 1) + (has(unit, "extended_range") ? 1 : 0);
+  const from = { col: unit.col, row: unit.row };
+  const isPeaceTarget = (ownerId: number): boolean => {
+    if (ownerId === unit.ownerId) return false;
+    const o = playerById(state, ownerId);
+    if (!o || o.isBarbarian) return false;
+    return me.met.includes(ownerId) && !me.atWar.includes(ownerId);
+  };
+  for (const u of state.units.values()) if (isPeaceTarget(u.ownerId) && dist(from, u) <= range) out.add(`${u.col},${u.row}`);
+  for (const c of state.cities.values()) if (isPeaceTarget(c.ownerId) && dist(from, c) <= range) out.add(`${c.col},${c.row}`);
+  return out;
+}
+
 export interface CombatPreview {
   toDefender: number; // damage the attacker would deal
   toAttacker: number; // damage taken back (0 for ranged or vs an empty-HP city)

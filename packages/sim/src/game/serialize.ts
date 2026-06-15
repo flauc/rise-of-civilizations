@@ -254,6 +254,7 @@ export function deserializeState(s: SerializedState): GameState {
       ...p,
       met: p.met ?? [],
       atWar: p.atWar ?? [],
+      importedLuxuries: p.importedLuxuries ?? [],
       researched: new Set(p.researched as TechId[]),
       explored: new Set(p.explored),
     })),

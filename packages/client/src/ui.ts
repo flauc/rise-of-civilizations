@@ -394,6 +394,8 @@ export function createUI(handlers: UIHandlers): UI {
           <span class="tb-pl">👷</span><b>${specCount}</b><span class="tb-div">·</span>
           <span class="tb-pl">⚔️</span><b>${unitCount}</b>
         </button>
+        <button class="tb-pill" id="diplo-pill" title="Diplomacy">
+          <span class="tb-pl">🕊️</span><b>${player.met.length}</b></button>
         <button class="tb-pill" id="menu-btn" title="Menu">
           <span class="tb-pl">☰</span><b>Menu</b></button>
       </div>`;
@@ -438,6 +440,9 @@ export function createUI(handlers: UIHandlers): UI {
       renderCivics(state);
       renderReligion(state);
       empire.toggle(state, viewerId);
+    });
+    topbar.querySelector<HTMLButtonElement>("#diplo-pill")!.addEventListener("click", () => {
+      diplomacy.toggleContacts(state, viewerId);
     });
     topbar.querySelector<HTMLButtonElement>("#menu-btn")!.addEventListener("click", () => {
       menuOpen = !menuOpen;
@@ -1301,17 +1306,6 @@ export function createUI(handlers: UIHandlers): UI {
     onRespondProposal: (id, acc) => handlers.onRespondProposal(id, acc),
     onAcknowledgeContact: (o) => handlers.onAcknowledgeContact(o),
   });
-  const diploBtn = document.createElement("button");
-  diploBtn.id = "diplo-btn";
-  diploBtn.className = "btn";
-  diploBtn.textContent = "🕊️";
-  diploBtn.title = "Diplomacy";
-  diploBtn.style.cssText = "position:fixed;left:12px;top:64px;z-index:20;font-size:15px;padding:6px 10px";
-  diploBtn.addEventListener("click", () => {
-    if (lastState) diplomacy.toggleContacts(lastState, lastViewerId);
-  });
-  document.body.appendChild(diploBtn);
-
   return {
     render(view) {
       lastState = view.state;

@@ -7,10 +7,23 @@ import {
   attitudeScore,
   attitudeLabel,
   reputationOf,
+  tradeableLuxuries,
+  citiesOf,
+  RESOURCE_DEFS,
+  SPECIALIST_DEFS,
   type GameState,
   type DealItem,
 } from "@roc/sim";
 import { getCiv } from "@roc/data";
+
+/** Unique specialist types present in a player's cities. */
+function specialistTypesOf(state: GameState, playerId: number): string[] {
+  const set = new Set<string>();
+  for (const c of citiesOf(state, playerId)) for (const s of c.specialists) set.add(s.type);
+  return [...set];
+}
+const luxName = (id: string): string => RESOURCE_DEFS[id as keyof typeof RESOURCE_DEFS]?.name ?? id;
+const specName = (t: string): string => SPECIALIST_DEFS[t as keyof typeof SPECIALIST_DEFS]?.name ?? t;
 
 export interface DiploHandlers {
   onDeclareWar(targetId: number): void;
@@ -221,17 +234,37 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       `<button class="btn" data-act="demand">Demand 50🪙</button>` +
       `</div>` +
       // deal builder
-      `<div class="dp-deal"><div class="dp-sub" style="color:#c79ad6">Propose a deal</div>` +
-      `<div class="dp-cols">` +
-      `<div class="dp-col"><h4>You give</h4>` +
-      `<label>🪙 <input type="number" id="give-gold" min="0" max="${Math.floor(yourGold)}" value="0"/></label></div>` +
-      `<div class="dp-col"><h4>They give</h4>` +
-      `<label>🪙 <input type="number" id="want-gold" min="0" value="0"/></label></div>` +
-      `</div>` +
-      `<div style="margin-top:6px">` +
-      (war ? `<label><input type="checkbox" id="deal-peace"/> Peace treaty</label>` : "") +
-      `<label><input type="checkbox" id="deal-ob"/> Open borders</label>` +
-      `<label>Pact <select id="deal-pact" style="background:#14283b;color:#eaf3fb;border:1px solid var(--edge);border-radius:6px"><option value="">none</option><option value="non_aggression">non-aggression</option><option value="defensive">defensive pact</option><option value="alliance">alliance</option></select> for <input type="number" id="deal-pact-turns" min="5" max="60" value="20" style="width:54px"/> turns</label>` +
+      ((): string => {
+        const myLux = tradeableLuxuries(state, viewerId);
+        const theirLux = tradeableLuxuries(state, cid);
+        const mySpec = specialistTypesOf(state, viewerId);
+        const theirSpec = specialistTypesOf(state, cid);
+        const opt = (v: string, label: string) => `<option value="${v}">${label}</option>`;
+        const luxSel = (id: string, ids: string[]) =>
+          `<select id="${id}" style="background:#14283b;color:#eaf3fb;border:1px solid var(--edge);border-radius:6px">${opt("", "— amenity —")}${ids.map((x) => opt(x, luxName(x))).join("")}</select>`;
+        const specSel = (id: string, ids: string[]) =>
+          `<select id="${id}" style="background:#14283b;color:#eaf3fb;border:1px solid var(--edge);border-radius:6px">${opt("", "— specialist —")}${ids.map((x) => opt(x, specName(x))).join("")}</select>`;
+        return (
+          `<div class="dp-deal"><div class="dp-sub" style="color:#c79ad6">Propose a deal</div>` +
+          `<div class="dp-cols">` +
+          `<div class="dp-col"><h4>You give</h4>` +
+          `<label>🪙 <input type="number" id="give-gold" min="0" max="${Math.floor(yourGold)}" value="0"/></label>` +
+          (myLux.length ? `<label>🍷 ${luxSel("give-lux", myLux)}</label>` : "") +
+          (mySpec.length ? `<label>🛠️ ${specSel("give-spec", mySpec)}</label>` : "") +
+          `</div>` +
+          `<div class="dp-col"><h4>They give</h4>` +
+          `<label>🪙 <input type="number" id="want-gold" min="0" value="0"/></label>` +
+          (theirLux.length ? `<label>🍷 ${luxSel("want-lux", theirLux)}</label>` : "") +
+          (theirSpec.length ? `<label>🛠️ ${specSel("want-spec", theirSpec)}</label>` : "") +
+          `</div>` +
+          `</div>` +
+          `<label class="dp-sub" style="display:flex;gap:6px;align-items:center;margin-top:6px">Per-turn deals last <input type="number" id="deal-turns" min="5" max="60" value="20" style="width:54px"/> turns</label>`
+        );
+      })() +
+      `<div style="margin-top:8px;display:flex;flex-direction:column;gap:5px">` +
+      (war ? `<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="deal-peace"/> Peace treaty</label>` : "") +
+      `<label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="deal-ob"/> Open borders</label>` +
+      `<label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">Pact <select id="deal-pact" style="background:#14283b;color:#eaf3fb;border:1px solid var(--edge);border-radius:6px"><option value="">none</option><option value="non_aggression">non-aggression</option><option value="defensive">defensive pact</option><option value="alliance">alliance</option></select> for <input type="number" id="deal-pact-turns" min="5" max="60" value="20" style="width:54px"/> turns</label>` +
       `</div>` +
       `<button class="btn primary" id="deal-propose" style="margin-top:8px;width:100%">Propose</button></div>`
     );
@@ -243,7 +276,8 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
         switch (it.kind) {
           case "gold": return `${it.amount}🪙`;
           case "goldPerTurn": return `${it.amount}🪙/turn`;
-          case "resource": return `${it.id}`;
+          case "resource": return `${luxName(it.id)} (${it.turns}t)`;
+          case "specialist": return `${specName(it.specialistType)} (${it.turns}t)`;
           case "peace": return "peace";
           case "openBorders": return "open borders";
           case "pact": return it.tier.replace("_", " ");
@@ -282,10 +316,16 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
         const num = (id: string) => Math.max(0, Number(panel.querySelector<HTMLInputElement>(`#${id}`)?.value ?? 0));
         const give: DealItem[] = [];
         const want: DealItem[] = [];
+        const sel = (id: string) => panel.querySelector<HTMLSelectElement>(`#${id}`)?.value || "";
+        const turns = num("deal-turns") || 20;
         const gg = num("give-gold");
         const wg = num("want-gold");
         if (gg > 0) give.push({ kind: "gold", amount: gg });
         if (wg > 0) want.push({ kind: "gold", amount: wg });
+        const giveLux = sel("give-lux"); if (giveLux) give.push({ kind: "resource", id: giveLux, turns });
+        const wantLux = sel("want-lux"); if (wantLux) want.push({ kind: "resource", id: wantLux, turns });
+        const giveSpec = sel("give-spec"); if (giveSpec) give.push({ kind: "specialist", specialistType: giveSpec, turns });
+        const wantSpec = sel("want-spec"); if (wantSpec) want.push({ kind: "specialist", specialistType: wantSpec, turns });
         if (panel.querySelector<HTMLInputElement>("#deal-peace")?.checked) give.push({ kind: "peace" });
         if (panel.querySelector<HTMLInputElement>("#deal-ob")?.checked) give.push({ kind: "openBorders" });
         const tier = panel.querySelector<HTMLSelectElement>("#deal-pact")?.value;

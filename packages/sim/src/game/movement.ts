@@ -11,6 +11,7 @@ import { moveCost, isPassableLand, type TerrainType } from "./terrain";
 import type { GameState, Unit } from "./state";
 import { cityAt } from "./state";
 import { UNIT_DEFS } from "./content";
+import { foreignTerritoryOwner } from "./diplomacy";
 
 /** Effective movement cost to enter a tile for a specific unit. */
 function unitMoveCost(unit: Unit, terrain: TerrainType, road: boolean): number {
@@ -65,11 +66,14 @@ export function enemyStructureBlocks(state: GameState, col: number, row: number,
 export function computeReachable(
   state: GameState,
   unit: Unit,
+  opts?: { ignoreBorders?: boolean },
 ): Map<string, ReachableEntry> {
   const { map } = state;
   const budget = unit.movementLeft;
   const result = new Map<string, ReachableEntry>();
   if (budget <= 0) return result;
+  const borderBlocked = (col: number, row: number): boolean =>
+    !opts?.ignoreBorders && foreignTerritoryOwner(state, unit.ownerId, col, row) !== null;
 
   const occ = occupancy(state, unit);
   const key = (o: Offset) => `${o.col},${o.row}`;
@@ -95,6 +99,7 @@ export function computeReachable(
       const city = cityAt(state, n.col, n.row);
       if (city && city.ownerId !== unit.ownerId) continue;
       if (enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
+      if (borderBlocked(n.col, n.row)) continue; // foreign territory needs war / open borders
       const enterCost = unitMoveCost(unit, tile.terrain, tile.road ?? false);
       const step = curCost + enterCost;
       if (step <= budget && step < (best.get(nk) ?? Infinity)) {
@@ -114,10 +119,27 @@ export function computeReachable(
     const city = cityAt(state, n.col, n.row);
     if (city && city.ownerId !== unit.ownerId) continue;
     if (enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
+    if (borderBlocked(n.col, n.row)) continue;
     if (!result.has(nk)) result.set(nk, { cost: budget });
   }
 
   return result;
+}
+
+/** Foreign at-peace tiles a unit could step into if it declared war, mapped to
+ *  the territory owner — drives the "entering this starts a war" warning. */
+export function incursionTargets(state: GameState, unit: Unit): Map<string, number> {
+  const out = new Map<string, number>();
+  if (unit.movementLeft <= 0) return out;
+  const open = computeReachable(state, unit, { ignoreBorders: true });
+  const closed = computeReachable(state, unit);
+  for (const k of open.keys()) {
+    if (closed.has(k)) continue;
+    const [c, r] = k.split(",").map(Number) as [number, number];
+    const owner = foreignTerritoryOwner(state, unit.ownerId, c, r);
+    if (owner !== null) out.set(k, owner);
+  }
+  return out;
 }
 
 export function unitSight(unit: Unit): number {

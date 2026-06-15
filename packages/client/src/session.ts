@@ -160,6 +160,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     civId: p.civId,
     met: p.id === view.yourId ? [...(dip?.met ?? [])] : [],
     atWar: atWarOf(p.id),
+    importedLuxuries: [],
     gold: p.id === view.yourId ? view.you.gold : 0,
     researched: new Set(p.id === view.yourId ? view.you.researched : []),
     researching: p.id === view.yourId ? view.you.researching : null,
