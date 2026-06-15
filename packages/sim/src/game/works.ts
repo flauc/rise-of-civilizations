@@ -59,7 +59,7 @@ const ECON_BASE: Record<EconKind, number> = {
 };
 const DEFENSE_BASE: Record<DefenseKind, number> = { wall: 4, tower: 5 };
 
-const ECON_TERRAIN: Record<EconKind, ReadonlySet<string> | null> = {
+export const ECON_TERRAIN: Record<EconKind, ReadonlySet<string> | null> = {
   farm: new Set(["grassland", "plains"]),
   lumber_camp: new Set(["forest", "jungle"]),
   mine: new Set(["hills", "desert", "mesa"]),

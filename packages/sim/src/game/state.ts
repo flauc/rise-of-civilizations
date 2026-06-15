@@ -1,5 +1,5 @@
 import type { GameMap } from "@roc/shared";
-import { UNIT_DEFS, UNIT_MAX_HP, type BuildingId, type PromotionId, type TechId, type UnitTypeId } from "./content";
+import { UNIT_DEFS, UNIT_MAX_HP, type ActiveAbilityId, type BuildingId, type PromotionId, type StanceId, type TechId, type UnitTypeId } from "./content";
 
 export interface Unit {
   id: number;
@@ -18,6 +18,16 @@ export interface Unit {
   attackedLastTurn: boolean;
   /** Builder charges remaining (workers only). */
   charges: number;
+  /** Active stance (Set Spears / Shield Wall / Testudo / Emplace), if any. */
+  stance?: StanceId | null;
+  /** Per-ability "available again on turn N" gate (see abilities.ts). */
+  abilityCooldowns?: Partial<Record<ActiveAbilityId, number>>;
+  /** Defense reduced (Sunder) while state.turn <= this. */
+  sunderedUntilTurn?: number;
+  /** Pinned (Harry): forced to 0 movement at its turn start while state.turn <= this. */
+  pinnedUntilTurn?: number;
+  /** Reconnoiter vision pulse active until the unit's next turn (grants +2 sight). */
+  scouting?: boolean;
 }
 
 export type ProductionItem =
@@ -276,6 +286,8 @@ export function makeUnit(
     attackedThisTurn: false,
     attackedLastTurn: false,
     charges: UNIT_DEFS[type].builder ? 3 : 0,
+    stance: null,
+    abilityCooldowns: {},
   };
 }
 

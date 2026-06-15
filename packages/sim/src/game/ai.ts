@@ -11,6 +11,7 @@ import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import { applyCommand } from "./commands";
 import { computeReachable } from "./movement";
 import { computeAttackTargets } from "./combat";
+import { abilityTargets, canUseAbility, unitAbilities } from "./abilities";
 import { availableProduction, availableTechs } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
 import { canFoundReligion, availableReligionNames } from "./religion";
@@ -279,6 +280,18 @@ function aiTrader(state: GameState, unit: Unit, pid: number): void {
 }
 
 function aiMilitary(state: GameState, unit: Unit, pid: number): void {
+  const abilities = unitAbilities(unit);
+
+  // Horse archers prefer Fire & Retreat: same damage, no counter, and they reposition.
+  if (abilities.includes("fire_and_retreat")) {
+    const t = [...abilityTargets(state, unit, "fire_and_retreat")][0];
+    if (t) {
+      const [col, row] = t.split(",").map(Number) as [number, number];
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: "fire_and_retreat", col, row }, pid);
+      return;
+    }
+  }
+
   const targets = computeAttackTargets(state, unit);
   if (targets.size > 0) {
     let chosen: { col: number; row: number } | null = null;
@@ -295,10 +308,35 @@ function aiMilitary(state: GameState, unit: Unit, pid: number): void {
       }
     }
     if (chosen) {
+      // Cavalry strike with a charge (extra punch + breakthrough) when hitting a unit.
+      const enemy = unitAt(state, chosen.col, chosen.row);
+      const charge = abilities.find((a) => a === "shock_charge" || a === "charge");
+      if (enemy && charge && abilityTargets(state, unit, charge).has(`${chosen.col},${chosen.row}`)) {
+        applyCommand(state, { type: "useAbility", unitId: unit.id, ability: charge, col: chosen.col, row: chosen.row }, pid);
+        return;
+      }
+      const sunder = abilities.find((a) => a === "sunder" || a === "pierce" || a === "harry");
+      if (enemy && sunder && abilityTargets(state, unit, sunder).has(`${chosen.col},${chosen.row}`)) {
+        applyCommand(state, { type: "useAbility", unitId: unit.id, ability: sunder, col: chosen.col, row: chosen.row }, pid);
+        return;
+      }
       applyCommand(state, { type: "attack", attackerId: unit.id, col: chosen.col, row: chosen.row }, pid);
       return;
     }
   }
+
+  // No good attack: brace spears against adjacent enemy cavalry rather than idling.
+  if (abilities.includes("brace") || abilities.includes("shield_wall")) {
+    const stance = abilities.includes("shield_wall") ? "shield_wall" : "brace";
+    const threatened = [...state.units.values()].some(
+      (e) => e.ownerId !== unit.ownerId && UNIT_DEFS[e.type].cls === "cavalry" && axialDistance(ax(unit), ax(e)) <= 2,
+    );
+    if (threatened && canUseAbility(state, unit, stance).ok) {
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: stance, col: 0, row: 0 }, pid);
+      return;
+    }
+  }
+
   // Defend a threatened city, else pressure the nearest enemy.
   for (const city of citiesOf(state, unit.ownerId)) {
     for (const e of state.units.values()) {

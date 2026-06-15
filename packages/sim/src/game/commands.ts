@@ -14,6 +14,7 @@ import {
   unitMaxHp,
 } from "./combat";
 import { barbarianTurn } from "./barbarians";
+import { useAbility, tickAbilities } from "./abilities";
 import { applyVictoryCheck } from "./victory";
 import { convertCitizen, type SpecialistId } from "./specialists";
 import {
@@ -51,13 +52,14 @@ import {
   nextCityNameForCiv,
 } from "./civs";
 import { aiTakeTurn } from "./ai";
-import { UNIT_DEFS, TECH_DEFS, techUnlocked, type BuildingId, type PromotionId, type TechId } from "./content";
+import { UNIT_DEFS, TECH_DEFS, techUnlocked, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId } from "./content";
 
 export type Command =
   | { type: "move"; unitId: number; col: number; row: number }
   | { type: "attack"; attackerId: number; col: number; row: number }
   | { type: "foundCity"; unitId: number }
   | { type: "promote"; unitId: number; promotion: PromotionId }
+  | { type: "useAbility"; unitId: number; ability: ActiveAbilityId; col?: number; row?: number }
   | { type: "convertCitizen"; cityId: number; specialistId: string; delta: number }
   | { type: "startWork"; kind: string; col: number; row: number }
   | { type: "startWonder"; wonderId: string; hostCityId: number }
@@ -99,6 +101,7 @@ export function beginTurn(state: GameState): void {
     u.movementLeft = unitMovement(state, u);
   }
   healAndReset(state, player);
+  tickAbilities(state, player); // expire stances/pulses, enforce pins (after movement reset)
   gatherPlayerResources(state, player.id);
   for (const c of citiesOf(state, player.id)) {
     c.rangedAttackUsed = false;
@@ -162,6 +165,7 @@ export function applyCommand(
       unit.col = cmd.col;
       unit.row = cmd.row;
       unit.movementLeft = Math.max(0, unit.movementLeft - entry.cost);
+      if (unit.stance === "emplace") unit.stance = null; // moving packs up an emplaced engine
       onUnitEnter(state, unit); // resolve villages / barbarian camps
       updateExplored(state, player.id);
       return ok;
@@ -273,6 +277,15 @@ export function applyCommand(
         unit.hp = Math.min(unitMaxHp(unit), unit.hp + 15);
       }
       return ok;
+    }
+
+    case "useAbility": {
+      const unit = state.units.get(cmd.unitId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      const res = useAbility(state, unit, cmd.ability, cmd.col, cmd.row);
+      if (res.ok) updateExplored(state, player.id);
+      return res;
     }
 
     case "setProduction": {

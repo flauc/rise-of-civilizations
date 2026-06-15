@@ -179,15 +179,18 @@ export function createLobby(onStart: (session: Session) => void): void {
     return CIVILIZATIONS[Math.floor(Math.random() * CIVILIZATIONS.length)]!;
   }
 
-  function renderShowcase(civId?: string): void {
+  function renderShowcase(civId?: string, allowReroll = true): void {
     const civ = (civId ? CIVILIZATIONS.find((c) => c.id === civId) : undefined) ?? pickRandomCiv();
     const src = leaderAtlas.images[civ.id]?.src ?? `${import.meta.env.BASE_URL}leaders/${civ.id}.png`;
+    const rerollBtn = allowReroll
+      ? `<button class="menu-btn secondary showcase-reroll" id="showcase-reroll">Show another civilization</button>`
+      : "";
     right.innerHTML = `
       <div class="showcase-art-wrapper">
         <img id="showcase-art" class="showcase-art hidden" src="${src}" alt="" />
         <div id="showcase-art-placeholder" class="showcase-art-placeholder">Leader art<br/>coming soon</div>
       </div>
-      <button class="menu-btn secondary showcase-reroll" id="showcase-reroll">Show another civilization</button>
+      ${rerollBtn}
       <div class="showcase">
         <div class="showcase-label">Featured Civilization</div>
         <div class="showcase-civ">${escapeHtml(civ.name)}</div>
@@ -285,7 +288,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       renderShowcase(state.sp.civId);
     });
 
-    renderShowcase(state.sp.civId);
+    renderShowcase(state.sp.civId, false);
     $("#back").addEventListener("click", () => showScreen("start"));
     $("#back2").addEventListener("click", () => showScreen("start"));
     $("#sp-start").addEventListener("click", () => {

@@ -10,6 +10,8 @@ import {
   computeReachable,
   peaceWarTargets,
   incursionTargets,
+  abilityTargets,
+  ACTIVE_ABILITY_DEFS,
   getCiv,
   unitAt,
   unitsOf,
@@ -18,6 +20,7 @@ import {
   TERRAIN_NAMES,
   isRough,
   serializeState,
+  type ActiveAbilityId,
 } from "@roc/sim";
 import { getTile } from "@roc/shared";
 import { Camera } from "./camera";
@@ -39,6 +42,7 @@ import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
 import { loadFeatureAtlas } from "./feature-assets";
 import { loadResourceAtlas } from "./resource-assets";
+import { loadAbilityAtlas } from "./ability-assets";
 import type { Session } from "./session";
 import type { CheatAction } from "./god-mode";
 import { listSaves, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
@@ -62,6 +66,8 @@ function startGame(session: Session): void {
   let selectedTile: { col: number; row: number } | null = null;
   let reachable = new Set<string>();
   let attackTargets = new Set<string>();
+  let pendingAbility: ActiveAbilityId | null = null; // targeted ability awaiting a tile
+  let abilityTargetSet = new Set<string>();
   let peaceAttack = new Set<string>(); // would-declare-war attacks
   let incursion = new Map<string, number>(); // foreign peace tiles -> owner id
   let cityWorkable = new Set<string>();
@@ -157,10 +163,15 @@ function startGame(session: Session): void {
   }
   session.onUpdate(update);
 
+  function cancelAbility(): void {
+    pendingAbility = null;
+    abilityTargetSet = new Set();
+  }
   function selectUnit(id: number): void {
     selectedUnitId = id;
     selectedCityId = null;
     selectedTile = null;
+    cancelAbility();
     recomputeOverlays();
     needsRedraw = true;
   }
@@ -170,6 +181,7 @@ function startGame(session: Session): void {
     selectedTile = null;
     reachable = new Set();
     attackTargets = new Set();
+    cancelAbility();
     const city = st().cities.get(id);
     cityWorkable = city ? new Set(workableTiles(st(), city).map((t) => `${t.col},${t.row}`)) : new Set();
     needsRedraw = true;
@@ -180,6 +192,7 @@ function startGame(session: Session): void {
     selectedCityId = null;
     reachable = new Set();
     attackTargets = new Set();
+    cancelAbility();
     cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
@@ -190,6 +203,7 @@ function startGame(session: Session): void {
     selectedTile = null;
     reachable = new Set();
     attackTargets = new Set();
+    cancelAbility();
     cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
@@ -208,6 +222,26 @@ function startGame(session: Session): void {
     },
     onPromote: (promotion) => {
       if (selectedUnitId != null) session.order({ type: "promote", unitId: selectedUnitId, promotion });
+    },
+    onAbility: (ability) => {
+      if (selectedUnitId == null) return;
+      const unit = st().units.get(selectedUnitId);
+      if (!unit) return;
+      if (ACTIVE_ABILITY_DEFS[ability].kind === "targeted") {
+        // Enter targeting mode: highlight valid tiles and wait for a tap.
+        pendingAbility = ability;
+        abilityTargetSet = abilityTargets(st(), unit, ability);
+        if (abilityTargetSet.size === 0) {
+          cancelAbility();
+          ui.banner(`No valid target for ${ACTIVE_ABILITY_DEFS[ability].name}.`);
+        } else {
+          ui.banner(`Select a target for ${ACTIVE_ABILITY_DEFS[ability].name}.`);
+        }
+        needsRedraw = true;
+      } else {
+        session.order({ type: "useAbility", unitId: selectedUnitId, ability });
+        cancelAbility();
+      }
     },
     onConvertCitizen: (cityId, specialistId, delta) =>
       session.order({ type: "convertCitizen", cityId, specialistId, delta }),
@@ -350,6 +384,16 @@ function startGame(session: Session): void {
     if (!off) return clearSelection();
     const me = session.getViewerId();
     const key = `${off.col},${off.row}`;
+
+    // Targeted-ability mode: a tap on a highlighted tile fires the ability.
+    if (pendingAbility != null && selectedUnitId != null) {
+      if (abilityTargetSet.has(key)) {
+        session.order({ type: "useAbility", unitId: selectedUnitId, ability: pendingAbility, col: off.col, row: off.row });
+        cancelAbility();
+        return;
+      }
+      cancelAbility(); // tapping elsewhere cancels targeting
+    }
     const u = unitAt(st(), off.col, off.row);
     const c = cityAt(st(), off.col, off.row);
 
@@ -487,6 +531,10 @@ function startGame(session: Session): void {
   const resourceAtlas = loadResourceAtlas(() => {
     needsRedraw = true;
   });
+  const abilityAtlas = loadAbilityAtlas(() => {
+    needsRedraw = true;
+  });
+  ui.setAbilityAtlas(abilityAtlas);
 
   function frame(): void {
     if (needsRedraw && session.hasState()) {
@@ -511,6 +559,7 @@ function startGame(session: Session): void {
         selectedCityId,
         reachable,
         attackTargets,
+        abilityTargets: abilityTargetSet,
         cityWorkable,
         cityWorked: selCity ? new Set(selCity.workedTiles) : new Set(),
         tradeRoutes: st().tradeRoutes,

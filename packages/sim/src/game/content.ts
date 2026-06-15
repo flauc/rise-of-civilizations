@@ -26,6 +26,70 @@ export type UnitTypeId =
 export type UnitClass = "settler" | "trader" | "recon" | "melee" | "ranged" | "cavalry" | "siege";
 export type UnitAbility = "bonus_vs_cavalry" | "bonus_vs_city";
 
+/**
+ * Player-triggered active abilities (see docs/UNIT-ABILITIES.md §3). These are
+ * distinct from the always-on `UnitAbility` modifiers and the XP-earned
+ * promotions: using one is a deliberate action that spends the unit's turn.
+ * Civ-unique (§8) and hero (§9) abilities are added when those unit types exist.
+ */
+export type ActiveAbilityId =
+  | "brace"
+  | "shield_wall"
+  | "testudo"
+  | "emplace"
+  | "charge"
+  | "shock_charge"
+  | "trample"
+  | "fire_and_retreat"
+  | "skirmish"
+  | "sunder"
+  | "pierce"
+  | "harry"
+  | "reconnoiter";
+
+/** A persistent stance a unit enters by forfeiting its movement for the turn. */
+export type StanceId = "brace" | "shield_wall" | "testudo" | "emplace";
+
+/**
+ * How an ability is invoked:
+ * - `stance`   — toggled on; ends the turn; modifies combat until it clears.
+ * - `targeted` — needs a target tile (an adjacent/in-range enemy); resolves now.
+ * - `self`     — affects only the user; resolves now and ends the turn.
+ */
+export type AbilityKind = "stance" | "targeted" | "self";
+
+export interface ActiveAbilityDef {
+  id: ActiveAbilityId;
+  /** In-game display name. */
+  name: string;
+  /** Short verb shown on the action button tooltip. */
+  verb: string;
+  /** Emoji/glyph fallback when no icon image is present. */
+  glyph: string;
+  kind: AbilityKind;
+  /** Extra turns the unit must wait between uses (0 = usable again next turn). */
+  cooldown: number;
+  desc: string;
+}
+
+const A = (d: ActiveAbilityDef): ActiveAbilityDef => d;
+
+export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
+  brace: A({ id: "brace", name: "Set Spears", verb: "Guard", glyph: "🛡️", kind: "stance", cooldown: 0, desc: "Brace: +25% defense (+40% vs cavalry) until your next turn. Forfeits movement." }),
+  shield_wall: A({ id: "shield_wall", name: "Shield Wall", verb: "Form Wall", glyph: "🛡️", kind: "stance", cooldown: 0, desc: "Brace that grows with adjacent friendly infantry (up to +45% defense). Forfeits movement." }),
+  testudo: A({ id: "testudo", name: "Testudo", verb: "Form Testudo", glyph: "🐢", kind: "stance", cooldown: 0, desc: "+50% defense vs ranged, −10% vs melee, until your next turn. Forfeits movement." }),
+  emplace: A({ id: "emplace", name: "Emplace", verb: "Set Up", glyph: "🎯", kind: "stance", cooldown: 0, desc: "Deploy: +50% ranged strength and +1 range while set, but −25% defense and 0 movement. Moving packs up." }),
+  charge: A({ id: "charge", name: "Charge", verb: "Charge", glyph: "🐎", kind: "targeted", cooldown: 0, desc: "Strike an adjacent enemy and ride through to the tile behind it (+4 attack). Blunted by braced spears." }),
+  shock_charge: A({ id: "shock_charge", name: "Shock Charge", verb: "Shock Charge", glyph: "🐎", kind: "targeted", cooldown: 1, desc: "Heavy charge: +6 attack and knocks the defender back a tile. Takes full retaliation." }),
+  trample: A({ id: "trample", name: "Trample", verb: "Trample", glyph: "🐘", kind: "targeted", cooldown: 1, desc: "Charge that splashes ½ damage to other adjacent enemies. A wounded beast risks rampaging." }),
+  fire_and_retreat: A({ id: "fire_and_retreat", name: "Fire & Retreat", verb: "Fire & Retreat", glyph: "🏹", kind: "targeted", cooldown: 0, desc: "Shoot a target, then step one tile away from it (Parthian shot)." }),
+  skirmish: A({ id: "skirmish", name: "Skirmish", verb: "Skirmish", glyph: "🏹", kind: "targeted", cooldown: 0, desc: "Shoot a target, then fall back one tile — if you didn't move first and aren't pinned." }),
+  sunder: A({ id: "sunder", name: "Sunder", verb: "Sunder", glyph: "🔨", kind: "targeted", cooldown: 0, desc: "A crushing blow: lighter damage but the target loses 25% defense until its next turn." }),
+  pierce: A({ id: "pierce", name: "Pierce", verb: "Pierce", glyph: "🎯", kind: "targeted", cooldown: 0, desc: "Armor-piercing bolt: ignores 6 points of the target's defense. Reduced range this shot." }),
+  harry: A({ id: "harry", name: "Harry", verb: "Harry", glyph: "🐕", kind: "targeted", cooldown: 0, desc: "Low-damage strike that pins the target — it cannot move on its next turn." }),
+  reconnoiter: A({ id: "reconnoiter", name: "Reconnoiter", verb: "Scout Ahead", glyph: "🔭", kind: "self", cooldown: 0, desc: "Forfeit the turn for a vision pulse: +2 sight until your next turn." }),
+};
+
 export type BuildingId =
   | "granary" | "workshop" | "forge" | "walls" | "barracks" | "stable"
   | "market" | "library" | "academy" | "aqueduct" | "harbor" | "monument" | "amphitheater"
@@ -66,6 +130,8 @@ export interface UnitDef {
   /** Consumed to establish a trade route between two of your cities. */
   trader?: boolean;
   abilities?: UnitAbility[];
+  /** Player-triggered active abilities (see ACTIVE_ABILITY_DEFS). */
+  activeAbilities?: ActiveAbilityId[];
 }
 
 const U = (d: UnitDef): UnitDef => d;
@@ -107,6 +173,36 @@ export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
   catapult: U({ id: "catapult", name: "Catapult", glyph: "I", cls: "siege", movement: 2, sight: 2, cost: 25, strength: 6, rangedStrength: 14, range: 2, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),
   ballista: U({ id: "ballista", name: "Ballista", glyph: "b", cls: "siege", movement: 2, sight: 2, cost: 30, strength: 7, rangedStrength: 16, range: 2, reqTech: "torsion_engines", abilities: ["bonus_vs_city"] }),
 };
+
+// Assign each unit's player-triggered active abilities (docs/UNIT-ABILITIES.md §4).
+// Done as a post-pass so the UNIT_DEFS literals stay readable.
+const UNIT_ACTIVE_ABILITIES: Partial<Record<UnitTypeId, ActiveAbilityId[]>> = {
+  scout: ["reconnoiter"],
+  hunter: ["reconnoiter"],
+  slinger: ["skirmish"],
+  javelineer: ["skirmish"],
+  firehard_spear: ["brace"],
+  war_dog: ["harry"],
+  axeman: ["sunder"],
+  maceman: ["sunder"],
+  spearman: ["brace"],
+  hoplite: ["shield_wall"],
+  light_chariot: ["charge"],
+  war_chariot: ["charge"],
+  rider: ["charge"],
+  horse_archer: ["fire_and_retreat"],
+  longswordsman: ["sunder"],
+  pikeman: ["brace"],
+  cataphract: ["shock_charge"],
+  crossbowman: ["pierce"],
+  legionary: ["testudo"],
+  war_elephant: ["trample"],
+  catapult: ["emplace"],
+  ballista: ["emplace"],
+};
+for (const [id, abilities] of Object.entries(UNIT_ACTIVE_ABILITIES)) {
+  UNIT_DEFS[id as UnitTypeId].activeAbilities = abilities;
+}
 
 export const MILITARY_CLASSES: ReadonlySet<UnitClass> = new Set(["melee", "ranged", "cavalry", "siege"]);
 

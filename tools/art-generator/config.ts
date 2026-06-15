@@ -21,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement";
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -121,10 +121,82 @@ export const RESOURCE_SUBSET: AssetEntry[] = Object.values(RESOURCE_DEFS).map((r
   category: "resource" as const,
 }));
 
+export interface ImprovementTierDef {
+  readonly id: string;
+  readonly name: string;
+  readonly tier: 1 | 2 | 3;
+  readonly description: string;
+}
+
+const IMPROVEMENT_KINDS: Omit<ImprovementTierDef, "tier">[] = [
+  {
+    id: "farm",
+    name: "Farm",
+    description: "a cultivated farm plot with golden crop rows",
+  },
+  {
+    id: "lumber_camp",
+    name: "Lumber Camp",
+    description: "a woodland logging camp with felled timber",
+  },
+  {
+    id: "mine",
+    name: "Mine",
+    description: "a hillside mine entrance with carts and rough tunnels",
+  },
+  {
+    id: "quarry",
+    name: "Quarry",
+    description: "an open stone quarry with cut blocks and scaffolding",
+  },
+  {
+    id: "pasture",
+    name: "Pasture",
+    description: "a fenced grassy pasture with grazing livestock",
+  },
+  {
+    id: "plantation",
+    name: "Plantation",
+    description: "a cultivated estate with orderly rows of cash crops",
+  },
+  {
+    id: "camp",
+    name: "Camp",
+    description: "a hunter's or trapper's camp in wild woodland",
+  },
+  {
+    id: "fishing_boats",
+    name: "Fishing Boats",
+    description: "small wooden fishing boats with nets and baskets",
+  },
+  {
+    id: "tower",
+    name: "Tower",
+    description: "a tall defensive stone tower with crenellations",
+  },
+];
+
+const TIER_STYLE: Record<1 | 2 | 3, string> = {
+  1: "simple, primitive, small scale, made of wood, thatch, and rough stone",
+  2: "improved, organized, medium scale, with clay brick, cut timber, and simple irrigation or tools",
+  3: "grand, advanced, large scale, with dressed stone, tile, engineered channels, and polished details",
+};
+
+export const IMPROVEMENT_SUBSET: AssetEntry[] = IMPROVEMENT_KINDS.flatMap((kind) =>
+  ([1, 2, 3] as const).map((tier) => ({
+    id: `${kind.id}_t${tier}`,
+    name: `${kind.name} (Tier ${tier})`,
+    description: `${kind.description}; tier ${tier} style: ${TIER_STYLE[tier]}. No walls, no background terrain`,
+    aspectRatio: "1:1" as const,
+    size: { width: 128, height: 128 },
+    category: "improvement" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  })),
+);
+
 export const BUILDING_SUBSET: AssetEntry[] = [
   { id: "barb_camp", name: "Barbarian Camp", description: "a primitive barbarian encampment with crude tents, a bonfire, and wooden spikes, no walls, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "village", name: "Village", description: "a small tribal village with a few thatched-roof huts, no walls, no fortifications, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "farm", name: "Farm", description: "a small cultivated farm plot with neat rows of golden crops and a tiny wooden shed, no walls, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "granary", name: "Granary", description: "a small grain store with earthen walls", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "barracks", name: "Barracks", description: "a simple military training hall", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "market", name: "Market", description: "a covered marketplace with stalls", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
@@ -134,7 +206,7 @@ export const BUILDING_SUBSET: AssetEntry[] = [
 ];
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -223,6 +295,9 @@ export function promptFor(entry: AssetEntry): string {
   }
   if (entry.category === "resource") {
     return `Create a tiny standalone map resource icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the resource as a small, clear symbol or object from a near-top-down or three-quarter view, centered, as an isolated item on a clean solid white background. Keep it smaller than a unit icon so it reads as a map token. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The resource icon should float cleanly on the white background with nothing else in the frame.`;
+  }
+  if (entry.category === "improvement") {
+    return `Create a small standalone map improvement icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated improvement on a clean solid white background. Keep it compact so it reads as a tile overlay. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The improvement should float cleanly on the white background with nothing else in the frame.`;
   }
   return `Create a small standalone building icon for a turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated building on a clean solid white background. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The building should float cleanly on the white background with nothing else in the frame.`;
 }

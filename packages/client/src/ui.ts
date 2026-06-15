@@ -59,6 +59,9 @@ import {
   resourceActive,
   RESOURCE_DEFS,
   addYields,
+  ACTIVE_ABILITY_DEFS,
+  canUseAbility,
+  unitAbilities,
   moveCost,
   isRough,
   isWaterTerrain,
@@ -69,12 +72,14 @@ import {
   type GameState,
   type ImprovementKind,
   type ProductionItem,
+  type ActiveAbilityId,
   type PromotionId,
   type TechId,
   type Unit,
   type UnitTypeId,
 } from "@roc/sim";
 import type { Tile } from "@roc/shared";
+import { abilityIconHtml, type AbilityAtlas } from "./ability-assets";
 
 export interface CombatOdds {
   targetName: string;
@@ -184,6 +189,8 @@ export interface UIHandlers {
   onEndTurn(): void;
   onFoundCity(): void;
   onPromote(promotion: PromotionId): void;
+  /** Invoke an active ability. The controller decides whether it needs a target. */
+  onAbility(ability: ActiveAbilityId): void;
   onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
   onStartWork(kind: string, col: number, row: number): void;
   onStartWonder(wonderId: string, hostCityId: number): void;
@@ -223,6 +230,8 @@ export interface UI {
   openTechTree(): void;
   openGodMode(): void;
   setMpSaves(saves: SaveRecord[]): void;
+  /** Provide the (optional) ability-icon atlas for action buttons. */
+  setAbilityAtlas(atlas: AbilityAtlas): void;
   /** Show the docked hover tooltip with limited tile info (null hides it). */
   setTileTip(tip: TileTip | null): void;
 }
@@ -250,6 +259,7 @@ function prodName(item: ProductionItem): string {
 }
 
 export function createUI(handlers: UIHandlers): UI {
+  let abilityAtlas: AbilityAtlas | undefined;
   const topbar = div("topbar", "panel");
   const bottomBar = div("bottom-bar", "panel");
   const leaderAvatar = div("leader-avatar", "");
@@ -1013,6 +1023,31 @@ export function createUI(handlers: UIHandlers): UI {
       if (def.founder) actions.push(`<button class="btn primary" id="found">Found City</button>`);
       if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
 
+      // Active-ability buttons.
+      const abilities = unitAbilities(unit);
+      if (abilities.length) {
+        if (unit.stance) {
+          html += `<div class="csub" style="margin-top:8px">${ACTIVE_ABILITY_DEFS[unit.stance].glyph} In stance: <b>${ACTIVE_ABILITY_DEFS[unit.stance].name}</b></div>`;
+        }
+        html +=
+          `<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">` +
+          abilities
+            .map((a) => {
+              const ad = ACTIVE_ABILITY_DEFS[a];
+              const usable = canUseAbility(state, unit, a).ok;
+              return (
+                `<button class="btn" data-ability="${a}" ${usable ? "" : "disabled"} ` +
+                `title="${ad.desc}" style="text-align:left;display:flex;gap:8px;align-items:flex-start;padding:8px 10px${usable ? "" : ";opacity:.5"}">` +
+                `${abilityIconHtml(abilityAtlas, a)}` +
+                `<span style="display:flex;flex-direction:column;gap:2px">` +
+                `<b style="color:#fff">${ad.name}</b>` +
+                `<span style="font-size:12px;color:#9fc0dc;font-weight:400;line-height:1.4">${ad.desc}</span></span></button>`
+              );
+            })
+            .join("") +
+          `</div>`;
+      }
+
       if (def.trader) {
         const origin = cityAt(state, unit.col, unit.row);
         const dests = tradeRouteDestinations(state, unit);
@@ -1073,12 +1108,27 @@ export function createUI(handlers: UIHandlers): UI {
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-promote]").forEach((el) =>
       el.addEventListener("click", () => handlers.onPromote(el.dataset.promote as PromotionId)),
     );
+    unitPanel.querySelectorAll<HTMLButtonElement>("[data-ability]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onAbility(el.dataset.ability as ActiveAbilityId)),
+    );
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-trade-dest]").forEach((el) =>
       el.addEventListener("click", () => handlers.onEstablishTrade(Number(el.dataset.tradeDest))),
     );
   };
 
   const WORK_KINDS = ["farm", "lumber_camp", "mine", "quarry", "road", "wall", "tower"];
+  const CHEAT_WORK_KINDS = [
+    "farm",
+    "lumber_camp",
+    "mine",
+    "quarry",
+    "pasture",
+    "plantation",
+    "camp",
+    "fishing_boats",
+    "wall",
+    "tower",
+  ];
 
   const renderTilePanel = (state: GameState, tile: Tile | null, viewerId = -1, cheatsEnabled = false): void => {
     if (!tile) {
@@ -1206,6 +1256,10 @@ export function createUI(handlers: UIHandlers): UI {
         `<div style="display:flex;gap:6px;align-items:center;margin-top:4px">` +
         `<select id="cheat-unit" class="lobby-in" style="flex:1">${unitOptions}</select>` +
         `<button class="btn" data-cheat="spawnUnit">Spawn Unit</button>` +
+        `</div>` +
+        `<div class="csub">Construction Works</div>` +
+        `<div class="row" style="flex-wrap:wrap;gap:6px">` +
+        CHEAT_WORK_KINDS.map((k) => `<button class="btn" data-cheat="buildWork" data-kind="${k}">${workName(k, 3)}</button>`).join("") +
         `</div>`;
     } else {
       html +=
@@ -1251,6 +1305,16 @@ export function createUI(handlers: UIHandlers): UI {
           case "foundCity": {
             if (!tile) break;
             handlers.onCheat({ type: "foundCity", col: tile.col, row: tile.row });
+            break;
+          }
+          case "buildWork": {
+            if (!tile) break;
+            handlers.onCheat({
+              type: "buildWork",
+              kind: el.dataset.kind!,
+              col: tile.col,
+              row: tile.row,
+            });
             break;
           }
           case "spawnUnit": {
@@ -1513,6 +1577,9 @@ export function createUI(handlers: UIHandlers): UI {
     openGodMode() {
       godModeOpen = true;
       if (lastView) renderGodMode(lastView);
+    },
+    setAbilityAtlas(atlas) {
+      abilityAtlas = atlas;
     },
     setTileTip(tip) {
       if (!tip) {

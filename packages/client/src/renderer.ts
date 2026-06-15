@@ -14,7 +14,7 @@ import {
 import { Camera, type Bounds } from "./camera";
 import { TERRAIN_COLORS, HEX_STROKE, HEX_HOVER_STROKE } from "./palette";
 import { isImageReady, type TerrainAtlas } from "./terrain-assets";
-import { farmFrameFor, type ImprovementAtlas } from "./improvement-assets";
+import { improvementFrameFor, type ImprovementAtlas } from "./improvement-assets";
 import { RESOURCE_DEFS, resourceActive, type GameState, type ResourceId } from "@roc/sim";
 import { type ResourceAtlas } from "./resource-assets";
 
@@ -229,6 +229,135 @@ export interface RenderOptions {
 const UNEXPLORED_FILL = "#0a1624";
 const FOG_OVERLAY = "rgba(8,16,26,0.5)";
 
+/** Draw a tile improvement. Farms use the loaded sprite atlas; everything else
+ *  falls back to a simple coloured glyph until dedicated art is added. */
+function drawImprovement(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  size: number,
+  kind: string | undefined,
+  level: number,
+  atlas: ImprovementAtlas | undefined,
+  col: number,
+  row: number,
+): void {
+  if (!kind) return;
+  // Base tier (1) renders at normal size; top tier (3) renders 30% larger.
+  const tierScale = 1 + (Math.max(1, Math.min(3, level)) - 1) * 0.15;
+  const s = size * tierScale;
+  const img = improvementFrameFor(atlas, kind, level, col, row);
+  if (img) {
+    const imgSize = s;
+    ctx.drawImage(img, sx - imgSize / 2, sy - imgSize / 2, imgSize, imgSize);
+    return;
+  }
+
+  // Simple vector stand-ins for improvements without dedicated sprites.
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  switch (kind) {
+    case "farm": {
+      ctx.fillStyle = "#d8c24a";
+      ctx.fillRect(sx - s * 0.28, sy - s * 0.28, s * 0.56, s * 0.56);
+      break;
+    }
+    case "mine": {
+      ctx.fillStyle = "#3a3a3f";
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - s * 0.3);
+      ctx.lineTo(sx + s * 0.3, sy + s * 0.25);
+      ctx.lineTo(sx - s * 0.3, sy + s * 0.25);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case "lumber_camp": {
+      ctx.fillStyle = "#5a3d2b";
+      ctx.fillRect(sx - s * 0.26, sy - s * 0.2, s * 0.52, s * 0.34);
+      ctx.fillStyle = "#4a8a3a";
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - s * 0.32);
+      ctx.lineTo(sx + s * 0.18, sy + s * 0.08);
+      ctx.lineTo(sx - s * 0.18, sy + s * 0.08);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case "quarry": {
+      ctx.fillStyle = "#7a7a7f";
+      ctx.beginPath();
+      ctx.arc(sx, sy, s * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#4a4a50";
+      ctx.lineWidth = Math.max(1, s * 0.06);
+      ctx.beginPath();
+      ctx.moveTo(sx - s * 0.12, sy - s * 0.12);
+      ctx.lineTo(sx + s * 0.12, sy + s * 0.12);
+      ctx.moveTo(sx + s * 0.12, sy - s * 0.12);
+      ctx.lineTo(sx - s * 0.12, sy + s * 0.12);
+      ctx.stroke();
+      break;
+    }
+    case "pasture": {
+      ctx.fillStyle = "#6b9e5a";
+      ctx.beginPath();
+      ctx.arc(sx, sy, s * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#f0e6c8";
+      ctx.beginPath();
+      ctx.arc(sx, sy, s * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    case "plantation": {
+      ctx.fillStyle = "#8a5a3a";
+      ctx.beginPath();
+      ctx.arc(sx, sy, s * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#4a8a3a";
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - s * 0.2);
+      ctx.lineTo(sx + s * 0.12, sy + s * 0.12);
+      ctx.lineTo(sx - s * 0.12, sy + s * 0.12);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+    case "camp": {
+      ctx.fillStyle = "#bfa878";
+      ctx.beginPath();
+      ctx.moveTo(sx, sy - s * 0.28);
+      ctx.lineTo(sx + s * 0.26, sy + s * 0.2);
+      ctx.lineTo(sx - s * 0.26, sy + s * 0.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "#7a6a4a";
+      ctx.lineWidth = Math.max(1, s * 0.05);
+      ctx.stroke();
+      break;
+    }
+    case "fishing_boats": {
+      ctx.fillStyle = "#4a9ec4";
+      ctx.beginPath();
+      ctx.arc(sx - s * 0.1, sy + s * 0.06, s * 0.14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(sx + s * 0.12, sy - s * 0.06, s * 0.1, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+    }
+    default:
+      // Unknown improvement: small neutral marker.
+      ctx.fillStyle = "#999";
+      ctx.beginPath();
+      ctx.arc(sx, sy, s * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+  }
+  ctx.restore();
+}
+
 /** Draws the visible map; returns how many tiles were rendered (for the HUD). */
 export function drawScene(
   ctx: CanvasRenderingContext2D,
@@ -325,24 +454,7 @@ export function drawScene(
           drawRoadSegment(ctx, sx, sy, corners, mask, level, size);
         }
       }
-      if (t.improvement === "farm") {
-        const farmImg = farmFrameFor(opts.improvementAtlas, t.col, t.row);
-        if (farmImg) {
-          const farmSize = size * 0.7;
-          ctx.drawImage(farmImg, sx - farmSize / 2, sy - farmSize / 2, farmSize, farmSize);
-        } else {
-          ctx.fillStyle = "#d8c24a";
-          ctx.fillRect(sx - size * 0.28, sy - size * 0.28, size * 0.56, size * 0.56);
-        }
-      } else if (t.improvement === "mine") {
-        ctx.fillStyle = "#3a3a3f";
-        ctx.beginPath();
-        ctx.moveTo(sx, sy - size * 0.3);
-        ctx.lineTo(sx + size * 0.3, sy + size * 0.25);
-        ctx.lineTo(sx - size * 0.3, sy + size * 0.25);
-        ctx.closePath();
-        ctx.fill();
-      }
+      drawImprovement(ctx, sx, sy, size, t.improvement, t.improvementLevel ?? 1, opts.improvementAtlas, t.col, t.row);
       if (t.resource) {
         const img = opts.resourceAtlas?.images[t.resource as ResourceId];
         if (img && isImageReady(img)) {

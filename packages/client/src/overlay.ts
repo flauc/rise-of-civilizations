@@ -1,4 +1,4 @@
-import { cityMaxHp, tileYields, resourceYields, addYields, UNIT_DEFS, unitMaxHp, type GameState, type TradeRoute } from "@roc/sim";
+import { cityMaxHp, tileYields, resourceYields, addYields, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
@@ -14,6 +14,8 @@ export interface OverlayState {
   selectedCityId: number | null;
   reachable: Set<string>;
   attackTargets: Set<string>;
+  /** Tiles a pending targeted ability can be used against (highlighted distinctly). */
+  abilityTargets?: Set<string>;
   cityWorkable: Set<string>;
   cityWorked: Set<string>;
   /** The viewer's trade routes, drawn as dashed lines between cities. */
@@ -63,6 +65,13 @@ function drawHpBar(
   ctx.fillStyle = hpColor(frac);
   ctx.fillRect(x, sy, width * Math.max(0, Math.min(1, frac)), h);
 }
+
+function isMobileScreen(): boolean {
+  // Always scale units up for visibility testing.
+  return true;
+}
+
+const MOBILE_UNIT_SCALE = 1.35;
 
 /** Draws reachable + attack highlights, then cities and units, respecting fog. */
 export function drawOverlay(
@@ -273,6 +282,7 @@ export function drawOverlay(
   };
   if (o.reachable.size > 0) highlight(o.reachable, "rgba(255,255,255,0.12)", "rgba(255,255,255,0.35)");
   if (o.attackTargets.size > 0) highlight(o.attackTargets, "rgba(224,83,61,0.28)", "rgba(255,90,70,0.9)");
+  if (o.abilityTargets && o.abilityTargets.size > 0) highlight(o.abilityTargets, "rgba(120,200,255,0.30)", "rgba(150,220,255,0.95)");
 
   // ---- city citizen-assignment view ----
   if (o.cityWorkable.size > 0) {
@@ -387,11 +397,12 @@ export function drawOverlay(
   }
 
   // Units.
+  const unitScale = isMobileScreen() ? MOBILE_UNIT_SCALE : 1;
   for (const unit of state.units.values()) {
     const own = unit.ownerId === o.viewingPlayerId;
     if (!own && !o.visible.has(`${unit.col},${unit.row}`)) continue;
     const s = screen(unit.col, unit.row);
-    const half = size * 0.42;
+    const half = size * 0.42 * unitScale;
     const imgSize = half * 1.8;
     const imgX = s.x - imgSize / 2;
     const imgY = s.y - imgSize / 2;
@@ -402,7 +413,7 @@ export function drawOverlay(
       ctx.drawImage(unitImg, imgX, imgY, imgSize, imgSize);
     } else if (showLabels) {
       ctx.fillStyle = "#fff";
-      ctx.font = `bold ${Math.round(size * 0.5)}px system-ui, sans-serif`;
+      ctx.font = `bold ${Math.round(size * 0.5 * unitScale)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(UNIT_DEFS[unit.type].glyph, s.x, s.y + 1);
@@ -411,10 +422,18 @@ export function drawOverlay(
     const selected = o.selectedUnitId === unit.id;
     const fatigued = own && unit.movementLeft <= 0;
 
+    // Stance badge (Set Spears / Testudo / Emplace…) at the unit's lower-left.
+    if (unit.stance && size > 12) {
+      ctx.font = `${Math.round(size * 0.42 * unitScale)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(ACTIVE_ABILITY_DEFS[unit.stance].glyph, s.x - half * 0.9, s.y + half * 0.9);
+    }
+
     // Promotion-available star.
     if (own && unit.unspentPromotions > 0 && size > 12) {
       ctx.fillStyle = "#ffd967";
-      ctx.font = `${Math.round(size * 0.5)}px system-ui, sans-serif`;
+      ctx.font = `${Math.round(size * 0.5 * unitScale)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText("★", s.x + half * 0.9, s.y - half * 0.9);
@@ -424,7 +443,7 @@ export function drawOverlay(
     if (size >= 10) {
       const stars = unit.level > 1 ? " ★".repeat(unit.level - 1) : "";
       const label = UNIT_DEFS[unit.type].name + stars;
-      const fontSize = Math.max(8, Math.round(size * 0.32));
+      const fontSize = Math.max(8, Math.round(size * 0.32 * unitScale));
       ctx.font = `${fontSize}px system-ui, sans-serif`;
       const textW = ctx.measureText(label).width;
       const dotR = Math.max(2, size * 0.08);

@@ -1,4 +1,5 @@
 import { expect, test } from "vitest";
+import { getTile } from "@roc/shared";
 import { beginTurn, createGame, currentPlayer, unitAt } from "@roc/sim";
 import { applyCheat } from "./god-mode";
 
@@ -75,4 +76,21 @@ test("reveals the entire map", () => {
   p.explored.clear();
   applyCheat(s, p.id, { type: "revealMap" });
   expect(p.explored.size).toBe(s.map.cols * s.map.rows);
+});
+
+test("builds an economic improvement and a defensive structure", () => {
+  const s = newGame();
+  const p = currentPlayer(s);
+  const farmTile = s.map.tiles.find((t) => t.terrain === "grassland")!;
+  const wallTile = s.map.tiles.find((t) => (t.terrain === "plains" || t.terrain === "grassland") && t !== farmTile)!;
+
+  const farmRes = applyCheat(s, p.id, { type: "buildWork", kind: "farm", col: farmTile.col, row: farmTile.row });
+  expect(farmRes.ok).toBe(true);
+  expect(farmTile.improvement).toBe("farm");
+  expect(farmTile.improvementLevel).toBe(3);
+
+  const wallRes = applyCheat(s, p.id, { type: "buildWork", kind: "wall", col: wallTile.col, row: wallTile.row });
+  expect(wallRes.ok).toBe(true);
+  expect(wallTile.structure).toMatchObject({ kind: "wall", tier: 3 });
+  expect(wallTile.structure!.hp).toBeGreaterThan(0);
 });

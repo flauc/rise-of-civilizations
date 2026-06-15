@@ -182,7 +182,7 @@ A standalone AI art generator lives in `tools/art-generator/`:
   with a prompt + reference tile, then resizes and masks the result with
   ImageMagick.
 - `tools/art-generator/config.ts` — asset subsets (terrain, units, buildings,
-  resources), prompt templates, and target sizes.
+  improvements, resources), prompt templates, and target sizes.
 
 Typical commands:
 
@@ -193,6 +193,7 @@ bun run tools/art-generator/generate.ts --leader rome --size 1K
 bun run tools/art-generator/generate.ts --subset leaders
 bun run tools/art-generator/generate.ts --subset units
 bun run tools/art-generator/generate.ts --subset resources
+bun run tools/art-generator/generate.ts --subset improvements
 bun run tools/art-generator/generate.ts --all
 
 # Generate 5 randomized variants per terrain tile and copy to the client
@@ -202,6 +203,10 @@ bun run tools/art-generator/generate.ts --subset terrain --variations 5 --size 5
 # Generate resource icons and copy them to the client
 bun run tools/art-generator/generate.ts --subset resources --size 512
 # (then copy assets/generated/resources/*.png to packages/client/public/resources/)
+
+# Generate tiered map improvement icons (farm, mine, lumber camp, etc.) and copy to the client
+bun run tools/art-generator/generate.ts --subset improvements --variations 5 --size 512
+# (then copy assets/generated/improvements/*.png to packages/client/public/improvements/)
 
 # Add extra variants without overwriting the existing base tile
 bun run tools/art-generator/generate.ts --tile plains --variations 4 --skip-base --size 512
@@ -213,7 +218,9 @@ Screen can load them.
 
 The client renderer loads all `hex-terrain/<terrain>.png` plus
 `<terrain>_1.png` … `<terrain>_4.png` variants and picks one deterministically
-per tile coordinate, so maps look less repetitive.
+per tile coordinate, so maps look less repetitive. It also loads improvement
+sprites from `improvements/<kind>_t<tier>.png` plus `_1` … `_4` variants,
+picking the correct tier for the tile's improvement level.
 
 It requires `GEMINI_API_KEY` and ImageMagick (`magick`). See
 `tools/art-generator/README.md` for setup and customization.

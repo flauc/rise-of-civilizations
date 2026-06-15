@@ -7,6 +7,7 @@ import {
   isRanged,
   PROMOTION_DEFS,
   PROMOTION_POOL,
+  type ActiveAbilityId,
   type PromotionId,
 } from "./content";
 import { isRough, terrainDefense } from "./terrain";
@@ -59,11 +60,28 @@ function isWounded(unit: Unit): boolean {
   return unit.hp < unitMaxHp(unit) / 2;
 }
 
-function attackStrength(state: GameState, unit: Unit, defender: Unit, targetTerrain: TerrainType, ranged: boolean): number {
+function attackStrength(
+  state: GameState,
+  unit: Unit,
+  defender: Unit,
+  targetTerrain: TerrainType,
+  ranged: boolean,
+  ability?: ActiveAbilityId,
+): number {
   const def = UNIT_DEFS[unit.type];
   const defenderCls = UNIT_DEFS[defender.type].cls;
   let s = (ranged ? def.rangedStrength ?? 0 : def.strength) * levelMultiplier(unit);
   s += civCombatBonus(state, unit);
+
+  // Active-ability attack bonuses.
+  const defenderBraced = defender.stance === "brace" || defender.stance === "shield_wall";
+  if (!ranged && ability === "charge" && !defenderBraced) s += 4; // braced spears blunt a charge
+  if (!ranged && ability === "shock_charge") s += 6;
+  if (!ranged && ability === "trample") s += 3;
+  if (!ranged && ability === "sunder") s -= 2; // a crushing blow lands lighter but debuffs
+  if (!ranged && ability === "harry") s *= 0.6; // a harrying nip, not a kill blow
+  // Emplaced siege fires harder.
+  if (ranged && unit.stance === "emplace") s += (def.rangedStrength ?? 0) * 0.5;
 
   // Terrain-based bonuses.
   if (!ranged && has(unit, "shock") && isOpen(targetTerrain)) s += 3;
@@ -153,7 +171,29 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   if (has(unit, "stalwart")) s += 3;
 
   s += civCombatBonus(state, unit);
-  return Math.max(1, s) * woundFactor(unit.hp, unitMaxHp(unit));
+
+  // Stance defensive multipliers.
+  let stanceMult = 1;
+  if (unit.stance === "brace") stanceMult = attackerCls === "cavalry" ? 1.4 : 1.25;
+  else if (unit.stance === "shield_wall") {
+    stanceMult = Math.min(1.45, 1.15 + 0.1 * adjacentInfantry(state, unit));
+  } else if (unit.stance === "testudo") stanceMult = vsRanged ? 1.5 : 0.9;
+  else if (unit.stance === "emplace") stanceMult = 0.75;
+  // Sundered units defend weaker.
+  if (unit.sunderedUntilTurn !== undefined && state.turn <= unit.sunderedUntilTurn) stanceMult *= 0.75;
+
+  return Math.max(1, s) * stanceMult * woundFactor(unit.hp, unitMaxHp(unit));
+}
+
+/** Count friendly melee/cavalry infantry-style neighbors (for Shield Wall). */
+function adjacentInfantry(state: GameState, unit: Unit): number {
+  let count = 0;
+  for (const u of state.units.values()) {
+    if (u.ownerId !== unit.ownerId || u.id === unit.id) continue;
+    const cls = UNIT_DEFS[u.type].cls;
+    if ((cls === "melee" || cls === "ranged") && dist(unit, u) === 1) count++;
+  }
+  return count;
 }
 
 // ---- cities --------------------------------------------------------------
@@ -264,14 +304,23 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
 }
 
 /** Resolve an attack by `attacker` against whatever is on (col,row). */
-export function resolveAttack(state: GameState, attacker: Unit, col: number, row: number): AttackResult {
+export function resolveAttack(
+  state: GameState,
+  attacker: Unit,
+  col: number,
+  row: number,
+  opts?: { ability?: ActiveAbilityId },
+): AttackResult {
+  const ability = opts?.ability;
   const def = UNIT_DEFS[attacker.type];
   if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return { ok: false, error: "unit cannot attack" };
   if (attacker.attackedThisTurn || attacker.movementLeft <= 0) return { ok: false, error: "no attack available" };
 
   const attackerOwner = playerById(state, attacker.ownerId)!;
   const ranged = isRanged(def);
-  const range = (ranged ? def.range ?? 1 : 1) + (has(attacker, "extended_range") ? 1 : 0);
+  let range = (ranged ? def.range ?? 1 : 1) + (has(attacker, "extended_range") ? 1 : 0);
+  if (ranged && attacker.stance === "emplace") range += 1; // emplaced engines reach further
+  if (ability === "pierce") range = Math.max(1, range - 1); // careful aimed bolt, shorter
   const d = dist({ col: attacker.col, row: attacker.row }, { col, row });
   if (d > range) return { ok: false, error: "out of range" };
 
@@ -316,18 +365,26 @@ export function resolveAttack(state: GameState, attacker: Unit, col: number, row
     if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
 
     if (ranged) {
-      const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, true);
-      const defEff = defenseStrength(state, enemyUnit, attacker, true);
+      const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, true, ability);
+      let defEff = defenseStrength(state, enemyUnit, attacker, true);
+      if (ability === "pierce") defEff = Math.max(1, defEff - 6); // armor-piercing bolt
       enemyUnit.hp -= damageFrom(attEff, defEff);
       awardXp(attacker, 3);
       awardXp(enemyUnit, 2);
+      if (ability === "sunder") enemyUnit.sunderedUntilTurn = state.turn + 1;
       if (enemyUnit.hp <= 0) killUnit(state, enemyUnit);
     } else {
-      const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, false);
-      const defEff = defenseStrength(state, enemyUnit, attacker, false);
+      const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, false, ability);
+      let defEff = defenseStrength(state, enemyUnit, attacker, false);
+      if (ability === "pierce") defEff = Math.max(1, defEff - 6);
       enemyUnit.hp -= damageFrom(attEff, defEff);
+      if (ability === "sunder" && enemyUnit.hp > 0) enemyUnit.sunderedUntilTurn = state.turn + 1;
+      if (ability === "harry" && enemyUnit.hp > 0) enemyUnit.pinnedUntilTurn = state.turn + 1;
       let retaliation = damageFrom(defEff, attEff);
       if (has(attacker, "suppression")) retaliation = Math.max(0, retaliation - 3);
+      // Charging onto braced spears is punished with heavier retaliation.
+      const defenderBraced = enemyUnit.stance === "brace" || enemyUnit.stance === "shield_wall";
+      if ((ability === "charge" || ability === "shock_charge") && defenderBraced) retaliation = Math.round(retaliation * 1.25);
       attacker.hp -= retaliation;
       awardXp(attacker, 4);
       awardXp(enemyUnit, 4);
@@ -429,6 +486,12 @@ function killUnit(state: GameState, unit: Unit): void {
   state.units.delete(unit.id);
   const owner = playerById(state, unit.ownerId);
   state.log.push(`${UNIT_DEFS[unit.type].name} (${owner?.name ?? "?"}) was destroyed.`);
+}
+
+/** Deal flat damage to a unit (e.g. Trample splash), killing it if it drops to 0. */
+export function applyDirectDamage(state: GameState, unit: Unit, dmg: number): void {
+  unit.hp -= Math.max(0, Math.round(dmg));
+  if (unit.hp <= 0) killUnit(state, unit);
 }
 
 function finishAttack(state: GameState, attacker: Unit): void {

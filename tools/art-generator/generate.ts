@@ -33,6 +33,7 @@ import {
   UNIT_SUBSET,
   BUILDING_SUBSET,
   CITY_SUBSET,
+  IMPROVEMENT_SUBSET,
   LEADER_SUBSET,
   ROAD_SUBSET,
   DIRT_ROAD_SUBSET,
@@ -67,12 +68,14 @@ Usage:
   bun run tools/art-generator/generate.ts --tile forest
   bun run tools/art-generator/generate.ts --building granary
   bun run tools/art-generator/generate.ts --leader rome
+  bun run tools/art-generator/generate.ts --improvement farm_t1
   bun run tools/art-generator/generate.ts --road dirt_road_3
   bun run tools/art-generator/generate.ts --river river_15
   bun run tools/art-generator/generate.ts --resource wheat
   bun run tools/art-generator/generate.ts --subset terrain
   bun run tools/art-generator/generate.ts --subset units
   bun run tools/art-generator/generate.ts --subset buildings
+  bun run tools/art-generator/generate.ts --subset improvements
   bun run tools/art-generator/generate.ts --subset leaders
   bun run tools/art-generator/generate.ts --subset dirt-roads
   bun run tools/art-generator/generate.ts --subset stone-roads
@@ -85,11 +88,12 @@ Options:
   --unit <id>            Generate a specific unit
   --tile <id>            Generate a specific terrain tile
   --building <id>        Generate a specific building icon
+  --improvement <id>     Generate a specific map improvement icon (e.g. farm_t1)
   --leader <id>          Generate a specific civilization leader portrait
   --road <id>            Generate a specific road segment
   --river <id>           Generate a specific river segment
   --resource <id>        Generate a specific resource icon
-  --subset <name>        Generate a subset: terrain, units, buildings, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, all
+  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, all
   --list                 List all available asset IDs and exit
   --model <id>           Gemini model (default: ${DEFAULT_MODEL})
   --size <512|1K|2K|4K>  Gemini image size (default: ${DEFAULT_IMAGE_SIZE})
@@ -179,6 +183,13 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--improvement": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "improvement") fail(`Unknown improvement: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--leader": {
         const id = next();
         const e = findEntry(id);
@@ -212,6 +223,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
         else if (name === "units") entries.push(...UNIT_SUBSET);
         else if (name === "buildings") entries.push(...BUILDING_SUBSET);
+        else if (name === "improvements") entries.push(...IMPROVEMENT_SUBSET);
         else if (name === "cities") entries.push(...CITY_SUBSET);
         else if (name === "leaders") entries.push(...LEADER_SUBSET);
         else if (name === "dirt-roads") entries.push(...DIRT_ROAD_SUBSET);
@@ -220,7 +232,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "rivers") entries.push(...RIVER_SUBSET);
         else if (name === "resources") entries.push(...RESOURCE_SUBSET);
         else if (name === "all") entries.push(...allEntries());
-        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, or all.`);
+        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, or all.`);
         break;
       }
       case "--all":
@@ -490,7 +502,10 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
   const referenceFile = options.referenceOverride ?? referencePath(entry, options.referenceDir);
   console.log(`  reference: ${referenceFile}`);
 
-  const categoryDir = entry.category === "building" ? "buildings" : `${entry.category}s`;
+  const categoryDir =
+    entry.category === "building" ? "buildings" :
+    entry.category === "improvement" ? "improvements" :
+    `${entry.category}s`;
   const rawDir = join(options.outDir, "raw", categoryDir);
   const finalDir = join(options.outDir, categoryDir);
 

@@ -156,5 +156,6 @@ export function unitSight(unit: Unit): number {
   if (unit.promotions.includes("explorer")) sight += 2;
   if (unit.promotions.includes("pioneer")) sight += 1;
   if (unit.promotions.includes("survival_training")) sight += 1;
+  if (unit.scouting) sight += 2; // Reconnoiter vision pulse
   return sight;
 }
