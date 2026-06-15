@@ -24,12 +24,13 @@ export interface LobbyGame {
   host?: GameHost;
 }
 
-const CAPACITY = 2;
+const MAX_CAPACITY = 12;
 
 export interface CreateOptions {
   seed?: string;
   cols?: number;
   rows?: number;
+  capacity?: number;
   aiCount?: number;
   barbarians?: BarbarianActivity;
 }
@@ -43,7 +44,8 @@ export class Lobby {
 
   create(name: string, ownerUserId: string, ownerHandle: string, opts: CreateOptions = {}): LobbyGame {
     const id = randomId();
-    const slots: Slot[] = Array.from({ length: CAPACITY }, (_, i) => ({ slot: i, playerId: i }));
+    const capacity = Math.max(1, Math.min(MAX_CAPACITY, opts.capacity ?? 2));
+    const slots: Slot[] = Array.from({ length: capacity }, (_, i) => ({ slot: i, playerId: i }));
     slots[0]!.userId = ownerUserId;
     slots[0]!.handle = ownerHandle;
     const game: LobbyGame = {
@@ -51,7 +53,7 @@ export class Lobby {
       name,
       status: "lobby",
       seed: opts.seed ?? id,
-      capacity: CAPACITY,
+      capacity,
       cols: opts.cols,
       rows: opts.rows,
       aiCount: Math.max(0, Math.min(4, opts.aiCount ?? 0)),
@@ -85,17 +87,14 @@ export class Lobby {
     const game = this.games.get(gameId);
     if (!game) return { error: "no such game" };
     if (game.status === "active") return { ok: true };
-    const names = [
-      game.slots[0]?.handle ?? "Player 1",
-      game.slots[1]?.handle ?? "Player 2",
-    ];
+    const names = game.slots.map((s, i) => s.handle ?? `Player ${i + 1}`);
     const state = createGame({
       seed: game.seed,
       cols: game.cols,
       rows: game.rows,
       playerNames: names,
-      playerCount: CAPACITY + game.aiCount,
-      humanSlots: CAPACITY,
+      playerCount: names.length + game.aiCount,
+      humanSlots: names.length,
       barbarians: game.barbarians,
     });
     game.host = new GameHost(state);
@@ -106,6 +105,15 @@ export class Lobby {
   /** Which player slot a user occupies in a game (if any). */
   slotOf(gameId: string, userId: string): Slot | undefined {
     return this.games.get(gameId)?.slots.find((s) => s.userId === userId);
+  }
+
+  /** Remove a game from the lobby. Only the host may delete it. */
+  delete(gameId: string, hostUserId: string): { error: string } | { ok: true } {
+    const game = this.games.get(gameId);
+    if (!game) return { error: "no such game" };
+    if (game.slots[0]?.userId !== hostUserId) return { error: "only the host can delete this game" };
+    this.games.delete(gameId);
+    return { ok: true };
   }
 
   /** Replace an active game's host with a restored state. */
@@ -124,6 +132,7 @@ export class Lobby {
       status: g.status,
       players: g.slots.filter((s) => s.userId).length,
       capacity: g.capacity,
+      hostUserId: g.slots[0]?.userId ?? "",
     }));
   }
 }

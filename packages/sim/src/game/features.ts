@@ -7,6 +7,7 @@
 import { axialDistance, getTile, hashSeed, makeRng, offsetToAxial } from "@roc/shared";
 import {
   citiesOf,
+  log,
   makeUnit,
   playerById,
   unitAt,
@@ -96,27 +97,51 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
     const tech = techs[Math.floor(rng.next() * techs.length)]!;
     player.researched.add(tech);
     if (player.researching === tech) player.researching = null;
-    state.log.push(`${player.name} learned ${tech.replace(/_/g, " ")} from a village!`);
+    log(state, `${player.name} learned ${tech.replace(/_/g, " ")} from a village!`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+    });
   } else if (roll < 0.4) {
     const gold = 30 + Math.floor(rng.next() * 40);
     player.gold += gold;
-    state.log.push(`${player.name} found ${gold} gold in a village.`);
+    log(state, `${player.name} found ${gold} gold in a village.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+    });
   } else if (roll < 0.55 && city) {
     const prod = 20 + Math.floor(rng.next() * 25);
     city.productionStored += prod;
-    state.log.push(`A village sped up production in ${city.name}.`);
+    log(state, `A village sped up production in ${city.name}.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+    });
   } else if (roll < 0.68 && city) {
     city.population += 1;
     expandTerritory(state, city);
-    state.log.push(`A village added a citizen to ${city.name}.`);
+    log(state, `A village added a citizen to ${city.name}.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+    });
   } else if (roll < 0.8) {
     const type: UnitTypeId = rng.next() < 0.5 ? "scout" : "warrior";
     if (spawnUnitNear(state, player.id, type, unit.col, unit.row)) {
-      state.log.push(`A village provided a free ${UNIT_DEFS[type].name}.`);
+      log(state, `A village provided a free ${UNIT_DEFS[type].name}.`, {
+        actorId: player.id,
+        targetIds: [player.id],
+        tile: { col: unit.col, row: unit.row },
+      });
     }
   } else if (roll < 0.92 && isMilitary(unit.type)) {
     unit.unspentPromotions += 1;
-    state.log.push(`${UNIT_DEFS[unit.type].name} gained battle wisdom (free promotion) at a village.`);
+    log(state, `${UNIT_DEFS[unit.type].name} gained battle wisdom (free promotion) at a village.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+    });
   } else if (barbId !== undefined) {
     // Negative: an ambush — barbarians appear nearby.
     let spawned = 0;
@@ -128,10 +153,18 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
         spawned++;
       }
     }
-    state.log.push(`It was a trap! Barbarians ambushed ${player.name}.`);
+    log(state, `It was a trap! Barbarians ambushed ${player.name}.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+    });
   } else {
     player.gold += 25;
-    state.log.push(`${player.name} found a small cache in a village.`);
+    log(state, `${player.name} found a small cache in a village.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+    });
   }
 }
 
@@ -143,7 +176,11 @@ export function clearBarbCamp(state: GameState, unit: Unit, player: Player): voi
   if (unit.promotions.includes("forager")) {
     unit.hp = Math.min(unitMaxHp(unit), unit.hp + 8);
   }
-  state.log.push(`${player.name} cleared a barbarian camp (+${gold} gold).`);
+  log(state, `${player.name} cleared a barbarian camp (+${gold} gold).`, {
+    actorId: player.id,
+    targetIds: [player.id],
+    tile: { col: unit.col, row: unit.row },
+  });
 }
 
 /** Called when a unit finishes a move — resolves any feature on its tile. */

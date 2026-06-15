@@ -1,6 +1,6 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City, Player } from "./state";
-import { cityAt, makeUnit, unitAt } from "./state";
+import { cityAt, log, makeUnit, unitAt } from "./state";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
@@ -266,7 +266,11 @@ export function processCity(state: GameState, city: City, owner: Player): void {
     if (city.population > 1) {
       city.population -= 1;
       trimCitizens(state, city);
-      state.log.push(`${city.name} starved (now pop ${city.population}).`);
+      log(state, `${city.name} starved (now pop ${city.population}).`, {
+        actorId: city.ownerId,
+        targetIds: [city.ownerId],
+        tile: { col: city.col, row: city.row },
+      });
     }
     city.foodStored = 0;
   } else {
@@ -276,7 +280,11 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       city.population += 1;
       expandTerritory(state, city); // borders grow with the city
       assignOneCitizen(state, city); // new citizen works the best free tile
-      state.log.push(`${city.name} grew to pop ${city.population}.`);
+      log(state, `${city.name} grew to pop ${city.population}.`, {
+        actorId: city.ownerId,
+        targetIds: [city.ownerId],
+        tile: { col: city.col, row: city.row },
+      });
     }
   }
 
@@ -298,7 +306,11 @@ export function processCity(state: GameState, city: City, owner: Player): void {
             (owner.resources[udef.reqResource.resource] ?? 0) - udef.reqResource.count,
           );
         }
-        state.log.push(`${city.name} trained a ${udef.name}.`);
+        log(state, `${city.name} trained a ${udef.name}.`, {
+          actorId: city.ownerId,
+          targetIds: [city.ownerId],
+          tile: { col: city.col, row: city.row },
+        });
       } else {
         const bdef = BUILDING_DEFS[city.production.id];
         if (!city.buildings.includes(city.production.id)) {
@@ -310,7 +322,11 @@ export function processCity(state: GameState, city: City, owner: Player): void {
             (owner.resources[bdef.reqResource.resource] ?? 0) - bdef.reqResource.count,
           );
         }
-        state.log.push(`${city.name} built a ${bdef.name}.`);
+        log(state, `${city.name} built a ${bdef.name}.`, {
+          actorId: city.ownerId,
+          targetIds: [city.ownerId],
+          tile: { col: city.col, row: city.row },
+        });
       }
       city.production = null;
     }
@@ -324,7 +340,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
     if (owner.scienceProgress >= def.cost) {
       owner.scienceProgress -= def.cost;
       owner.researched.add(owner.researching);
-      state.log.push(`${owner.name} discovered ${def.name}.`);
+      log(state, `${owner.name} discovered ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
       owner.researching = null;
     }
   }
@@ -335,7 +351,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
     if (def && owner.cultureProgress >= def.cost) {
       owner.cultureProgress -= def.cost;
       owner.civicsResearched.add(owner.researchingCivic);
-      state.log.push(`${owner.name} adopted ${def.name}.`);
+      log(state, `${owner.name} adopted ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
       owner.researchingCivic = null;
     }
   }

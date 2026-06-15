@@ -11,7 +11,7 @@ import type {
   Player,
   Relation,
 } from "./state";
-import { citiesOf, playerById, unitsOf, type City } from "./state";
+import { citiesOf, log, playerById, unitsOf, type City } from "./state";
 import { UNIT_DEFS, isMilitary } from "./content";
 import { RESOURCE_DEFS, tradeableLuxuries, type ResourceId } from "./resources";
 import { SPECIALIST_DEFS, type SpecialistId } from "./specialists";
@@ -131,7 +131,7 @@ export function ensureContact(state: GameState, aId: number, bId: number): boole
   if (A.isHuman) state.contactQueue.push({ youId: aId, otherId: bId, isPlayerCiv: B.isHuman });
   if (B.isHuman) state.contactQueue.push({ youId: bId, otherId: aId, isPlayerCiv: A.isHuman });
   const an = civName(A), bn = civName(B);
-  state.log.push(`${an} and ${bn} have made contact.`);
+  log(state, `${an} and ${bn} have made contact.`, { targetIds: [aId, bId] });
   return true;
 }
 
@@ -195,7 +195,7 @@ export function declareWar(state: GameState, aId: number, targetId: number): Dip
   addModifier(state, targetId, aId, "you declared war on us", -45);
   const A = playerById(state, aId)!;
   const T = playerById(state, targetId)!;
-  state.log.push(`${civName(A)} declared war on ${civName(T)}!`);
+  log(state, `${civName(A)} declared war on ${civName(T)}!`, { actorId: aId, targetIds: [aId, targetId] });
   return ok;
 }
 
@@ -209,7 +209,10 @@ export function makePeace(state: GameState, aId: number, targetId: number): Dipl
   if (!aiAcceptsPeace(state, targetId, aId)) return fail("they refuse to make peace");
   setPeace(state, r);
   addModifier(state, targetId, aId, "we made peace", 8, 40);
-  state.log.push(`${civName(playerById(state, aId)!)} and ${civName(playerById(state, targetId)!)} made peace.`);
+  log(state, `${civName(playerById(state, aId)!)} and ${civName(playerById(state, targetId)!)} made peace.`, {
+    actorId: aId,
+    targetIds: [aId, targetId],
+  });
   return ok;
 }
 
@@ -225,7 +228,10 @@ export function denounce(state: GameState, aId: number, targetId: number): Diplo
   if (!r) return fail("you have not met them");
   addModifier(state, targetId, aId, "you denounced us", -25, 40);
   addModifier(state, aId, targetId, "__denounced", 0, 15); // marker: a later war is not a surprise
-  state.log.push(`${civName(playerById(state, aId)!)} denounced ${civName(playerById(state, targetId)!)}.`);
+  log(state, `${civName(playerById(state, aId)!)} denounced ${civName(playerById(state, targetId)!)}.`, {
+    actorId: aId,
+    targetIds: [aId, targetId],
+  });
   return ok;
 }
 
@@ -277,7 +283,7 @@ export function gift(state: GameState, aId: number, targetId: number, goldAmt: n
   if (goldAmt <= 0 && !resourceId) return fail("nothing to give");
   const value = Math.min(20, 6 + Math.floor(goldAmt / 25) + (resourceId ? 6 : 0));
   addModifier(state, targetId, aId, "your generous gifts", value, 30);
-  state.log.push(`${civName(A)} sent a gift to ${civName(T)}.`);
+  log(state, `${civName(A)} sent a gift to ${civName(T)}.`, { actorId: aId, targetIds: [aId, targetId] });
   return ok;
 }
 
@@ -299,7 +305,7 @@ export function demandTribute(state: GameState, aId: number, targetId: number, g
     if (goldAmt > 0) { T.gold -= goldAmt; A.gold += goldAmt; }
     if (resourceId && (T.resources[resourceId] ?? 0) > 0) { T.resources[resourceId] = (T.resources[resourceId] ?? 0) - 1; A.resources[resourceId] = (A.resources[resourceId] ?? 0) + 1; }
     addModifier(state, targetId, aId, "you bullied us", -18, 50);
-    state.log.push(`${civName(T)} paid tribute to ${civName(A)}.`);
+    log(state, `${civName(T)} paid tribute to ${civName(A)}.`, { actorId: aId, targetIds: [aId, targetId] });
     return ok;
   }
   addModifier(state, targetId, aId, "you made demands of us", -12, 30);
@@ -325,7 +331,10 @@ export function proposeDeal(state: GameState, fromId: number, targetId: number, 
   if (!aiEvaluateOffer(state, targetId, fromId, give, want)) return fail("they reject your offer");
   if (!canPayItems(state, targetId, want)) return fail("they cannot provide what you ask");
   applyExchange(state, fromId, targetId, give, want);
-  state.log.push(`${civName(playerById(state, fromId)!)} struck a deal with ${civName(target!)}.`);
+  log(state, `${civName(playerById(state, fromId)!)} struck a deal with ${civName(target!)}.`, {
+    actorId: fromId,
+    targetIds: [fromId, targetId],
+  });
   return ok;
 }
 
@@ -358,7 +367,10 @@ function lendSpecialist(state: GameState, fromId: number, toId: number, type: st
     if (idx >= 0) {
       const [spec] = c.specialists.splice(idx, 1);
       cap.specialists.push(spec!);
-      state.log.push(`${civName(playerById(state, fromId)!)} lent a ${SPECIALIST_DEFS[type as SpecialistId]?.name ?? "specialist"} to ${civName(playerById(state, toId)!)}.`);
+      log(state, `${civName(playerById(state, fromId)!)} lent a ${SPECIALIST_DEFS[type as SpecialistId]?.name ?? "specialist"} to ${civName(playerById(state, toId)!)}.`, {
+        actorId: fromId,
+        targetIds: [fromId, toId],
+      });
       return { fromId, item: { kind: "specialist", specialistType: type, turns: untilTurn - state.turn } as DealItem, untilTurn, specialistId: spec!.id };
     }
   }

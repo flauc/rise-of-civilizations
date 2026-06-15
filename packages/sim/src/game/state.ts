@@ -228,6 +228,21 @@ export interface TradeRoute {
 
 export type BarbarianActivity = "none" | "low" | "normal" | "high";
 
+/** One line in the shared turn log, with metadata for per-player filtering. */
+export interface LogEntry {
+  message: string;
+  /** Player whose action caused the entry (if any). */
+  actorId?: number;
+  /** Players directly affected by the entry (e.g. defender, old city owner). */
+  targetIds?: number[];
+  /** Tile where the event happened (for visibility-based filtering). */
+  tile?: { col: number; row: number };
+  /** Turn the entry was recorded on. */
+  turn?: number;
+  /** World-wide announcement visible to everyone (victory, extinction). */
+  world?: boolean;
+}
+
 export interface GameState {
   map: GameMap;
   players: Player[];
@@ -236,7 +251,7 @@ export interface GameState {
   turn: number;
   currentPlayerIndex: number;
   nextEntityId: number;
-  log: string[];
+  log: LogEntry[];
   gameOver: GameOver | null;
   turnLimit: number;
   religions: Religion[];
@@ -319,6 +334,20 @@ export function cityAt(state: GameState, col: number, row: number): City | undef
     if (c.col === col && c.row === row) return c;
   }
   return undefined;
+}
+
+/** Append a structured entry to the game log. */
+export function log(
+  state: GameState,
+  message: string,
+  opts: {
+    actorId?: number;
+    targetIds?: number[];
+    tile?: { col: number; row: number };
+    world?: boolean;
+  } = {},
+): void {
+  state.log.push({ message, turn: state.turn, ...opts });
 }
 
 export function areEnemies(a: Player, b: Player): boolean {

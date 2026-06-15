@@ -94,6 +94,6 @@ describe("victory", () => {
     expect(v).toEqual({ condition: "extinction" });
     applyVictoryCheck(state);
     expect(state.gameOver).toEqual({ condition: "extinction" });
-    expect(state.log[state.log.length - 1]).toContain("Every civilization has fallen");
+    expect(state.log[state.log.length - 1]!.message).toContain("Every civilization has fallen");
   });
 });

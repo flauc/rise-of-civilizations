@@ -1,7 +1,7 @@
 import { getTile } from "@roc/shared";
 import type {
   Attitude, BarbarianActivity, City, ContactEvent, GameOver, GameState,
-  Proposal, Relation, Religion, TradeRoute, Unit, Work,
+  LogEntry, Proposal, Relation, Religion, TradeRoute, Unit, Work,
 } from "./state";
 import { computeVisible } from "./visibility";
 import { attitudeLabel, attitudeScore } from "./diplomacy";
@@ -74,7 +74,7 @@ export interface PlayerView {
   visible: string[];
   units: Unit[];
   cities: City[];
-  log: string[];
+  log: LogEntry[];
   gameOver: GameOver | null;
   barbarianActivity: BarbarianActivity;
 }
@@ -130,6 +130,25 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     if (c.ownerId === playerId || visible.has(`${c.col},${c.row}`)) cities.push(c);
   }
 
+  const log: LogEntry[] = [];
+  for (const entry of state.log) {
+    if (entry.world) {
+      log.push(entry);
+      continue;
+    }
+    if (entry.actorId === playerId) {
+      log.push(entry);
+      continue;
+    }
+    if (entry.targetIds?.includes(playerId)) {
+      log.push(entry);
+      continue;
+    }
+    if (entry.tile && (visible.has(`${entry.tile.col},${entry.tile.row}`) || explored.has(`${entry.tile.col},${entry.tile.row}`))) {
+      log.push(entry);
+    }
+  }
+
   return {
     turn: state.turn,
     yourId: playerId,
@@ -166,7 +185,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     visible: [...visible],
     units,
     cities,
-    log: state.log.slice(-12),
+    log,
     gameOver: state.gameOver,
     barbarianActivity: state.barbarianActivity,
   };
@@ -179,7 +198,7 @@ export interface SerializedState {
   turn: number;
   currentPlayerIndex: number;
   nextEntityId: number;
-  log: string[];
+  log: LogEntry[];
   gameOver: GameOver | null;
   turnLimit: number;
   religions: Religion[];
@@ -237,7 +256,9 @@ export function deserializeState(s: SerializedState): GameState {
     turn: s.turn,
     currentPlayerIndex: s.currentPlayerIndex,
     nextEntityId: s.nextEntityId,
-    log: s.log,
+    log: Array.isArray(s.log)
+      ? (s.log as (LogEntry | string)[]).map((e) => (typeof e === "string" ? { message: e, turn: 0 } : e))
+      : [],
     gameOver: s.gameOver,
     turnLimit: s.turnLimit,
     religions: s.religions,

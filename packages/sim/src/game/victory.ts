@@ -4,7 +4,7 @@
 // (Science / Culture / Religious / Economic victories arrive with their systems.)
 
 import type { GameState, GameOver, Player } from "./state";
-import { citiesOf, unitsOf } from "./state";
+import { citiesOf, log, unitsOf } from "./state";
 
 /** A simple aggregate score for the score victory and end-game ranking. */
 export function playerScore(state: GameState, playerId: number): number {
@@ -105,10 +105,10 @@ export function applyVictoryCheck(state: GameState): void {
   if (result) {
     state.gameOver = result;
     if (result.condition === "extinction") {
-      state.log.push("Every civilization has fallen — there is no winner.");
+      log(state, "Every civilization has fallen — there is no winner.", { world: true });
     } else {
       const winner = state.players.find((p) => p.id === result.winnerId);
-      state.log.push(`${winner?.name ?? "Someone"} wins by ${result.condition}!`);
+      log(state, `${winner?.name ?? "Someone"} wins by ${result.condition}!`, { world: true });
     }
   }
 }

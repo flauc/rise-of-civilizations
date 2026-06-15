@@ -71,6 +71,7 @@ import {
   type City,
   type GameState,
   type ImprovementKind,
+  type LogEntry,
   type ProductionItem,
   type ActiveAbilityId,
   type PromotionId,
@@ -329,7 +330,7 @@ export function createUI(handlers: UIHandlers): UI {
   let lastViewerId = -1;
   let lastLogLength = 0;
   let logInitialized = false;
-  let villageQueue: string[] = [];
+  let villageQueue: LogEntry[] = [];
   let menuOpen = false;
   let menuView: "menu" | "save" = "menu";
   let isSaving = false;
@@ -374,7 +375,7 @@ export function createUI(handlers: UIHandlers): UI {
     villageDialog.classList.remove("show");
     villageQueue.shift();
     if (villageQueue.length > 0) {
-      window.setTimeout(() => showVillageDialog(villageQueue[0]!), 150);
+      window.setTimeout(() => showVillageDialog(villageQueue[0]!.message), 150);
     }
   };
 
@@ -612,7 +613,7 @@ export function createUI(handlers: UIHandlers): UI {
         logDialogContent.innerHTML = state.log
           .slice()
           .reverse()
-          .map((entry) => `<div>${escapeHtml(entry)}</div>`)
+          .map((entry) => `<div>${escapeHtml(entry.message)}</div>`)
           .join("");
         logOverlay.classList.add("show");
         logDialog.classList.add("show");
@@ -1445,7 +1446,7 @@ export function createUI(handlers: UIHandlers): UI {
   const renderLog = (state: GameState): void => {
     log.innerHTML = state.log
       .slice(-4)
-      .map((l) => `<div>${l}</div>`)
+      .map((l) => `<div>${escapeHtml(l.message)}</div>`)
       .join("");
   };
 
@@ -1539,12 +1540,14 @@ export function createUI(handlers: UIHandlers): UI {
         logInitialized = true;
       } else if (view.state.log.length > lastLogLength) {
         const newEntries = view.state.log.slice(lastLogLength);
-        const villageEntries = newEntries.filter((m) => /village|trap|ambushed/i.test(m));
+        const villageEntries = newEntries.filter(
+          (m) => /village|trap|ambushed/i.test(m.message) && m.actorId === view.viewerId,
+        );
         if (villageEntries.length > 0) {
           const wasEmpty = villageQueue.length === 0;
           villageQueue.push(...villageEntries);
           if (wasEmpty && !villageDialog.classList.contains("show")) {
-            showVillageDialog(villageQueue[0]!);
+            showVillageDialog(villageQueue[0]!.message);
           }
         }
         lastLogLength = view.state.log.length;

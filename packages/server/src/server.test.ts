@@ -72,4 +72,33 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(lobby.get(g.id)!.host!.state.turn).toBe(restoredState.turn);
     expect(lobby.get(g.id)!.host!.state.turn).not.toBe(9999);
   });
+
+  it("supports host-defined capacity up to 12 players", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Big Match", "uA", "Alice", { seed: "seed-big", capacity: 5 });
+    expect(g.capacity).toBe(5);
+    expect(g.slots.length).toBe(5);
+
+    lobby.join(g.id, "uB", "Bob");
+    lobby.join(g.id, "uC", "Carol");
+    lobby.join(g.id, "uD", "Dan");
+    lobby.join(g.id, "uE", "Eve");
+
+    expect(lobby.start(g.id)).toEqual({ ok: true });
+    const host = lobby.get(g.id)!.host!;
+    expect(host.state.players.filter((p) => !p.isBarbarian).length).toBe(5);
+    expect(host.state.players.filter((p) => p.isHuman).length).toBe(5);
+  });
+
+  it("lets the host delete a game and rejects deletions by others", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Deletable", "uA", "Alice", { seed: "seed-del" });
+    expect(lobby.delete(g.id, "uA")).toEqual({ ok: true });
+    expect(lobby.get(g.id)).toBeUndefined();
+
+    const g2 = lobby.create("Protected", "uA", "Alice", { seed: "seed-prot" });
+    lobby.join(g2.id, "uB", "Bob");
+    expect("error" in lobby.delete(g2.id, "uB")).toBe(true);
+    expect(lobby.get(g2.id)).toBeDefined();
+  });
 });

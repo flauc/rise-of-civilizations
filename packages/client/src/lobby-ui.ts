@@ -25,6 +25,8 @@ interface MenuState {
     url: string;
     handle: string;
     password: string;
+    capacity: number;
+    userId: string;
   };
 }
 
@@ -59,6 +61,12 @@ function barbarianSelect(id: string, value: string): string {
     .join("")}</select>`;
 }
 
+function capacitySelect(id: string, value: number): string {
+  return `<select id="${id}" class="menu-in">${Array.from({ length: 12 }, (_, n) => n + 1)
+    .map((n) => `<option value="${n}"${n === value ? " selected" : ""}>${n}</option>`)
+    .join("")}</select>`;
+}
+
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
   div.textContent = text;
@@ -78,6 +86,8 @@ export function createLobby(onStart: (session: Session) => void): void {
       url: DEFAULT_WS,
       handle: "",
       password: "",
+      capacity: 2,
+      userId: "",
     },
   };
 
@@ -328,6 +338,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       <div id="games" class="hidden menu-section">
         <div class="menu-section-title">Lobby</div>
         <div class="menu-row"><span>Map size</span>${mapSelect("mp-map", "medium")}</div>
+        <div class="menu-row"><span>Human players</span>${capacitySelect("mp-capacity", state.mp.capacity)}</div>
         <div class="menu-row"><span>AI opponents</span>${aiSelect("mp-ai", 0)}</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("mp-barb", "normal")}</div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
@@ -356,12 +367,16 @@ export function createLobby(onStart: (session: Session) => void): void {
           ? `<div class="menu-hint">No games yet — create one.</div>`
           : games
               .map(
-                (g) =>
-                  `<div class="save-row"><span class="info"><span class="name">${escapeHtml(g.name)}</span><span class="meta">${g.players}/${g.capacity} players · ${g.status}</span></span>` +
-                  (joinedGameId === g.id
+                (g) => {
+                  const isHost = g.hostUserId === state.mp.userId;
+                  let buttons = joinedGameId === g.id
                     ? `<button class="menu-btn primary" data-start="${g.id}" style="width:auto">Start</button>`
-                    : `<button class="menu-btn" data-join="${g.id}" style="width:auto">Join</button>`) +
-                  `</div>`,
+                    : `<button class="menu-btn" data-join="${g.id}" style="width:auto">Join</button>`;
+                  if (isHost) {
+                    buttons += ` <button class="menu-btn" data-delete="${g.id}" style="width:auto">Delete</button>`;
+                  }
+                  return `<div class="save-row"><span class="info"><span class="name">${escapeHtml(g.name)}</span><span class="meta">${g.players}/${g.capacity} players · ${g.status}</span></span><span style="display:flex;gap:6px">${buttons}</span></div>`;
+                },
               )
               .join("");
       list.querySelectorAll<HTMLButtonElement>("[data-join]").forEach((el) =>
@@ -369,6 +384,13 @@ export function createLobby(onStart: (session: Session) => void): void {
       );
       list.querySelectorAll<HTMLButtonElement>("[data-start]").forEach((el) =>
         el.addEventListener("click", () => mpSession?.send({ t: "startGame", gameId: el.dataset.start! })),
+      );
+      list.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((el) =>
+        el.addEventListener("click", () => {
+          if (confirm("Delete this game? This cannot be undone.")) {
+            mpSession?.send({ t: "deleteGame", gameId: el.dataset.delete! });
+          }
+        }),
       );
     };
 
@@ -382,10 +404,18 @@ export function createLobby(onStart: (session: Session) => void): void {
         mpSession.on((m) => {
           if (m.t === "error") status(m.message);
           else if (m.t === "authOk") {
+            state.mp.userId = m.userId;
             status(`Signed in as ${m.handle}`);
             $("#games").classList.remove("hidden");
             mpSession!.send({ t: "listGames" });
           } else if (m.t === "games") renderGames(m.games);
+          else if (m.t === "deleted") {
+            if (joinedGameId === m.gameId) {
+              joinedGameId = null;
+              status("Game deleted by host.");
+            }
+            mpSession!.send({ t: "listGames" });
+          }
           else if (m.t === "joined") {
             joinedGameId = m.gameId;
             status(`Joined game — you are player ${m.playerId + 1}`);
@@ -412,11 +442,14 @@ export function createLobby(onStart: (session: Session) => void): void {
     $("#refresh").addEventListener("click", () => mpSession?.send({ t: "listGames" }));
     $("#create").addEventListener("click", () => {
       const dims = MAP_DIMENSIONS[($select("#mp-map").value as MapSize) ?? "medium"];
+      const capacity = Number($select("#mp-capacity").value);
+      state.mp.capacity = Math.max(1, Math.min(12, capacity));
       mpSession?.send({
         t: "createGame",
         name: `${handleEl.value || "Player"}'s game`,
         cols: dims.cols,
         rows: dims.rows,
+        capacity: state.mp.capacity,
         aiCount: Number($select("#mp-ai").value),
         barbarians: $select("#mp-barb").value as "none" | "low" | "normal" | "high",
       });

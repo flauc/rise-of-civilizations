@@ -1,6 +1,6 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { City, GameState, ProductionItem } from "./state";
-import { cityAt, currentPlayer, playerById, unitsOf, citiesOf } from "./state";
+import { cityAt, currentPlayer, log, playerById, unitsOf, citiesOf } from "./state";
 import { isPassableLand } from "./terrain";
 import { computeReachable } from "./movement";
 import { updateExplored } from "./visibility";
@@ -232,7 +232,7 @@ export function applyCommand(
       autoAssignCitizens(state, city); // assign the founding citizens to tiles
       city.hp = cityMaxHp(city);
       state.units.delete(unit.id);
-      state.log.push(`${player.name} founded ${name}.`);
+      log(state, `${player.name} founded ${name}.`, { actorId: player.id, targetIds: [player.id], tile: { col: city.col, row: city.row } });
       updateExplored(state, player.id);
       return ok;
     }
@@ -312,7 +312,7 @@ export function applyCommand(
       if (player.researched.has(cmd.techId)) return fail("already researched");
       if (!techUnlocked(player.researched, cmd.techId)) return fail("prereqs not met");
       player.researching = cmd.techId;
-      state.log.push(`${player.name} is researching ${TECH_DEFS[cmd.techId].name}.`);
+      log(state, `${player.name} is researching ${TECH_DEFS[cmd.techId].name}.`, { actorId: player.id, targetIds: [player.id] });
       return ok;
     }
 
@@ -323,7 +323,7 @@ export function applyCommand(
       const def = getCivic(cmd.civicId);
       if (!def) return fail("no such civic");
       player.researchingCivic = cmd.civicId;
-      state.log.push(`${player.name} is developing ${def.name}.`);
+      log(state, `${player.name} is developing ${def.name}.`, { actorId: player.id, targetIds: [player.id] });
       return ok;
     }
 
@@ -333,7 +333,7 @@ export function applyCommand(
       if (!availableGovernments(player).includes(cmd.governmentId)) return fail("government not unlocked");
       player.government = cmd.governmentId;
       if (player.policies.length > gov.slots) player.policies = player.policies.slice(0, gov.slots);
-      state.log.push(`${player.name} adopted ${gov.name}.`);
+      log(state, `${player.name} adopted ${gov.name}.`, { actorId: player.id, targetIds: [player.id] });
       return ok;
     }
 

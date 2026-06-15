@@ -8,7 +8,7 @@
 import { axialDistance, getTile, offsetToAxial, type Tile } from "@roc/shared";
 import { getWonder, WONDER_DEFS } from "@roc/data";
 import type { City, Discipline, GameState, Specialist, Work } from "./state";
-import { citiesOf, playerById } from "./state";
+import { citiesOf, log, playerById } from "./state";
 import { isPassableLand } from "./terrain";
 import { availableTechs } from "./economy";
 import {
@@ -391,10 +391,18 @@ function completeWork(state: GameState, w: Work): void {
       const tech = availableTechs(owner)[0];
       if (tech) {
         owner.researched.add(tech);
-        state.log.push(`${owner.name} gained ${tech} from the ${def.name}.`);
+        log(state, `${owner.name} gained ${tech} from the ${def.name}.`, {
+          actorId: owner.id,
+          targetIds: [owner.id],
+          tile: host ? { col: host.col, row: host.row } : undefined,
+        });
       }
     }
-    state.log.push(`${owner?.name ?? "Someone"} completed the ${def?.name ?? "Wonder"}!`);
+    log(state, `${owner?.name ?? "Someone"} completed the ${def?.name ?? "Wonder"}!`, {
+      actorId: owner?.id,
+      targetIds: owner ? [owner.id] : undefined,
+      tile: host ? { col: host.col, row: host.row } : undefined,
+    });
     return;
   }
   if (!w.target) return;
@@ -411,7 +419,11 @@ function completeWork(state: GameState, w: Work): void {
     const maxHp = STRUCTURE_HP[w.kind][tier - 1]!;
     tile.structure = { kind: w.kind, tier, hp: maxHp, maxHp };
   }
-  state.log.push(`${owner?.name ?? "Someone"} completed a ${workName(w.kind, tier)}.`);
+  log(state, `${owner?.name ?? "Someone"} completed a ${workName(w.kind, tier)}.`, {
+    actorId: owner?.id,
+    targetIds: owner ? [owner.id] : undefined,
+    tile: w.target ? { col: w.target.col, row: w.target.row } : undefined,
+  });
 }
 
 /**

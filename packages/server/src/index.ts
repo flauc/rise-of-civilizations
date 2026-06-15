@@ -47,6 +47,18 @@ function isHost(ws: ServerWebSocket<Conn>): boolean {
   return ws.data.slot === 0;
 }
 
+function removeGameConns(gameId: string): void {
+  const set = gameConns.get(gameId);
+  if (!set) return;
+  for (const ws of set) {
+    send(ws, { t: "deleted", gameId });
+    ws.data.gameId = undefined;
+    ws.data.playerId = undefined;
+    ws.data.slot = undefined;
+  }
+  gameConns.delete(gameId);
+}
+
 async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<void> {
   switch (msg.t) {
     case "register":
@@ -73,6 +85,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         seed: msg.seed,
         cols: msg.cols,
         rows: msg.rows,
+        capacity: msg.capacity,
         aiCount: msg.aiCount,
         barbarians: msg.barbarians,
       });
@@ -99,6 +112,17 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       if ("error" in r) return send(ws, { t: "error", message: r.error });
       for (const c of gameConns.get(msg.gameId) ?? []) send(c, { t: "started", gameId: msg.gameId });
       broadcastState(msg.gameId);
+      return;
+    }
+    case "deleteGame": {
+      if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      const game = lobby.get(msg.gameId);
+      if (!game) return send(ws, { t: "error", message: "no such game" });
+      if (game.slots[0]?.userId !== ws.data.userId) return send(ws, { t: "error", message: "only the host can delete this game" });
+      const r = lobby.delete(msg.gameId, ws.data.userId);
+      if ("error" in r) return send(ws, { t: "error", message: r.error });
+      removeGameConns(msg.gameId);
+      send(ws, { t: "games", games: lobby.list() });
       return;
     }
     case "order": {

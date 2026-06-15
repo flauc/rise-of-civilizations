@@ -1,6 +1,6 @@
 import { axialDistance, getTile, offsetToAxial, type TerrainType } from "@roc/shared";
 import type { City, GameState, Player, Unit } from "./state";
-import { cityAt, playerById, unitAt, areEnemies } from "./state";
+import { cityAt, log, playerById, unitAt, areEnemies } from "./state";
 import {
   UNIT_DEFS,
   UNIT_MAX_HP,
@@ -285,7 +285,11 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
   if (taker0?.isBarbarian) {
     for (const t of state.map.tiles) if (t.ownerCityId === city.id) t.ownerCityId = undefined;
     state.cities.delete(city.id);
-    state.log.push(`Barbarians razed ${city.name}!`);
+    log(state, `Barbarians razed ${city.name}!`, {
+      actorId: taker0?.id,
+      targetIds: oldOwner ? [oldOwner.id] : undefined,
+      tile: { col: city.col, row: city.row },
+    });
     applyVictoryCheck(state);
     return;
   }
@@ -299,7 +303,11 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
   attacker.col = city.col;
   attacker.row = city.row;
   const taker = playerById(state, attacker.ownerId);
-  state.log.push(`${taker?.name ?? "Someone"} captured ${city.name}${oldOwner ? ` from ${oldOwner.name}` : ""}.`);
+  log(state, `${taker?.name ?? "Someone"} captured ${city.name}${oldOwner ? ` from ${oldOwner.name}` : ""}.`, {
+    actorId: attacker.ownerId,
+    targetIds: oldOwner ? [oldOwner.id] : undefined,
+    tile: { col: city.col, row: city.row },
+  });
   applyVictoryCheck(state);
 }
 
@@ -431,7 +439,11 @@ export function resolveAttack(
       if (struct.hp <= 0) {
         targetTile.structure = undefined;
         attackerOwner.gold += 10;
-        state.log.push(`${attackerOwner.name} stormed a fortification.`);
+        log(state, `${attackerOwner.name} stormed a fortification.`, {
+          actorId: attacker.ownerId,
+          targetIds: sCity ? [sCity.ownerId] : undefined,
+          tile: { col, row },
+        });
       }
       if (attacker.hp <= 0) {
         killUnit(state, attacker);
@@ -467,7 +479,11 @@ export function towerBombardment(state: GameState, playerId: number): void {
     if (target) {
       const dmg = damageFrom(towerBombard(t.structure.tier), defenseStrengthVsBombard(state, target));
       target.hp -= dmg;
-      state.log.push(`A tower bombarded ${UNIT_DEFS[target.type].name} for ${dmg}.`);
+      log(state, `A tower bombarded ${UNIT_DEFS[target.type].name} for ${dmg}.`, {
+        actorId: playerId,
+        targetIds: [target.ownerId],
+        tile: { col: target.col, row: target.row },
+      });
       if (target.hp <= 0) killUnit(state, target);
     }
   }
@@ -485,7 +501,10 @@ function defenseStrengthVsBombard(state: GameState, unit: Unit): number {
 function killUnit(state: GameState, unit: Unit): void {
   state.units.delete(unit.id);
   const owner = playerById(state, unit.ownerId);
-  state.log.push(`${UNIT_DEFS[unit.type].name} (${owner?.name ?? "?"}) was destroyed.`);
+  log(state, `${UNIT_DEFS[unit.type].name} (${owner?.name ?? "?"}) was destroyed.`, {
+    targetIds: owner ? [owner.id] : undefined,
+    tile: { col: unit.col, row: unit.row },
+  });
 }
 
 /** Deal flat damage to a unit (e.g. Trample splash), killing it if it drops to 0. */

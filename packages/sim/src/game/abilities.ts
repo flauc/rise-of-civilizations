@@ -7,7 +7,7 @@
 
 import { axialDistance, axialToOffset, getTile, offsetToAxial, type Axial } from "@roc/shared";
 import type { GameState, Player, Unit } from "./state";
-import { areEnemies, cityAt, playerById, unitAt, unitsOf } from "./state";
+import { areEnemies, cityAt, log, playerById, unitAt, unitsOf } from "./state";
 import { isPassableLand } from "./terrain";
 import { enemyStructureBlocks } from "./movement";
 import { resolveAttack, applyDirectDamage, unitMaxHp } from "./combat";
@@ -218,7 +218,7 @@ export function useAbility(
       if (!res.ok) return res;
       const splash = Math.round(10 * (1 + 0.05 * (unit.level - 1)));
       for (const v of splashVictims) if (state.units.has(v.id)) applyDirectDamage(state, v, splash);
-      if (rampage) state.log.push(`${UNIT_DEFS[unit.type].name} rampaged!`);
+      if (rampage) log(state, `${UNIT_DEFS[unit.type].name} rampaged!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
       if (state.units.has(unit.id) && tileFree(state, unit, behind.col, behind.row)) {
         unit.col = behind.col;
         unit.row = behind.row;

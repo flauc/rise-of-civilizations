@@ -6,6 +6,7 @@ import { getTile } from "@roc/shared";
 import {
   advanceWorks,
   applyCommand,
+  log,
   ECON_TERRAIN,
   isDefenseKind,
   isEconKind,
@@ -77,7 +78,7 @@ export function applyCheat(
       }
       player.researching = null;
       player.scienceProgress = 0;
-      state.log.push(`${player.name} unlocked every technology (cheat).`);
+      log(state, `${player.name} unlocked every technology (cheat).`, { actorId: playerId, targetIds: [playerId] });
       return { ok: true };
     }
 
@@ -89,7 +90,7 @@ export function applyCheat(
         }
       }
       advanceWorks(state, playerId);
-      state.log.push(`${player.name} completed all public works (cheat).`);
+      log(state, `${player.name} completed all public works (cheat).`, { actorId: playerId, targetIds: [playerId] });
       return { ok: true };
     }
 
@@ -100,13 +101,13 @@ export function applyCheat(
         u.hp = unitMaxHp(u);
         healed++;
       }
-      state.log.push(`${player.name} healed ${healed} units (cheat).`);
+      log(state, `${player.name} healed ${healed} units (cheat).`, { actorId: playerId, targetIds: [playerId] });
       return { ok: true };
     }
 
     case "addGold": {
       player.gold += action.amount;
-      state.log.push(`${player.name} gained ${action.amount} gold (cheat).`);
+      log(state, `${player.name} gained ${action.amount} gold (cheat).`, { actorId: playerId, targetIds: [playerId] });
       return { ok: true };
     }
 
@@ -116,7 +117,7 @@ export function applyCheat(
         all.add(`${t.col},${t.row}`);
       }
       player.explored = all;
-      state.log.push(`${player.name} revealed the entire map (cheat).`);
+      log(state, `${player.name} revealed the entire map (cheat).`, { actorId: playerId, targetIds: [playerId] });
       return { ok: true };
     }
 
@@ -127,7 +128,7 @@ export function applyCheat(
       const level = Math.min(3, Math.max(1, action.level));
       tile.road = true;
       tile.roadLevel = level;
-      state.log.push(`${player.name} built a tier ${level} road (cheat).`);
+      log(state, `${player.name} built a tier ${level} road (cheat).`, { actorId: playerId, targetIds: [playerId] });
       return { ok: true };
     }
 
@@ -139,7 +140,7 @@ export function applyCheat(
         if (!isPassableLand(tile.terrain)) return { ok: false, error: "not passable land" };
         tile.road = true;
         tile.roadLevel = 3;
-        state.log.push(`${player.name} built an Imperial Road (cheat).`);
+        log(state, `${player.name} built an Imperial Road (cheat).`, { actorId: playerId, targetIds: [playerId] });
         return { ok: true };
       }
       if (isEconKind(kind)) {
@@ -150,7 +151,7 @@ export function applyCheat(
         if (tile.structure) return { ok: false, error: "tile occupied by a defensive structure" };
         tile.improvement = kind;
         tile.improvementLevel = 3;
-        state.log.push(`${player.name} built a ${workName(kind, 3)} (cheat).`);
+        log(state, `${player.name} built a ${workName(kind, 3)} (cheat).`, { actorId: playerId, targetIds: [playerId] });
         return { ok: true };
       }
       if (isDefenseKind(kind)) {
@@ -158,7 +159,7 @@ export function applyCheat(
         if (tile.improvement) return { ok: false, error: "tile occupied by an improvement" };
         const hp = STRUCTURE_HP[kind][2]!;
         tile.structure = { kind, tier: 3, hp, maxHp: hp };
-        state.log.push(`${player.name} built a ${workName(kind, 3)} (cheat).`);
+        log(state, `${player.name} built a ${workName(kind, 3)} (cheat).`, { actorId: playerId, targetIds: [playerId] });
         return { ok: true };
       }
       return { ok: false, error: "unknown work kind" };
@@ -175,7 +176,7 @@ export function applyCheat(
       }
       const id = state.nextEntityId++;
       state.units.set(id, makeUnit(id, playerId, action.unitType, target.col, target.row));
-      state.log.push(`${player.name} spawned a ${action.unitType} (cheat).`);
+      log(state, `${player.name} spawned a ${action.unitType} (cheat).`, { actorId: playerId, targetIds: [playerId] });
       return { ok: true };
     }
 

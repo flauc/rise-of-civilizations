@@ -34,7 +34,10 @@ function normalizeBarbarians(v: boolean | BarbarianActivity | undefined): Barbar
   return v ?? "normal";
 }
 
-const PLAYER_COLORS = ["#e0533d", "#3d7fe0", "#49b85a", "#e0b53d", "#a05ad0", "#3dc8c8", "#d060aa", "#e08a3d"];
+const PLAYER_COLORS = [
+  "#e0533d", "#3d7fe0", "#49b85a", "#e0b53d", "#a05ad0", "#3dc8c8",
+  "#d060aa", "#e08a3d", "#5ad07a", "#7a5ad0", "#d07a5a", "#5a9ad0",
+];
 
 function startScore(state: GameState, col: number, row: number): number {
   const tile = getTile(state.map, col, row);

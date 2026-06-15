@@ -6,7 +6,7 @@ import { axialDistance, offsetToAxial } from "@roc/shared";
 import { RELIGION_NAMES, getBelief, BELIEFS } from "@roc/data";
 import { RELIGION_REQUIRED_TECH } from "./content";
 import type { City, GameState, Religion } from "./state";
-import { citiesOf, playerById } from "./state";
+import { citiesOf, log, playerById } from "./state";
 
 export { BELIEFS, getBelief };
 export type { BeliefDef } from "@roc/data";
@@ -69,7 +69,11 @@ export function foundReligion(
   p.foundedReligionId = id;
   p.faith -= FAITH_TO_FOUND;
   city.religion = id;
-  state.log.push(`${p.name} founded ${finalName} in ${city.name}!`);
+  log(state, `${p.name} founded ${finalName} in ${city.name}!`, {
+    actorId: p.id,
+    targetIds: [p.id],
+    tile: { col: city.col, row: city.row },
+  });
   return { ok: true };
 }
 

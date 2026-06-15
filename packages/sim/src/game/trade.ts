@@ -6,7 +6,7 @@
 
 import { axialDistance, offsetToAxial } from "@roc/shared";
 import type { City, GameState, TradeRoute, Unit } from "./state";
-import { cityAt, playerById } from "./state";
+import { cityAt, log, playerById } from "./state";
 import { UNIT_DEFS } from "./content";
 
 export interface TradeYield {
@@ -116,7 +116,11 @@ export function establishTradeRoute(
   });
   state.units.delete(unit.id);
   const owner = playerById(state, unit.ownerId);
-  state.log.push(`${owner?.name ?? "A trader"} opened a trade route ${origin.name} → ${dest.name}.`);
+  log(state, `${owner?.name ?? "A trader"} opened a trade route ${origin.name} → ${dest.name}.`, {
+    actorId: unit.ownerId,
+    targetIds: [unit.ownerId],
+    tile: { col: origin.col, row: origin.row },
+  });
   return { ok: true };
 }
 
