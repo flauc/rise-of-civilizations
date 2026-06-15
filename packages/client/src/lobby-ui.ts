@@ -8,7 +8,8 @@ import { deleteSave, listSaves, loadSave, type SaveRecord } from "./save-db";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 
 const DEFAULT_WS_SCHEME = location.protocol === "https:" ? "wss" : "ws";
-const DEFAULT_WS = `${DEFAULT_WS_SCHEME}://${location.hostname || "localhost"}:3001/ws`;
+const DEFAULT_WS =
+  import.meta.env.VITE_WS_URL?.trim() || `${DEFAULT_WS_SCHEME}://${location.hostname || "localhost"}:3001/ws`;
 
 type Screen = "start" | "sp" | "mp" | "load";
 
