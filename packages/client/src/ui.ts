@@ -68,6 +68,12 @@ import {
   isPassableLand,
   terrainDefense,
   TERRAIN_NAMES,
+  barbarianBribeCost,
+  barbarianRecruitCost,
+  isBarbarianPacified,
+  canParleyWith,
+  BRIBE_TURNS,
+  BARBARIAN_DIPLOMACY_TECH,
   type City,
   type GameState,
   type ImprovementKind,
@@ -192,6 +198,8 @@ export interface UIHandlers {
   onPromote(promotion: PromotionId): void;
   /** Invoke an active ability. The controller decides whether it needs a target. */
   onAbility(ability: ActiveAbilityId): void;
+  onSleep(): void;
+  onWake(): void;
   onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
   onStartWork(kind: string, col: number, row: number): void;
   onStartWonder(wonderId: string, hostCityId: number): void;
@@ -213,6 +221,8 @@ export interface UIHandlers {
   onTogglePolicy(policyId: string): void;
   onFoundReligion(cityId: number, name: string, beliefs: string[]): void;
   onEstablishTrade(destCityId: number): void;
+  onBribeBarbarian(unitId: number): void;
+  onRecruitBarbarian(unitId: number): void;
   onCloseCity(): void;
   onCloseTile(): void;
   onSuggestion(): void;
@@ -307,13 +317,14 @@ export function createUI(handlers: UIHandlers): UI {
 
   const endturn = document.createElement("button");
   endturn.id = "endturn";
-  endturn.className = "btn primary";
+  endturn.className = "action-btn action-next";
+  endturn.title = "Next Move";
   document.body.appendChild(endturn);
 
   const endturn2 = document.createElement("button");
   endturn2.id = "endturn2";
-  endturn2.className = "btn";
-  endturn2.textContent = "End Turn ⏭";
+  endturn2.className = "action-btn action-skip";
+  endturn2.title = "Skip Move (End Turn)";
   endturn2.addEventListener("click", () => handlers.onEndTurn());
   document.body.appendChild(endturn2);
 
@@ -384,11 +395,11 @@ export function createUI(handlers: UIHandlers): UI {
 
   const renderAction = (view: UIView): void => {
     if (view.suggestion) {
-      endturn.textContent = view.suggestion.label;
+      endturn.title = view.suggestion.label;
       endturn.onclick = () => handlers.onSuggestion();
       endturn2.classList.remove("hidden");
     } else {
-      endturn.textContent = "End Turn";
+      endturn.title = "End Turn";
       endturn.onclick = () => handlers.onEndTurn();
       endturn2.classList.add("hidden");
     }
@@ -562,6 +573,18 @@ export function createUI(handlers: UIHandlers): UI {
     const player = state.players[state.currentPlayerIndex]!;
     const isHost = state.players[0]?.id === player.id;
 
+    // If the save form is already open, don't rebuild it every frame: that would
+    // reset the input value and steal focus, which makes typing impossible on
+    // touch devices. Just sync the save button state.
+    if (menuView === "save" && saveModal.querySelector<HTMLInputElement>("#save-name")) {
+      const confirmBtn = saveModal.querySelector<HTMLButtonElement>("#save-confirm");
+      if (confirmBtn) {
+        confirmBtn.disabled = isSaving;
+        confirmBtn.textContent = isSaving ? "Saving…" : "Save";
+      }
+      return;
+    }
+
     if (menuView === "menu") {
       const godMenuBtn =
         !lastView?.cheatsEnabled
@@ -664,11 +687,13 @@ export function createUI(handlers: UIHandlers): UI {
     }
 
     // Save form view
+    const civ = getCiv(player.civId);
+    const defaultName = `${civ ? civ.name : player.name} - Turn ${state.turn}`;
     let html =
       `<div class="row" style="justify-content:space-between"><b>Save Game</b>` +
       `<button class="btn" id="save-close">Cancel</button></div>` +
       `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
-      `<input id="save-name" class="lobby-in" value="" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
+      `<input id="save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
       `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
       (isSaving ? "Saving…" : "Save") +
       `</button>` +
@@ -1019,15 +1044,57 @@ export function createUI(handlers: UIHandlers): UI {
         `</div>`;
     }
 
+    // Barbarian diplomacy: when an enemy barbarian stands next to one of your
+    // units, you can bribe its war-band into a truce or recruit it outright.
+    if (!own && owner?.isBarbarian) {
+      const me = state.players.find((p) => p.id === viewerId);
+      if (me?.researched.has(BARBARIAN_DIPLOMACY_TECH)) {
+        const adjacent = canParleyWith(state, unit, viewerId);
+        const pacified = isBarbarianPacified(state, unit, viewerId);
+        const bribeCost = barbarianBribeCost(me);
+        const recruitCost = barbarianRecruitCost(unit);
+        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)">`;
+        if (pacified) {
+          html += `<div class="csub" style="color:#9fd9a0">🤝 Truce active — this war-band won't attack you.</div>`;
+        }
+        if (!adjacent) {
+          html += `<div class="locked-note">🤝 Move one of your units beside them to parley.</div>`;
+        } else {
+          html += `<div style="display:flex;flex-direction:column;gap:6px">`;
+          html +=
+            `<button class="btn" data-bribe ${me.gold < bribeCost ? "disabled" : ""} ` +
+            `title="Buy a ${BRIBE_TURNS}-turn truce with this war-band. Each bribe doubles the next one's price." ` +
+            `style="text-align:left;display:flex;justify-content:space-between;gap:8px${me.gold < bribeCost ? ";opacity:.5" : ""}">` +
+            `<span><b style="color:#fff">${pacified ? "Extend Truce" : "Bribe War-band"}</b> <span class="sub">(${BRIBE_TURNS} turns)</span></span>` +
+            `<span class="sub">${bribeCost}🪙</span></button>`;
+          html +=
+            `<button class="btn" data-recruit ${me.gold < recruitCost ? "disabled" : ""} ` +
+            `title="Take this unit into your own army." ` +
+            `style="text-align:left;display:flex;justify-content:space-between;gap:8px${me.gold < recruitCost ? ";opacity:.5" : ""}">` +
+            `<span><b style="color:#fff">Recruit ${def.name}</b></span>` +
+            `<span class="sub">${recruitCost}🪙</span></button>`;
+          html += `</div>`;
+        }
+        html += `</div>`;
+      }
+    }
+
     if (own) {
       const actions: string[] = [];
+      if (unit.sleeping) {
+        actions.push(`<button class="btn primary" id="wake">Wake</button>`);
+      } else {
+        actions.push(`<button class="btn" id="sleep">Sleep</button>`);
+      }
       if (def.founder) actions.push(`<button class="btn primary" id="found">Found City</button>`);
       if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
 
       // Active-ability buttons.
       const abilities = unitAbilities(unit);
       if (abilities.length) {
-        if (unit.stance) {
+        if (unit.sleeping) {
+          html += `<div class="csub" style="margin-top:8px">💤 Sleeping</div>`;
+        } else if (unit.stance) {
           html += `<div class="csub" style="margin-top:8px">${ACTIVE_ABILITY_DEFS[unit.stance].glyph} In stance: <b>${ACTIVE_ABILITY_DEFS[unit.stance].name}</b></div>`;
         }
         html +=
@@ -1106,6 +1173,8 @@ export function createUI(handlers: UIHandlers): UI {
 
     unitPanel.innerHTML = html;
     unitPanel.querySelector<HTMLButtonElement>("#found")?.addEventListener("click", () => handlers.onFoundCity());
+    unitPanel.querySelector<HTMLButtonElement>("#sleep")?.addEventListener("click", () => handlers.onSleep());
+    unitPanel.querySelector<HTMLButtonElement>("#wake")?.addEventListener("click", () => handlers.onWake());
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-promote]").forEach((el) =>
       el.addEventListener("click", () => handlers.onPromote(el.dataset.promote as PromotionId)),
     );
@@ -1115,6 +1184,8 @@ export function createUI(handlers: UIHandlers): UI {
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-trade-dest]").forEach((el) =>
       el.addEventListener("click", () => handlers.onEstablishTrade(Number(el.dataset.tradeDest))),
     );
+    unitPanel.querySelector<HTMLButtonElement>("[data-bribe]")?.addEventListener("click", () => handlers.onBribeBarbarian(unit.id));
+    unitPanel.querySelector<HTMLButtonElement>("[data-recruit]")?.addEventListener("click", () => handlers.onRecruitBarbarian(unit.id));
   };
 
   const WORK_KINDS = ["farm", "lumber_camp", "mine", "quarry", "road", "wall", "tower"];

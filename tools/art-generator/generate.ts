@@ -41,6 +41,8 @@ import {
   ADVANCED_STONE_ROAD_SUBSET,
   RIVER_SUBSET,
   RESOURCE_SUBSET,
+  UI_SUBSET,
+  ICON_SUBSET,
 } from "./config";
 
 interface Options {
@@ -72,6 +74,8 @@ Usage:
   bun run tools/art-generator/generate.ts --road dirt_road_3
   bun run tools/art-generator/generate.ts --river river_15
   bun run tools/art-generator/generate.ts --resource wheat
+  bun run tools/art-generator/generate.ts --ui btn_next_move
+  bun run tools/art-generator/generate.ts --icon app_icon
   bun run tools/art-generator/generate.ts --subset terrain
   bun run tools/art-generator/generate.ts --subset units
   bun run tools/art-generator/generate.ts --subset buildings
@@ -93,7 +97,9 @@ Options:
   --road <id>            Generate a specific road segment
   --river <id>           Generate a specific river segment
   --resource <id>        Generate a specific resource icon
-  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, all
+  --ui <id>              Generate a specific UI element (e.g. btn_next_move)
+  --icon <id>            Generate a specific app icon (e.g. app_icon)
+  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, all
   --list                 List all available asset IDs and exit
   --model <id>           Gemini model (default: ${DEFAULT_MODEL})
   --size <512|1K|2K|4K>  Gemini image size (default: ${DEFAULT_IMAGE_SIZE})
@@ -218,6 +224,20 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--ui": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "ui") fail(`Unknown UI element: ${id}`);
+        entries.push(e);
+        break;
+      }
+      case "--icon": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "icon") fail(`Unknown icon: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--subset": {
         const name = next();
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
@@ -231,8 +251,10 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "advanced-stone-roads") entries.push(...ADVANCED_STONE_ROAD_SUBSET);
         else if (name === "rivers") entries.push(...RIVER_SUBSET);
         else if (name === "resources") entries.push(...RESOURCE_SUBSET);
+        else if (name === "ui") entries.push(...UI_SUBSET);
+        else if (name === "icons") entries.push(...ICON_SUBSET);
         else if (name === "all") entries.push(...allEntries());
-        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, or all.`);
+        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, or all.`);
         break;
       }
       case "--all":
@@ -492,6 +514,75 @@ async function postProcessPortrait(rawPath: string, outPath: string, entry: Asse
   ]);
 }
 
+async function postProcessIcon(rawPath: string, finalDir: string, entry: AssetEntry): Promise<void> {
+  // Generate a full set of PWA icon variants from one high-res source.
+  // Square icons are center-cropped from the generated 1:1 image.
+  const base = join(finalDir, entry.id);
+
+  // 512x512 main icon.
+  await runCmd("magick", [
+    rawPath,
+    "-resize",
+    "512x512^",
+    "-gravity",
+    "center",
+    "-extent",
+    "512x512",
+    "-define",
+    "png:color-type=6",
+    `${base}.png`,
+  ]);
+
+  // 192x192 standard icon.
+  await runCmd("magick", [
+    rawPath,
+    "-resize",
+    "192x192^",
+    "-gravity",
+    "center",
+    "-extent",
+    "192x192",
+    "-define",
+    "png:color-type=6",
+    `${base}_192.png`,
+  ]);
+
+  // 180x180 Apple touch icon on a solid background matching the game UI.
+  await runCmd("magick", [
+    rawPath,
+    "-resize",
+    "180x180^",
+    "-gravity",
+    "center",
+    "-extent",
+    "180x180",
+    "-define",
+    "png:color-type=6",
+    `${base}_180.png`,
+  ]);
+
+  // 192x192 maskable icon: keep content within the central safe zone by
+  // padding the artwork so it survives Android's icon shape masking.
+  await runCmd("magick", [
+    rawPath,
+    "-resize",
+    "154x154^",
+    "-gravity",
+    "center",
+    "-extent",
+    "154x154",
+    "-background",
+    "none",
+    "-gravity",
+    "center",
+    "-extent",
+    "192x192",
+    "-define",
+    "png:color-type=6",
+    `${base}_maskable.png`,
+  ]);
+}
+
 function variantSuffix(index: number): string {
   return index === 0 ? "" : `_${index}`;
 }
@@ -505,6 +596,7 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
   const categoryDir =
     entry.category === "building" ? "buildings" :
     entry.category === "improvement" ? "improvements" :
+    entry.category === "ui" ? "ui" :
     `${entry.category}s`;
   const rawDir = join(options.outDir, "raw", categoryDir);
   const finalDir = join(options.outDir, categoryDir);
@@ -552,6 +644,8 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
         await postProcessTile(rawPath, finalPath, entry);
       } else if (entry.category === "leader") {
         await postProcessPortrait(rawPath, finalPath, entry);
+      } else if (entry.category === "icon") {
+        await postProcessIcon(rawPath, finalDir, entry);
       } else {
         await postProcessToken(rawPath, finalPath, entry, options.useRembg);
       }

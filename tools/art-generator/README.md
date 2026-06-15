@@ -35,10 +35,17 @@ bun run tools/art-generator/generate.ts --tile forest
 # One building
 bun run tools/art-generator/generate.ts --building granary
 
+# One UI button
+bun run tools/art-generator/generate.ts --ui btn_next_move
+
+# PWA / app icon
+bun run tools/art-generator/generate.ts --icon app_icon
+
 # Whole subsets
 bun run tools/art-generator/generate.ts --subset terrain
 bun run tools/art-generator/generate.ts --subset units
 bun run tools/art-generator/generate.ts --subset buildings
+bun run tools/art-generator/generate.ts --subset ui
 bun run tools/art-generator/generate.ts --all
 
 # Multiple variants (for randomized tiles)
@@ -71,10 +78,12 @@ assets/generated/
     units/
     buildings/
     resources/   # Unprocessed model output
+    icons/       # Unprocessed app icon
   tiles/         # Final hex-masked tiles (256x384)
   units/         # Final transparent-background tokens (128x128)
   buildings/     # Final transparent-background icons (128x128)
   resources/     # Final transparent-background icons (96x96)
+  icons/         # Final PWA icon set (512, 192, 180, maskable 192)
 ```
 
 ## How it works
@@ -95,6 +104,9 @@ assets/generated/
      128x128.
    - **Resources:** same transparent-background treatment as units, but padded
      to 96x96 so they read as small map tokens.
+   - **UI:** same transparent-background treatment, padded to the button's target
+     size (e.g. 96x96). Buttons are generated with their icon so they can be used
+     directly as image buttons.
 
 ## Customizing
 
@@ -105,6 +117,7 @@ Add more assets by editing the arrays in `config.ts`:
   `packages/sim/src/game/content.ts`.
 - `BUILDING_SUBSET` — building IDs from the same file.
 - `RESOURCE_SUBSET` — resource IDs from `packages/sim/src/game/resources.ts`.
+- `UI_SUBSET` — game UI elements such as `btn_next_move` and `btn_skip_move`.
 
 You can also change target sizes, aspect ratios, reference tile mappings, and
 prompt templates there.

@@ -21,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon";
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -194,6 +194,23 @@ export const IMPROVEMENT_SUBSET: AssetEntry[] = IMPROVEMENT_KINDS.flatMap((kind)
   })),
 );
 
+export const ICON_SUBSET: AssetEntry[] = [
+  {
+    id: "app_icon",
+    name: "App Icon",
+    description: "a polished square app icon for an ancient turn-based strategy game. Show a stylized golden sun rising behind a classical stone column or pillar, framed by a subtle hexagon outline, on a deep navy-blue background. Match the painted, slightly stylized look of the reference tile. No text, no letters, no UI labels, no watermark, clean edges suitable for a mobile home screen.",
+    aspectRatio: "1:1",
+    size: { width: 512, height: 512 },
+    category: "icon" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+];
+
+export const UI_SUBSET: AssetEntry[] = [
+  { id: "btn_next_move", name: "Next Move Button", description: "a flat 2D right-pointing triangle play arrow icon, simple hand-painted bronze color, no 3D bevel, no depth, no carved texture, no shadow, no circular button plate, no circular background, no backdrop — only the clean arrow shape on a fully transparent background", category: "ui", aspectRatio: "1:1", size: { width: 96, height: 96 } },
+  { id: "btn_skip_move", name: "Skip Move Button", description: "a circular skip-forward icon with a double right-pointing triangle arrow, dark wooden or slate with subtle carved border, secondary action style, hand-painted game UI element in cool muted tones. No background plate, no shadow, no backdrop — only the circular icon itself on a transparent background", category: "ui", aspectRatio: "1:1", size: { width: 96, height: 96 } },
+];
+
 export const BUILDING_SUBSET: AssetEntry[] = [
   { id: "barb_camp", name: "Barbarian Camp", description: "a primitive barbarian encampment with crude tents, a bonfire, and wooden spikes, no walls, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "village", name: "Village", description: "a small tribal village with a few thatched-roof huts, no walls, no fortifications, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
@@ -206,7 +223,7 @@ export const BUILDING_SUBSET: AssetEntry[] = [
 ];
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -298,6 +315,12 @@ export function promptFor(entry: AssetEntry): string {
   }
   if (entry.category === "improvement") {
     return `Create a small standalone map improvement icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated improvement on a clean solid white background. Keep it compact so it reads as a tile overlay. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The improvement should float cleanly on the white background with nothing else in the frame.`;
+  }
+  if (entry.category === "ui") {
+    return `Create a hand-painted game UI button for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render the button horizontally, centered, filling most of the frame, on a fully transparent background. No text, no letters, no icons, no UI labels, no border frame beyond the button itself, and no cast shadow. The button should float cleanly with nothing else in the frame.`;
+  }
+  if (entry.category === "icon") {
+    return `Create a square mobile app icon for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render as a centered, self-contained square icon filling the frame. No text, no letters, no words, no UI labels, no watermark, no border frame, and no cast shadow outside the icon. The icon should look polished and readable as a small phone home-screen app.`;
   }
   return `Create a small standalone building icon for a turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated building on a clean solid white background. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The building should float cleanly on the white background with nothing else in the frame.`;
 }

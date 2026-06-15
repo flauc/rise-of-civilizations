@@ -506,6 +506,14 @@ export function drawOverlay(
       ctx.fillText(ACTIVE_ABILITY_DEFS[unit.stance].glyph, s.x - half * 0.9, s.y + half * 0.9);
     }
 
+    // Sleep badge at the unit's lower-right.
+    if (own && unit.sleeping && size > 12) {
+      ctx.font = `${Math.round(size * 0.42 * unitScale)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("💤", s.x + half * 0.9, s.y + half * 0.9);
+    }
+
     // Promotion-available star.
     if (own && unit.unspentPromotions > 0 && size > 12) {
       ctx.fillStyle = "#ffd967";

@@ -1,6 +1,6 @@
 import { getTile } from "@roc/shared";
 import type {
-  Attitude, BarbarianActivity, City, ContactEvent, GameOver, GameState,
+  Attitude, BarbarianActivity, BarbarianBribe, City, ContactEvent, GameOver, GameState,
   LogEntry, Proposal, Relation, Religion, TradeRoute, Unit, Work,
 } from "./state";
 import { computeVisible } from "./visibility";
@@ -57,6 +57,10 @@ export interface PlayerView {
     faith: number;
     foundedReligionId?: string;
     resources: Record<string, number>;
+    /** Barbarian bribes paid so far (drives the next bribe's escalating price). */
+    bribesPaid: number;
+    /** The viewer's active barbarian truces (war-band key + expiry turn). */
+    barbarianBribes: { campKey: string; untilTurn: number }[];
   };
   religions: Religion[];
   /** The viewer's own trade routes (for the map overlay + city panel). */
@@ -165,6 +169,10 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
       faith: me?.faith ?? 0,
       foundedReligionId: me?.foundedReligionId,
       resources: me?.resources ?? {},
+      bribesPaid: me?.bribesPaid ?? 0,
+      barbarianBribes: state.barbarianBribes
+        .filter((b) => b.playerId === playerId)
+        .map((b) => ({ campKey: b.campKey, untilTurn: b.untilTurn })),
     },
     religions: state.religions.map((r) => ({ ...r, beliefs: [...r.beliefs] })),
     tradeRoutes: state.tradeRoutes.filter((r) => r.ownerId === playerId).map((r) => ({ ...r })),
@@ -211,6 +219,7 @@ export interface SerializedState {
   contactQueue: ContactEvent[];
   diploProposals: Proposal[];
   barbarianActivity: BarbarianActivity;
+  barbarianBribes: BarbarianBribe[];
   players: Array<
     Omit<GameState["players"][number], "researched" | "explored"> & {
       researched: string[];
@@ -240,6 +249,7 @@ export function serializeState(state: GameState): SerializedState {
     contactQueue: state.contactQueue,
     diploProposals: state.diploProposals,
     barbarianActivity: state.barbarianActivity,
+    barbarianBribes: state.barbarianBribes,
     players: state.players.map((p) => ({
       ...p,
       researched: [...p.researched],
@@ -271,11 +281,13 @@ export function deserializeState(s: SerializedState): GameState {
     contactQueue: s.contactQueue ?? [],
     diploProposals: s.diploProposals ?? [],
     barbarianActivity: s.barbarianActivity ?? "normal",
+    barbarianBribes: s.barbarianBribes ?? [],
     players: s.players.map((p) => ({
       ...p,
       met: p.met ?? [],
       atWar: p.atWar ?? [],
       importedLuxuries: p.importedLuxuries ?? [],
+      bribesPaid: p.bribesPaid ?? 0,
       researched: new Set(p.researched as TechId[]),
       explored: new Set(p.explored),
     })),

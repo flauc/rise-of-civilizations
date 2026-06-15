@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
 import { applyCommand, beginTurn } from "./commands";
+import { startSimultaneousTurn, resolveSimultaneousTurn } from "./simturn";
 import { aiTakeTurn } from "./ai";
 import { worksOf } from "./works";
 import { offsetNeighbors } from "./movement";
@@ -47,6 +48,48 @@ describe("AI opponent", () => {
     }).not.toThrow();
     expect(citiesOf(s, 1).length).toBeGreaterThanOrEqual(1); // AI keeps its empire
     expect(s.players[1]!.researched.size).toBeGreaterThan(2); // and keeps developing
+  });
+
+  it("develops its economy in simultaneous (multiplayer) play, not just hotseat", () => {
+    // Regression: resolveSimultaneousTurn once ran processCity/advanceWorks for
+    // humans only, so AI civs in multiplayer issued orders but never accumulated
+    // production, growth, or research. Drive the simultaneous resolver directly
+    // (the human just "readies up" each turn) and confirm the AI actually grows.
+    const s = createGame({ seed: "ai-sim", cols: 44, rows: 30, barbarians: false, humanSlots: 1, playerCount: 2 });
+    startSimultaneousTurn(s);
+    for (let i = 0; i < 30; i++) resolveSimultaneousTurn(s);
+
+    expect(citiesOf(s, 1).length).toBeGreaterThanOrEqual(1); // AI settled
+    expect(s.players[1]!.researched.size).toBeGreaterThanOrEqual(2); // and researched
+    // Proof the economy ticked for the AI: a city grew past its founding pop.
+    expect(citiesOf(s, 1).some((c) => c.population > 1)).toBe(true);
+  });
+
+  it("gathers strategic resources and expires stances each simultaneous turn", () => {
+    // The simultaneous resolver once skipped gatherPlayerResources and
+    // tickAbilities entirely (hotseat ran them in beginTurn). Confirm a turn's
+    // start now stockpiles strategic resources and clears/enforces stances & pins.
+    const s = createGame({ seed: "ai-sim-eco", cols: 30, rows: 20, barbarians: false, humanSlots: 1, playerCount: 2 });
+    startSimultaneousTurn(s);
+
+    const settler = unitsOf(s, 0).find((u) => u.type === "settler")!;
+    applyCommand(s, { type: "foundCity", unitId: settler.id }, 0);
+    const city = citiesOf(s, 0)[0]!;
+    const tile = getTile(s.map, city.col + 1, city.row)!;
+    tile.resource = "iron";
+    tile.improvement = "mine";
+    tile.ownerCityId = city.id;
+
+    const unit = unitsOf(s, 0).find((u) => UNIT_DEFS[u.type].strength > 0)!;
+    unit.stance = "brace";
+    unit.pinnedUntilTurn = s.turn + 5;
+
+    const before = s.players[0]!.resources.iron ?? 0;
+    resolveSimultaneousTurn(s); // resolves this turn, then begins the next
+
+    expect(s.players[0]!.resources.iron ?? 0).toBeGreaterThan(before); // stockpiled
+    expect(unit.stance ?? null).toBeNull(); // stance expired at turn start
+    expect(unit.movementLeft).toBe(0); // pin enforced at turn start
   });
 
   it("spends earned promotions on its units", () => {

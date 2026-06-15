@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
-import { beginTurn, applyCommand } from "./commands";
+import { beginTurn, applyCommand, endTurn } from "./commands";
 import { computeReachable } from "./movement";
 import { currentPlayer, unitsOf, citiesOf } from "./state";
+import { unitMovement } from "./civs";
 
 function newGame() {
   const state = createGame({ seed: "test-m1", cols: 48, rows: 32, barbarians: false });
@@ -79,5 +80,55 @@ describe("M1 game model", () => {
     for (let i = 0; i < 24; i++) applyCommand(state, { type: "endTurn" });
     expect(currentPlayer(state).id).toBeDefined();
     expect(state.players[0]!.researched.has("cultivation")).toBe(true);
+  });
+});
+
+
+describe("sleep / wake", () => {
+  it("sleeping a unit zeros movement and keeps it asleep across turns", () => {
+    const state = newGame();
+    const warrior = unitsOf(state, 0).find((u) => u.type === "warrior")!;
+    expect(warrior.movementLeft).toBeGreaterThan(0);
+
+    const res = applyCommand(state, { type: "sleep", unitId: warrior.id });
+    expect(res.ok).toBe(true);
+    expect(warrior.sleeping).toBe(true);
+    expect(warrior.movementLeft).toBe(0);
+
+    // End the turn and come back to this player; movement should stay 0.
+    const startingTurn = state.turn;
+    do {
+      applyCommand(state, { type: "endTurn" });
+    } while (state.turn === startingTurn || currentPlayer(state).id !== 0);
+
+    expect(warrior.sleeping).toBe(true);
+    expect(warrior.movementLeft).toBe(0);
+  });
+
+  it("waking a unit restores movement immediately", () => {
+    const state = newGame();
+    const warrior = unitsOf(state, 0).find((u) => u.type === "warrior")!;
+    applyCommand(state, { type: "sleep", unitId: warrior.id });
+    expect(warrior.movementLeft).toBe(0);
+
+    const res = applyCommand(state, { type: "wake", unitId: warrior.id });
+    expect(res.ok).toBe(true);
+    expect(warrior.sleeping).toBe(false);
+    expect(warrior.movementLeft).toBe(unitMovement(state, warrior));
+  });
+
+  it("cannot sleep or wake units owned by another player", () => {
+    const state = newGame();
+    const enemy = unitsOf(state, 1).find((u) => u.type === "warrior")!;
+    enemy.movementLeft = 2;
+
+    const sleepRes = applyCommand(state, { type: "sleep", unitId: enemy.id }, 0);
+    expect(sleepRes.ok).toBe(false);
+    expect(enemy.sleeping).toBeFalsy();
+
+    enemy.sleeping = true;
+    const wakeRes = applyCommand(state, { type: "wake", unitId: enemy.id }, 0);
+    expect(wakeRes.ok).toBe(false);
+    expect(enemy.sleeping).toBe(true);
   });
 });

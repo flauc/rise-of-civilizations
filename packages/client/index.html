@@ -6,6 +6,17 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
+    <meta
+      name="description"
+      content="A turn-based 4X strategy game from the Ancient Era to the Age of Exploration."
+    />
+    <meta name="theme-color" content="#0a1624" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Rise of Civ" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Rise of Civilizations</title>
     <style>
       :root {
@@ -258,12 +269,12 @@
         margin-top: 8px;
         width: 100%;
       }
-      /* Hover tooltip — limited tile info, docked just above the minimap in the
-         bottom-right corner so it never covers the map under the cursor */
+      /* Hover tooltip — limited tile info, docked in the bottom-right corner
+         so it never covers the map under the cursor */
       #tile-tip {
         position: fixed;
         right: max(12px, env(safe-area-inset-right));
-        bottom: calc(178px + env(safe-area-inset-bottom));
+        bottom: max(12px, env(safe-area-inset-bottom));
         z-index: 30;
         pointer-events: none;
         background: rgba(8, 16, 26, 0.92);
@@ -305,10 +316,35 @@
         left: 50%;
         transform: translateX(-50%);
         bottom: calc(64px + env(safe-area-inset-bottom));
-        font-size: 12px;
-        padding: 5px 12px;
-        opacity: 0.85;
         z-index: 25;
+      }
+      .action-btn {
+        width: 56px;
+        height: 56px;
+        border: none;
+        border-radius: 50%;
+        background-color: transparent;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: contain;
+        cursor: pointer;
+        padding: 0;
+        filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.45));
+        transition: filter 0.08s ease, transform 0.08s ease;
+      }
+      .action-btn:hover {
+        filter: drop-shadow(0 5px 7px rgba(0, 0, 0, 0.55));
+        transform: translateY(-1px);
+      }
+      .action-btn:active {
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.55));
+        transform: translateY(1px);
+      }
+      .action-next {
+        background-image: url("/ui/btn_next_move.png");
+      }
+      .action-skip {
+        background-image: url("/ui/btn_skip_move.png");
       }
       #city-panel select {
         width: 100%;
@@ -331,26 +367,12 @@
         height: 100%;
         background: var(--accent);
       }
-      /* End turn button */
+      /* End turn / next move buttons */
       #endturn {
         position: fixed;
         left: 50%;
         transform: translateX(-50%);
         bottom: max(12px, env(safe-area-inset-bottom));
-        font-size: 15px;
-        padding: 12px 18px;
-        z-index: 25;
-      }
-      /* Minimap */
-      #minimap {
-        position: fixed;
-        right: max(12px, env(safe-area-inset-right));
-        bottom: max(12px, env(safe-area-inset-bottom));
-        border-radius: 50%;
-        background: #0a1624;
-        touch-action: none;
-        cursor: pointer;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
         z-index: 25;
       }
       /* Victory / defeat overlay */
@@ -396,6 +418,8 @@
         border: 1px solid var(--edge);
         border-radius: 8px;
         padding: 7px 10px;
+        user-select: text;
+        -webkit-user-select: text;
       }
       .tech .sub {
         margin-top: 2px;
@@ -720,9 +744,6 @@
         .tb-civ {
           max-width: 58vw;
         }
-        #minimap {
-          display: none;
-        }
         #leader-avatar {
           display: flex;
           position: fixed;
@@ -825,40 +846,16 @@
           right: auto;
           bottom: max(6px, env(safe-area-inset-bottom));
           transform: none;
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
-          padding: 0;
-          font-size: 0;
-        }
-        #endturn::before {
-          content: "⏵";
-          font-size: 20px;
-          line-height: 1;
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
         }
         #endturn2 {
-          left: calc(54px + env(safe-area-inset-left));
+          left: calc(64px + env(safe-area-inset-left));
           right: auto;
           bottom: max(6px, env(safe-area-inset-bottom));
           transform: none;
-          width: 44px;
-          height: 44px;
-          border-radius: 50%;
-          padding: 0;
-          font-size: 0;
         }
-        #endturn2::before {
-          content: "⏭";
-          font-size: 20px;
-          line-height: 1;
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
+        .action-btn {
+          width: 48px;
+          height: 48px;
         }
         #research,
         #civics,

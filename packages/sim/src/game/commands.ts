@@ -28,6 +28,7 @@ import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter } from "./features";
 import { foundReligion, spreadReligion } from "./religion";
 import { establishTradeRoute, pruneTradeRoutes } from "./trade";
+import { bribeBarbarian, recruitBarbarian, pruneBarbarianBribes } from "./bribery";
 import {
   declareWar,
   makePeace,
@@ -60,6 +61,8 @@ export type Command =
   | { type: "foundCity"; unitId: number }
   | { type: "promote"; unitId: number; promotion: PromotionId }
   | { type: "useAbility"; unitId: number; ability: ActiveAbilityId; col?: number; row?: number }
+  | { type: "sleep"; unitId: number }
+  | { type: "wake"; unitId: number }
   | { type: "convertCitizen"; cityId: number; specialistId: string; delta: number }
   | { type: "startWork"; kind: string; col: number; row: number }
   | { type: "startWonder"; wonderId: string; hostCityId: number }
@@ -73,6 +76,8 @@ export type Command =
   | { type: "togglePolicy"; policyId: string }
   | { type: "foundReligion"; cityId: number; name: string; beliefs: string[] }
   | { type: "establishTradeRoute"; unitId: number; destCityId: number }
+  | { type: "bribeBarbarian"; unitId: number }
+  | { type: "recruitBarbarian"; unitId: number }
   | { type: "declareWar"; targetId: number }
   | { type: "makePeace"; targetId: number }
   | { type: "denounce"; targetId: number }
@@ -98,7 +103,7 @@ export function beginTurn(state: GameState): void {
   const player = currentPlayer(state);
   pruneTradeRoutes(state); // drop routes whose cities were lost/captured
   for (const u of unitsOf(state, player.id)) {
-    u.movementLeft = unitMovement(state, u);
+    if (!u.sleeping) u.movementLeft = unitMovement(state, u);
   }
   healAndReset(state, player);
   tickAbilities(state, player); // expire stances/pulses, enforce pins (after movement reset)
@@ -113,6 +118,7 @@ export function beginTurn(state: GameState): void {
   if (state.currentPlayerIndex === 0) {
     spreadReligion(state);
     diplomacyTick(state);
+    pruneBarbarianBribes(state); // expire truces whose 10 turns have elapsed
   }
   updateExplored(state, player.id);
 }
@@ -288,6 +294,25 @@ export function applyCommand(
       return res;
     }
 
+    case "sleep": {
+      const unit = state.units.get(cmd.unitId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      unit.sleeping = true;
+      unit.movementLeft = 0;
+      return ok;
+    }
+
+    case "wake": {
+      const unit = state.units.get(cmd.unitId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      if (!unit.sleeping) return fail("unit is not sleeping");
+      unit.sleeping = false;
+      unit.movementLeft = unitMovement(state, unit);
+      return ok;
+    }
+
     case "setProduction": {
       const city = state.cities.get(cmd.cityId);
       if (!city) return fail("no such city");
@@ -356,6 +381,15 @@ export function applyCommand(
 
     case "establishTradeRoute": {
       return establishTradeRoute(state, cmd.unitId, cmd.destCityId, player.id);
+    }
+
+    case "bribeBarbarian":
+      return bribeBarbarian(state, player.id, cmd.unitId);
+
+    case "recruitBarbarian": {
+      const res = recruitBarbarian(state, player.id, cmd.unitId);
+      if (res.ok) updateExplored(state, player.id);
+      return res;
     }
 
     case "declareWar":

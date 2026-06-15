@@ -182,7 +182,7 @@ A standalone AI art generator lives in `tools/art-generator/`:
   with a prompt + reference tile, then resizes and masks the result with
   ImageMagick.
 - `tools/art-generator/config.ts` — asset subsets (terrain, units, buildings,
-  improvements, resources), prompt templates, and target sizes.
+  improvements, resources, leaders, ui), prompt templates, and target sizes.
 
 Typical commands:
 
@@ -210,6 +210,10 @@ bun run tools/art-generator/generate.ts --subset improvements --variations 5 --s
 
 # Add extra variants without overwriting the existing base tile
 bun run tools/art-generator/generate.ts --tile plains --variations 4 --skip-base --size 512
+
+# Generate UI buttons (next move, skip move, etc.) and copy them to the client
+bun run tools/art-generator/generate.ts --subset ui --size 1K
+# (then copy assets/generated/ui/*.png to packages/client/public/ui/)
 ```
 
 Leader portraits are generated as a `leader` asset subset and copied from
@@ -220,7 +224,8 @@ The client renderer loads all `hex-terrain/<terrain>.png` plus
 `<terrain>_1.png` … `<terrain>_4.png` variants and picks one deterministically
 per tile coordinate, so maps look less repetitive. It also loads improvement
 sprites from `improvements/<kind>_t<tier>.png` plus `_1` … `_4` variants,
-picking the correct tier for the tile's improvement level.
+picking the correct tier for the tile's improvement level. UI buttons live in
+`ui/` and can be used by the HTML/CSS interface as image backgrounds.
 
 It requires `GEMINI_API_KEY` and ImageMagick (`magick`). See
 `tools/art-generator/README.md` for setup and customization.
@@ -229,7 +234,7 @@ It requires `GEMINI_API_KEY` and ImageMagick (`magick`). See
 
 - The client is a static Vite build (`dist/`).
 - The server is a Bun process. Currently it stores state in memory; a `Storage` interface exists in `packages/server/src/storage.ts` for a future PostgreSQL adapter.
-- PWA packaging is planned; native app stores via Capacitor/Tauri are explicitly deferred until the web build is solid.
+- PWA packaging is implemented: the client has a web app manifest (`packages/client/public/manifest.json`), icons, and an offline-caching service worker (`packages/client/public/sw.js`) registered from `packages/client/src/main.ts`. Native app stores via Capacitor/Tauri are explicitly deferred until the web build is solid.
 
 ## Common pitfalls
 

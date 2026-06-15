@@ -98,7 +98,7 @@ export type BuildingId =
 export type TechId =
   // Dawn
   | "knapping" | "foraging" | "fire_hardening" | "hide_working" | "animal_taming"
-  | "cultivation" | "ritual_burial" | "pottery_kiln"
+  | "cultivation" | "ritual_burial" | "pottery_kiln" | "parley"
   // Copper / Bronze
   | "native_copper" | "smelting" | "bronze_alloying" | "the_wheel" | "equestrian"
   | "masonry" | "weaving" | "composite_bow" | "writing" | "irrigation"
@@ -263,6 +263,7 @@ export const TECH_DEFS: Record<TechId, TechDef> = {
   animal_taming: T("animal_taming", "Animal Taming", 20, ["foraging"]),
   cultivation: T("cultivation", "Plant Cultivation", 18, ["foraging"]),
   ritual_burial: T("ritual_burial", "Ritual & Burial", 16, ["foraging"]),
+  parley: T("parley", "Parley", 16, ["foraging"]),
   pottery_kiln: T("pottery_kiln", "Pottery & Kilns", 24, ["cultivation"]),
 
   // Copper / Bronze
@@ -304,6 +305,8 @@ export const STARTING_TECHS: TechId[] = ["knapping", "foraging"];
 /** Systems gated behind a specific technology (not available from the start). */
 export const CIVICS_REQUIRED_TECH: TechId = "writing";
 export const RELIGION_REQUIRED_TECH: TechId = "ritual_burial";
+/** Unlocks bribing and recruiting barbarian war-bands (see bribery.ts). */
+export const BARBARIAN_DIPLOMACY_TECH: TechId = "parley";
 
 export function techUnlocked(researched: ReadonlySet<TechId>, tech: TechId): boolean {
   return TECH_DEFS[tech].prereqs.every((p) => researched.has(p));

@@ -34,7 +34,6 @@ import {
 import { drawOverlay } from "./overlay";
 import { attachInput } from "./input";
 import { createUI, type CombatOdds, type TileTip } from "./ui";
-import { createMinimap } from "./minimap";
 import { createLobby } from "./lobby-ui";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadUnitAtlas } from "./unit-assets";
@@ -78,13 +77,6 @@ function startGame(session: Session): void {
   let mpSaves: SaveRecord[] = [];
 
   const st = () => session.getState();
-  const minimap = createMinimap((col, row) => {
-    const c = tileCenterWorld(col, row);
-    camera.offsetX = cssWidth / 2 - c.x * camera.zoom;
-    camera.offsetY = cssHeight / 2 - c.y * camera.zoom;
-    needsRedraw = true;
-  });
-
   function recomputeOverlays(): void {
     const u = selectedUnitId != null ? st().units.get(selectedUnitId) : undefined;
     if (!u || u.ownerId !== session.getViewerId()) {
@@ -223,6 +215,12 @@ function startGame(session: Session): void {
     onPromote: (promotion) => {
       if (selectedUnitId != null) session.order({ type: "promote", unitId: selectedUnitId, promotion });
     },
+    onSleep: () => {
+      if (selectedUnitId != null) session.order({ type: "sleep", unitId: selectedUnitId });
+    },
+    onWake: () => {
+      if (selectedUnitId != null) session.order({ type: "wake", unitId: selectedUnitId });
+    },
     onAbility: (ability) => {
       if (selectedUnitId == null) return;
       const unit = st().units.get(selectedUnitId);
@@ -282,6 +280,8 @@ function startGame(session: Session): void {
       if (selectedUnitId != null) session.order({ type: "establishTradeRoute", unitId: selectedUnitId, destCityId });
       clearSelection();
     },
+    onBribeBarbarian: (unitId) => session.order({ type: "bribeBarbarian", unitId }),
+    onRecruitBarbarian: (unitId) => session.order({ type: "recruitBarbarian", unitId }),
     onCloseCity: () => {
       clearSelection();
     },
@@ -332,7 +332,7 @@ function startGame(session: Session): void {
   type Suggestion = { kind: "units" | "research" | "civic" | "religion" | "production"; label: string } | null;
   function computeSuggestion(): Suggestion {
     const me = session.getViewerId();
-    const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0);
+    const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0 && !u.sleeping);
     if (idle.length > 0) return { kind: "units", label: `⮕ Next Unit (${idle.length})` };
     const player = st().players.find((p) => p.id === me);
     if (player && player.researching == null && availableTechs(player).length > 0) {
@@ -358,7 +358,7 @@ function startGame(session: Session): void {
     if (!s) return session.endTurn();
     const me = session.getViewerId();
     if (s.kind === "units") {
-      const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0).sort((a, b) => a.id - b.id);
+      const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0 && !u.sleeping).sort((a, b) => a.id - b.id);
       if (idle.length === 0) return;
       const u = idle[idleCycle++ % idle.length]!;
       selectUnit(u.id);
@@ -567,7 +567,6 @@ function startGame(session: Session): void {
         cityAtlas,
         featureAtlas,
       });
-      minimap.draw(st(), me, explored, visible, camera, cssWidth, cssHeight);
       ui.render({
         state: st(),
         selectedUnit: selectedUnitId != null ? st().units.get(selectedUnitId) ?? null : null,
@@ -611,4 +610,13 @@ function startGame(session: Session): void {
       },
     };
   }
+}
+
+// Register the PWA service worker in production builds.
+if ("serviceWorker" in navigator && !import.meta.env.DEV) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("sw.js")
+      .catch((err) => console.error("Service worker registration failed:", err));
+  });
 }

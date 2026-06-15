@@ -26,8 +26,10 @@ import { isPassableLand } from "./terrain";
 
 function barbarianUnitCap(state: GameState): number {
   switch (state.barbarianActivity) {
+    case "minimal":
+      return 3;
     case "low":
-      return 6;
+      return 5;
     case "high":
       return 20;
     case "normal":
@@ -39,6 +41,8 @@ function barbarianUnitCap(state: GameState): number {
 function barbarianCampCadence(state: GameState, tileCol: number, tileRow: number): number {
   const base = 4 + (hashSeed(`cadence:${tileCol},${tileRow}`) % 3); // 4–6
   switch (state.barbarianActivity) {
+    case "minimal":
+      return base + 4; // 8–10
     case "low":
       return base + 2; // 6–8
     case "high":
@@ -210,7 +214,8 @@ export function spawnFromCamps(state: GameState, barbId: number): void {
     if (state.turn % cadence !== 0) continue;
     if (unitsOf(state, barbId).length >= cap) return;
     const type: UnitTypeId = makeRng(hashSeed(`camp:${tile.col},${tile.row}:${state.turn}`)).next() < 0.5 ? "warrior" : "slinger";
-    spawnUnitNear(state, barbId, type, tile.col, tile.row);
+    const spawned = spawnUnitNear(state, barbId, type, tile.col, tile.row);
+    if (spawned) spawned.campKey = `${tile.col},${tile.row}`; // tag the war-band for bribery
   }
 }
 
@@ -227,11 +232,13 @@ export function placeFeatures(
   const campCount =
     activity === "none"
       ? 0
-      : activity === "low"
-        ? Math.max(1, Math.floor(area / 350))
-        : activity === "high"
-          ? Math.max(1, Math.floor(area / 140))
-          : Math.max(1, Math.floor(area / 220));
+      : activity === "minimal"
+        ? Math.max(1, Math.floor(area / 800))
+        : activity === "low"
+          ? Math.max(1, Math.floor(area / 450))
+          : activity === "high"
+            ? Math.max(1, Math.floor(area / 140))
+            : Math.max(1, Math.floor(area / 220));
 
   // Eligible land tiles, away from starts and not already featured/occupied.
   const eligible: { col: number; row: number; key: number }[] = [];

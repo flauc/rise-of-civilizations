@@ -28,6 +28,11 @@ export interface Unit {
   pinnedUntilTurn?: number;
   /** Reconnoiter vision pulse active until the unit's next turn (grants +2 sight). */
   scouting?: boolean;
+  /** True when the unit is sleeping: skips moves and stays asleep across turns. */
+  sleeping?: boolean;
+  /** For barbarians: "col,row" of the camp this unit spawned from. Units sharing
+   *  a campKey form one war-band — a bribe pacifies them together (see bribery.ts). */
+  campKey?: string;
 }
 
 export type ProductionItem =
@@ -115,6 +120,19 @@ export interface Player {
   atWar: number[];
   /** Luxury resource ids imported via active deals (grant amenities). */
   importedLuxuries: string[];
+  /** How many barbarian war-bands this player has bribed (each bribe doubles the
+   *  next bribe's price — see barbarianBribeCost in bribery.ts). */
+  bribesPaid: number;
+}
+
+/** A truce a player bought with a barbarian war-band (see bribery.ts). */
+export interface BarbarianBribe {
+  /** Identifies the war-band: a camp's "col,row" key, or "unit:<id>" for a loner. */
+  campKey: string;
+  /** The player the war-band has agreed not to attack. */
+  playerId: number;
+  /** Last turn (inclusive) the truce holds. */
+  untilTurn: number;
 }
 
 export interface Religion {
@@ -226,7 +244,7 @@ export interface TradeRoute {
   toCityId: number;
 }
 
-export type BarbarianActivity = "none" | "low" | "normal" | "high";
+export type BarbarianActivity = "none" | "minimal" | "low" | "normal" | "high";
 
 /** One line in the shared turn log, with metadata for per-player filtering. */
 export interface LogEntry {
@@ -274,6 +292,8 @@ export interface GameState {
   diploProposals: Proposal[];
   /** Barbarian intensity setting for this game. */
   barbarianActivity: BarbarianActivity;
+  /** Active barbarian truces bought via bribery (see bribery.ts). */
+  barbarianBribes: BarbarianBribe[];
 }
 
 /** Construct a unit with all combat fields defaulted. movementLeft starts 0
@@ -303,6 +323,7 @@ export function makeUnit(
     charges: UNIT_DEFS[type].builder ? 3 : 0,
     stance: null,
     abilityCooldowns: {},
+    sleeping: false,
   };
 }
 

@@ -155,7 +155,7 @@ export function getCityYields(state: GameState, city: City): CityYields {
 }
 
 export function foodToGrow(population: number): number {
-  return 15 + 6 * (population - 1);
+  return 8 + 3 * (population - 1);
 }
 
 const keyOf = (t: { col: number; row: number }) => `${t.col},${t.row}`;
@@ -259,7 +259,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   const y = getCityYields(state, city);
 
   // Food / growth (happiness can reduce surplus growth but not increase it).
-  const surplus = y.food - city.population * 2;
+  const surplus = y.food - city.population;
   const growthMult = cityGrowthMultiplier(state, city);
   city.foodStored += surplus > 0 ? Math.floor(surplus * growthMult) : surplus;
   if (city.foodStored < 0) {

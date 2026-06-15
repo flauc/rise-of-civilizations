@@ -1,0 +1,29 @@
+{
+  "name": "Rise of Civilizations",
+  "short_name": "Rise of Civ",
+  "description": "A turn-based 4X strategy game from the Ancient Era to the Age of Exploration.",
+  "start_url": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#0a1624",
+  "theme_color": "#0a1624",
+  "categories": ["games", "strategy"],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "maskable-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

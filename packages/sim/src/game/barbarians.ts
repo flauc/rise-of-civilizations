@@ -1,9 +1,10 @@
 import { axialDistance, offsetToAxial } from "@roc/shared";
 import type { GameState, Unit } from "./state";
-import { currentPlayer, playerById, unitsOf, areEnemies } from "./state";
+import { currentPlayer, playerById, unitsOf, unitAt, cityAt, areEnemies } from "./state";
 import { computeReachable } from "./movement";
 import { computeAttackTargets, resolveAttack } from "./combat";
 import { spawnFromCamps } from "./features";
+import { isBarbarianPacified } from "./bribery";
 
 interface Target {
   col: number;
@@ -19,6 +20,7 @@ function nearestEnemy(state: GameState, unit: Unit): Target | null {
   const consider = (col: number, row: number, ownerId: number) => {
     const o = playerById(state, ownerId);
     if (!o || !areEnemies(owner, o)) return;
+    if (isBarbarianPacified(state, unit, ownerId)) return; // bribed: leave them be
     const d = axialDistance(from, offsetToAxial({ col, row }));
     if (d < bestD) {
       bestD = d;
@@ -42,10 +44,19 @@ export function barbarianTurn(state: GameState, playerId?: number): void {
     while (state.units.has(unit.id) && unit.movementLeft > 0 && safety++ < 12) {
       const targets = computeAttackTargets(state, unit);
       if (targets.size > 0) {
-        const [key] = [...targets];
-        const [col, row] = key!.split(",").map(Number) as [number, number];
-        resolveAttack(state, unit, col, row);
-        break; // attacking ends the unit's turn
+        let chosen: [number, number] | null = null;
+        for (const key of targets) {
+          const [col, row] = key.split(",").map(Number) as [number, number];
+          const occ = unitAt(state, col, row) ?? cityAt(state, col, row);
+          if (occ && isBarbarianPacified(state, unit, occ.ownerId)) continue; // truce: skip
+          chosen = [col, row];
+          break;
+        }
+        if (chosen) {
+          resolveAttack(state, unit, chosen[0], chosen[1]);
+          break; // attacking ends the unit's turn
+        }
+        // every adjacent target is bribed — fall through to advance toward others
       }
       const target = nearestEnemy(state, unit);
       if (!target) break;

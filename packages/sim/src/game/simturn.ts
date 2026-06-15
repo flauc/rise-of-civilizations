@@ -15,16 +15,22 @@ import { updateExplored } from "./visibility";
 import { applyVictoryCheck } from "./victory";
 import { spreadReligion } from "./religion";
 import { pruneTradeRoutes } from "./trade";
+import { pruneBarbarianBribes } from "./bribery";
 import { advanceWorks } from "./works";
+import { gatherPlayerResources } from "./resources";
+import { tickAbilities } from "./abilities";
+import { diplomacyTick } from "./diplomacy";
 import { aiTakeTurn } from "./ai";
 
 /** Begin a fresh turn for ALL players at once: refresh movement, heal, reveal. */
 export function startSimultaneousTurn(state: GameState): void {
   for (const u of state.units.values()) {
-    u.movementLeft = unitMovement(state, u);
+    if (!u.sleeping) u.movementLeft = unitMovement(state, u);
   }
   for (const p of state.players) {
     healAndReset(state, p);
+    tickAbilities(state, p); // expire stances/pulses, enforce pins (after movement reset)
+    gatherPlayerResources(state, p.id); // stockpile strategic resources for the turn
     for (const c of state.cities.values()) {
       if (c.ownerId === p.id) c.rangedAttackUsed = false;
     }
@@ -44,15 +50,20 @@ export function resolveSimultaneousTurn(state: GameState): void {
     if (p.isBarbarian) barbarianTurn(state, p.id);
     else aiTakeTurn(state, p.id);
   }
-  // Economy for human players.
+  // Economy for every civ — humans AND AI alike. (Barbarians own no cities or
+  // works, so skipping them just avoids needless iteration.) Without this the AI
+  // would issue orders via aiTakeTurn but never accumulate production, growth,
+  // gold, or research — i.e. never actually develop in simultaneous play.
   for (const p of state.players) {
-    if (!p.isHuman) continue;
+    if (p.isBarbarian) continue;
     for (const c of state.cities.values()) {
       if (c.ownerId === p.id) processCity(state, c, p);
     }
     advanceWorks(state, p.id); // specialists labour on public works
   }
   spreadReligion(state);
+  diplomacyTick(state); // pay deal obligations, decay relations, expire pacts (once per round)
+  pruneBarbarianBribes(state); // expire truces whose 10 turns have elapsed
   state.turn += 1;
   startSimultaneousTurn(state);
   applyVictoryCheck(state);

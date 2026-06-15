@@ -143,13 +143,15 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     return units
       .map((u) => {
         const d = UNIT_DEFS[u.type];
-        const idle = u.movementLeft > 0;
+        const idle = u.movementLeft > 0 && !u.sleeping;
+        const status = u.sleeping ? "💤 Sleeping" : idle ? "Ready" : "Done";
+        const color = u.sleeping ? "#7e93a6" : idle ? "#ffd967" : "#7e93a6";
         return (
           `<div class="emp-row" data-unit="${u.id}">` +
           `<span style="font-size:18px;width:22px;text-align:center">${d.glyph}</span>` +
           `<div class="grow"><div class="emp-name">${d.name}${u.level > 1 ? ` <span style="color:#ffd967">Lv${u.level}</span>` : ""}</div>` +
           `<div class="emp-sub">(${u.col}, ${u.row}) · moves ${u.movementLeft}/${d.movement}${d.strength > 0 ? ` · HP ${u.hp}/${unitMaxHp(u)}` : ""}</div></div>` +
-          `<span class="emp-pill" style="color:${idle ? "#ffd967" : "#7e93a6"}">${idle ? "Ready" : "Done"}</span>` +
+          `<span class="emp-pill" style="color:${color}">${status}</span>` +
           `</div>`
         );
       })

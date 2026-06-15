@@ -170,6 +170,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       met: [],
       atWar: [],
       importedLuxuries: [],
+      bribesPaid: 0,
     });
   }
   const barbId = count;
@@ -195,6 +196,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       met: [],
       atWar: [],
       importedLuxuries: [],
+      bribesPaid: 0,
     });
   }
 
@@ -219,6 +221,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     contactQueue: [],
     diploProposals: [],
     barbarianActivity: activity,
+    barbarianBribes: [],
   };
 
   const starts = findStarts(state, count);

@@ -9,6 +9,7 @@ import {
   UNIT_DEFS,
   CIVICS_REQUIRED_TECH,
   RELIGION_REQUIRED_TECH,
+  BARBARIAN_DIPLOMACY_TECH,
   type GameState,
   type TechId,
 } from "@roc/sim";
@@ -31,6 +32,7 @@ function unlocksOf(techId: TechId): { units: string[]; buildings: string[]; syst
   const systems: string[] = [];
   if (techId === CIVICS_REQUIRED_TECH) systems.push("Civics");
   if (techId === RELIGION_REQUIRED_TECH) systems.push("Religion");
+  if (techId === BARBARIAN_DIPLOMACY_TECH) systems.push("Bribe & Recruit Barbarians");
   return { units, buildings, systems };
 }
 

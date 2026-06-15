@@ -19,7 +19,7 @@ interface MenuState {
     civId: string;
     mapSize: MapSize;
     aiCount: number;
-    barbarians: "none" | "low" | "normal" | "high";
+    barbarians: "none" | "minimal" | "low" | "normal" | "high";
   };
   mp: {
     url: string;
@@ -52,6 +52,7 @@ function aiSelect(id: string, value: number): string {
 function barbarianSelect(id: string, value: string): string {
   const opts = [
     { value: "none", label: "None" },
+    { value: "minimal", label: "Minimal" },
     { value: "low", label: "Low" },
     { value: "normal", label: "Normal" },
     { value: "high", label: "High" },
@@ -308,7 +309,7 @@ export function createLobby(onStart: (session: Session) => void): void {
           civId: state.sp.civId,
           mapSize: $select("#sp-map").value as MapSize,
           aiCount: Number($select("#sp-ai").value),
-          barbarians: $select("#sp-barb").value as "none" | "low" | "normal" | "high",
+          barbarians: $select("#sp-barb").value as "none" | "minimal" | "low" | "normal" | "high",
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
       );
@@ -451,7 +452,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         rows: dims.rows,
         capacity: state.mp.capacity,
         aiCount: Number($select("#mp-ai").value),
-        barbarians: $select("#mp-barb").value as "none" | "low" | "normal" | "high",
+        barbarians: $select("#mp-barb").value as "none" | "minimal" | "low" | "normal" | "high",
       });
     });
   }

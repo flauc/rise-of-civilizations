@@ -174,6 +174,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     foundedReligionId: p.id === view.yourId ? view.you.foundedReligionId : undefined,
     explored: p.id === view.yourId ? explored : new Set<string>(),
     resources: p.id === view.yourId ? { ...view.you.resources } : {},
+    bribesPaid: p.id === view.yourId ? (view.you.bribesPaid ?? 0) : 0,
   }));
 
   const state: GameState = {
@@ -201,6 +202,11 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     contactQueue: dip?.contacts ?? [],
     diploProposals: dip?.proposals ?? [],
     barbarianActivity: view.barbarianActivity ?? "normal",
+    barbarianBribes: (view.you.barbarianBribes ?? []).map((b) => ({
+      campKey: b.campKey,
+      playerId: view.yourId,
+      untilTurn: b.untilTurn,
+    })),
   };
   return { state, visible: new Set(view.visible) };
 }
