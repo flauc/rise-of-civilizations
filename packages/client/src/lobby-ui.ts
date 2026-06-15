@@ -7,7 +7,8 @@ import { CIVILIZATIONS, type GameSummary, type SerializedState } from "@roc/sim"
 import { deleteSave, listSaves, loadSave, type SaveRecord } from "./save-db";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 
-const DEFAULT_WS = `ws://${location.hostname || "localhost"}:3001/ws`;
+const DEFAULT_WS_SCHEME = location.protocol === "https:" ? "wss" : "ws";
+const DEFAULT_WS = `${DEFAULT_WS_SCHEME}://${location.hostname || "localhost"}:3001/ws`;
 
 type Screen = "start" | "sp" | "mp" | "load";
 

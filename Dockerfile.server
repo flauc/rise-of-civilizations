@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1
+FROM oven/bun:1
+WORKDIR /app
+
+COPY package.json bun.lock tsconfig.base.json tsconfig.json ./
+COPY packages/shared/package.json packages/shared/package.json
+COPY packages/sim/package.json packages/sim/package.json
+COPY packages/server/package.json packages/server/package.json
+
+RUN bun install --frozen-lockfile
+
+COPY packages/shared packages/shared
+COPY packages/sim packages/sim
+COPY packages/server packages/server
+
+EXPOSE 3001
+CMD ["bun", "run", "--filter", "@roc/server", "start"]

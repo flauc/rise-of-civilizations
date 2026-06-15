@@ -1,0 +1,28 @@
+# syntax=docker/dockerfile:1
+FROM oven/bun:1 AS build
+WORKDIR /app
+
+COPY package.json bun.lock tsconfig.base.json tsconfig.json ./
+COPY packages/shared/package.json packages/shared/package.json
+COPY packages/sim/package.json packages/sim/package.json
+COPY packages/client/package.json packages/client/package.json
+
+RUN bun install --frozen-lockfile
+
+COPY packages/shared packages/shared
+COPY packages/sim packages/sim
+COPY packages/client packages/client
+
+RUN bun run --filter @roc/client build
+
+FROM oven/bun:1 AS runtime
+WORKDIR /app
+
+COPY --from=build /app/package.json /app/bun.lock ./
+COPY --from=build /app/packages/client/package.json /app/packages/client/package.json
+COPY --from=build /app/packages/client/dist /app/packages/client/dist
+
+RUN bun add --global serve@14
+
+EXPOSE 3000
+CMD ["serve", "-s", "packages/client/dist", "-l", "3000"]
