@@ -1179,6 +1179,7 @@ export function createUI(handlers: UIHandlers): UI {
                   ownerId: unit.ownerId,
                   fromCityId: origin.id,
                   toCityId: c.id,
+                  path: [],
                 });
                 const extra =
                   (y.food ? ` +${y.food}🍞` : "") +

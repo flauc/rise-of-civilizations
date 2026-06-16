@@ -28,6 +28,7 @@ import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter } from "./features";
 import { foundReligion, spreadReligion } from "./religion";
 import { establishTradeRoute, pruneTradeRoutes } from "./trade";
+import { pillageTile, plunderTradeRoute, sackCityCommand } from "./raiding";
 import { bribeBarbarian, recruitBarbarian, pruneBarbarianBribes } from "./bribery";
 import {
   declareWar,
@@ -78,6 +79,9 @@ export type Command =
   | { type: "establishTradeRoute"; unitId: number; destCityId: number }
   | { type: "bribeBarbarian"; unitId: number }
   | { type: "recruitBarbarian"; unitId: number }
+  | { type: "pillage"; unitId: number }
+  | { type: "plunderTradeRoute"; unitId: number; routeId: number }
+  | { type: "sackCity"; unitId: number }
   | { type: "declareWar"; targetId: number }
   | { type: "makePeace"; targetId: number }
   | { type: "denounce"; targetId: number }
@@ -391,6 +395,15 @@ export function applyCommand(
       if (res.ok) updateExplored(state, player.id);
       return res;
     }
+
+    case "pillage":
+      return pillageTile(state, cmd.unitId, player.id);
+
+    case "plunderTradeRoute":
+      return plunderTradeRoute(state, cmd.unitId, cmd.routeId, player.id);
+
+    case "sackCity":
+      return sackCityCommand(state, cmd.unitId, player.id);
 
     case "declareWar":
       return declareWar(state, player.id, cmd.targetId);

@@ -46,7 +46,7 @@ const ECON_DISCIPLINE: Record<EconKind, Discipline> = {
   fishing_boats: "survey",
   road: "survey",
 };
-const ECON_BASE: Record<EconKind, number> = {
+export const ECON_BASE: Record<EconKind, number> = {
   farm: 3,
   lumber_camp: 3,
   mine: 4,

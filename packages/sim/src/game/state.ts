@@ -242,6 +242,8 @@ export interface TradeRoute {
   fromCityId: number;
   /** Destination city — receives a smaller share. */
   toCityId: number;
+  /** Tile keys "col,row" the caravan travels through; used for plundering. */
+  path: string[];
 }
 
 export type BarbarianActivity = "none" | "minimal" | "low" | "normal" | "high";

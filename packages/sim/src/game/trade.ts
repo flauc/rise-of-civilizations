@@ -4,10 +4,12 @@
 // the origin city, and a small share to the destination. Routes are pruned when
 // either endpoint is lost or changes owner.
 
-import { axialDistance, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { City, GameState, TradeRoute, Unit } from "./state";
 import { cityAt, log, playerById } from "./state";
 import { UNIT_DEFS } from "./content";
+import { isPassableLand } from "./terrain";
+import { offsetNeighbors } from "./movement";
 
 export interface TradeYield {
   gold: number;
@@ -82,6 +84,42 @@ export function canEstablishTradeRoute(state: GameState, unit: Unit): boolean {
   return tradeRouteDestinations(state, unit).length > 0;
 }
 
+/** Find a passable-land path between two cities using BFS; used for plundering. */
+function computeTradeRoutePath(state: GameState, from: City, to: City): string[] {
+  const start = `${from.col},${from.row}`;
+  const goal = `${to.col},${to.row}`;
+  if (start === goal) return [start];
+
+  const queue: string[] = [start];
+  const cameFrom = new Map<string, string>();
+  cameFrom.set(start, "");
+
+  while (queue.length > 0) {
+    const key = queue.shift()!;
+    const [col, row] = key.split(",").map(Number) as [number, number];
+    for (const n of offsetNeighbors(state.map, col, row)) {
+      const tile = getTile(state.map, n.col, n.row);
+      if (!tile || !isPassableLand(tile.terrain)) continue;
+      const nk = `${n.col},${n.row}`;
+      if (cameFrom.has(nk)) continue;
+      cameFrom.set(nk, key);
+      if (nk === goal) {
+        const path: string[] = [nk];
+        let cur = nk;
+        while (cameFrom.get(cur) !== "") {
+          cur = cameFrom.get(cur)!;
+          path.unshift(cur);
+        }
+        return path;
+      }
+      queue.push(nk);
+    }
+  }
+
+  // No passable path found: fall back to a direct endpoint-only path.
+  return [start, goal];
+}
+
 export interface TradeResult {
   ok: boolean;
   error?: string;
@@ -113,6 +151,7 @@ export function establishTradeRoute(
     ownerId: unit.ownerId,
     fromCityId: origin.id,
     toCityId: dest.id,
+    path: computeTradeRoutePath(state, origin, dest),
   });
   state.units.delete(unit.id);
   const owner = playerById(state, unit.ownerId);

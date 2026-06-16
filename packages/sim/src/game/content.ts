@@ -494,7 +494,7 @@ export const PROMOTION_DEFS: Record<PromotionId, PromotionDef> = {
   trample: { id: "trample", name: "Trample", desc: "+4 strength vs wounded units" , tier: 2 },
   mounted_archer: { id: "mounted_archer", name: "Mounted Archer", desc: "+1 movement; ranged cavalry gains +2 ranged strength" , tier: 2 },
   outrider: { id: "outrider", name: "Outrider", desc: "+1 sight" , tier: 2 },
-  raider: { id: "raider", name: "Raider", desc: "+25 gold when clearing barbarian camps" , tier: 3 },
+  raider: { id: "raider", name: "Raider", desc: "+25 gold when clearing barbarian camps; +10 gold from pillaging" , tier: 3 },
   swift_healer: { id: "swift_healer", name: "Swift Healer", desc: "Heals +5 HP each turn" , tier: 2 },
   breakthrough: { id: "breakthrough", name: "Breakthrough", desc: "+1 movement after killing a unit" , tier: 3 },
   harrier: { id: "harrier", name: "Harrier", desc: "+3 strength vs ranged units" , tier: 2 },

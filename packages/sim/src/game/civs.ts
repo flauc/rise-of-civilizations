@@ -40,6 +40,9 @@ function mergeInto(acc: CivEffects, e: CivEffects | undefined): void {
     }
   }
   if (e.goldPerWorkedDesert) acc.goldPerWorkedDesert = (acc.goldPerWorkedDesert ?? 0) + e.goldPerWorkedDesert;
+  if (e.raidGoldPercent) acc.raidGoldPercent = (acc.raidGoldPercent ?? 0) + e.raidGoldPercent;
+  if (e.coastalRaidGoldPercent) acc.coastalRaidGoldPercent = (acc.coastalRaidGoldPercent ?? 0) + e.coastalRaidGoldPercent;
+  if (e.raidSciencePercent) acc.raidSciencePercent = (acc.raidSciencePercent ?? 0) + e.raidSciencePercent;
   // Founding bonuses come from the civ only (not merged additively).
   if (e.newCityFreeBuilding && !acc.newCityFreeBuilding) acc.newCityFreeBuilding = e.newCityFreeBuilding;
   if (e.newCityExtraPopulation) acc.newCityExtraPopulation = (acc.newCityExtraPopulation ?? 0) + e.newCityExtraPopulation;

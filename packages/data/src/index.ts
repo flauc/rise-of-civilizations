@@ -15,6 +15,12 @@ export interface CivEffects {
   newCityFreeBuilding?: string;
   /** Extra starting population for new cities. */
   newCityExtraPopulation?: number;
+  /** Percentage bonus to gold from pillaging, plundering trade routes, and sacking cities. */
+  raidGoldPercent?: number;
+  /** Extra percentage bonus to raid gold when the target tile is adjacent to water (coastal raiding). */
+  coastalRaidGoldPercent?: number;
+  /** Science gained as a percentage of raid gold (e.g. 50 = +1 science per 2 gold). */
+  raidSciencePercent?: number;
 }
 
 export interface CivDef {
@@ -442,7 +448,7 @@ export const CIVILIZATIONS: CivDef[] = [
     abilityDesc: "+15% gold from raiding; melee units +2 combat strength.",
     uniqueUnit: "Longship",
     uniqueInfra: "Stave Church",
-    effects: { yieldPercent: { gold: 15 }, unitClassCombat: { melee: 2 } },
+    effects: { yieldPercent: { gold: 15 }, unitClassCombat: { melee: 2 }, raidGoldPercent: 15, coastalRaidGoldPercent: 15 },
     cityNames: ["Kaupang", "Birka", "Hedeby", "Trondheim", "Oslo", "Reykjavik", "York", "Dublin", "Ribe", "Visby"],
   },
   {
@@ -780,7 +786,7 @@ export const CIVILIZATIONS: CivDef[] = [
     abilityDesc: "Raiding yields extra gold; horse units are cheaper to produce.",
     uniqueUnit: "Xiongnu Horse Archer",
     uniqueInfra: "Felt Tent",
-    effects: { cavalryMovementBonus: 1 },
+    effects: { cavalryMovementBonus: 1, raidGoldPercent: 25 },
     cityNames: ["Luut Khot", "Khangai", "Otgon", "Ivolga", "Noin-Ula", "Tsetserleg", "Karakorum", "Ordu-Baliq", "Kherlen", "Talas"],
   },
   {
@@ -835,7 +841,7 @@ export const CIVILIZATIONS: CivDef[] = [
     abilityDesc: "Siege bonus; plunder enriches cities and advances science.",
     uniqueUnit: "Timurid Siege Train",
     uniqueInfra: "Registan",
-    effects: { yieldPercent: { science: 10 }, unitClassCombat: { cavalry: 2 } },
+    effects: { yieldPercent: { science: 10 }, unitClassCombat: { cavalry: 2 }, raidGoldPercent: 15, raidSciencePercent: 50 },
     cityNames: ["Samarkand", "Bukhara", "Herat", "Isfahan", "Shiraz", "Mashhad", "Tabriz", "Kabul", "Balkh", "Damascus"],
   },
   {
