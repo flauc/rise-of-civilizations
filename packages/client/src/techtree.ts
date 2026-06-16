@@ -22,7 +22,7 @@ const PAD = 24;
 const COL_W = NODE_W + COL_GAP;
 const ROW_H = NODE_H + ROW_GAP;
 
-type Status = "done" | "researching" | "available" | "locked";
+type Status = "done" | "researching" | "queued" | "available" | "locked";
 
 const ALL_TECHS = Object.keys(TECH_DEFS) as TechId[];
 
@@ -96,14 +96,17 @@ export function renderTechTreeInto(
   state: GameState,
   viewerId: number,
   onPick: (techId: TechId) => void,
+  onPickTarget?: (techId: TechId) => void,
 ): void {
   const player = state.players.find((p) => p.id === viewerId);
   const researched = player?.researched ?? new Set<TechId>();
   const researching = player?.researching ?? null;
+  const queued = new Set<TechId>(player?.researchQueue ?? []);
 
   const statusOf = (id: TechId): Status => {
     if (researched.has(id)) return "done";
     if (researching === id) return "researching";
+    if (queued.has(id)) return "queued";
     if (TECH_DEFS[id].prereqs.every((p) => researched.has(p as TechId))) return "available";
     return "locked";
   };
@@ -194,6 +197,8 @@ export function renderTechTreeInto(
     node.addEventListener("click", () => {
       if (node.classList.contains("tt-available")) {
         onPick(id);
+      } else if (onPickTarget && (node.classList.contains("tt-locked") || node.classList.contains("tt-queued"))) {
+        onPickTarget(id);
       } else {
         pinned = pinned === id ? null : id; // pin/unpin the chain for study
         applyHighlight(pinned);

@@ -176,6 +176,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     gold: p.id === view.yourId ? view.you.gold : 0,
     researched: new Set(p.id === view.yourId ? view.you.researched : []),
     researching: p.id === view.yourId ? view.you.researching : null,
+    researchQueue: p.id === view.yourId ? view.you.researchQueue : [],
     scienceProgress: p.id === view.yourId ? view.you.scienceProgress : 0,
     civicsResearched: new Set(p.id === view.yourId ? view.you.civicsResearched : []),
     researchingCivic: p.id === view.yourId ? view.you.researchingCivic : null,

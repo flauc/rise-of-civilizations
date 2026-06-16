@@ -29,6 +29,7 @@ const makePlayer = (id: number): Player => ({
   isBarbarian: false,
   researched: new Set(),
   researching: null,
+  researchQueue: [],
   scienceProgress: 0,
   civicsResearched: new Set(),
   researchingCivic: null,

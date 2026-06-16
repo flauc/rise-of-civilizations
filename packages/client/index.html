@@ -177,13 +177,6 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .chip {
-        background: rgba(201, 162, 39, 0.1);
-        border-radius: 7px;
-        padding: 3px 8px;
-        white-space: nowrap;
-        color: var(--parchment);
-      }
       .tb-pill {
         position: relative;
         display: inline-flex;
@@ -581,6 +574,14 @@
       .tt-available:hover {
         background: rgba(201, 162, 39, 0.1);
       }
+      .tt-queued {
+        border-color: var(--accent);
+        border-style: dashed;
+        cursor: pointer;
+      }
+      .tt-queued:hover {
+        background: rgba(201, 162, 39, 0.08);
+      }
       .tt-locked {
         opacity: 0.5;
       }
@@ -889,14 +890,6 @@
       #gold-dialog .btn {
         margin-top: 14px;
         align-self: center;
-      }
-      .tb-grp .chip.gold-chip {
-        cursor: pointer;
-        transition: background 0.2s, color 0.2s;
-      }
-      .tb-grp .chip.gold-chip:hover {
-        background: rgba(201, 162, 39, 0.18);
-        color: var(--accent-bright);
       }
       .bb-chip.gold-chip {
         cursor: pointer;

@@ -22,6 +22,7 @@ import {
   BUILDING_DEFS,
   TECH_DEFS,
   UNIT_DEFS,
+  advanceResearchQueue,
   type TechId,
 } from "./content";
 
@@ -484,6 +485,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       log(state, `${owner.name} discovered ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
       emitResearchComplete(state, owner.id, def.name);
       owner.researching = null;
+      advanceResearchQueue(owner);
     }
   }
   owner.faith += y.faith;

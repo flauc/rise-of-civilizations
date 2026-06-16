@@ -1,6 +1,6 @@
 import { renderTechTreeInto } from "./techtree";
 import { createWiki } from "./wiki";
-import { createEmpire } from "./empire";
+import { createEmpire, type Tab as EmpireTab } from "./empire";
 import { createDiplomacy } from "./diplomacy";
 import type { DealItem } from "@roc/sim";
 import type { SaveRecord } from "./save-db";
@@ -220,6 +220,7 @@ export interface UIHandlers {
   onAcknowledgeContact(otherId: number): void;
   onSetProduction(item: ProductionItem): void;
   onSetResearch(techId: TechId): void;
+  onSetResearchTarget(techId: TechId): void;
   onSetCivic(civicId: string): void;
   onSetGovernment(governmentId: string): void;
   onTogglePolicy(policyId: string): void;
@@ -453,6 +454,8 @@ export function createUI(handlers: UIHandlers): UI {
   let turnUpdateHasNew = false;
   let lastSeenTurnUpdateId = 0;
   let turnUpdatesInitialized = false;
+  const lastSeenTurnUpdateByViewer = new Map<number, number>();
+  let lastTurnForUpdates = 0;
   let menuOpen = false;
   let menuView: "menu" | "save" = "menu";
   let isSaving = false;
@@ -634,7 +637,10 @@ export function createUI(handlers: UIHandlers): UI {
     turnUpdateTitle.textContent = updateTitleFor(ev);
     turnUpdateMsg.textContent = ev.message;
     turnUpdateActions.innerHTML = renderTurnUpdateCtas(ev);
-    turnUpdateCount.textContent = `${turnUpdateIndex + 1} / ${turnUpdateQueue.length}`;
+    const hasMultiple = turnUpdateQueue.length > 1;
+    turnUpdateCount.textContent = hasMultiple ? `${turnUpdateIndex + 1} / ${turnUpdateQueue.length}` : "";
+    turnUpdatePrev.classList.toggle("hidden", !hasMultiple);
+    turnUpdateNext.classList.toggle("hidden", !hasMultiple);
     turnUpdatePrev.disabled = turnUpdateIndex === 0;
     turnUpdateNext.disabled = turnUpdateIndex === turnUpdateQueue.length - 1;
 
@@ -642,19 +648,32 @@ export function createUI(handlers: UIHandlers): UI {
       el.addEventListener("click", () => {
         const [col, row] = el.dataset.tuLocate!.split(",").map(Number) as [number, number];
         handlers.onTurnUpdateLocate({ col, row });
+        hideTurnUpdateDialog();
       }),
     );
     turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-prod]").forEach((el) =>
-      el.addEventListener("click", () => handlers.onTurnUpdateOpenProduction(Number(el.dataset.tuProd))),
+      el.addEventListener("click", () => {
+        handlers.onTurnUpdateOpenProduction(Number(el.dataset.tuProd));
+        hideTurnUpdateDialog();
+      }),
     );
     turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-research]").forEach((el) =>
-      el.addEventListener("click", () => handlers.onTurnUpdateOpenResearch()),
+      el.addEventListener("click", () => {
+        handlers.onTurnUpdateOpenResearch();
+        hideTurnUpdateDialog();
+      }),
     );
     turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-civics]").forEach((el) =>
-      el.addEventListener("click", () => handlers.onTurnUpdateOpenCivics()),
+      el.addEventListener("click", () => {
+        handlers.onTurnUpdateOpenCivics();
+        hideTurnUpdateDialog();
+      }),
     );
     turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-gold]").forEach((el) =>
-      el.addEventListener("click", () => handlers.onTurnUpdateOpenGold()),
+      el.addEventListener("click", () => {
+        handlers.onTurnUpdateOpenGold();
+        hideTurnUpdateDialog();
+      }),
     );
   };
 
@@ -724,7 +743,7 @@ export function createUI(handlers: UIHandlers): UI {
         <span class="tb-civ" title="${civTitle}"><span class="dot" style="background:${player.color}"></span>${player.name}${civ ? ` · <b>${civ.name}</b>` : ""}</span>
       </div>
       <div class="tb-grp tb-res">
-        <button class="chip gold-chip" id="gold-btn" title="Gold">🪙 ${Math.floor(player.gold)} <span style="${goldClass}">(${goldSign}${Math.abs(netGold)})</span></button>
+        <button class="tb-pill gold-chip" id="gold-btn" title="Gold"><span class="tb-pl">🪙</span><b>${Math.floor(player.gold)}</b><span class="tb-score" style="${goldClass}">${goldSign}${Math.abs(netGold)}</span></button>
         <button class="tb-pill" id="research-btn" title="Research" style="--p:${researchPct}%">
           <span class="tb-pl">🔬</span><b>${rName}</b><span class="tb-score">+${sci}</span></button>
         ${showCivics ? `<button class="tb-pill civic" id="civics-btn" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%">` +
@@ -733,11 +752,9 @@ export function createUI(handlers: UIHandlers): UI {
           `<span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b><span class="tb-score">+${fth}</span></button>` : ""}
       </div>
       <div class="tb-grp">
-        <button class="tb-pill empire" id="empire-btn" title="Empire">
-          <span class="tb-pl">🏙️</span><b>${cityCount}</b><span class="tb-div">·</span>
-          <span class="tb-pl">👷</span><b>${specCount}</b><span class="tb-div">·</span>
-          <span class="tb-pl">⚔️</span><b>${unitCount}</b>
-        </button>
+        <button class="tb-pill empire" id="cities-btn" title="Cities"><span class="tb-pl">🏙️</span><b>${cityCount}</b></button>
+        <button class="tb-pill empire" id="units-btn" title="Units"><span class="tb-pl">⚔️</span><b>${unitCount}</b></button>
+        <button class="tb-pill empire" id="specialists-btn" title="Specialists"><span class="tb-pl">👷</span><b>${specCount}</b></button>
         <button class="tb-pill" id="diplo-pill" title="Diplomacy">
           <span class="tb-pl">🕊️</span><b>${player.met.length}</b></button>
         <button class="tb-pill ${turnUpdateHasNew ? "has-badge" : ""}" id="turn-update-btn" title="Turn Updates">
@@ -802,7 +819,7 @@ export function createUI(handlers: UIHandlers): UI {
         renderCivics(state);
       });
     }
-    topbar.querySelector<HTMLButtonElement>("#empire-btn")!.addEventListener("click", () => {
+    const openEmpire = (tab: EmpireTab) => {
       const opening = !empire.isOpen();
       if (opening) {
         closeSideSheets();
@@ -810,8 +827,11 @@ export function createUI(handlers: UIHandlers): UI {
         menuOpen = false;
         renderMenu(state);
       }
-      empire.toggle(state, viewerId);
-    });
+      empire.toggle(state, viewerId, tab);
+    };
+    topbar.querySelector<HTMLButtonElement>("#cities-btn")!.addEventListener("click", () => openEmpire("cities"));
+    topbar.querySelector<HTMLButtonElement>("#units-btn")!.addEventListener("click", () => openEmpire("units"));
+    topbar.querySelector<HTMLButtonElement>("#specialists-btn")!.addEventListener("click", () => openEmpire("specialists"));
     topbar.querySelector<HTMLButtonElement>("#diplo-pill")!.addEventListener("click", () => {
       const opening = !diplomacy.isOpen();
       if (opening) {
@@ -864,7 +884,7 @@ export function createUI(handlers: UIHandlers): UI {
       research: "#research-btn",
       civics: "#civics-btn",
       religion: "#religion-btn",
-      empire: "#empire-btn",
+      empire: "#cities-btn",
       diplo: "#diplo-pill",
       menu: "#menu-btn",
       gold: "#gold-btn",
@@ -1157,11 +1177,21 @@ export function createUI(handlers: UIHandlers): UI {
     if (!techtreeOpen) return;
     const viewerId = state.players[state.currentPlayerIndex]!.id;
     const inner = document.createElement("div");
-    renderTechTreeInto(inner, state, viewerId, (techId) => {
-      handlers.onSetResearch(techId);
-      techtreeOpen = false;
-      techtree.classList.add("hidden");
-    });
+    renderTechTreeInto(
+      inner,
+      state,
+      viewerId,
+      (techId) => {
+        handlers.onSetResearch(techId);
+        techtreeOpen = false;
+        techtree.classList.add("hidden");
+      },
+      (techId) => {
+        handlers.onSetResearchTarget(techId);
+        techtreeOpen = false;
+        techtree.classList.add("hidden");
+      },
+    );
     techtree.innerHTML = `<div class="row" style="justify-content:space-between"><b>Technology Tree</b><button class="btn" id="ttclose">✕</button></div>`;
     techtree.appendChild(inner);
     techtree.querySelector<HTMLButtonElement>("#ttclose")!.addEventListener("click", () => {
@@ -2016,18 +2046,37 @@ export function createUI(handlers: UIHandlers): UI {
         lastLogLength = view.state.log.length;
       }
 
-      // Queue new turn-start updates and auto-open the dialog after the first turn.
-      const incomingUpdates = view.state.turnUpdates ?? [];
-      const newUpdates = incomingUpdates.filter((u) => u.id > lastSeenTurnUpdateId);
-      if (!turnUpdatesInitialized) {
-        lastSeenTurnUpdateId = incomingUpdates.length > 0 ? Math.max(...incomingUpdates.map((u) => u.id)) : 0;
-        turnUpdatesInitialized = true;
-      } else if (newUpdates.length > 0) {
+      // Queue new turn-start updates for the current viewer only and auto-open the
+      // dialog after the first turn. Per-viewer tracking prevents local games from
+      // leaking one player's updates to another, and the queue is reset each turn
+      // so the dialog only shows the current turn's batch.
+      const incomingUpdates = (view.state.turnUpdates ?? []).filter((u) => u.playerId === view.viewerId);
+      const previousViewerId = lastViewerId;
+      const turnChanged = view.state.turn !== lastTurnForUpdates;
+      if (previousViewerId !== view.viewerId || turnChanged) {
+        // Viewer switched or a new turn began; drop stale queue and seed the seen id
+        // for the viewer so old events don't reappear as "new".
+        turnUpdateQueue = turnUpdateQueue.filter((u) => u.playerId === view.viewerId);
+        if (turnChanged) turnUpdateQueue = [];
+        turnUpdateIndex = 0;
+        turnUpdateHasNew = false;
+        lastTurnForUpdates = view.state.turn;
+        lastSeenTurnUpdateByViewer.set(
+          view.viewerId,
+          incomingUpdates.length > 0 ? Math.max(...incomingUpdates.map((u) => u.id)) : 0,
+        );
+      }
+      const lastSeenForViewer = lastSeenTurnUpdateByViewer.get(view.viewerId) ?? 0;
+      const newUpdates = incomingUpdates.filter((u) => u.id > lastSeenForViewer);
+      if (newUpdates.length > 0) {
         const autoOpen = view.state.turn > 1;
         turnUpdateQueue = [...turnUpdateQueue, ...newUpdates];
         turnUpdateIndex = 0;
         turnUpdateHasNew = true;
-        lastSeenTurnUpdateId = Math.max(...incomingUpdates.map((u) => u.id));
+        lastSeenTurnUpdateByViewer.set(
+          view.viewerId,
+          incomingUpdates.length > 0 ? Math.max(...incomingUpdates.map((u) => u.id)) : 0,
+        );
         if (autoOpen && !turnUpdateDialog.classList.contains("show")) {
           showTurnUpdateDialog();
         }

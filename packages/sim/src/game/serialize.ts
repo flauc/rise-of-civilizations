@@ -48,6 +48,7 @@ export interface PlayerView {
     gold: number;
     scienceProgress: number;
     researching: TechId | null;
+    researchQueue: TechId[];
     researched: TechId[];
     cultureProgress: number;
     researchingCivic: string | null;
@@ -164,6 +165,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
       gold: me?.gold ?? 0,
       scienceProgress: me?.scienceProgress ?? 0,
       researching: me?.researching ?? null,
+      researchQueue: me?.researchQueue ?? [],
       researched: me ? [...me.researched] : [],
       cultureProgress: me?.cultureProgress ?? 0,
       researchingCivic: me?.researchingCivic ?? null,
@@ -298,6 +300,7 @@ export function deserializeState(s: SerializedState): GameState {
     nextTurnUpdateId: s.nextTurnUpdateId ?? 1,
     players: s.players.map((p) => ({
       ...p,
+      researchQueue: p.researchQueue ?? [],
       met: p.met ?? [],
       atWar: p.atWar ?? [],
       importedLuxuries: p.importedLuxuries ?? [],

@@ -371,6 +371,57 @@ export function techUnlocked(researched: ReadonlySet<TechId>, tech: TechId): boo
   return TECH_DEFS[tech].prereqs.every((p) => researched.has(p));
 }
 
+/** Tier = longest path from a root tech. Used to order prerequisites. */
+function techTier(id: TechId, memo = new Map<TechId, number>()): number {
+  const cached = memo.get(id);
+  if (cached !== undefined) return cached;
+  const prereqs = TECH_DEFS[id].prereqs;
+  const tier = prereqs.length === 0 ? 0 : Math.max(...prereqs.map((p) => techTier(p, memo))) + 1;
+  memo.set(id, tier);
+  return tier;
+}
+
+/** All techs required to reach `target`, not already researched, in a valid research order. */
+export function computeResearchPath(researched: ReadonlySet<TechId>, target: TechId): TechId[] {
+  if (researched.has(target)) return [];
+  const missing = new Set<TechId>();
+  const collect = (id: TechId): void => {
+    if (researched.has(id) || missing.has(id)) return;
+    missing.add(id);
+    for (const p of TECH_DEFS[id].prereqs) collect(p);
+  };
+  collect(target);
+  const memo = new Map<TechId, number>();
+  return [...missing].sort((a, b) => {
+    const ta = techTier(a, memo);
+    const tb = techTier(b, memo);
+    if (ta !== tb) return ta - tb;
+    return TECH_DEFS[a].name.localeCompare(TECH_DEFS[b].name);
+  });
+}
+
+/** After finishing a tech, pick the next queued tech whose prerequisites are met. */
+export function advanceResearchQueue(player: {
+  researched: Set<TechId>;
+  researching: TechId | null;
+  researchQueue: TechId[];
+}): void {
+  while (player.researchQueue.length > 0) {
+    const next = player.researchQueue[0]!;
+    if (player.researched.has(next)) {
+      player.researchQueue.shift();
+      continue;
+    }
+    if (techUnlocked(player.researched, next)) {
+      player.researching = next;
+      player.researchQueue.shift();
+      return;
+    }
+    break;
+  }
+  player.researching = null;
+}
+
 // ---- human-readable descriptions (for the UI) ----------------------------
 
 const ROLE: Record<UnitClass, string> = {

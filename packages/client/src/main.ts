@@ -272,6 +272,7 @@ function startGame(session: Session): void {
       if (selectedCityId != null) session.order({ type: "setProduction", cityId: selectedCityId, item });
     },
     onSetResearch: (techId) => session.order({ type: "setResearch", techId }),
+    onSetResearchTarget: (techId) => session.order({ type: "setResearchTarget", techId }),
     onSetCivic: (civicId) => session.order({ type: "setCivic", civicId }),
     onSetGovernment: (governmentId) => session.order({ type: "setGovernment", governmentId }),
     onTogglePolicy: (policyId) => session.order({ type: "togglePolicy", policyId }),

@@ -108,6 +108,8 @@ export interface Player {
   gold: number;
   researched: Set<TechId>;
   researching: TechId | null;
+  /** Techs waiting to be researched after the current one (target-path queue). */
+  researchQueue: TechId[];
   scienceProgress: number;
   // Civics / government (culture tree)
   civicsResearched: Set<string>;

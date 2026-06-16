@@ -30,7 +30,7 @@ export interface EmpireHandlers {
   onCancelWork(workId: number): void;
 }
 
-type Tab = "units" | "cities" | "specialists";
+export type Tab = "units" | "cities" | "specialists";
 
 const STYLE = `
 #empire{position:fixed;top:0;right:0;bottom:0;left:auto;width:min(460px,92vw);z-index:55;background:#0d1b27;border-left:1px solid var(--edge);box-shadow:-8px 0 24px rgba(0,0,0,.35);display:flex;flex-direction:column;transform:translateX(0);transition:transform .2s ease,pointer-events 0s}
@@ -62,7 +62,7 @@ const STYLE = `
 `;
 
 export interface Empire {
-  toggle(state: GameState, viewerId: number): void;
+  toggle(state: GameState, viewerId: number, requestedTab?: Tab): void;
   close(): void;
   isOpen(): boolean;
   render(state: GameState, viewerId: number): void;
@@ -302,7 +302,16 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
   }
 
   return {
-    toggle(state, viewerId) {
+    toggle(state, viewerId, requestedTab) {
+      if (requestedTab && requestedTab !== tab) {
+        tab = requestedTab;
+        if (!open) {
+          open = true;
+          root.classList.remove("hidden");
+        }
+        render(state, viewerId);
+        return;
+      }
       open = !open;
       root.classList.toggle("hidden", !open);
       if (open) render(state, viewerId);

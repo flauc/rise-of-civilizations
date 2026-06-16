@@ -55,7 +55,7 @@ import {
   nextCityNameForCiv,
 } from "./civs";
 import { aiTakeTurn } from "./ai";
-import { UNIT_DEFS, TECH_DEFS, techUnlocked, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId } from "./content";
+import { UNIT_DEFS, TECH_DEFS, techUnlocked, computeResearchPath, advanceResearchQueue, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId } from "./content";
 
 export type Command =
   | { type: "move"; unitId: number; col: number; row: number }
@@ -73,6 +73,7 @@ export type Command =
   | { type: "setProduction"; cityId: number; item: ProductionItem }
   | { type: "assignCitizen"; cityId: number; col: number; row: number }
   | { type: "setResearch"; techId: TechId }
+  | { type: "setResearchTarget"; techId: TechId }
   | { type: "setCivic"; civicId: string }
   | { type: "setGovernment"; governmentId: string }
   | { type: "togglePolicy"; policyId: string }
@@ -354,7 +355,18 @@ export function applyCommand(
       if (player.researched.has(cmd.techId)) return fail("already researched");
       if (!techUnlocked(player.researched, cmd.techId)) return fail("prereqs not met");
       player.researching = cmd.techId;
+      player.researchQueue = [];
       log(state, `${player.name} is researching ${TECH_DEFS[cmd.techId].name}.`, { actorId: player.id, targetIds: [player.id] });
+      return ok;
+    }
+
+    case "setResearchTarget": {
+      if (player.researched.has(cmd.techId)) return fail("already researched");
+      const path = computeResearchPath(player.researched, cmd.techId);
+      if (path.length === 0) return fail("already researched");
+      player.researching = path[0]!;
+      player.researchQueue = path.slice(1);
+      log(state, `${player.name} is researching ${TECH_DEFS[path[0]!].name} (target: ${TECH_DEFS[cmd.techId].name}).`, { actorId: player.id, targetIds: [player.id] });
       return ok;
     }
 
