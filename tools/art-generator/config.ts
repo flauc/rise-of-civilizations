@@ -21,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero";
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -217,6 +217,75 @@ export const ICON_SUBSET: AssetEntry[] = [
   },
 ];
 
+export const HERO_SUBSET: AssetEntry[] = [
+  {
+    id: "hero_ancient_empire",
+    name: "Ancient Empire",
+    description: "a stylized hand-painted cinematic landscape for a turn-based strategy game hero banner. A vast ancient empire at sunrise: mud-brick cities with ziggurats and temples, workers in fields, a grand road, and distant mountains. Warm golden light, epic scale, no text, no UI.",
+    aspectRatio: "16:9",
+    size: { width: 1920, height: 1080 },
+    category: "hero" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "hero_battlefield",
+    name: "Epic Battlefield",
+    description: "a stylized hand-painted cinematic landscape for a turn-based strategy game hero banner. An epic ancient battlefield: phalanxes, legions, cavalry, and war elephants clash beneath a dramatic sky with banners and dust. Epic scale, no text, no UI.",
+    aspectRatio: "16:9",
+    size: { width: 1920, height: 1080 },
+    category: "hero" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "hero_maritime_trade",
+    name: "Maritime Trade",
+    description: "a stylized hand-painted cinematic landscape for a turn-based strategy game hero banner. A bustling ancient port at golden hour: merchant ships, caravels, docks, warehouses, and a coastal city climbing hillsides. Warm light, epic scale, no text, no UI.",
+    aspectRatio: "16:9",
+    size: { width: 1920, height: 1080 },
+    category: "hero" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+];
+
+export const PILLAR_SUBSET: AssetEntry[] = [
+  {
+    id: "pillar_explore",
+    name: "Explore",
+    description: "a stylized hand-painted scene of exploration: a lone scout standing on a forested ridge, unfurling a crude map, with distant uncharted mountains and a golden sunrise beyond. Evoke curiosity, discovery, and the unknown frontier.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "pillar" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "pillar_expand",
+    name: "Expand",
+    description: "a stylized hand-painted scene of expansion: settlers raising the first mud-brick houses of a new city, clearing trees, and laying down roads that connect a growing frontier settlement. Evoke ambition, new foundations, and spreading civilization.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "pillar" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "pillar_exploit",
+    name: "Exploit",
+    description: "a stylized hand-painted scene of exploitation: farmers harvesting golden wheat, miners hauling ore from a hillside, and workers gathering resources around a busy village. Evoke productivity, labor, and the wealth of the land.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "pillar" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "pillar_exterminate",
+    name: "Exterminate",
+    description: "a stylized hand-painted scene of warfare: ancient warriors clashing on a battlefield with spears and shields, a siege tower looming, and banners flying under a dramatic sky. Evoke conquest, tactics, and decisive battle.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "pillar" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+];
+
 export const AGE_SUBSET: AssetEntry[] = [
   {
     id: "age_stone_dawn",
@@ -369,7 +438,7 @@ export const BUILDING_SUBSET: AssetEntry[] = [
 ];
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -470,6 +539,12 @@ export function promptFor(entry: AssetEntry): string {
   }
   if (entry.category === "age") {
     return `Create a stylized hand-painted era portrait for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a centered scene with a strong sense of time and place, set against a soft painted background. NO text, NO letters, NO numbers, NO percentages, NO plus signs, NO symbols, NO UI elements, NO ability descriptions, NO stat boxes, NO border, NO frame, NO modern objects, and NO cast shadow. Keep the composition clear and readable at small sizes.`;
+  }
+  if (entry.category === "pillar") {
+    return `Create a stylized hand-painted gameplay pillar illustration for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a centered scene that captures the theme and mood of the pillar, set against a soft painted background. NO text, NO letters, NO numbers, NO percentages, NO plus signs, NO symbols, NO UI elements, NO ability descriptions, NO stat boxes, NO border, NO frame, NO modern objects, and NO cast shadow. Keep the composition clear and readable at small sizes.`;
+  }
+  if (entry.category === "hero") {
+    return `Create a stylized hand-painted cinematic hero banner for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a wide, epic landscape suitable for a full-width website hero background. NO text, NO letters, NO numbers, NO percentages, NO plus signs, NO symbols, NO UI elements, NO ability descriptions, NO stat boxes, NO border, NO frame, NO modern objects, and NO cast shadow. Keep the composition readable behind centered headline text.`;
   }
   if (entry.category === "village_reward") {
     return `Create a small narrative reward illustration for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render as a centered scene on a clean solid white background. No text, no letters, no UI labels, no watermark, no border frame, and no cast shadow. The illustration should read clearly at small sizes.`;

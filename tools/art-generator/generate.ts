@@ -46,6 +46,8 @@ import {
   VILLAGE_REWARD_SUBSET,
   BARBARIAN_REWARD_SUBSET,
   AGE_SUBSET,
+  PILLAR_SUBSET,
+  HERO_SUBSET,
 } from "./config";
 
 interface Options {
@@ -106,7 +108,7 @@ Options:
   --icon <id>            Generate a specific app icon (e.g. app_icon)
   --village-reward <id>  Generate a specific village reward illustration (e.g. village_reward_tech)
   --barbarian-reward <id> Generate a specific barbarian reward illustration (e.g. barb_camp_cleared)
-  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, all
+  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, all
   --list                 List all available asset IDs and exit
   --model <id>           Gemini model (default: ${DEFAULT_MODEL})
   --size <512|1K|2K|4K>  Gemini image size (default: ${DEFAULT_IMAGE_SIZE})
@@ -277,6 +279,8 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "village-rewards") entries.push(...VILLAGE_REWARD_SUBSET);
         else if (name === "barbarian-rewards") entries.push(...BARBARIAN_REWARD_SUBSET);
         else if (name === "ages") entries.push(...AGE_SUBSET);
+        else if (name === "pillars") entries.push(...PILLAR_SUBSET);
+        else if (name === "heroes") entries.push(...HERO_SUBSET);
         else if (name === "all") entries.push(...allEntries());
         else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, or all.`);
         break;
@@ -707,7 +711,7 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
 
       if (entry.category === "tile" || entry.category === "road" || entry.category === "river") {
         await postProcessTile(rawPath, finalPath, entry);
-      } else if (entry.category === "leader" || entry.category === "age") {
+      } else if (entry.category === "leader" || entry.category === "age" || entry.category === "pillar" || entry.category === "hero") {
         await postProcessPortrait(rawPath, finalPath, entry);
       } else if (entry.category === "icon" && entry.id === "favicon") {
         await postProcessFavicon(rawPath, finalDir, entry);

@@ -182,7 +182,7 @@ A standalone AI art generator lives in `tools/art-generator/`:
   with a prompt + reference tile, then resizes and masks the result with
   ImageMagick.
 - `tools/art-generator/config.ts` — asset subsets (terrain, units, buildings,
-  improvements, resources, leaders, ui, icons, village-rewards, barbarian-rewards, ages), prompt templates, and target sizes.
+  improvements, resources, leaders, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes), prompt templates, and target sizes.
 
 Typical commands:
 
@@ -195,6 +195,8 @@ bun run tools/art-generator/generate.ts --subset units
 bun run tools/art-generator/generate.ts --subset resources
 bun run tools/art-generator/generate.ts --subset improvements
 bun run tools/art-generator/generate.ts --subset ages
+bun run tools/art-generator/generate.ts --subset pillars
+bun run tools/art-generator/generate.ts --subset heroes
 bun run tools/art-generator/generate.ts --icon favicon
 bun run tools/art-generator/generate.ts --all
 
@@ -229,6 +231,14 @@ bun run tools/art-generator/generate.ts --icon favicon
 # Generate era/age artwork for the landing page
 bun run tools/art-generator/generate.ts --subset ages
 # (then copy assets/generated/ages/*.png to roc-landing-page/public/assets/ages/)
+
+# Generate gameplay pillar artwork for the landing page
+bun run tools/art-generator/generate.ts --subset pillars
+# (then copy assets/generated/pillars/*.png to roc-landing-page/public/assets/pillars/)
+
+# Generate hero banner artwork for the landing page
+bun run tools/art-generator/generate.ts --subset heroes
+# (then copy assets/generated/heros/*.png to roc-landing-page/public/assets/hero/)
 
 # Generate village reward illustrations and copy them to the client
 bun run tools/art-generator/generate.ts --subset village-rewards

@@ -919,22 +919,22 @@ export const PILLARS = [
   {
     title: 'Explore',
     desc: 'Chart unknown lands, dispatch scouts, and reveal resources from wheat fields to iron mines.',
-    asset: 'assets/units/scout.png',
+    image: 'pillar_explore',
   },
   {
     title: 'Expand',
     desc: 'Found cities across continents, claim territory, and build roads that bind your empire together.',
-    asset: 'assets/units/settler.png',
+    image: 'pillar_expand',
   },
   {
     title: 'Exploit',
     desc: 'Assign citizens, improve tiles, trade luxuries, and balance food, production, gold, and science.',
-    asset: 'assets/resources/wheat.png',
+    image: 'pillar_exploit',
   },
   {
     title: 'Exterminate',
     desc: 'Wage tactical wars with unique units, promotions, and combined-arms combat across land and sea.',
-    asset: 'assets/units/warrior.png',
+    image: 'pillar_exterminate',
   },
 ] as const;
 
@@ -944,6 +944,12 @@ export const ERAS = [
   { name: 'Iron / Classical', years: '1200 BCE–500 CE', desc: 'Legions, phalanxes, philosophy, and great roads.', image: 'age_iron_classical' },
   { name: 'Medieval / Faith', years: '500–1300 CE', desc: 'Knights, castles, samurai, and cathedrals.', image: 'age_medieval' },
   { name: 'Exploration', years: '1300–1550 CE', desc: 'Caravels, gunpowder, printing, and global trade.', image: 'age_exploration' },
+] as const;
+
+export const HERO_IMAGES = [
+  'hero_ancient_empire',
+  'hero_battlefield',
+  'hero_maritime_trade',
 ] as const;
 
 export const ALL_LEADERS = [

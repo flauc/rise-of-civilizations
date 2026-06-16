@@ -1,5 +1,5 @@
 import './styles.css';
-import { FEATURED_CIVS, PILLARS, ERAS, ALL_LEADERS } from './data';
+import { FEATURED_CIVS, PILLARS, ERAS, ALL_LEADERS, HERO_IMAGES } from './data';
 
 function $<T extends HTMLElement>(selector: string): T | null {
   return document.querySelector(selector);
@@ -20,7 +20,7 @@ function populatePillars(): void {
   grid.innerHTML = PILLARS.map(
     (p, i) => `
       <article class="pillar-card" style="--delay:${i * 0.1}s">
-        <div class="pillar-icon"><img src="${p.asset}" alt="" loading="lazy" /></div>
+        <div class="pillar-art"><img src="assets/pillars/${p.image}.png" alt="" loading="lazy" /></div>
         <h3>${p.title}</h3>
         <p>${p.desc}</p>
       </article>
@@ -171,36 +171,29 @@ function populateHexCluster(): void {
   cluster.innerHTML = html;
 }
 
-function createHeroHexBackground(): void {
-  const bg = $('.hero-hex-bg');
+function setupHeroBackground(): void {
+  const bg = $('#hero-bg');
   if (!bg) return;
-  const terrains = ['plains', 'grassland', 'forest', 'hills', 'mountains', 'ocean', 'desert', 'coast'];
-  const count = 18;
-  let html = '';
-  for (let i = 0; i < count; i++) {
-    const t = terrains[i % terrains.length];
-    const size = 60 + Math.random() * 100;
-    const top = Math.random() * 100;
-    const left = Math.random() * 100;
-    const duration = 20 + Math.random() * 40;
-    const delay = Math.random() * -40;
-    html += `
-      <img
-        class="hero-hex"
-        src="assets/terrain/${t}.png"
-        alt=""
-        style="
-          width:${size}px;
-          top:${top}%;
-          left:${left}%;
-          animation-duration:${duration}s;
-          animation-delay:${delay}s;
-          opacity:${0.15 + Math.random() * 0.25};
-        "
-      />
-    `;
-  }
-  bg.innerHTML = html;
+
+  HERO_IMAGES.forEach((id, i) => {
+    const img = document.createElement('img');
+    img.src = `assets/hero/${id}.png`;
+    img.alt = '';
+    img.loading = i === 0 ? 'eager' : 'lazy';
+    if (i === 0) img.classList.add('active');
+    bg.appendChild(img);
+  });
+
+  // Cycle backgrounds every 10s with a slow crossfade + zoom.
+  let index = 0;
+  const images = bg.querySelectorAll('img');
+  if (images.length <= 1) return;
+
+  setInterval(() => {
+    images[index]?.classList.remove('active');
+    index = (index + 1) % images.length;
+    images[index]?.classList.add('active');
+  }, 10000);
 }
 
 function setupNavigation(): void {
@@ -242,7 +235,7 @@ function init(): void {
   populateLeaderMarquee();
   populateEras();
   populateHexCluster();
-  createHeroHexBackground();
+  setupHeroBackground();
   setupNavigation();
   setupScrollReveal();
 }
