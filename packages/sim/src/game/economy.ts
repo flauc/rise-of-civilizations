@@ -1,6 +1,6 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
-import type { GameState, City, Player } from "./state";
-import { cityAt, log, makeUnit, unitAt } from "./state";
+import type { GameState, City, Player, Unit } from "./state";
+import { cityAt, log, makeUnit, unitAt, unitsOf } from "./state";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, tileYields, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
@@ -482,6 +482,31 @@ export function processCity(state: GameState, city: City, owner: Player): void {
     city.hp = Math.min(maxHp, city.hp + 20);
   }
   city.hp = Math.min(city.hp, maxHp);
+}
+
+/** Per-unit gold upkeep, modified by the owner's militaryMaintenanceCostMultiplier. */
+export function unitUpkeep(state: GameState, unit: Unit): number {
+  const base = UNIT_DEFS[unit.type].upkeep ?? 0;
+  if (base <= 0) return 0;
+  const mult = civEffectsOf(state, unit.ownerId).militaryMaintenanceCostMultiplier ?? 1;
+  return Math.round(base * mult);
+}
+
+/** Deduct empire-wide unit upkeep from a player's treasury after cities have produced yields. */
+export function applyUnitUpkeep(state: GameState, player: Player): void {
+  if (player.isBarbarian) return;
+  let total = 0;
+  for (const u of unitsOf(state, player.id)) {
+    total += unitUpkeep(state, u);
+  }
+  if (total <= 0) return;
+  player.gold -= total;
+  if (player.gold < 0) {
+    log(state, `${player.name}'s treasury is exhausted after paying ${total} gold in unit upkeep.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+    });
+  }
 }
 
 /** Techs the player can research right now (prereqs met, not yet known). */

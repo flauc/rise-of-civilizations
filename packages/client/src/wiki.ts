@@ -99,6 +99,7 @@ function renderUnits(): string {
         if (u.founder) notes.push("Founds cities");
         if (u.trader) notes.push("Establishes trade routes");
         if (u.reqTech) notes.push(`Requires ${u.reqTech}`);
+        if (u.upkeep > 0) notes.push(`${u.upkeep}🪙/turn upkeep`);
         if (u.abilities?.length) notes.push(u.abilities.join(", "));
         return (
           `<tr>` +
@@ -140,6 +141,17 @@ function renderGameplay(): string {
     section(
       "Exploration",
       `<p>Send Scouts and Warriors to reveal the map. Ancient villages reward the first player to enter them, while barbarian camps spawn raiders until cleared.</p>`,
+    ) +
+    section(
+      "Upkeep & Treasury",
+      `<p>Every military unit costs a small amount of <b>gold per turn</b> in upkeep. Civilian units are cheap or free: Settlers cost nothing (they are consumed to found a city), while Traders cost <b>1🪙/turn</b>. Basic warriors and scouts cost <b>1🪙/turn</b>; more advanced bronze, iron, and naval units cost <b>2–4🪙/turn</b>. Some civilization abilities modify these costs.</p>` +
+        `<p>When you create a game, choose a <b>Starting Treasury</b> preset that sets how much gold every major civilization begins with:</p>` +
+        `<ul>` +
+        `<li><b>Tight start</b> — <b>25🪙</b>. A smaller buffer; players must be careful about extra units early and will feel gold pressure quickly. Good if you want upkeep to bite.</li>` +
+        `<li><b>Balanced start</b> — <b>75🪙</b>. Enough to cover a modest army for ~15–25 turns while the first economy (trade route / Market / Harbor) comes online. Keeps early expansion viable without removing tension.</li>` +
+        `<li><b>Generous start</b> — <b>150🪙</b>. A comfortable cushion; players can support several units or bribe barbarians early without immediate gold anxiety. Reduces early economic tension.</li>` +
+        `</ul>` +
+        `<p>If your treasury drops below zero after paying upkeep, you will see a warning in the turn log. Try to grow your economy through trade routes, coastal/lake tiles, Markets, and Harbors before your starting gold runs out.</p>`,
     ) +
     section(
       "Barbarians & Parley",

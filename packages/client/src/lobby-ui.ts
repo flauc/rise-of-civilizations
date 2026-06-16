@@ -4,7 +4,7 @@
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
 import { createWiki } from "./wiki";
 import { CIVILIZATIONS, PLAYER_COLORS, type GameSummary, type SerializedState } from "@roc/sim";
-import { deleteSave, listSaves, loadSave, type SaveRecord } from "./save-db";
+import { deleteSave, exportSave, importSave, listSaves, loadSave, type SaveRecord } from "./save-db";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 
 const DEFAULT_WS_SCHEME = location.protocol === "https:" ? "wss" : "ws";
@@ -14,6 +14,7 @@ const DEFAULT_WS =
 type Screen = "start" | "sp" | "mp" | "load";
 
 type BarbLevel = "none" | "minimal" | "low" | "normal" | "high";
+type StartingGold = "tight" | "balanced" | "generous";
 
 /** "random" = let the sim assign a random unique civ when the game starts. */
 const RANDOM_CIV = "random";
@@ -34,6 +35,7 @@ interface MenuState {
     mapSize: MapSize;
     ais: AiConfig[];
     barbarians: BarbLevel;
+    startingGold: StartingGold;
   };
   mp: {
     url: string;
@@ -44,6 +46,7 @@ interface MenuState {
     humanColors: string[];
     ais: AiConfig[];
     userId: string;
+    startingGold: StartingGold;
   };
 }
 
@@ -104,6 +107,17 @@ function barbarianSelect(id: string, value: string): string {
     .join("")}</select>`;
 }
 
+function startingGoldSelect(id: string, value: StartingGold): string {
+  const opts: { value: StartingGold; label: string; desc: string }[] = [
+    { value: "tight", label: "Tight start", desc: "A smaller buffer; players must be careful about extra units early." },
+    { value: "balanced", label: "Balanced start", desc: "Enough to cover a modest army while the first economy comes online." },
+    { value: "generous", label: "Generous start", desc: "A comfortable cushion for several units or early barbarian bribes." },
+  ];
+  return `<select id="${id}" class="menu-in">${opts
+    .map((o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)} — ${escapeHtml(o.desc)}</option>`)
+    .join("")}</select>`;
+}
+
 function capacitySelect(id: string, value: number): string {
   return `<select id="${id}" class="menu-in">${Array.from({ length: 12 }, (_, n) => n + 1)
     .map((n) => `<option value="${n}"${n === value ? " selected" : ""}>${n}</option>`)
@@ -125,6 +139,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       mapSize: "medium",
       ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],
       barbarians: "normal",
+      startingGold: "balanced",
     },
     mp: {
       url: DEFAULT_WS,
@@ -134,6 +149,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       humanColors: [PLAYER_COLORS[0]!, PLAYER_COLORS[1]!],
       ais: [],
       userId: "",
+      startingGold: "balanced",
     },
   };
 
@@ -336,6 +352,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         <div class="menu-section-title">Game Options</div>
         <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
+        <div class="menu-row"><span>Starting treasury</span>${startingGoldSelect("sp-gold", state.sp.startingGold)}</div>
       </div>
       <div class="menu-back-row">
         <button class="menu-btn secondary" id="back2">Back</button>
@@ -434,6 +451,7 @@ export function createLobby(onStart: (session: Session) => void): void {
           aiCivIds: state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
           colors: [state.sp.color, ...state.sp.ais.map((a) => a.color)],
           barbarians: $select("#sp-barb").value as BarbLevel,
+          startingGold: $select("#sp-gold").value as StartingGold,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
       );
@@ -465,6 +483,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         <div class="menu-row"><span>Map size</span>${mapSelect("mp-map", "medium")}</div>
         <div class="menu-row"><span>Human players</span>${capacitySelect("mp-capacity", state.mp.capacity)}</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("mp-barb", "normal")}</div>
+        <div class="menu-row"><span>Starting treasury</span>${startingGoldSelect("mp-gold", state.mp.startingGold)}</div>
         <div class="menu-section-title" style="margin-top:14px">Players & Opponents</div>
         <div id="mp-roster"></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
@@ -666,8 +685,22 @@ export function createLobby(onStart: (session: Session) => void): void {
         aiCivIds: state.mp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
         colors: [...state.mp.humanColors, ...state.mp.ais.map((a) => a.color)],
         barbarians: $select("#mp-barb").value as BarbLevel,
+        startingGold: $select("#mp-gold").value as StartingGold,
       });
     });
+  }
+
+  function downloadSave(record: SaveRecord): void {
+    const blob = new Blob([exportSave(record)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const safeName = record.name.replace(/[^a-zA-Z0-9\-_\s]/g, "").trim() || "save";
+    a.download = `${safeName}.rocsave`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   async function renderLoadGame(): Promise<void> {
@@ -676,6 +709,8 @@ export function createLobby(onStart: (session: Session) => void): void {
       <div class="menu-section">
         <div class="menu-section-title">Load Saved Game</div>
         <div id="load-error" class="menu-status"></div>
+        <button class="menu-btn secondary" id="load-import" style="margin-top:10px"><span class="icon">📂</span> Import save file</button>
+        <input type="file" id="load-import-file" accept=".rocsave,.json" style="display:none" />
         <div id="load-empty" class="menu-hint">No saved games found.</div>
         <div id="load-list" class="save-list"></div>
       </div>`;
@@ -684,6 +719,24 @@ export function createLobby(onStart: (session: Session) => void): void {
     const errorEl = $("#load-error");
     const emptyEl = $("#load-empty");
     const listEl = $("#load-list");
+    const importBtn = $("#load-import") as HTMLButtonElement;
+    const importFile = $("#load-import-file") as HTMLInputElement;
+
+    importBtn.addEventListener("click", () => importFile.click());
+    importFile.addEventListener("change", async () => {
+      const file = importFile.files?.[0];
+      importFile.value = "";
+      if (!file) return;
+      errorEl.textContent = "";
+      try {
+        const text = await file.text();
+        const stored = await importSave(text);
+        errorEl.textContent = `Imported “${stored.name}”.`;
+        await renderLoadGame();
+      } catch (err) {
+        errorEl.textContent = String(err);
+      }
+    });
 
     let saves: SaveRecord[] = [];
     try {
@@ -711,6 +764,7 @@ export function createLobby(onStart: (session: Session) => void): void {
           `</span>` +
           `<span class="actions">` +
           `<button class="menu-btn primary" data-load="${s.id}" style="width:auto">Load</button>` +
+          `<button class="menu-btn" data-export="${s.id}" style="width:auto" title="Export to file">💾</button>` +
           `<button class="menu-btn" data-delete="${s.id}" style="width:auto">🗑</button>` +
           `</span>` +
           `</div>`,
@@ -728,6 +782,14 @@ export function createLobby(onStart: (session: Session) => void): void {
         }
         close();
         onStart(new LocalSession({ savedState: JSON.parse(record.blob) as SerializedState }));
+      }),
+    );
+    listEl.querySelectorAll<HTMLButtonElement>("[data-export]").forEach((el) =>
+      el.addEventListener("click", async () => {
+        const id = el.dataset.export!;
+        const record = await loadSave(id);
+        if (!record) return;
+        downloadSave(record);
       }),
     );
     listEl.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((el) =>

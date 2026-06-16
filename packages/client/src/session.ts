@@ -55,6 +55,8 @@ export interface LocalGameOptions {
   mapSize?: MapSize;
   aiCount?: number;
   barbarians?: boolean | BarbarianActivity;
+  /** Starting gold treasury preset. */
+  startingGold?: "tight" | "balanced" | "generous";
   /** The human player's civilization. */
   civId?: string;
   /** Civ id per AI opponent; null/undefined = a random unique civ. */
@@ -87,6 +89,7 @@ export class LocalSession implements Session {
         humanSlots: 1,
         playerCount: 1 + aiCount,
         barbarians: opts.barbarians ?? true,
+        startingGold: opts.startingGold ?? "balanced",
         civIds,
         colors: opts.colors ?? undefined,
       });

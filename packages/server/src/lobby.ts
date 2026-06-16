@@ -20,6 +20,7 @@ export interface LobbyGame {
   rows?: number;
   aiCount: number;
   barbarians: BarbarianActivity;
+  startingGold: "tight" | "balanced" | "generous";
   /** Civ id per AI opponent; null = a random unique civ. */
   aiCivIds: (string | null)[];
   /** Color per player slot (humans first, then AI); null = auto-assigned. */
@@ -38,6 +39,7 @@ export interface CreateOptions {
   capacity?: number;
   aiCount?: number;
   barbarians?: BarbarianActivity;
+  startingGold?: "tight" | "balanced" | "generous";
   aiCivIds?: (string | null)[];
   colors?: (string | null)[];
 }
@@ -69,6 +71,7 @@ export class Lobby {
       rows: opts.rows,
       aiCount,
       barbarians: opts.barbarians ?? "normal",
+      startingGold: opts.startingGold ?? "balanced",
       aiCivIds,
       colors: (opts.colors ?? []).slice(0, capacity + aiCount),
       slots,
@@ -114,6 +117,7 @@ export class Lobby {
       playerCount: names.length + game.aiCount,
       humanSlots: names.length,
       barbarians: game.barbarians,
+      startingGold: game.startingGold,
       civIds,
       colors: game.colors,
     });

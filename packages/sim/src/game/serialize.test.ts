@@ -70,6 +70,7 @@ describe("serialize round-trip", () => {
       const p = state.players[i]!;
       const rp = restored.players[i]!;
       expect([...rp.researched].sort()).toEqual([...p.researched].sort());
+      expect([...rp.civicsResearched].sort()).toEqual([...p.civicsResearched].sort());
       expect([...rp.explored].sort()).toEqual([...p.explored].sort());
     }
   });

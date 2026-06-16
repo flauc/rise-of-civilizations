@@ -23,6 +23,8 @@ export interface NewGameOptions {
   humanSlots?: number;
   /** Barbarian intensity. `false` = none, `true` = normal. */
   barbarians?: boolean | BarbarianActivity;
+  /** Starting gold treasury preset for major civ players. */
+  startingGold?: "tight" | "balanced" | "generous";
   turnLimit?: number;
   /** Civilization id per slot; unspecified slots get a random unique civ. */
   civIds?: (string | undefined)[];
@@ -34,6 +36,18 @@ function normalizeBarbarians(v: boolean | BarbarianActivity | undefined): Barbar
   if (v === false) return "none";
   if (v === true) return "normal";
   return v ?? "normal";
+}
+
+function startingGoldAmount(preset: "tight" | "balanced" | "generous" | undefined): number {
+  switch (preset) {
+    case "tight":
+      return 25;
+    case "generous":
+      return 150;
+    case "balanced":
+    default:
+      return 75;
+  }
 }
 
 /**
@@ -138,6 +152,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   const count = Math.max(1, opts.playerCount ?? opts.playerNames?.length ?? 2);
   const humanSlots = opts.humanSlots ?? count;
   const activity = normalizeBarbarians(opts.barbarians);
+  const startGold = startingGoldAmount(opts.startingGold);
 
   const map = generateMap({ cols, rows, seed });
 
@@ -191,7 +206,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       isHuman: i < humanSlots,
       isBarbarian: false,
       civId: civForSlot(i),
-      gold: 0,
+      gold: startGold,
       researched: new Set(STARTING_TECHS),
       researching: null,
       scienceProgress: 0,

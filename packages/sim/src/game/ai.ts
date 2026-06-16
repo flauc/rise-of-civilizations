@@ -152,10 +152,12 @@ function chooseProduction(state: GameState, player: Player, city: City): Product
     if (t) return t.item;
   }
   // 4. Buildings — broad priority order (skips any already built / not unlocked).
-  const BUILD_ORDER = [
-    "granary", "workshop", "library", "market", "walls", "barracks", "forge",
-    "shrine", "temple", "monument", "stable", "aqueduct", "academy", "amphitheater", "harbor",
-  ] as const;
+  // If the treasury is empty, lean harder on economic buildings before adding more upkeep.
+  const BUILD_ORDER = player.gold <= 0
+    ? (["market", "harbor", "granary", "workshop", "library", "walls", "barracks", "forge",
+        "shrine", "temple", "monument", "stable", "aqueduct", "academy", "amphitheater"] as const)
+    : (["granary", "workshop", "library", "market", "walls", "barracks", "forge",
+        "shrine", "temple", "monument", "stable", "aqueduct", "academy", "amphitheater", "harbor"] as const);
   for (const b of BUILD_ORDER) {
     const o = opts.find((x) => x.item.kind === "building" && x.item.id === b);
     if (o) return o.item;

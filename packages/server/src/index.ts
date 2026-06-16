@@ -88,6 +88,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         capacity: msg.capacity,
         aiCount: msg.aiCount,
         barbarians: msg.barbarians,
+        startingGold: msg.startingGold,
         aiCivIds: msg.aiCivIds,
         colors: msg.colors,
       });

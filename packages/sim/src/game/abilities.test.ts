@@ -129,6 +129,15 @@ describe("active abilities", () => {
     expect(scout.movementLeft).toBe(0);
   });
 
+  it("Reconnoiter requires at least one movement point left", () => {
+    const state = bareGame();
+    const scout = place(state, 0, "scout", 5, 5);
+    scout.movementLeft = 0;
+    expect(useAbility(state, scout, "reconnoiter").ok).toBe(false);
+    scout.movementLeft = 1;
+    expect(useAbility(state, scout, "reconnoiter").ok).toBe(true);
+  });
+
   it("abilityTargets lists in-range enemies for a targeted ability", () => {
     const state = bareGame();
     const rider = place(state, 0, "rider", 5, 5);

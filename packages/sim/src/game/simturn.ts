@@ -9,7 +9,7 @@
 import type { GameState } from "./state";
 import { unitMovement } from "./civs";
 import { healAndReset, towerBombardment } from "./combat";
-import { processCity } from "./economy";
+import { processCity, applyUnitUpkeep } from "./economy";
 import { barbarianTurn } from "./barbarians";
 import { updateExplored } from "./visibility";
 import { applyVictoryCheck } from "./victory";
@@ -59,6 +59,7 @@ export function resolveSimultaneousTurn(state: GameState): void {
     for (const c of state.cities.values()) {
       if (c.ownerId === p.id) processCity(state, c, p);
     }
+    applyUnitUpkeep(state, p); // empire-wide unit maintenance after city income
     advanceWorks(state, p.id); // specialists labour on public works
   }
   spreadReligion(state);

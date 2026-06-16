@@ -124,6 +124,27 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(g.aiCount).toBe(12);
   });
 
+  it("honors the startingGold option and applies it to player treasuries", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Tight", "uA", "Alice", {
+      seed: "seed-gold",
+      capacity: 1,
+      startingGold: "tight",
+    });
+    expect(g.startingGold).toBe("tight");
+    expect(lobby.start(g.id)).toEqual({ ok: true });
+    const host = lobby.get(g.id)!.host!;
+    expect(host.state.players[0]!.gold).toBe(25);
+
+    const g2 = lobby.create("Generous", "uA", "Alice", {
+      seed: "seed-gold2",
+      capacity: 1,
+      startingGold: "generous",
+    });
+    lobby.start(g2.id);
+    expect(lobby.get(g2.id)!.host!.state.players[0]!.gold).toBe(150);
+  });
+
   it("lets the host delete a game and rejects deletions by others", () => {
     const lobby = new Lobby();
     const g = lobby.create("Deletable", "uA", "Alice", { seed: "seed-del" });

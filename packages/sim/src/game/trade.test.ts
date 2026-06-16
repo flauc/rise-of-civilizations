@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { getCityYields } from "./economy";
@@ -77,5 +78,80 @@ describe("trade routes", () => {
     s.cities.delete(to.id); // destination razed
     pruneTradeRoutes(s);
     expect(s.tradeRoutes).toHaveLength(0);
+  });
+
+  it("gains a gold bonus when the route runs over a fully roaded path", () => {
+    const { s, from, to } = gameWithTwoCities();
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tid, to.id, 0);
+    const route = s.tradeRoutes[0]!;
+    const baseYield = tradeRouteYield(s, route).gold;
+
+    // Pave every intermediate tile with dirt roads.
+    for (let i = 1; i < route.path.length - 1; i++) {
+      const [col, row] = route.path[i]!.split(",").map(Number) as [number, number];
+      const tile = getTile(s.map, col, row);
+      if (tile) {
+        tile.road = true;
+        tile.roadLevel = 1;
+      }
+    }
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 2);
+
+    // Upgrade to paved roads.
+    for (let i = 1; i < route.path.length - 1; i++) {
+      const [col, row] = route.path[i]!.split(",").map(Number) as [number, number];
+      const tile = getTile(s.map, col, row);
+      if (tile) tile.roadLevel = 2;
+    }
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 4);
+
+    // Upgrade to imperial roads.
+    for (let i = 1; i < route.path.length - 1; i++) {
+      const [col, row] = route.path[i]!.split(",").map(Number) as [number, number];
+      const tile = getTile(s.map, col, row);
+      if (tile) tile.roadLevel = 3;
+    }
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
+  });
+
+  it("gains no road bonus if any intermediate tile lacks a road", () => {
+    const { s, from, to } = gameWithTwoCities();
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tid, to.id, 0);
+    const route = s.tradeRoutes[0]!;
+    const baseYield = tradeRouteYield(s, route).gold;
+
+    // Pave all but the first intermediate tile.
+    for (let i = 2; i < route.path.length - 1; i++) {
+      const [col, row] = route.path[i]!.split(",").map(Number) as [number, number];
+      const tile = getTile(s.map, col, row);
+      if (tile) {
+        tile.road = true;
+        tile.roadLevel = 3;
+      }
+    }
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield);
+  });
+
+  it("uses the weakest road tier along the path", () => {
+    const { s, from, to } = gameWithTwoCities();
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tid, to.id, 0);
+    const route = s.tradeRoutes[0]!;
+    const baseYield = tradeRouteYield(s, route).gold;
+
+    for (let i = 1; i < route.path.length - 1; i++) {
+      const [col, row] = route.path[i]!.split(",").map(Number) as [number, number];
+      const tile = getTile(s.map, col, row);
+      if (tile) {
+        tile.road = true;
+        tile.roadLevel = i === 1 ? 1 : 3; // one dirt road, the rest imperial
+      }
+    }
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 2);
   });
 });

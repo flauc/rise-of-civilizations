@@ -4,7 +4,7 @@ import { cityAt, currentPlayer, log, playerById, unitsOf, citiesOf } from "./sta
 import { isPassableLand, isWaterTerrain } from "./terrain";
 import { computeReachable, isCoastalLand, isCoastalWater, isNavalUnit, isWaterDomain } from "./movement";
 import { updateExplored } from "./visibility";
-import { processCity, availableProduction, autoAssignCitizens, toggleCitizen } from "./economy";
+import { processCity, availableProduction, autoAssignCitizens, toggleCitizen, applyUnitUpkeep } from "./economy";
 import {
   cityMaxHp,
   healAndReset,
@@ -120,6 +120,7 @@ export function beginTurn(state: GameState): void {
     c.rangedAttackUsed = false;
     processCity(state, c, player);
   }
+  applyUnitUpkeep(state, player); // empire-wide unit maintenance after city income
   advanceWorks(state, player.id); // specialists labour on public works
   towerBombardment(state, player.id); // towers fire on adjacent enemies
   // Religion spreads + diplomacy ticks once per round (at the start of player 0's turn).

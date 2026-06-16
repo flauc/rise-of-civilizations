@@ -53,6 +53,7 @@ export const UNIT_SUBSET: AssetEntry[] = [
   // civilian
   { id: "settler", name: "Settler", description: "a lone ancient settler on foot wearing simple hide and woven clothing, carrying basic belongings, no animals, wagons, or companions", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "worker", name: "Worker", description: "an ancient laborer in simple clothing using a basic flint, bone, or bronze tool", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "trader", name: "Trader", description: "an ancient trader in travel clothing with a small wooden cart or pack animal loaded with clay jars, cloth bundles, and trade goods", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   // recon
   { id: "scout", name: "Scout", description: "a lightly armed ancient explorer in hides with a simple wooden staff", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   // dawn melee / ranged

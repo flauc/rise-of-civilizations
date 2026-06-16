@@ -29,6 +29,8 @@ export type ClientMessage =
       capacity?: number;
       aiCount?: number;
       barbarians?: BarbarianActivity;
+      /** Starting gold treasury preset for major civ players. */
+      startingGold?: "tight" | "balanced" | "generous";
       /** Civ id per AI opponent; null/undefined = a random unique civ. */
       aiCivIds?: (string | null)[];
       /** Color per player slot (humans first, then AI); null/undefined = auto. */

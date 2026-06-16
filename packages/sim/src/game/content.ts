@@ -134,6 +134,8 @@ export interface UnitDef {
   movement: number;
   sight: number;
   cost: number;
+  /** Gold upkeep per turn. Civilian/consumed units are usually 0. */
+  upkeep: number;
   strength: number;
   rangedStrength?: number;
   range?: number;
@@ -156,55 +158,55 @@ export interface UnitDef {
 const U = (d: UnitDef): UnitDef => d;
 
 export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
-  settler: U({ id: "settler", name: "Settler", glyph: "S", cls: "settler", movement: 2, sight: 2, cost: 24, strength: 0, founder: true }),
-  trader: U({ id: "trader", name: "Trader", glyph: "$", cls: "trader", movement: 3, sight: 2, cost: 30, strength: 0, reqTech: "the_wheel", trader: true }),
-  scout: U({ id: "scout", name: "Scout", glyph: "C", cls: "recon", movement: 3, sight: 3, cost: 10, strength: 4 }),
+  settler: U({ id: "settler", name: "Settler", glyph: "S", cls: "settler", movement: 2, sight: 2, cost: 24, upkeep: 0, strength: 0, founder: true }),
+  trader: U({ id: "trader", name: "Trader", glyph: "$", cls: "trader", movement: 3, sight: 2, cost: 30, upkeep: 1, strength: 0, reqTech: "the_wheel", trader: true }),
+  scout: U({ id: "scout", name: "Scout", glyph: "C", cls: "recon", movement: 3, sight: 3, cost: 10, upkeep: 1, strength: 4 }),
 
-  clubman: U({ id: "clubman", name: "Clubman", glyph: "c", cls: "melee", movement: 2, sight: 2, cost: 10, strength: 6 }),
-  warrior: U({ id: "warrior", name: "Warrior", glyph: "W", cls: "melee", movement: 2, sight: 2, cost: 15, strength: 8 }),
-  slinger: U({ id: "slinger", name: "Slinger", glyph: "L", cls: "ranged", movement: 2, sight: 2, cost: 12, strength: 4, rangedStrength: 7, range: 1 }),
-  javelineer: U({ id: "javelineer", name: "Javelineer", glyph: "J", cls: "ranged", movement: 2, sight: 2, cost: 14, strength: 6, rangedStrength: 8, range: 1 }),
-  hunter: U({ id: "hunter", name: "Hunter", glyph: "H", cls: "ranged", movement: 2, sight: 3, cost: 13, strength: 5, rangedStrength: 7, range: 1 }),
+  clubman: U({ id: "clubman", name: "Clubman", glyph: "c", cls: "melee", movement: 2, sight: 2, cost: 10, upkeep: 1, strength: 6 }),
+  warrior: U({ id: "warrior", name: "Warrior", glyph: "W", cls: "melee", movement: 2, sight: 2, cost: 15, upkeep: 1, strength: 8 }),
+  slinger: U({ id: "slinger", name: "Slinger", glyph: "L", cls: "ranged", movement: 2, sight: 2, cost: 12, upkeep: 1, strength: 4, rangedStrength: 7, range: 1 }),
+  javelineer: U({ id: "javelineer", name: "Javelineer", glyph: "J", cls: "ranged", movement: 2, sight: 2, cost: 14, upkeep: 1, strength: 6, rangedStrength: 8, range: 1 }),
+  hunter: U({ id: "hunter", name: "Hunter", glyph: "H", cls: "ranged", movement: 2, sight: 3, cost: 13, upkeep: 1, strength: 5, rangedStrength: 7, range: 1 }),
 
-  firehard_spear: U({ id: "firehard_spear", name: "Fire-Hardened Spearman", glyph: "F", cls: "melee", movement: 2, sight: 2, cost: 15, strength: 9, reqTech: "fire_hardening", abilities: ["bonus_vs_cavalry"] }),
-  war_dog: U({ id: "war_dog", name: "War Dogs", glyph: "D", cls: "melee", movement: 3, sight: 2, cost: 12, strength: 6, reqTech: "animal_taming" }),
-  archer: U({ id: "archer", name: "Archer", glyph: "A", cls: "ranged", movement: 2, sight: 2, cost: 18, strength: 6, rangedStrength: 11, range: 2, reqTech: "composite_bow" }),
+  firehard_spear: U({ id: "firehard_spear", name: "Fire-Hardened Spearman", glyph: "F", cls: "melee", movement: 2, sight: 2, cost: 15, upkeep: 1, strength: 9, reqTech: "fire_hardening", abilities: ["bonus_vs_cavalry"] }),
+  war_dog: U({ id: "war_dog", name: "War Dogs", glyph: "D", cls: "melee", movement: 3, sight: 2, cost: 12, upkeep: 1, strength: 6, reqTech: "animal_taming" }),
+  archer: U({ id: "archer", name: "Archer", glyph: "A", cls: "ranged", movement: 2, sight: 2, cost: 18, upkeep: 1, strength: 6, rangedStrength: 11, range: 2, reqTech: "composite_bow" }),
 
-  axeman: U({ id: "axeman", name: "Bronze Axeman", glyph: "X", cls: "melee", movement: 2, sight: 2, cost: 19, strength: 13, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 } }),
-  maceman: U({ id: "maceman", name: "Maceman", glyph: "M", cls: "melee", movement: 2, sight: 2, cost: 18, strength: 11, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_city"] }),
-  spearman: U({ id: "spearman", name: "Spearman", glyph: "P", cls: "melee", movement: 2, sight: 2, cost: 18, strength: 11, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"] }),
-  hoplite: U({ id: "hoplite", name: "Hoplite", glyph: "O", cls: "melee", movement: 2, sight: 2, cost: 22, strength: 13, reqTech: "phalanx", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"] }),
+  axeman: U({ id: "axeman", name: "Bronze Axeman", glyph: "X", cls: "melee", movement: 2, sight: 2, cost: 19, upkeep: 2, strength: 13, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 } }),
+  maceman: U({ id: "maceman", name: "Maceman", glyph: "M", cls: "melee", movement: 2, sight: 2, cost: 18, upkeep: 2, strength: 11, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_city"] }),
+  spearman: U({ id: "spearman", name: "Spearman", glyph: "P", cls: "melee", movement: 2, sight: 2, cost: 18, upkeep: 2, strength: 11, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"] }),
+  hoplite: U({ id: "hoplite", name: "Hoplite", glyph: "O", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 13, reqTech: "phalanx", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"] }),
 
-  light_chariot: U({ id: "light_chariot", name: "Light Chariot", glyph: "y", cls: "cavalry", movement: 4, sight: 2, cost: 18, strength: 9, reqTech: "the_wheel", reqResource: { resource: "horses", count: 1 } }),
-  war_chariot: U({ id: "war_chariot", name: "War Chariot", glyph: "Y", cls: "cavalry", movement: 4, sight: 2, cost: 24, strength: 13, reqTech: "chariotry", reqResource: { resource: "horses", count: 1 } }),
-  rider: U({ id: "rider", name: "Rider", glyph: "R", cls: "cavalry", movement: 4, sight: 2, cost: 18, strength: 10, reqTech: "equestrian", reqResource: { resource: "horses", count: 1 } }),
-  horse_archer: U({ id: "horse_archer", name: "Horse Archer", glyph: "Q", cls: "cavalry", movement: 4, sight: 2, cost: 22, strength: 7, rangedStrength: 9, range: 1, reqTech: "horse_archery", reqResource: { resource: "horses", count: 1 } }),
+  light_chariot: U({ id: "light_chariot", name: "Light Chariot", glyph: "y", cls: "cavalry", movement: 4, sight: 2, cost: 18, upkeep: 2, strength: 9, reqTech: "the_wheel", reqResource: { resource: "horses", count: 1 } }),
+  war_chariot: U({ id: "war_chariot", name: "War Chariot", glyph: "Y", cls: "cavalry", movement: 4, sight: 2, cost: 24, upkeep: 2, strength: 13, reqTech: "chariotry", reqResource: { resource: "horses", count: 1 } }),
+  rider: U({ id: "rider", name: "Rider", glyph: "R", cls: "cavalry", movement: 4, sight: 2, cost: 18, upkeep: 2, strength: 10, reqTech: "equestrian", reqResource: { resource: "horses", count: 1 } }),
+  horse_archer: U({ id: "horse_archer", name: "Horse Archer", glyph: "Q", cls: "cavalry", movement: 4, sight: 2, cost: 22, upkeep: 2, strength: 7, rangedStrength: 9, range: 1, reqTech: "horse_archery", reqResource: { resource: "horses", count: 1 } }),
 
-  swordsman: U({ id: "swordsman", name: "Swordsman", glyph: "Z", cls: "melee", movement: 2, sight: 2, cost: 22, strength: 15, reqTech: "iron_bloomery", reqResource: { resource: "iron", count: 1 } }),
-  longswordsman: U({ id: "longswordsman", name: "Longswordsman", glyph: "G", cls: "melee", movement: 2, sight: 2, cost: 26, strength: 18, reqTech: "carburizing", reqResource: { resource: "iron", count: 1 } }),
-  pikeman: U({ id: "pikeman", name: "Pikeman", glyph: "K", cls: "melee", movement: 2, sight: 2, cost: 20, strength: 14, reqTech: "iron_bloomery", reqResource: { resource: "iron", count: 1 }, abilities: ["bonus_vs_cavalry"] }),
-  cataphract: U({ id: "cataphract", name: "Cataphract", glyph: "T", cls: "cavalry", movement: 3, sight: 2, cost: 28, strength: 17, reqTech: "cavalry_doctrine", reqResource: { resource: "horses", count: 1 } }),
-  crossbowman: U({ id: "crossbowman", name: "Crossbowman", glyph: "V", cls: "ranged", movement: 2, sight: 2, cost: 22, strength: 8, rangedStrength: 14, range: 2, reqTech: "crossbow" }),
-  legionary: U({ id: "legionary", name: "Legionary", glyph: "E", cls: "melee", movement: 2, sight: 2, cost: 22, strength: 15, reqTech: "engineering" }),
-  war_elephant: U({ id: "war_elephant", name: "War Elephant", glyph: "N", cls: "cavalry", movement: 3, sight: 2, cost: 30, strength: 16, reqTech: "elephantry", reqResource: { resource: "elephants", count: 1 }, abilities: ["bonus_vs_city"] }),
+  swordsman: U({ id: "swordsman", name: "Swordsman", glyph: "Z", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 15, reqTech: "iron_bloomery", reqResource: { resource: "iron", count: 1 } }),
+  longswordsman: U({ id: "longswordsman", name: "Longswordsman", glyph: "G", cls: "melee", movement: 2, sight: 2, cost: 26, upkeep: 3, strength: 18, reqTech: "carburizing", reqResource: { resource: "iron", count: 1 } }),
+  pikeman: U({ id: "pikeman", name: "Pikeman", glyph: "K", cls: "melee", movement: 2, sight: 2, cost: 20, upkeep: 2, strength: 14, reqTech: "iron_bloomery", reqResource: { resource: "iron", count: 1 }, abilities: ["bonus_vs_cavalry"] }),
+  cataphract: U({ id: "cataphract", name: "Cataphract", glyph: "T", cls: "cavalry", movement: 3, sight: 2, cost: 28, upkeep: 3, strength: 17, reqTech: "cavalry_doctrine", reqResource: { resource: "horses", count: 1 } }),
+  crossbowman: U({ id: "crossbowman", name: "Crossbowman", glyph: "V", cls: "ranged", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 8, rangedStrength: 14, range: 2, reqTech: "crossbow" }),
+  legionary: U({ id: "legionary", name: "Legionary", glyph: "E", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 15, reqTech: "engineering" }),
+  war_elephant: U({ id: "war_elephant", name: "War Elephant", glyph: "N", cls: "cavalry", movement: 3, sight: 2, cost: 30, upkeep: 3, strength: 16, reqTech: "elephantry", reqResource: { resource: "elephants", count: 1 }, abilities: ["bonus_vs_city"] }),
 
-  battering_ram: U({ id: "battering_ram", name: "Battering Ram", glyph: "U", cls: "siege", movement: 2, sight: 2, cost: 16, strength: 6, rangedStrength: 10, range: 1, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),
-  catapult: U({ id: "catapult", name: "Catapult", glyph: "I", cls: "siege", movement: 2, sight: 2, cost: 25, strength: 6, rangedStrength: 14, range: 2, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),
-  ballista: U({ id: "ballista", name: "Ballista", glyph: "b", cls: "siege", movement: 2, sight: 2, cost: 30, strength: 7, rangedStrength: 16, range: 2, reqTech: "torsion_engines", abilities: ["bonus_vs_city"] }),
+  battering_ram: U({ id: "battering_ram", name: "Battering Ram", glyph: "U", cls: "siege", movement: 2, sight: 2, cost: 16, upkeep: 2, strength: 6, rangedStrength: 10, range: 1, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),
+  catapult: U({ id: "catapult", name: "Catapult", glyph: "I", cls: "siege", movement: 2, sight: 2, cost: 25, upkeep: 2, strength: 6, rangedStrength: 14, range: 2, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),
+  ballista: U({ id: "ballista", name: "Ballista", glyph: "b", cls: "siege", movement: 2, sight: 2, cost: 30, upkeep: 3, strength: 7, rangedStrength: 16, range: 2, reqTech: "torsion_engines", abilities: ["bonus_vs_city"] }),
 
   // ---- naval melee ---------------------------------------------------------
-  galley: U({ id: "galley", name: "Galley", glyph: "g", cls: "naval_melee", movement: 3, sight: 2, cost: 20, strength: 10, reqTech: "sailing" }),
-  bireme: U({ id: "bireme", name: "Bireme", glyph: "B", cls: "naval_melee", movement: 3, sight: 2, cost: 28, strength: 14, reqTech: "shipbuilding" }),
-  trireme: U({ id: "trireme", name: "Trireme", glyph: "T", cls: "naval_melee", movement: 3, sight: 2, cost: 32, strength: 16, reqTech: "shipbuilding" }),
-  quinquereme: U({ id: "quinquereme", name: "Quinquereme", glyph: "Q", cls: "naval_melee", movement: 3, sight: 2, cost: 38, strength: 20, reqTech: "naval_architecture" }),
-  longship: U({ id: "longship", name: "Longship", glyph: "L", cls: "naval_melee", movement: 4, sight: 2, cost: 26, strength: 12, reqTech: "sailcloth" }),
-  caravel: U({ id: "caravel", name: "Caravel", glyph: "V", cls: "naval_melee", movement: 5, sight: 3, cost: 40, strength: 14, reqTech: "astronomy", oceanGoing: true }),
+  galley: U({ id: "galley", name: "Galley", glyph: "g", cls: "naval_melee", movement: 3, sight: 2, cost: 20, upkeep: 2, strength: 10, reqTech: "sailing" }),
+  bireme: U({ id: "bireme", name: "Bireme", glyph: "B", cls: "naval_melee", movement: 3, sight: 2, cost: 28, upkeep: 2, strength: 14, reqTech: "shipbuilding" }),
+  trireme: U({ id: "trireme", name: "Trireme", glyph: "T", cls: "naval_melee", movement: 3, sight: 2, cost: 32, upkeep: 3, strength: 16, reqTech: "shipbuilding" }),
+  quinquereme: U({ id: "quinquereme", name: "Quinquereme", glyph: "Q", cls: "naval_melee", movement: 3, sight: 2, cost: 38, upkeep: 3, strength: 20, reqTech: "naval_architecture" }),
+  longship: U({ id: "longship", name: "Longship", glyph: "L", cls: "naval_melee", movement: 4, sight: 2, cost: 26, upkeep: 2, strength: 12, reqTech: "sailcloth" }),
+  caravel: U({ id: "caravel", name: "Caravel", glyph: "V", cls: "naval_melee", movement: 5, sight: 3, cost: 40, upkeep: 3, strength: 14, reqTech: "astronomy", oceanGoing: true }),
 
   // ---- naval ranged --------------------------------------------------------
-  dromon: U({ id: "dromon", name: "Dromon", glyph: "D", cls: "naval_ranged", movement: 4, sight: 2, cost: 34, strength: 8, rangedStrength: 14, range: 2, reqTech: "engineering" }),
-  war_junk: U({ id: "war_junk", name: "War Junk", glyph: "J", cls: "naval_ranged", movement: 4, sight: 2, cost: 34, strength: 10, rangedStrength: 16, range: 2, reqTech: "engineering" }),
-  galleass: U({ id: "galleass", name: "Galleass", glyph: "G", cls: "naval_ranged", movement: 3, sight: 2, cost: 40, strength: 10, rangedStrength: 18, range: 2, reqTech: "naval_architecture" }),
-  galleon: U({ id: "galleon", name: "Galleon", glyph: "O", cls: "naval_ranged", movement: 5, sight: 3, cost: 48, strength: 12, rangedStrength: 20, range: 2, reqTech: "cartography", oceanGoing: true }),
+  dromon: U({ id: "dromon", name: "Dromon", glyph: "D", cls: "naval_ranged", movement: 4, sight: 2, cost: 34, upkeep: 3, strength: 8, rangedStrength: 14, range: 2, reqTech: "engineering" }),
+  war_junk: U({ id: "war_junk", name: "War Junk", glyph: "J", cls: "naval_ranged", movement: 4, sight: 2, cost: 34, upkeep: 3, strength: 10, rangedStrength: 16, range: 2, reqTech: "engineering" }),
+  galleass: U({ id: "galleass", name: "Galleass", glyph: "G", cls: "naval_ranged", movement: 3, sight: 2, cost: 40, upkeep: 3, strength: 10, rangedStrength: 18, range: 2, reqTech: "naval_architecture" }),
+  galleon: U({ id: "galleon", name: "Galleon", glyph: "O", cls: "naval_ranged", movement: 5, sight: 3, cost: 48, upkeep: 4, strength: 12, rangedStrength: 20, range: 2, reqTech: "cartography", oceanGoing: true }),
 };
 
 // Assign each unit's player-triggered active abilities (docs/UNIT-ABILITIES.md §4).
@@ -402,6 +404,7 @@ export function unitInfo(type: UnitTypeId): UnitInfo {
   if (d.founder) notes.push("consumed to found a city");
   if (d.trader) notes.push("consumed to set up a trade route");
   if (d.reqResource) notes.push(`requires ${d.reqResource.count} ${d.reqResource.resource}`);
+  if (d.upkeep > 0) notes.push(`${d.upkeep}🪙/turn upkeep`);
   if (isNaval(d)) notes.push("naval");
   if (d.oceanGoing) notes.push("ocean-going");
   return { role: ROLE[d.cls], stats: stats.join(" · "), note: notes.join(" · ") };

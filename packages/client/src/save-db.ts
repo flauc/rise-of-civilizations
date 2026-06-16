@@ -95,6 +95,46 @@ export async function renameSave(id: string, name: string): Promise<void> {
   await saveGame(record);
 }
 
+/** Serialize a save record to a portable JSON string. */
+export function exportSave(record: SaveRecord): string {
+  return JSON.stringify(record);
+}
+
+/** Validate an imported JSON string and persist it as a new local save. */
+export async function importSave(json: string): Promise<SaveRecord> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    throw new Error("Save file is not valid JSON.");
+  }
+  if (!raw || typeof raw !== "object") throw new Error("Save file is not a valid object.");
+  const rec = raw as Partial<SaveRecord>;
+  if (typeof rec.name !== "string" || !rec.name.trim()) throw new Error("Save file is missing a name.");
+  if (rec.mode !== "sp" && rec.mode !== "mp") throw new Error("Save file has an invalid mode.");
+  if (typeof rec.turn !== "number") throw new Error("Save file is missing turn number.");
+  if (!Array.isArray(rec.playerNames)) throw new Error("Save file is missing player names.");
+  if (typeof rec.blob !== "string") throw new Error("Save file is missing state data.");
+  try {
+    JSON.parse(rec.blob);
+  } catch {
+    throw new Error("Save file state data is not valid JSON.");
+  }
+
+  const stored: SaveRecord = {
+    id: `save_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    name: rec.name.trim(),
+    mode: rec.mode,
+    createdAt: typeof rec.createdAt === "number" ? rec.createdAt : Date.now(),
+    turn: rec.turn,
+    playerNames: rec.playerNames,
+    gameId: typeof rec.gameId === "string" ? rec.gameId : undefined,
+    blob: rec.blob,
+  };
+  await saveGame(stored);
+  return stored;
+}
+
 /** Build a short default name from the current game metadata. */
 export function defaultSaveName(mode: SaveMode, turn: number, playerNames: string[]): string {
   const date = new Date().toLocaleString(undefined, {

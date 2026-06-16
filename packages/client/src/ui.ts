@@ -229,6 +229,7 @@ export interface UIHandlers {
   onCloseTile(): void;
   onSuggestion(): void;
   onSave(name: string): Promise<void>;
+  onExportCurrentSave(): Promise<string>;
   onMenuOpen(): void;
   onLoadMpSave(blob: string): Promise<void>;
   onCheat(action: CheatAction): void;
@@ -261,6 +262,18 @@ function escapeHtml(text: string): string {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+function downloadJson(filename: string, json: string): void {
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function prodCost(item: ProductionItem): number {
@@ -462,6 +475,8 @@ export function createUI(handlers: UIHandlers): UI {
       (n, c) => n + getCityYields(state, c).science,
       0,
     );
+    const gld = citiesOf(state, player.id).reduce((n, c) => n + getCityYields(state, c).gold, 0);
+    const fth = citiesOf(state, player.id).reduce((n, c) => n + getCityYields(state, c).faith, 0);
     const researchingDef = player.researching ? TECH_DEFS[player.researching] : null;
     const researchPct = researchingDef
       ? Math.min(100, (player.scienceProgress / researchingDef.cost) * 100)
@@ -486,13 +501,13 @@ export function createUI(handlers: UIHandlers): UI {
         <span class="tb-civ" title="${civTitle}"><span class="dot" style="background:${player.color}"></span>${player.name}${civ ? ` · <b>${civ.name}</b>` : ""}</span>
       </div>
       <div class="tb-grp tb-res">
-        <span class="chip" title="Gold">🪙 ${Math.floor(player.gold)}</span>
+        <span class="chip" title="Gold">🪙 ${Math.floor(player.gold)} <span style="color:#ffd700">(+${gld})</span></span>
         <button class="tb-pill" id="research-btn" title="Research" style="--p:${researchPct}%">
           <span class="tb-pl">🔬</span><b>${rName}</b><span class="tb-score">+${sci}</span></button>
         <button class="tb-pill civic" id="civics-btn" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%">
           <span class="tb-pl">🏛️</span><b>${cName}</b><span class="tb-score">+${cul}</span></button>
         <button class="tb-pill" id="religion-btn" title="Religion">
-          <span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b></button>
+          <span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b><span class="tb-score">+${fth}</span></button>
       </div>
       <div class="tb-grp">
         <button class="tb-pill empire" id="empire-btn" title="Empire">
@@ -593,10 +608,10 @@ export function createUI(handlers: UIHandlers): UI {
     // Mobile bottom bar: mirrors the topbar actions as icon-only buttons.
     bottomBar.innerHTML =
       `<div class="bb-grp">` +
-      `<span class="bb-chip" title="Gold">🪙 ${Math.floor(player.gold)}</span>` +
+      `<span class="bb-chip" title="Gold">🪙 ${Math.floor(player.gold)} <span style="color:#ffd700">(+${gld})</span></span>` +
       `<button class="bb-btn" data-bb="research" title="Research" style="--p:${researchPct}%"><span>🔬</span><i>+${sci}</i></button>` +
       `<button class="bb-btn" data-bb="civics" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%"><span>🏛️</span><i>+${cul}</i></button>` +
-      `<button class="bb-btn" data-bb="religion" title="Religion"><span>☮️</span><i>${Math.floor(player.faith)}</i></button>` +
+      `<button class="bb-btn" data-bb="religion" title="Religion"><span>☮️</span><i>${Math.floor(player.faith)} +${fth}</i></button>` +
       `<button class="bb-btn" data-bb="empire" title="Empire"><span>🏙️</span><i>${cityCount}</i></button>` +
       `<button class="bb-btn" data-bb="diplo" title="Diplomacy"><span>🕊️</span><i>${player.met.length}</i></button>` +
       `<button class="bb-btn" data-bb="menu" title="Menu"><span>☰</span></button>` +
@@ -746,6 +761,7 @@ export function createUI(handlers: UIHandlers): UI {
       `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
       (isSaving ? "Saving…" : "Save") +
       `</button>` +
+      `<button class="btn" id="save-export" style="width:100%;margin-top:8px">💾 Export Current Save</button>` +
       `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
     saveModal.innerHTML = html;
     const input = saveModal.querySelector<HTMLInputElement>("#save-name")!;
@@ -764,6 +780,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderMenu(state);
       try {
         await handlers.onSave(name);
+        isSaving = false;
         menuOpen = false;
         menuView = "menu";
         renderMenu(state);
@@ -772,6 +789,17 @@ export function createUI(handlers: UIHandlers): UI {
         isSaving = false;
         renderMenu(state);
         saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+      }
+    });
+    saveModal.querySelector<HTMLButtonElement>("#save-export")!.addEventListener("click", async () => {
+      const errorEl = saveModal.querySelector<HTMLDivElement>("#save-error")!;
+      errorEl.textContent = "";
+      try {
+        const json = await handlers.onExportCurrentSave();
+        const safeName = input.value.trim().replace(/[^a-zA-Z0-9\-_\s]/g, "").trim() || "save";
+        downloadJson(`${safeName}.rocsave`, json);
+      } catch (err) {
+        errorEl.textContent = String(err);
       }
     });
   };
@@ -934,7 +962,8 @@ export function createUI(handlers: UIHandlers): UI {
     const perTurn = Math.max(1, getCityYields(state, city).production);
     const turns = (cost: number) => Math.max(1, Math.ceil((cost - city.productionStored) / perTurn));
 
-    let html = `<div class="row" style="justify-content:space-between"><b>${city.name} — Choose Production</b><button class="btn" id="pclose">✕</button></div>`;
+    let html = `<div class="production-header"><div class="row" style="justify-content:space-between"><b>${city.name} — Choose Production</b><button class="btn" id="pclose">✕</button></div></div>`;
+    html += `<div class="production-list">`;
     html += options
       .map((o) => {
         let glyph: string;
@@ -956,6 +985,7 @@ export function createUI(handlers: UIHandlers): UI {
         );
       })
       .join("");
+    html += `</div>`;
     production.innerHTML = html;
     production.querySelector<HTMLButtonElement>("#pclose")!.addEventListener("click", () => {
       productionOpen = false;

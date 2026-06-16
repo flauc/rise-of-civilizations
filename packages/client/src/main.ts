@@ -44,7 +44,7 @@ import { loadResourceAtlas } from "./resource-assets";
 import { loadAbilityAtlas } from "./ability-assets";
 import type { Session } from "./session";
 import type { CheatAction } from "./god-mode";
-import { listSaves, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
+import { exportSave, listSaves, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -304,6 +304,21 @@ function startGame(session: Session): void {
         const record = makeSaveRecord("sp", serialized, { name });
         await saveGame(record);
       }
+    },
+    onExportCurrentSave: async () => {
+      const state = session.getState();
+      let serialized: ReturnType<typeof serializeState>;
+      if (session.isOnline) {
+        const online = session as import("./session").OnlineSession;
+        const blob = await online.requestExport();
+        serialized = JSON.parse(blob) as ReturnType<typeof serializeState>;
+      } else {
+        serialized = serializeState(state);
+      }
+      const record = makeSaveRecord(session.isOnline ? "mp" : "sp", serialized, {
+        gameId: session.isOnline ? (session as import("./session").OnlineSession).gameId : undefined,
+      });
+      return exportSave(record);
     },
     onMenuOpen: () => {
       if (!session.isOnline) return;

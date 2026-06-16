@@ -222,8 +222,9 @@ export interface SerializedState {
   barbarianActivity: BarbarianActivity;
   barbarianBribes: BarbarianBribe[];
   players: Array<
-    Omit<GameState["players"][number], "researched" | "explored"> & {
+    Omit<GameState["players"][number], "researched" | "civicsResearched" | "explored"> & {
       researched: string[];
+      civicsResearched: string[];
       explored: string[];
     }
   >;
@@ -254,6 +255,7 @@ export function serializeState(state: GameState): SerializedState {
     players: state.players.map((p) => ({
       ...p,
       researched: [...p.researched],
+      civicsResearched: [...p.civicsResearched],
       explored: [...p.explored],
     })),
     units: [...state.units.values()],
@@ -292,6 +294,7 @@ export function deserializeState(s: SerializedState): GameState {
       leaderAbilityLastUsedTurn: p.leaderAbilityLastUsedTurn ?? -Infinity,
       modifiers: p.modifiers ?? [],
       researched: new Set(p.researched as TechId[]),
+      civicsResearched: new Set(p.civicsResearched),
       explored: new Set(p.explored),
     })),
     units: new Map(s.units.map((u) => [u.id, u])),

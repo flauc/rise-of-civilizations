@@ -21,7 +21,30 @@ export interface TradeYield {
 const ZERO: TradeYield = { gold: 0, food: 0, production: 0, science: 0 };
 const MAX_ROUTE_GOLD = 10;
 
+/** Bonus gold for a route whose entire land path is paved with roads.
+ *  The weakest road tier along the path determines the bonus. */
+const ROAD_BONUS_BY_TIER: Record<number, number> = { 1: 2, 2: 4, 3: 6 };
+
 const ax = (c: { col: number; row: number }) => offsetToAxial({ col: c.col, row: c.row });
+
+/** Extra gold when every intermediate tile of a route has a road.
+ *  Returns the weakest road tier bonus, or 0 if any land tile is unpaved.
+ *  Water tiles in the path naturally prevent the bonus. */
+function roadConnectionBonus(state: GameState, route: TradeRoute): number {
+  if (route.path.length < 3) return 0;
+  let minTier = Number.MAX_SAFE_INTEGER;
+  for (let i = 1; i < route.path.length - 1; i++) {
+    const key = route.path[i];
+    if (!key) return 0;
+    const [col, row] = key.split(",").map(Number) as [number, number];
+    const tile = getTile(state.map, col, row);
+    if (!tile || !tile.road) return 0;
+    const tier = tile.roadLevel ?? 1;
+    if (tier < minTier) minTier = tier;
+  }
+  if (minTier === Number.MAX_SAFE_INTEGER) return 0;
+  return ROAD_BONUS_BY_TIER[minTier] ?? 0;
+}
 
 /** Per-turn yields a single route generates (granted to the origin city). */
 export function tradeRouteYield(state: GameState, route: TradeRoute): TradeYield {
@@ -32,6 +55,7 @@ export function tradeRouteYield(state: GameState, route: TradeRoute): TradeYield
   let gold = Math.min(MAX_ROUTE_GOLD, 3 + Math.floor(dist / 2));
   if (from.buildings.includes("market")) gold += 2;
   if (to.buildings.includes("market")) gold += 1;
+  gold += roadConnectionBonus(state, route);
   const science = to.buildings.includes("library") || to.buildings.includes("academy") ? 1 : 0;
   return { gold, food: 1, production: 1, science };
 }
