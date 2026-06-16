@@ -342,6 +342,32 @@ function startGame(session: Session): void {
       const res = session.cheat?.(action);
       if (res && !res.ok) ui.banner(res.error ?? "Cheat failed");
     },
+    onTurnUpdateLocate: (tile) => {
+      centerOn(tile.col, tile.row);
+      needsRedraw = true;
+    },
+    onTurnUpdateOpenProduction: (cityId) => {
+      const c = st().cities.get(cityId);
+      if (c) {
+        selectCity(cityId);
+        centerOn(c.col, c.row);
+      }
+      ui.openProductionForCity(cityId);
+    },
+    onTurnUpdateOpenResearch: () => {
+      ui.openResearch();
+    },
+    onTurnUpdateOpenCivics: () => {
+      ui.openCivics();
+    },
+    onTurnUpdateOpenGold: () => {
+      // The gold dialog is driven by a state flag inside ui.ts; simulate a click.
+      const goldBtn = document.getElementById("gold-btn");
+      goldBtn?.click();
+    },
+    onTurnUpdateDismiss: () => {
+      // No-op: dialog state is managed inside ui.ts.
+    },
   });
 
   type Suggestion = { kind: "units" | "research" | "civic" | "religion" | "production"; label: string } | null;

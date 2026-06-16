@@ -14,6 +14,7 @@ import { isRough, terrainDefense, isWaterTerrain } from "./terrain";
 import { structureDefense, towerBombard } from "./fortifications";
 import { civCombatBonus } from "./civs";
 import { applyVictoryCheck } from "./victory";
+import { emitCityLost, emitUnitDied } from "./turn-updates";
 import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile } from "./movement";
 import { playerEffects } from "./civs";
 
@@ -332,6 +333,9 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
       targetIds: oldOwner ? [oldOwner.id] : undefined,
       tile: { col: city.col, row: city.row },
     });
+    if (oldOwner && !oldOwner.isBarbarian) {
+      emitCityLost(state, oldOwner.id, city.id, city.name, city.col, city.row);
+    }
     applyVictoryCheck(state);
     return;
   }
@@ -352,6 +356,9 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
     targetIds: oldOwner ? [oldOwner.id] : undefined,
     tile: { col: city.col, row: city.row },
   });
+  if (oldOwner && !oldOwner.isBarbarian) {
+    emitCityLost(state, oldOwner.id, city.id, city.name, city.col, city.row);
+  }
   applyVictoryCheck(state);
 }
 
@@ -588,6 +595,16 @@ function killUnit(state: GameState, unit: Unit): void {
     targetIds: owner ? [owner.id] : undefined,
     tile: { col: unit.col, row: unit.row },
   });
+  if (owner && !owner.isBarbarian) {
+    emitUnitDied(
+      state,
+      owner.id,
+      unit.id,
+      UNIT_DEFS[unit.type].name,
+      unit.col,
+      unit.row,
+    );
+  }
 }
 
 /** Deal flat damage to a unit (e.g. Trample splash), killing it if it drops to 0. */

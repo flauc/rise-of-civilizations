@@ -281,6 +281,39 @@ export type FeatureRewardType =
   | "cache"
   | "camp_cleared";
 
+/** Kinds of player-facing updates reported at the start of a turn. */
+export type TurnUpdateType =
+  | "unitDied"
+  | "productionComplete"
+  | "researchComplete"
+  | "civicComplete"
+  | "improvementComplete"
+  | "wonderComplete"
+  | "tradeRouteEstablished"
+  | "tradeRoutePillaged"
+  | "improvementPillaged"
+  | "cityLost"
+  | "cityGrew"
+  | "treasuryExhausted";
+
+/** A structured event shown to a specific player in the turn-start update dialog. */
+export interface TurnUpdateEvent {
+  id: number;
+  type: TurnUpdateType;
+  /** Player to whom this event is shown. */
+  playerId: number;
+  /** Turn on which the event happened. */
+  turn: number;
+  /** Human-readable description. */
+  message: string;
+  cityId?: number;
+  unitId?: number;
+  workId?: number;
+  tile?: { col: number; row: number };
+  /** Extra type-specific data (e.g. completed production item). */
+  payload?: Record<string, unknown>;
+}
+
 /** One line in the shared turn log, with metadata for per-player filtering. */
 export interface LogEntry {
   message: string;
@@ -331,6 +364,10 @@ export interface GameState {
   barbarianActivity: BarbarianActivity;
   /** Active barbarian truces bought via bribery (see bribery.ts). */
   barbarianBribes: BarbarianBribe[];
+  /** Player-scoped events reported at the start of the next turn. */
+  turnUpdates: TurnUpdateEvent[];
+  /** Monotonically increasing id for turn update events. */
+  nextTurnUpdateId: number;
 }
 
 /** Construct a unit with all combat fields defaulted. movementLeft starts 0

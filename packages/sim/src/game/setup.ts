@@ -277,6 +277,8 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     diploProposals: [],
     barbarianActivity: activity,
     barbarianBribes: [],
+    turnUpdates: [],
+    nextTurnUpdateId: 1,
   };
 
   const starts = findStarts(state, count);

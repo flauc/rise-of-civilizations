@@ -1,7 +1,7 @@
 import { getTile } from "@roc/shared";
 import type {
   Attitude, BarbarianActivity, BarbarianBribe, City, ContactEvent, GameOver, GameState,
-  LogEntry, Proposal, Relation, Religion, TradeRoute, Unit, Work,
+  LogEntry, Proposal, Relation, Religion, TradeRoute, TurnUpdateEvent, Unit, Work,
 } from "./state";
 import { computeVisible } from "./visibility";
 import { attitudeLabel, attitudeScore } from "./diplomacy";
@@ -81,6 +81,7 @@ export interface PlayerView {
   units: Unit[];
   cities: City[];
   log: LogEntry[];
+  turnUpdates: TurnUpdateEvent[];
   gameOver: GameOver | null;
   barbarianActivity: BarbarianActivity;
 }
@@ -152,6 +153,9 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
   }
 
   const log = state.log.filter((entry) => isLogEntryVisible(entry, playerId, explored));
+  const turnUpdates = state.turnUpdates
+    .filter((e) => e.playerId === playerId)
+    .sort((a, b) => a.id - b.id);
 
   return {
     turn: state.turn,
@@ -195,6 +199,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     units,
     cities,
     log,
+    turnUpdates,
     gameOver: state.gameOver,
     barbarianActivity: state.barbarianActivity,
   };
@@ -221,6 +226,8 @@ export interface SerializedState {
   diploProposals: Proposal[];
   barbarianActivity: BarbarianActivity;
   barbarianBribes: BarbarianBribe[];
+  turnUpdates: TurnUpdateEvent[];
+  nextTurnUpdateId: number;
   players: Array<
     Omit<GameState["players"][number], "researched" | "civicsResearched" | "explored"> & {
       researched: string[];
@@ -252,6 +259,8 @@ export function serializeState(state: GameState): SerializedState {
     diploProposals: state.diploProposals,
     barbarianActivity: state.barbarianActivity,
     barbarianBribes: state.barbarianBribes,
+    turnUpdates: state.turnUpdates,
+    nextTurnUpdateId: state.nextTurnUpdateId,
     players: state.players.map((p) => ({
       ...p,
       researched: [...p.researched],
@@ -285,6 +294,8 @@ export function deserializeState(s: SerializedState): GameState {
     diploProposals: s.diploProposals ?? [],
     barbarianActivity: s.barbarianActivity ?? "normal",
     barbarianBribes: s.barbarianBribes ?? [],
+    turnUpdates: s.turnUpdates ?? [],
+    nextTurnUpdateId: s.nextTurnUpdateId ?? 1,
     players: s.players.map((p) => ({
       ...p,
       met: p.met ?? [],

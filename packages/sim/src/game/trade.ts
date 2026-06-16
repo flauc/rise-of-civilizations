@@ -8,8 +8,9 @@ import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { City, GameState, TradeRoute, Unit } from "./state";
 import { cityAt, log, playerById } from "./state";
 import { UNIT_DEFS } from "./content";
-import { isPassableLand, isWaterTerrain } from "./terrain";
+import { isPassableLand, isWaterTerrain, moveCost, type TerrainType } from "./terrain";
 import { offsetNeighbors } from "./movement";
+import { emitTradeRouteEstablished } from "./turn-updates";
 
 export interface TradeYield {
   gold: number;
@@ -108,40 +109,64 @@ export function canEstablishTradeRoute(state: GameState, unit: Unit): boolean {
   return tradeRouteDestinations(state, unit).length > 0;
 }
 
-/** Find a passable-land path between two cities using BFS; used for plundering. */
+/** Cost for a caravan to traverse a tile when routing. Roads are strongly
+ *  preferred so a route hugs an existing road network when one is nearby;
+ *  open land is cheap, rough terrain costs more, and water is a last resort. */
+function caravanTileCost(terrain: TerrainType, road: boolean): number {
+  if (road) return 0.5; // hugging a road is cheapest of all
+  if (isWaterTerrain(terrain)) return 3; // detour over water only when unavoidable
+  return moveCost(terrain); // 1 for open land, 2 for rough (forest/jungle/hills/mesa)
+}
+
+/** Find the cheapest passable path between two cities, preferring roads, via a
+ *  weighted Dijkstra over the hex grid. Untraversable terrain (mountains,
+ *  volcanoes) is skipped. The resulting tile keys drive caravan rendering,
+ *  plundering and the road-connection bonus. */
 function computeTradeRoutePath(state: GameState, from: City, to: City): string[] {
   const start = `${from.col},${from.row}`;
   const goal = `${to.col},${to.row}`;
   if (start === goal) return [start];
 
-  const queue: string[] = [start];
+  const dist = new Map<string, number>();
   const cameFrom = new Map<string, string>();
+  dist.set(start, 0);
   cameFrom.set(start, "");
 
-  while (queue.length > 0) {
-    const key = queue.shift()!;
+  // Linear-scan Dijkstra; routes are established rarely so this is plenty fast.
+  const frontier: string[] = [start];
+  while (frontier.length > 0) {
+    let bi = 0;
+    for (let i = 1; i < frontier.length; i++) {
+      if (dist.get(frontier[i]!)! < dist.get(frontier[bi]!)!) bi = i;
+    }
+    const key = frontier.splice(bi, 1)[0]!;
+    if (key === goal) break;
+    const curCost = dist.get(key)!;
     const [col, row] = key.split(",").map(Number) as [number, number];
     for (const n of offsetNeighbors(state.map, col, row)) {
       const tile = getTile(state.map, n.col, n.row);
       if (!tile || (!isPassableLand(tile.terrain) && !isWaterTerrain(tile.terrain))) continue;
       const nk = `${n.col},${n.row}`;
-      if (cameFrom.has(nk)) continue;
-      cameFrom.set(nk, key);
-      if (nk === goal) {
-        const path: string[] = [nk];
-        let cur = nk;
-        while (cameFrom.get(cur) !== "") {
-          cur = cameFrom.get(cur)!;
-          path.unshift(cur);
-        }
-        return path;
+      const next = curCost + caravanTileCost(tile.terrain, tile.road ?? false);
+      if (next < (dist.get(nk) ?? Infinity)) {
+        dist.set(nk, next);
+        cameFrom.set(nk, key);
+        frontier.push(nk);
       }
-      queue.push(nk);
     }
   }
 
-  // No passable path found: fall back to a direct endpoint-only path.
-  return [start, goal];
+  if (!cameFrom.has(goal)) {
+    // No passable path found: fall back to a direct endpoint-only path.
+    return [start, goal];
+  }
+  const path: string[] = [goal];
+  let cur = goal;
+  while (cameFrom.get(cur) !== "") {
+    cur = cameFrom.get(cur)!;
+    path.unshift(cur);
+  }
+  return path;
 }
 
 export interface TradeResult {
@@ -170,8 +195,9 @@ export function establishTradeRoute(
   if (state.tradeRoutes.some((r) => r.fromCityId === origin.id && r.toCityId === dest.id)) {
     return { ok: false, error: "route already exists" };
   }
+  const routeId = state.nextEntityId++;
   state.tradeRoutes.push({
-    id: state.nextEntityId++,
+    id: routeId,
     ownerId: unit.ownerId,
     fromCityId: origin.id,
     toCityId: dest.id,
@@ -184,6 +210,19 @@ export function establishTradeRoute(
     targetIds: [unit.ownerId],
     tile: { col: origin.col, row: origin.row },
   });
+  if (owner && !owner.isBarbarian) {
+    emitTradeRouteEstablished(
+      state,
+      owner.id,
+      routeId,
+      origin.name,
+      dest.name,
+      origin.col,
+      origin.row,
+      dest.col,
+      dest.row,
+    );
+  }
   return { ok: true };
 }
 

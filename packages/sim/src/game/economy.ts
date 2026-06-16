@@ -12,6 +12,13 @@ import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
 import { offsetNeighbors, isCoastalLand } from "./movement";
 import {
+  emitCityGrew,
+  emitCivicComplete,
+  emitProductionComplete,
+  emitResearchComplete,
+  emitTreasuryExhausted,
+} from "./turn-updates";
+import {
   BUILDING_DEFS,
   TECH_DEFS,
   UNIT_DEFS,
@@ -405,6 +412,15 @@ export function processCity(state: GameState, city: City, owner: Player): void {
         targetIds: [city.ownerId],
         tile: { col: city.col, row: city.row },
       });
+      emitCityGrew(
+        state,
+        city.ownerId,
+        city.id,
+        city.name,
+        city.population,
+        city.col,
+        city.row,
+      );
     }
   }
 
@@ -431,6 +447,16 @@ export function processCity(state: GameState, city: City, owner: Player): void {
           targetIds: [city.ownerId],
           tile: { col: city.col, row: city.row },
         });
+        emitProductionComplete(
+          state,
+          city.ownerId,
+          city.id,
+          city.name,
+          city.production,
+          udef.name,
+          city.col,
+          city.row,
+        );
       } else {
         const bdef = BUILDING_DEFS[city.production.id];
         if (!city.buildings.includes(city.production.id)) {
@@ -447,6 +473,16 @@ export function processCity(state: GameState, city: City, owner: Player): void {
           targetIds: [city.ownerId],
           tile: { col: city.col, row: city.row },
         });
+        emitProductionComplete(
+          state,
+          city.ownerId,
+          city.id,
+          city.name,
+          city.production,
+          bdef.name,
+          city.col,
+          city.row,
+        );
       }
       city.production = null;
     }
@@ -461,6 +497,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       owner.scienceProgress -= def.cost;
       owner.researched.add(owner.researching);
       log(state, `${owner.name} discovered ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
+      emitResearchComplete(state, owner.id, def.name);
       owner.researching = null;
     }
   }
@@ -472,6 +509,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       owner.cultureProgress -= def.cost;
       owner.civicsResearched.add(owner.researchingCivic);
       log(state, `${owner.name} adopted ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
+      emitCivicComplete(state, owner.id, def.name);
       owner.researchingCivic = null;
     }
   }
@@ -506,6 +544,16 @@ export function applyUnitUpkeep(state: GameState, player: Player): void {
       actorId: player.id,
       targetIds: [player.id],
     });
+    emitTreasuryExhausted(state, player.id);
+    // Disband the most expensive non-essential military unit until solvent.
+    const disbandable = unitsOf(state, player.id)
+      .filter((u) => u.type !== "settler")
+      .sort((a, b) => unitUpkeep(state, b) - unitUpkeep(state, a));
+    while (player.gold < 0 && disbandable.length > 0) {
+      const u = disbandable.shift()!;
+      state.units.delete(u.id);
+      player.gold += unitUpkeep(state, u);
+    }
   }
 }
 

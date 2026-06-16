@@ -12,6 +12,7 @@ import { playerEffects } from "./civs";
 import { cityHasWalls } from "./combat";
 import { applyVictoryCheck } from "./victory";
 import { offsetNeighbors } from "./movement";
+import { emitTradeRoutePillaged, emitImprovementPillaged } from "./turn-updates";
 
 export interface RaidResult {
   ok: boolean;
@@ -109,6 +110,15 @@ export function pillageTile(state: GameState, unitId: number, actingPlayerId: nu
     targetIds: [actingPlayerId],
     tile: { col: unit.col, row: unit.row },
   });
+
+  if (tile.ownerCityId !== undefined) {
+    const victimCity = state.cities.get(tile.ownerCityId);
+    const victim = victimCity ? playerById(state, victimCity.ownerId) : undefined;
+    if (victim && !victim.isBarbarian) {
+      emitImprovementPillaged(state, victim.id, tile.col, tile.row, pillaged);
+    }
+  }
+
   return { ok: true, gold, science };
 }
 
@@ -154,6 +164,10 @@ export function plunderTradeRoute(
   player.scienceProgress += science;
   unit.movementLeft = 0;
   unit.attackedThisTurn = true;
+
+  if (routeOwner && !routeOwner.isBarbarian) {
+    emitTradeRoutePillaged(state, routeOwner.id, unit.col, unit.row);
+  }
 
   log(state, `${player.name} plundered a trade route for ${gold} gold${science ? ` and ${science} science` : ""}.`, {
     actorId: actingPlayerId,

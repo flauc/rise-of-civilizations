@@ -780,6 +780,223 @@
         margin-top: 14px;
         align-self: center;
       }
+      /* gold ledger dialog */
+      #gold-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 14, 11, 0.72);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 60;
+      }
+      #gold-overlay.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #gold-dialog {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: min(520px, calc(100vw - 32px));
+        max-height: 80vh;
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 16px;
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 61;
+      }
+      #gold-dialog.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .gold-dialog-title {
+        font-family: 'Cinzel', Georgia, serif;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--parchment);
+        margin-bottom: 12px;
+      }
+      #gold-dialog-content {
+        flex: 1;
+        overflow: auto;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--parchment);
+      }
+      .gold-section {
+        margin-top: 14px;
+      }
+      .gold-section-title {
+        font-weight: 700;
+        color: var(--accent-bright);
+        margin-bottom: 6px;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+      }
+      .gold-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 4px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .gold-row:last-child {
+        border-bottom: none;
+      }
+      .gold-total {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 8px 0;
+        margin-top: 6px;
+        border-top: 1px solid var(--edge);
+        font-weight: 700;
+      }
+      .gold-amount {
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+      .gold-positive {
+        color: #5fcf61;
+      }
+      .gold-negative {
+        color: #e0533d;
+      }
+      .gold-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 8px;
+      }
+      .gold-treasury {
+        font-family: 'Cinzel', Georgia, serif;
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--accent-bright);
+      }
+      .gold-net {
+        font-weight: 700;
+        font-size: 14px;
+      }
+      #gold-dialog .btn {
+        margin-top: 14px;
+        align-self: center;
+      }
+      .tb-grp .chip.gold-chip {
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s;
+      }
+      .tb-grp .chip.gold-chip:hover {
+        background: rgba(201, 162, 39, 0.18);
+        color: var(--accent-bright);
+      }
+      .bb-chip.gold-chip {
+        cursor: pointer;
+      }
+      #turn-update-btn {
+        position: relative;
+      }
+      #turn-update-btn.has-badge,
+      .bb-btn[data-bb="turn-update"].has-badge {
+        border-color: #c9a24a;
+        overflow: visible;
+      }
+      .tu-badge {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 8px;
+        height: 8px;
+        background: #e0533d;
+        border-radius: 50%;
+      }
+      /* turn update dialog */
+      #turn-update-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 14, 11, 0.72);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 60;
+      }
+      #turn-update-overlay.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #turn-update-dialog {
+        position: fixed;
+        left: 50%;
+        top: 38%;
+        transform: translate(-50%, -50%);
+        width: min(420px, calc(100vw - 32px));
+        max-height: 80vh;
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 16px;
+        padding: 18px 20px;
+        text-align: center;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 61;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      #turn-update-dialog.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #turn-update-dialog .turn-update-art {
+        width: 180px;
+        height: 225px;
+        object-fit: cover;
+        margin: 0 auto;
+        display: block;
+        border-radius: 12px;
+        border: 1px solid var(--edge);
+      }
+      #turn-update-dialog .turn-update-title {
+        font-family: 'Cinzel', Georgia, serif;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--accent-bright);
+      }
+      #turn-update-dialog .turn-update-msg {
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--parchment);
+      }
+      #turn-update-dialog .turn-update-actions {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      #turn-update-dialog .turn-update-nav {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 12px;
+        font-size: 13px;
+        color: var(--parchment-dim);
+      }
+      #turn-update-dialog .turn-update-nav button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      #turn-update-dialog .btn.primary {
+        align-self: center;
+      }
       .hidden {
         display: none !important;
       }

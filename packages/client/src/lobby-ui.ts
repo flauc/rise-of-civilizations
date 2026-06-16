@@ -11,6 +11,9 @@ const DEFAULT_WS_SCHEME = location.protocol === "https:" ? "wss" : "ws";
 const DEFAULT_WS =
   import.meta.env.VITE_WS_URL?.trim() || `${DEFAULT_WS_SCHEME}://${location.hostname || "localhost"}:3001/ws`;
 
+/** Civilizations sorted alphabetically by display name for the setup UI. */
+const CIVS_BY_NAME = [...CIVILIZATIONS].sort((a, b) => a.name.localeCompare(b.name));
+
 type Screen = "start" | "sp" | "mp" | "load";
 
 type BarbLevel = "none" | "minimal" | "low" | "normal" | "high";
@@ -64,7 +67,7 @@ function civOptions(selected: string, includeRandom: boolean, taken: Set<string>
   const opts = includeRandom
     ? [`<option value="${RANDOM_CIV}"${selected === RANDOM_CIV ? " selected" : ""}>🎲 Random civilization</option>`]
     : [];
-  for (const c of CIVILIZATIONS) {
+  for (const c of CIVS_BY_NAME) {
     const isTaken = taken.has(c.id) && c.id !== selected;
     opts.push(
       `<option value="${c.id}"${c.id === selected ? " selected" : ""}${isTaken ? " disabled" : ""}>${escapeHtml(c.name)} — ${escapeHtml(c.leader)}${isTaken ? " (taken)" : ""}</option>`,
@@ -134,7 +137,7 @@ export function createLobby(onStart: (session: Session) => void): void {
   const state: MenuState = {
     screen: "start",
     sp: {
-      civId: CIVILIZATIONS[0]!.id,
+      civId: CIVS_BY_NAME[0]!.id,
       color: PLAYER_COLORS[0]!,
       mapSize: "medium",
       ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],

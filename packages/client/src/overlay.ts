@@ -1,4 +1,4 @@
-import { cityMaxHp, tileYields, resourceYields, addYields, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, type GameState, type TradeRoute } from "@roc/sim";
+import { cityAt, cityMaxHp, tileYields, resourceYields, addYields, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
@@ -52,6 +52,45 @@ function hpColor(frac: number): string {
 }
 
 interface Pt { x: number; y: number; }
+
+/** Whether the tile at a "col,row" key counts as roaded for trail rendering.
+ *  Cities act as road hubs, so a road touching the city wall reads as continuous. */
+function isRoadTile(state: GameState, key: string | undefined): boolean {
+  if (!key) return false;
+  const [col, row] = key.split(",").map(Number) as [number, number];
+  const tile = getTile(state.map, col, row);
+  return !!tile?.road || !!cityAt(state, col, row);
+}
+
+/** Stroke a connected polyline through the given points. */
+function strokePolyline(ctx: CanvasRenderingContext2D, pts: Pt[]): void {
+  if (pts.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0]!.x, pts[0]!.y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i]!.x, pts[i]!.y);
+  ctx.stroke();
+}
+
+/** Point halfway along a polyline by accumulated length (for the route marker). */
+function polylineMidpoint(pts: Pt[]): Pt {
+  if (pts.length === 1) return pts[0]!;
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    total += Math.hypot(pts[i + 1]!.x - pts[i]!.x, pts[i + 1]!.y - pts[i]!.y);
+  }
+  let half = total / 2;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i]!;
+    const b = pts[i + 1]!;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (half <= len || i === pts.length - 2) {
+      const t = len === 0 ? 0 : half / len;
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+    }
+    half -= len;
+  }
+  return pts[pts.length - 1]!;
+}
 
 /** The six screen-space corners of a tile's hex (matches the terrain geometry). */
 function hexCorners(cx: number, cy: number, size: number): Pt[] {
@@ -300,45 +339,77 @@ export function drawOverlay(
     }
   }
 
-  // ---- trade routes (dashed lines between the viewer's connected cities) ----
+  // ---- trade routes ----
+  // Caravans follow the tile-by-tile path computed by the sim (hugging roads and
+  // skirting impassable terrain). Segments that run along a road are drawn as a
+  // solid paved trail; open-country segments keep the dashed caravan track.
   if (o.tradeRoutes && o.tradeRoutes.length > 0) {
     ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
     for (const r of o.tradeRoutes) {
       if (r.ownerId !== o.viewingPlayerId) continue;
       const from = state.cities.get(r.fromCityId);
       const to = state.cities.get(r.toCityId);
       if (!from || !to) continue;
-      const a = screen(from.col, from.row);
-      const b = screen(to.col, to.row);
-      ctx.setLineDash([Math.max(4, size * 0.34), Math.max(3, size * 0.24)]);
-      // dark backing for contrast over terrain
+
+      // Resolve the path to screen points, falling back to a straight
+      // city-to-city line for legacy routes that lack a stored path.
+      const pts: Pt[] =
+        r.path.length >= 2
+          ? r.path.map((k) => {
+              const [c, rw] = k.split(",").map(Number) as [number, number];
+              return screen(c, rw);
+            })
+          : [screen(from.col, from.row), screen(to.col, to.row)];
+
+      // A segment is "on road" when both of its tiles are roaded (cities count
+      // as hubs), so the caravan visibly follows the road network where one exists.
+      const onRoad = (i: number): boolean => {
+        if (r.path.length < 2) return false;
+        return isRoadTile(state, r.path[i]) && isRoadTile(state, r.path[i + 1]);
+      };
+
+      // Dark backing for contrast over terrain.
+      ctx.setLineDash([]);
       ctx.lineWidth = Math.max(3, size * 0.13);
       ctx.strokeStyle = "rgba(20,14,6,0.55)";
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      // golden caravan trail
-      ctx.lineWidth = Math.max(1.5, size * 0.07);
-      ctx.strokeStyle = "rgba(255,206,110,0.9)";
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-      // small marker at the midpoint
+      strokePolyline(ctx, pts);
+
+      // Trail, drawn per segment so road segments differ from open country.
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i]!;
+        const b = pts[i + 1]!;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        if (onRoad(i)) {
+          // Paved road: solid, thicker, warm stone colour.
+          ctx.setLineDash([]);
+          ctx.lineWidth = Math.max(2, size * 0.1);
+          ctx.strokeStyle = "rgba(214,180,120,0.95)";
+        } else {
+          // Open country: dashed golden caravan track.
+          ctx.setLineDash([Math.max(4, size * 0.34), Math.max(3, size * 0.24)]);
+          ctx.lineWidth = Math.max(1.5, size * 0.07);
+          ctx.strokeStyle = "rgba(255,206,110,0.9)";
+        }
+        ctx.stroke();
+      }
+
+      // Small marker at the path midpoint.
       if (size > 10) {
         ctx.setLineDash([]);
-        const mx = (a.x + b.x) / 2;
-        const my = (a.y + b.y) / 2;
+        const mid = polylineMidpoint(pts);
         ctx.fillStyle = "rgba(255,206,110,0.95)";
         ctx.beginPath();
-        ctx.arc(mx, my, Math.max(2, size * 0.12), 0, Math.PI * 2);
+        ctx.arc(mid.x, mid.y, Math.max(2, size * 0.12), 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = "#2a1c08";
         ctx.font = `${Math.max(7, Math.round(size * 0.22))}px system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("$", mx, my + 1);
+        ctx.fillText("$", mid.x, mid.y + 1);
       }
     }
     ctx.restore();

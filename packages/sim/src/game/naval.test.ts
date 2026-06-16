@@ -84,6 +84,8 @@ const baseState = (map: GameMap, overrides?: Partial<GameState>): GameState => (
   tradeRoutes: [],
   works: [],
   completedWonders: [],
+  turnUpdates: [],
+  nextTurnUpdateId: 1,
   ...overrides,
 } as GameState);
 

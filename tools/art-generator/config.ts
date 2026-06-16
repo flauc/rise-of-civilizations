@@ -6,8 +6,8 @@
 // - Google Gemini Nano Banana 2 (gemini-3.1-flash-image) is the default model.
 
 import { join } from "node:path";
-import { CIVILIZATIONS } from "@roc/data";
-import { RESOURCE_DEFS } from "@roc/sim";
+import { CIVILIZATIONS, WONDER_DEFS } from "@roc/data";
+import { RESOURCE_DEFS, IMPROVEMENT_DEFS } from "@roc/sim";
 
 export interface TargetSize {
   readonly width: number;
@@ -21,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update";
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -214,6 +214,166 @@ export const ICON_SUBSET: AssetEntry[] = [
     aspectRatio: "1:1",
     size: { width: 256, height: 256 },
     category: "icon" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+];
+
+export const TURN_UPDATE_SUBSET: AssetEntry[] = [
+  {
+    id: "unitDied",
+    name: "Unit Died",
+    description: "a solemn stylized hand-painted portrait of a fallen ancient warrior's helmet and spear resting on a battlefield, soft painted background of parchment and muted earth tones. Evoke loss and remembrance, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "productionComplete",
+    name: "Production Complete",
+    description: "a stylized hand-painted portrait of an ancient city's craftsmen finishing a bronze shield and a wooden chariot, a banner of celebration, warm workshop light. Evoke accomplishment and industry, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "researchComplete",
+    name: "Research Complete",
+    description: "a stylized hand-painted portrait of an ancient scholar unrolling a scroll covered in star charts and geometric diagrams, soft library background. Evoke discovery and knowledge, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "civicComplete",
+    name: "Civic Complete",
+    description: "a stylized hand-painted portrait of a robed lawgiver holding a stone tablet before a gathered assembly in an agora or forum. Evoke civic progress and governance, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "improvementComplete",
+    name: "Improvement Complete",
+    description: "a stylized hand-painted portrait of workers finishing a terraced farm or a hillside mine, tools and baskets in the foreground, golden afternoon light. Evoke productive labor, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "wonderComplete",
+    name: "Wonder Complete",
+    description: "a stylized hand-painted portrait of a grand ancient wonder rising above a city: columns, obelisks, or a ziggurat under a dramatic sunrise. Evoke awe and monumentality, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "tradeRoutePillaged",
+    name: "Trade Route Pillaged",
+    description: "a stylized hand-painted portrait of a burning caravan on a desert road, scattered goods and a broken cart, smoky twilight sky. Evoke raid and disruption, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "improvementPillaged",
+    name: "Improvement Pillaged",
+    description: "a stylized hand-painted portrait of enemy raiders torching a farm and breaking a stone road, smoke and fleeing workers, a looted cart in the foreground. Evoke destruction and loss, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "tradeRouteEstablished",
+    name: "Trade Route Established",
+    description: "a stylized hand-painted portrait of a caravan of merchants setting out from a city gate along a paved road, laden pack animals, distant cities on the horizon, warm morning light. Evoke commerce and connection, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "cityLost",
+    name: "City Lost",
+    description: "a stylized hand-painted portrait of a captured city gate with enemy banners, smoke rising from mud-brick buildings, somber mood. Evoke defeat and loss, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "cityGrew",
+    name: "City Grew",
+    description: "a stylized hand-painted portrait of a thriving ancient city expanding outward, new houses and fields, families and livestock, warm hopeful light. Evoke growth and prosperity, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "treasuryExhausted",
+    name: "Treasury Exhausted",
+    description: "a stylized hand-painted portrait of an empty treasury: an open chest with only a few copper coins, a worried scribe, dim lamplight. Evoke financial strain, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+];
+
+export const TURN_UPDATE_WONDER_SUBSET: AssetEntry[] = WONDER_DEFS.map((w) => ({
+  id: `wonder_${w.id}`,
+  name: `${w.name} Complete`,
+  description: `a stylized hand-painted portrait of the completed ${w.name}: ${w.desc}. Render a centered scene with a soft painted background such as ancient parchment, a mural, or a neutral textured wall. Evoke awe and monumentality, no text, no UI.`,
+  aspectRatio: "3:4",
+  size: { width: 320, height: 400 },
+  category: "turn_update" as const,
+  referenceTile: DEFAULT_REFERENCE_TILE,
+}));
+
+export const TURN_UPDATE_IMPROVEMENT_SUBSET: AssetEntry[] = [
+  ...Object.values(IMPROVEMENT_DEFS).map((imp) => ({
+    id: `improvement_${imp.kind}`,
+    name: `${imp.name} Complete`,
+    description: `a stylized hand-painted portrait of a completed ${imp.name}: ${imp.name} tile improvement in an ancient turn-based strategy game. Render a centered scene with a soft painted background such as ancient parchment, a mural, or a neutral textured wall. Evoke productive labor and civilization, no text, no UI.`,
+    aspectRatio: "3:4" as const,
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  })),
+  {
+    id: "improvement_road",
+    name: "Road Complete",
+    description: "a stylized hand-painted portrait of workers completing a stone-paved road between rolling hills, a line of merchants and wagons beginning to travel it. Evoke connection and commerce, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "improvement_wall",
+    name: "Wall Complete",
+    description: "a stylized hand-painted portrait of a completed defensive stone wall with crenellations and a wooden gate, soldiers standing watch, a city behind it. Evoke security and fortification, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "improvement_tower",
+    name: "Tower Complete",
+    description: "a stylized hand-painted portrait of a completed watchtower rising above a forested ridge, a signal fire ready on its platform, distant valleys below. Evoke vigilance and defense, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
     referenceTile: DEFAULT_REFERENCE_TILE,
   },
 ];
@@ -439,7 +599,7 @@ export const BUILDING_SUBSET: AssetEntry[] = [
 ];
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -546,6 +706,9 @@ export function promptFor(entry: AssetEntry): string {
   }
   if (entry.category === "hero") {
     return `Create a stylized hand-painted cinematic hero banner for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a wide, epic landscape suitable for a full-width website hero background. NO text, NO letters, NO numbers, NO percentages, NO plus signs, NO symbols, NO UI elements, NO ability descriptions, NO stat boxes, NO border, NO frame, NO modern objects, and NO cast shadow. Keep the composition readable behind centered headline text.`;
+  }
+  if (entry.category === "turn_update") {
+    return `Create a stylized hand-painted portrait illustration for a turn-start update in an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a centered scene with a soft painted background such as ancient parchment, a mural, or a neutral textured wall. Do not make the background transparent. NO text, NO letters, NO numbers, NO percentages, NO plus signs, NO symbols, NO UI elements, NO ability descriptions, NO stat boxes, NO border, NO frame, NO modern objects, NO ground plane, NO terrain, and NO cast shadow.`;
   }
   if (entry.category === "village_reward") {
     return `Create a small narrative reward illustration for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render as a centered scene on a clean solid white background. No text, no letters, no UI labels, no watermark, no border frame, and no cast shadow. The illustration should read clearly at small sizes.`;

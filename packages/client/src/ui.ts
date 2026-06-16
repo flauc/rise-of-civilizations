@@ -43,6 +43,7 @@ import {
   cityMaxHp,
   foodToGrow,
   unitMaxHp,
+  unitUpkeep,
   getCiv,
   getCityYields,
   territorySize,
@@ -86,6 +87,7 @@ import {
   type TechId,
   type Unit,
   type UnitTypeId,
+  type TurnUpdateEvent,
 } from "@roc/sim";
 import type { Tile } from "@roc/shared";
 import { abilityIconHtml, type AbilityAtlas } from "./ability-assets";
@@ -233,6 +235,12 @@ export interface UIHandlers {
   onMenuOpen(): void;
   onLoadMpSave(blob: string): Promise<void>;
   onCheat(action: CheatAction): void;
+  onTurnUpdateLocate(tile: { col: number; row: number }): void;
+  onTurnUpdateOpenProduction(cityId: number): void;
+  onTurnUpdateOpenResearch(): void;
+  onTurnUpdateOpenCivics(): void;
+  onTurnUpdateOpenGold(): void;
+  onTurnUpdateDismiss(): void;
 }
 
 export interface UI {
@@ -243,6 +251,8 @@ export interface UI {
   openReligion(): void;
   openTechTree(): void;
   openGodMode(): void;
+  openTurnUpdates(): void;
+  openProductionForCity(cityId: number): void;
   setMpSaves(saves: SaveRecord[]): void;
   /** Provide the (optional) ability-icon atlas for action buttons. */
   setAbilityAtlas(atlas: AbilityAtlas): void;
@@ -333,6 +343,45 @@ export function createUI(handlers: UIHandlers): UI {
   logClose.addEventListener("click", hideLogDialog);
   logOverlay.addEventListener("click", hideLogDialog);
 
+  const goldOverlay = div("gold-overlay", "");
+  const goldDialog = div("gold-dialog", "");
+  goldDialog.innerHTML =
+    `<div class="gold-dialog-title">Treasury</div>` +
+    `<div id="gold-dialog-content"></div>` +
+    `<button class="btn primary" id="gold-close">Close</button>`;
+  const goldDialogContent = goldDialog.querySelector<HTMLDivElement>("#gold-dialog-content")!;
+  const goldClose = goldDialog.querySelector<HTMLButtonElement>("#gold-close")!;
+  let goldDialogOpen = false;
+  const hideGoldDialog = (): void => {
+    goldDialogOpen = false;
+    goldOverlay.classList.remove("show");
+    goldDialog.classList.remove("show");
+  };
+  goldClose.addEventListener("click", hideGoldDialog);
+  goldOverlay.addEventListener("click", hideGoldDialog);
+
+  const turnUpdateOverlay = div("turn-update-overlay", "");
+  const turnUpdateDialog = div("turn-update-dialog", "");
+  turnUpdateDialog.innerHTML =
+    `<img class="turn-update-art" id="turn-update-art" src="" alt="" />` +
+    `<div class="turn-update-title" id="turn-update-title"></div>` +
+    `<div class="turn-update-msg" id="turn-update-msg"></div>` +
+    `<div class="turn-update-actions" id="turn-update-actions"></div>` +
+    `<div class="turn-update-nav">` +
+    `<button class="btn" id="turn-update-prev">◀ Previous</button>` +
+    `<span id="turn-update-count"></span>` +
+    `<button class="btn" id="turn-update-next">Next ▶</button>` +
+    `</div>` +
+    `<button class="btn primary" id="turn-update-close">Close</button>`;
+  const turnUpdateArt = turnUpdateDialog.querySelector<HTMLImageElement>("#turn-update-art")!;
+  const turnUpdateTitle = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-title")!;
+  const turnUpdateMsg = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-msg")!;
+  const turnUpdateActions = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-actions")!;
+  const turnUpdateCount = turnUpdateDialog.querySelector<HTMLSpanElement>("#turn-update-count")!;
+  const turnUpdatePrev = turnUpdateDialog.querySelector<HTMLButtonElement>("#turn-update-prev")!;
+  const turnUpdateNext = turnUpdateDialog.querySelector<HTMLButtonElement>("#turn-update-next")!;
+  const turnUpdateClose = turnUpdateDialog.querySelector<HTMLButtonElement>("#turn-update-close")!;
+
   const endturn = document.createElement("button");
   endturn.id = "endturn";
   endturn.className = "action-btn action-next";
@@ -354,6 +403,14 @@ export function createUI(handlers: UIHandlers): UI {
       }
       if (logDialog.classList.contains("show")) {
         hideLogDialog();
+        return;
+      }
+      if (goldDialog.classList.contains("show")) {
+        hideGoldDialog();
+        return;
+      }
+      if (turnUpdateDialog.classList.contains("show")) {
+        hideTurnUpdateDialog();
         return;
       }
       if (godModeOpen) {
@@ -390,6 +447,12 @@ export function createUI(handlers: UIHandlers): UI {
   let lastLogLength = 0;
   let logInitialized = false;
   let villageQueue: LogEntry[] = [];
+  let turnUpdateQueue: TurnUpdateEvent[] = [];
+  let turnUpdateIndex = 0;
+  let turnUpdateOpen = false;
+  let turnUpdateHasNew = false;
+  let lastSeenTurnUpdateId = 0;
+  let turnUpdatesInitialized = false;
   let menuOpen = false;
   let menuView: "menu" | "save" = "menu";
   let isSaving = false;
@@ -456,6 +519,160 @@ export function createUI(handlers: UIHandlers): UI {
   villageOk.addEventListener("click", closeVillageDialog);
   villageOverlay.addEventListener("click", closeVillageDialog);
 
+  const turnUpdateImagePath = (ev: TurnUpdateEvent): string => {
+    if (ev.type === "wonderComplete" && ev.payload?.wonderId) {
+      return `turn-updates/wonder_${ev.payload.wonderId}.png`;
+    }
+    if (ev.type === "improvementComplete" && ev.payload?.kind) {
+      return `turn-updates/improvement_${ev.payload.kind}.png`;
+    }
+    return `turn-updates/${ev.type}.png`;
+  };
+
+  const hideTurnUpdateDialog = (): void => {
+    turnUpdateOpen = false;
+    turnUpdateOverlay.classList.remove("show");
+    turnUpdateDialog.classList.remove("show");
+    handlers.onTurnUpdateDismiss();
+  };
+
+  const showTurnUpdateDialog = (): void => {
+    if (turnUpdateQueue.length === 0) {
+      hideTurnUpdateDialog();
+      return;
+    }
+    turnUpdateOpen = true;
+    turnUpdateOverlay.classList.add("show");
+    turnUpdateDialog.classList.add("show");
+    renderTurnUpdateDialog();
+  };
+
+  const updateTitleFor = (ev: TurnUpdateEvent): string => {
+    switch (ev.type) {
+      case "unitDied":
+        return "Unit Lost";
+      case "productionComplete":
+        return "Production Complete";
+      case "researchComplete":
+        return "Research Complete";
+      case "civicComplete":
+        return "Civic Complete";
+      case "improvementComplete": {
+        const kind = ev.payload?.kind;
+        if (kind === "road") return "Road Complete";
+        if (kind === "wall") return "Wall Complete";
+        if (kind === "tower") return "Tower Complete";
+        return "Improvement Complete";
+      }
+      case "wonderComplete":
+        return "Wonder Complete";
+      case "tradeRouteEstablished":
+        return "Trade Route Established";
+      case "tradeRoutePillaged":
+        return "Trade Route Pillaged";
+      case "improvementPillaged":
+        return "Improvement Pillaged";
+      case "cityLost":
+        return "City Lost";
+      case "cityGrew":
+        return "City Grew";
+      case "treasuryExhausted":
+        return "Treasury Exhausted";
+      default:
+        return "Update";
+    }
+  };
+
+  const renderTurnUpdateCtas = (ev: TurnUpdateEvent): string => {
+    const buttons: string[] = [];
+    if (ev.tile) {
+      buttons.push(`<button class="btn" data-tu-locate="${ev.tile.col},${ev.tile.row}">Locate</button>`);
+    }
+    if (ev.type === "productionComplete" && ev.cityId != null) {
+      buttons.push(`<button class="btn primary" data-tu-prod="${ev.cityId}">Choose Production</button>`);
+    }
+    if (ev.type === "researchComplete") {
+      buttons.push(`<button class="btn primary" data-tu-research>Choose Research</button>`);
+    }
+    if (ev.type === "civicComplete") {
+      buttons.push(`<button class="btn primary" data-tu-civics>Choose Civic</button>`);
+    }
+    if (ev.type === "treasuryExhausted") {
+      buttons.push(`<button class="btn primary" data-tu-gold>Open Treasury</button>`);
+    }
+    if (ev.type === "tradeRouteEstablished") {
+      const destCol = ev.payload?.destCol;
+      const destRow = ev.payload?.destRow;
+      if (ev.tile) {
+        buttons.push(`<button class="btn" data-tu-locate="${ev.tile.col},${ev.tile.row}">Locate Origin</button>`);
+      }
+      if (typeof destCol === "number" && typeof destRow === "number") {
+        buttons.push(`<button class="btn" data-tu-locate="${destCol},${destRow}">Locate Destination</button>`);
+      }
+    }
+    return buttons.join("");
+  };
+
+  const renderTurnUpdateDialog = (): void => {
+    const ev = turnUpdateQueue[turnUpdateIndex];
+    if (!ev) {
+      hideTurnUpdateDialog();
+      return;
+    }
+    const genericPath = `turn-updates/${ev.type}.png`;
+    const specificPath = turnUpdateImagePath(ev);
+    turnUpdateArt.src = specificPath;
+    turnUpdateArt.onerror = () => {
+      // Fall back to the generic event image, then to a leader portrait placeholder.
+      if (turnUpdateArt.src.endsWith(specificPath) && specificPath !== genericPath) {
+        turnUpdateArt.src = genericPath;
+      } else {
+        turnUpdateArt.src = "leaders/rome.png";
+        turnUpdateArt.onerror = null;
+      }
+    };
+    turnUpdateTitle.textContent = updateTitleFor(ev);
+    turnUpdateMsg.textContent = ev.message;
+    turnUpdateActions.innerHTML = renderTurnUpdateCtas(ev);
+    turnUpdateCount.textContent = `${turnUpdateIndex + 1} / ${turnUpdateQueue.length}`;
+    turnUpdatePrev.disabled = turnUpdateIndex === 0;
+    turnUpdateNext.disabled = turnUpdateIndex === turnUpdateQueue.length - 1;
+
+    turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-locate]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const [col, row] = el.dataset.tuLocate!.split(",").map(Number) as [number, number];
+        handlers.onTurnUpdateLocate({ col, row });
+      }),
+    );
+    turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-prod]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onTurnUpdateOpenProduction(Number(el.dataset.tuProd))),
+    );
+    turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-research]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onTurnUpdateOpenResearch()),
+    );
+    turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-civics]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onTurnUpdateOpenCivics()),
+    );
+    turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-gold]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onTurnUpdateOpenGold()),
+    );
+  };
+
+  turnUpdatePrev.addEventListener("click", () => {
+    if (turnUpdateIndex > 0) {
+      turnUpdateIndex--;
+      renderTurnUpdateDialog();
+    }
+  });
+  turnUpdateNext.addEventListener("click", () => {
+    if (turnUpdateIndex < turnUpdateQueue.length - 1) {
+      turnUpdateIndex++;
+      renderTurnUpdateDialog();
+    }
+  });
+  turnUpdateClose.addEventListener("click", hideTurnUpdateDialog);
+  turnUpdateOverlay.addEventListener("click", hideTurnUpdateDialog);
+
   const renderAction = (view: UIView): void => {
     if (view.suggestion) {
       endturn.title = view.suggestion.label;
@@ -476,6 +693,10 @@ export function createUI(handlers: UIHandlers): UI {
       0,
     );
     const gld = citiesOf(state, player.id).reduce((n, c) => n + getCityYields(state, c).gold, 0);
+    const upkeep = unitsOf(state, player.id).reduce((n, u) => n + unitUpkeep(state, u), 0);
+    const netGold = gld - upkeep;
+    const goldSign = netGold >= 0 ? "+" : "−";
+    const goldClass = netGold >= 0 ? "color:#ffd700" : "color:#ff8a8a";
     const fth = citiesOf(state, player.id).reduce((n, c) => n + getCityYields(state, c).faith, 0);
     const researchingDef = player.researching ? TECH_DEFS[player.researching] : null;
     const researchPct = researchingDef
@@ -501,7 +722,7 @@ export function createUI(handlers: UIHandlers): UI {
         <span class="tb-civ" title="${civTitle}"><span class="dot" style="background:${player.color}"></span>${player.name}${civ ? ` · <b>${civ.name}</b>` : ""}</span>
       </div>
       <div class="tb-grp tb-res">
-        <span class="chip" title="Gold">🪙 ${Math.floor(player.gold)} <span style="color:#ffd700">(+${gld})</span></span>
+        <button class="chip gold-chip" id="gold-btn" title="Gold">🪙 ${Math.floor(player.gold)} <span style="${goldClass}">(${goldSign}${Math.abs(netGold)})</span></button>
         <button class="tb-pill" id="research-btn" title="Research" style="--p:${researchPct}%">
           <span class="tb-pl">🔬</span><b>${rName}</b><span class="tb-score">+${sci}</span></button>
         <button class="tb-pill civic" id="civics-btn" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%">
@@ -517,6 +738,8 @@ export function createUI(handlers: UIHandlers): UI {
         </button>
         <button class="tb-pill" id="diplo-pill" title="Diplomacy">
           <span class="tb-pl">🕊️</span><b>${player.met.length}</b></button>
+        <button class="tb-pill ${turnUpdateHasNew ? "has-badge" : ""}" id="turn-update-btn" title="Turn Updates">
+          <span class="tb-pl">📜</span><b>Updates</b>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>
         <button class="tb-pill" id="menu-btn" title="Menu">
           <span class="tb-pl">☰</span><b>Menu</b></button>
       </div>`;
@@ -604,15 +827,30 @@ export function createUI(handlers: UIHandlers): UI {
       if (menuOpen) handlers.onMenuOpen();
       renderMenu(state);
     });
+    topbar.querySelector<HTMLButtonElement>("#gold-btn")!.addEventListener("click", () => {
+      goldDialogOpen = !goldDialogOpen;
+      if (goldDialogOpen) {
+        closeSideSheets();
+        closePickers(state);
+        menuOpen = false;
+        renderMenu(state);
+      }
+      renderGoldDialog(state);
+    });
+    topbar.querySelector<HTMLButtonElement>("#turn-update-btn")!.addEventListener("click", () => {
+      turnUpdateHasNew = false;
+      showTurnUpdateDialog();
+    });
 
     // Mobile bottom bar: mirrors the topbar actions as icon-only buttons.
     bottomBar.innerHTML =
       `<div class="bb-grp">` +
-      `<span class="bb-chip" title="Gold">🪙 ${Math.floor(player.gold)} <span style="color:#ffd700">(+${gld})</span></span>` +
+      `<button class="bb-chip gold-chip" data-bb="gold" title="Gold">🪙 ${Math.floor(player.gold)} <span style="${goldClass}">(${goldSign}${Math.abs(netGold)})</span></button>` +
       `<button class="bb-btn" data-bb="research" title="Research" style="--p:${researchPct}%"><span>🔬</span><i>+${sci}</i></button>` +
       `<button class="bb-btn" data-bb="civics" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%"><span>🏛️</span><i>+${cul}</i></button>` +
       `<button class="bb-btn" data-bb="religion" title="Religion"><span>☮️</span><i>${Math.floor(player.faith)} +${fth}</i></button>` +
       `<button class="bb-btn" data-bb="empire" title="Empire"><span>🏙️</span><i>${cityCount}</i></button>` +
+      `<button class="bb-btn ${turnUpdateHasNew ? "has-badge" : ""}" data-bb="turn-update" title="Turn Updates"><span>📜</span><i>Updates</i>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>` +
       `<button class="bb-btn" data-bb="diplo" title="Diplomacy"><span>🕊️</span><i>${player.met.length}</i></button>` +
       `<button class="bb-btn" data-bb="menu" title="Menu"><span>☰</span></button>` +
       `</div>`;
@@ -623,6 +861,8 @@ export function createUI(handlers: UIHandlers): UI {
       empire: "#empire-btn",
       diplo: "#diplo-pill",
       menu: "#menu-btn",
+      gold: "#gold-btn",
+      "turn-update": "#turn-update-btn",
     };
     bottomBar.querySelectorAll<HTMLButtonElement>("[data-bb]").forEach((el) => {
       el.addEventListener("click", () => {
@@ -802,6 +1042,64 @@ export function createUI(handlers: UIHandlers): UI {
         errorEl.textContent = String(err);
       }
     });
+  };
+
+  const renderGoldDialog = (state: GameState): void => {
+    goldOverlay.classList.toggle("show", goldDialogOpen);
+    goldDialog.classList.toggle("show", goldDialogOpen);
+    if (!goldDialogOpen) return;
+
+    const player = state.players[state.currentPlayerIndex]!;
+    const myCities = citiesOf(state, player.id);
+    const myUnits = unitsOf(state, player.id);
+
+    const cityRows = myCities
+      .map((city) => {
+        const y = getCityYields(state, city);
+        return `<div class="gold-row"><span>${escapeHtml(city.name)}${city.isCapital ? " ★" : ""}</span><span class="gold-amount gold-positive">+${y.gold}</span></div>`;
+      })
+      .join("");
+    const totalCityGold = myCities.reduce((n, c) => n + getCityYields(state, c).gold, 0);
+
+    const unitRows = myUnits
+      .map((unit) => {
+        const cost = unitUpkeep(state, unit);
+        if (cost <= 0) return "";
+        const def = UNIT_DEFS[unit.type];
+        return `<div class="gold-row"><span>${escapeHtml(def.name)}</span><span class="gold-amount gold-negative">−${cost}</span></div>`;
+      })
+      .filter(Boolean)
+      .join("");
+    const totalUpkeep = myUnits.reduce((n, u) => n + unitUpkeep(state, u), 0);
+
+    const net = totalCityGold - totalUpkeep;
+    const netClass = net >= 0 ? "gold-positive" : "gold-negative";
+    const netSign = net >= 0 ? "+" : "";
+
+    let html = `<div class="gold-header">`;
+    html += `<span class="gold-treasury">🪙 ${Math.floor(player.gold)}</span>`;
+    html += `<span class="gold-net ${netClass}">${netSign}${net}/turn</span>`;
+    html += `</div>`;
+
+    html += `<div class="gold-section"><div class="gold-section-title">Income</div>`;
+    if (cityRows) {
+      html += cityRows;
+    } else {
+      html += `<div class="gold-row"><span class="sub">No cities producing gold.</span><span class="gold-amount">0</span></div>`;
+    }
+    html += `<div class="gold-total"><span>Total income</span><span class="gold-amount gold-positive">+${totalCityGold}</span></div>`;
+    html += `</div>`;
+
+    html += `<div class="gold-section"><div class="gold-section-title">Expenses</div>`;
+    if (unitRows) {
+      html += unitRows;
+    } else {
+      html += `<div class="gold-row"><span class="sub">No unit upkeep.</span><span class="gold-amount">0</span></div>`;
+    }
+    html += `<div class="gold-total"><span>Total upkeep</span><span class="gold-amount gold-negative">−${totalUpkeep}</span></div>`;
+    html += `</div>`;
+
+    goldDialogContent.innerHTML = html;
   };
 
   const renderResearch = (state: GameState): void => {
@@ -1668,6 +1966,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderLog(view.state, view.viewerId);
       renderGameOver(view.state);
       renderMenu(view.state);
+      renderGoldDialog(view.state);
       renderAction(view);
 
       // Hide the docked city/unit/tile panels whenever a higher-layer sheet or modal
@@ -1682,7 +1981,9 @@ export function createUI(handlers: UIHandlers): UI {
         productionOpen ||
         techtreeOpen ||
         menuOpen ||
-        godModeOpen;
+        godModeOpen ||
+        goldDialogOpen ||
+        turnUpdateOpen;
       if (overlayOpen) {
         cityPanel.classList.add("hidden");
         unitPanel.classList.add("hidden");
@@ -1707,6 +2008,23 @@ export function createUI(handlers: UIHandlers): UI {
           }
         }
         lastLogLength = view.state.log.length;
+      }
+
+      // Queue new turn-start updates and auto-open the dialog after the first turn.
+      const incomingUpdates = view.state.turnUpdates ?? [];
+      const newUpdates = incomingUpdates.filter((u) => u.id > lastSeenTurnUpdateId);
+      if (!turnUpdatesInitialized) {
+        lastSeenTurnUpdateId = incomingUpdates.length > 0 ? Math.max(...incomingUpdates.map((u) => u.id)) : 0;
+        turnUpdatesInitialized = true;
+      } else if (newUpdates.length > 0) {
+        const autoOpen = view.state.turn > 1;
+        turnUpdateQueue = [...turnUpdateQueue, ...newUpdates];
+        turnUpdateIndex = 0;
+        turnUpdateHasNew = true;
+        lastSeenTurnUpdateId = Math.max(...incomingUpdates.map((u) => u.id));
+        if (autoOpen && !turnUpdateDialog.classList.contains("show")) {
+          showTurnUpdateDialog();
+        }
       }
     },
     openResearch() {
@@ -1736,6 +2054,19 @@ export function createUI(handlers: UIHandlers): UI {
     openGodMode() {
       godModeOpen = true;
       if (lastView) renderGodMode(lastView);
+    },
+    openTurnUpdates() {
+      turnUpdateHasNew = false;
+      showTurnUpdateDialog();
+    },
+    openProductionForCity(cityId) {
+      if (!lastState) return;
+      prodCityId = cityId;
+      productionOpen = true;
+      closeSideSheets();
+      menuOpen = false;
+      renderMenu(lastState);
+      renderProduction(lastState);
     },
     setAbilityAtlas(atlas) {
       abilityAtlas = atlas;

@@ -48,6 +48,9 @@ import {
   AGE_SUBSET,
   PILLAR_SUBSET,
   HERO_SUBSET,
+  TURN_UPDATE_SUBSET,
+  TURN_UPDATE_WONDER_SUBSET,
+  TURN_UPDATE_IMPROVEMENT_SUBSET,
 } from "./config";
 
 interface Options {
@@ -83,6 +86,7 @@ Usage:
   bun run tools/art-generator/generate.ts --icon app_icon
   bun run tools/art-generator/generate.ts --village-reward village_reward_tech
   bun run tools/art-generator/generate.ts --barbarian-reward barb_camp_cleared
+  bun run tools/art-generator/generate.ts --turn-update tradeRouteEstablished
   bun run tools/art-generator/generate.ts --subset terrain
   bun run tools/art-generator/generate.ts --subset units
   bun run tools/art-generator/generate.ts --subset buildings
@@ -108,7 +112,8 @@ Options:
   --icon <id>            Generate a specific app icon (e.g. app_icon)
   --village-reward <id>  Generate a specific village reward illustration (e.g. village_reward_tech)
   --barbarian-reward <id> Generate a specific barbarian reward illustration (e.g. barb_camp_cleared)
-  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, all
+  --turn-update <id>     Generate a specific turn-update portrait (e.g. tradeRouteEstablished or improvement_road)
+  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-improvements, all
   --list                 List all available asset IDs and exit
   --model <id>           Gemini model (default: ${DEFAULT_MODEL})
   --size <512|1K|2K|4K>  Gemini image size (default: ${DEFAULT_IMAGE_SIZE})
@@ -261,6 +266,13 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--turn-update": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "turn_update") fail(`Unknown turn update: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--subset": {
         const name = next();
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
@@ -281,8 +293,11 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "ages") entries.push(...AGE_SUBSET);
         else if (name === "pillars") entries.push(...PILLAR_SUBSET);
         else if (name === "heroes") entries.push(...HERO_SUBSET);
+        else if (name === "turn-updates") entries.push(...TURN_UPDATE_SUBSET);
+        else if (name === "turn-update-wonders") entries.push(...TURN_UPDATE_WONDER_SUBSET);
+        else if (name === "turn-update-improvements") entries.push(...TURN_UPDATE_IMPROVEMENT_SUBSET);
         else if (name === "all") entries.push(...allEntries());
-        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, or all.`);
+        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-improvements, or all.`);
         break;
       }
       case "--all":
@@ -711,7 +726,7 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
 
       if (entry.category === "tile" || entry.category === "road" || entry.category === "river") {
         await postProcessTile(rawPath, finalPath, entry);
-      } else if (entry.category === "leader" || entry.category === "age" || entry.category === "pillar" || entry.category === "hero") {
+      } else if (entry.category === "leader" || entry.category === "age" || entry.category === "pillar" || entry.category === "hero" || entry.category === "turn_update") {
         await postProcessPortrait(rawPath, finalPath, entry);
       } else if (entry.category === "icon" && entry.id === "favicon") {
         await postProcessFavicon(rawPath, finalDir, entry);

@@ -18,6 +18,7 @@ import {
   type SpecialistId,
 } from "./specialists";
 import { DEFENSE_NAMES, STRUCTURE_HP, type DefenseKind } from "./fortifications";
+import { emitImprovementComplete, emitWonderComplete } from "./turn-updates";
 
 export type EconKind =
   | "farm"
@@ -403,6 +404,17 @@ function completeWork(state: GameState, w: Work): void {
       targetIds: owner ? [owner.id] : undefined,
       tile: host ? { col: host.col, row: host.row } : undefined,
     });
+    if (owner && !owner.isBarbarian && def) {
+      emitWonderComplete(
+        state,
+        owner.id,
+        w.id,
+        def.id,
+        def.name,
+        host?.col ?? w.hostCityId,
+        host?.row ?? 0,
+      );
+    }
     return;
   }
   if (!w.target) return;
@@ -424,6 +436,17 @@ function completeWork(state: GameState, w: Work): void {
     targetIds: owner ? [owner.id] : undefined,
     tile: w.target ? { col: w.target.col, row: w.target.row } : undefined,
   });
+  if (owner && !owner.isBarbarian && w.target) {
+    emitImprovementComplete(
+      state,
+      owner.id,
+      w.id,
+      w.kind,
+      workName(w.kind, tier),
+      w.target.col,
+      w.target.row,
+    );
+  }
 }
 
 /**

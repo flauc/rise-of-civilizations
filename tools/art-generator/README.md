@@ -48,6 +48,12 @@ bun run tools/art-generator/generate.ts --subset village-rewards
 # Barbarian camp cleared illustration
 bun run tools/art-generator/generate.ts --barbarian-reward barb_camp_cleared
 
+# Turn-update event portraits
+bun run tools/art-generator/generate.ts --turn-update tradeRouteEstablished
+bun run tools/art-generator/generate.ts --turn-update improvement_road
+bun run tools/art-generator/generate.ts --subset turn-updates
+bun run tools/art-generator/generate.ts --subset turn-update-improvements
+
 # Whole subsets
 bun run tools/art-generator/generate.ts --subset terrain
 bun run tools/art-generator/generate.ts --subset units
@@ -75,6 +81,7 @@ Common options:
 | `--rembg` | Use `rembg` for unit/building background removal |
 | `--dry-run` | Print what would happen without calling the API |
 | `--list` | List every asset ID the script knows about |
+| `--turn-update <id>` | Generate a specific turn-update portrait |
 
 ## Output layout
 
@@ -93,6 +100,7 @@ assets/generated/
   icons/         # Final PWA icon set (512, 192, 180, maskable 192)
   village_rewards/ # Final village reward illustrations (160x160)
   barbarian_rewards/ # Final barbarian reward illustrations (160x160)
+  turn_updates/      # Final turn-update event portraits (320x400)
 ```
 
 ## How it works

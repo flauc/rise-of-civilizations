@@ -216,6 +216,8 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     contactQueue: dip?.contacts ?? [],
     diploProposals: dip?.proposals ?? [],
     barbarianActivity: view.barbarianActivity ?? "normal",
+    turnUpdates: view.turnUpdates ?? [],
+    nextTurnUpdateId: 1,
     barbarianBribes: (view.you.barbarianBribes ?? []).map((b) => ({
       campKey: b.campKey,
       playerId: view.yourId,
