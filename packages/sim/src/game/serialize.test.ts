@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createGame, serializeState, deserializeState, viewForPlayer } from "@roc/sim";
+import { createGame, serializeState, deserializeState, viewForPlayer, type SerializedState } from "@roc/sim";
 
 describe("player view log filtering", () => {
   it("hides other players' private actions from the game log", () => {
@@ -72,6 +72,25 @@ describe("serialize round-trip", () => {
       expect([...rp.researched].sort()).toEqual([...p.researched].sort());
       expect([...rp.civicsResearched].sort()).toEqual([...p.civicsResearched].sort());
       expect([...rp.explored].sort()).toEqual([...p.explored].sort());
+    }
+  });
+
+  it("tolerates legacy saves where Set fields were serialized as empty objects", () => {
+    const state = createGame({ seed: "legacy", cols: 30, rows: 20, playerCount: 2, humanSlots: 1 });
+    const serialized = serializeState(state);
+    // Simulate an old save where civicsResearched (and possibly others) became `{}`.
+    const legacy = JSON.parse(JSON.stringify(serialized)) as SerializedState;
+    for (const p of legacy.players) {
+      p.civicsResearched = {} as unknown as string[];
+      p.researched = {} as unknown as string[];
+      p.explored = {} as unknown as string[];
+    }
+    expect(() => deserializeState(legacy)).not.toThrow();
+    const restored = deserializeState(legacy);
+    for (const p of restored.players) {
+      expect(p.civicsResearched).toBeInstanceOf(Set);
+      expect(p.researched).toBeInstanceOf(Set);
+      expect(p.explored).toBeInstanceOf(Set);
     }
   });
 });
