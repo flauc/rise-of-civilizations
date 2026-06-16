@@ -1,7 +1,7 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City, Player, Unit } from "./state";
 import { cityAt, log, makeUnit, unitAt, unitsOf } from "./state";
-import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, tileYields, type Yields } from "./terrain";
+import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
 import { expandTerritory } from "./territory";
@@ -272,84 +272,66 @@ export function foodToGrow(population: number): number {
 }
 
 const keyOf = (t: { col: number; row: number }) => `${t.col},${t.row}`;
-const scoreOfKey = (state: GameState, key: string): number => {
-  const [c, r] = key.split(",").map(Number) as [number, number];
-  const tile = getTile(state.map, c, r);
-  return tile ? citizenScore(tileYields(tile)) : -Infinity;
-};
 
-/** Clean up a city's worked tiles (drop lost/invalid, cap at population) and
- *  fill any spare citizens onto the best available tiles. */
+/** A per-city scorer ranking a tile by how profitable it is to work — using the
+ *  full tile yields (terrain + improvement + resource + leader-ability bonuses),
+ *  so a freshly-completed improvement immediately makes its tile more desirable. */
+function tileScorer(state: GameState, city: City): (key: string) => number {
+  const eff = mergeCivEffects(civEffectsOf(state, city.ownerId), cityEffects(state, city));
+  return (key: string): number => {
+    const [c, r] = key.split(",").map(Number) as [number, number];
+    const tile = getTile(state.map, c, r);
+    return tile ? citizenScore(tileWorkYields(state, c, r, eff)) : -Infinity;
+  };
+}
+
+/**
+ * Re-optimise a city's worked tiles. Tiles the player locked (manual picks) are
+ * always kept — best-scoring first if they exceed capacity — and the remaining
+ * citizen slots are filled with the highest-yield unlocked tiles. Because the
+ * unlocked set is recomputed from scratch every call, a citizen on a now-inferior
+ * tile is reshuffled onto a better one (e.g. once an improvement completes),
+ * while manual assignments stay put. Also drops capacity (specialists/starvation)
+ * and lost-territory tiles.
+ */
 export function autoAssignCitizens(state: GameState, city: City): void {
   const cap = workerSlots(city);
+  const score = tileScorer(state, city);
   const valid = new Set(workableTiles(state, city).map(keyOf));
-  let worked = [...new Set(city.workedTiles)].filter((k) => valid.has(k));
-  worked.sort((a, b) => scoreOfKey(state, b) - scoreOfKey(state, a));
-  if (worked.length > cap) worked = worked.slice(0, cap);
-  const workedSet = new Set(worked);
-  const avail = [...valid]
-    .filter((k) => !workedSet.has(k))
-    .sort((a, b) => scoreOfKey(state, b) - scoreOfKey(state, a));
-  while (worked.length < cap && avail.length > 0) worked.push(avail.shift()!);
-  city.workedTiles = worked;
+  // Drop locks on tiles we can no longer work (lost territory, etc.).
+  const locked = [...new Set(city.lockedTiles ?? [])].filter((k) => valid.has(k));
+  // Honour locks first; if they exceed capacity, work the best-scoring of them.
+  const workedLocked = [...locked].sort((a, b) => score(b) - score(a)).slice(0, cap);
+  const lockedSet = new Set(workedLocked);
+  // Fill the rest with the best unlocked tiles.
+  const auto = [...valid]
+    .filter((k) => !lockedSet.has(k))
+    .sort((a, b) => score(b) - score(a))
+    .slice(0, Math.max(0, cap - workedLocked.length));
+  city.lockedTiles = locked;
+  city.workedTiles = [...workedLocked, ...auto];
 }
 
-/** Assign one spare citizen to the best available tile (used on city growth). */
-export function assignOneCitizen(state: GameState, city: City): void {
-  if (city.workedTiles.length >= workerSlots(city)) return;
-  const workedSet = new Set(city.workedTiles);
-  let best: string | null = null;
-  let bestScore = -Infinity;
-  for (const t of workableTiles(state, city)) {
-    const k = keyOf(t);
-    if (workedSet.has(k)) continue;
-    const s = scoreOfKey(state, k);
-    if (s > bestScore) {
-      bestScore = s;
-      best = k;
-    }
-  }
-  if (best) city.workedTiles.push(best);
-}
-
-/** Keep only the best worked tiles the city's free citizens can staff. */
-export function trimCitizens(state: GameState, city: City): void {
-  const cap = workerSlots(city);
-  if (city.workedTiles.length <= cap) return;
-  city.workedTiles = [...city.workedTiles]
-    .sort((a, b) => scoreOfKey(state, b) - scoreOfKey(state, a))
-    .slice(0, cap);
-}
-
-/** Toggle a citizen on/off a tile. Adding past capacity swaps out the worst tile. */
+/** Manually toggle a citizen on/off a tile. Assigning *locks* the tile so it is
+ *  preserved through auto-optimisation; toggling it again unlocks it and hands
+ *  the citizen back to automatic management. */
 export function toggleCitizen(state: GameState, city: City, col: number, row: number): boolean {
   const key = `${col},${row}`;
-  const idx = city.workedTiles.indexOf(key);
-  if (idx >= 0) {
-    city.workedTiles.splice(idx, 1); // un-assign
+  city.lockedTiles ??= [];
+  // Already assigned here → unlock and free the citizen.
+  if (city.lockedTiles.includes(key) || city.workedTiles.includes(key)) {
+    city.lockedTiles = city.lockedTiles.filter((k) => k !== key);
+    city.workedTiles = city.workedTiles.filter((k) => k !== key);
     return true;
   }
   const valid = new Set(workableTiles(state, city).map(keyOf));
   if (!valid.has(key)) return false;
   // No citizen is free to work a tile — every one is committed as a specialist.
-  const cap = workerSlots(city);
-  if (cap <= 0) return false;
-  // At capacity, free up a slot by dropping the worst currently-worked tile so the
-  // new assignment is a swap, not an over-commit. (Without an existing tile to
-  // drop, the new tile must be rejected rather than pushing past `cap`.)
-  if (city.workedTiles.length >= cap) {
-    let worstIdx = -1;
-    let worst = Infinity;
-    for (let i = 0; i < city.workedTiles.length; i++) {
-      const s = scoreOfKey(state, city.workedTiles[i]!);
-      if (s < worst) {
-        worst = s;
-        worstIdx = i;
-      }
-    }
-    if (worstIdx >= 0) city.workedTiles.splice(worstIdx, 1);
-  }
-  city.workedTiles.push(key);
+  if (workerSlots(city) <= 0) return false;
+  // Lock the pick, then re-optimise; at capacity this swaps out the worst
+  // unlocked tile rather than over-committing past the worker cap.
+  city.lockedTiles.push(key);
+  autoAssignCitizens(state, city);
   return true;
 }
 
@@ -383,6 +365,9 @@ function placeUnit(state: GameState, city: City, type: keyof typeof UNIT_DEFS): 
 
 /** Advance one city by a turn: yields -> growth, production, gold, research. */
 export function processCity(state: GameState, city: City, owner: Player): void {
+  // Re-optimise tile assignments before computing yields, so improvements that
+  // completed (or territory that changed) pull citizens onto better tiles.
+  autoAssignCitizens(state, city);
   const y = getCityYields(state, city);
 
   // Food / growth (happiness can reduce surplus growth but not increase it).
@@ -392,7 +377,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   if (city.foodStored < 0) {
     if (city.population > 1) {
       city.population -= 1;
-      trimCitizens(state, city);
+      autoAssignCitizens(state, city);
       log(state, `${city.name} starved (now pop ${city.population}).`, {
         actorId: city.ownerId,
         targetIds: [city.ownerId],
@@ -406,7 +391,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       city.foodStored -= need;
       city.population += 1;
       expandTerritory(state, city); // borders grow with the city
-      assignOneCitizen(state, city); // new citizen works the best free tile
+      autoAssignCitizens(state, city); // new citizen works the best free tile
       log(state, `${city.name} grew to pop ${city.population}.`, {
         actorId: city.ownerId,
         targetIds: [city.ownerId],

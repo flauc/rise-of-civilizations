@@ -710,6 +710,8 @@ export function createUI(handlers: UIHandlers): UI {
     const rName = researchingDef ? researchingDef.name : "Choose…";
     const cName = civicDef ? civicDef.name : "Choose…";
     const civTitle = civ ? `${civ.name} — ${civ.abilityName}: ${civ.abilityDesc}` : "";
+    const showCivics = civicsUnlocked(player);
+    const showReligion = religionUnlocked(state, player.id);
 
     const myCities = citiesOf(state, viewerId);
     const cityCount = myCities.length;
@@ -725,10 +727,10 @@ export function createUI(handlers: UIHandlers): UI {
         <button class="chip gold-chip" id="gold-btn" title="Gold">🪙 ${Math.floor(player.gold)} <span style="${goldClass}">(${goldSign}${Math.abs(netGold)})</span></button>
         <button class="tb-pill" id="research-btn" title="Research" style="--p:${researchPct}%">
           <span class="tb-pl">🔬</span><b>${rName}</b><span class="tb-score">+${sci}</span></button>
-        <button class="tb-pill civic" id="civics-btn" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%">
-          <span class="tb-pl">🏛️</span><b>${cName}</b><span class="tb-score">+${cul}</span></button>
-        <button class="tb-pill" id="religion-btn" title="Religion">
-          <span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b><span class="tb-score">+${fth}</span></button>
+        ${showCivics ? `<button class="tb-pill civic" id="civics-btn" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%">` +
+          `<span class="tb-pl">🏛️</span><b>${cName}</b><span class="tb-score">+${cul}</span></button>` : ""}
+        ${showReligion ? `<button class="tb-pill" id="religion-btn" title="Religion">` +
+          `<span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b><span class="tb-score">+${fth}</span></button>` : ""}
       </div>
       <div class="tb-grp">
         <button class="tb-pill empire" id="empire-btn" title="Empire">
@@ -768,34 +770,38 @@ export function createUI(handlers: UIHandlers): UI {
       renderCivics(state);
       renderReligion(state);
     });
-    topbar.querySelector<HTMLButtonElement>("#civics-btn")!.addEventListener("click", () => {
-      const opening = !civicsOpen;
-      civicsOpen = !civicsOpen;
-      researchOpen = false;
-      religionOpen = false;
-      if (opening) {
-        closeSideSheets();
-        menuOpen = false;
-        renderMenu(state);
-      }
-      renderCivics(state);
-      renderResearch(state);
-      renderReligion(state);
-    });
-    topbar.querySelector<HTMLButtonElement>("#religion-btn")!.addEventListener("click", () => {
-      const opening = !religionOpen;
-      religionOpen = !religionOpen;
-      researchOpen = false;
-      civicsOpen = false;
-      if (opening) {
-        closeSideSheets();
-        menuOpen = false;
-        renderMenu(state);
-      }
-      renderReligion(state);
-      renderResearch(state);
-      renderCivics(state);
-    });
+    if (showCivics) {
+      topbar.querySelector<HTMLButtonElement>("#civics-btn")!.addEventListener("click", () => {
+        const opening = !civicsOpen;
+        civicsOpen = !civicsOpen;
+        researchOpen = false;
+        religionOpen = false;
+        if (opening) {
+          closeSideSheets();
+          menuOpen = false;
+          renderMenu(state);
+        }
+        renderCivics(state);
+        renderResearch(state);
+        renderReligion(state);
+      });
+    }
+    if (showReligion) {
+      topbar.querySelector<HTMLButtonElement>("#religion-btn")!.addEventListener("click", () => {
+        const opening = !religionOpen;
+        religionOpen = !religionOpen;
+        researchOpen = false;
+        civicsOpen = false;
+        if (opening) {
+          closeSideSheets();
+          menuOpen = false;
+          renderMenu(state);
+        }
+        renderReligion(state);
+        renderResearch(state);
+        renderCivics(state);
+      });
+    }
     topbar.querySelector<HTMLButtonElement>("#empire-btn")!.addEventListener("click", () => {
       const opening = !empire.isOpen();
       if (opening) {
@@ -847,8 +853,8 @@ export function createUI(handlers: UIHandlers): UI {
       `<div class="bb-grp">` +
       `<button class="bb-chip gold-chip" data-bb="gold" title="Gold">🪙 ${Math.floor(player.gold)} <span style="${goldClass}">(${goldSign}${Math.abs(netGold)})</span></button>` +
       `<button class="bb-btn" data-bb="research" title="Research" style="--p:${researchPct}%"><span>🔬</span><i>+${sci}</i></button>` +
-      `<button class="bb-btn" data-bb="civics" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%"><span>🏛️</span><i>+${cul}</i></button>` +
-      `<button class="bb-btn" data-bb="religion" title="Religion"><span>☮️</span><i>${Math.floor(player.faith)} +${fth}</i></button>` +
+      (showCivics ? `<button class="bb-btn" data-bb="civics" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%"><span>🏛️</span><i>+${cul}</i></button>` : "") +
+      (showReligion ? `<button class="bb-btn" data-bb="religion" title="Religion"><span>☮️</span><i>${Math.floor(player.faith)} +${fth}</i></button>` : "") +
       `<button class="bb-btn" data-bb="empire" title="Empire"><span>🏙️</span><i>${cityCount}</i></button>` +
       `<button class="bb-btn ${turnUpdateHasNew ? "has-badge" : ""}" data-bb="turn-update" title="Turn Updates"><span>📜</span><i>Updates</i>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>` +
       `<button class="bb-btn" data-bb="diplo" title="Diplomacy"><span>🕊️</span><i>${player.met.length}</i></button>` +
@@ -904,7 +910,7 @@ export function createUI(handlers: UIHandlers): UI {
         `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
         `<button class="btn primary" id="menu-save">Save Game</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki</button>` +
-        `<button class="btn" id="menu-log">📜 Game Log</button>` +
+        `<button class="btn" id="menu-log">Game Log</button>` +
         godMenuBtn +
         `<button class="btn" id="menu-leave">Leave Game</button>` +
         `</div>`;

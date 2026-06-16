@@ -71,8 +71,13 @@ export interface City {
   specialists: Specialist[];
   /** Wonder ids completed and hosted in this city. */
   wonders: string[];
-  /** Tile keys ("col,row") this city's citizens are assigned to work. */
+  /** Tile keys ("col,row") this city's citizens are assigned to work. Derived
+   *  each turn by auto-assignment; locked tiles below are always kept. */
   workedTiles: string[];
+  /** Tile keys the player explicitly assigned. These are held through
+   *  auto-optimisation (manual picks are respected); only unlocked citizens are
+   *  reshuffled onto more profitable tiles. */
+  lockedTiles?: string[];
   /** Dominant religion id in this city (undefined = none). */
   religion?: string;
   isCapital: boolean;

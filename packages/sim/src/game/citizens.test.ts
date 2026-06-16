@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
-import { workableTiles, toggleCitizen, getCityYields } from "./economy";
+import { workableTiles, toggleCitizen, getCityYields, autoAssignCitizens } from "./economy";
 import { convertCitizen, workerSlots } from "./specialists";
 import { citiesOf, unitsOf } from "./state";
 import { getTile } from "@roc/shared";
@@ -52,6 +52,51 @@ describe("citizen assignment", () => {
     const res = applyCommand(s, { type: "assignCitizen", cityId: city.id, col: target.col, row: target.row });
     expect(res.ok).toBe(false);
     expect(city.workedTiles.length).toBe(0);
+  });
+
+  it("an unlocked citizen moves onto a tile once it becomes more profitable", () => {
+    const { s, city } = foundedGame(); // pop 1 -> 1 worked tile, none locked
+    const tiles = workableTiles(s, city);
+    const target = tiles[0]!;
+    // Make `target` clearly the best tile and every other workable tile poor.
+    for (const t of tiles) {
+      const tile = getTile(s.map, t.col, t.row)!;
+      tile.resource = undefined;
+      if (t === target) {
+        tile.terrain = "grassland";
+        tile.improvement = "farm";
+        tile.improvementLevel = 1;
+      } else {
+        tile.terrain = "desert";
+        tile.improvement = undefined;
+      }
+    }
+    autoAssignCitizens(s, city); // simulates the per-turn re-optimisation
+    expect(city.workedTiles).toEqual([`${target.col},${target.row}`]);
+  });
+
+  it("auto-optimisation never reshuffles a tile the player locked", () => {
+    const { s, city } = foundedGame(); // pop 1, capacity 1
+    const tiles = workableTiles(s, city);
+    // Lock a tile the city is NOT already auto-working (clicking an auto-worked
+    // tile would instead unassign it — existing toggle semantics).
+    const locked = tiles.find((t) => !city.workedTiles.includes(`${t.col},${t.row}`))!;
+    const rival = tiles.find((t) => t !== locked)!;
+    for (const t of tiles) getTile(s.map, t.col, t.row)!.resource = undefined;
+    // The locked tile is weak; a different tile is far better.
+    const lt = getTile(s.map, locked.col, locked.row)!;
+    lt.terrain = "desert";
+    lt.improvement = undefined;
+    const rt = getTile(s.map, rival.col, rival.row)!;
+    rt.terrain = "grassland";
+    rt.improvement = "farm";
+    rt.improvementLevel = 1;
+    // The player explicitly assigns the weak tile (locking it).
+    expect(applyCommand(s, { type: "assignCitizen", cityId: city.id, col: locked.col, row: locked.row }).ok).toBe(true);
+    expect(city.workedTiles).toEqual([`${locked.col},${locked.row}`]);
+    // Re-optimising must keep the manual pick despite the stronger rival.
+    autoAssignCitizens(s, city);
+    expect(city.workedTiles).toEqual([`${locked.col},${locked.row}`]);
   });
 
   it("worked tiles contribute their yields (incl. science)", () => {

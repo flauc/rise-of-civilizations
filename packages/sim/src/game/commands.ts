@@ -262,7 +262,9 @@ export function applyCommand(
       const city = state.cities.get(cmd.cityId);
       if (!city) return fail("no such city");
       if (city.ownerId !== player.id) return fail("not your city");
-      return convertCitizen(state, city, cmd.specialistId as SpecialistId, cmd.delta);
+      const res = convertCitizen(state, city, cmd.specialistId as SpecialistId, cmd.delta);
+      if (res.ok) autoAssignCitizens(state, city); // re-staff tiles around the new specialist count
+      return res;
     }
 
     case "startWork": {

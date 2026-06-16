@@ -212,11 +212,20 @@ export function createLobby(onStart: (session: Session) => void): void {
     .cp-dot.taken{opacity:.22;cursor:not-allowed}
     .cp-dot:hover:not(.taken):not(.sel){transform:scale(1.18)}
     .save-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-    .save-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;border:1px solid var(--edge);border-radius:10px;background:#1f1c14}
+    .save-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;border:1px solid var(--edge);border-radius:10px;background:#1f1c14;cursor:pointer;transition:background .12s,border-color .12s}
+    .save-row:hover{background:#29251b;border-color:#c9a227}
     .save-row .info{min-width:0}
     .save-row .name{font-weight:600;color:#e8dcc5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .save-row .meta{color:#b8aa8d;font-size:11.5px;margin-top:2px}
     .save-row .actions{display:flex;gap:6px;flex-shrink:0}
+    .save-menu{position:relative;width:32px;height:32px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px;line-height:1;pointer-events:auto;flex-shrink:0;transition:background .12s,border-color .12s}
+    .save-menu:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
+    .save-dropdown{display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:140px;background:#1f1c14;border:1px solid var(--edge);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.55);z-index:10;overflow:hidden}
+    .save-dropdown.open{display:block}
+    .save-dropdown-item{width:100%;padding:9px 12px;text-align:left;font:inherit;font-size:13px;color:#e8dcc5;background:transparent;border:none;cursor:pointer;white-space:nowrap}
+    .save-dropdown-item:hover{background:rgba(201,162,39,.12);color:#f0d878}
+    .save-dropdown-item.delete{color:#e0907d}
+    .save-dropdown-item.delete:hover{background:rgba(138,44,44,.18);color:#e0a69a}
     .hidden{display:none !important}
     .showcase{position:relative;z-index:1;max-width:720px}
     .showcase-label{font-family:'Cinzel',Georgia,serif;font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#c9a227;margin-bottom:10px;opacity:.85}
@@ -760,22 +769,33 @@ export function createLobby(onStart: (session: Session) => void): void {
     listEl.innerHTML = saves
       .map(
         (s) =>
-          `<div class="save-row">` +
+          `<div class="save-row" data-load="${s.id}" role="button" tabindex="0">` +
           `<span class="info">` +
           `<span class="name">${escapeHtml(s.name)}</span>` +
           `<span class="meta">${s.mode === "sp" ? "Single Player" : "Multiplayer"} · Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}${s.gameId ? ` · ${s.gameId}` : ""}</span>` +
           `</span>` +
           `<span class="actions">` +
-          `<button class="menu-btn primary" data-load="${s.id}" style="width:auto">Load</button>` +
-          `<button class="menu-btn" data-export="${s.id}" style="width:auto" title="Export to file">💾</button>` +
-          `<button class="menu-btn" data-delete="${s.id}" style="width:auto">🗑</button>` +
+          `<button type="button" class="save-menu" data-menu="${s.id}" aria-label="Save options" aria-haspopup="true">⋯</button>` +
+          `<div class="save-dropdown" data-dropdown="${s.id}">` +
+          `<button type="button" class="save-dropdown-item" data-export="${s.id}">Export to file</button>` +
+          `<button type="button" class="save-dropdown-item delete" data-delete="${s.id}">Delete</button>` +
+          `</div>` +
           `</span>` +
           `</div>`,
       )
       .join("");
 
-    listEl.querySelectorAll<HTMLButtonElement>("[data-load]").forEach((el) =>
-      el.addEventListener("click", async () => {
+    let dropdownCloser: (() => void) | null = null;
+    const closeAllDropdowns = () => {
+      listEl.querySelectorAll<HTMLDivElement>(".save-dropdown.open").forEach((d) => d.classList.remove("open"));
+      if (dropdownCloser) {
+        document.removeEventListener("click", dropdownCloser);
+        dropdownCloser = null;
+      }
+    };
+
+    listEl.querySelectorAll<HTMLDivElement>(".save-row").forEach((el) => {
+      const load = async () => {
         const id = el.dataset.load!;
         const record = await loadSave(id);
         if (!record) return;
@@ -785,22 +805,52 @@ export function createLobby(onStart: (session: Session) => void): void {
         }
         close();
         onStart(new LocalSession({ savedState: JSON.parse(record.blob) as SerializedState }));
+      };
+      el.addEventListener("click", load);
+      el.addEventListener("keydown", (e) => {
+        if (e.target !== el) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          void load();
+        }
+      });
+    });
+
+    listEl.querySelectorAll<HTMLButtonElement>(".save-menu").forEach((el) =>
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const dropdown = listEl.querySelector<HTMLDivElement>(`[data-dropdown="${el.dataset.menu}"]`);
+        const isOpen = dropdown?.classList.contains("open") ?? false;
+        closeAllDropdowns();
+        if (dropdown && !isOpen) {
+          dropdown.classList.add("open");
+          dropdownCloser = () => closeAllDropdowns();
+          document.addEventListener("click", dropdownCloser);
+        }
       }),
     );
+
     listEl.querySelectorAll<HTMLButtonElement>("[data-export]").forEach((el) =>
-      el.addEventListener("click", async () => {
+      el.addEventListener("click", async (e) => {
+        e.stopPropagation();
         const id = el.dataset.export!;
         const record = await loadSave(id);
         if (!record) return;
         downloadSave(record);
+        closeAllDropdowns();
       }),
     );
     listEl.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((el) =>
-      el.addEventListener("click", async () => {
-        await deleteSave(el.dataset.delete!);
-        await renderLoadGame();
+      el.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (confirm("Delete this save? This cannot be undone.")) {
+          await deleteSave(el.dataset.delete!);
+          await renderLoadGame();
+        }
+        closeAllDropdowns();
       }),
     );
+
   }
 
   renderShowcase();
