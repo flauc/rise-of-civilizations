@@ -182,7 +182,7 @@ A standalone AI art generator lives in `tools/art-generator/`:
   with a prompt + reference tile, then resizes and masks the result with
   ImageMagick.
 - `tools/art-generator/config.ts` — asset subsets (terrain, units, buildings,
-  improvements, resources, leaders, ui, icons, village-rewards, barbarian-rewards), prompt templates, and target sizes.
+  improvements, resources, leaders, ui, icons, village-rewards, barbarian-rewards, ages), prompt templates, and target sizes.
 
 Typical commands:
 
@@ -194,6 +194,8 @@ bun run tools/art-generator/generate.ts --subset leaders
 bun run tools/art-generator/generate.ts --subset units
 bun run tools/art-generator/generate.ts --subset resources
 bun run tools/art-generator/generate.ts --subset improvements
+bun run tools/art-generator/generate.ts --subset ages
+bun run tools/art-generator/generate.ts --icon favicon
 bun run tools/art-generator/generate.ts --all
 
 # Generate 5 randomized variants per terrain tile and copy to the client
@@ -218,6 +220,15 @@ bun run tools/art-generator/generate.ts --subset ui --size 1K
 # Generate PWA icons and copy them to the client
 bun run tools/art-generator/generate.ts --icon app_icon
 # (then copy assets/generated/icons/*.png to packages/client/public/)
+
+# Generate a favicon set and copy it to the client and landing page
+bun run tools/art-generator/generate.ts --icon favicon
+# (then copy assets/generated/icons/favicon.ico and favicon-*.png to
+#  packages/client/public/ and roc-landing-page/public/)
+
+# Generate era/age artwork for the landing page
+bun run tools/art-generator/generate.ts --subset ages
+# (then copy assets/generated/ages/*.png to roc-landing-page/public/assets/ages/)
 
 # Generate village reward illustrations and copy them to the client
 bun run tools/art-generator/generate.ts --subset village-rewards

@@ -45,6 +45,7 @@ import {
   ICON_SUBSET,
   VILLAGE_REWARD_SUBSET,
   BARBARIAN_REWARD_SUBSET,
+  AGE_SUBSET,
 } from "./config";
 
 interface Options {
@@ -105,7 +106,7 @@ Options:
   --icon <id>            Generate a specific app icon (e.g. app_icon)
   --village-reward <id>  Generate a specific village reward illustration (e.g. village_reward_tech)
   --barbarian-reward <id> Generate a specific barbarian reward illustration (e.g. barb_camp_cleared)
-  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, all
+  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, all
   --list                 List all available asset IDs and exit
   --model <id>           Gemini model (default: ${DEFAULT_MODEL})
   --size <512|1K|2K|4K>  Gemini image size (default: ${DEFAULT_IMAGE_SIZE})
@@ -275,6 +276,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "icons") entries.push(...ICON_SUBSET);
         else if (name === "village-rewards") entries.push(...VILLAGE_REWARD_SUBSET);
         else if (name === "barbarian-rewards") entries.push(...BARBARIAN_REWARD_SUBSET);
+        else if (name === "ages") entries.push(...AGE_SUBSET);
         else if (name === "all") entries.push(...allEntries());
         else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, or all.`);
         break;
@@ -605,6 +607,47 @@ async function postProcessIcon(rawPath: string, finalDir: string, entry: AssetEn
   ]);
 }
 
+async function postProcessFavicon(rawPath: string, finalDir: string, entry: AssetEntry): Promise<void> {
+  // Browser favicon set: multi-resolution ICO plus PNG fallbacks.
+  const base = join(finalDir, entry.id);
+
+  // 32x32 PNG fallback used by most modern browsers.
+  await runCmd("magick", [
+    rawPath,
+    "-resize",
+    "32x32^",
+    "-gravity",
+    "center",
+    "-extent",
+    "32x32",
+    "-define",
+    "png:color-type=6",
+    `${base}-32x32.png`,
+  ]);
+
+  // 16x16 PNG fallback.
+  await runCmd("magick", [
+    rawPath,
+    "-resize",
+    "16x16^",
+    "-gravity",
+    "center",
+    "-extent",
+    "16x16",
+    "-define",
+    "png:color-type=6",
+    `${base}-16x16.png`,
+  ]);
+
+  // Multi-resolution ICO for legacy browsers / bookmarks.
+  await runCmd("magick", [
+    rawPath,
+    "-define",
+    "icon:auto-resize=16,32,48,64",
+    `${base}.ico`,
+  ]);
+}
+
 function variantSuffix(index: number): string {
   return index === 0 ? "" : `_${index}`;
 }
@@ -664,8 +707,10 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
 
       if (entry.category === "tile" || entry.category === "road" || entry.category === "river") {
         await postProcessTile(rawPath, finalPath, entry);
-      } else if (entry.category === "leader") {
+      } else if (entry.category === "leader" || entry.category === "age") {
         await postProcessPortrait(rawPath, finalPath, entry);
+      } else if (entry.category === "icon" && entry.id === "favicon") {
+        await postProcessFavicon(rawPath, finalDir, entry);
       } else if (entry.category === "icon") {
         await postProcessIcon(rawPath, finalDir, entry);
       } else {

@@ -78,10 +78,30 @@ function setupFeaturedCarousel(): void {
   // Auto-advance every 6s, pause on hover
   const wrapper = $('#featured-civ');
   let timer = setInterval(() => go(1), 6000);
-  wrapper?.addEventListener('mouseenter', () => clearInterval(timer));
-  wrapper?.addEventListener('mouseleave', () => {
+
+  const restartTimer = () => {
     clearInterval(timer);
     timer = setInterval(() => go(1), 6000);
+  };
+
+  const goTo = (target: number) => {
+    index = (target + FEATURED_CIVS.length) % FEATURED_CIVS.length;
+    populateFeaturedCiv(index);
+    restartTimer();
+  };
+
+  wrapper?.addEventListener('mouseenter', () => clearInterval(timer));
+  wrapper?.addEventListener('mouseleave', restartTimer);
+
+  // Clicking a leader portrait in the marquee jumps the carousel to that civ.
+  const marquee = $('#leader-marquee');
+  marquee?.addEventListener('click', (e) => {
+    const item = (e.target as HTMLElement).closest('.marquee-item') as HTMLElement | null;
+    if (!item) return;
+    const id = item.dataset.id;
+    if (!id) return;
+    const targetIndex = FEATURED_CIVS.findIndex((c) => c.id === id);
+    if (targetIndex !== -1) goTo(targetIndex);
   });
 }
 
@@ -92,13 +112,22 @@ function populateLeaderMarquee(): void {
   const items = shuffled
     .map(
       (id) => `
-        <div class="marquee-item">
+        <div class="marquee-item" data-id="${id}" tabindex="0" role="button" aria-label="View ${id.replace(/_/g, ' ')}">
           <img src="assets/leaders/${id}.png" alt="" loading="lazy" />
         </div>
       `
     )
     .join('');
   track.innerHTML = items + items; // duplicate for seamless loop
+
+  // Keyboard support: Enter/Space activates a portrait.
+  track.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const item = (e.target as HTMLElement).closest('.marquee-item') as HTMLElement | null;
+    if (!item) return;
+    e.preventDefault();
+    item.click();
+  });
 }
 
 function populateEras(): void {
@@ -107,7 +136,7 @@ function populateEras(): void {
   timeline.innerHTML = ERAS.map(
     (era, i) => `
       <article class="era-card" style="--delay:${i * 0.12}s">
-        <div class="era-terrain"><img src="assets/terrain/${era.terrain}.png" alt="" loading="lazy" /></div>
+        <div class="era-art"><img src="assets/ages/${era.image}.png" alt="" loading="lazy" /></div>
         <div class="era-body">
           <span class="era-years">${era.years}</span>
           <h3>${era.name}</h3>

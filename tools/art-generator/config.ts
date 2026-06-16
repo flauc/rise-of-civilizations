@@ -21,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age";
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -206,6 +206,63 @@ export const ICON_SUBSET: AssetEntry[] = [
     category: "icon" as const,
     referenceTile: DEFAULT_REFERENCE_TILE,
   },
+  {
+    id: "favicon",
+    name: "Favicon",
+    description: "a small square favicon for an ancient turn-based strategy game. Show a stylized golden sun rising behind a classical stone column or pillar, framed by a subtle hexagon outline, on a deep navy-blue background. Match the painted, slightly stylized look of the reference tile. No text, no letters, no UI labels, no watermark, clean edges suitable for a browser favicon.",
+    aspectRatio: "1:1",
+    size: { width: 256, height: 256 },
+    category: "icon" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+];
+
+export const AGE_SUBSET: AssetEntry[] = [
+  {
+    id: "age_stone_dawn",
+    name: "Stone / Dawn Age",
+    description: "a stylized hand-painted scene of the Stone Age / Dawn era: tribes around a campfire, primitive huts, stone tools, and a vast open plain under a warm sunrise. Evoke the first cities and the dawn of civilization.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "age" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "age_bronze",
+    name: "Bronze Age",
+    description: "a stylized hand-painted scene of the Bronze Age: a ziggurat or pyramid rising behind a desert city, chariots, and bronze-armored soldiers under a golden sun. Evoke the first empires and monumental architecture.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "age" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "age_iron_classical",
+    name: "Iron / Classical Age",
+    description: "a stylized hand-painted scene of the Iron / Classical era: legions or phalanxes on a marble plaza, grand temples with columns, and a philosopher addressing citizens under a bright Mediterranean sky.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "age" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "age_medieval",
+    name: "Medieval / Faith Age",
+    description: "a stylized hand-painted scene of the Medieval era: a castle or cathedral on a hill, knights in armor, samurai, or monks, with banners flying and a moody golden sunset. Evoke faith, feudalism, and fortress architecture.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "age" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "age_exploration",
+    name: "Exploration Age",
+    description: "a stylized hand-painted scene of the Age of Exploration: tall caravels sailing across a wide ocean toward a distant horizon, a printing press, cannons, and bustling port trade under a dramatic sky.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "age" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
 ];
 
 export const BARBARIAN_REWARD_SUBSET: AssetEntry[] = [
@@ -312,7 +369,7 @@ export const BUILDING_SUBSET: AssetEntry[] = [
 ];
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -410,6 +467,9 @@ export function promptFor(entry: AssetEntry): string {
   }
   if (entry.category === "icon") {
     return `Create a square mobile app icon for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render as a centered, self-contained square icon filling the frame. No text, no letters, no words, no UI labels, no watermark, no border frame, and no cast shadow outside the icon. The icon should look polished and readable as a small phone home-screen app.`;
+  }
+  if (entry.category === "age") {
+    return `Create a stylized hand-painted era portrait for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a centered scene with a strong sense of time and place, set against a soft painted background. NO text, NO letters, NO numbers, NO percentages, NO plus signs, NO symbols, NO UI elements, NO ability descriptions, NO stat boxes, NO border, NO frame, NO modern objects, and NO cast shadow. Keep the composition clear and readable at small sizes.`;
   }
   if (entry.category === "village_reward") {
     return `Create a small narrative reward illustration for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render as a centered scene on a clean solid white background. No text, no letters, no UI labels, no watermark, no border frame, and no cast shadow. The illustration should read clearly at small sizes.`;

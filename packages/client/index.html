@@ -10,21 +10,35 @@
       name="description"
       content="A turn-based 4X strategy game from the Ancient Era to the Age of Exploration."
     />
-    <meta name="theme-color" content="#0a1624" />
+    <meta name="theme-color" content="#0f0e0b" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Rise of Civ" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;800&family=Lato:wght@300;400;700&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
     <title>Rise of Civilizations</title>
     <style>
       :root {
         color-scheme: dark;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-        --panel: rgba(10, 22, 36, 0.92);
-        --edge: rgba(255, 255, 255, 0.14);
-        --accent: #ffd967;
+        font-family: 'Lato', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        --bg: #0f0e0b;
+        --bg-elevated: #181610;
+        --bg-card: #1f1c14;
+        --panel: rgba(31, 28, 20, 0.94);
+        --edge: rgba(201, 162, 39, 0.28);
+        --accent: #c9a227;
+        --accent-bright: #f0d878;
+        --parchment: #e8dcc5;
+        --parchment-dim: #b8aa8d;
+        --danger: #8a2c2c;
+        --success: #4a6e46;
       }
       * {
         box-sizing: border-box;
@@ -34,49 +48,64 @@
         margin: 0;
         height: 100%;
         overflow: hidden;
-        background: #0a1624;
-        color: #cfe3f7;
+        background: var(--bg);
+        color: var(--parchment);
+      }
+      h1, h2, h3, h4 {
+        font-family: 'Cinzel', Georgia, serif;
+        font-weight: 600;
+        margin: 0 0 0.4em;
       }
       #game {
         display: block;
         width: 100vw;
         height: 100vh;
         touch-action: none;
-        background: #0a1624;
+        background: var(--bg);
       }
       .btn {
         font: inherit;
         font-size: 13px;
-        color: #eaf3fb;
-        background: #213a52;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: var(--parchment);
+        background: transparent;
         border: 1px solid var(--edge);
-        border-radius: 8px;
-        padding: 7px 12px;
+        border-radius: 999px;
+        padding: 8px 16px;
         cursor: pointer;
         user-select: none;
+        transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
       }
       .btn:hover {
-        background: #2b4d6c;
+        background: rgba(201, 162, 39, 0.12);
+        border-color: var(--accent);
+        color: var(--accent-bright);
       }
       .btn.primary {
-        background: #2f6f3f;
+        background: linear-gradient(135deg, var(--accent), #a6821f);
+        border-color: transparent;
+        color: #15120c;
       }
       .btn.primary:hover {
-        background: #3a8a4e;
+        background: linear-gradient(135deg, var(--accent-bright), var(--accent));
+        color: #0f0e0b;
+        box-shadow: 0 8px 24px rgba(201, 162, 39, 0.25);
       }
       .panel {
         position: fixed;
         background: var(--panel);
         border: 1px solid var(--edge);
-        border-radius: 12px;
+        border-radius: 16px;
         padding: 12px 14px;
         font-size: 13px;
         line-height: 1.5;
         user-select: none;
-        backdrop-filter: blur(2px);
+        backdrop-filter: blur(10px);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
       }
       .panel b {
-        color: #fff;
+        color: var(--parchment);
       }
       .row {
         display: flex;
@@ -117,20 +146,21 @@
         width: 84px;
         height: 96px;
         object-fit: cover;
-        border-radius: 8px;
+        border-radius: 12px;
         border: 1px solid var(--edge);
-        background: #16293c;
+        background: var(--bg-card);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
       }
       #leader-avatar .leader-avatar-label {
         margin-top: 4px;
         text-align: center;
         font-size: 10px;
-        color: #cfe3f7;
+        color: var(--parchment);
         line-height: 1.2;
       }
       #leader-avatar .leader-avatar-label span {
         display: block;
-        color: #9fc0dc;
+        color: var(--parchment-dim);
       }
       .tb-grp {
         display: flex;
@@ -139,6 +169,7 @@
       }
       .tb-turn {
         font-weight: 700;
+        color: var(--accent-bright);
       }
       .tb-civ {
         max-width: 38vw;
@@ -147,10 +178,11 @@
         white-space: nowrap;
       }
       .chip {
-        background: #16293c;
+        background: rgba(201, 162, 39, 0.1);
         border-radius: 7px;
         padding: 3px 8px;
         white-space: nowrap;
+        color: var(--parchment);
       }
       .tb-pill {
         position: relative;
@@ -158,10 +190,10 @@
         align-items: center;
         gap: 5px;
         font: inherit;
-        color: #eaf3fb;
-        background: #213a52;
+        color: var(--parchment);
+        background: rgba(201, 162, 39, 0.08);
         border: 1px solid var(--edge);
-        border-radius: 8px;
+        border-radius: 999px;
         padding: 5px 10px 7px;
         cursor: pointer;
         max-width: 160px;
@@ -191,7 +223,7 @@
       .tb-score {
         margin-left: 4px;
         font-size: 11px;
-        color: #9fc0dc;
+        color: var(--parchment-dim);
         font-weight: 600;
       }
       .tb-div {
@@ -199,17 +231,17 @@
         margin: 0 2px;
       }
       .tb-pill.empire {
-        background: #1b3248;
+        background: rgba(201, 162, 39, 0.12);
         gap: 4px;
       }
       /* shared small text + cost chips used in panels/modals */
       .sub {
-        color: #9fc0dc;
+        color: var(--parchment-dim);
         font-size: 11.5px;
         line-height: 1.35;
       }
       .cost {
-        color: #cfe3f7;
+        color: var(--parchment);
         white-space: nowrap;
         font-size: 12px;
       }
@@ -241,7 +273,7 @@
         gap: 6px 12px;
         margin-top: 6px;
         padding: 6px 8px;
-        background: #14283b;
+        background: rgba(201, 162, 39, 0.08);
         border-radius: 8px;
       }
       .tinfo-list {
@@ -257,13 +289,13 @@
         align-items: baseline;
       }
       .tinfo-good {
-        color: #7ad08a;
+        color: #a3d9a8;
       }
       .tinfo-bad {
-        color: #e0907d;
+        color: #e0a69a;
       }
       .tinfo-neutral {
-        color: #9fc0dc;
+        color: var(--parchment-dim);
       }
       #tile-panel .tinfo-toggle {
         margin-top: 8px;
@@ -293,7 +325,7 @@
         color: #e0b07d;
       }
       #tile-tip .tt-open {
-        color: #9fc0dc;
+        color: var(--parchment-dim);
       }
       /* City panel */
       #city-panel {
@@ -308,7 +340,7 @@
         gap: 3px 10px;
         margin-top: 6px;
         padding: 6px 8px;
-        background: #14283b;
+        background: rgba(201, 162, 39, 0.08);
         border-radius: 8px;
       }
       #endturn2 {
@@ -352,13 +384,13 @@
         margin-top: 4px;
         padding: 6px;
         border-radius: 8px;
-        background: #14283b;
-        color: #eaf3fb;
+        background: var(--bg-card);
+        color: var(--parchment);
         border: 1px solid var(--edge);
       }
       .bar {
         height: 8px;
-        background: #1a2c40;
+        background: rgba(201, 162, 39, 0.15);
         border-radius: 4px;
         overflow: hidden;
         margin-top: 4px;
@@ -385,16 +417,18 @@
         align-items: center;
         justify-content: center;
         gap: 14px;
-        background: rgba(5, 12, 20, 0.78);
+        background: rgba(15, 14, 11, 0.88);
         z-index: 60;
         text-align: center;
       }
       #gameover .title {
+        font-family: 'Cinzel', Georgia, serif;
         font-size: 40px;
         font-weight: 800;
+        color: var(--accent-bright);
       }
       #gameover .sub {
-        color: #cfe3f7;
+        color: var(--parchment);
         font-size: 16px;
       }
       /* Research / civics / religion / production / save modal */
@@ -414,8 +448,8 @@
       #save-modal input.lobby-in {
         font: inherit;
         font-size: 13px;
-        color: #eaf3fb;
-        background: #14283b;
+        color: var(--parchment);
+        background: var(--bg-card);
         border: 1px solid var(--edge);
         border-radius: 8px;
         padding: 7px 10px;
@@ -440,8 +474,8 @@
         cursor: pointer;
       }
       .pcard:hover {
-        background: #1d344c;
-        border-color: #3a5d7c;
+        background: rgba(201, 162, 39, 0.1);
+        border-color: var(--accent);
       }
       .pglyph {
         flex: none;
@@ -451,14 +485,14 @@
         align-items: center;
         justify-content: center;
         font-weight: 700;
-        background: #213a52;
+        background: rgba(201, 162, 39, 0.12);
         border-radius: 8px;
       }
       .locked-note {
         margin-top: 10px;
         padding: 10px 12px;
-        background: #2a2030;
-        border: 1px solid #5a4a66;
+        background: rgba(138, 44, 44, 0.12);
+        border: 1px solid rgba(138, 44, 44, 0.4);
         border-radius: 8px;
         color: #e6d2b8;
         font-size: 13px;
@@ -491,13 +525,14 @@
         position: absolute;
         box-sizing: border-box;
         padding: 7px 9px;
-        border-radius: 9px;
+        border-radius: 12px;
         border: 2px solid var(--edge);
-        background: #16273a;
+        background: var(--bg-card);
         overflow: hidden;
       }
       .tt-name {
-        font-weight: 700;
+        font-family: 'Cinzel', Georgia, serif;
+        font-weight: 600;
         font-size: 13px;
         white-space: nowrap;
         overflow: hidden;
@@ -505,30 +540,30 @@
       }
       .tt-cost {
         font-size: 11px;
-        color: #9fc0dc;
+        color: var(--parchment-dim);
       }
       .tt-unlocks {
         margin-top: 3px;
         font-size: 10.5px;
         line-height: 1.3;
-        color: #b9c9d8;
+        color: var(--parchment-dim);
         max-height: 40px;
         overflow: hidden;
       }
       .tt-done {
         border-color: #4a9a4e;
-        background: #16301c;
+        background: rgba(74, 158, 78, 0.12);
       }
       .tt-researching {
         border-color: var(--accent);
-        box-shadow: 0 0 0 2px rgba(255, 217, 103, 0.25);
+        box-shadow: 0 0 0 2px rgba(201, 162, 39, 0.25);
       }
       .tt-available {
-        border-color: #3d7fe0;
+        border-color: var(--accent);
         cursor: pointer;
       }
       .tt-available:hover {
-        background: #1d3a55;
+        background: rgba(201, 162, 39, 0.1);
       }
       .tt-locked {
         opacity: 0.5;
@@ -564,7 +599,7 @@
       .csub {
         margin-top: 10px;
         margin-bottom: 2px;
-        color: #c79ad6;
+        color: var(--accent-bright);
         font-size: 12px;
         font-weight: 600;
         text-transform: uppercase;
@@ -584,7 +619,7 @@
         cursor: pointer;
       }
       .tech:hover {
-        background: #1d344c;
+        background: rgba(201, 162, 39, 0.1);
       }
       /* transient banner */
       #banner {
@@ -592,12 +627,14 @@
         left: 50%;
         top: 38%;
         transform: translateX(-50%);
+        font-family: 'Cinzel', Georgia, serif;
         font-size: 22px;
         font-weight: 700;
-        color: #fff;
-        background: rgba(8, 16, 26, 0.8);
+        color: var(--parchment);
+        background: rgba(31, 28, 20, 0.92);
+        border: 1px solid var(--edge);
         padding: 12px 22px;
-        border-radius: 12px;
+        border-radius: 16px;
         pointer-events: none;
         opacity: 0;
         transition: opacity 0.25s;
@@ -609,7 +646,7 @@
       #village-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.55);
+        background: rgba(15, 14, 11, 0.72);
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.2s;
@@ -627,7 +664,7 @@
         width: min(380px, calc(100vw - 32px));
         background: var(--panel);
         border: 1px solid var(--edge);
-        border-radius: 14px;
+        border-radius: 16px;
         padding: 18px 20px;
         text-align: center;
         opacity: 0;
@@ -648,15 +685,16 @@
         border-radius: 12px;
       }
       #village-dialog .village-title {
+        font-family: 'Cinzel', Georgia, serif;
         font-size: 20px;
         font-weight: 700;
-        color: var(--accent);
+        color: var(--accent-bright);
         margin-bottom: 10px;
       }
       #village-dialog .village-msg {
         font-size: 15px;
         line-height: 1.5;
-        color: #cfe3f7;
+        color: var(--parchment);
         margin-bottom: 18px;
       }
       #village-dialog .btn {
@@ -669,7 +707,7 @@
       #log-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(0, 0, 0, 0.55);
+        background: rgba(15, 14, 11, 0.72);
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.2s;
@@ -688,7 +726,7 @@
         max-height: 80vh;
         background: var(--panel);
         border: 1px solid var(--edge);
-        border-radius: 14px;
+        border-radius: 16px;
         padding: 18px 20px;
         display: flex;
         flex-direction: column;
@@ -702,9 +740,10 @@
         pointer-events: auto;
       }
       .log-dialog-title {
+        font-family: 'Cinzel', Georgia, serif;
         font-size: 18px;
         font-weight: 700;
-        color: #fff;
+        color: var(--parchment);
         margin-bottom: 12px;
       }
       #log-dialog-content {
@@ -712,7 +751,7 @@
         overflow: auto;
         font-size: 13px;
         line-height: 1.5;
-        color: #cfe3f7;
+        color: var(--parchment);
       }
       #log-dialog-content div {
         padding: 6px 0;
@@ -794,10 +833,10 @@
           min-width: 28px;
           height: 32px;
           padding: 0 4px;
-          border-radius: 8px;
-          background: #213a52;
+          border-radius: 999px;
+          background: rgba(201, 162, 39, 0.08);
           border: 1px solid var(--edge);
-          color: #eaf3fb;
+          color: var(--parchment);
           font: inherit;
           font-size: 10px;
           line-height: 1;
@@ -808,7 +847,7 @@
         }
         .bb-chip {
           cursor: default;
-          background: #16293c;
+          background: rgba(201, 162, 39, 0.05);
         }
         .bb-btn::after {
           content: "";
@@ -824,7 +863,7 @@
         }
         .bb-btn i {
           font-style: normal;
-          color: #9fc0dc;
+          color: var(--parchment-dim);
           font-size: 10px;
         }
         #unit-panel,
