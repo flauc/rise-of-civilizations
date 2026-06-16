@@ -184,6 +184,8 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     explored: p.id === view.yourId ? explored : new Set<string>(),
     resources: p.id === view.yourId ? { ...view.you.resources } : {},
     bribesPaid: p.id === view.yourId ? (view.you.bribesPaid ?? 0) : 0,
+    leaderAbilityLastUsedTurn: p.id === view.yourId ? (view.you.leaderAbilityLastUsedTurn ?? -Infinity) : -Infinity,
+    modifiers: [],
   }));
 
   const state: GameState = {

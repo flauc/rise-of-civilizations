@@ -10,10 +10,12 @@ import {
   type ActiveAbilityId,
   type PromotionId,
 } from "./content";
-import { isRough, terrainDefense } from "./terrain";
+import { isRough, terrainDefense, isWaterTerrain } from "./terrain";
 import { structureDefense, towerBombard } from "./fortifications";
 import { civCombatBonus } from "./civs";
 import { applyVictoryCheck } from "./victory";
+import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile } from "./movement";
+import { playerEffects } from "./civs";
 
 /** Maximum HP for a unit, increasing by 5% per level above 1 plus promotion bonuses. */
 export function unitMaxHp(unit: Unit): number {
@@ -80,6 +82,9 @@ function attackStrength(
   if (!ranged && ability === "trample") s += 3;
   if (!ranged && ability === "sunder") s -= 2; // a crushing blow lands lighter but debuffs
   if (!ranged && ability === "harry") s *= 0.6; // a harrying nip, not a kill blow
+  if (!ranged && ability === "ram") s += 4; // naval ram
+  if (!ranged && ability === "boarding_party") s += 5; // grapple and board
+  if (ranged && ability === "coastal_bombardment") s += 4; // focused coastal fire
   // Emplaced siege fires harder.
   if (ranged && unit.stance === "emplace") s += (def.rangedStrength ?? 0) * 0.5;
 
@@ -91,6 +96,23 @@ function attackStrength(
   if (has(unit, "woodland_warrior") && (targetTerrain === "forest" || targetTerrain === "jungle")) s += 3;
   if (has(unit, "guerrilla") && isRough(targetTerrain)) s += 3;
   if (has(unit, "amphibious") && (targetTerrain === "coast" || targetTerrain === "lake")) s += 3;
+
+  // Naval bonuses.
+  const defenderIsNaval = defenderCls === "naval_melee" || defenderCls === "naval_ranged";
+  if (has(unit, "boarding") && defenderCls === "naval_melee") s += 4;
+  if (has(unit, "boarding") && defenderCls === "naval_ranged") s += 3;
+  if (has(unit, "chain_shot") && defenderIsNaval) s += 4;
+  if (has(unit, "ramming") && !unit.attackedThisTurn && defenderIsNaval) s += 4;
+  if (has(unit, "fleet_discipline") && adjacentNavalFriendlies(state, unit) > 0) s += 2;
+  if (has(unit, "pursuit_at_sea") && isWounded(defender) && defenderIsNaval) s += 3;
+  if (ranged && has(unit, "coastal_bombardment") && !isWaterTerrain(targetTerrain)) s += 4;
+  if (ranged && has(unit, "broadside")) s += 2;
+
+  // Civ / leader-ability combat bonuses.
+  const eff = playerEffects(state, unit.ownerId);
+  if (unit.embarked && eff.embarkedCombatBonus) s += eff.embarkedCombatBonus;
+  if (isForestTile(state, unit.col, unit.row) && eff.forestTileCombatBonus) s += eff.forestTileCombatBonus;
+  if (ranged && ability === "coastal_bombardment" && !isWaterTerrain(targetTerrain)) s += 4;
 
   // First-attack bonuses.
   if (!unit.attackedThisTurn) {
@@ -142,12 +164,32 @@ function adjacentEnemies(state: GameState, unit: Unit): number {
   return count;
 }
 
+function adjacentNavalFriendlies(state: GameState, unit: Unit): number {
+  let count = 0;
+  for (const u of state.units.values()) {
+    if (u.ownerId !== unit.ownerId || u.id === unit.id) continue;
+    if ((UNIT_DEFS[u.type].cls === "naval_melee" || UNIT_DEFS[u.type].cls === "naval_ranged") && dist(unit, u) === 1) count++;
+  }
+  return count;
+}
+
+/** True if a land unit/city is on a coastal tile and can be reached by ships. */
+function isCoastalTarget(state: GameState, col: number, row: number): boolean {
+  return isCoastalLand(state, col, row);
+}
+
 function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged: boolean): number {
   const def = UNIT_DEFS[unit.type];
   const attackerCls = UNIT_DEFS[attacker.type].cls;
   let s = def.strength * levelMultiplier(unit);
   const tile = getTile(state.map, unit.col, unit.row);
-  if (tile) s += terrainDefense(tile.terrain);
+  // Ships (and embarked units) on water receive no terrain defense.
+  if (tile && !isWaterTerrain(tile.terrain)) s += terrainDefense(tile.terrain);
+
+  // Civ / leader-ability defensive bonuses.
+  const eff = playerEffects(state, unit.ownerId);
+  if (unit.embarked && eff.embarkedCombatBonus) s += eff.embarkedCombatBonus;
+  if (isForestTile(state, unit.col, unit.row) && eff.forestTileCombatBonus) s += eff.forestTileCombatBonus;
   // A friendly defensive structure on the tile shelters its defender.
   if (tile?.structure && tile.ownerCityId !== undefined) {
     const o = state.cities.get(tile.ownerCityId);
@@ -296,7 +338,9 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
 
   city.ownerId = attacker.ownerId;
   city.production = null;
-  city.population = Math.max(1, city.population - 1);
+  const eff = playerEffects(state, attacker.ownerId);
+  const popBonus = eff.captureCityPopulationBonus ?? 0;
+  city.population = Math.max(1, city.population - 1 + popBonus);
   city.hp = Math.floor(cityMaxHp(city) / 2);
   city.isCapital = false;
   // Attacker advances into the captured city.
@@ -323,10 +367,14 @@ export function resolveAttack(
   const def = UNIT_DEFS[attacker.type];
   if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return { ok: false, error: "unit cannot attack" };
   if (attacker.attackedThisTurn || attacker.movementLeft <= 0) return { ok: false, error: "no attack available" };
+  if (attacker.embarked) return { ok: false, error: "embarked units cannot attack" };
 
   const attackerOwner = playerById(state, attacker.ownerId)!;
+  const attackerNaval = isNavalUnit(attacker);
   const ranged = isRanged(def);
-  let range = (ranged ? def.range ?? 1 : 1) + (has(attacker, "extended_range") ? 1 : 0);
+  let range = (ranged ? def.range ?? 1 : 1) +
+    (has(attacker, "extended_range") ? 1 : 0) +
+    (ranged && has(attacker, "extended_range_naval") ? 1 : 0);
   if (ranged && attacker.stance === "emplace") range += 1; // emplaced engines reach further
   if (ability === "pierce") range = Math.max(1, range - 1); // careful aimed bolt, shorter
   const d = dist({ col: attacker.col, row: attacker.row }, { col, row });
@@ -340,27 +388,46 @@ export function resolveAttack(
 
   // ---- attack a city ----
   if (enemyCity && enemyCity.ownerId !== attacker.ownerId) {
+    if (attackerNaval && !isCoastalTarget(state, col, row)) return { ok: false, error: "city is not coastal" };
     const owner = playerById(state, enemyCity.ownerId);
     if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
-    const cityDef = cityDefenseStrength(state, enemyCity);
+    let cityDef = cityDefenseStrength(state, enemyCity);
     const mult = vsCityMultiplier(attacker);
+    const eff = playerEffects(state, attacker.ownerId);
     enemyCity.lastAttackedTurn = state.turn;
 
     if (ranged) {
       const base = (def.rangedStrength ?? 0) * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker));
-      const attEff = (base + cityAttackBonus(attacker)) * mult;
+      let attEff = (base + cityAttackBonus(attacker)) * mult;
+      if (def.cls === "siege" && eff.siegeVsCityDefenseMultiplier) {
+        attEff *= 1 + eff.siegeVsCityDefenseMultiplier / 100;
+      }
       enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
       awardXp(attacker, 3);
     } else {
       if (enemyCity.hp <= 0) {
-        captureCity(state, enemyCity, attacker);
+        if (attackerNaval) {
+          // Ships can reduce a city to 0 HP but cannot capture it from the sea.
+          enemyCity.hp = 0;
+        } else {
+          captureCity(state, enemyCity, attacker);
+        }
       } else {
         const base = def.strength * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker));
-        const attEff = (base + cityAttackBonus(attacker)) * mult;
+        let attEff = (base + cityAttackBonus(attacker)) * mult + (eff.meleeVsCityBonus ?? 0);
+        if (def.cls === "siege" && eff.siegeVsCityDefenseMultiplier) {
+          attEff *= 1 + eff.siegeVsCityDefenseMultiplier / 100;
+        }
         enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
         attacker.hp -= damageFrom(cityDef, attEff);
         awardXp(attacker, 4);
-        if (enemyCity.hp <= 0 && attacker.hp > 0) captureCity(state, enemyCity, attacker);
+        if (enemyCity.hp <= 0 && attacker.hp > 0) {
+          if (attackerNaval) {
+            enemyCity.hp = 0;
+          } else {
+            captureCity(state, enemyCity, attacker);
+          }
+        }
       }
     }
     finishAttack(state, attacker);
@@ -371,6 +438,18 @@ export function resolveAttack(
   if (enemyUnit && enemyUnit.ownerId !== attacker.ownerId) {
     const owner = playerById(state, enemyUnit.ownerId);
     if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
+
+    const defenderCls = UNIT_DEFS[enemyUnit.type].cls;
+    const defenderIsNaval = isNavalUnit(enemyUnit) || !!enemyUnit.embarked;
+    if (attackerNaval) {
+      // Ships may attack other ships/embarked units freely; land units only if they are on a coastal tile.
+      if (!defenderIsNaval && !isCoastalTarget(state, enemyUnit.col, enemyUnit.row)) {
+        return { ok: false, error: "target is not coastal" };
+      }
+    } else if (isNavalUnit(enemyUnit)) {
+      // Land units cannot attack native naval units (ships out of reach on open water).
+      return { ok: false, error: "cannot attack naval units from land" };
+    }
 
     if (ranged) {
       const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, true, ability);
@@ -386,7 +465,7 @@ export function resolveAttack(
       let defEff = defenseStrength(state, enemyUnit, attacker, false);
       if (ability === "pierce") defEff = Math.max(1, defEff - 6);
       enemyUnit.hp -= damageFrom(attEff, defEff);
-      if (ability === "sunder" && enemyUnit.hp > 0) enemyUnit.sunderedUntilTurn = state.turn + 1;
+      if ((ability === "sunder" || ability === "greek_fire") && enemyUnit.hp > 0) enemyUnit.sunderedUntilTurn = state.turn + 1;
       if (ability === "harry" && enemyUnit.hp > 0) enemyUnit.pinnedUntilTurn = state.turn + 1;
       let retaliation = damageFrom(defEff, attEff);
       if (has(attacker, "suppression")) retaliation = Math.max(0, retaliation - 3);
@@ -412,8 +491,11 @@ export function resolveAttack(
         return { ok: true };
       }
       if (defenderDead && !cityAt(state, col, row) && !unitAt(state, col, row) && !targetTile.structure) {
-        attacker.col = col; // advance into vacated tile
-        attacker.row = row;
+        // Naval melee ships only advance onto water tiles; they cannot beach onto land.
+        if (!attackerNaval || isWaterTerrain(targetTile.terrain)) {
+          attacker.col = col; // advance into vacated tile
+          attacker.row = row;
+        }
       }
     }
     finishAttack(state, attacker);
@@ -425,6 +507,7 @@ export function resolveAttack(
   if (struct && struct.hp > 0 && targetTile.ownerCityId !== undefined) {
     const sCity = state.cities.get(targetTile.ownerCityId);
     if (sCity && sCity.ownerId !== attacker.ownerId) {
+      if (attackerNaval && !isCoastalTarget(state, col, row)) return { ok: false, error: "structure is not coastal" };
       const owner = playerById(state, sCity.ownerId);
       if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
       const structDef = 6 + struct.tier * 4 + terrainDefense(targetTile.terrain);
@@ -519,26 +602,49 @@ function finishAttack(state: GameState, attacker: Unit): void {
   attacker.movementLeft = 0;
 }
 
+/** True if `attacker` can legally target a tile/unit/city in the given domain. */
+function isDomainAttackable(state: GameState, attacker: Unit, targetCol: number, targetRow: number, targetIsNaval: boolean): boolean {
+  if (attacker.embarked) return false;
+  const attackerNaval = isNavalUnit(attacker);
+  if (!attackerNaval) {
+    // Land units may not attack native ships.
+    return !targetIsNaval;
+  }
+  // Naval units may attack ships/embarked units anywhere; land/city targets only if coastal.
+  if (targetIsNaval) return true;
+  return isCoastalTarget(state, targetCol, targetRow);
+}
+
 /** Tiles this unit could attack right now (enemy units/cities in range). */
 export function computeAttackTargets(state: GameState, unit: Unit): Set<string> {
   const out = new Set<string>();
   const def = UNIT_DEFS[unit.type];
   if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return out;
   if (unit.attackedThisTurn || unit.movementLeft <= 0) return out;
+  if (unit.embarked) return out;
   const owner = playerById(state, unit.ownerId);
   if (!owner) return out;
-  const range = (isRanged(def) ? def.range ?? 1 : 1) + (has(unit, "extended_range") ? 1 : 0);
+  const range = (isRanged(def) ? def.range ?? 1 : 1) +
+    (has(unit, "extended_range") ? 1 : 0) +
+    (isRanged(def) && has(unit, "extended_range_naval") ? 1 : 0);
   const from = { col: unit.col, row: unit.row };
+  const attackerNaval = isNavalUnit(unit);
 
   for (const u of state.units.values()) {
     if (u.ownerId === unit.ownerId) continue;
     const o = playerById(state, u.ownerId);
-    if (o && areEnemies(owner, o) && dist(from, u) <= range) out.add(`${u.col},${u.row}`);
+    if (o && areEnemies(owner, o) && dist(from, u) <= range &&
+        isDomainAttackable(state, unit, u.col, u.row, isNavalUnit(u) || !!u.embarked)) {
+      out.add(`${u.col},${u.row}`);
+    }
   }
   for (const c of state.cities.values()) {
     if (c.ownerId === unit.ownerId) continue;
     const o = playerById(state, c.ownerId);
-    if (o && areEnemies(owner, o) && dist(from, c) <= range) out.add(`${c.col},${c.row}`);
+    if (o && areEnemies(owner, o) && dist(from, c) <= range &&
+        isDomainAttackable(state, unit, c.col, c.row, false)) {
+      out.add(`${c.col},${c.row}`);
+    }
   }
   // Enemy defensive structures can be attacked (and must be, to pass them).
   for (const t of state.map.tiles) {
@@ -546,7 +652,8 @@ export function computeAttackTargets(state: GameState, unit: Unit): Set<string> 
     const c = state.cities.get(t.ownerCityId);
     if (!c || c.ownerId === unit.ownerId) continue;
     const o = playerById(state, c.ownerId);
-    if (o && areEnemies(owner, o) && dist(from, t) <= range && !unitAt(state, t.col, t.row)) {
+    if (o && areEnemies(owner, o) && dist(from, t) <= range && !unitAt(state, t.col, t.row) &&
+        (!attackerNaval || isCoastalTarget(state, t.col, t.row))) {
       out.add(`${t.col},${t.row}`);
     }
   }
@@ -560,18 +667,32 @@ export function peaceWarTargets(state: GameState, unit: Unit): Set<string> {
   const def = UNIT_DEFS[unit.type];
   if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return out;
   if (unit.attackedThisTurn || unit.movementLeft <= 0) return out;
+  if (unit.embarked) return out;
   const me = playerById(state, unit.ownerId);
   if (!me) return out;
-  const range = (isRanged(def) ? def.range ?? 1 : 1) + (has(unit, "extended_range") ? 1 : 0);
+  const range = (isRanged(def) ? def.range ?? 1 : 1) +
+    (has(unit, "extended_range") ? 1 : 0) +
+    (isRanged(def) && has(unit, "extended_range_naval") ? 1 : 0);
   const from = { col: unit.col, row: unit.row };
+  const attackerNaval = isNavalUnit(unit);
   const isPeaceTarget = (ownerId: number): boolean => {
     if (ownerId === unit.ownerId) return false;
     const o = playerById(state, ownerId);
     if (!o || o.isBarbarian) return false;
     return me.met.includes(ownerId) && !me.atWar.includes(ownerId);
   };
-  for (const u of state.units.values()) if (isPeaceTarget(u.ownerId) && dist(from, u) <= range) out.add(`${u.col},${u.row}`);
-  for (const c of state.cities.values()) if (isPeaceTarget(c.ownerId) && dist(from, c) <= range) out.add(`${c.col},${c.row}`);
+  for (const u of state.units.values()) {
+    if (isPeaceTarget(u.ownerId) && dist(from, u) <= range &&
+        isDomainAttackable(state, unit, u.col, u.row, isNavalUnit(u) || !!u.embarked)) {
+      out.add(`${u.col},${u.row}`);
+    }
+  }
+  for (const c of state.cities.values()) {
+    if (isPeaceTarget(c.ownerId) && dist(from, c) <= range &&
+        isDomainAttackable(state, unit, c.col, c.row, false)) {
+      out.add(`${c.col},${c.row}`);
+    }
+  }
   return out;
 }
 
@@ -620,12 +741,16 @@ export function healAndReset(state: GameState, player: Player): void {
     u.attackedLastTurn = u.attackedThisTurn;
     u.attackedThisTurn = false;
   }
+  const eff = playerEffects(state, player.id);
   for (const u of own) {
     if (u.attackedLastTurn) continue;
+    const cls = UNIT_DEFS[u.type].cls;
     let heal = 8;
     if (cityAt(state, u.col, u.row)?.ownerId === player.id) heal += 12;
     if (has(u, "swift_healer")) heal += 5;
     if (has(u, "survivalist")) heal += 8;
+    heal += eff.unitHealPerTurn ?? 0;
+    if (cls === "cavalry") heal += eff.mountedHealPerTurn ?? 0;
     u.hp = Math.min(unitMaxHp(u), u.hp + heal);
     if (u.promotions.includes("medic")) {
       for (const other of own) {
@@ -639,6 +764,13 @@ export function healAndReset(state: GameState, player: Player): void {
         if (other.id !== u.id && dist(u, other) === 1) {
           other.hp = Math.min(unitMaxHp(other), other.hp + 5);
         }
+      }
+    }
+    // Repair crew only works while the ship is at sea.
+    if (has(u, "repair_crew")) {
+      const tile = getTile(state.map, u.col, u.row);
+      if (tile && isWaterTerrain(tile.terrain)) {
+        u.hp = Math.min(unitMaxHp(u), u.hp + 5);
       }
     }
   }

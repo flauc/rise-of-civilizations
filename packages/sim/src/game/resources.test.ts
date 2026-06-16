@@ -33,11 +33,11 @@ describe("resources & amenities", () => {
     const tile = getTile(state.map, 5, 5)!;
     tile.resource = "iron";
     expect(resourceActive(tile)).toBe(false);
-    expect(resourceYields(tile)).toEqual({ food: 0, production: 0, gold: 0, science: 0 });
+    expect(resourceYields(tile)).toEqual({ food: 0, production: 0, gold: 0, science: 0, faith: 0 });
 
     tile.improvement = "mine";
     expect(resourceActive(tile)).toBe(true);
-    expect(resourceYields(tile)).toEqual({ food: 0, production: 1, gold: 0, science: 0 });
+    expect(resourceYields(tile)).toEqual({ food: 0, production: 1, gold: 0, science: 0, faith: 0 });
   });
 
   it("gathers strategic resources into the player's stockpile", () => {
@@ -67,10 +67,10 @@ describe("resources & amenities", () => {
     const player = state.players[0]!;
 
     player.researched.add("iron_bloomery");
-    expect(availableProduction(player, city).some((o) => o.item.id === "swordsman")).toBe(false);
+    expect(availableProduction(state, player, city).some((o) => o.item.id === "swordsman")).toBe(false);
 
     player.resources.iron = 1;
-    expect(availableProduction(player, city).some((o) => o.item.id === "swordsman")).toBe(true);
+    expect(availableProduction(state, player, city).some((o) => o.item.id === "swordsman")).toBe(true);
   });
 
   it("consumes the strategic resource when a unit finishes", () => {

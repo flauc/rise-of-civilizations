@@ -117,7 +117,8 @@ function abilityRange(unit: Unit, ability: ActiveAbilityId): number {
   const def = UNIT_DEFS[unit.type];
   if (ability === "fire_and_retreat" || ability === "skirmish") return def.range ?? 1;
   if (ability === "pierce") return Math.max(1, (def.range ?? 1) - 1);
-  return 1; // melee/charge/trample/sunder/harry strike adjacent
+  if (ability === "greek_fire" || ability === "coastal_bombardment") return def.range ?? 1;
+  return 1; // melee/charge/trample/sunder/harry/ram/boarding_party strike adjacent
 }
 
 const cooldownAfter = (state: GameState, ability: ActiveAbilityId): number =>
@@ -249,6 +250,51 @@ export function useAbility(
     case "pierce":
     case "harry": {
       const res = resolveAttack(state, unit, col, row, { ability });
+      if (!res.ok) return res;
+      setCd();
+      return ok;
+    }
+
+    case "ram": {
+      const res = resolveAttack(state, unit, col, row, { ability: "ram" });
+      if (!res.ok) return res;
+      setCd();
+      return ok;
+    }
+
+    case "boarding_party": {
+      const res = resolveAttack(state, unit, col, row, { ability: "boarding_party" });
+      if (!res.ok) return res;
+      if (state.units.has(unit.id)) {
+        const target = unitAt(state, col, row);
+        if (!target && unit.hp > 0) {
+          // Successful boarding restores crew morale.
+          unit.hp = Math.min(unitMaxHp(unit), unit.hp + 15);
+        }
+      }
+      setCd();
+      return ok;
+    }
+
+    case "greek_fire": {
+      const res = resolveAttack(state, unit, col, row, { ability: "greek_fire" });
+      if (!res.ok) return res;
+      const splash = Math.round(10 * (1 + 0.05 * (unit.level - 1)));
+      const owner2 = playerById(state, unit.ownerId);
+      for (const u of unitsAround(state, unit)) {
+        if (u.id === unit.id) continue;
+        if (u.col === col && u.row === row) continue;
+        const o = playerById(state, u.ownerId);
+        if (owner2 && o && areEnemies(owner2, o) && (UNIT_DEFS[u.type].cls === "naval_melee" || UNIT_DEFS[u.type].cls === "naval_ranged")) {
+          applyDirectDamage(state, u, splash);
+        }
+      }
+      setCd();
+      return ok;
+    }
+
+    case "coastal_bombardment": {
+      const res = resolveAttack(state, unit, col, row, { ability: "coastal_bombardment" });
       if (!res.ok) return res;
       setCd();
       return ok;

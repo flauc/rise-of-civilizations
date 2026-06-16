@@ -2,19 +2,98 @@
 // and building ids) so the sim can import it without a dependency cycle. The sim
 // applies these effects at the relevant points (see packages/sim/src/game/civs.ts).
 
+export interface CityYieldBonus {
+  food?: number;
+  production?: number;
+  gold?: number;
+  science?: number;
+  culture?: number;
+  faith?: number;
+}
+
 export interface CivEffects {
   /** Percentage bonus to a city's per-turn yields. */
-  yieldPercent?: { food?: number; production?: number; gold?: number; science?: number };
+  yieldPercent?: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
   /** Extra movement points for cavalry-class units. */
   cavalryMovementBonus?: number;
-  /** Flat combat-strength bonus per unit class id ("melee" | "ranged" | "cavalry" | "siege" | ...). */
+  /** Extra movement points for naval-class units. */
+  navalMovementBonus?: number;
+  /** Extra movement points for land military units. */
+  landMovementBonus?: number;
+  /** Extra movement points for all units. */
+  allUnitMovementBonus?: number;
+  /** Mounted units gain +sight. */
+  mountedSightBonus?: number;
+  /** Land units ignore rough-terrain movement penalties. */
+  ignoreRoughTerrain?: boolean;
+  /** Units ignore mountain movement penalties. */
+  ignoreMountainMovement?: boolean;
+  /** Flat combat-strength bonus per unit class id ("melee" | "ranged" | "cavalry" | "siege" | "naval_melee" | "naval_ranged" | ...). */
   unitClassCombat?: Record<string, number>;
+  /** Flat combat-strength bonus for embarked land units. */
+  embarkedCombatBonus?: number;
+  /** Flat combat-strength bonus for melee units attacking cities. */
+  meleeVsCityBonus?: number;
+  /** Multiplier to siege-unit strength vs city defenses. */
+  siegeVsCityDefenseMultiplier?: number;
+  /** All military units heal this much extra HP per turn. */
+  unitHealPerTurn?: number;
+  /** Mounted units heal this much extra HP per turn. */
+  mountedHealPerTurn?: number;
+  /** Multiplier to military unit maintenance (1.5 = +50%). Not yet consumed. */
+  militaryMaintenanceCostMultiplier?: number;
+  /** Extra gold per trade route. */
+  tradeRouteGoldBonus?: number;
+  /** Extra faith per trade route. */
+  tradeRouteFaithBonus?: number;
+  /** Extra trade route capacity. Not yet consumed. */
+  tradeRouteCapacityBonus?: number;
+  /** Percentage bonus to production toward Wonders. */
+  wonderProductionBonus?: number;
+  /** Percentage bonus to production toward defensive buildings/walls. */
+  defensiveBuildingProductionBonus?: number;
+  /** Percentage bonus to production toward Holy Sites and Temples. */
+  holySiteTempleProductionBonus?: number;
+  /** Flat yields for coastal cities. */
+  coastalCityYield?: CityYieldBonus;
+  /** Flat yields for desert cities. */
+  desertCityYield?: CityYieldBonus;
+  /** Flat yields for island cities. */
+  islandCityYield?: CityYieldBonus;
+  /** Percentage modifier to food in non-desert cities. */
+  nonDesertCityFoodPercent?: number;
+  /** Extra production from each worked mine tile. */
+  mineTileProductionBonus?: number;
+  /** Food penalty from each worked mine tile. */
+  mineTileFoodPenalty?: number;
+  /** Extra gold from each worked pasture tile. */
+  pastureTileGoldBonus?: number;
+  /** Extra food from each worked pasture tile. */
+  pastureTileFoodBonus?: number;
+  /** Extra food from each worked farm tile. */
+  farmTileFoodBonus?: number;
+  /** Extra faith from each worked farm tile. */
+  farmTileFaithBonus?: number;
+  /** Extra faith from forest tiles in your territory. */
+  forestTileFaithBonus?: number;
+  /** Combat bonus for units standing on forest tiles in your territory. */
+  forestTileCombatBonus?: number;
+  /** Extra production from hill tiles. */
+  hillTileProductionBonus?: number;
+  /** Extra food from fresh-water tiles. */
+  freshWaterTileFoodBonus?: number;
+  /** Extra production from fresh-water tiles. */
+  freshWaterTileProductionBonus?: number;
+  /** Extra gold from coastal water tiles. */
+  coastalTileGoldBonus?: number;
   /** Extra gold from each worked desert tile. */
   goldPerWorkedDesert?: number;
   /** A building every new city is founded with (building id). */
   newCityFreeBuilding?: string;
   /** Extra starting population for new cities. */
   newCityExtraPopulation?: number;
+  /** Extra population when capturing a city. */
+  captureCityPopulationBonus?: number;
   /** Percentage bonus to gold from pillaging, plundering trade routes, and sacking cities. */
   raidGoldPercent?: number;
   /** Extra percentage bonus to raid gold when the target tile is adjacent to water (coastal raiding). */

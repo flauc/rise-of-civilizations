@@ -52,7 +52,7 @@ describe("victory", () => {
       foundedAsCapital: false,
       hp: 0,
       lastAttackedTurn: 0,
-      rangedAttackUsed: false,
+      rangedAttackUsed: false, modifiers: [],
     });
     const v = checkVictory(state);
     expect(v?.condition).toBe("domination");

@@ -61,6 +61,8 @@ export interface PlayerView {
     bribesPaid: number;
     /** The viewer's active barbarian truces (war-band key + expiry turn). */
     barbarianBribes: { campKey: string; untilTurn: number }[];
+    /** Last turn the viewer used their leader ability; -Infinity if never used. */
+    leaderAbilityLastUsedTurn: number;
   };
   religions: Religion[];
   /** The viewer's own trade routes (for the map overlay + city panel). */
@@ -168,6 +170,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
       foundedReligionId: me?.foundedReligionId,
       resources: me?.resources ?? {},
       bribesPaid: me?.bribesPaid ?? 0,
+      leaderAbilityLastUsedTurn: me?.leaderAbilityLastUsedTurn ?? -Infinity,
       barbarianBribes: state.barbarianBribes
         .filter((b) => b.playerId === playerId)
         .map((b) => ({ campKey: b.campKey, untilTurn: b.untilTurn })),
@@ -286,10 +289,12 @@ export function deserializeState(s: SerializedState): GameState {
       atWar: p.atWar ?? [],
       importedLuxuries: p.importedLuxuries ?? [],
       bribesPaid: p.bribesPaid ?? 0,
+      leaderAbilityLastUsedTurn: p.leaderAbilityLastUsedTurn ?? -Infinity,
+      modifiers: p.modifiers ?? [],
       researched: new Set(p.researched as TechId[]),
       explored: new Set(p.explored),
     })),
     units: new Map(s.units.map((u) => [u.id, u])),
-    cities: new Map(s.cities.map((c) => [c.id, c])),
+    cities: new Map(s.cities.map((c) => [c.id, { ...c, modifiers: c.modifiers ?? [] }])),
   };
 }

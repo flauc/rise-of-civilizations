@@ -207,6 +207,8 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       atWar: [],
       importedLuxuries: [],
       bribesPaid: 0,
+      leaderAbilityLastUsedTurn: -Infinity,
+      modifiers: [],
     });
   }
   const barbId = count;
@@ -233,6 +235,8 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       atWar: [],
       importedLuxuries: [],
       bribesPaid: 0,
+      leaderAbilityLastUsedTurn: -Infinity,
+      modifiers: [],
     });
   }
 

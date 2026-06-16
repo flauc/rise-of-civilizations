@@ -930,7 +930,7 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
     const player = state.players.find((p) => p.id === city.ownerId)!;
-    const options = availableProduction(player, city);
+    const options = availableProduction(state, player, city);
     const perTurn = Math.max(1, getCityYields(state, city).production);
     const turns = (cost: number) => Math.max(1, Math.ceil((cost - city.productionStored) / perTurn));
 
@@ -1464,7 +1464,7 @@ export function createUI(handlers: UIHandlers): UI {
     const player = state.players.find((p) => p.id === city.ownerId)!;
     const y = getCityYields(state, city);
     const need = foodToGrow(city.population);
-    const options = availableProduction(player, city);
+    const options = availableProduction(state, player, city);
     const curName = city.production ? prodName(city.production) : "— nothing —";
     const curCost = city.production ? prodCost(city.production) : 0;
     const prodPct = curCost

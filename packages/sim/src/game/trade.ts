@@ -8,7 +8,7 @@ import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { City, GameState, TradeRoute, Unit } from "./state";
 import { cityAt, log, playerById } from "./state";
 import { UNIT_DEFS } from "./content";
-import { isPassableLand } from "./terrain";
+import { isPassableLand, isWaterTerrain } from "./terrain";
 import { offsetNeighbors } from "./movement";
 
 export interface TradeYield {
@@ -99,7 +99,7 @@ function computeTradeRoutePath(state: GameState, from: City, to: City): string[]
     const [col, row] = key.split(",").map(Number) as [number, number];
     for (const n of offsetNeighbors(state.map, col, row)) {
       const tile = getTile(state.map, n.col, n.row);
-      if (!tile || !isPassableLand(tile.terrain)) continue;
+      if (!tile || (!isPassableLand(tile.terrain) && !isWaterTerrain(tile.terrain))) continue;
       const nk = `${n.col},${n.row}`;
       if (cameFrom.has(nk)) continue;
       cameFrom.set(nk, key);

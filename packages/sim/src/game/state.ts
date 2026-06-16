@@ -1,4 +1,5 @@
 import type { GameMap } from "@roc/shared";
+import type { CivEffects } from "@roc/data";
 import { UNIT_DEFS, UNIT_MAX_HP, type ActiveAbilityId, type BuildingId, type PromotionId, type StanceId, type TechId, type UnitTypeId } from "./content";
 
 export interface Unit {
@@ -33,6 +34,8 @@ export interface Unit {
   /** For barbarians: "col,row" of the camp this unit spawned from. Units sharing
    *  a campKey form one war-band — a bribe pacifies them together (see bribery.ts). */
   campKey?: string;
+  /** True when a land unit has embarked onto a water tile. */
+  embarked?: boolean;
 }
 
 export type ProductionItem =
@@ -79,6 +82,8 @@ export interface City {
   hp: number;
   lastAttackedTurn: number;
   rangedAttackUsed: boolean;
+  /** Active timed city-specific modifiers from leader abilities. */
+  modifiers: CityModifier[];
 }
 
 export interface GameOver {
@@ -123,6 +128,22 @@ export interface Player {
   /** How many barbarian war-bands this player has bribed (each bribe doubles the
    *  next bribe's price — see barbarianBribeCost in bribery.ts). */
   bribesPaid: number;
+  /** Last turn this player's leader ability was used; -Infinity if never used. */
+  leaderAbilityLastUsedTurn: number;
+  /** Active timed empire-wide modifiers from leader abilities. */
+  modifiers: PlayerModifier[];
+}
+
+export interface PlayerModifier {
+  source: string;
+  effect: Partial<CivEffects>;
+  expiresOnTurn: number;
+}
+
+export interface CityModifier {
+  source: string;
+  effect: Partial<CivEffects>;
+  expiresOnTurn: number;
 }
 
 /** A truce a player bought with a barbarian war-band (see bribery.ts). */

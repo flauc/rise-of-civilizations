@@ -7,14 +7,77 @@ import {
   type GameMap,
   type Offset,
 } from "@roc/shared";
-import { moveCost, isPassableLand, type TerrainType } from "./terrain";
+import { moveCost, isPassableLand, isNavalPassable, navalMoveCost, isWaterTerrain, type TerrainType } from "./terrain";
 import type { GameState, Unit } from "./state";
 import { cityAt } from "./state";
-import { UNIT_DEFS } from "./content";
+import { UNIT_DEFS, type UnitDef, type TechId } from "./content";
 import { foreignTerritoryOwner } from "./diplomacy";
+import { playerEffects } from "./civs";
+
+/** Whether a unit's domain is water (native ship or embarked land unit). */
+export function isWaterDomain(unit: Unit): boolean {
+  const def = UNIT_DEFS[unit.type];
+  return def.cls === "naval_melee" || def.cls === "naval_ranged" || !!unit.embarked;
+}
+
+/** Whether a unit is native naval (not embarked). */
+export function isNavalUnit(unit: Unit): boolean {
+  const def = UNIT_DEFS[unit.type];
+  return def.cls === "naval_melee" || def.cls === "naval_ranged";
+}
+
+/** Whether a player has researched a given tech. */
+function hasTech(state: GameState, playerId: number, techId: TechId): boolean {
+  return state.players[playerId]?.researched.has(techId) ?? false;
+}
+
+/** True if a naval unit is allowed to enter ocean tiles. */
+function canEnterOcean(state: GameState, unit: Unit, def: UnitDef): boolean {
+  if (def.oceanGoing) return true;
+  return hasTech(state, unit.ownerId, "astronomy");
+}
+
+/** True if the tile is a water tile adjacent to at least one land tile. */
+export function isCoastalWater(state: GameState, col: number, row: number): boolean {
+  const tile = getTile(state.map, col, row);
+  if (!tile || !isWaterTerrain(tile.terrain)) return false;
+  for (const n of offsetNeighbors(state.map, col, row)) {
+    const nt = getTile(state.map, n.col, n.row);
+    if (nt && isPassableLand(nt.terrain)) return true;
+  }
+  return false;
+}
+
+/** True if the land tile is adjacent to at least one water tile. */
+export function isCoastalLand(state: GameState, col: number, row: number): boolean {
+  const tile = getTile(state.map, col, row);
+  if (!tile || isWaterTerrain(tile.terrain)) return false;
+  for (const n of offsetNeighbors(state.map, col, row)) {
+    const nt = getTile(state.map, n.col, n.row);
+    if (nt && isWaterTerrain(nt.terrain)) return true;
+  }
+  return false;
+}
+
+/** True if the tile is forest or jungle. */
+export function isForestTile(state: GameState, col: number, row: number): boolean {
+  const tile = getTile(state.map, col, row);
+  return !!tile && (tile.terrain === "forest" || tile.terrain === "jungle");
+}
 
 /** Effective movement cost to enter a tile for a specific unit. */
-function unitMoveCost(unit: Unit, terrain: TerrainType, road: boolean): number {
+export function unitMoveCost(state: GameState, unit: Unit, terrain: TerrainType, road: boolean): number {
+  const def = UNIT_DEFS[unit.type];
+  if (isWaterDomain(unit)) {
+    if (isNavalUnit(unit)) {
+      const oceanUnlocked = canEnterOcean(state, unit, def);
+      return navalMoveCost(terrain, oceanUnlocked);
+    }
+    // Embarked land unit.
+    if (isWaterTerrain(terrain)) return 2;
+    return moveCost(terrain);
+  }
+  const eff = playerEffects(state, unit.ownerId);
   if (road && (unit.promotions.includes("pathfinder") || unit.promotions.includes("commando"))) return 0;
   if (terrain === "hills" && unit.promotions.includes("pathfinder")) return 1;
   if ((terrain === "forest" || terrain === "jungle") &&
@@ -22,6 +85,9 @@ function unitMoveCost(unit: Unit, terrain: TerrainType, road: boolean): number {
     return 1;
   }
   if (road) return 1;
+  // Leader-ability movement overrides.
+  if (eff.ignoreRoughTerrain && (terrain === "forest" || terrain === "jungle" || terrain === "hills" || terrain === "mesa")) return 1;
+  if (eff.ignoreMountainMovement && terrain === "mountains") return 1;
   return moveCost(terrain);
 }
 
@@ -58,8 +124,20 @@ export function enemyStructureBlocks(state: GameState, col: number, row: number,
   return !!owner && owner.ownerId !== playerId;
 }
 
+/** Domain-aware passability check. */
+function isTilePassableForUnit(state: GameState, unit: Unit, tile: { terrain: TerrainType }): boolean {
+  if (isWaterDomain(unit)) {
+    const def = UNIT_DEFS[unit.type];
+    const oceanUnlocked = isNavalUnit(unit) ? canEnterOcean(state, unit, def) : hasTech(state, unit.ownerId, "astronomy");
+    return isNavalPassable(tile.terrain, oceanUnlocked);
+  }
+  const eff = playerEffects(state, unit.ownerId);
+  if (tile.terrain === "mountains" && eff.ignoreMountainMovement) return true;
+  return isPassableLand(tile.terrain);
+}
+
 /**
- * Tiles a unit can reach this turn (Dijkstra over land), keyed by "col,row".
+ * Tiles a unit can reach this turn, keyed by "col,row".
  * Honors the "always allowed at least one step" rule into an adjacent passable
  * tile even when its cost exceeds the remaining movement.
  */
@@ -80,7 +158,7 @@ export function computeReachable(
   const best = new Map<string, number>();
   best.set(key({ col: unit.col, row: unit.row }), 0);
 
-  // Simple Dijkstra; reachable sets are tiny (movement <= 3).
+  // Simple Dijkstra; reachable sets are tiny (movement <= 5).
   const frontier: Offset[] = [{ col: unit.col, row: unit.row }];
   while (frontier.length > 0) {
     // pop the lowest-cost node
@@ -93,14 +171,15 @@ export function computeReachable(
 
     for (const n of offsetNeighbors(map, cur.col, cur.row)) {
       const tile = getTile(map, n.col, n.row);
-      if (!tile || !isPassableLand(tile.terrain)) continue;
+      if (!tile || !isTilePassableForUnit(state, unit, tile)) continue;
       const nk = key(n);
       if (occ.has(`${n.col},${n.row}`)) continue;
       const city = cityAt(state, n.col, n.row);
+      // Native ships may not enter enemy cities from the sea; land units cannot enter foreign cities.
       if (city && city.ownerId !== unit.ownerId) continue;
-      if (enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
+      if (!isWaterDomain(unit) && enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
       if (borderBlocked(n.col, n.row)) continue; // foreign territory needs war / open borders
-      const enterCost = unitMoveCost(unit, tile.terrain, tile.road ?? false);
+      const enterCost = unitMoveCost(state, unit, tile.terrain, tile.road ?? false);
       const step = curCost + enterCost;
       if (step <= budget && step < (best.get(nk) ?? Infinity)) {
         best.set(nk, step);
@@ -113,12 +192,12 @@ export function computeReachable(
   // "At least one step": any adjacent passable, unoccupied tile is reachable.
   for (const n of offsetNeighbors(map, unit.col, unit.row)) {
     const tile = getTile(map, n.col, n.row);
-    if (!tile || !isPassableLand(tile.terrain)) continue;
+    if (!tile || !isTilePassableForUnit(state, unit, tile)) continue;
     const nk = `${n.col},${n.row}`;
     if (occ.has(nk)) continue;
     const city = cityAt(state, n.col, n.row);
     if (city && city.ownerId !== unit.ownerId) continue;
-    if (enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
+    if (!isWaterDomain(unit) && enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
     if (borderBlocked(n.col, n.row)) continue;
     if (!result.has(nk)) result.set(nk, { cost: budget });
   }

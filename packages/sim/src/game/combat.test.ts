@@ -67,7 +67,7 @@ describe("M2 combat", () => {
     const city = {
       id, ownerId: 1, name: "Target", col: 10, row: 8, population: 1,
       foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
-      isCapital: true, foundedAsCapital: true, hp: 0, lastAttackedTurn: 0, rangedAttackUsed: false,
+      isCapital: true, foundedAsCapital: true, hp: 0, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [],
     };
     city.hp = 0; // already battered to 0
     state.cities.set(id, city);
@@ -137,7 +137,7 @@ describe("M2 combat", () => {
       const c = {
         id: cid, ownerId, name, col, row, population: 1, foodStored: 0, productionStored: 0,
         production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true,
-        hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false,
+        hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [],
       };
       state.cities.set(cid, c);
       return c;
@@ -165,7 +165,7 @@ describe("M2 combat", () => {
       foundedAsCapital: false,
       hp: 0,
       lastAttackedTurn: 0,
-      rangedAttackUsed: false,
+      rangedAttackUsed: false, modifiers: [],
     });
     p1City.hp = 0; // already battered
     const swordsman = place(state, 0, "swordsman", p1City.col + 1, p1City.row);

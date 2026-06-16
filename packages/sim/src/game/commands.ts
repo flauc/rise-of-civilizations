@@ -1,8 +1,8 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { City, GameState, ProductionItem } from "./state";
 import { cityAt, currentPlayer, log, playerById, unitsOf, citiesOf } from "./state";
-import { isPassableLand } from "./terrain";
-import { computeReachable } from "./movement";
+import { isPassableLand, isWaterTerrain } from "./terrain";
+import { computeReachable, isCoastalLand, isCoastalWater, isNavalUnit, isWaterDomain } from "./movement";
 import { updateExplored } from "./visibility";
 import { processCity, availableProduction, autoAssignCitizens, toggleCitizen } from "./economy";
 import {
@@ -30,6 +30,7 @@ import { foundReligion, spreadReligion } from "./religion";
 import { establishTradeRoute, pruneTradeRoutes } from "./trade";
 import { pillageTile, plunderTradeRoute, sackCityCommand } from "./raiding";
 import { bribeBarbarian, recruitBarbarian, pruneBarbarianBribes } from "./bribery";
+import { useLeaderAbility } from "./leader-abilities";
 import {
   declareWar,
   makePeace,
@@ -82,6 +83,8 @@ export type Command =
   | { type: "pillage"; unitId: number }
   | { type: "plunderTradeRoute"; unitId: number; routeId: number }
   | { type: "sackCity"; unitId: number }
+  | { type: "embark"; unitId: number; col: number; row: number }
+  | { type: "disembark"; unitId: number; col: number; row: number }
   | { type: "declareWar"; targetId: number }
   | { type: "makePeace"; targetId: number }
   | { type: "denounce"; targetId: number }
@@ -90,6 +93,7 @@ export type Command =
   | { type: "proposeDeal"; targetId: number; give: DealItem[]; want: DealItem[] }
   | { type: "respondProposal"; proposalId: number; accept: boolean }
   | { type: "acknowledgeContact"; otherId: number }
+  | { type: "useLeaderAbility" }
   | { type: "endTurn" };
 
 export interface CommandResult {
@@ -161,6 +165,11 @@ export function applyCommand(
     currentPlayer(state);
 
   switch (cmd.type) {
+    case "useLeaderAbility": {
+      const result = useLeaderAbility(state, player);
+      return result.ok ? ok : fail(result.error ?? "leader ability failed");
+    }
+
     case "endTurn": {
       endTurn(state);
       return ok;
@@ -227,6 +236,7 @@ export function applyCommand(
         hp: 0,
         lastAttackedTurn: 0,
         rangedAttackUsed: false,
+        modifiers: [],
       };
       state.cities.set(id, city);
       foundTerritory(state, city);
@@ -321,7 +331,7 @@ export function applyCommand(
       const city = state.cities.get(cmd.cityId);
       if (!city) return fail("no such city");
       if (city.ownerId !== player.id) return fail("not your city");
-      const allowed = availableProduction(player, city).some(
+      const allowed = availableProduction(state, player, city).some(
         (o) => o.item.kind === cmd.item.kind && o.item.id === cmd.item.id,
       );
       if (!allowed) return fail("cannot build that");
@@ -404,6 +414,59 @@ export function applyCommand(
 
     case "sackCity":
       return sackCityCommand(state, cmd.unitId, player.id);
+
+    case "embark": {
+      const unit = state.units.get(cmd.unitId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      if (isNavalUnit(unit)) return fail("already naval");
+      if (isWaterDomain(unit)) return fail("already embarked");
+      if (unit.movementLeft <= 0) return fail("no movement");
+      const tile = getTile(state.map, unit.col, unit.row);
+      if (!tile || isWaterTerrain(tile.terrain)) return fail("must be on land");
+      if (!isCoastalLand(state, unit.col, unit.row)) return fail("not coastal");
+      const target = getTile(state.map, cmd.col, cmd.row);
+      if (!target || !isWaterTerrain(target.terrain)) return fail("target must be water");
+      if (!isCoastalWater(state, cmd.col, cmd.row)) return fail("target must be coastal water");
+      if (axialDistance(offsetToAxial({ col: unit.col, row: unit.row }), offsetToAxial({ col: cmd.col, row: cmd.row })) !== 1) {
+        return fail("target not adjacent");
+      }
+      // Cannot embark into an occupied tile.
+      for (const u of state.units.values()) {
+        if (u.id !== unit.id && u.col === cmd.col && u.row === cmd.row) return fail("tile occupied");
+      }
+      unit.col = cmd.col;
+      unit.row = cmd.row;
+      unit.embarked = true;
+      unit.movementLeft = 0; // embarking consumes the turn's movement
+      updateExplored(state, player.id);
+      return ok;
+    }
+
+    case "disembark": {
+      const unit = state.units.get(cmd.unitId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      if (!unit.embarked) return fail("not embarked");
+      if (unit.movementLeft <= 0) return fail("no movement");
+      const tile = getTile(state.map, unit.col, unit.row);
+      if (!tile || !isWaterTerrain(tile.terrain)) return fail("must be on water");
+      const target = getTile(state.map, cmd.col, cmd.row);
+      if (!target || isWaterTerrain(target.terrain)) return fail("target must be land");
+      if (!isPassableLand(target.terrain)) return fail("impassable terrain");
+      if (axialDistance(offsetToAxial({ col: unit.col, row: unit.row }), offsetToAxial({ col: cmd.col, row: cmd.row })) !== 1) {
+        return fail("target not adjacent");
+      }
+      for (const u of state.units.values()) {
+        if (u.id !== unit.id && u.col === cmd.col && u.row === cmd.row) return fail("tile occupied");
+      }
+      unit.col = cmd.col;
+      unit.row = cmd.row;
+      unit.embarked = false;
+      unit.movementLeft = 0; // disembarking consumes the turn's movement
+      updateExplored(state, player.id);
+      return ok;
+    }
 
     case "declareWar":
       return declareWar(state, player.id, cmd.targetId);

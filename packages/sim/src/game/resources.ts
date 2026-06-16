@@ -216,7 +216,7 @@ export const RESOURCE_DEFS: Record<ResourceId, ResourceDef> = {
 
 export const RESOURCE_IDS: ResourceId[] = Object.keys(RESOURCE_DEFS) as ResourceId[];
 
-const ZERO: Yields = { food: 0, production: 0, gold: 0, science: 0 };
+const ZERO: Yields = { food: 0, production: 0, gold: 0, science: 0, faith: 0 };
 
 /** True if the tile's resource is improved by the matching improvement. */
 export function resourceActive(tile: Tile): boolean {
@@ -235,6 +235,7 @@ export function resourceYields(tile: Tile): Yields {
     production: def.yields.production ?? 0,
     gold: def.yields.gold ?? 0,
     science: def.yields.science ?? 0,
+    faith: def.yields.faith ?? 0,
   };
 }
 

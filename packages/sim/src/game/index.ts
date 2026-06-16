@@ -26,3 +26,4 @@ export * from "./resources";
 export * from "./raiding";
 export * from "./ai";
 export * from "./fortifications";
+export * from "./leader-abilities";

@@ -1,16 +1,16 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City, Player } from "./state";
 import { cityAt, log, makeUnit, unitAt } from "./state";
-import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, type Yields } from "./terrain";
+import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, tileYields, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
 import { expandTerritory } from "./territory";
-import { getWonder } from "@roc/data";
-import { civEffectsOf, getCivic } from "./civs";
+import { getWonder, type CivEffects } from "@roc/data";
+import { civEffectsOf, cityEffects, getCivic } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
-import { offsetNeighbors } from "./movement";
+import { offsetNeighbors, isCoastalLand } from "./movement";
 import {
   BUILDING_DEFS,
   TECH_DEFS,
@@ -57,32 +57,94 @@ export function citizenScore(y: Yields): number {
   return y.food * 1.0 + y.production * 0.8 + y.gold * 0.5 + y.science * 0.6;
 }
 
-/** Base + improvement yields of a single tile. */
-function tileWorkYields(map: GameState["map"], col: number, row: number): Yields {
-  const tile = getTile(map, col, row);
+/** True if the tile has fresh water (lake or adjacent lake). Rivers/marsh are not separate terrains in this map model. */
+function isFreshWaterTile(state: GameState, col: number, row: number): boolean {
+  const tile = getTile(state.map, col, row);
+  if (!tile) return false;
+  if (tile.terrain === "lake") return true;
+  for (const n of offsetNeighbors(state.map, col, row)) {
+    const nt = getTile(state.map, n.col, n.row);
+    if (nt?.terrain === "lake") return true;
+  }
+  return false;
+}
+
+/** True if the tile is forest or jungle. */
+function isForestTile(state: GameState, col: number, row: number): boolean {
+  const tile = getTile(state.map, col, row);
+  return !!tile && (tile.terrain === "forest" || tile.terrain === "jungle");
+}
+
+/** True if the tile is a hill or mesa. */
+function isHillTile(state: GameState, col: number, row: number): boolean {
+  const tile = getTile(state.map, col, row);
+  return !!tile && (tile.terrain === "hills" || tile.terrain === "mesa");
+}
+
+/** Base + improvement yields of a single tile, plus tile-specific leader-ability bonuses. */
+function tileWorkYields(state: GameState, col: number, row: number, eff: CivEffects): Yields {
+  const tile = getTile(state.map, col, row);
   if (!tile) return ZERO_YIELDS;
-  return addYields(
+  const base = addYields(
     addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement, tile.improvementLevel)),
     resourceYields(tile),
   );
+  // Leader-ability tile bonuses.
+  if (tile.improvement === "mine") {
+    base.production += eff.mineTileProductionBonus ?? 0;
+    base.food -= eff.mineTileFoodPenalty ?? 0;
+  }
+  if (tile.improvement === "pasture") {
+    base.gold += eff.pastureTileGoldBonus ?? 0;
+    base.food += eff.pastureTileFoodBonus ?? 0;
+  }
+  if (tile.improvement === "farm") {
+    base.food += eff.farmTileFoodBonus ?? 0;
+    base.faith += eff.farmTileFaithBonus ?? 0;
+  }
+  if (isForestTile(state, col, row)) {
+    base.faith += eff.forestTileFaithBonus ?? 0;
+  }
+  if (isHillTile(state, col, row)) {
+    base.production += eff.hillTileProductionBonus ?? 0;
+  }
+  if (isFreshWaterTile(state, col, row)) {
+    base.food += eff.freshWaterTileFoodBonus ?? 0;
+    base.production += eff.freshWaterTileProductionBonus ?? 0;
+  }
+  if (isWaterTerrain(tile.terrain)) {
+    base.gold += eff.coastalTileGoldBonus ?? 0;
+  }
+  return base;
 }
 
 /** Compute a city's per-turn yields, auto-assigning the best worked tiles. */
 export function getCityYields(state: GameState, city: City): CityYields {
   const { map } = state;
   // City center tile (guaranteed minimum 1 food / 1 production).
-  const cBase = tileWorkYields(map, city.col, city.row);
+  const eff = mergeCivEffects(civEffectsOf(state, city.ownerId), cityEffects(state, city));
+  const cBase = tileWorkYields(state, city.col, city.row, eff);
   let food = Math.max(1, cBase.food);
   let production = Math.max(1, cBase.production);
   let gold = cBase.gold;
   let science = 1; // base research from every city
   let culture = 1; // base culture from every city
-  let faith = 0; // faith only comes from shrines/temples
+  let faith = cBase.faith; // faith from tiles and leader abilities
 
-  const eff = civEffectsOf(state, city.ownerId);
   const desertGold = eff.goldPerWorkedDesert ?? 0;
-  if (getTile(map, city.col, city.row)?.terrain === "desert") gold += desertGold;
+  const centerTile = getTile(map, city.col, city.row);
+  if (centerTile?.terrain === "desert") gold += desertGold;
   science += cBase.science;
+
+  // City-type leader-ability flat yields.
+  if (centerTile && isCoastalLand(state, city.col, city.row)) {
+    const b = eff.coastalCityYield;
+    if (b) { food += b.food ?? 0; production += b.production ?? 0; gold += b.gold ?? 0; science += b.science ?? 0; culture += b.culture ?? 0; faith += b.faith ?? 0; }
+  }
+  if (centerTile?.terrain === "desert") {
+    const b = eff.desertCityYield;
+    if (b) { food += b.food ?? 0; production += b.production ?? 0; gold += b.gold ?? 0; science += b.science ?? 0; culture += b.culture ?? 0; faith += b.faith ?? 0; }
+  }
 
   // Tiles this city's citizens are assigned to. Citizens trained as specialists
   // no longer work tiles, so only the first `workerSlots` assignments count.
@@ -91,11 +153,12 @@ export function getCityYields(state: GameState, city: City): CityYields {
     const [col, row] = key.split(",").map(Number) as [number, number];
     const tile = getTile(map, col, row);
     if (!tile || tile.ownerCityId !== city.id) continue; // ignore lost tiles
-    const y = tileWorkYields(map, col, row);
+    const y = tileWorkYields(state, col, row, eff);
     food += y.food;
     production += y.production;
     gold += y.gold;
     science += y.science;
+    faith += y.faith;
     if (tile.terrain === "desert") gold += desertGold;
   }
 
@@ -123,8 +186,9 @@ export function getCityYields(state: GameState, city: City): CityYields {
   const trade = cityTradeYields(state, city);
   food += trade.food;
   production += trade.production;
-  gold += trade.gold;
+  gold += trade.gold + (eff.tradeRouteGoldBonus ?? 0);
   science += trade.science;
+  faith += eff.tradeRouteFaithBonus ?? 0;
 
   // Wonders: empire-wide (every owned city) + host-city effects.
   const empireWonders = new Set<string>();
@@ -143,15 +207,57 @@ export function getCityYields(state: GameState, city: City): CityYields {
   for (const id of empireWonders) applyW(getWonder(id)?.effect.yieldPerCity);
   for (const id of city.wonders) applyW(getWonder(id)?.effect.yieldHostCity);
 
-  // Civ / government / policy yield bonuses (percentage).
+  // Civ / government / policy / leader-ability yield bonuses (percentage).
   const pct = eff.yieldPercent;
   if (pct) {
     food = Math.floor(food * (1 + (pct.food ?? 0) / 100));
     production = Math.floor(production * (1 + (pct.production ?? 0) / 100));
     gold = Math.floor(gold * (1 + (pct.gold ?? 0) / 100));
     science = Math.floor(science * (1 + (pct.science ?? 0) / 100));
+    culture = Math.floor(culture * (1 + (pct.culture ?? 0) / 100));
+    faith = Math.floor(faith * (1 + (pct.faith ?? 0) / 100));
+  }
+  // Non-desert city food penalty/bonus.
+  if (centerTile?.terrain !== "desert" && eff.nonDesertCityFoodPercent) {
+    food = Math.floor(food * (1 + eff.nonDesertCityFoodPercent / 100));
   }
   return { food, production, gold, science, culture, faith };
+}
+
+/** Merge two CivEffects objects into a single object. */
+function mergeCivEffects(a: CivEffects, b: CivEffects): CivEffects {
+  const out: CivEffects = { ...a };
+  // Re-apply merge logic by summing numeric fields and OR-ing booleans.
+  // For this helper we only need the fields consumed by getCityYields.
+  for (const k of ["coastalCityYield", "desertCityYield", "islandCityYield"] as const) {
+    const av = a[k];
+    const bv = b[k];
+    if (av && bv) {
+      (out[k] as NonNullable<CivEffects[typeof k]>) = { ...av };
+      for (const kk of ["food", "production", "gold", "science", "culture", "faith"] as const) {
+        if (bv[kk]) (out[k] as NonNullable<CivEffects[typeof k]>)[kk] = ((out[k] as NonNullable<CivEffects[typeof k]>)[kk] ?? 0) + bv[kk]!;
+      }
+    } else if (bv) {
+      out[k] = { ...bv };
+    }
+  }
+  for (const k of [
+    "goldPerWorkedDesert", "tradeRouteGoldBonus", "tradeRouteFaithBonus",
+    "mineTileProductionBonus", "mineTileFoodPenalty", "pastureTileGoldBonus", "pastureTileFoodBonus",
+    "farmTileFoodBonus", "farmTileFaithBonus", "forestTileFaithBonus", "hillTileProductionBonus",
+    "freshWaterTileFoodBonus", "freshWaterTileProductionBonus", "coastalTileGoldBonus", "nonDesertCityFoodPercent",
+  ] as const) {
+    const av = a[k] ?? 0;
+    const bv = b[k] ?? 0;
+    if (av || bv) out[k] = (av as number) + (bv as number);
+  }
+  if (b.yieldPercent) {
+    out.yieldPercent ??= {};
+    for (const k of ["food", "production", "gold", "science", "culture", "faith"] as const) {
+      if (b.yieldPercent[k]) out.yieldPercent[k] = (out.yieldPercent[k] ?? 0) + b.yieldPercent[k]!;
+    }
+  }
+  return out;
 }
 
 export function foodToGrow(population: number): number {
@@ -161,7 +267,8 @@ export function foodToGrow(population: number): number {
 const keyOf = (t: { col: number; row: number }) => `${t.col},${t.row}`;
 const scoreOfKey = (state: GameState, key: string): number => {
   const [c, r] = key.split(",").map(Number) as [number, number];
-  return citizenScore(tileWorkYields(state.map, c, r));
+  const tile = getTile(state.map, c, r);
+  return tile ? citizenScore(tileYields(tile)) : -Infinity;
 };
 
 /** Clean up a city's worked tiles (drop lost/invalid, cap at population) and
@@ -239,20 +346,28 @@ export function toggleCitizen(state: GameState, city: City, col: number, row: nu
   return true;
 }
 
-/** Spawn a finished unit at the city, or the nearest open adjacent land tile. */
+/** Spawn a finished unit at the city, or the nearest open adjacent valid tile. */
 function placeUnit(state: GameState, city: City, type: keyof typeof UNIT_DEFS): void {
   const xpBonus = city.buildings.includes("barracks") ? 15 : 0;
+  const udef = UNIT_DEFS[type];
   const spawn = (col: number, row: number) => {
     const id = state.nextEntityId++;
     state.units.set(id, makeUnit(id, city.ownerId, type, col, row, xpBonus));
   };
-  if (!unitAt(state, city.col, city.row)) {
+  // Naval units spawn on an adjacent water tile; land units spawn on land.
+  const wantsWater = udef.cls === "naval_melee" || udef.cls === "naval_ranged";
+  if (!wantsWater && !unitAt(state, city.col, city.row)) {
     spawn(city.col, city.row);
     return;
   }
   for (const n of offsetNeighbors(state.map, city.col, city.row)) {
     const tile = getTile(state.map, n.col, n.row);
-    if (tile && !unitAt(state, n.col, n.row) && tile.terrain !== "mountains") {
+    if (!tile || unitAt(state, n.col, n.row)) continue;
+    if (wantsWater && isWaterTerrain(tile.terrain)) {
+      spawn(n.col, n.row);
+      return;
+    }
+    if (!wantsWater && tile.terrain !== "mountains") {
       spawn(n.col, n.row);
       return;
     }
@@ -385,11 +500,14 @@ export interface ProductionOption {
 }
 
 /** Everything a city can currently build, gated by the owner's tech. */
-export function availableProduction(player: Player, city: City): ProductionOption[] {
+export function availableProduction(state: GameState, player: Player, city: City): ProductionOption[] {
   const out: ProductionOption[] = [];
+  const coastal = isCoastalLand(state, city.col, city.row);
   for (const def of Object.values(UNIT_DEFS)) {
     if (def.reqTech && !player.researched.has(def.reqTech)) continue;
     if (def.reqResource && resourceStock(player, def.reqResource.resource) < def.reqResource.count) continue;
+    // Naval units can only be built in coastal cities.
+    if ((def.cls === "naval_melee" || def.cls === "naval_ranged") && !coastal) continue;
     out.push({ item: { kind: "unit", id: def.id }, name: def.name, cost: def.cost });
   }
   for (const def of Object.values(BUILDING_DEFS)) {

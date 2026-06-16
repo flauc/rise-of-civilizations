@@ -64,7 +64,7 @@ export const IMPROVEMENT_DEFS: Record<ImprovementKind, ImprovementDef> = {
   },
 };
 
-const ZERO: Yields = { food: 0, production: 0, gold: 0, science: 0 };
+const ZERO: Yields = { food: 0, production: 0, gold: 0, science: 0, faith: 0 };
 
 /** Worked-yield bonus a tile's improvement contributes, given its kind + tier. */
 export function improvementYields(kind: string | undefined, level = 1): Yields {
@@ -77,5 +77,6 @@ export function improvementYields(kind: string | undefined, level = 1): Yields {
     production: tier.production ?? 0,
     gold: tier.gold ?? 0,
     science: tier.science ?? 0,
+    faith: tier.faith ?? 0,
   };
 }

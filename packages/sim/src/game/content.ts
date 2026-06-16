@@ -2,8 +2,7 @@
 // organised around real materials & techniques (knapping, smelting, alloying,
 // carburizing, torsion, equestrianism…) rather than abstract "eras of science".
 // Units are numerous and role-rich: many are available from the start, others
-// are unlocked by specific technologies. Naval units await the water-movement
-// system, so they're intentionally omitted for now.
+// are unlocked by specific technologies.
 
 export type UnitTypeId =
   // civilian
@@ -21,9 +20,13 @@ export type UnitTypeId =
   | "swordsman" | "longswordsman" | "pikeman" | "cataphract"
   | "crossbowman" | "legionary" | "war_elephant"
   // siege
-  | "battering_ram" | "catapult" | "ballista";
+  | "battering_ram" | "catapult" | "ballista"
+  // naval melee
+  | "galley" | "bireme" | "trireme" | "quinquereme" | "longship" | "caravel"
+  // naval ranged
+  | "dromon" | "war_junk" | "galleass" | "galleon";
 
-export type UnitClass = "settler" | "trader" | "recon" | "melee" | "ranged" | "cavalry" | "siege";
+export type UnitClass = "settler" | "trader" | "recon" | "melee" | "ranged" | "cavalry" | "siege" | "naval_melee" | "naval_ranged";
 export type UnitAbility = "bonus_vs_cavalry" | "bonus_vs_city";
 
 /**
@@ -45,7 +48,12 @@ export type ActiveAbilityId =
   | "sunder"
   | "pierce"
   | "harry"
-  | "reconnoiter";
+  | "reconnoiter"
+  // naval
+  | "ram"
+  | "boarding_party"
+  | "greek_fire"
+  | "coastal_bombardment";
 
 /** A persistent stance a unit enters by forfeiting its movement for the turn. */
 export type StanceId = "brace" | "shield_wall" | "testudo" | "emplace";
@@ -88,11 +96,16 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
   pierce: A({ id: "pierce", name: "Pierce", verb: "Pierce", glyph: "🎯", kind: "targeted", cooldown: 0, desc: "Armor-piercing bolt: ignores 6 points of the target's defense. Reduced range this shot." }),
   harry: A({ id: "harry", name: "Harry", verb: "Harry", glyph: "🐕", kind: "targeted", cooldown: 0, desc: "Low-damage strike that pins the target — it cannot move on its next turn." }),
   reconnoiter: A({ id: "reconnoiter", name: "Reconnoiter", verb: "Scout Ahead", glyph: "🔭", kind: "self", cooldown: 0, desc: "Forfeit the turn for a vision pulse: +2 sight until your next turn." }),
+  // naval
+  ram: A({ id: "ram", name: "Ram", verb: "Ram", glyph: "⚓", kind: "targeted", cooldown: 0, desc: "Drive the ship into an adjacent enemy vessel (+4 attack)." }),
+  boarding_party: A({ id: "boarding_party", name: "Boarding Party", verb: "Board", glyph: "⚔️", kind: "targeted", cooldown: 1, desc: "Grapple and storm an adjacent ship (+5 attack, heal on kill)." }),
+  greek_fire: A({ id: "greek_fire", name: "Greek Fire", verb: "Burn", glyph: "🔥", kind: "targeted", cooldown: 1, desc: "Flame projectile that sunders the target and splashes half damage to adjacent enemy ships." }),
+  coastal_bombardment: A({ id: "coastal_bombardment", name: "Coastal Bombardment", verb: "Bombard", glyph: "💣", kind: "targeted", cooldown: 0, desc: "Ranged ship focuses fire on a coastal city or unit (+4 ranged strength)." }),
 };
 
 export type BuildingId =
   | "granary" | "workshop" | "forge" | "walls" | "barracks" | "stable"
-  | "market" | "library" | "academy" | "aqueduct" | "harbor" | "monument" | "amphitheater"
+  | "market" | "library" | "academy" | "aqueduct" | "harbor" | "lighthouse" | "monument" | "amphitheater"
   | "shrine" | "temple";
 
 export type TechId =
@@ -103,6 +116,8 @@ export type TechId =
   | "native_copper" | "smelting" | "bronze_alloying" | "the_wheel" | "equestrian"
   | "masonry" | "weaving" | "composite_bow" | "writing" | "irrigation"
   | "sailcloth" | "chariotry" | "phalanx"
+  // Naval / Maritime
+  | "sailing" | "shipbuilding" | "naval_architecture" | "optics" | "astronomy" | "cartography"
   // Iron / Classical
   | "iron_bloomery" | "carburizing" | "siegecraft" | "torsion_engines"
   | "mathematics" | "engineering" | "coinage" | "philosophy"
@@ -132,6 +147,10 @@ export interface UnitDef {
   abilities?: UnitAbility[];
   /** Player-triggered active abilities (see ACTIVE_ABILITY_DEFS). */
   activeAbilities?: ActiveAbilityId[];
+  /** True if the unit can embark land units or itself cross deep ocean. */
+  transport?: boolean;
+  /** True if the unit can enter ocean tiles before Astronomy. */
+  oceanGoing?: boolean;
 }
 
 const U = (d: UnitDef): UnitDef => d;
@@ -172,6 +191,20 @@ export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
   battering_ram: U({ id: "battering_ram", name: "Battering Ram", glyph: "U", cls: "siege", movement: 2, sight: 2, cost: 16, strength: 6, rangedStrength: 10, range: 1, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),
   catapult: U({ id: "catapult", name: "Catapult", glyph: "I", cls: "siege", movement: 2, sight: 2, cost: 25, strength: 6, rangedStrength: 14, range: 2, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),
   ballista: U({ id: "ballista", name: "Ballista", glyph: "b", cls: "siege", movement: 2, sight: 2, cost: 30, strength: 7, rangedStrength: 16, range: 2, reqTech: "torsion_engines", abilities: ["bonus_vs_city"] }),
+
+  // ---- naval melee ---------------------------------------------------------
+  galley: U({ id: "galley", name: "Galley", glyph: "g", cls: "naval_melee", movement: 3, sight: 2, cost: 20, strength: 10, reqTech: "sailing" }),
+  bireme: U({ id: "bireme", name: "Bireme", glyph: "B", cls: "naval_melee", movement: 3, sight: 2, cost: 28, strength: 14, reqTech: "shipbuilding" }),
+  trireme: U({ id: "trireme", name: "Trireme", glyph: "T", cls: "naval_melee", movement: 3, sight: 2, cost: 32, strength: 16, reqTech: "shipbuilding" }),
+  quinquereme: U({ id: "quinquereme", name: "Quinquereme", glyph: "Q", cls: "naval_melee", movement: 3, sight: 2, cost: 38, strength: 20, reqTech: "naval_architecture" }),
+  longship: U({ id: "longship", name: "Longship", glyph: "L", cls: "naval_melee", movement: 4, sight: 2, cost: 26, strength: 12, reqTech: "sailcloth" }),
+  caravel: U({ id: "caravel", name: "Caravel", glyph: "V", cls: "naval_melee", movement: 5, sight: 3, cost: 40, strength: 14, reqTech: "astronomy", oceanGoing: true }),
+
+  // ---- naval ranged --------------------------------------------------------
+  dromon: U({ id: "dromon", name: "Dromon", glyph: "D", cls: "naval_ranged", movement: 4, sight: 2, cost: 34, strength: 8, rangedStrength: 14, range: 2, reqTech: "engineering" }),
+  war_junk: U({ id: "war_junk", name: "War Junk", glyph: "J", cls: "naval_ranged", movement: 4, sight: 2, cost: 34, strength: 10, rangedStrength: 16, range: 2, reqTech: "engineering" }),
+  galleass: U({ id: "galleass", name: "Galleass", glyph: "G", cls: "naval_ranged", movement: 3, sight: 2, cost: 40, strength: 10, rangedStrength: 18, range: 2, reqTech: "naval_architecture" }),
+  galleon: U({ id: "galleon", name: "Galleon", glyph: "O", cls: "naval_ranged", movement: 5, sight: 3, cost: 48, strength: 12, rangedStrength: 20, range: 2, reqTech: "cartography", oceanGoing: true }),
 };
 
 // Assign each unit's player-triggered active abilities (docs/UNIT-ABILITIES.md §4).
@@ -199,12 +232,23 @@ const UNIT_ACTIVE_ABILITIES: Partial<Record<UnitTypeId, ActiveAbilityId[]>> = {
   war_elephant: ["trample"],
   catapult: ["emplace"],
   ballista: ["emplace"],
+  // naval
+  galley: ["ram"],
+  bireme: ["ram"],
+  trireme: ["ram"],
+  quinquereme: ["ram"],
+  longship: ["ram"],
+  caravel: ["boarding_party"],
+  dromon: ["greek_fire"],
+  war_junk: ["greek_fire"],
+  galleass: ["coastal_bombardment"],
+  galleon: ["coastal_bombardment"],
 };
 for (const [id, abilities] of Object.entries(UNIT_ACTIVE_ABILITIES)) {
   UNIT_DEFS[id as UnitTypeId].activeAbilities = abilities;
 }
 
-export const MILITARY_CLASSES: ReadonlySet<UnitClass> = new Set(["melee", "ranged", "cavalry", "siege"]);
+export const MILITARY_CLASSES: ReadonlySet<UnitClass> = new Set(["melee", "ranged", "cavalry", "siege", "naval_melee", "naval_ranged"]);
 
 export function isMilitary(type: UnitTypeId): boolean {
   return MILITARY_CLASSES.has(UNIT_DEFS[type].cls);
@@ -212,6 +256,10 @@ export function isMilitary(type: UnitTypeId): boolean {
 
 export function isRanged(def: UnitDef): boolean {
   return (def.range ?? 0) >= 1 && (def.rangedStrength ?? 0) > 0;
+}
+
+export function isNaval(def: UnitDef): boolean {
+  return def.cls === "naval_melee" || def.cls === "naval_ranged";
 }
 
 export interface BuildingDef {
@@ -222,7 +270,7 @@ export interface BuildingDef {
   /** Strategic resource required to build this building. */
   reqResource?: { resource: string; count: number };
   yields: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
-  effect?: "walls" | "barracks";
+  effect?: "walls" | "barracks" | "harbor" | "lighthouse";
 }
 
 const B = (d: BuildingDef): BuildingDef => d;
@@ -238,7 +286,8 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   library: B({ id: "library", name: "Archive", cost: 26, reqTech: "writing", yields: { science: 2 } }),
   academy: B({ id: "academy", name: "Academy", cost: 34, reqTech: "philosophy", yields: { science: 3 } }),
   aqueduct: B({ id: "aqueduct", name: "Aqueduct", cost: 30, reqTech: "engineering", yields: { food: 2 } }),
-  harbor: B({ id: "harbor", name: "Harbor", cost: 24, reqTech: "sailcloth", yields: { gold: 2 } }),
+  harbor: B({ id: "harbor", name: "Harbor", cost: 24, reqTech: "sailcloth", yields: { gold: 2 }, effect: "harbor" }),
+  lighthouse: B({ id: "lighthouse", name: "Lighthouse", cost: 30, reqTech: "optics", yields: { gold: 1, science: 1 }, effect: "lighthouse" }),
   monument: B({ id: "monument", name: "Monument", cost: 22, reqTech: "monumental_architecture", yields: { culture: 2 } }),
   amphitheater: B({ id: "amphitheater", name: "Amphitheater", cost: 26, reqTech: "ritual_burial", yields: { culture: 3 } }),
   shrine: B({ id: "shrine", name: "Shrine", cost: 18, reqTech: "ritual_burial", yields: { faith: 2 } }),
@@ -281,6 +330,14 @@ export const TECH_DEFS: Record<TechId, TechDef> = {
   chariotry: T("chariotry", "Chariotry", 46, ["the_wheel", "bronze_alloying"]),
   phalanx: T("phalanx", "Phalanx Doctrine", 46, ["bronze_alloying"]),
 
+  // Naval / Maritime
+  sailing: T("sailing", "Sailing", 30, ["sailcloth", "weaving"]),
+  shipbuilding: T("shipbuilding", "Shipbuilding", 46, ["sailing", "bronze_alloying"]),
+  naval_architecture: T("naval_architecture", "Naval Architecture", 70, ["shipbuilding", "mathematics"]),
+  optics: T("optics", "Optics", 55, ["mathematics", "shipbuilding"]),
+  astronomy: T("astronomy", "Astronomy", 80, ["optics", "philosophy"]),
+  cartography: T("cartography", "Cartography", 90, ["astronomy", "naval_architecture"]),
+
   // Iron / Classical
   iron_bloomery: T("iron_bloomery", "Iron Bloomery", 55, ["smelting"]),
   carburizing: T("carburizing", "Carburizing (Steel)", 72, ["iron_bloomery"]),
@@ -322,6 +379,8 @@ const ROLE: Record<UnitClass, string> = {
   recon: "Recon / scout",
   settler: "Founds a new city",
   trader: "Establishes trade routes",
+  naval_melee: "Naval melee",
+  naval_ranged: "Naval ranged",
 };
 
 export interface UnitInfo {
@@ -343,6 +402,8 @@ export function unitInfo(type: UnitTypeId): UnitInfo {
   if (d.founder) notes.push("consumed to found a city");
   if (d.trader) notes.push("consumed to set up a trade route");
   if (d.reqResource) notes.push(`requires ${d.reqResource.count} ${d.reqResource.resource}`);
+  if (isNaval(d)) notes.push("naval");
+  if (d.oceanGoing) notes.push("ocean-going");
   return { role: ROLE[d.cls], stats: stats.join(" · "), note: notes.join(" · ") };
 }
 
@@ -358,6 +419,8 @@ export function buildingInfo(id: BuildingId): string {
   if (y.faith) parts.push(`+${y.faith} ☮️`);
   if (d.effect === "walls") parts.push("city walls (+HP & defense)");
   if (d.effect === "barracks") parts.push("+city defense; new units gain XP");
+  if (d.effect === "harbor") parts.push("heals adjacent naval units; +trade gold");
+  if (d.effect === "lighthouse") parts.push("+1 sight for naval units in this city");
   return parts.join(", ") || "—";
 }
 
@@ -447,6 +510,20 @@ export type PromotionId =
   | "ambush"
   | "ranger"
   | "eagle_eye_recon"
+  // naval melee
+  | "boarding"
+  | "ramming"
+  | "marines"
+  | "reinforced_hull"
+  | "fleet_discipline"
+  | "pursuit_at_sea"
+  // naval ranged
+  | "coastal_bombardment"
+  | "extended_range_naval"
+  | "chain_shot"
+  | "spotter"
+  | "repair_crew"
+  | "broadside"
   // civilian
   | "pioneer"
   | "colonist"
@@ -543,6 +620,22 @@ export const PROMOTION_DEFS: Record<PromotionId, PromotionDef> = {
   ambush: { id: "ambush", name: "Ambush", desc: "+4 strength on the first attack each turn" , tier: 2 },
   ranger: { id: "ranger", name: "Ranger", desc: "+2 strength; +1 sight" , tier: 2 },
   eagle_eye_recon: { id: "eagle_eye_recon", name: "Eagle Eye", desc: "+2 sight" , tier: 3 },
+
+  // naval melee
+  boarding: { id: "boarding", name: "Boarding", desc: "+4 strength vs naval melee units" , tier: 2 },
+  ramming: { id: "ramming", name: "Ramming", desc: "+4 strength on the first naval attack each turn" , tier: 2 },
+  marines: { id: "marines", name: "Marines", desc: "Can pillage adjacent coastal tiles" , tier: 3 },
+  reinforced_hull: { id: "reinforced_hull", name: "Reinforced Hull", desc: "+15 max HP" , tier: 2 },
+  fleet_discipline: { id: "fleet_discipline", name: "Fleet Discipline", desc: "+2 strength when adjacent to a friendly naval unit" , tier: 2 },
+  pursuit_at_sea: { id: "pursuit_at_sea", name: "Pursuit at Sea", desc: "+3 strength when attacking a damaged ship" , tier: 2 },
+
+  // naval ranged
+  coastal_bombardment: { id: "coastal_bombardment", name: "Coastal Bombardment", desc: "+4 ranged strength vs cities" , tier: 2 },
+  extended_range_naval: { id: "extended_range_naval", name: "Extended Range", desc: "+1 range" , tier: 2 },
+  chain_shot: { id: "chain_shot", name: "Chain Shot", desc: "+4 ranged strength vs naval units" , tier: 2 },
+  spotter: { id: "spotter", name: "Spotter", desc: "+1 sight" , tier: 2 },
+  repair_crew: { id: "repair_crew", name: "Repair Crew", desc: "Heals +5 HP each turn at sea" , tier: 2 },
+  broadside: { id: "broadside", name: "Broadside", desc: "+2 ranged strength" , tier: 2 },
 
   // civilian
   pioneer: { id: "pioneer", name: "Pioneer", desc: "+1 sight; +1 movement" , tier: 1 },
@@ -649,4 +742,22 @@ export const PROMOTION_POOL: Record<UnitClass, PromotionId[]> = {
   ],
   settler: ["pioneer", "colonist", "explorer"],
   trader: [],
+  naval_melee: [
+    "boarding",
+    "ramming",
+    "medic",
+    "fleet_discipline",
+    "pursuit_at_sea",
+    "reinforced_hull",
+    "marines",
+  ],
+  naval_ranged: [
+    "coastal_bombardment",
+    "extended_range_naval",
+    "chain_shot",
+    "spotter",
+    "repair_crew",
+    "broadside",
+    "medic",
+  ],
 };

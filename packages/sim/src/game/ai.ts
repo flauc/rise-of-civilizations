@@ -15,6 +15,7 @@ import { abilityTargets, canUseAbility, unitAbilities } from "./abilities";
 import { availableProduction, availableTechs } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
 import { canFoundReligion, availableReligionNames } from "./religion";
+import { canUseLeaderAbility } from "./leader-abilities";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
 import { aiConsiderDiplomacy, atWar } from "./diplomacy";
 import { availablePromotions } from "./combat";
@@ -126,7 +127,7 @@ function aiExplore(state: GameState, unit: Unit, pid: number): void {
 // ---- production choice ---------------------------------------------------
 
 function chooseProduction(state: GameState, player: Player, city: City): ProductionItem | null {
-  const opts = availableProduction(player, city);
+  const opts = availableProduction(state, player, city);
   const units = unitsOf(state, player.id);
   const has = (t: string) => units.some((u) => u.type === t);
   const cityCount = citiesOf(state, player.id).length;
@@ -394,6 +395,11 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   if (!player) return;
 
   aiConsiderDiplomacy(state, playerId); // declare/sue for war, court friends
+
+  // Use the civilization's active leader ability if it is off cooldown and affordable.
+  if (canUseLeaderAbility(state, player).ok) {
+    applyCommand(state, { type: "useLeaderAbility" }, playerId);
+  }
 
   if (!player.researching) {
     const techs = availableTechs(player);

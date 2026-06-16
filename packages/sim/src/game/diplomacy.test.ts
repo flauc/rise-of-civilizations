@@ -72,7 +72,7 @@ describe("diplomacy", () => {
     ensureContact(s, 0, 1);
     // Give player 1 a city that owns a tile near player 0.
     const cid = s.nextEntityId++;
-    s.cities.set(cid, { id: cid, ownerId: 1, name: "Theirs", col: 10, row: 10, population: 1, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false } as never);
+    s.cities.set(cid, { id: cid, ownerId: 1, name: "Theirs", col: 10, row: 10, population: 1, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
     const t = getTile(s.map, 11, 10)!;
     t.ownerCityId = cid;
     expect(foreignTerritoryOwner(s, 0, 11, 10)).toBe(1); // peace, no open borders → blocked
@@ -88,9 +88,9 @@ describe("diplomacy", () => {
     ensureContact(s, 0, 1);
     // Player 0 has a city with a carpenter; player 1 (AI) has a capital.
     const c0 = s.nextEntityId++;
-    s.cities.set(c0, { id: c0, ownerId: 0, name: "Mine", col: 5, row: 5, population: 3, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [{ id: 900, type: "carpenter", name: "Test", xp: 0, level: 2 }], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false } as never);
+    s.cities.set(c0, { id: c0, ownerId: 0, name: "Mine", col: 5, row: 5, population: 3, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [{ id: 900, type: "carpenter", name: "Test", xp: 0, level: 2 }], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
     const c1 = s.nextEntityId++;
-    s.cities.set(c1, { id: c1, ownerId: 1, name: "Theirs", col: 20, row: 12, population: 1, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false } as never);
+    s.cities.set(c1, { id: c1, ownerId: 1, name: "Theirs", col: 20, row: 12, population: 1, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
     // Offer the AI the carpenter for free (3 turns) — it accepts a gift.
     expect(proposeDeal(s, 0, 1, [{ kind: "specialist", specialistType: "carpenter", turns: 3 }], []).ok).toBe(true);
     expect(s.cities.get(c1)!.specialists.some((sp) => sp.type === "carpenter")).toBe(true);
