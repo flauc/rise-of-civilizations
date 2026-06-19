@@ -1,5 +1,7 @@
 # Great People & Legends
 
+> ⛔ **Status: NOT IMPLEMENTED (design only) — audited 2026-06-19.** Nothing in this document exists in the code. There is **no Great Person system** (no class point pools, no recruitment, no figures) and **no Legends/heroes system** (no recruitment paths, lifespans, auras, or signature abilities) in `packages/sim` or `packages/data`. The "Specialists" that *do* exist (`specialists.ts`) are unrelated craftsmen for Public Works — see [SPECIALISTS-AND-WORKS.md](SPECIALISTS-AND-WORKS.md) — not the Great People below. Despite Legends being billed as a "core feature" in [PLAN.md](PLAN.md), none of it is built yet. Treat every table here as a backlog spec, not a description of the game.
+
 Two related "character" systems:
 
 1. **Great People** — finite, named historical figures earned by accumulating **class points** (from specialists, buildings, wonders, and certain civ abilities). Each is a one-time recruit with a one-shot activation and/or a passive while present. They are *characters*, not generic units (see [PLAN.md §3.6](PLAN.md)).

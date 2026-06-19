@@ -1096,6 +1096,490 @@ export const CIVILIZATIONS: CivDef[] = [
     effects: { yieldPercent: { gold: 10 } },
     cityNames: ["Honolulu", "Hilo", "Kailua", "Lahaina", "Waipahu", "Pearl City", "Kahului", "Kona", "Molokai", "Kauai"],
   },
+
+  // ===========================================================================
+  // EXPANSION — Near East & Arabia (see docs/CIVILIZATIONS-EXPANSION.md)
+  // ===========================================================================
+  {
+    id: "arabia", name: "Arabia", leader: "Harun al-Rashid",
+    abilityName: "Faith of the Prophet",
+    abilityDesc: "International trade routes grant faith and science; conquered cities settle quickly.",
+    uniqueUnit: "Camel Archer", uniqueInfra: "House of Wisdom",
+    effects: { tradeRouteFaithBonus: 2, yieldPercent: { science: 10 } },
+    cityNames: ["Mecca", "Medina", "Baghdad", "Damascus", "Kufa", "Basra", "Fustat", "Córdoba", "Samarra", "Kairouan"],
+  },
+  {
+    id: "israelites", name: "Israelites", leader: "Solomon",
+    abilityName: "Kingdom of David",
+    abilityDesc: "Faster wonder production in the capital; faith from trade routes.",
+    uniqueUnit: "Gibborim", uniqueInfra: "First Temple",
+    effects: { wonderProductionBonus: 15, tradeRouteFaithBonus: 1 },
+    cityNames: ["Jerusalem", "Samaria", "Hebron", "Bethlehem", "Jericho", "Beersheba", "Megiddo", "Lachish", "Shechem", "Dan"],
+  },
+  {
+    id: "nabataeans", name: "Nabataeans", leader: "Aretas IV",
+    abilityName: "Incense Road",
+    abilityDesc: "Extra gold from worked desert tiles; desert cities gain food from cisterns.",
+    uniqueUnit: "Desert Raider", uniqueInfra: "Cistern",
+    effects: { goldPerWorkedDesert: 2, desertCityYield: { food: 1 } },
+    cityNames: ["Petra", "Hegra", "Bosra", "Avdat", "Dumah", "Hawara", "Nessana", "Elusa", "Sela", "Mampsis"],
+  },
+  {
+    id: "saba", name: "Saba", leader: "Bilqis",
+    abilityName: "Frankincense Kingdom",
+    abilityDesc: "Luxury and gold wealth; dam irrigation grants food on fresh water.",
+    uniqueUnit: "Sabaean Spearman", uniqueInfra: "Marib Dam",
+    effects: { yieldPercent: { gold: 15 }, freshWaterTileFoodBonus: 1 },
+    cityNames: ["Marib", "Sirwah", "Sana'a", "Najran", "Timna", "Shabwa", "Zafar", "Baraqish", "Nashshan", "Kamna"],
+  },
+  {
+    id: "mitanni", name: "Mitanni", leader: "Tushratta",
+    abilityName: "Maryannu",
+    abilityDesc: "Chariots and mounted units fight harder; horse breeding tradition.",
+    uniqueUnit: "Maryannu Chariot", uniqueInfra: "Kikkuli Stables",
+    effects: { unitClassCombat: { cavalry: 2 } },
+    cityNames: ["Washukanni", "Taite", "Kahat", "Nagar", "Irridu", "Harran", "Nuzi", "Alalakh", "Terqa", "Mari"],
+  },
+  {
+    id: "urartu", name: "Urartu", leader: "Sarduri II",
+    abilityName: "Kingdom of Van",
+    abilityDesc: "Mining production; strong defensive buildings in the highlands.",
+    uniqueUnit: "Urartian Charioteer", uniqueInfra: "Fortress of Van",
+    effects: { mineTileProductionBonus: 1, defensiveBuildingProductionBonus: 25 },
+    cityNames: ["Tushpa", "Erebuni", "Argishtihinili", "Teishebaini", "Musasir", "Ardini", "Hasanlu", "Bastam", "Anzaf", "Karmir Blur"],
+  },
+
+  // ===========================================================================
+  // EXPANSION — Persia & Central Asia
+  // ===========================================================================
+  {
+    id: "greco_bactria", name: "Greco-Bactria", leader: "Demetrius I",
+    abilityName: "Thousand Cities",
+    abilityDesc: "Hellenistic fusion: extra science and culture in every city.",
+    uniqueUnit: "Bactrian Cataphract", uniqueInfra: "Gymnasion",
+    effects: { yieldPercent: { science: 10, culture: 10 } },
+    cityNames: ["Bactra", "Ai-Khanoum", "Alexandria-Oxiana", "Demetrias", "Eucratideia", "Bagram", "Termez", "Maracanda", "Sagala", "Pushkalavati"],
+  },
+  {
+    id: "sogdia", name: "Sogdia", leader: "Divashtich",
+    abilityName: "Lords of the Silk Road",
+    abilityDesc: "Greater trade-route gold and capacity.",
+    uniqueUnit: "Sogdian Cavalry", uniqueInfra: "Caravanserai",
+    effects: { tradeRouteGoldBonus: 3, tradeRouteCapacityBonus: 1 },
+    cityNames: ["Samarkand", "Bukhara", "Panjikent", "Paykend", "Maimurgh", "Kesh", "Nakhshab", "Khujand", "Ustrushana", "Chach"],
+  },
+  {
+    id: "khwarazm", name: "Khwarazm", leader: "Ala ad-Din Muhammad II",
+    abilityName: "Shahs of Khwarazm",
+    abilityDesc: "Gold from trade, but a sprawling army costs more to maintain.",
+    uniqueUnit: "Khwarazmian Lancer", uniqueInfra: "Gurganj Bazaar",
+    effects: { yieldPercent: { gold: 15 }, militaryMaintenanceCostMultiplier: 0.2 },
+    cityNames: ["Gurganj", "Khiva", "Kath", "Hazarasp", "Merv", "Nishapur", "Otrar", "Urgench", "Samarkand", "Bukhara"],
+  },
+
+  // ===========================================================================
+  // EXPANSION — North Africa & the Islamic Mediterranean
+  // ===========================================================================
+  {
+    id: "numidia", name: "Numidia", leader: "Masinissa",
+    abilityName: "Masaesyli Horse",
+    abilityDesc: "Light cavalry move farther and heal on the move.",
+    uniqueUnit: "Numidian Cavalry", uniqueInfra: "Royal Horse Market",
+    effects: { cavalryMovementBonus: 1, mountedHealPerTurn: 10 },
+    cityNames: ["Cirta", "Hippo Regius", "Thugga", "Zama", "Capsa", "Theveste", "Bulla Regia", "Calama", "Sicca", "Tipasa"],
+  },
+  {
+    id: "fatimids", name: "Fatimid Caliphate", leader: "al-Mu'izz",
+    abilityName: "Isma'ili Caliphate",
+    abilityDesc: "Extra science and faith; gold from Mediterranean trade.",
+    uniqueUnit: "Fatimid Ghulam", uniqueInfra: "Al-Azhar",
+    effects: { yieldPercent: { science: 10, faith: 10 } },
+    cityNames: ["Cairo", "Mahdia", "Kairouan", "Fustat", "Alexandria", "Damascus", "Ascalon", "Tyre", "Barqa", "Palermo"],
+  },
+  {
+    id: "ayyubids", name: "Ayyubids", leader: "Saladin",
+    abilityName: "Sultan of Egypt & Syria",
+    abilityDesc: "Units fight harder and heal in home territory.",
+    uniqueUnit: "Ayyubid Faris", uniqueInfra: "Citadel of Cairo",
+    effects: { unitClassCombat: { cavalry: 1, melee: 1 }, unitHealPerTurn: 5 },
+    cityNames: ["Cairo", "Damascus", "Aleppo", "Homs", "Hama", "Mosul", "Jerusalem", "Baalbek", "Mayyafariqin", "Sana'a"],
+  },
+  {
+    id: "mamluks", name: "Mamluk Sultanate", leader: "Baybars",
+    abilityName: "Slave Soldiers",
+    abilityDesc: "Elite cavalry bought with gold; mounted units fight harder.",
+    uniqueUnit: "Mamluk", uniqueInfra: "Maydan",
+    effects: { unitClassCombat: { cavalry: 2 } },
+    cityNames: ["Cairo", "Damascus", "Aleppo", "Alexandria", "Gaza", "Tripoli", "Hama", "Jerusalem", "Homs", "Safed"],
+  },
+  {
+    id: "almoravids", name: "Almoravids", leader: "Yusuf ibn Tashfin",
+    abilityName: "Veiled Sultanate",
+    abilityDesc: "Trans-Saharan gold; faith fuels the melee line.",
+    uniqueUnit: "Lamtuna Spearman", uniqueInfra: "Ribat",
+    effects: { goldPerWorkedDesert: 1, unitClassCombat: { melee: 1 } },
+    cityNames: ["Marrakesh", "Aghmat", "Sijilmasa", "Fez", "Tlemcen", "Ceuta", "Algeciras", "Seville", "Córdoba", "Audaghost"],
+  },
+
+  // ===========================================================================
+  // EXPANSION — Sub-Saharan Africa
+  // ===========================================================================
+  {
+    id: "swahili", name: "Swahili (Kilwa)", leader: "al-Hasan ibn Sulaiman",
+    abilityName: "Monsoon Trade",
+    abilityDesc: "Large coastal-city gold and international trade-route gold.",
+    uniqueUnit: "Swahili Dhow", uniqueInfra: "Husuni Kubwa",
+    effects: { coastalCityYield: { gold: 3 }, tradeRouteGoldBonus: 2 },
+    cityNames: ["Kilwa", "Mombasa", "Zanzibar", "Malindi", "Lamu", "Sofala", "Mogadishu", "Pate", "Gedi", "Barawa"],
+  },
+  {
+    id: "benin", name: "Benin", leader: "Oba Ewuare",
+    abilityName: "Walls of Benin",
+    abilityDesc: "Earthwork defenses and bronze-casting culture.",
+    uniqueUnit: "Ogboni Guard", uniqueInfra: "Iya Earthworks",
+    effects: { defensiveBuildingProductionBonus: 25, yieldPercent: { culture: 10 } },
+    cityNames: ["Benin City", "Udo", "Ughoton", "Sabongida-Ora", "Ekiadolor", "Urhonigbe", "Usen", "Iyekorhionmwon", "Ogwa", "Uselu"],
+  },
+  {
+    id: "kongo", name: "Kongo", leader: "Afonso I",
+    abilityName: "Kingdom of Kongo",
+    abilityDesc: "Faith and culture from conversion; nkutu cloth trade.",
+    uniqueUnit: "Kongo Archer", uniqueInfra: "Mbanza",
+    effects: { yieldPercent: { faith: 10, culture: 10 } },
+    cityNames: ["M'banza-Kongo", "Mbanza Soyo", "Mbata", "Mpangu", "Mbamba", "Nsundi", "Mpemba", "Wandu", "Vunda", "Kongo dia Nlaza"],
+  },
+
+  // ===========================================================================
+  // EXPANSION — Mediterranean & Europe
+  // ===========================================================================
+  {
+    id: "bulgaria", name: "Bulgaria", leader: "Krum",
+    abilityName: "Khans of the Danube",
+    abilityDesc: "Cavalry fight harder; captured cities keep more population.",
+    uniqueUnit: "Bulgar Horse Archer", uniqueInfra: "Preslav Court",
+    effects: { unitClassCombat: { cavalry: 1 }, captureCityPopulationBonus: 1 },
+    cityNames: ["Pliska", "Preslav", "Tarnovo", "Ohrid", "Sofia", "Vidin", "Silistra", "Plovdiv", "Varna", "Skopje"],
+  },
+  {
+    id: "serbia", name: "Serbia", leader: "Stefan Dušan",
+    abilityName: "Dušan's Code",
+    abilityDesc: "Culture from law; silver mining gold.",
+    uniqueUnit: "Pronoia Knight", uniqueInfra: "Despot's Hall",
+    effects: { yieldPercent: { culture: 10 }, mineTileProductionBonus: 1 },
+    cityNames: ["Ras", "Prizren", "Skopje", "Pristina", "Novo Brdo", "Belgrade", "Niš", "Smederevo", "Peć", "Kruševac"],
+  },
+  {
+    id: "bohemia", name: "Bohemia", leader: "Charles IV",
+    abilityName: "Crown of St. Wenceslas",
+    abilityDesc: "Silver mining gold; universities grant extra science.",
+    uniqueUnit: "Hussite War Wagon", uniqueInfra: "Kutná Hora Mint",
+    effects: { mineTileProductionBonus: 1, yieldPercent: { science: 10 } },
+    cityNames: ["Prague", "Kutná Hora", "Brno", "Olomouc", "Plzeň", "Kolín", "Tábor", "Hradec Králové", "Cheb", "Znojmo"],
+  },
+  {
+    id: "swiss", name: "Swiss Confederacy", leader: "Werner Stauffacher",
+    abilityName: "Reisläufer",
+    abilityDesc: "Elite pikemen and mercenaries; strong mountain defense.",
+    uniqueUnit: "Swiss Halberdier", uniqueInfra: "Rütli Meadow",
+    effects: { unitClassCombat: { melee: 2 } },
+    cityNames: ["Schwyz", "Uri", "Unterwalden", "Lucerne", "Zürich", "Bern", "Glarus", "Zug", "Basel", "Fribourg"],
+  },
+  {
+    id: "aragon", name: "Crown of Aragon", leader: "James I",
+    abilityName: "Mare Nostrum",
+    abilityDesc: "Naval power and coastal-trade gold; Almogavar raiders.",
+    uniqueUnit: "Almogàver", uniqueInfra: "Llotja",
+    effects: { navalMovementBonus: 1, coastalCityYield: { gold: 2 } },
+    cityNames: ["Zaragoza", "Barcelona", "Valencia", "Palma", "Tarragona", "Lleida", "Tortosa", "Girona", "Huesca", "Cagliari"],
+  },
+  {
+    id: "scotland", name: "Scotland", leader: "Robert the Bruce",
+    abilityName: "Schiltron",
+    abilityDesc: "Anti-cavalry spears; faith from the highlands.",
+    uniqueUnit: "Highland Schiltron", uniqueInfra: "Tower House",
+    effects: { unitClassCombat: { melee: 1 }, forestTileFaithBonus: 1 },
+    cityNames: ["Scone", "Stirling", "Edinburgh", "Dunfermline", "Perth", "Aberdeen", "Dunkeld", "Glasgow", "St Andrews", "Inverness"],
+  },
+  {
+    id: "gaelic_ireland", name: "Gaelic Ireland", leader: "Brian Boru",
+    abilityName: "High Kingship",
+    abilityDesc: "Monastic faith and culture; galloglass mercenaries.",
+    uniqueUnit: "Gallowglass", uniqueInfra: "Round Tower",
+    effects: { yieldPercent: { faith: 10, culture: 10 } },
+    cityNames: ["Tara", "Cashel", "Armagh", "Clonmacnoise", "Kells", "Dublin", "Cork", "Limerick", "Glendalough", "Kildare"],
+  },
+  {
+    id: "normans", name: "Normans (Sicily)", leader: "Roger II",
+    abilityName: "Hauteville Conquest",
+    abilityDesc: "Strong knights and multicultural administration (gold & science).",
+    uniqueUnit: "Norman Knight", uniqueInfra: "Palatine Chapel",
+    effects: { unitClassCombat: { cavalry: 1 }, yieldPercent: { science: 10 } },
+    cityNames: ["Palermo", "Messina", "Salerno", "Bari", "Syracuse", "Catania", "Amalfi", "Aversa", "Melfi", "Reggio"],
+  },
+  {
+    id: "visigoths", name: "Visigoths", leader: "Leovigild",
+    abilityName: "Kingdom of Toledo",
+    abilityDesc: "Captured cities keep population; a law code grants culture.",
+    uniqueUnit: "Visigothic Noble", uniqueInfra: "Hall of Toledo",
+    effects: { captureCityPopulationBonus: 1, yieldPercent: { culture: 10 } },
+    cityNames: ["Toledo", "Toulouse", "Barcelona", "Mérida", "Seville", "Narbonne", "Córdoba", "Tarragona", "Recópolis", "Braga"],
+  },
+  {
+    id: "novgorod", name: "Novgorod", leader: "Alexander Nevsky",
+    abilityName: "Fur Republic",
+    abilityDesc: "Gold from northern coastal/forest trade.",
+    uniqueUnit: "Ushkuinik", uniqueInfra: "Veche Bell",
+    effects: { coastalTileGoldBonus: 1, yieldPercent: { gold: 10 } },
+    cityNames: ["Novgorod", "Pskov", "Ladoga", "Beloozero", "Torzhok", "Staraya Russa", "Izborsk", "Vologda", "Vyatka", "Oreshek"],
+  },
+
+  // ===========================================================================
+  // EXPANSION — European tribal peoples (Iron Age & Arctic)
+  // ===========================================================================
+  {
+    id: "illyrians", name: "Illyrians", leader: "Teuta",
+    abilityName: "Adriatic Pirates",
+    abilityDesc: "Coastal raiding gold and faster ships.",
+    uniqueUnit: "Liburnian", uniqueInfra: "Gradina",
+    effects: { coastalRaidGoldPercent: 50, navalMovementBonus: 1 },
+    cityNames: ["Scodra", "Rhizon", "Lissus", "Epidamnus", "Apollonia", "Daorson", "Salona", "Narona", "Bylis", "Amantia"],
+  },
+  {
+    id: "lusitani", name: "Lusitani", leader: "Viriathus",
+    abilityName: "Concursare",
+    abilityDesc: "Units fight harder in forest and rough terrain (hit-and-run).",
+    uniqueUnit: "Falcata Warrior", uniqueInfra: "Castro",
+    effects: { forestTileCombatBonus: 2 },
+    cityNames: ["Viseu", "Conímbriga", "Salmantica", "Ebora", "Pax Julia", "Olisipo", "Bracara", "Mirobriga", "Caurium", "Norba"],
+  },
+  {
+    id: "arevaci", name: "Arevaci", leader: "Caros",
+    abilityName: "Spirit of Numantia",
+    abilityDesc: "Celtiberian steel (+melee) and tenacious fortress defense.",
+    uniqueUnit: "Celtiberian Warrior", uniqueInfra: "Murallas de Numancia",
+    effects: { unitClassCombat: { melee: 1 }, defensiveBuildingProductionBonus: 25 },
+    cityNames: ["Numantia", "Segeda", "Termantia", "Uxama", "Tiermes", "Clunia", "Bilbilis", "Segontia", "Lutia", "Contrebia"],
+  },
+  {
+    id: "thracians", name: "Thracians", leader: "Sitalces",
+    abilityName: "Odrysian Host",
+    abilityDesc: "Superior light infantry; a mercenary skirmisher tradition.",
+    uniqueUnit: "Thracian Peltast", uniqueInfra: "Thracian Tomb",
+    effects: { unitClassCombat: { ranged: 2 } },
+    cityNames: ["Seuthopolis", "Cabyle", "Uscudama", "Bizye", "Philippopolis", "Odessos", "Beroe", "Pistiros", "Helis", "Apros"],
+  },
+  {
+    id: "dacians", name: "Dacians", leader: "Decebalus",
+    abilityName: "Gold of the Carpathians",
+    abilityDesc: "Gold and production from mountain mines; the armor-cleaving falx.",
+    uniqueUnit: "Falxman", uniqueInfra: "Murus Dacicus",
+    effects: { mineTileProductionBonus: 1, unitClassCombat: { melee: 1 } },
+    cityNames: ["Sarmizegetusa", "Apulum", "Napoca", "Buridava", "Piroboridava", "Costești", "Blidaru", "Cumidava", "Genucla", "Argedava"],
+  },
+  {
+    id: "sami", name: "Sámi", leader: "Noaidi Council",
+    abilityName: "People of the Eight Seasons",
+    abilityDesc: "Faith and food from the far north; at home in snow and tundra.",
+    uniqueUnit: "Ski Raider", uniqueInfra: "Siida Camp",
+    effects: { yieldPercent: { faith: 10, food: 5 } },
+    cityNames: ["Aanaar", "Guovdageaidnu", "Kárášjohka", "Johkamohkki", "Giron", "Ohcejohka", "Eanodat", "Soađegilli", "Deatnu", "Aarborte"],
+  },
+
+  // ===========================================================================
+  // EXPANSION — Greek city-states
+  // ===========================================================================
+  {
+    id: "corinth", name: "Corinth", leader: "Periander",
+    abilityName: "Two Seas",
+    abilityDesc: "A commerce hub: trade-route and coastal-city gold.",
+    uniqueUnit: "Corinthian Trireme", uniqueInfra: "Diolkos",
+    effects: { tradeRouteGoldBonus: 2, coastalCityYield: { gold: 2 } },
+    cityNames: ["Corinth", "Syracuse", "Corcyra", "Ambracia", "Potidaea", "Apollonia", "Leucas", "Anactorium", "Sicyon", "Cenchreae"],
+  },
+  {
+    id: "thebes", name: "Thebes", leader: "Epaminondas",
+    abilityName: "Sacred Band",
+    abilityDesc: "Elite heavy infantry with oblique-order flanking.",
+    uniqueUnit: "Sacred Band", uniqueInfra: "Cadmea",
+    effects: { unitClassCombat: { melee: 2 } },
+    cityNames: ["Thebes", "Plataea", "Thespiae", "Orchomenus", "Tanagra", "Coronea", "Haliartus", "Chaeronea", "Leuctra", "Aulis"],
+  },
+  {
+    id: "eretria", name: "Eretria", leader: "Eretrian Assembly",
+    abilityName: "Euboean Colonists",
+    abilityDesc: "New cities start larger; the alphabet and trade spread culture and gold.",
+    uniqueUnit: "Penteconter", uniqueInfra: "Emporion",
+    effects: { newCityExtraPopulation: 1, tradeRouteGoldBonus: 1, yieldPercent: { culture: 10 } },
+    cityNames: ["Eretria", "Chalcis", "Pithekoussai", "Cumae", "Methone", "Mende", "Torone", "Dikaia", "Carystus", "Styra"],
+  },
+  {
+    id: "crete", name: "Crete", leader: "Nearchus",
+    abilityName: "Cretan Archers",
+    abilityDesc: "Ranged units gain range and strength (the era's best mercenary archers).",
+    uniqueUnit: "Cretan Archer", uniqueInfra: "Gortyn Code",
+    effects: { unitClassCombat: { ranged: 2 } },
+    cityNames: ["Knossos", "Gortyn", "Phaistos", "Kydonia", "Lyttos", "Itanos", "Hierapytna", "Praisos", "Eleutherna", "Lato"],
+  },
+
+  // ===========================================================================
+  // EXPANSION — South & East Asia
+  // ===========================================================================
+  {
+    id: "indus_valley", name: "Indus Valley", leader: "Priest-Council",
+    abilityName: "Planned Cities",
+    abilityDesc: "New cities start larger with a free Granary; sanitation feeds growth.",
+    uniqueUnit: "Harappan Spearman", uniqueInfra: "Great Bath",
+    effects: { newCityExtraPopulation: 1, newCityFreeBuilding: "granary" },
+    cityNames: ["Mohenjo-daro", "Harappa", "Dholavira", "Rakhigarhi", "Lothal", "Kalibangan", "Ganweriwala", "Mehrgarh", "Banawali", "Surkotada"],
+  },
+  {
+    id: "zhou_china", name: "Zhou China", leader: "King Wu",
+    abilityName: "Mandate of Heaven",
+    abilityDesc: "Culture and faith of legitimacy; feudal levies.",
+    uniqueUnit: "Zhou Chariot", uniqueInfra: "Ancestral Temple",
+    effects: { yieldPercent: { culture: 10, faith: 5 } },
+    cityNames: ["Haojing", "Luoyang", "Fenghao", "Qufu", "Linzi", "Xinzheng", "Handan", "Yong", "Jiang", "Wan"],
+  },
+  {
+    id: "delhi_sultanate", name: "Delhi Sultanate", leader: "Alauddin Khalji",
+    abilityName: "Sultanate of Hind",
+    abilityDesc: "Price controls grant gold and food.",
+    uniqueUnit: "Delhi War Elephant", uniqueInfra: "Hauz",
+    effects: { yieldPercent: { gold: 10, food: 5 } },
+    cityNames: ["Delhi", "Lahore", "Multan", "Daulatabad", "Jaunpur", "Badaun", "Ajmer", "Lakhnauti", "Siri", "Tughlaqabad"],
+  },
+  {
+    id: "mughals", name: "Mughal Empire", leader: "Akbar",
+    abilityName: "Padishah",
+    abilityDesc: "Wonders and culture flourish under religious tolerance.",
+    uniqueUnit: "Mughal Sowar", uniqueInfra: "Red Fort",
+    effects: { wonderProductionBonus: 15, yieldPercent: { culture: 10 } },
+    cityNames: ["Agra", "Delhi", "Fatehpur Sikri", "Lahore", "Kabul", "Allahabad", "Ajmer", "Burhanpur", "Dhaka", "Srinagar"],
+  },
+  {
+    id: "vijayanagara", name: "Vijayanagara", leader: "Krishnadevaraya",
+    abilityName: "City of Victory",
+    abilityDesc: "Temple-bazaar gold and faith; tank-fed farmland.",
+    uniqueUnit: "Vijayanagara War Elephant", uniqueInfra: "Temple Tank",
+    effects: { yieldPercent: { gold: 10, faith: 5 }, freshWaterTileFoodBonus: 1 },
+    cityNames: ["Vijayanagara", "Hampi", "Penukonda", "Chandragiri", "Srirangapatna", "Udayagiri", "Gutti", "Kanchipuram", "Bhatkal", "Mangalore"],
+  },
+  {
+    id: "champa", name: "Champa", leader: "Jaya Indravarman IV",
+    abilityName: "Lords of the Sea",
+    abilityDesc: "Coastal raiding gold and a swift navy.",
+    uniqueUnit: "Cham Raider", uniqueInfra: "My Son Tower",
+    effects: { coastalRaidGoldPercent: 50, navalMovementBonus: 1 },
+    cityNames: ["Indrapura", "Vijaya", "Simhapura", "Kauthara", "Panduranga", "Amaravati", "Virapura", "Rajapura", "Bal Hangov", "Bal Sri Banoy"],
+  },
+  {
+    id: "sinhala", name: "Sinhala", leader: "Parakramabahu I",
+    abilityName: "Let No Drop Waste",
+    abilityDesc: "Tank irrigation grants food and production from fresh water.",
+    uniqueUnit: "Sinhala War Elephant", uniqueInfra: "Wewa",
+    effects: { freshWaterTileFoodBonus: 1, freshWaterTileProductionBonus: 1 },
+    cityNames: ["Anuradhapura", "Polonnaruwa", "Sigiriya", "Kandy", "Dambadeniya", "Yapahuwa", "Kurunegala", "Mahagama", "Tissamaharama", "Kelaniya"],
+  },
+  {
+    id: "khitan", name: "Khitan (Liao)", leader: "Abaoji",
+    abilityName: "Dual Administration",
+    abilityDesc: "Mobile cavalry and productive cities (steppe and sown).",
+    uniqueUnit: "Ordo Cavalry", uniqueInfra: "Ordo Camp",
+    effects: { cavalryMovementBonus: 1, yieldPercent: { production: 10 } },
+    cityNames: ["Shangjing", "Zhongjing", "Dongjing", "Nanjing", "Xijing", "Linhuang", "Liaoyang", "Datong", "Yunzhou", "Zhuozhou"],
+  },
+  {
+    id: "jurchen", name: "Jurchen (Jin)", leader: "Aguda",
+    abilityName: "Meng'an-Mouke",
+    abilityDesc: "Heavy cavalry militia skilled at storming cities.",
+    uniqueUnit: "Iron Pagoda", uniqueInfra: "Meng'an Garrison",
+    effects: { unitClassCombat: { cavalry: 1 }, meleeVsCityBonus: 2 },
+    cityNames: ["Huining", "Zhongdu", "Bianjing", "Liaoyang", "Datong", "Yanjing", "Huanglongfu", "Hancheng", "Linhuang", "Dading"],
+  },
+
+  // ===========================================================================
+  // EXPANSION — Steppe & Turkic
+  // ===========================================================================
+  {
+    id: "khazars", name: "Khazars", leader: "Bulan",
+    abilityName: "Toll of the Steppe",
+    abilityDesc: "Trade-route gold and tolerant faith.",
+    uniqueUnit: "Khazar Lancer", uniqueInfra: "Sarkel Fortress",
+    effects: { tradeRouteGoldBonus: 2, yieldPercent: { faith: 5 } },
+    cityNames: ["Atil", "Sarkel", "Balanjar", "Samandar", "Kerch", "Tmutarakan", "Sudak", "Phanagoria", "Khazaran", "Semender"],
+  },
+  {
+    id: "avars", name: "Avars", leader: "Bayan I",
+    abilityName: "Ring of the Avars",
+    abilityDesc: "Stirrup cavalry combat and tribute gold from raids.",
+    uniqueUnit: "Avar Lancer", uniqueInfra: "Hring",
+    effects: { unitClassCombat: { cavalry: 2 }, raidGoldPercent: 25 },
+    cityNames: ["Hring", "Sirmium", "Singidunum", "Aquincum", "Savaria", "Carnuntum", "Mursa", "Bassiana", "Brigetio", "Cibalae"],
+  },
+  {
+    id: "golden_horde", name: "Golden Horde", leader: "Batu Khan",
+    abilityName: "Tatar Yoke",
+    abilityDesc: "Tribute gold from raids; swift horse archers.",
+    uniqueUnit: "Tatar Horse Archer", uniqueInfra: "Yam Relay",
+    effects: { raidGoldPercent: 25, cavalryMovementBonus: 1 },
+    cityNames: ["Sarai", "Sarai Berke", "Bolghar", "Astrakhan", "Azov", "Kazan", "Solhat", "Ukek", "Majar", "Tyumen"],
+  },
+
+  // ===========================================================================
+  // EXPANSION — The Americas
+  // ===========================================================================
+  {
+    id: "chimu", name: "Chimú", leader: "Minchançaman",
+    abilityName: "Kingdom of Chimor",
+    abilityDesc: "Coastal-desert irrigation feeds cities; goldsmith luxury gold.",
+    uniqueUnit: "Chimú Slinger", uniqueInfra: "Chan Chan Citadel",
+    effects: { desertCityYield: { food: 1 }, yieldPercent: { gold: 10 } },
+    cityNames: ["Chan Chan", "Pacatnamú", "Farfán", "Manchan", "Túcume", "Apurlec", "Pampa Grande", "Galindo", "Purgatorio", "Batán Grande"],
+  },
+  {
+    id: "moche", name: "Moche", leader: "Lord of Sipán",
+    abilityName: "Huaca Builders",
+    abilityDesc: "Adobe pyramids give faith and culture.",
+    uniqueUnit: "Moche Warrior", uniqueInfra: "Huaca",
+    effects: { holySiteTempleProductionBonus: 25, yieldPercent: { faith: 5 } },
+    cityNames: ["Moche", "Sipán", "Pampa Grande", "Galindo", "Dos Cabezas", "San José de Moro", "El Brujo", "Pañamarca", "Huancaco", "Cerro Blanco"],
+  },
+  {
+    id: "tiwanaku", name: "Tiwanaku", leader: "Priest-Rulers",
+    abilityName: "Raised Fields",
+    abilityDesc: "Highland and lake farming; faith from monoliths.",
+    uniqueUnit: "Tiwanaku Spearman", uniqueInfra: "Akapana Pyramid",
+    effects: { freshWaterTileFoodBonus: 1, yieldPercent: { faith: 5 } },
+    cityNames: ["Tiwanaku", "Lukurmata", "Pajchiri", "Khonkho Wankane", "Lakaya", "Ojje", "Pariti", "Wankani", "Kala Uyuni", "Iwawi"],
+  },
+  {
+    id: "tarascans", name: "Tarascans", leader: "Tariácuri",
+    abilityName: "Metalsmiths of Michoacán",
+    abilityDesc: "Copper and bronze metallurgy boost production and combat.",
+    uniqueUnit: "Copper Macehead", uniqueInfra: "Yácata",
+    effects: { yieldPercent: { production: 10 }, unitClassCombat: { melee: 1 } },
+    cityNames: ["Tzintzuntzan", "Pátzcuaro", "Ihuatzio", "Zacapu", "Erongarícuaro", "Uruapan", "Tariácuri", "Taximaroa", "Coyuca", "Charo"],
+  },
+  {
+    id: "taino", name: "Taíno", leader: "Anacaona",
+    abilityName: "Caciquedom",
+    abilityDesc: "Island culture and faith; cassava feeds the people.",
+    uniqueUnit: "Guaribo Slinger", uniqueInfra: "Batey",
+    effects: { islandCityYield: { food: 2 }, yieldPercent: { culture: 10 } },
+    cityNames: ["Xaragua", "Maguana", "Marién", "Higüey", "Magua", "Caonao", "Borinquen", "Cayacoa", "Guacayarima", "Bainoa"],
+  },
+
+  // ===========================================================================
+  // EXPANSION — Oceania
+  // ===========================================================================
+  {
+    id: "tonga", name: "Tonga", leader: "Tuʻi Tonga",
+    abilityName: "Maritime Tribute",
+    abilityDesc: "Gold and faith from coastal/island cities; long voyaging.",
+    uniqueUnit: "Tongan Toa", uniqueInfra: "Langi",
+    effects: { islandCityYield: { gold: 2 }, navalMovementBonus: 1 },
+    cityNames: ["Mu'a", "Lapaha", "Heketa", "Nuku'alofa", "Niuatoputapu", "Pangai", "Neiafu", "Ohonua", "Hihifo", "Kolovai"],
+  },
 ];
 
 const LEADER_QUOTES: Record<string, string> = {
@@ -1194,6 +1678,200 @@ export function getCiv(id: string | undefined): CivDef | undefined {
 }
 
 export const CIV_IDS: string[] = CIVILIZATIONS.map((c) => c.id);
+
+// ===========================================================================
+// Unique units. Each civ's unique unit "reskins" a base unit it replaces:
+// when that civ builds (or fields) the base unit it gets the unique name, art
+// (keyed by `id`), and a flat combat bonus. `replaces` is a base UnitTypeId
+// from packages/sim/src/game/content.ts (kept as a string so @roc/data stays
+// dependency-free). Resolved by owner-civ at read time — see uniqueUnitForCiv.
+// ===========================================================================
+
+export interface UniqueUnitDef {
+  /** Art/lookup key, e.g. "rome_legionary". Filename: client public/units/<id>.png. */
+  id: string;
+  civId: string;
+  name: string;
+  /** Base UnitTypeId this unit replaces for its civ. */
+  replaces: string;
+  /** Flat combat bonus (added to strength, or ranged strength for ranged units). */
+  bonus: number;
+}
+
+function uu(civId: string, name: string, replaces: string, bonus = 3): UniqueUnitDef {
+  const slug = name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+  return { id: `${civId}_${slug}`, civId, name, replaces, bonus };
+}
+
+export const UNIQUE_UNITS: UniqueUnitDef[] = [
+  // Mesopotamia & Near East
+  uu("sumer", "War-Cart", "light_chariot"),
+  uu("akkad", "Sargonic Guard", "axeman"),
+  uu("babylon", "Bowman", "archer"),
+  uu("assyria", "Siege Tower", "battering_ram"),
+  uu("hittites", "Hittite Chariot", "war_chariot"),
+  uu("elam", "Susian Archer", "archer"),
+  uu("phoenicia", "Bireme", "galley"),
+  uu("lydia", "Heavy Cavalry", "cataphract"),
+  // Persia & Iran
+  uu("median_empire", "Median Lancer", "cataphract"),
+  uu("persia", "Immortal", "spearman"),
+  uu("parthia", "Parthian Horse Archer", "horse_archer"),
+  uu("sassanid_persia", "Savaran Cataphract", "cataphract"),
+  // Egypt & Africa
+  uu("egypt", "Maryannu Chariot", "war_chariot"),
+  uu("kush_nubia", "Nubian Archer", "archer"),
+  uu("carthage", "War Elephant", "war_elephant"),
+  uu("aksum", "Aksumite Spearman", "spearman"),
+  uu("ethiopia_zagwe", "Oromo Cavalry", "rider"),
+  uu("mali", "Mandekalu Cavalry", "cataphract"),
+  uu("ghana_empire", "Soninke Warrior", "swordsman"),
+  uu("songhai", "Songhai Cavalry", "rider"),
+  uu("great_zimbabwe", "Zimbabwe Spearman", "spearman"),
+  uu("kanem_bornu", "Kanembu Guard", "spearman"),
+  // Mediterranean & Europe
+  uu("minoans", "Minoan Bireme", "galley"),
+  uu("mycenaean_greece", "Mycenaean Spearman", "spearman"),
+  uu("greece", "Hoplite", "spearman"),
+  uu("sparta", "Spartan Hoplite", "hoplite"),
+  uu("macedon", "Hypaspist", "swordsman"),
+  uu("etruscans", "Etruscan Hoplite", "hoplite"),
+  uu("rome", "Legionary", "swordsman"),
+  uu("celts_gauls", "Gaesatae", "axeman"),
+  uu("byzantium", "Cataphract", "cataphract"),
+  uu("norse", "Longship", "longship"),
+  uu("franks", "Frankish Paladin", "cataphract"),
+  uu("goths", "Gothic Rider", "cataphract"),
+  uu("anglo_saxon_england", "Longbowman", "crossbowman"),
+  uu("france", "Garde Écossaise", "cataphract"),
+  uu("castile_spain", "Conquistador", "cataphract"),
+  uu("portugal", "Nau", "caravel"),
+  uu("venice", "Venetian Galleass", "galleass"),
+  uu("genoa", "Genoese Crossbowman", "crossbowman"),
+  uu("dutch_republic", "Sea Beggar", "galleass"),
+  uu("holy_roman_empire", "Landsknecht", "pikeman"),
+  uu("kievan_rus", "Druzhina", "cataphract"),
+  uu("poland_lithuania", "Winged Hussar", "cataphract"),
+  uu("hungary", "Black Army", "cataphract"),
+  // Central, South & East Asia
+  uu("han_china", "Cho-Ko-Nu", "crossbowman"),
+  uu("china_tang_song", "Fire Lancer", "pikeman"),
+  uu("china_ming", "War Junk", "war_junk"),
+  uu("maurya", "War Elephant", "war_elephant"),
+  uu("gupta_india", "Gupta Elephant Archer", "war_elephant"),
+  uu("chola", "Chola Warship", "trireme"),
+  uu("japan", "Samurai", "longswordsman"),
+  uu("korea", "Turtle Ship", "war_junk"),
+  uu("tibet", "Tibetan Cavalry", "rider"),
+  uu("dai_viet_vietnam", "Voi Chiến", "war_elephant"),
+  uu("khmer", "Domrey", "war_elephant"),
+  uu("srivijaya", "Jong", "bireme"),
+  uu("majapahit", "Majapahit Jong", "trireme"),
+  uu("pagan_burma", "Burmese War Elephant", "war_elephant"),
+  uu("ayutthaya_siam", "Siamese War Elephant", "war_elephant"),
+  // Steppe & Turkic
+  uu("scythians", "Scythian Horse Archer", "horse_archer"),
+  uu("xiongnu", "Xiongnu Horse Archer", "horse_archer"),
+  uu("huns", "Hunnic Horde", "horse_archer"),
+  uu("gokturks", "Turkic Lancer", "cataphract"),
+  uu("seljuks", "Ghulam", "cataphract"),
+  uu("mongols", "Keshig", "horse_archer"),
+  uu("timurids", "Timurid Siege Train", "catapult"),
+  uu("ottomans", "Janissary", "crossbowman"),
+  // The Americas
+  uu("olmec", "Olmec Spearman", "spearman"),
+  uu("maya", "Holkan", "javelineer"),
+  uu("zapotec", "Zapotec Warrior", "swordsman"),
+  uu("teotihuacan", "Pyramid Guard", "spearman"),
+  uu("toltec", "Toltec Warrior", "swordsman"),
+  uu("aztec", "Eagle Warrior", "warrior"),
+  uu("inca", "Warak'aq", "slinger"),
+  uu("muisca", "Guecha Warrior", "swordsman"),
+  uu("mississippian_cahokia", "Cahokian Warrior", "axeman"),
+  uu("haudenosaunee", "Mohawk Warrior", "swordsman"),
+  uu("pueblo", "Pueblo Skirmisher", "javelineer"),
+  // Oceania
+  uu("polynesia", "Koa Warrior", "warrior"),
+  uu("maori", "Toa", "warrior"),
+  uu("hawaii", "Hawaiian Koa", "warrior"),
+
+  // ---- Expansion roster ----
+  uu("arabia", "Camel Archer", "horse_archer"),
+  uu("israelites", "Gibborim", "swordsman"),
+  uu("nabataeans", "Desert Raider", "rider"),
+  uu("saba", "Sabaean Spearman", "spearman"),
+  uu("mitanni", "Maryannu Chariot", "war_chariot"),
+  uu("urartu", "Urartian Charioteer", "war_chariot"),
+  uu("greco_bactria", "Bactrian Cataphract", "cataphract"),
+  uu("sogdia", "Sogdian Cavalry", "rider"),
+  uu("khwarazm", "Khwarazmian Lancer", "cataphract"),
+  uu("numidia", "Numidian Cavalry", "horse_archer"),
+  uu("fatimids", "Fatimid Ghulam", "cataphract"),
+  uu("ayyubids", "Ayyubid Faris", "cataphract"),
+  uu("mamluks", "Mamluk", "cataphract"),
+  uu("almoravids", "Lamtuna Spearman", "spearman"),
+  uu("swahili", "Swahili Dhow", "bireme"),
+  uu("benin", "Ogboni Guard", "swordsman"),
+  uu("kongo", "Kongo Archer", "archer"),
+  uu("bulgaria", "Bulgar Horse Archer", "horse_archer"),
+  uu("serbia", "Pronoia Knight", "cataphract"),
+  uu("bohemia", "Hussite War Wagon", "crossbowman"),
+  uu("swiss", "Swiss Halberdier", "pikeman"),
+  uu("aragon", "Almogàver", "javelineer"),
+  uu("scotland", "Highland Schiltron", "pikeman"),
+  uu("gaelic_ireland", "Gallowglass", "longswordsman"),
+  uu("normans", "Norman Knight", "cataphract"),
+  uu("visigoths", "Visigothic Noble", "cataphract"),
+  uu("novgorod", "Ushkuinik", "longship"),
+  uu("illyrians", "Liburnian", "bireme"),
+  uu("lusitani", "Falcata Warrior", "swordsman"),
+  uu("arevaci", "Celtiberian Warrior", "swordsman"),
+  uu("thracians", "Thracian Peltast", "javelineer"),
+  uu("dacians", "Falxman", "longswordsman"),
+  uu("sami", "Ski Raider", "hunter"),
+  uu("corinth", "Corinthian Trireme", "trireme"),
+  uu("thebes", "Sacred Band", "hoplite"),
+  uu("eretria", "Penteconter", "galley"),
+  uu("crete", "Cretan Archer", "archer"),
+  uu("indus_valley", "Harappan Spearman", "spearman"),
+  uu("zhou_china", "Zhou Chariot", "war_chariot"),
+  uu("delhi_sultanate", "Delhi War Elephant", "war_elephant"),
+  uu("mughals", "Mughal Sowar", "cataphract"),
+  uu("vijayanagara", "Vijayanagara War Elephant", "war_elephant"),
+  uu("champa", "Cham Raider", "bireme"),
+  uu("sinhala", "Sinhala War Elephant", "war_elephant"),
+  uu("khitan", "Ordo Cavalry", "cataphract"),
+  uu("jurchen", "Iron Pagoda", "cataphract"),
+  uu("khazars", "Khazar Lancer", "cataphract"),
+  uu("avars", "Avar Lancer", "cataphract"),
+  uu("golden_horde", "Tatar Horse Archer", "horse_archer"),
+  uu("chimu", "Chimú Slinger", "slinger"),
+  uu("moche", "Moche Warrior", "warrior"),
+  uu("tiwanaku", "Tiwanaku Spearman", "spearman"),
+  uu("tarascans", "Copper Macehead", "maceman"),
+  uu("taino", "Guaribo Slinger", "javelineer"),
+  uu("tonga", "Tongan Toa", "warrior"),
+];
+
+const UU_BY_ID = new Map(UNIQUE_UNITS.map((u) => [u.id, u]));
+const UU_BY_CIV_BASE = new Map(UNIQUE_UNITS.map((u) => [`${u.civId}|${u.replaces}`, u]));
+
+/** The unique unit a civ fields in place of `baseType`, if any. */
+export function uniqueUnitForCiv(civId: string | undefined, baseType: string): UniqueUnitDef | undefined {
+  if (!civId) return undefined;
+  return UU_BY_CIV_BASE.get(`${civId}|${baseType}`);
+}
+
+export function getUniqueUnit(id: string | undefined): UniqueUnitDef | undefined {
+  return id ? UU_BY_ID.get(id) : undefined;
+}
+
+export const UNIQUE_UNIT_IDS: string[] = UNIQUE_UNITS.map((u) => u.id);
 
 // ===========================================================================
 // Civics tree, governments and policies (the culture-funded parallel tree).

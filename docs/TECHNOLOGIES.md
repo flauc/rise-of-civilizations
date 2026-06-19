@@ -1,6 +1,10 @@
 # Technology Tree
 
-> ⚠️ **Implementation note:** the *shipped* tech tree (`packages/sim/src/game/content.ts`) was deliberately rebuilt to be **original and materials-based** (Stone Knapping → Smelting → Bronze Alloying → Iron Bloomery → Carburizing, Torsion Engines, Equestrianism, etc.) rather than the Civ-style draft below. This document is kept as historical design context; the code is the source of truth.
+> ⚠️ **Implementation note (audited 2026-06-19):** the *shipped* tech tree (`packages/sim/src/game/content.ts`, `TECH_DEFS`) was deliberately rebuilt to be **original and materials-based** (Stone Knapping → Smelting → Bronze Alloying → Iron Bloomery → Carburizing, Torsion Engines, Equestrianism, etc.) rather than the Civ-style draft below. **The whole table in this file is therefore NOT what the game uses.** Concretely:
+> - The real tree has **~41 techs**, not the ~85 below, with **different ids and prereqs** (e.g. `iron_bloomery`, `carburizing`, `equestrian`, `the_wheel`, `coinage`, `philosophy`).
+> - ❌ **The eureka system described here is not implemented** — there are no in-world eureka boosts in the shipped tree (so Babylon's eureka-themed ability has nothing to hook into).
+>
+> This document is kept as historical design context; the code is the source of truth.
 
 
 The **Science** tree: ~85 techs across the five eras (Stone → Bronze → Classical → Medieval → Exploration). Research is funded by the empire's Science yield. The parallel **Civics** tree (governments & policies) is summarized at the bottom and detailed in [PLAN.md §3.5](PLAN.md).
@@ -12,6 +16,89 @@ Columns: **Tech** · **Prereqs** · **Unlocks** (units `U`, buildings `B`, impro
 > Costs/numbers live in `packages/data`. This doc defines structure, prerequisites, and intent. IDs are kebab-case.
 
 ---
+
+## Shipped tech tree (source of truth)
+
+This is the **actual** tree the game runs, generated from `TECH_DEFS` in
+[`packages/sim/src/game/content.ts`](../packages/sim/src/game/content.ts) (audited 2026-06-19):
+**41 techs**, snake_case ids, science-funded, **no eurekas**. `Unlocks` is derived from the
+`reqTech` of units/buildings/specialists. `knapping` and `foraging` are the two free roots
+(cost 0). The Civics tree is unlocked once **Writing** is researched.
+
+> The five "Era" tables further below are the **original Civ-style draft** and are kept only as
+> archived design history — they do **not** match the code.
+
+### Dawn — roots & first developments
+
+| Tech | Cost | Prereqs | Unlocks |
+|------|-----:|---------|---------|
+| `knapping` Stone Knapping | 0 | — | root → Fire-Hardening, Hide-Working |
+| `foraging` Foraging | 0 | — | root → Animal Taming, Cultivation, Ritual & Burial, Parley |
+| `fire_hardening` Fire-Hardening | 15 | knapping | U Fire-Hardened Spearman |
+| `hide_working` Hide-Working | 18 | knapping | → Weaving, Composite Bow |
+| `animal_taming` Animal Taming | 20 | foraging | U War Dogs; → Wheel, Equestrianism, Elephantry |
+| `cultivation` Plant Cultivation | 18 | foraging | Farms (Carpenter); → Pottery, Irrigation |
+| `ritual_burial` Ritual & Burial | 16 | foraging | B Shrine, B Amphitheater |
+| `parley` Parley | 16 | foraging | diplomacy/contact flavor (no direct build) |
+| `pottery_kiln` Pottery & Kilns | 24 | cultivation | B Granary; → Native Copper, Masonry, Writing |
+
+### Copper & Bronze
+
+| Tech | Cost | Prereqs | Unlocks |
+|------|-----:|---------|---------|
+| `native_copper` Native Copper | 28 | pottery_kiln | B Workshop |
+| `smelting` Smelting | 34 | native_copper | B Forge; → Bronze Alloying, Iron Bloomery |
+| `bronze_alloying` Bronze Alloying | 42 | smelting | U Bronze Axeman, Maceman, Spearman; B Barracks |
+| `the_wheel` The Wheel | 30 | animal_taming | U Trader, Light Chariot; Agrimensor (Roads) |
+| `equestrian` Equestrianism | 34 | animal_taming | U Rider; B Stable |
+| `masonry` Masonry | 35 | pottery_kiln | B Walls; Mason & Architect (Mines, Quarries, Wonders) |
+| `weaving` Weaving | 26 | hide_working | → Sailcloth, Sailing |
+| `composite_bow` Composite Bow | 38 | hide_working, bronze_alloying | U Archer |
+| `writing` Writing | 36 | pottery_kiln | B Archive, B Temple; **unlocks Civics tree**; → Math, Coinage, Philosophy |
+| `irrigation` Irrigation | 30 | cultivation | improved farm yields |
+| `sailcloth` Sailcloth | 32 | weaving | U Longship; B Harbor |
+| `chariotry` Chariotry | 46 | the_wheel, bronze_alloying | U War Chariot |
+| `phalanx` Phalanx Doctrine | 46 | bronze_alloying | U Hoplite |
+
+### Naval & Maritime
+
+| Tech | Cost | Prereqs | Unlocks |
+|------|-----:|---------|---------|
+| `sailing` Sailing | 30 | sailcloth, weaving | U Galley |
+| `shipbuilding` Shipbuilding | 46 | sailing, bronze_alloying | U Bireme, U Trireme |
+| `naval_architecture` Naval Architecture | 70 | shipbuilding, mathematics | U Quinquereme, U Galleass |
+| `optics` Optics | 55 | mathematics, shipbuilding | B Lighthouse |
+| `astronomy` Astronomy | 80 | optics, philosophy | U Caravel (ocean-going) |
+| `cartography` Cartography | 90 | astronomy, naval_architecture | U Galleon (ocean-going) |
+
+### Iron & Classical
+
+| Tech | Cost | Prereqs | Unlocks |
+|------|-----:|---------|---------|
+| `iron_bloomery` Iron Bloomery | 55 | smelting | U Swordsman, U Pikeman |
+| `carburizing` Carburizing (Steel) | 72 | iron_bloomery | U Longswordsman; → Crossbow |
+| `siegecraft` Siegecraft | 58 | masonry, the_wheel | U Battering Ram, U Catapult |
+| `mathematics` Mathematics | 60 | writing | → Engineering, Optics, Torsion Engines, Naval Architecture |
+| `torsion_engines` Torsion Engines | 82 | siegecraft, mathematics | U Ballista |
+| `engineering` Engineering | 66 | mathematics, masonry | U Legionary, U Dromon, U War Junk; B Aqueduct; Military Engineer (Forts/Towers/Wonders) |
+| `coinage` Coinage | 50 | writing | B Market |
+| `philosophy` Philosophy | 56 | writing | B Academy |
+| `cavalry_doctrine` Cavalry Doctrine | 62 | equestrian, bronze_alloying | U Cataphract |
+| `horse_archery` Horse Archery | 58 | equestrian, composite_bow | U Horse Archer |
+| `crossbow` Crossbow | 65 | carburizing | U Crossbowman |
+| `monumental_architecture` Monumental Architecture | 70 | masonry, writing | B Monument |
+| `elephantry` Elephantry | 64 | animal_taming, bronze_alloying | U War Elephant |
+
+> Each combat unit also carries its class **active ability** (see [UNIT-ABILITIES.md](UNIT-ABILITIES.md)
+> §3) and class **promotions** ([PROMOTIONS.md](PROMOTIONS.md)). Wonders are built via the
+> Specialists/Works system, not unlocked directly by a tech — see
+> [SPECIALISTS-AND-WORKS.md](SPECIALISTS-AND-WORKS.md).
+
+---
+
+# Archived design draft (Civ-style — NOT in the game)
+
+*Everything below is the superseded ~85-tech draft, kept for design history only.*
 
 ## Era I — Stone / Dawn (4000–3000 BCE)
 

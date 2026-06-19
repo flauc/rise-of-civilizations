@@ -1,10 +1,10 @@
 # Unit Active Abilities
 
-> **Status: DESIGN PROPOSAL — for review.** Nothing in this document is implemented yet.
-> It defines a new layer of combat depth: **active, player-triggered special abilities**
-> for military units, grounded in historical tactics and tuned for tactical gameplay.
-> Once reviewed and approved, the catalogue below becomes the spec for changes to
-> `packages/sim/src/game/content.ts`, `state.ts`, `commands.ts`, and `combat.ts`.
+> **Status (audited 2026-06-19): PARTIALLY IMPLEMENTED — the original "nothing implemented yet" header is stale.**
+> - ✅ **§3 generic catalogue is built**: `brace, shield_wall, testudo, emplace, charge, shock_charge, trample, fire_and_retreat, skirmish, sunder, pierce, harry, reconnoiter` plus naval `ram, boarding_party, greek_fire, coastal_bombardment` — defined in `content.ts` (`ACTIVE_ABILITY_DEFS` + per-unit assignment), resolved in `abilities.ts`/`combat.ts`/`commands.ts`, with AI and client UI.
+> - ❌ **§8 civ-unique / enhanced abilities NOT built**: `parthian_shot, feigned_retreat, hussar_charge, othismos, last_stand, repeating_fire, pavise, furor, arrow_storm, siege_assault, war_cart_charge` — no unit is assigned them. They depend on **unique units existing as real types, which they do not** (see [CIVILIZATIONS.md](CIVILIZATIONS.md#implementation-status-audit)).
+> - ❌ **§9 hero signature abilities NOT built**: `duel, rally, grand_ambush, lightning_advance, terror, great_bombard, inspire` — the entire Legends/hero system is unimplemented ([GREAT-PEOPLE.md](GREAT-PEOPLE.md)).
+> - ⚠️ Numbers below are first-draft; treat the §3 entries as "exists, values may differ from code."
 
 ---
 

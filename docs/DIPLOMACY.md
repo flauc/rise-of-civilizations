@@ -1,6 +1,8 @@
 # Diplomacy
 
-*Design spec (2026-06-15) — for review before implementation.*
+> **Status (audited 2026-06-19): v1 IMPLEMENTED** in `packages/sim/src/game/diplomacy.ts` (the original "for review before implementation" note is stale). First contact, state-aware `areEnemies`, peace/war with cooldown, attitudes & warmonger reputation, open borders, pacts, deals, gifts, demand-tribute, and AI evaluation are built, with the client diplomacy screen. **The §11 "Deferred" list is still deferred (not implemented):** city-states & envoys, tech trading, espionage/embassies, casus belli, AI counter-offers, world congress / **diplomatic victory**, and enforced territory passage.
+
+*Design spec (2026-06-15).*
 
 ## 1. Goal & feel
 

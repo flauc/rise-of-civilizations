@@ -3,13 +3,44 @@
 A turn-based 4X strategy game (a "Civilization" clone) spanning the **Ancient Era → Age of Exploration** (c. 4000 BCE – c. 1550 CE). Browser-first, playable on desktop and mobile, rendered on HTML5 Canvas in TypeScript, with a Bun + PostgreSQL authoritative server for multiplayer. Simple graphics, deep gameplay.
 
 ### Design docs
-- **[CIVILIZATIONS.md](CIVILIZATIONS.md)** — full 70+ civ roster (leader, ability, unique unit/infrastructure, bias).
+- **[CIVILIZATIONS.md](CIVILIZATIONS.md)** — full 70+ civ roster (leader, ability, unique unit/infrastructure, bias). Proposed new civs in **[CIVILIZATIONS-EXPANSION.md](CIVILIZATIONS-EXPANSION.md)**.
 - **[TECHNOLOGIES.md](TECHNOLOGIES.md)** — the 85-tech science tree (prereqs, unlocks, eurekas) + civics summary.
 - **[RESOURCES-AND-AMENITIES.md](RESOURCES-AND-AMENITIES.md)** — natural resources (bonus, luxury, strategic), tile yields, and unit/building requirements.
 - **[GREAT-PEOPLE.md](GREAT-PEOPLE.md)** — Great People rosters by class + the Legends (heroes) roster.
 - **[PROMOTIONS.md](PROMOTIONS.md)** — the XP-earned, always-on promotion trees per unit class.
 - **[UNIT-ABILITIES.md](UNIT-ABILITIES.md)** — active, player-triggered combat abilities (Guard, Charge, Fire & Retreat, …) — *design proposal*.
 - **[ASSETS-AND-DATA-SOURCES.md](ASSETS-AND-DATA-SOURCES.md)** — where map geodata & free art/audio come from, with licenses.
+
+---
+
+## 0. Implementation status snapshot (audited 2026-06-19)
+
+> These docs describe the **intended design**; much of it is aspirational. This section is the honest map of what the **code** (`packages/sim`, `packages/data`, `packages/client`) actually does today. Where a doc and the code disagree, the code is the source of truth. Each design doc carries its own status banner with detail. **Anything implemented "in a reduced/different way" from its doc is listed here as not-yet-done**, per the audit's intent.
+
+**✅ Built and working**
+- **Map/terrain & worldgen** — procedural hex maps, terrain, rivers, resources, fog of war.
+- **Cities & economy** — founding, population, tile-working, manual citizen assignment, yields (food/prod/gold/science/culture/faith), buildings, growth, maintenance.
+- **Units & combat** — ~29 land + naval units, HP combat, terrain/flanking, city siege & capture, XP & promotions (incl. a documented **naval** promotion pool).
+- **Active unit abilities** — the [UNIT-ABILITIES.md](UNIT-ABILITIES.md) §3 catalogue (brace, charge, testudo, trample, fire & retreat, etc. + naval) — despite that doc's "not implemented" header.
+- **Tech & civics** — an **original 41-tech** materials tree (documented in [TECHNOLOGIES.md](TECHNOLOGIES.md#shipped-tech-tree-source-of-truth); the old 85-tech draft there is archived); civics, governments, policy cards.
+- **Religion** — faith, found religion, beliefs, proximity spread, religious victory.
+- **Specialists & Public Works** — specialists, tile Works, improvement tiers, defensive works, and **Wonders** ([SPECIALISTS-AND-WORKS.md](SPECIALISTS-AND-WORKS.md) is largely shipped).
+- **Diplomacy** — meet/first-contact, peace/war, open borders, pacts, deals, gifts, tribute, warmonger reputation, AI attitudes ([DIPLOMACY.md](DIPLOMACY.md) v1 is shipped, not "pre-implementation").
+- **Trade routes** — internal city-to-city routes (gold/food/prod/science, road bonus).
+- **Civilizations** — all **82** civs as data (leader, flat ability `effects`, leader active ability). See [CIVILIZATIONS.md](CIVILIZATIONS.md#implementation-status-audit).
+- **Multiplayer & AI** — server-authoritative WS sim, lobby, fog-filtered views; on-device rules AI. Victory: domination, religious, score.
+
+**❌ Not implemented (or only as flavor/partial — treated as not done)**
+- **Great People & Legends (heroes)** — *entirely absent.* [GREAT-PEOPLE.md](GREAT-PEOPLE.md) is 100% aspirational, even though Legends are billed as a "core feature."
+- **Unique Units & Unique Infrastructure** — strings only; no civ-locked unit/building types exist (see CIVILIZATIONS.md audit).
+- **Civ abilities' prose behaviors** — only the flat numeric `effects` are wired; richer described effects are not.
+- **Civ-unique & hero active abilities** — UNIT-ABILITIES.md §8/§9 unbuilt.
+- **City-states / envoys, diplomatic favor, war-weariness, tech trading, espionage, casus belli, diplomatic victory** — none exist; LEADER-ABILITIES.md effects that reference envoys/favor/war-weariness are no-ops or substituted.
+- **Culture/Tourism & Great Works** — no tourism, no Great Works, no culture victory.
+- **Science & Economic victories** — not implemented (only domination/religious/score).
+- **Real-world geodata maps in-game** — only a `tools/geodata-poc` spike; not wired into map setup.
+- **Postgres persistence, turn timer, async play-by-cloud + notifications, combat-lock sub-phase** — pending (in-memory only).
+- **Tech eurekas** — the eureka system described across docs is not in the shipped tree.
 
 ---
 

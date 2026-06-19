@@ -12,17 +12,33 @@ import {
   getPolicy,
   getBelief,
   nextCityNameForCiv,
+  UNIQUE_UNITS,
+  UNIQUE_UNIT_IDS,
+  uniqueUnitForCiv,
+  getUniqueUnit,
   type CivDef,
   type CivEffects,
   type CivicDef,
   type GovernmentDef,
+  type UniqueUnitDef,
 } from "@roc/data";
 import { UNIT_DEFS, CIVICS_REQUIRED_TECH } from "./content";
 import type { GameState, Player, Unit, City } from "./state";
 import { playerById } from "./state";
 
 export { CIVILIZATIONS, getCiv, CIVICS, GOVERNMENTS, getCivic, getGovernment, getPolicy, nextCityNameForCiv };
-export type { CivDef, CivEffects, CivicDef, GovernmentDef };
+export { UNIQUE_UNITS, UNIQUE_UNIT_IDS, uniqueUnitForCiv, getUniqueUnit };
+export type { CivDef, CivEffects, CivicDef, GovernmentDef, UniqueUnitDef };
+
+/** The unique unit a unit's owner fields in place of its base type, if any. */
+export function uniqueUnitForUnit(state: GameState, unit: Unit): UniqueUnitDef | undefined {
+  return uniqueUnitForCiv(playerById(state, unit.ownerId)?.civId, unit.type);
+}
+
+/** Display name for a unit: its civ's unique-unit name if it has one, else the base name. */
+export function unitDisplayName(state: GameState, unit: Unit): string {
+  return uniqueUnitForUnit(state, unit)?.name ?? UNIT_DEFS[unit.type].name;
+}
 
 function mergeCityYield(acc: NonNullable<CivEffects["coastalCityYield"]>, src: NonNullable<CivEffects["coastalCityYield"]>): void {
   for (const k of ["food", "production", "gold", "science", "culture", "faith"] as const) {
@@ -151,7 +167,9 @@ export function unitMovement(state: GameState, unit: Unit): number {
 
 /** Combat-strength bonus for a unit's class (attacker or defender). */
 export function civCombatBonus(state: GameState, unit: Unit): number {
-  return playerEffects(state, unit.ownerId).unitClassCombat?.[UNIT_DEFS[unit.type].cls] ?? 0;
+  let bonus = playerEffects(state, unit.ownerId).unitClassCombat?.[UNIT_DEFS[unit.type].cls] ?? 0;
+  bonus += uniqueUnitForUnit(state, unit)?.bonus ?? 0;
+  return bonus;
 }
 
 // ---- civics tree ---------------------------------------------------------

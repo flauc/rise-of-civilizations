@@ -1,5 +1,14 @@
 # Leader Abilities
 
+> **Status (audited 2026-06-19): IMPLEMENTED, with reduced effects.** All 82 leader abilities exist in `packages/sim/src/game/leader-abilities.ts` with real effects, tech/civic unlocks, and cooldowns. **However, several documented benefits and costs below are NOT in the code because the underlying systems don't exist** — and per the audit's intent these count as *not implemented*:
+> - **Envoys / city-states** (e.g. "+2 envoys with every city-state", "lose 1 envoy") — no city-state or envoy system exists; these clauses are dropped or replaced with gold/culture in code.
+> - **Diplomatic favor / standing penalties** (e.g. "−5 diplomatic favor per turn", "diplomatic standing worsens") — no diplomatic-favor metric exists.
+> - **War-weariness** (e.g. France "ignore war-weariness") — war-weariness is not modeled.
+> - **Amenity costs/benefits** (e.g. "lose 1 amenity", "+1 amenity") — amenities exist only as a resource yield; per-city timed amenity modifiers from abilities are mostly not wired.
+> - **Unique-unit spawns** spawn the **base** unit instead (e.g. "2 War-Carts" → `light_chariot`, "Mycenaean Spearmen" → `spearman`, "Junks" → `war_junk`), since unique units aren't real types.
+> - **Unlock columns are inaccurate**: the tech/civic names here (Iron Working, Horseback Riding, Theology, Currency, Education, Feudalism, Gunpowder…) do **not** match the shipped tech/civic ids (`iron_bloomery`, `equestrian`, `mysticism`, `coinage`, `philosophy`, `statecraft`…). See the actual `unlock` field per civ in `leader-abilities.ts`.
+> - **Civ naming drift**: this doc labels some civs differently from the data — "Ostrogoths"→`goths`, "England"→`anglo_saxon_england`, "Qin/Tang China"→`han_china`/`china_tang_song`, "Rapa Nui"→`polynesia`, "Vietnam"→`dai_viet_vietnam`, etc.
+
 Each playable civilization has a unique **active Leader Ability**: a powerful, historically flavored action that can be used repeatedly, but only after a cooldown and only once its prerequisite technology or civic has been researched. Every ability is intentionally **double-edged** — it grants a notable benefit but imposes a meaningful cost, deficit, or strategic trade-off.
 
 These abilities are *active* (a button or command the player chooses to use), not the always-on passive **Civ Ability** documented in [CIVILIZATIONS.md](CIVILIZATIONS.md).

@@ -7,6 +7,14 @@
       "runtimeArgs": ["run", "--filter", "@roc/client", "dev"],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "landing",
+      "runtimeExecutable": "C:/Users/filip/.bun/bin/bun.exe",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "roc-landing-page",
+      "port": 5174,
+      "autoPort": true
     }
   ]
 }

@@ -1,6 +1,14 @@
 # Specialists & Public Works
 
-*Status: design spec (2026-06-14). Supersedes the Worker unit and instant
+> **Status (audited 2026-06-19): IMPLEMENTED** — this is the rare doc that matches the code.
+> The Worker unit was removed; `specialists.ts` (Carpenter/Agrimensor/Mason/Architect/Military
+> Engineer with XP & levels), `works.ts` (tile Works, distance-scaled labour, improvement tiers,
+> defensive walls/towers), `fortifications.ts` (tier HP 40/80/140 & 60/110/170, bombard 8/12/16),
+> and `WONDER_DEFS` in `@roc/data` (the 5 launch wonders below) all exist, with the Empire UI panels.
+> Minor caveat: the `builder` flag and worker-class promotions in `content.ts` are vestigial
+> leftovers (see [PROMOTIONS.md](PROMOTIONS.md)). Sections 3–7 below describe what was built.
+
+*Originally a design spec (2026-06-14). Supersedes the Worker unit and instant
 unit-built improvements.*
 
 ## 1. Motivation

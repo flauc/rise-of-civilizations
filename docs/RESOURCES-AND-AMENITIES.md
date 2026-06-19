@@ -4,6 +4,8 @@ Natural resources and amenities add a second economic layer to the map. Some til
 
 This doc is the source-of-truth for the *design*; exact numbers live in `packages/sim/src/game/resources.ts` and `packages/sim/src/game/content.ts`.
 
+> **Status (audited 2026-06-19): LARGELY IMPLEMENTED.** `resources.ts` defines the bonus/luxury/strategic resources, terrain validity, improvement gating, and per-tile **amenity** bonuses; strategic resources gate units. Caveats (count as not-done where noted): the **"future diplomacy layer" for trading luxuries/strategics now exists** (diplomacy deals can exchange resources), so update that column; **amenities/happiness only lightly affect the game** (they can reduce surplus city growth in `economy.ts` — there is no full happiness/unrest/revolt or empire-wide amenity economy as implied elsewhere); and verify the exact resource list/yields against `resources.ts`, which is the source of truth.
+
 ---
 
 ## 1. Resource types

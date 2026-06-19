@@ -2,6 +2,8 @@
 
 Sourcing for (A) real-world map geodata and (B) free game assets, with licensing notes. Researched 2026-06-13.
 
+> **Status (audited 2026-06-19): REFERENCE doc (sourcing/licensing), not a feature claim.** The Natural Earth geodata pipeline exists only as an offline **proof-of-concept in `tools/geodata-poc`** — it is **not integrated** into the game: map setup offers procedural maps only, and no curated Earth/region presets ship yet. The art that *is* wired up lives under `packages/client/public/` (terrain, buildings, improvements, leader portraits) with code-side asset loaders.
+
 **Licensing rule of thumb for this project:** prefer **public-domain / CC0** sources so we owe no attribution and have zero commercial restrictions (matters if we ever sell or app-store this). Where we use **CC-BY** (attribution-required) assets, that's fine — just maintain a `CREDITS.md` and an in-game credits screen. Avoid GPL/“share-alike” art unless we accept its terms. **Always record the license per asset at download time.**
 
 ---

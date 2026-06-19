@@ -1237,6 +1237,564 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
       return ok();
     },
   },
+
+  // ===========================================================================
+  // EXPANSION leaders (docs/CIVILIZATIONS-EXPANSION.md)
+  // ===========================================================================
+  arabia: {
+    id: "arabia", name: "Translation Movement", unlock: { kind: "tech", id: "philosophy" }, cooldown: 25,
+    use: (state, player) => {
+      player.scienceProgress += 200;
+      addPlayerModifier(state, player, "translation_movement", { yieldPercent: { science: 25 } }, 10);
+      allCitiesModifier(state, player, "translation_movement_cost", { yieldPercent: { gold: -20 } }, 10);
+      log(state, `${player.name} sponsored the Translation Movement.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  israelites: {
+    id: "israelites", name: "Wisdom of Solomon", unlock: { kind: "tech", id: "writing" }, cooldown: 25,
+    use: (state, player) => {
+      finishCurrentCivic(state, player);
+      player.cultureProgress += 100;
+      allCitiesModifier(state, player, "wisdom_of_solomon_cost", { yieldPercent: { production: -15 } }, 5);
+      log(state, `${player.name} invoked the Wisdom of Solomon.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  nabataeans: {
+    id: "nabataeans", name: "Hidden Cisterns", unlock: { kind: "tech", id: "masonry" }, cooldown: 20,
+    use: (state, player) => {
+      allCitiesModifier(state, player, "hidden_cisterns", { desertCityYield: { food: 3, production: 2 } }, 10);
+      allCitiesModifier(state, player, "hidden_cisterns_cost", { yieldPercent: { gold: -15 } }, 10);
+      log(state, `${player.name} opened the Hidden Cisterns.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  saba: {
+    id: "saba", name: "Queen's Caravan", unlock: { kind: "tech", id: "coinage" }, cooldown: 25,
+    use: (state, player) => {
+      const capital = capitalOf(state, player);
+      if (!capital || capital.population < 2) return fail("capital needs 2 population");
+      player.gold += 400;
+      player.faith += 50;
+      removePopulation(state, player, 2);
+      log(state, `${player.name} sent the Queen's Caravan.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  mitanni: {
+    id: "mitanni", name: "Hurrian Charioteers", unlock: { kind: "tech", id: "chariotry" }, cooldown: 20,
+    use: (state, player) => {
+      const capital = capitalOf(state, player);
+      if (!capital || capital.population < 2) return fail("capital needs 2 population");
+      if (!consumeResource(state, player, "horses", 3)) return fail("needs 3 horses");
+      removePopulation(state, player, 2);
+      spawnNearCapital(state, player, "war_chariot", 2);
+      log(state, `${player.name} mustered Hurrian Charioteers.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  urartu: {
+    id: "urartu", name: "Citadel of Van", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
+    use: (state, player) => {
+      allCitiesModifier(state, player, "citadel_of_van", { defensiveBuildingProductionBonus: 50 }, 10);
+      addPlayerModifier(state, player, "citadel_of_van_combat", { unitClassCombat: { melee: 2 } }, 10);
+      allCitiesModifier(state, player, "citadel_of_van_cost", { yieldPercent: { gold: -15 } }, 10);
+      log(state, `${player.name} raised the Citadel of Van.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  greco_bactria: {
+    id: "greco_bactria", name: "Indo-Greek Expansion", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "indo_greek", { allUnitMovementBonus: 1, unitClassCombat: { melee: 3, cavalry: 3, ranged: 3 } }, 10);
+      allCitiesModifier(state, player, "indo_greek_cost", { yieldPercent: { science: -20 } }, 10);
+      log(state, `${player.name} launched the Indo-Greek Expansion.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  sogdia: {
+    id: "sogdia", name: "Silk Road Caravan", unlock: { kind: "civic", id: "trade_routes" }, cooldown: 25,
+    use: (state, player) => {
+      player.gold += 250;
+      addPlayerModifier(state, player, "silk_road", { tradeRouteCapacityBonus: 1 }, 10);
+      addPlayerModifier(state, player, "silk_road_cost", { landMovementBonus: -1 }, 10);
+      log(state, `${player.name} dispatched a Silk Road Caravan.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  khwarazm: {
+    id: "khwarazm", name: "Mobilize the Shah's Host", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 20,
+    use: (state, player) => {
+      const capital = capitalOf(state, player);
+      if (!capital || capital.population < 2) return fail("capital needs 2 population");
+      if (player.gold < 300) return fail("needs 300 gold");
+      player.gold -= 300;
+      removePopulation(state, player, 2);
+      spawnNearCapital(state, player, "cataphract", 3);
+      log(state, `${player.name} mobilized the Shah's host.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  numidia: {
+    id: "numidia", name: "Numidian Skirmish", unlock: { kind: "tech", id: "equestrian" }, cooldown: 20,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "numidian_skirmish", { cavalryMovementBonus: 1, mountedHealPerTurn: 20 }, 10);
+      allCitiesModifier(state, player, "numidian_skirmish_cost", { yieldPercent: { culture: -15 } }, 10);
+      log(state, `${player.name} began a Numidian Skirmish.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  fatimids: {
+    id: "fatimids", name: "Found al-Qahira", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
+    use: (state, player) => {
+      const capital = capitalOf(state, player);
+      if (capital) addCityModifier(state, capital, "found_al_qahira", { yieldPercent: { production: 25, science: 25 } }, 10);
+      player.faith += 100;
+      allCitiesModifier(state, player, "found_al_qahira_cost", { yieldPercent: { gold: -20 } }, 10);
+      log(state, `${player.name} founded al-Qahira.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  ayyubids: {
+    id: "ayyubids", name: "Reconquest of Jerusalem", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "reconquest", { meleeVsCityBonus: 4, unitHealPerTurn: 5 }, 10);
+      allCitiesModifier(state, player, "reconquest_cost", { yieldPercent: { gold: -10 } }, 10);
+      log(state, `${player.name} launched the Reconquest of Jerusalem.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  mamluks: {
+    id: "mamluks", name: "Faris Charge", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
+    use: (state, player) => {
+      if (player.gold < 300) return fail("needs 300 gold");
+      player.gold -= 300;
+      spawnNearCapital(state, player, "cataphract", 2);
+      addPlayerModifier(state, player, "faris_charge", { unitClassCombat: { cavalry: 3 } }, 10);
+      log(state, `${player.name} ordered the Faris Charge.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  almoravids: {
+    id: "almoravids", name: "Murabitun Jihad", unlock: { kind: "civic", id: "mysticism" }, cooldown: 20,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "murabitun_jihad", { unitClassCombat: { melee: 3 } }, 10);
+      allCitiesModifier(state, player, "murabitun_jihad_cost", { yieldPercent: { science: -20 } }, 10);
+      log(state, `${player.name} declared the Murabitun Jihad.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  swahili: {
+    id: "swahili", name: "Monsoon Winds", unlock: { kind: "tech", id: "sailing" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "monsoon_winds", { tradeRouteGoldBonus: 5, navalMovementBonus: 2 }, 10);
+      allCitiesModifier(state, player, "monsoon_winds_cost", { yieldPercent: { production: -15 } }, 10);
+      log(state, `${player.name} caught the Monsoon Winds.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  benin: {
+    id: "benin", name: "Edo Bronze Casting", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
+    use: (state, player) => {
+      player.cultureProgress += 150;
+      allCitiesModifier(state, player, "edo_bronze", { defensiveBuildingProductionBonus: 50 }, 10);
+      allCitiesModifier(state, player, "edo_bronze_cost", { yieldPercent: { gold: -15 } }, 10);
+      log(state, `${player.name} began Edo Bronze Casting.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  kongo: {
+    id: "kongo", name: "Catholic Conversion", unlock: { kind: "civic", id: "mysticism" }, cooldown: 20,
+    use: (state, player) => {
+      player.faith += 100;
+      allCitiesModifier(state, player, "catholic_conversion", { yieldPercent: { culture: 25 } }, 10);
+      allCitiesModifier(state, player, "catholic_conversion_cost", { yieldPercent: { production: -15 } }, 10);
+      log(state, `${player.name} embraced the Catholic Conversion.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  bulgaria: {
+    id: "bulgaria", name: "Nikephoros' Skull", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "nikephoros_skull", { meleeVsCityBonus: 3, captureCityPopulationBonus: 2 }, 10);
+      allCitiesModifier(state, player, "nikephoros_skull_cost", { yieldPercent: { culture: -15 } }, 10);
+      log(state, `${player.name} raised Nikephoros' Skull.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  serbia: {
+    id: "serbia", name: "Dušan's Code", unlock: { kind: "civic", id: "political_philosophy" }, cooldown: 25,
+    use: (state, player) => {
+      finishCurrentCivic(state, player);
+      allCitiesModifier(state, player, "dusans_code", { yieldPercent: { culture: 10 } }, 10);
+      allCitiesModifier(state, player, "dusans_code_cost", { yieldPercent: { production: -15 } }, 5);
+      log(state, `${player.name} proclaimed Dušan's Code.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  bohemia: {
+    id: "bohemia", name: "Golden Bull", unlock: { kind: "tech", id: "philosophy" }, cooldown: 25,
+    use: (state, player) => {
+      player.scienceProgress += 150;
+      player.cultureProgress += 150;
+      player.gold += 200;
+      allCitiesModifier(state, player, "golden_bull_cost", { yieldPercent: { production: -10 } }, 5);
+      log(state, `${player.name} issued the Golden Bull.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  swiss: {
+    id: "swiss", name: "Pike Square", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
+    use: (state, player) => {
+      if (player.gold < 200) return fail("needs 200 gold");
+      player.gold -= 200;
+      spawnNearCapital(state, player, "pikeman", 2);
+      addPlayerModifier(state, player, "pike_square", { unitClassCombat: { melee: 4 } }, 10);
+      log(state, `${player.name} formed a Pike Square.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  aragon: {
+    id: "aragon", name: "Conquest of Valencia", unlock: { kind: "tech", id: "shipbuilding" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "conquest_valencia", { meleeVsCityBonus: 4, coastalCityYield: { gold: 3 } }, 10);
+      allCitiesModifier(state, player, "conquest_valencia_cost", { yieldPercent: { science: -15 } }, 10);
+      log(state, `${player.name} began the Conquest of Valencia.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  scotland: {
+    id: "scotland", name: "Bannockburn", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "bannockburn", { unitClassCombat: { melee: 2 } }, 10);
+      allCitiesModifier(state, player, "bannockburn_cost", { yieldPercent: { gold: -10 } }, 10);
+      log(state, `${player.name} stood at Bannockburn.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  gaelic_ireland: {
+    id: "gaelic_ireland", name: "Battle of Clontarf", unlock: { kind: "tech", id: "carburizing" }, cooldown: 20,
+    use: (state, player) => {
+      const capital = capitalOf(state, player);
+      if (!capital || capital.population < 2) return fail("capital needs 2 population");
+      removePopulation(state, player, 2);
+      spawnNearCapital(state, player, "longswordsman", 2);
+      addPlayerModifier(state, player, "clontarf", { unitClassCombat: { melee: 2 } }, 10);
+      log(state, `${player.name} fought the Battle of Clontarf.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  normans: {
+    id: "normans", name: "Conquest of Sicily", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "conquest_sicily", { unitClassCombat: { cavalry: 3 }, captureCityPopulationBonus: 1 }, 10);
+      allCitiesModifier(state, player, "conquest_sicily_cost", { yieldPercent: { culture: -15 } }, 10);
+      log(state, `${player.name} began the Conquest of Sicily.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  visigoths: {
+    id: "visigoths", name: "Liber Iudiciorum", unlock: { kind: "civic", id: "statecraft" }, cooldown: 25,
+    use: (state, player) => {
+      finishCurrentCivic(state, player);
+      addPlayerModifier(state, player, "liber_iudiciorum", { unitClassCombat: { melee: 2 } }, 10);
+      allCitiesModifier(state, player, "liber_iudiciorum_cost", { yieldPercent: { gold: -15 } }, 10);
+      log(state, `${player.name} codified the Liber Iudiciorum.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  novgorod: {
+    id: "novgorod", name: "Battle on the Ice", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "battle_on_ice", { unitClassCombat: { melee: 2 } }, 10);
+      player.gold += 200;
+      allCitiesModifier(state, player, "battle_on_ice_cost", { yieldPercent: { production: -15 } }, 5);
+      log(state, `${player.name} won the Battle on the Ice.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  illyrians: {
+    id: "illyrians", name: "Adriatic Raid", unlock: { kind: "tech", id: "sailing" }, cooldown: 20,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "adriatic_raid", { coastalRaidGoldPercent: 50, navalMovementBonus: 2 }, 10);
+      allCitiesModifier(state, player, "adriatic_raid_cost", { yieldPercent: { production: -10 } }, 10);
+      log(state, `${player.name} launched an Adriatic Raid.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  lusitani: {
+    id: "lusitani", name: "Guerrilla War", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "guerrilla_war", { unitClassCombat: { melee: 3 }, ignoreRoughTerrain: true }, 10);
+      allCitiesModifier(state, player, "guerrilla_war_cost", { yieldPercent: { gold: -15 } }, 10);
+      log(state, `${player.name} waged a Guerrilla War.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  arevaci: {
+    id: "arevaci", name: "Siege of Numantia", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
+    use: (state, player) => {
+      allCitiesModifier(state, player, "siege_numantia", { defensiveBuildingProductionBonus: 50 }, 10);
+      addPlayerModifier(state, player, "siege_numantia_combat", { unitClassCombat: { melee: 4 } }, 10);
+      allCitiesModifier(state, player, "siege_numantia_cost", { yieldPercent: { production: -10 } }, 10);
+      log(state, `${player.name} endured the Siege of Numantia.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  thracians: {
+    id: "thracians", name: "Mercenary Levy", unlock: { kind: "tech", id: "bronze_alloying" }, cooldown: 20,
+    use: (state, player) => {
+      if (player.gold < 200) return fail("needs 200 gold");
+      player.gold -= 200;
+      spawnNearCapital(state, player, "javelineer", 3);
+      addPlayerModifier(state, player, "mercenary_levy", { unitClassCombat: { ranged: 2 } }, 10);
+      log(state, `${player.name} raised a Mercenary Levy.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  dacians: {
+    id: "dacians", name: "Sarmizegetusa Stand", unlock: { kind: "tech", id: "carburizing" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "sarmizegetusa", { unitClassCombat: { melee: 3 } }, 10);
+      player.gold += 150;
+      allCitiesModifier(state, player, "sarmizegetusa_cost", { yieldPercent: { science: -15 } }, 10);
+      log(state, `${player.name} made the Sarmizegetusa Stand.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  sami: {
+    id: "sami", name: "Drum of the Noaidi", unlock: { kind: "civic", id: "mysticism" }, cooldown: 20,
+    use: (state, player) => {
+      player.faith += 50;
+      addPlayerModifier(state, player, "drum_of_noaidi", { landMovementBonus: 1 }, 10);
+      allCitiesModifier(state, player, "drum_of_noaidi_cost", { yieldPercent: { production: -10 } }, 10);
+      log(state, `${player.name} beat the Drum of the Noaidi.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  corinth: {
+    id: "corinth", name: "Isthmian Games", unlock: { kind: "tech", id: "coinage" }, cooldown: 20,
+    use: (state, player) => {
+      player.gold += 250;
+      allCitiesModifier(state, player, "isthmian_games", { yieldPercent: { culture: 10 } }, 10);
+      allCitiesModifier(state, player, "isthmian_games_cost", { yieldPercent: { production: -10 } }, 10);
+      log(state, `${player.name} held the Isthmian Games.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  thebes: {
+    id: "thebes", name: "Oblique Phalanx", unlock: { kind: "tech", id: "phalanx" }, cooldown: 25,
+    use: (state, player) => {
+      const capital = capitalOf(state, player);
+      if (!capital || capital.population < 2) return fail("capital needs 2 population");
+      removePopulation(state, player, 2);
+      spawnNearCapital(state, player, "hoplite", 2);
+      addPlayerModifier(state, player, "oblique_phalanx", { unitClassCombat: { melee: 4 } }, 10);
+      log(state, `${player.name} formed the Oblique Phalanx.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  eretria: {
+    id: "eretria", name: "Found a Colony", unlock: { kind: "tech", id: "sailing" }, cooldown: 25,
+    use: (state, player) => {
+      const capital = capitalOf(state, player);
+      if (!capital || capital.population < 1) return fail("capital needs population");
+      removePopulation(state, player, 1);
+      spawnNearCapital(state, player, "settler", 1);
+      allCitiesModifier(state, player, "found_colony", { coastalCityYield: { gold: 2 } }, 10);
+      log(state, `${player.name} founded a Colony.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  crete: {
+    id: "crete", name: "Hire the Cretan Archers", unlock: { kind: "tech", id: "composite_bow" }, cooldown: 20,
+    use: (state, player) => {
+      if (player.gold < 200) return fail("needs 200 gold");
+      player.gold -= 200;
+      spawnNearCapital(state, player, "archer", 2);
+      addPlayerModifier(state, player, "cretan_archers", { unitClassCombat: { ranged: 3 } }, 10);
+      log(state, `${player.name} hired the Cretan Archers.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  indus_valley: {
+    id: "indus_valley", name: "Grid Planning", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
+    use: (state, player) => {
+      allCitiesModifier(state, player, "grid_planning", { farmTileFoodBonus: 1, freshWaterTileFoodBonus: 1 }, 10);
+      allCitiesModifier(state, player, "grid_planning_cost", { yieldPercent: { gold: -15 } }, 10);
+      log(state, `${player.name} began Grid Planning.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  zhou_china: {
+    id: "zhou_china", name: "Mandate of Heaven", unlock: { kind: "tech", id: "writing" }, cooldown: 25,
+    use: (state, player) => {
+      player.cultureProgress += 150;
+      addPlayerModifier(state, player, "mandate_of_heaven", { meleeVsCityBonus: 4 }, 10);
+      allCitiesModifier(state, player, "mandate_of_heaven_cost", { yieldPercent: { production: -10 } }, 10);
+      log(state, `${player.name} proclaimed the Mandate of Heaven.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  delhi_sultanate: {
+    id: "delhi_sultanate", name: "Market Reforms", unlock: { kind: "tech", id: "coinage" }, cooldown: 25,
+    use: (state, player) => {
+      player.gold += 300;
+      allCitiesModifier(state, player, "market_reforms", { yieldPercent: { food: 10 } }, 10);
+      allCitiesModifier(state, player, "market_reforms_cost", { yieldPercent: { science: -15 } }, 10);
+      log(state, `${player.name} decreed Market Reforms.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  mughals: {
+    id: "mughals", name: "Din-i Ilahi", unlock: { kind: "tech", id: "philosophy" }, cooldown: 25,
+    use: (state, player) => {
+      allCitiesModifier(state, player, "din_i_ilahi", { yieldPercent: { culture: 25, science: 10 } }, 10);
+      player.faith = Math.max(0, player.faith - 50);
+      log(state, `${player.name} proclaimed the Din-i Ilahi.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  vijayanagara: {
+    id: "vijayanagara", name: "Amuktamalyada", unlock: { kind: "civic", id: "political_philosophy" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "amuktamalyada", { yieldPercent: { gold: 25, faith: 25 } }, 10);
+      allCitiesModifier(state, player, "amuktamalyada_cost", { yieldPercent: { production: -15 } }, 10);
+      log(state, `${player.name} composed the Amuktamalyada.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  champa: {
+    id: "champa", name: "Sack of Angkor", unlock: { kind: "tech", id: "shipbuilding" }, cooldown: 20,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "sack_of_angkor", { coastalRaidGoldPercent: 50, navalMovementBonus: 2 }, 10);
+      allCitiesModifier(state, player, "sack_of_angkor_cost", { yieldPercent: { production: -10 } }, 10);
+      log(state, `${player.name} led the Sack of Angkor.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  sinhala: {
+    id: "sinhala", name: "Polonnaruwa Tanks", unlock: { kind: "tech", id: "engineering" }, cooldown: 25,
+    use: (state, player) => {
+      allCitiesModifier(state, player, "polonnaruwa_tanks", { freshWaterTileFoodBonus: 2, freshWaterTileProductionBonus: 1 }, 10);
+      allCitiesModifier(state, player, "polonnaruwa_tanks_cost", { yieldPercent: { gold: -10 } }, 10);
+      log(state, `${player.name} filled the Polonnaruwa Tanks.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  khitan: {
+    id: "khitan", name: "Ordo Levy", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 20,
+    use: (state, player) => {
+      const capital = capitalOf(state, player);
+      if (!capital || capital.population < 1) return fail("capital needs population");
+      if (!consumeResource(state, player, "horses", 3)) return fail("needs 3 horses");
+      removePopulation(state, player, 1);
+      spawnNearCapital(state, player, "cataphract", 2);
+      addPlayerModifier(state, player, "ordo_levy", { cavalryMovementBonus: 1 }, 10);
+      log(state, `${player.name} called an Ordo Levy.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  jurchen: {
+    id: "jurchen", name: "Tieta Charge", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "tieta_charge", { unitClassCombat: { cavalry: 3 }, captureCityPopulationBonus: 2 }, 10);
+      allCitiesModifier(state, player, "tieta_charge_cost", { yieldPercent: { gold: -15 } }, 10);
+      log(state, `${player.name} ordered the Tieta Charge.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  khazars: {
+    id: "khazars", name: "Conversion of Bulan", unlock: { kind: "tech", id: "coinage" }, cooldown: 20,
+    use: (state, player) => {
+      player.faith += 100;
+      player.gold += 200;
+      allCitiesModifier(state, player, "conversion_of_bulan_cost", { yieldPercent: { science: -10 } }, 10);
+      log(state, `${player.name} celebrated the Conversion of Bulan.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  avars: {
+    id: "avars", name: "Siege of 626", unlock: { kind: "tech", id: "siegecraft" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "siege_626", { meleeVsCityBonus: 4, unitClassCombat: { cavalry: 4 } }, 10);
+      player.gold += 150;
+      allCitiesModifier(state, player, "siege_626_cost", { yieldPercent: { production: -10 } }, 10);
+      log(state, `${player.name} mounted the Siege of 626.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  golden_horde: {
+    id: "golden_horde", name: "Tribute of the Rus", unlock: { kind: "tech", id: "equestrian" }, cooldown: 25,
+    use: (state, player) => {
+      player.gold += 400;
+      addPlayerModifier(state, player, "tribute_of_rus", { raidGoldPercent: 25 }, 10);
+      allCitiesModifier(state, player, "tribute_of_rus_cost", { yieldPercent: { culture: -10 } }, 10);
+      log(state, `${player.name} exacted the Tribute of the Rus.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  chimu: {
+    id: "chimu", name: "Goldsmiths of Chimor", unlock: { kind: "tech", id: "masonry" }, cooldown: 20,
+    use: (state, player) => {
+      player.gold += 250;
+      player.cultureProgress += 100;
+      allCitiesModifier(state, player, "goldsmiths_cost", { yieldPercent: { production: -10 } }, 5);
+      log(state, `${player.name} commissioned the Goldsmiths of Chimor.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  moche: {
+    id: "moche", name: "Sacrifice Ceremony", unlock: { kind: "tech", id: "ritual_burial" }, cooldown: 25,
+    use: (state, player) => {
+      const capital = capitalOf(state, player);
+      if (!capital || capital.population < 2) return fail("capital needs 2 population");
+      player.faith += 100;
+      addPlayerModifier(state, player, "sacrifice_ceremony", { unitClassCombat: { melee: 3 } }, 10);
+      removePopulation(state, player, 2);
+      log(state, `${player.name} held the Sacrifice Ceremony.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  tiwanaku: {
+    id: "tiwanaku", name: "Raised Fields", unlock: { kind: "tech", id: "cultivation" }, cooldown: 20,
+    use: (state, player) => {
+      allCitiesModifier(state, player, "raised_fields", { freshWaterTileFoodBonus: 3 }, 10);
+      allCitiesModifier(state, player, "raised_fields_cost", { yieldPercent: { production: -10 } }, 10);
+      log(state, `${player.name} built Raised Fields.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  tarascans: {
+    id: "tarascans", name: "Bronze Arms", unlock: { kind: "tech", id: "smelting" }, cooldown: 25,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "bronze_arms", { unitClassCombat: { melee: 2, cavalry: 2, ranged: 2 } }, 10);
+      allCitiesModifier(state, player, "bronze_arms_prod", { yieldPercent: { production: 25 } }, 10);
+      allCitiesModifier(state, player, "bronze_arms_cost", { yieldPercent: { gold: -10 } }, 10);
+      log(state, `${player.name} forged Bronze Arms.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  taino: {
+    id: "taino", name: "Areíto Gathering", unlock: { kind: "civic", id: "political_philosophy" }, cooldown: 20,
+    use: (state, player) => {
+      player.faith += 50;
+      allCitiesModifier(state, player, "areito", { yieldPercent: { culture: 10 } }, 10);
+      allCitiesModifier(state, player, "areito_cost", { yieldPercent: { production: -10 } }, 5);
+      log(state, `${player.name} held an Areíto Gathering.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
+  tonga: {
+    id: "tonga", name: "Voyage of Tribute", unlock: { kind: "tech", id: "sailing" }, cooldown: 20,
+    use: (state, player) => {
+      addPlayerModifier(state, player, "voyage_of_tribute", { islandCityYield: { gold: 3, faith: 1 }, navalMovementBonus: 2 }, 10);
+      addPlayerModifier(state, player, "voyage_of_tribute_cost", { landMovementBonus: -1 }, 10);
+      log(state, `${player.name} set out on a Voyage of Tribute.`, { actorId: player.id, targetIds: [player.id] });
+      return ok();
+    },
+  },
 };
 
 export function getLeaderAbilityForCiv(civId: string): LeaderAbilityDef | undefined {

@@ -5,6 +5,8 @@ import { createDiplomacy } from "./diplomacy";
 import type { DealItem } from "@roc/sim";
 import type { SaveRecord } from "./save-db";
 import type { CheatAction } from "./god-mode";
+import { getSettings, updateSettings, type TurnUpdateView } from "./settings";
+import { selectTurnUpdates } from "./turn-update-batch";
 import {
   availableCivics,
   availableGovernments,
@@ -364,6 +366,11 @@ export function createUI(handlers: UIHandlers): UI {
   const turnUpdateOverlay = div("turn-update-overlay", "");
   const turnUpdateDialog = div("turn-update-dialog", "");
   turnUpdateDialog.innerHTML =
+    `<div class="turn-update-header">` +
+    `<div class="turn-update-heading" id="turn-update-heading">Turn Updates</div>` +
+    `<button class="btn tu-view-toggle" id="turn-update-view-toggle"></button>` +
+    `</div>` +
+    `<div class="turn-update-expanded" id="turn-update-expanded">` +
     `<img class="turn-update-art" id="turn-update-art" src="" alt="" />` +
     `<div class="turn-update-title" id="turn-update-title"></div>` +
     `<div class="turn-update-msg" id="turn-update-msg"></div>` +
@@ -373,7 +380,13 @@ export function createUI(handlers: UIHandlers): UI {
     `<span id="turn-update-count"></span>` +
     `<button class="btn" id="turn-update-next">Next ▶</button>` +
     `</div>` +
+    `</div>` +
+    `<div class="turn-update-compact hidden" id="turn-update-compact"></div>` +
     `<button class="btn primary" id="turn-update-close">Close</button>`;
+  const turnUpdateExpanded = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-expanded")!;
+  const turnUpdateCompact = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-compact")!;
+  const turnUpdateHeading = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-heading")!;
+  const turnUpdateViewToggle = turnUpdateDialog.querySelector<HTMLButtonElement>("#turn-update-view-toggle")!;
   const turnUpdateArt = turnUpdateDialog.querySelector<HTMLImageElement>("#turn-update-art")!;
   const turnUpdateTitle = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-title")!;
   const turnUpdateMsg = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-msg")!;
@@ -382,6 +395,9 @@ export function createUI(handlers: UIHandlers): UI {
   const turnUpdatePrev = turnUpdateDialog.querySelector<HTMLButtonElement>("#turn-update-prev")!;
   const turnUpdateNext = turnUpdateDialog.querySelector<HTMLButtonElement>("#turn-update-next")!;
   const turnUpdateClose = turnUpdateDialog.querySelector<HTMLButtonElement>("#turn-update-close")!;
+
+  const settingsOverlay = div("settings-overlay", "");
+  const settingsDialog = div("settings-dialog", "");
 
   const endturn = document.createElement("button");
   endturn.id = "endturn";
@@ -408,6 +424,10 @@ export function createUI(handlers: UIHandlers): UI {
       }
       if (goldDialog.classList.contains("show")) {
         hideGoldDialog();
+        return;
+      }
+      if (settingsOpen) {
+        closeSettings();
         return;
       }
       if (turnUpdateDialog.classList.contains("show")) {
@@ -452,11 +472,19 @@ export function createUI(handlers: UIHandlers): UI {
   let turnUpdateIndex = 0;
   let turnUpdateOpen = false;
   let turnUpdateHasNew = false;
-  let lastSeenTurnUpdateId = 0;
-  let turnUpdatesInitialized = false;
+  // The view the open dialog is currently showing; seeded from the saved
+  // preference each time it opens, then toggled in-dialog without persisting
+  // when the player drills into a single event from the compact list.
+  let activeTurnUpdateView: TurnUpdateView = "expanded";
+  // Identifies the (viewer, turn) batch we last surfaced, so a new batch is
+  // shown exactly once even though render() runs many times per turn.
+  let lastTurnUpdateKey = "";
+  // Highest turn-update id each viewer has already been shown. Tracking by id
+  // (rather than turn number) lets a turn-start batch include events emitted
+  // during the enemy phase, which the sim tags with the previous turn number.
   const lastSeenTurnUpdateByViewer = new Map<number, number>();
-  let lastTurnForUpdates = 0;
   let menuOpen = false;
+  let settingsOpen = false;
   let menuView: "menu" | "save" = "menu";
   let isSaving = false;
   let mpSaves: SaveRecord[] = [];
@@ -545,6 +573,9 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
     turnUpdateOpen = true;
+    // Open in the player's saved layout; in-dialog drill-down may switch it.
+    activeTurnUpdateView = getSettings().turnUpdateView;
+    turnUpdateIndex = Math.min(turnUpdateIndex, turnUpdateQueue.length - 1);
     turnUpdateOverlay.classList.add("show");
     turnUpdateDialog.classList.add("show");
     renderTurnUpdateDialog();
@@ -616,7 +647,7 @@ export function createUI(handlers: UIHandlers): UI {
     return buttons.join("");
   };
 
-  const renderTurnUpdateDialog = (): void => {
+  const renderTurnUpdateExpanded = (): void => {
     const ev = turnUpdateQueue[turnUpdateIndex];
     if (!ev) {
       hideTurnUpdateDialog();
@@ -677,6 +708,56 @@ export function createUI(handlers: UIHandlers): UI {
     );
   };
 
+  const renderTurnUpdateCompact = (): void => {
+    if (turnUpdateQueue.length === 0) {
+      hideTurnUpdateDialog();
+      return;
+    }
+    turnUpdateCompact.innerHTML = turnUpdateQueue
+      .map(
+        (ev, i) =>
+          `<button class="tu-row" data-tu-row="${i}">` +
+          `<img class="tu-row-art" src="${turnUpdateImagePath(ev)}" alt="" ` +
+          `onerror="this.onerror=null;this.src='turn-updates/${ev.type}.png'" />` +
+          `<span class="tu-row-text"><b>${escapeHtml(updateTitleFor(ev))}</b>` +
+          `<span>${escapeHtml(ev.message)}</span></span>` +
+          `<span class="tu-row-chevron">›</span>` +
+          `</button>`,
+      )
+      .join("");
+    turnUpdateCompact.querySelectorAll<HTMLButtonElement>("[data-tu-row]").forEach((el) =>
+      el.addEventListener("click", () => {
+        // Drill into the chosen event without changing the saved preference.
+        turnUpdateIndex = Number(el.dataset.tuRow);
+        activeTurnUpdateView = "expanded";
+        renderTurnUpdateDialog();
+      }),
+    );
+  };
+
+  const renderTurnUpdateDialog = (): void => {
+    const compact = activeTurnUpdateView === "compact";
+    turnUpdateHeading.textContent = compact ? `Turn Updates (${turnUpdateQueue.length})` : "Turn Updates";
+    // The toggle shows the layout you'd switch TO.
+    turnUpdateViewToggle.textContent = compact ? "Expanded ▦" : "Compact ☰";
+    turnUpdateExpanded.classList.toggle("hidden", compact);
+    turnUpdateCompact.classList.toggle("hidden", !compact);
+    if (compact) {
+      renderTurnUpdateCompact();
+    } else {
+      renderTurnUpdateExpanded();
+    }
+  };
+
+  turnUpdateViewToggle.addEventListener("click", () => {
+    const next: TurnUpdateView = activeTurnUpdateView === "compact" ? "expanded" : "compact";
+    activeTurnUpdateView = next;
+    // Persist the layout chosen via the toggle so it carries across games.
+    updateSettings({ turnUpdateView: next });
+    if (settingsOpen) renderSettings();
+    renderTurnUpdateDialog();
+  });
+
   turnUpdatePrev.addEventListener("click", () => {
     if (turnUpdateIndex > 0) {
       turnUpdateIndex--;
@@ -691,6 +772,47 @@ export function createUI(handlers: UIHandlers): UI {
   });
   turnUpdateClose.addEventListener("click", hideTurnUpdateDialog);
   turnUpdateOverlay.addEventListener("click", hideTurnUpdateDialog);
+
+  const closeSettings = (): void => {
+    settingsOpen = false;
+    renderSettings();
+  };
+
+  const renderSettings = (): void => {
+    settingsOverlay.classList.toggle("show", settingsOpen);
+    settingsDialog.classList.toggle("show", settingsOpen);
+    if (!settingsOpen) return;
+    const s = getSettings();
+    const tuMode = !s.turnUpdatePopup ? "off" : s.turnUpdateView;
+    settingsDialog.innerHTML =
+      `<div class="settings-header"><b>⚙ Settings</b>` +
+      `<button class="btn" id="settings-close">Close</button></div>` +
+      `<div class="settings-section">` +
+      `<div class="settings-title">Turn Updates</div>` +
+      `<div class="settings-hint">What happens at the start of each of your turns.</div>` +
+      `<div class="seg">` +
+      `<button class="seg-btn ${tuMode === "expanded" ? "active" : ""}" data-tu-mode="expanded" title="Pop up one event at a time">Pop up</button>` +
+      `<button class="seg-btn ${tuMode === "compact" ? "active" : ""}" data-tu-mode="compact" title="Pop up all events on one screen">Compact</button>` +
+      `<button class="seg-btn ${tuMode === "off" ? "active" : ""}" data-tu-mode="off" title="Don't pop up; still available from the Updates button">Off</button>` +
+      `</div></div>`;
+    settingsDialog.querySelector<HTMLButtonElement>("#settings-close")!.addEventListener("click", closeSettings);
+    settingsDialog.querySelectorAll<HTMLButtonElement>("[data-tu-mode]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const mode = el.dataset.tuMode;
+        if (mode === "off") {
+          updateSettings({ turnUpdatePopup: false });
+        } else {
+          updateSettings({ turnUpdatePopup: true, turnUpdateView: mode as TurnUpdateView });
+          if (turnUpdateOpen) {
+            activeTurnUpdateView = mode as TurnUpdateView;
+            renderTurnUpdateDialog();
+          }
+        }
+        renderSettings();
+      }),
+    );
+  };
+  settingsOverlay.addEventListener("click", closeSettings);
 
   const renderAction = (view: UIView): void => {
     if (view.suggestion) {
@@ -929,11 +1051,13 @@ export function createUI(handlers: UIHandlers): UI {
         `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
         `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
         `<button class="btn primary" id="menu-save">Save Game</button>` +
+        `<button class="btn" id="menu-settings">⚙ Settings</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki</button>` +
         `<button class="btn" id="menu-log">Game Log</button>` +
         godMenuBtn +
         `<button class="btn" id="menu-leave">Leave Game</button>` +
         `</div>`;
+
       if (isHost && mpSaves.length > 0) {
         html += `<div style="margin-top:16px;border-top:1px solid var(--edge);padding-top:12px"><b>Host MP Saves</b></div>`;
         html += mpSaves
@@ -951,6 +1075,10 @@ export function createUI(handlers: UIHandlers): UI {
       saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
         menuOpen = false;
         renderMenu(state);
+      });
+      saveModal.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
+        settingsOpen = true;
+        renderSettings();
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-save")!.addEventListener("click", () => {
         menuView = "save";
@@ -2019,7 +2147,8 @@ export function createUI(handlers: UIHandlers): UI {
         menuOpen ||
         godModeOpen ||
         goldDialogOpen ||
-        turnUpdateOpen;
+        turnUpdateOpen ||
+        settingsOpen;
       if (overlayOpen) {
         cityPanel.classList.add("hidden");
         unitPanel.classList.add("hidden");
@@ -2046,39 +2175,33 @@ export function createUI(handlers: UIHandlers): UI {
         lastLogLength = view.state.log.length;
       }
 
-      // Queue new turn-start updates for the current viewer only and auto-open the
-      // dialog after the first turn. Per-viewer tracking prevents local games from
-      // leaking one player's updates to another, and the queue is reset each turn
-      // so the dialog only shows the current turn's batch.
-      const incomingUpdates = (view.state.turnUpdates ?? []).filter((u) => u.playerId === view.viewerId);
-      const previousViewerId = lastViewerId;
-      const turnChanged = view.state.turn !== lastTurnForUpdates;
-      if (previousViewerId !== view.viewerId || turnChanged) {
-        // Viewer switched or a new turn began; drop stale queue and seed the seen id
-        // for the viewer so old events don't reappear as "new".
-        turnUpdateQueue = turnUpdateQueue.filter((u) => u.playerId === view.viewerId);
-        if (turnChanged) turnUpdateQueue = [];
-        turnUpdateIndex = 0;
-        turnUpdateHasNew = false;
-        lastTurnForUpdates = view.state.turn;
-        lastSeenTurnUpdateByViewer.set(
-          view.viewerId,
-          incomingUpdates.length > 0 ? Math.max(...incomingUpdates.map((u) => u.id)) : 0,
-        );
-      }
-      const lastSeenForViewer = lastSeenTurnUpdateByViewer.get(view.viewerId) ?? 0;
-      const newUpdates = incomingUpdates.filter((u) => u.id > lastSeenForViewer);
-      if (newUpdates.length > 0) {
-        const autoOpen = view.state.turn > 1;
-        turnUpdateQueue = [...turnUpdateQueue, ...newUpdates];
+      // Turn-start updates. state.turnUpdates accumulates across the whole game.
+      // We compute the unseen batch on every render and always advance the seen
+      // high-water mark — so events emitted *during* the viewer's own turn (their
+      // mid-turn actions) get marked seen here and are never surfaced. Only the
+      // batch that first appears across a turn boundary (the enemy phase plus the
+      // new turn's economy) is shown. Selecting by unseen id rather than turn
+      // number matters because the sim tags enemy-phase events (e.g. a unit the
+      // AI killed) with the previous turn number.
+      const updateKey = `${view.viewerId}:${view.state.turn}`;
+      const turnChanged = updateKey !== lastTurnUpdateKey;
+      lastTurnUpdateKey = updateKey;
+      const batch = selectTurnUpdates(
+        view.state.turnUpdates ?? [],
+        view.viewerId,
+        lastSeenTurnUpdateByViewer.get(view.viewerId),
+      );
+      lastSeenTurnUpdateByViewer.set(view.viewerId, batch.lastSeen);
+      if (turnChanged && batch.toShow.length > 0) {
+        turnUpdateQueue = batch.toShow;
         turnUpdateIndex = 0;
         turnUpdateHasNew = true;
-        lastSeenTurnUpdateByViewer.set(
-          view.viewerId,
-          incomingUpdates.length > 0 ? Math.max(...incomingUpdates.map((u) => u.id)) : 0,
-        );
-        if (autoOpen && !turnUpdateDialog.classList.contains("show")) {
+        const { turnUpdatePopup } = getSettings();
+        if (turnUpdatePopup && !turnUpdateDialog.classList.contains("show")) {
           showTurnUpdateDialog();
+        } else if (turnUpdateOpen) {
+          // Dialog already open across the turn boundary: refresh it in place.
+          renderTurnUpdateDialog();
         }
       }
     },

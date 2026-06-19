@@ -34,13 +34,13 @@ Promotions are earned when a unit gains enough experience (XP) from combat, clea
 | cover | Cover | 🛡️ +4 defense vs ranged attacks |
 | medic | Medic | ❤️ Heals self +10 and adjacent allies +10 each turn |
 | blitz | Blitz | ⚔️ +2 strength |
-| commando | Commando | 🥾 +1 movement; ignores road movement penalties |
-| amphibious | Amphibious | ⚔️ No penalty attacking from coast/river; +2 strength near water |
+| commando | Commando | 🥾 +1 movement; roads cost no movement |
+| amphibious | Amphibious | ⚔️ +3 strength near water tiles |
 | woodland_warrior | Woodland Warrior | ⚔️ +3 strength in forest/jungle; 🥾 forests cost 1 less movement |
 | charge | Charge | ⚔️ +4 strength on the first attack each turn |
 | toughness | Toughness | ❤️ +15 max HP |
-| discipline | Discipline | ⚔️ +2 strength when adjacent to any friendly unit |
-| formation | Formation | 🛡️ +4 strength when defending vs cavalry |
+| discipline | Discipline | ⚔️ +2 strength when adjacent to a friendly unit |
+| formation | Formation | 🛡️ +4 defense vs cavalry attacks |
 | city_assault | City Assault | ⚔️ +4 strength vs cities |
 | brawler | Brawler | 🛡️ +3 strength when defending |
 | veteran | Veteran | ⚡ +25% XP gain |
@@ -61,14 +61,14 @@ Promotions are earned when a unit gains enough experience (XP) from combat, clea
 | flanking | Flanking | ⚔️ +2 strength for each adjacent friendly unit (max +6) |
 | mobility | Mobility | 🥾 +1 movement |
 | cavalry_charge | Cavalry Charge | ⚔️ +4 strength on the first attack each turn |
-| trample | Trample | ⚔️ +4 strength vs wounded units (below half HP) |
+| trample | Trample | ⚔️ +4 strength vs wounded units |
 | mounted_archer | Mounted Archer | 🏹 +2 ranged strength for ranged cavalry; 🥾 +1 movement |
 | outrider | Outrider | 👁️ +1 sight |
 | raider | Raider | 💰 +25 gold when clearing a barbarian camp; +10 from pillaging |
-| swift_healer | Swift Healer | ❤️ Heals +5 HP each turn, even after moving |
-| breakthrough | Breakthrough | 🥾 +1 movement |
+| swift_healer | Swift Healer | ❤️ Heals +5 HP each turn |
+| breakthrough | Breakthrough | 🥾 +1 movement after killing a unit |
 | harrier | Harrier | ⚔️ +3 strength vs ranged units |
-| nomad | Nomad | 👁️ +1 sight |
+| nomad | Nomad | 🥾 Plains and desert cost 1 movement; 👁️ +1 sight on open ground |
 | lancer | Lancer | ⚔️ +3 strength vs melee units |
 | skirmisher | Skirmisher | 🛡️ +3 defense when not adjacent to an enemy |
 | pursuit | Pursuit | ⚔️ +3 strength when attacking a damaged unit |
@@ -93,12 +93,12 @@ Promotions are earned when a unit gains enough experience (XP) from combat, clea
 | suppression | Suppression | 🛡️ Targets deal -3 damage when retaliating |
 | sharpshooter | Sharpshooter | 🏹 +3 ranged strength vs melee units |
 | elevation | Elevation | 🏹 +2 ranged strength when on a hill |
-| poison_arrows | Poison Arrows | ❤️ Targets heal -5 HP next turn (min 0) |
-| rapid_reload | Rapid Reload | 🥾 +1 movement |
+| poison_arrows | Poison Arrows | ❤️ Targets heal -5 HP next turn |
+| rapid_reload | Rapid Reload | 🥾 +1 movement after attacking |
 | trailblazer | Trailblazer | 🥾 Forest/jungle movement cost reduced by 1 |
 | hunter | Hunter | 🏹 +3 ranged strength vs cavalry |
 | veteran_marksman | Veteran Marksman | ⚡ +25% XP gain |
-| night_owl | Night Owl | 👁️ +1 sight; +2 strength at night (future) |
+| night_owl | Night Owl | 👁️ +1 sight |
 
 ## Siege Promotions
 
@@ -129,17 +129,45 @@ Promotions are earned when a unit gains enough experience (XP) from combat, clea
 | guerrilla | Guerrilla | ⚔️ +3 strength in rough terrain; 🥾 ignores rough terrain penalties |
 | survivalist | Survivalist | ❤️ Heals +8 HP each turn |
 | pathfinder | Pathfinder | 🥾 All land terrain costs at most 1 movement |
-| spy | Spy | 👁️ Can see 1 tile deeper into enemy territory |
+| spy | Spy | 👁️ +1 sight |
 | ambush | Ambush | ⚔️ +4 strength on the first attack each turn |
 | ranger | Ranger | ⚔️ +2 strength; 👁️ +1 sight |
 | eagle_eye_recon | Eagle Eye | 👁️ +2 sight |
+
+## Naval Promotions
+
+Naval units draw from one of two class pools depending on whether they fight in melee (ram/board) or at range (bombard). **Medic** is shared into both pools.
+
+### Naval Melee Promotions
+
+| ID | Name | Effect |
+|----|------|--------|
+| boarding | Boarding | ⚔️ +4 strength vs naval melee units |
+| ramming | Ramming | ⚔️ +4 strength on the first naval attack each turn |
+| medic | Medic | ❤️ Heals self +10 and adjacent allies +10 each turn |
+| fleet_discipline | Fleet Discipline | ⚔️ +2 strength when adjacent to a friendly naval unit |
+| pursuit_at_sea | Pursuit at Sea | ⚔️ +3 strength when attacking a damaged ship |
+| reinforced_hull | Reinforced Hull | ❤️ +15 max HP |
+| marines | Marines | Can pillage adjacent coastal tiles |
+
+### Naval Ranged Promotions
+
+| ID | Name | Effect |
+|----|------|--------|
+| coastal_bombardment | Coastal Bombardment | 🏹 +4 ranged strength vs cities |
+| extended_range_naval | Extended Range | 🏹 +1 range |
+| chain_shot | Chain Shot | 🏹 +4 ranged strength vs naval units |
+| spotter | Spotter | 👁️ +1 sight |
+| repair_crew | Repair Crew | ❤️ Heals +5 HP each turn at sea |
+| broadside | Broadside | 🏹 +2 ranged strength |
+| medic | Medic | ❤️ Heals self +10 and adjacent allies +10 each turn |
 
 ## Civilian Promotions
 
 | ID | Name | Class | Effect |
 |----|------|-------|--------|
 | pioneer | Pioneer | settler | 👁️ +1 sight; 🥾 +1 movement |
-| colonist | Colonist | settler | ❤️ +20 HP; 🛡️ +2 defense |
+| colonist | Colonist | settler | ❤️ +20 HP |
 | explorer | Explorer | settler | 👁️ +2 sight |
 | engineer | Engineer | worker | 🥾 +1 movement; +1 build charge |
 | foreman | Foreman | worker | 🥾 +1 movement |
@@ -154,8 +182,13 @@ Promotions are earned when a unit gains enough experience (XP) from combat, clea
 - **Ranged** promotions focus on range, positioning, and anti-unit fire.
 - **Siege** promotions specialize in breaking cities and static defenses.
 - **Recon** promotions maximize mobility, vision, and ambush potential.
+- **Naval** promotions split into ram/board (naval melee) and bombard (naval ranged) lines.
 - **Civilian** promotions are rare (earned from villages or special effects) and help settlers/workers survive and move faster.
 
 ## Implementation Status
 
-All promotions listed here are defined in `packages/sim/src/game/content.ts`. Combat, healing, movement, and sight effects are applied in `packages/sim/src/game/combat.ts` and `packages/sim/src/game/movement.ts`.
+*Audited 2026-06-19.* The Melee/Cavalry/Ranged/Siege/Recon pools listed here are defined in `packages/sim/src/game/content.ts` (`PROMOTION_DEFS` / `PROMOTION_POOL`) and applied in `combat.ts` / `movement.ts`. Two caveats:
+
+- ✅ **Naval promotions are now documented** (Naval Melee + Naval Ranged sections above), matching the `naval_melee` / `naval_ranged` pools in `PROMOTION_POOL`.
+- ⚠️ **Civilian "worker" promotions are vestigial.** `engineer`, `foreman`, and `survival_training` target the **Worker** unit, which was **removed** when Public Works replaced it (see [SPECIALISTS-AND-WORKS.md](SPECIALISTS-AND-WORKS.md)). The settler promotions (`pioneer`, `colonist`, `explorer`) are still valid; the worker ones are effectively dead unless a worker-class unit returns.
+- ✅ All effect descriptions in this doc were reconciled against `PROMOTION_DEFS` (2026-06-19); earlier drifts (e.g. `amphibious`, `breakthrough`, `nomad`, `rapid_reload`, `spy`, `night_owl`'s removed "at night" clause) now match the code.
