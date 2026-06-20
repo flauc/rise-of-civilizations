@@ -422,6 +422,10 @@ export function tickAbilities(state: GameState, player: Player): void {
     if (u.pinnedUntilTurn !== undefined && state.turn <= u.pinnedUntilTurn) {
       u.movementLeft = 0;
     }
+    // A routed unit forfeits all actions on the turn after it broke.
+    if (u.routedUntilTurn !== undefined && state.turn <= u.routedUntilTurn) {
+      u.movementLeft = 0;
+    }
   }
 }
 

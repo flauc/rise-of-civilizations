@@ -10,6 +10,7 @@ import { STARTING_TECHS, type UnitTypeId } from "./content";
 import { placeFeatures } from "./features";
 import { placeResources } from "./resources";
 import { placeNaturalWonders } from "./natural-wonders";
+import { GLOBAL_MORALE_BASE, startingUnitMorale } from "./morale";
 import type { BarbarianActivity } from "./state";
 
 export interface NewGameOptions {
@@ -26,6 +27,8 @@ export interface NewGameOptions {
   humanSlots?: number;
   /** Barbarian intensity. `false` = none, `true` = normal. */
   barbarians?: boolean | BarbarianActivity;
+  /** Scatter natural wonders across the map. Defaults to off. */
+  naturalWonders?: boolean;
   /** Starting gold treasury preset for major civ players. */
   startingGold?: "tight" | "balanced" | "generous";
   turnLimit?: number;
@@ -106,7 +109,7 @@ function findStarts(state: GameState, count: number): { col: number; row: number
 
 function spawn(state: GameState, ownerId: number, type: UnitTypeId, col: number, row: number): void {
   const id = state.nextEntityId++;
-  state.units.set(id, makeUnit(id, ownerId, type, col, row));
+  state.units.set(id, makeUnit(id, ownerId, type, col, row, 0, startingUnitMorale(state, ownerId)));
 }
 
 function openNeighbor(state: GameState, col: number, row: number): { col: number; row: number } | null {
@@ -210,6 +213,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       isBarbarian: false,
       civId: civForSlot(i),
       gold: startGold,
+      globalMorale: GLOBAL_MORALE_BASE,
       researched: new Set(STARTING_TECHS),
       researching: null,
       researchQueue: [],
@@ -239,6 +243,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       isHuman: false,
       isBarbarian: true,
       gold: 0,
+      globalMorale: GLOBAL_MORALE_BASE,
       researched: new Set(STARTING_TECHS),
       researching: null,
       researchQueue: [],
@@ -299,7 +304,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
 
   if (activity !== "none") spawnBarbarians(state, barbId, starts, activity);
   placeFeatures(state, starts, activity);
-  placeNaturalWonders(state, starts, seed);
+  if (opts.naturalWonders) placeNaturalWonders(state, starts, seed);
   placeResources(state, starts, seed);
 
   for (const p of players) updateExplored(state, p.id);

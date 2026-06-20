@@ -30,6 +30,7 @@ export type WikiCategory =
   | "terrain"
   | "specialists"
   | "combat"
+  | "morale"
   | "cities"
   | "religion"
   | "victory";
@@ -46,6 +47,7 @@ const CATEGORIES: CategoryDef[] = [
   { id: "terrain", name: "Terrain" },
   { id: "specialists", name: "Specialists & Works" },
   { id: "combat", name: "Combat" },
+  { id: "morale", name: "Morale" },
   { id: "cities", name: "Cities" },
   { id: "religion", name: "Religion" },
   { id: "victory", name: "Victory" },
@@ -278,6 +280,71 @@ function renderCombat(): string {
   );
 }
 
+function renderMorale(): string {
+  return (
+    section(
+      "Two Kinds of Morale",
+      `<p>Every army runs on <b>morale</b>, tracked at two levels:</p>` +
+        `<ul>` +
+        `<li><b>Global morale</b> — your empire's overall spirit, from <b>0 to 200</b>, starting at a base of <b>50</b>. It sets the floor that new units are mustered at and shifts with the fortunes of war.</li>` +
+        `<li><b>Unit morale</b> — each individual unit's nerve, from <b>0 to 200</b>, where <b>100 is neutral</b> (no effect). It buffs or debuffs that unit's fighting and decides whether it holds the line or breaks and runs.</li>` +
+        `</ul>`,
+    ) +
+    section(
+      "New Units",
+      `<p>A freshly created unit starts at <b>50 + half your global morale</b>. So at the base global morale of 50 a recruit musters at <b>75</b>; raise your empire to global morale 100 and recruits arrive at a full <b>100</b>.</p>` +
+        `<p><b>Barracks</b> instil discipline: a city with a Barracks musters its units with <b>+25</b> starting morale.</p>`,
+    ) +
+    section(
+      "Morale in Battle",
+      `<p>Morale acts as a buff above neutral and a debuff below it, scaling smoothly with how far from 100 a unit sits:</p>` +
+        `<ul>` +
+        `<li><b>At 0 morale</b> a unit attacks <b>20% weaker</b> and defends <b>10% weaker</b>.</li>` +
+        `<li><b>At 100 (neutral)</b> there is no effect.</li>` +
+        `<li><b>At 200 morale</b> a unit attacks <b>20% stronger</b> and defends <b>10% stronger</b>.</li>` +
+        `</ul>`,
+    ) +
+    section(
+      "Winning & Losing",
+      `<p>Morale is earned and lost on the battlefield:</p>` +
+        `<ul>` +
+        `<li><b>Defeat an enemy</b> — the victorious unit's morale jumps, adjacent friendly units gain a smaller boost, and your global morale rises by <b>10%</b> of the victor's gain.</li>` +
+        `<li><b>Lose one of your units</b> — every adjacent friendly unit's morale drops, and global morale falls by 10% of that loss. Repeated defeats are the <i>only</i> thing that can drag global morale below its base of 50.</li>` +
+        `<li><b>Promote a unit</b> — the promotion heartens that unit and its neighbours, and lifts global morale.</li>` +
+        `<li><b>Beating barbarians counts for less</b> — defeating a barbarian gives only about <b>half</b> the morale of beating a rival civilization's soldier. Glory is won against real foes.</li>` +
+        `</ul>`,
+    ) +
+    section(
+      "Decay",
+      `<p>Glory fades if it isn't renewed. Global morale above the base of 50 slowly <b>decays</b> when you stop earning it:</p>` +
+        `<ul>` +
+        `<li>Decay only begins <b>3 turns after</b> the last time morale was earned (a kill, promotion, or a spirited war declaration).</li>` +
+        `<li>It then <b>ramps up</b>: roughly <b>1% per turn</b> at first, accelerating up to <b>10% per turn</b> the longer your armies sit idle.</li>` +
+        `<li>Decay <b>never drops global morale below 50</b> — only losing battles can do that.</li>` +
+        `</ul>` +
+        `<p>The lesson: a confident empire must keep winning to stay confident.</p>`,
+    ) +
+    section(
+      "Declaring War",
+      `<p>The decision to go to war tests an army's nerve — and the effect cuts both ways, applied to <b>both your global morale and each of your units</b>:</p>` +
+        `<ul>` +
+        `<li>If morale is <b>high</b> (at or above neutral 100) when you declare war, it <b>rises</b> — a confident people welcomes the fight.</li>` +
+        `<li>If morale is <b>low</b> (below 100), it <b>falls further</b> — a weary people dreads another war.</li>` +
+        `</ul>` +
+        `<p>Pick your moment: declaring war from a position of strength compounds your advantage, while doing so when shaken only deepens the malaise.</p>`,
+    ) +
+    section(
+      "Routing",
+      `<p>A unit whose nerve fails may <b>rout</b>: it breaks off, <b>flees 1–2 tiles</b> away from the nearest enemy, and <b>loses its next turn</b> entirely (no movement, no actions).</p>` +
+        `<ul>` +
+        `<li>There is always a small chance to rout, but it climbs sharply as morale falls and is highest near 0.</li>` +
+        `<li>At <b>150+ morale</b> a unit essentially <b>never routs</b> — confident troops stand firm.</li>` +
+        `<li><b>Route resistance:</b> disciplined and heavy units hold their ground far better. Spearmen, Pikemen, Hoplites, Cataphracts, War Elephants and especially Legionaries are much harder to break at any given morale.</li>` +
+        `</ul>`,
+    )
+  );
+}
+
 function renderCities(): string {
   return (
     section(
@@ -432,6 +499,7 @@ const RENDERERS: Record<WikiCategory, () => string> = {
   terrain: renderTerrain,
   specialists: renderSpecialists,
   combat: renderCombat,
+  morale: renderMorale,
   cities: renderCities,
   religion: renderReligion,
   victory: renderVictory,

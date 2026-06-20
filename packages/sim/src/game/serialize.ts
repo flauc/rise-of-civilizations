@@ -6,6 +6,7 @@ import type {
 import { computeVisible } from "./visibility";
 import { tileHasBridge } from "./movement";
 import { attitudeLabel, attitudeScore } from "./diplomacy";
+import { GLOBAL_MORALE_BASE } from "./morale";
 import type { TechId } from "./content";
 
 export interface DiploView {
@@ -39,6 +40,7 @@ export interface TileView {
   feature?: string;
   resource?: string;
   naturalWonder?: string;
+  wonder?: string;
   river?: number;
   riverLake?: boolean;
   bridge?: boolean;
@@ -58,6 +60,8 @@ export interface PlayerView {
   yourId: number;
   you: {
     gold: number;
+    /** Empire-wide morale (0–200; base 50). */
+    globalMorale: number;
     scienceProgress: number;
     researching: TechId | null;
     researchQueue: TechId[];
@@ -168,6 +172,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     if (t.feature) tv.feature = t.feature;
     if (t.resource) tv.resource = t.resource;
     if (t.naturalWonder) tv.naturalWonder = t.naturalWonder;
+    if (t.wonder) tv.wonder = t.wonder;
     if (t.river) tv.river = t.river;
     if (t.riverLake) tv.riverLake = true;
     if (tileHasBridge(state, col, row)) tv.bridge = true;
@@ -194,6 +199,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     yourId: playerId,
     you: {
       gold: me?.gold ?? 0,
+      globalMorale: me?.globalMorale ?? GLOBAL_MORALE_BASE,
       scienceProgress: me?.scienceProgress ?? 0,
       researching: me?.researching ?? null,
       researchQueue: me?.researchQueue ?? [],
@@ -346,6 +352,7 @@ export function deserializeState(s: SerializedState): GameState {
     nextTurnUpdateId: s.nextTurnUpdateId ?? 1,
     players: s.players.map((p) => ({
       ...p,
+      globalMorale: p.globalMorale ?? GLOBAL_MORALE_BASE,
       researchQueue: p.researchQueue ?? [],
       met: p.met ?? [],
       atWar: p.atWar ?? [],

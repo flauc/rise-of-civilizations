@@ -38,6 +38,7 @@ import {
   nextTierAt,
   workName,
   canStartWork,
+  canStartWonder,
   worksOfCity,
   citiesOf,
   unitsOf,
@@ -98,7 +99,7 @@ import {
   type TurnUpdateEvent,
 } from "@roc/sim";
 import type { Tile } from "@roc/shared";
-import { getNaturalWonder } from "@roc/data";
+import { getNaturalWonder, WONDER_DEFS, getWonder } from "@roc/data";
 import { abilityIconHtml, type AbilityAtlas } from "./ability-assets";
 
 export interface CombatOdds {
@@ -237,7 +238,7 @@ export interface UIHandlers {
   onWake(): void;
   onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
   onStartWork(kind: string, col: number, row: number): void;
-  onStartWonder(wonderId: string, hostCityId: number): void;
+  onStartWonder(wonderId: string, col: number, row: number): void;
   onCancelWork(workId: number): void;
   onSelectUnit(unitId: number): void;
   onSelectCity(cityId: number): void;
@@ -930,6 +931,9 @@ export function createUI(handlers: UIHandlers): UI {
     const showCivics = civicsUnlocked(player);
     const showReligion = religionUnlocked(state, player.id);
 
+    const morale = Math.round(player.globalMorale ?? 50);
+    const moraleColor = morale >= 100 ? "#7ee787" : morale >= 50 ? "#ffd700" : "#ff8a8a";
+
     const myCities = citiesOf(state, viewerId);
     const cityCount = myCities.length;
     const specCount = myCities.reduce((n, c) => n + c.specialists.length, 0);
@@ -948,6 +952,8 @@ export function createUI(handlers: UIHandlers): UI {
           `<span class="tb-pl">🏛️</span><b>${cName}</b><span class="tb-score">+${cul}</span></button>` : ""}
         ${showReligion ? `<button class="tb-pill" id="religion-btn" title="Religion">` +
           `<span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b><span class="tb-score">+${fth}</span></button>` : ""}
+        <span class="tb-pill" id="morale-pill" title="Empire morale (0–200). New units start with morale near half this value; battlefield wins raise it, losses lower it.">
+          <span class="tb-pl">🎌</span><b style="color:${moraleColor}">${morale}</b></span>
       </div>
       <div class="tb-grp">
         <button class="tb-pill empire" id="cities-btn" title="Cities"><span class="tb-pl">🏙️</span><b>${cityCount}</b></button>
@@ -1653,6 +1659,14 @@ export function createUI(handlers: UIHandlers): UI {
         `<div style="color:#9fc0dc">⚔️ ${Math.floor(def.strength * levelMult)}` +
         ((def.rangedStrength ?? 0) > 0 ? ` · 🏹 ${Math.floor((def.rangedStrength ?? 0) * levelMult)} (rng ${def.range})` : "") +
         ` · XP ${unit.xp}</div>`;
+      const m = Math.round(unit.morale ?? 100);
+      const mColor = m >= 100 ? "#7ee787" : m >= 50 ? "#ffd700" : "#ff8a8a";
+      const mEffect = m === 100 ? "" : ` (${m > 100 ? "+" : ""}${Math.round((m - 100) * 0.2)}% atk)`;
+      const routed =
+        unit.routedUntilTurn !== undefined && state.turn <= unit.routedUntilTurn
+          ? ` · <span style="color:#ff8a8a">⚑ Routed</span>`
+          : "";
+      headInfo += `<div style="margin-top:2px">🎌 Morale <b style="color:${mColor}">${m}</b><span style="color:#9fc0dc">${mEffect}</span>${routed}</div>`;
     }
     // Header: big unit art on the left, name/stats on the right. Falls back to the
     // small map token, then hides if no art exists at all.
@@ -1876,9 +1890,13 @@ export function createUI(handlers: UIHandlers): UI {
       const req = Object.values(existing.requirement).reduce((a, b) => a + (b ?? 0), 0);
       const done = Object.values(existing.progress).reduce((a, b) => a + (b ?? 0), 0);
       const pct = req > 0 ? Math.floor((done / req) * 100) : 0;
+      const buildLabel =
+        existing.kind === "wonder"
+          ? getWonder(existing.wonderId)?.name ?? "Wonder"
+          : workName(existing.kind, existing.tier ?? 1);
       html +=
         `<div class="csub">🛠️ Under construction</div>` +
-        `<div class="sub">${workName(existing.kind, existing.tier ?? 1)} — ${pct}%</div>` +
+        `<div class="sub">${buildLabel} — ${pct}%</div>` +
         `<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div>` +
         `<button class="btn" id="work-cancel" data-work-id="${existing.id}" style="margin-top:6px">Cancel</button>`;
     } else if (ownsTile) {
@@ -1903,6 +1921,16 @@ export function createUI(handlers: UIHandlers): UI {
         html += `<div class="csub">Develop</div><div class="row" style="flex-wrap:wrap;gap:6px">${btns.join("")}</div>`;
         if (needHint) html += `<div class="sub" style="margin-top:4px;color:#e0b07d">🔒 ${needHint}.</div>`;
       }
+      // World wonders are tile-targeted too: offer any that can be raised on this
+      // clear, owned tile by a nearby city with the required craftsmen.
+      const wonderBtns = WONDER_DEFS.map((w) => {
+        const can = canStartWonder(state, viewerId, w.id, tile.col, tile.row);
+        if (!can.ok) return "";
+        return `<button class="btn" data-wonder="${w.id}" title="${escapeHtml(w.desc)}">🏛️ ${escapeHtml(w.name)}</button>`;
+      }).filter(Boolean);
+      if (wonderBtns.length) {
+        html += `<div class="csub">Wonders</div><div class="row" style="flex-wrap:wrap;gap:6px">${wonderBtns.join("")}</div>`;
+      }
     }
 
     if (cheatsEnabled && godModeEnabled) {
@@ -1921,6 +1949,9 @@ export function createUI(handlers: UIHandlers): UI {
     tilePanel.querySelectorAll<HTMLButtonElement>("[data-work]").forEach((el) =>
       el.addEventListener("click", () => handlers.onStartWork(el.dataset.work!, tile.col, tile.row)),
     );
+    tilePanel.querySelectorAll<HTMLButtonElement>("[data-wonder]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onStartWonder(el.dataset.wonder!, tile.col, tile.row)),
+    );
     tilePanel.querySelector<HTMLButtonElement>("#work-cancel")?.addEventListener("click", () =>
       handlers.onCancelWork(Number(existing!.id)),
     );
@@ -1937,6 +1968,10 @@ export function createUI(handlers: UIHandlers): UI {
     const tileOk = !!tile && isPassableLand(tile.terrain);
     const unitOptions = Object.entries(UNIT_DEFS)
       .map(([id, d]) => `<option value="${id}">${escapeHtml(d.name)}</option>`)
+      .join("");
+    const builtWonders = new Set(view.state.completedWonders);
+    const wonderOptions = WONDER_DEFS.filter((w) => !builtWonders.has(w.id))
+      .map((w) => `<option value="${w.id}">${escapeHtml(w.name)}</option>`)
       .join("");
 
     let html =
@@ -1965,7 +2000,14 @@ export function createUI(handlers: UIHandlers): UI {
         `<div class="csub">Construction Works</div>` +
         `<div class="row" style="flex-wrap:wrap;gap:6px">` +
         CHEAT_WORK_KINDS.map((k) => `<button class="btn" data-cheat="buildWork" data-kind="${k}">${workName(k, 3)}</button>`).join("") +
-        `</div>`;
+        `</div>` +
+        (wonderOptions
+          ? `<div class="csub">Wonders</div>` +
+            `<div style="display:flex;gap:6px;align-items:center;margin-top:4px">` +
+            `<select id="cheat-wonder" class="lobby-in" style="flex:1">${wonderOptions}</select>` +
+            `<button class="btn" data-cheat="buildWonder">Build Wonder</button>` +
+            `</div>`
+          : `<div class="csub">Wonders</div><div class="sub">All wonders built.</div>`);
     } else {
       html +=
         `<div class="csub">Selected Tile</div>` +
@@ -2031,6 +2073,18 @@ export function createUI(handlers: UIHandlers): UI {
             handlers.onCheat({
               type: "spawnUnit",
               unitType: sel.value as UnitTypeId,
+              col: tile.col,
+              row: tile.row,
+            });
+            break;
+          }
+          case "buildWonder": {
+            if (!tile) break;
+            const sel = godPanel.querySelector<HTMLSelectElement>("#cheat-wonder");
+            if (!sel || !sel.value) break;
+            handlers.onCheat({
+              type: "buildWonder",
+              wonderId: sel.value,
               col: tile.col,
               row: tile.row,
             });
@@ -2214,7 +2268,6 @@ export function createUI(handlers: UIHandlers): UI {
     onSelectUnit: (id) => handlers.onSelectUnit(id),
     onSelectCity: (id) => handlers.onSelectCity(id),
     onConvertCitizen: (cityId, sid, delta) => handlers.onConvertCitizen(cityId, sid, delta),
-    onStartWonder: (wid, host) => handlers.onStartWonder(wid, host),
     onCancelWork: (wid) => handlers.onCancelWork(wid),
   });
 

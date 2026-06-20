@@ -179,6 +179,9 @@ export interface UnitDef {
   transport?: boolean;
   /** True if the unit can enter ocean tiles before Astronomy. */
   oceanGoing?: boolean;
+  /** Fraction (0–1) by which this unit's chance to rout is reduced — disciplined
+   *  elites and heavy units stand their ground (see morale.ts). */
+  routeResistance?: number;
 }
 
 const U = (d: UnitDef): UnitDef => d;
@@ -200,8 +203,8 @@ export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
 
   axeman: U({ id: "axeman", name: "Bronze Axeman", glyph: "X", cls: "melee", movement: 2, sight: 2, cost: 19, upkeep: 2, strength: 13, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 } }),
   maceman: U({ id: "maceman", name: "Maceman", glyph: "M", cls: "melee", movement: 2, sight: 2, cost: 18, upkeep: 2, strength: 11, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_city"] }),
-  spearman: U({ id: "spearman", name: "Spearman", glyph: "P", cls: "melee", movement: 2, sight: 2, cost: 18, upkeep: 2, strength: 11, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"] }),
-  hoplite: U({ id: "hoplite", name: "Hoplite", glyph: "O", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 13, reqTech: "phalanx", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"] }),
+  spearman: U({ id: "spearman", name: "Spearman", glyph: "P", cls: "melee", movement: 2, sight: 2, cost: 18, upkeep: 2, strength: 11, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"], routeResistance: 0.3 }),
+  hoplite: U({ id: "hoplite", name: "Hoplite", glyph: "O", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 13, reqTech: "phalanx", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"], routeResistance: 0.5 }),
 
   light_chariot: U({ id: "light_chariot", name: "Light Chariot", glyph: "y", cls: "cavalry", movement: 4, sight: 2, cost: 18, upkeep: 2, strength: 9, reqTech: "the_wheel", reqResource: { resource: "horses", count: 1 } }),
   war_chariot: U({ id: "war_chariot", name: "War Chariot", glyph: "Y", cls: "cavalry", movement: 4, sight: 2, cost: 24, upkeep: 2, strength: 13, reqTech: "chariotry", reqResource: { resource: "horses", count: 1 } }),
@@ -210,11 +213,11 @@ export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
 
   swordsman: U({ id: "swordsman", name: "Swordsman", glyph: "Z", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 15, reqTech: "iron_bloomery", reqResource: { resource: "iron", count: 1 } }),
   longswordsman: U({ id: "longswordsman", name: "Longswordsman", glyph: "G", cls: "melee", movement: 2, sight: 2, cost: 26, upkeep: 3, strength: 18, reqTech: "carburizing", reqResource: { resource: "iron", count: 1 } }),
-  pikeman: U({ id: "pikeman", name: "Pikeman", glyph: "K", cls: "melee", movement: 2, sight: 2, cost: 20, upkeep: 2, strength: 14, reqTech: "iron_bloomery", reqResource: { resource: "iron", count: 1 }, abilities: ["bonus_vs_cavalry"] }),
-  cataphract: U({ id: "cataphract", name: "Cataphract", glyph: "T", cls: "cavalry", movement: 3, sight: 2, cost: 28, upkeep: 3, strength: 17, reqTech: "cavalry_doctrine", reqResource: { resource: "horses", count: 1 } }),
+  pikeman: U({ id: "pikeman", name: "Pikeman", glyph: "K", cls: "melee", movement: 2, sight: 2, cost: 20, upkeep: 2, strength: 14, reqTech: "iron_bloomery", reqResource: { resource: "iron", count: 1 }, abilities: ["bonus_vs_cavalry"], routeResistance: 0.4 }),
+  cataphract: U({ id: "cataphract", name: "Cataphract", glyph: "T", cls: "cavalry", movement: 3, sight: 2, cost: 28, upkeep: 3, strength: 17, reqTech: "cavalry_doctrine", reqResource: { resource: "horses", count: 1 }, routeResistance: 0.5 }),
   crossbowman: U({ id: "crossbowman", name: "Crossbowman", glyph: "V", cls: "ranged", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 8, rangedStrength: 14, range: 2, reqTech: "crossbow" }),
-  legionary: U({ id: "legionary", name: "Legionary", glyph: "E", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 15, reqTech: "engineering" }),
-  war_elephant: U({ id: "war_elephant", name: "War Elephant", glyph: "N", cls: "cavalry", movement: 3, sight: 2, cost: 30, upkeep: 3, strength: 16, reqTech: "elephantry", reqResource: { resource: "elephants", count: 1 }, abilities: ["bonus_vs_city"] }),
+  legionary: U({ id: "legionary", name: "Legionary", glyph: "E", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 15, reqTech: "engineering", routeResistance: 0.6 }),
+  war_elephant: U({ id: "war_elephant", name: "War Elephant", glyph: "N", cls: "cavalry", movement: 3, sight: 2, cost: 30, upkeep: 3, strength: 16, reqTech: "elephantry", reqResource: { resource: "elephants", count: 1 }, abilities: ["bonus_vs_city"], routeResistance: 0.4 }),
 
   battering_ram: U({ id: "battering_ram", name: "Battering Ram", glyph: "U", cls: "siege", movement: 2, sight: 2, cost: 16, upkeep: 2, strength: 6, rangedStrength: 10, range: 1, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),
   catapult: U({ id: "catapult", name: "Catapult", glyph: "I", cls: "siege", movement: 2, sight: 2, cost: 25, upkeep: 2, strength: 6, rangedStrength: 14, range: 2, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),

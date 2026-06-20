@@ -18,6 +18,7 @@ import { emitCityLost, emitUnitDied } from "./turn-updates";
 import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween } from "./movement";
 import { playerEffects } from "./civs";
 import { breakCover } from "./stealth";
+import { moraleAttackMultiplier, moraleDefenseMultiplier, onEnemyDefeated, onUnitLost, maybeRoute } from "./morale";
 
 /** Maximum HP for a unit, increasing by 5% per level above 1 plus promotion bonuses. */
 export function unitMaxHp(unit: Unit): number {
@@ -183,7 +184,7 @@ function attackStrength(
     s *= 1 + (unit.ambushBonus ?? 0.2);
   }
 
-  return s * woundFactor(unit.hp, unitMaxHp(unit));
+  return s * woundFactor(unit.hp, unitMaxHp(unit)) * moraleAttackMultiplier(unit);
 }
 
 function adjacentEnemies(state: GameState, unit: Unit): number {
@@ -267,7 +268,7 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   // Bushidō: a cornered Samurai fights all the harder.
   if (hasBushido(state, unit)) stanceMult *= 1.3;
 
-  return Math.max(1, s) * stanceMult * woundFactor(unit.hp, unitMaxHp(unit));
+  return Math.max(1, s) * stanceMult * woundFactor(unit.hp, unitMaxHp(unit)) * moraleDefenseMultiplier(unit);
 }
 
 /** Count friendly melee/cavalry infantry-style neighbors (for Shield Wall). */
@@ -514,7 +515,12 @@ export function resolveAttack(
       awardXp(attacker, 3);
       awardXp(enemyUnit, 2);
       if (ability === "sunder") enemyUnit.sunderedUntilTurn = state.turn + 1;
-      if (enemyUnit.hp <= 0) killUnit(state, enemyUnit);
+      if (enemyUnit.hp <= 0) {
+        killUnit(state, enemyUnit);
+        onEnemyDefeated(state, attacker, enemyUnit); // the marksman and nearby allies rally
+      } else {
+        maybeRoute(state, enemyUnit); // a unit under fire may break
+      }
     } else {
       const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, false, ability);
       let defEff = defenseStrength(state, enemyUnit, attacker, false);
@@ -534,12 +540,15 @@ export function resolveAttack(
       const attackerDead = attacker.hp <= 0;
       if (defenderDead) {
         killUnit(state, enemyUnit);
+        onEnemyDefeated(state, attacker, enemyUnit); // the victor and nearby allies rally
         if (!attackerDead) {
           let heal = 0;
           if (has(attacker, "bloodlust")) heal += 12;
           if (has(attacker, "forager")) heal += 8;
           if (heal > 0) attacker.hp = Math.min(unitMaxHp(attacker), attacker.hp + heal);
         }
+      } else {
+        maybeRoute(state, enemyUnit); // a battered defender may break and flee
       }
       if (attackerDead) {
         killUnit(state, attacker);
@@ -637,6 +646,7 @@ function defenseStrengthVsBombard(state: GameState, unit: Unit): number {
 }
 
 function killUnit(state: GameState, unit: Unit): void {
+  onUnitLost(state, unit); // nearby friendlies waver + global morale drops (before removal)
   state.units.delete(unit.id);
   const owner = playerById(state, unit.ownerId);
   log(state, `${UNIT_DEFS[unit.type].name} (${owner?.name ?? "?"}) was destroyed.`, {

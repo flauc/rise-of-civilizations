@@ -21,6 +21,7 @@ export interface LobbyGame {
   aiCount: number;
   mapType: MapType;
   barbarians: BarbarianActivity;
+  naturalWonders: boolean;
   startingGold: "tight" | "balanced" | "generous";
   /** Civ id per AI opponent; null = a random unique civ. */
   aiCivIds: (string | null)[];
@@ -41,6 +42,7 @@ export interface CreateOptions {
   aiCount?: number;
   mapType?: MapType;
   barbarians?: BarbarianActivity;
+  naturalWonders?: boolean;
   startingGold?: "tight" | "balanced" | "generous";
   aiCivIds?: (string | null)[];
   colors?: (string | null)[];
@@ -74,6 +76,7 @@ export class Lobby {
       aiCount,
       mapType: opts.mapType ?? "continents",
       barbarians: opts.barbarians ?? "normal",
+      naturalWonders: opts.naturalWonders ?? false,
       startingGold: opts.startingGold ?? "balanced",
       aiCivIds,
       colors: (opts.colors ?? []).slice(0, capacity + aiCount),
@@ -121,6 +124,7 @@ export class Lobby {
       playerCount: names.length + game.aiCount,
       humanSlots: names.length,
       barbarians: game.barbarians,
+      naturalWonders: game.naturalWonders,
       startingGold: game.startingGold,
       civIds,
       colors: game.colors,

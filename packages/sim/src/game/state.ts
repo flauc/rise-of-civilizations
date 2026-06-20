@@ -44,6 +44,12 @@ export interface Unit {
   campKey?: string;
   /** True when a land unit has embarked onto a water tile. */
   embarked?: boolean;
+  /** Unit morale (0–200; 100 is neutral). Buffs/debuffs combat and drives routing.
+   *  Undefined on legacy saves — treated as neutral by the morale helpers. */
+  morale?: number;
+  /** When set, the unit has routed and forfeits all actions while
+   *  state.turn <= this (enforced at its turn start, see tickAbilities). */
+  routedUntilTurn?: number;
 }
 
 export type ProductionItem =
@@ -114,6 +120,12 @@ export interface Player {
   /** Civilization id (see @roc/data); undefined for barbarians. */
   civId?: string;
   gold: number;
+  /** Empire-wide morale (0–200; base 50). Sets the floor for new units' morale
+   *  and shifts with battlefield wins/losses. Undefined on legacy saves. */
+  globalMorale: number;
+  /** Turn this player last *earned* morale (kill/promotion/spirited war). Global
+   *  morale only begins to decay a few turns after this (see morale.ts). */
+  lastMoraleGainTurn?: number;
   researched: Set<TechId>;
   researching: TechId | null;
   /** Techs waiting to be researched after the current one (target-path queue). */
@@ -464,6 +476,7 @@ export function makeUnit(
   col: number,
   row: number,
   xp = 0,
+  morale = 100,
 ): Unit {
   return {
     id,
@@ -483,6 +496,7 @@ export function makeUnit(
     stance: null,
     abilityCooldowns: {},
     sleeping: false,
+    morale,
   };
 }
 

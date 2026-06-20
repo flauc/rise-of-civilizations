@@ -17,11 +17,12 @@ import { TERRAIN_COLORS, HEX_STROKE, HEX_HOVER_STROKE } from "./palette";
 import { isImageReady, type TerrainAtlas } from "./terrain-assets";
 import { improvementFrameFor, type ImprovementAtlas } from "./improvement-assets";
 import { coastFrameFor, type CoastAtlas } from "./coast-assets";
-import { riverChannelFrame, riverMouthFrame, type RiverAtlas } from "./river-assets";
+import { riverChannelFrame, riverMouthFrame, riverMountainFrame, type RiverAtlas } from "./river-assets";
 import { roadFrame, type RoadAtlas } from "./road-assets";
 import { RESOURCE_DEFS, resourceActive, type GameState, type ResourceId } from "@roc/sim";
 import { type ResourceAtlas } from "./resource-assets";
 import { naturalWonderTileImage, type NaturalWonderAtlas } from "./natural-wonder-assets";
+import { wonderTileImage, type WonderAtlas } from "./wonder-assets";
 
 // Hex size (center-to-corner) in world units at zoom 1.
 export const BASE_SIZE = 26;
@@ -238,6 +239,7 @@ export interface RenderOptions {
   improvementAtlas?: ImprovementAtlas | undefined;
   resourceAtlas?: ResourceAtlas | undefined;
   naturalWonderAtlas?: NaturalWonderAtlas | undefined;
+  wonderAtlas?: WonderAtlas | undefined;
 }
 
 /** 6-bit land-neighbour mask for a water tile: bit `d` set when the neighbour in
@@ -525,6 +527,12 @@ export function drawScene(
       const wonderImg = naturalWonderTileImage(opts.naturalWonderAtlas, t.naturalWonder);
       if (wonderImg) img = wonderImg;
     }
+    // A river spring on a mountain uses the combined mountain+river sprite (the
+    // flat river overlay below is skipped for it).
+    const mtnRiverImg = t.terrain === "mountains" && t.river
+      ? riverMountainFrame(opts.riverAtlas, t.river, t.col, t.row)
+      : undefined;
+    if (mtnRiverImg && isImageReady(mtnRiverImg)) img = mtnRiverImg;
     if (img && isImageReady(img)) {
       // The sprite is a 256x384 image whose bottom 256x256 is the square hex
       // footprint and whose top 128px is transparent overhang. Map the sprite
@@ -539,6 +547,19 @@ export function drawScene(
     } else {
       ctx.fillStyle = TERRAIN_COLORS[t.terrain];
       ctx.fill();
+    }
+
+    // A completed built wonder draws its decor sprite on top of the terrain (the
+    // sprite shares the 256×384 hex-tile format, anchored like a natural wonder
+    // but with a transparent background so the terrain shows through).
+    if (t.wonder) {
+      const wImg = wonderTileImage(opts.wonderAtlas, t.wonder);
+      if (wImg && isImageReady(wImg)) {
+        const wScale = footprint / wImg.naturalWidth;
+        const wW = wImg.naturalWidth * wScale;
+        const wH = wImg.naturalHeight * wScale;
+        ctx.drawImage(wImg, sx - wW / 2, sy + footprint / 2 - wH, wW, wH);
+      }
     }
 
     // Shoreline overlay: water tiles that border land get a painted coast drawn
@@ -556,10 +577,11 @@ export function drawScene(
           drawFootprintOverlay(ctx, riverMouthFrame(opts.riverAtlas, 1 << d, t.col, t.row), sx, sy, footprint);
         }
       }
-    } else if (t.river) {
+    } else if (t.river && !mtnRiverImg) {
       // River overlay on land: the channel reaches every connected edge (including
       // the one that meets the sea, so the river-mouth tile reads as a real
       // connector); the matching mouth delta is painted on the adjacent water tile.
+      // Mountain springs already drew their combined sprite, so they're skipped.
       drawFootprintOverlay(ctx, riverChannelFrame(opts.riverAtlas, t.river, !!t.riverLake, t.col, t.row), sx, sy, footprint);
     }
 

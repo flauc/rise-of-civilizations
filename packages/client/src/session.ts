@@ -58,6 +58,8 @@ export interface LocalGameOptions {
   mapType?: MapType;
   aiCount?: number;
   barbarians?: boolean | BarbarianActivity;
+  /** Scatter natural wonders across the map. Defaults to off. */
+  naturalWonders?: boolean;
   /** Starting gold treasury preset. */
   startingGold?: "tight" | "balanced" | "generous";
   /** The human player's civilization. */
@@ -93,6 +95,7 @@ export class LocalSession implements Session {
         humanSlots: 1,
         playerCount: 1 + aiCount,
         barbarians: opts.barbarians ?? true,
+        naturalWonders: opts.naturalWonders ?? false,
         startingGold: opts.startingGold ?? "balanced",
         civIds,
         colors: opts.colors ?? undefined,
@@ -182,6 +185,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     atWar: atWarOf(p.id),
     importedLuxuries: [],
     gold: p.id === view.yourId ? view.you.gold : 0,
+    globalMorale: p.id === view.yourId ? view.you.globalMorale : 50,
     researched: new Set(p.id === view.yourId ? view.you.researched : []),
     researching: p.id === view.yourId ? view.you.researching : null,
     researchQueue: p.id === view.yourId ? view.you.researchQueue : [],

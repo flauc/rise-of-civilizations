@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@roc/shared": "*",
-    "@roc/sim": "*"
+    "@roc/sim": "*",
+    "@roc/data": "*"
   }
 }

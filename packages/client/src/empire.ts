@@ -15,7 +15,6 @@ import {
   worksOf,
   worksOfCity,
   workName,
-  canStartWonder,
   currentWorkFor,
   type GameState,
   type City,
@@ -26,7 +25,6 @@ export interface EmpireHandlers {
   onSelectUnit(id: number): void;
   onSelectCity(id: number): void;
   onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
-  onStartWonder(wonderId: string, hostCityId: number): void;
   onCancelWork(workId: number): void;
 }
 
@@ -230,16 +228,10 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         const done = Object.values(inProg.progress).reduce((a, b) => a + (b ?? 0), 0);
         action = `<span class="emp-pill">${req > 0 ? Math.floor((done / req) * 100) : 0}%</span>`;
       } else {
-        // Only cities that already field every required craft may host the wonder.
-        const capable = cities.filter((c) => canStartWonder(state, viewerId, w.id, c.id).ok);
-        if (capable.length > 0) {
-          action =
-            `<span class="emp-stepper"><select data-wonder-city="${w.id}" class="emp-pill" style="background:#14283b;color:#eaf3fb;border:1px solid var(--edge)">` +
-            capable.map((c) => `<option value="${c.id}">${c.name}</option>`).join("") +
-            `</select><button class="btn" data-wonder="${w.id}">Start</button></span>`;
-        } else {
-          action = `<span class="emp-pill" style="color:#e0b07d" title="A city needs all of these craftsmen to host it">🔒 need crew</span>`;
-        }
+        // Wonders are raised on a chosen tile (like an improvement): select an
+        // empty owned tile near a city with the required craftsmen and pick the
+        // wonder from that tile's panel.
+        action = `<span class="emp-pill" style="color:#9fc3e0" title="Select an empty tile in your territory to raise this wonder">🗺️ build on a tile</span>`;
       }
       html +=
         `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)">` +
@@ -283,13 +275,6 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
       el.addEventListener("click", () => {
         handlers.onConvertCitizen(Number(el.dataset.city), el.dataset.specMinus!, -1);
         render(state, viewerId);
-      }),
-    );
-    body.querySelectorAll<HTMLButtonElement>("[data-wonder]").forEach((el) =>
-      el.addEventListener("click", () => {
-        const sel = body.querySelector<HTMLSelectElement>(`[data-wonder-city="${el.dataset.wonder}"]`);
-        const cityId = sel ? Number(sel.value) : NaN;
-        if (!Number.isNaN(cityId)) handlers.onStartWonder(el.dataset.wonder!, cityId);
       }),
     );
     body.querySelectorAll<HTMLAnchorElement>("[data-cancel]").forEach((el) =>

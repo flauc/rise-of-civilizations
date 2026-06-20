@@ -19,6 +19,7 @@ import {
 } from "./state";
 import { UNIT_DEFS, isMilitary, type UnitTypeId } from "./content";
 import { unitMaxHp } from "./combat";
+import { startingUnitMorale } from "./morale";
 import { availableTechs } from "./economy";
 import { expandTerritory } from "./territory";
 import { offsetNeighbors } from "./movement";
@@ -60,7 +61,7 @@ function barbarianId(state: GameState): number | undefined {
 function spawnUnitNear(state: GameState, ownerId: number, type: UnitTypeId, col: number, row: number): Unit | null {
   const place = (c: number, r: number): Unit => {
     const id = state.nextEntityId++;
-    const u = makeUnit(id, ownerId, type, c, r);
+    const u = makeUnit(id, ownerId, type, c, r, 0, startingUnitMorale(state, ownerId));
     state.units.set(id, u);
     return u;
   };

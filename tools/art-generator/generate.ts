@@ -53,6 +53,7 @@ import {
   TURN_UPDATE_WONDER_SUBSET,
   TURN_UPDATE_IMPROVEMENT_SUBSET,
   NATURAL_WONDER_SUBSET,
+  WONDER_TILE_SUBSET,
 } from "./config";
 
 interface Options {
@@ -283,6 +284,13 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--wonder-tile": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "wonder_tile") fail(`Unknown wonder tile: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--subset": {
         const name = next();
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
@@ -308,6 +316,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "turn-update-wonders") entries.push(...TURN_UPDATE_WONDER_SUBSET);
         else if (name === "turn-update-improvements") entries.push(...TURN_UPDATE_IMPROVEMENT_SUBSET);
         else if (name === "natural-wonders") entries.push(...NATURAL_WONDER_SUBSET);
+        else if (name === "wonder-tiles") entries.push(...WONDER_TILE_SUBSET);
         else if (name === "all") entries.push(...allEntries());
         else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-improvements, natural-wonders, or all.`);
         break;
@@ -711,6 +720,7 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
     entry.category === "building" ? "buildings" :
     entry.category === "improvement" ? "improvements" :
     entry.category === "natural_wonder" ? "natural-wonders" :
+    entry.category === "wonder_tile" ? "wonders" :
     entry.category === "ui" ? "ui" :
     `${entry.category}s`;
   const rawDir = join(options.outDir, "raw", categoryDir);

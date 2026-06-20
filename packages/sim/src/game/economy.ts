@@ -11,6 +11,7 @@ import { civEffectsOf, cityEffects, getCivic, uniqueUnitForCiv } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
+import { startingUnitMorale, BARRACKS_MORALE_BONUS } from "./morale";
 import { offsetNeighbors, isCoastalLand } from "./movement";
 import {
   emitCityGrew,
@@ -360,11 +361,14 @@ export function toggleCitizen(state: GameState, city: City, col: number, row: nu
 
 /** Spawn a finished unit at the city, or the nearest open adjacent valid tile. */
 function placeUnit(state: GameState, city: City, type: keyof typeof UNIT_DEFS): void {
-  const xpBonus = city.buildings.includes("barracks") ? 15 : 0;
+  const hasBarracks = city.buildings.includes("barracks");
+  const xpBonus = hasBarracks ? 15 : 0;
+  // Units mustered in a Barracks start with steadier morale.
+  const morale = startingUnitMorale(state, city.ownerId, hasBarracks ? BARRACKS_MORALE_BONUS : 0);
   const udef = UNIT_DEFS[type];
   const spawn = (col: number, row: number) => {
     const id = state.nextEntityId++;
-    state.units.set(id, makeUnit(id, city.ownerId, type, col, row, xpBonus));
+    state.units.set(id, makeUnit(id, city.ownerId, type, col, row, xpBonus, morale));
   };
   // Naval units spawn on an adjacent water tile; land units spawn on land.
   const wantsWater = udef.cls === "naval_melee" || udef.cls === "naval_ranged";

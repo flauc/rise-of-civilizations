@@ -19,6 +19,9 @@ export interface RiverAtlas {
 }
 
 const SINGLE_BITS = [1, 2, 4, 8, 16, 32] as const;
+// Mountain river-source sprites exist only for the four lower edges the art draws
+// a river spilling from: E (1), W (8), SW (16), SE (32).
+const MOUNTAIN_BITS = [1, 8, 16, 32] as const;
 const RIVER_VARIANTS = 3; // some channels ship up to 3 painted variations
 const MOUTH_VARIANTS = 2;
 
@@ -57,6 +60,7 @@ export function loadRiverAtlas(onLoad?: () => void): RiverAtlas {
     want(`river_lake_${bit}`, 1);
     want(`river_mouth_${bit}`, MOUTH_VARIANTS);
   }
+  for (const bit of MOUNTAIN_BITS) want(`river_mountain_${bit}`, 1);
 
   const atlas: RiverAtlas = { images, loaded: remaining === 0 };
   return atlas;
@@ -94,4 +98,16 @@ export function riverMouthFrame(
 ): HTMLImageElement | undefined {
   if (!atlas) return undefined;
   return pick(atlas, `river_mouth_${bit}`, `${col},${row}`);
+}
+
+/** Combined mountain sprite with a river springing from a single edge bit (a
+ *  mountain river source). Only the four lower edges (1, 8, 16, 32) have art. */
+export function riverMountainFrame(
+  atlas: RiverAtlas | undefined,
+  bit: number,
+  col: number,
+  row: number,
+): HTMLImageElement | undefined {
+  if (!atlas) return undefined;
+  return pick(atlas, `river_mountain_${bit}`, `${col},${row}`);
 }

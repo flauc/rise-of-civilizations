@@ -46,6 +46,7 @@ import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
 import { loadFeatureAtlas } from "./feature-assets";
 import { loadNaturalWonderAtlas } from "./natural-wonder-assets";
+import { loadWonderAtlas } from "./wonder-assets";
 import { loadResourceAtlas } from "./resource-assets";
 import { loadAbilityAtlas } from "./ability-assets";
 import type { Session } from "./session";
@@ -289,7 +290,7 @@ function startGame(session: Session): void {
     onConvertCitizen: (cityId, specialistId, delta) =>
       session.order({ type: "convertCitizen", cityId, specialistId, delta }),
     onStartWork: (kind, col, row) => session.order({ type: "startWork", kind, col, row }),
-    onStartWonder: (wonderId, hostCityId) => session.order({ type: "startWonder", wonderId, hostCityId }),
+    onStartWonder: (wonderId, col, row) => session.order({ type: "startWonder", wonderId, col, row }),
     onCancelWork: (workId) => session.order({ type: "cancelWork", workId }),
     onSelectUnit: (id) => {
       const u = st().units.get(id);
@@ -632,6 +633,9 @@ function startGame(session: Session): void {
   const naturalWonderAtlas = loadNaturalWonderAtlas(() => {
     needsRedraw = true;
   });
+  const wonderAtlas = loadWonderAtlas(() => {
+    needsRedraw = true;
+  });
   const resourceAtlas = loadResourceAtlas(() => {
     needsRedraw = true;
   });
@@ -644,7 +648,7 @@ function startGame(session: Session): void {
   // one has finished streaming (loaded or errored) and a full frame has painted.
   const coreAtlases = [
     terrainAtlas, coastAtlas, riverAtlas, roadAtlas, unitAtlas, cityAtlas,
-    improvementAtlas, featureAtlas, naturalWonderAtlas, resourceAtlas, abilityAtlas,
+    improvementAtlas, featureAtlas, naturalWonderAtlas, wonderAtlas, resourceAtlas, abilityAtlas,
   ];
   // Lift the veil once every atlas has streamed in — but never wait longer than
   // this cap, so a slow connection (or a stalled sprite) can't trap the player on
@@ -681,6 +685,7 @@ function startGame(session: Session): void {
         improvementAtlas,
         resourceAtlas,
         naturalWonderAtlas,
+        wonderAtlas,
       });
       const selCity = selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null;
       drawOverlay(ctx!, camera, st(), {

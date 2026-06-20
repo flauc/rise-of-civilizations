@@ -125,7 +125,16 @@ describe("turn update events", () => {
       { id: 3, type: "architect", xp: 0, level: 1, name: "Test Architect" },
     );
 
-    const res = startWonder(state, 0, "great_pyramid", city.id);
+    // Wonders are tile-targeted: pick an empty owned tile (not the city itself).
+    const target = state.map.tiles.find(
+      (t) =>
+        t.ownerCityId === city.id &&
+        isPassableLand(t.terrain) &&
+        !t.improvement &&
+        !t.structure &&
+        !(t.col === city.col && t.row === city.row),
+    )!;
+    const res = startWonder(state, 0, "great_pyramid", target.col, target.row);
     expect(res.ok).toBe(true);
     const work = state.works.find((w) => w.ownerId === 0 && w.wonderId === "great_pyramid")!;
     // Force completion.

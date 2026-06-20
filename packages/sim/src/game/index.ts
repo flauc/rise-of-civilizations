@@ -5,6 +5,7 @@ export * from "./state";
 export * from "./movement";
 export * from "./visibility";
 export * from "./combat";
+export * from "./morale";
 export * from "./abilities";
 export * from "./improvements";
 export * from "./barbarians";

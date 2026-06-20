@@ -2162,6 +2162,34 @@ export const WONDER_DEFS: WonderDef[] = [
     requirement: { masonry: 8, architecture: 8, engineering: 8 },
     effect: { yieldPerCity: { gold: 1 } },
   },
+  {
+    id: "sphinx",
+    name: "Great Sphinx",
+    desc: "An enigmatic guardian carved from living rock. +2 culture and +2 gold in the host city.",
+    requirement: { masonry: 14, architecture: 8 },
+    effect: { yieldHostCity: { culture: 2, gold: 2 } },
+  },
+  {
+    id: "stonehenge",
+    name: "Stonehenge",
+    desc: "An ancient ring of standing stones aligned to the heavens. +1 faith in every city.",
+    requirement: { masonry: 14, survey: 6 },
+    effect: { yieldPerCity: { faith: 1 } },
+  },
+  {
+    id: "oracle",
+    name: "The Oracle",
+    desc: "A sacred temple whose prophecies guide the people. +3 faith and +2 science in the host city.",
+    requirement: { architecture: 10, masonry: 8 },
+    effect: { yieldHostCity: { faith: 3, science: 2 } },
+  },
+  {
+    id: "tenochtitlan",
+    name: "Tenochtitlán",
+    desc: "A magnificent island capital of canals and causeways. +1 food and +1 production in every city.",
+    requirement: { engineering: 12, architecture: 10, masonry: 8 },
+    effect: { yieldPerCity: { food: 1, production: 1 } },
+  },
 ];
 
 const WONDER_BY_ID = new Map(WONDER_DEFS.map((w) => [w.id, w]));
@@ -2237,6 +2265,7 @@ export const NATURAL_WONDER_DEFS: NaturalWonderDef[] = [
   NW({ id: "niagara_falls", name: "Niagara Falls", desc: "A thundering curtain of falling water.", validTerrain: ["lake", "coast"], tileYields: { food: 2, gold: 2, culture: 1 }, discoveryBonus: { culture: 60, gold: 40 } }),
   NW({ id: "victoria_falls", name: "Victoria Falls", desc: "\"The Smoke That Thunders\" — a mile-wide cataract.", validTerrain: ["jungle", "grassland"], tileYields: { food: 2, culture: 2 }, discoveryBonus: { culture: 80, gold: 20 } }),
   NW({ id: "iguazu_falls", name: "Iguazú Falls", desc: "A vast horseshoe of jungle waterfalls.", validTerrain: ["jungle"], tileYields: { food: 2, gold: 2 }, discoveryBonus: { culture: 70, gold: 40 } }),
+  NW({ id: "angel_falls", name: "Angel Falls", desc: "The world's tallest waterfall, plunging from a jungle tepui.", validTerrain: ["jungle", "hills"], tileYields: { food: 2, culture: 2 }, discoveryBonus: { culture: 90, science: 30 } }),
   NW({ id: "plitvice_lakes", name: "Plitvice Lakes", desc: "Terraced turquoise lakes linked by waterfalls.", validTerrain: ["lake", "forest"], tileYields: { food: 2, culture: 1, gold: 1 }, discoveryBonus: { culture: 60, gold: 30 } }),
   NW({ id: "moraine_lake", name: "Moraine Lake", desc: "Glacial meltwater of impossible blue beneath the peaks.", validTerrain: ["mountains", "lake"], tileYields: { science: 2, culture: 2 }, discoveryBonus: { culture: 50, science: 50 } }),
 

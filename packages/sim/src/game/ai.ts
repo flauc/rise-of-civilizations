@@ -21,7 +21,7 @@ import { aiConsiderDiplomacy, atWar } from "./diplomacy";
 import { availablePromotions } from "./combat";
 import { BELIEFS, WONDER_DEFS } from "@roc/data";
 import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
-import { nextTierAt, worksOf, worksOfCity, workDiscipline } from "./works";
+import { nextTierAt, worksOf, worksOfCity, workDiscipline, canStartWonder } from "./works";
 import { offsetNeighbors } from "./movement";
 import { RESOURCE_DEFS, resourceActive } from "./resources";
 import { isPassableLand } from "./terrain";
@@ -264,19 +264,23 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
   }
 }
 
-/** Start a wonder in a capable city once per empire (architecture + engineering on hand). */
+/** Start a wonder once per empire, on an empty owned tile a capable city can reach. */
 function aiWonders(state: GameState, pid: number): void {
   if (worksOf(state, pid).some((w) => w.kind === "wonder")) return; // one at a time
-  const host = citiesOf(state, pid).find(
-    (c) =>
-      c.specialists.some((s) => SPECIALIST_DEFS[s.type as SpecialistId]?.discipline === "architecture") &&
-      c.specialists.some((s) => SPECIALIST_DEFS[s.type as SpecialistId]?.discipline === "engineering"),
-  );
-  if (!host) return;
   const wonder = WONDER_DEFS.find(
     (w) => !state.completedWonders.includes(w.id) && !worksOf(state, pid).some((x) => x.wonderId === w.id),
   );
-  if (wonder) applyCommand(state, { type: "startWonder", wonderId: wonder.id, hostCityId: host.id }, pid);
+  if (!wonder) return;
+  // canStartWonder enforces ownership, an empty tile, and a nearby city with the
+  // required craftsmen — scan owned tiles for the first spot that qualifies.
+  for (const t of state.map.tiles) {
+    const owner = t.ownerCityId !== undefined ? state.cities.get(t.ownerCityId) : undefined;
+    if (!owner || owner.ownerId !== pid) continue;
+    if (canStartWonder(state, pid, wonder.id, t.col, t.row).ok) {
+      applyCommand(state, { type: "startWonder", wonderId: wonder.id, col: t.col, row: t.row }, pid);
+      return;
+    }
+  }
 }
 
 /** Spend a unit's earned promotions on sensible picks. */

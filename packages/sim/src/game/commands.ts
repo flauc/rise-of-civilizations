@@ -58,6 +58,7 @@ import {
   nextCityNameForCiv,
 } from "./civs";
 import { aiTakeTurn } from "./ai";
+import { onUnitPromoted, decayGlobalMorale } from "./morale";
 import { UNIT_DEFS, TECH_DEFS, techUnlocked, computeResearchPath, advanceResearchQueue, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId } from "./content";
 
 export type Command =
@@ -70,7 +71,7 @@ export type Command =
   | { type: "wake"; unitId: number }
   | { type: "convertCitizen"; cityId: number; specialistId: string; delta: number }
   | { type: "startWork"; kind: string; col: number; row: number }
-  | { type: "startWonder"; wonderId: string; hostCityId: number }
+  | { type: "startWonder"; wonderId: string; col: number; row: number }
   | { type: "assignCityToWonder"; workId: number; cityId: number; on: boolean }
   | { type: "cancelWork"; workId: number }
   | { type: "setProduction"; cityId: number; item: ProductionItem }
@@ -122,6 +123,7 @@ export function beginTurn(state: GameState): void {
     if (u.hidden && canStealthMove(state, u)) u.movementLeft = stealthMovement(u.movementLeft);
   }
   healAndReset(state, player);
+  decayGlobalMorale(state, player); // global morale slips when wins dry up
   tickAbilities(state, player); // expire stances/pulses, enforce pins (after movement reset)
   gatherPlayerResources(state, player.id);
   for (const c of citiesOf(state, player.id)) {
@@ -299,7 +301,7 @@ export function applyCommand(
     }
 
     case "startWonder": {
-      return startWonder(state, player.id, cmd.wonderId, cmd.hostCityId);
+      return startWonder(state, player.id, cmd.wonderId, cmd.col, cmd.row);
     }
 
     case "assignCityToWonder": {
@@ -326,6 +328,7 @@ export function applyCommand(
       if (cmd.promotion === "toughness") {
         unit.hp = Math.min(unitMaxHp(unit), unit.hp + 15);
       }
+      onUnitPromoted(state, unit); // the unit and nearby allies are heartened
       return ok;
     }
 

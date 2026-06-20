@@ -71,6 +71,9 @@ export interface Tile {
   /** A natural wonder occupying this tile (e.g. "grand_canyon"); multi-tile
    *  wonders set the same id on each tile they span. */
   naturalWonder?: string;
+  /** A completed built world-wonder occupying this tile (e.g. "great_pyramid").
+   *  Rendered as a decor overlay on top of the tile's terrain. */
+  wonder?: string;
   /** River-connection mask: bit `d` set means a river runs across this tile's edge
    *  toward neighbour direction `d` (HEX_DIRECTIONS). 0/undefined means no river.
    *  Adjacent river tiles join when each carries the bit pointing at the other. */

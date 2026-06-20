@@ -21,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder" | "wonder_tile";
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -625,8 +625,44 @@ export const NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.map((w) =
   referenceTile: DEFAULT_REFERENCE_TILE,
 }));
 
+// Built world-wonders that lack hand-authored decor art. Each is ONE decor prop
+// (the monument itself) on a clean background, rendered as a transparent overlay
+// the renderer draws on top of a tile's terrain — same role as the purchased
+// Decor tiles (pyramid, sphinx, …). Output: wonders/<id>.png, then re-anchored to
+// the 256×384 hex-tile footprint by tools/art-generator/normalize_wonder_tile.py.
+const GENERATED_WONDER_TILES: { readonly id: string; readonly name: string; readonly description: string }[] = [
+  {
+    id: "hanging_gardens",
+    name: "Hanging Gardens",
+    description:
+      "the Hanging Gardens of Babylon: a grand tiered stone terrace structure overflowing with lush cascading greenery, vines, flowering plants, and small trees, with stepped levels and arched stone supports",
+  },
+  {
+    id: "colossus",
+    name: "Colossus",
+    description:
+      "the Colossus of Rhodes, the legendary ancient Greek Wonder of the World: a colossal bronze statue of the sun god Helios depicted as a bearded, heroic, muscular NUDE MALE figure. He stands upright and frontal with BOTH ARMS LOWERED at his sides, feet planted apart, one hand resting on a tall ancient Greek longbow, gazing straight ahead out to sea. Weathered green-bronze metal, on a square cut-stone harbor pedestal, ancient Hellenistic Greek style. CRITICAL: this is a MAN, not a woman; it must NOT resemble the Statue of Liberty in any way — NO raised arm, NO arm held up, NO torch, NO flame held aloft, NO flowing robe, dress or gown, NO stone tablet, NO seven-point spiked tiara/halo crown",
+  },
+  {
+    id: "great_lighthouse",
+    name: "Great Lighthouse",
+    description:
+      "the Great Lighthouse of Alexandria: a tall tiered ancient stone lighthouse tower, square base, octagonal middle, cylindrical top, with a glowing beacon fire crowning its summit",
+  },
+];
+
+export const WONDER_TILE_SUBSET: AssetEntry[] = GENERATED_WONDER_TILES.map((w) => ({
+  id: w.id,
+  name: w.name,
+  description: w.description,
+  aspectRatio: "2:3",
+  size: { width: 256, height: 384 },
+  category: "wonder_tile" as const,
+  referenceTile: DEFAULT_REFERENCE_TILE,
+}));
+
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -729,6 +765,9 @@ export function promptFor(entry: AssetEntry): string {
   }
   if (entry.category === "natural_wonder") {
     return `Create a flat 2D hand-painted hexagonal strategy game map tile depicting the natural wonder "${entry.name}". ${entry.description}. The ENTIRE hex tile is filled by this one natural wonder as its terrain — the canyon, lake, reef, dunes, falls, forest or peak fills the whole hex, painted top-down/slightly-angled and readable at small sizes. Match the visual style of the attached reference tile: slightly stylized, saturated but natural colors, framed inside a vertical 2:3 pointy-top hex. IMPORTANT: do not include roads, paths, houses, huts, fences, farms, units, text, labels, or any man-made structures. Render as a flat 2D illustration with no 3D perspective, no realistic depth, and no camera angle shifts. Keep the same overall composition, camera angle, and hex footprint as the reference; the artwork must be fully self-contained and look correct in isolation, with nothing continuing off the tile edges. Preserve the soft shadow along the bottom edges of the hex, similar to the reference tile.`;
+  }
+  if (entry.category === "wonder_tile") {
+    return `Create a single hand-painted decorative monument prop for an ancient turn-based strategy hex map: ${entry.description}. Render ONLY the monument structure itself, centered, as one isolated object on a clean solid pure-white background. Match the painted, slightly stylized look of the attached reference hex tile (use it only as a style reference and ignore its hexagonal shape). View it from a slightly elevated three-quarter angle, sized so it reads clearly as a single tile-sized landmark. IMPORTANT: no terrain, no ground plane, no grass, no water, no base platform, no other buildings, no people, no text, no UI, no border, and no cast shadow on the ground. The monument must be fully self-contained and float cleanly on the white background so its background can be removed, leaving a transparent decor sprite to overlay a map tile.`;
   }
   if (entry.category === "ui") {
     return `Create a hand-painted game UI button for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render the button horizontally, centered, filling most of the frame, on a fully transparent background. No text, no letters, no icons, no UI labels, no border frame beyond the button itself, and no cast shadow. The button should float cleanly with nothing else in the frame.`;

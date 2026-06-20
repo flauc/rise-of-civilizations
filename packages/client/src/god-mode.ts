@@ -3,10 +3,14 @@
 // LocalSession and never sent to the multiplayer server.
 
 import { getTile } from "@roc/shared";
+import { getWonder } from "@roc/data";
 import {
   advanceWorks,
   applyCommand,
+  cityAt,
+  isWonderBuildableTile,
   log,
+  nearestOwningCity,
   ECON_TERRAIN,
   isDefenseKind,
   isEconKind,
@@ -32,7 +36,8 @@ export type CheatAction =
   | { type: "spawnUnit"; unitType: UnitTypeId; col: number; row: number }
   | { type: "foundCity"; col: number; row: number }
   | { type: "buildRoad"; col: number; row: number; level: 1 | 2 | 3 }
-  | { type: "buildWork"; kind: string; col: number; row: number };
+  | { type: "buildWork"; kind: string; col: number; row: number }
+  | { type: "buildWonder"; wonderId: string; col: number; row: number };
 
 export interface CheatResult {
   ok: boolean;
@@ -163,6 +168,30 @@ export function applyCheat(
         return { ok: true };
       }
       return { ok: false, error: "unknown work kind" };
+    }
+
+    case "buildWonder": {
+      const def = getWonder(action.wonderId);
+      if (!def) return { ok: false, error: "no such wonder" };
+      if (state.completedWonders.includes(action.wonderId)) {
+        return { ok: false, error: "wonder already built" };
+      }
+      const tile = getTile(state.map, action.col, action.row);
+      if (!tile) return { ok: false, error: "no such tile" };
+      if (cityAt(state, action.col, action.row)) return { ok: false, error: "cannot build a wonder on a city" };
+      if (!isWonderBuildableTile(tile)) return { ok: false, error: "cannot build a wonder here" };
+      // Drop any in-progress work for this wonder, then place it instantly.
+      state.works = state.works.filter((w) => w.wonderId !== action.wonderId);
+      tile.wonder = action.wonderId;
+      state.completedWonders.push(action.wonderId);
+      const host = nearestOwningCity(state, playerId, action.col, action.row);
+      if (host && !host.wonders.includes(action.wonderId)) host.wonders.push(action.wonderId);
+      log(state, `${player.name} raised the ${def.name} (cheat).`, {
+        actorId: playerId,
+        targetIds: [playerId],
+        tile: { col: action.col, row: action.row },
+      });
+      return { ok: true };
     }
 
     case "spawnUnit": {

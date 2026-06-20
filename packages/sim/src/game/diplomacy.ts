@@ -17,6 +17,7 @@ import type {
 } from "./state";
 import { citiesOf, log, playerById, unitsOf, type City } from "./state";
 import { UNIT_DEFS, isMilitary } from "./content";
+import { onWarDeclared } from "./morale";
 import { RESOURCE_DEFS, empireLuxuryTypes, tradeableLuxuries, type ResourceId } from "./resources";
 import { SPECIALIST_DEFS, type SpecialistId } from "./specialists";
 
@@ -246,6 +247,7 @@ export function declareWar(state: GameState, aId: number, targetId: number): Dip
   const T = playerById(state, targetId)!;
   recordTrade(state, aId, targetId, "war", [], [], `${civName(A)} declared war on ${civName(T)}`);
   log(state, `${civName(A)} declared war on ${civName(T)}!`, { actorId: aId, targetIds: [aId, targetId] });
+  onWarDeclared(state, aId); // steels a confident army, unnerves a shaky one
   return ok;
 }
 

@@ -37,6 +37,7 @@ const makePlayer = (id: number): Player => ({
   government: "chiefdom",
   policies: [],
   gold: 0,
+  globalMorale: 50,
   faith: 0,
   resources: {},
   explored: new Set(),

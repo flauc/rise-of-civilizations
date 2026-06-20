@@ -23,6 +23,7 @@
       "name": "@roc/client",
       "version": "0.0.0",
       "dependencies": {
+        "@roc/data": "*",
         "@roc/shared": "*",
         "@roc/sim": "*",
       },

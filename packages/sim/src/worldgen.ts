@@ -282,12 +282,12 @@ function generateRivers(map: GameMap, heights: Float32Array, rng: Rng): void {
     }
   }
 
-  for (const start of chosen) {
-    let cur = tiles[start]!;
-    if (cur.river) continue; // already part of a river
-    const visited = new Set<number>([start]);
+  // Walk a river downhill from `startTile`, linking each step to the lowest
+  // neighbour (descending into water as a mouth, pooling into a lake in a basin).
+  const flow = (startTile: Tile): void => {
+    let cur = startTile;
+    const visited = new Set<number>([idx(cur.col, cur.row)]);
     for (let step = 0; step < cols + rows; step++) {
-      // Look at neighbours; flow to the lowest one, allowing descent into water.
       const here = offsetToAxial({ col: cur.col, row: cur.row });
       let best: Tile | undefined;
       let bestH = heights[idx(cur.col, cur.row)]!;
@@ -300,8 +300,7 @@ function generateRivers(map: GameMap, heights: Float32Array, rng: Rng): void {
         if (h < bestH - 1e-4) { bestH = h; best = nt; }
       }
       if (!best) {
-        // Basin with nowhere to drain: the river pools into a small lake.
-        cur.riverLake = true;
+        cur.riverLake = true; // basin with nowhere to drain → a small lake
         break;
       }
       const d = dirBetween(cur, best.col, best.row);
@@ -313,6 +312,62 @@ function generateRivers(map: GameMap, heights: Float32Array, rng: Rng): void {
       visited.add(idx(best.col, best.row));
       cur = best;
     }
+  };
+
+  for (const start of chosen) {
+    if (tiles[start]!.river) continue; // already part of a river
+    flow(tiles[start]!);
+  }
+
+  // Mountain springs: a few extra rivers tumble straight out of a mountainside.
+  // Only the four lower edges (E, W, SW, SE) have combined mountain+river art, so
+  // a spring must drain toward one of those.
+  const MOUNTAIN_DIRS = [0, 3, 4, 5];
+  const mtnSources: number[] = [];
+  for (let r = 2; r < rows - 2; r++) {
+    for (let c = 2; c < cols - 2; c++) {
+      const m = tiles[idx(c, r)]!;
+      if (m.terrain !== "mountains" || m.river) continue;
+      const here = offsetToAxial({ col: c, row: r });
+      const mh = heights[idx(c, r)]!;
+      const drains = MOUNTAIN_DIRS.some((d) => {
+        const n = axialToOffset(axialNeighbor(here, d));
+        const nt = getTile(map, n.col, n.row);
+        return !!nt && nt.terrain !== "mountains" && nt.terrain !== "volcano" && heights[idx(n.col, n.row)]! < mh - 1e-4;
+      });
+      if (drains) mtnSources.push(idx(c, r));
+    }
+  }
+  for (let i = mtnSources.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [mtnSources[i], mtnSources[j]] = [mtnSources[j]!, mtnSources[i]!];
+  }
+  const mtnTarget = Math.max(3, Math.round((cols * rows) / 250));
+  const placed: number[] = [];
+  for (const s of mtnSources) {
+    if (placed.length >= mtnTarget) break;
+    const sc = s % cols, sr = (s / cols) | 0;
+    if (!placed.every((o) => Math.abs((o % cols) - sc) + Math.abs(((o / cols) | 0) - sr) > 2)) continue;
+    const m = tiles[s]!;
+    const here = offsetToAxial({ col: m.col, row: m.row });
+    // Spill toward the lowest of the art-supported (lower) edges.
+    let best: Tile | undefined;
+    let bestH = heights[s]!;
+    let bestDir = -1;
+    for (const d of MOUNTAIN_DIRS) {
+      const n = axialToOffset(axialNeighbor(here, d));
+      const nt = getTile(map, n.col, n.row);
+      if (!nt || nt.terrain === "mountains" || nt.terrain === "volcano") continue;
+      const h = heights[idx(n.col, n.row)]!;
+      if (h < bestH - 1e-4) { bestH = h; best = nt; bestDir = d; }
+    }
+    if (!best || bestDir < 0) continue;
+    const bestWasRiver = !!best.river;
+    m.river = (m.river ?? 0) | (1 << bestDir);
+    placed.push(s);
+    if (isWater(best.terrain)) continue; // spills straight into the sea (a mouth)
+    best.river = (best.river ?? 0) | (1 << ((bestDir + 3) % 6));
+    if (!bestWasRiver) flow(best); // carry the new river on downhill to the sea
   }
 }
 

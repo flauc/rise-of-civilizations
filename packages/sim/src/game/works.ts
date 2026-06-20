@@ -8,7 +8,7 @@
 import { axialDistance, getTile, offsetToAxial, type Tile } from "@roc/shared";
 import { getWonder, WONDER_DEFS } from "@roc/data";
 import type { City, Discipline, GameState, Specialist, Work } from "./state";
-import { citiesOf, log, playerById } from "./state";
+import { citiesOf, cityAt, log, playerById } from "./state";
 import { isPassableLand } from "./terrain";
 import { availableTechs } from "./economy";
 import {
@@ -283,35 +283,57 @@ export function startWork(state: GameState, playerId: number, kind: string, col:
   return { ok: true, workId: id };
 }
 
-/** Validate starting a wonder without mutating (drives the wonder UI). */
-export function canStartWonder(state: GameState, playerId: number, wonderId: string, hostCityId: number): WorkResult {
+/** Is this tile a clear, buildable spot for a world-wonder? (no city, feature,
+ *  improvement, structure, natural or built wonder, and passable land). */
+export function isWonderBuildableTile(tile: Tile): boolean {
+  if (!isPassableLand(tile.terrain)) return false;
+  if (tile.improvement || tile.structure || tile.feature) return false;
+  if (tile.naturalWonder || tile.wonder) return false;
+  return true;
+}
+
+/** Validate starting a wonder on a tile without mutating (drives the wonder UI).
+ *  Wonders are tile-targeted like improvements: the player picks an empty tile in
+ *  their territory and the nearest city with every required craft hosts the work. */
+export function canStartWonder(state: GameState, playerId: number, wonderId: string, col: number, row: number): WorkResult {
   const def = getWonder(wonderId);
   if (!def) return { ok: false, error: "no such wonder" };
   if (state.completedWonders.includes(wonderId)) return { ok: false, error: "wonder already built" };
-  const host = state.cities.get(hostCityId);
-  if (!host || host.ownerId !== playerId) return { ok: false, error: "not your city" };
   if (state.works.some((w) => w.ownerId === playerId && w.wonderId === wonderId)) {
     return { ok: false, error: "already building that wonder" };
   }
-  const have = cityDisciplines(host);
-  const missing = (Object.keys(def.requirement) as Discipline[]).filter((d) => !have.has(d));
-  if (missing.length) return { ok: false, error: `${host.name} needs ${missing.map(specialistNameForDiscipline).join(", ")}` };
+  const tile = getTile(state.map, col, row);
+  if (!tile) return { ok: false, error: "no such tile" };
+  if (!tileOwnedBy(state, tile, playerId)) return { ok: false, error: "tile not in your territory" };
+  if (cityAt(state, col, row)) return { ok: false, error: "cannot build a wonder on a city" };
+  if (!isWonderBuildableTile(tile)) return { ok: false, error: "cannot build a wonder here" };
+  if (state.works.some((w) => w.ownerId === playerId && w.target && w.target.col === col && w.target.row === row)) {
+    return { ok: false, error: "this tile is already being worked" };
+  }
+  const needs = Object.keys(def.requirement) as Discipline[];
+  const host = nearestCapableCity(state, playerId, col, row, needs);
+  if (!host) {
+    if (!nearestOwningCity(state, playerId, col, row)) return { ok: false, error: "no city to build from" };
+    return { ok: false, error: disciplinesError(needs) };
+  }
   return { ok: true };
 }
 
-/** Begin a wonder hosted by one of the player's cities. */
-export function startWonder(state: GameState, playerId: number, wonderId: string, hostCityId: number): WorkResult {
-  const can = canStartWonder(state, playerId, wonderId, hostCityId);
+/** Begin a wonder on an owned tile, hosted by the nearest city with the crew. */
+export function startWonder(state: GameState, playerId: number, wonderId: string, col: number, row: number): WorkResult {
+  const can = canStartWonder(state, playerId, wonderId, col, row);
   if (!can.ok) return can;
   const def = getWonder(wonderId)!;
+  const host = nearestCapableCity(state, playerId, col, row, Object.keys(def.requirement) as Discipline[])!;
   const id = state.nextEntityId++;
   state.works.push({
     id,
     ownerId: playerId,
     kind: "wonder",
     wonderId,
-    hostCityId,
-    cityIds: [hostCityId],
+    target: { col, row },
+    hostCityId: host.id,
+    cityIds: [host.id],
     requirement: { ...(def.requirement as Partial<Record<Discipline, number>>) },
     progress: {},
   });
@@ -393,6 +415,11 @@ function completeWork(state: GameState, w: Work): void {
     state.completedWonders.push(w.wonderId);
     const host = state.cities.get(w.hostCityId);
     if (host && !host.wonders.includes(w.wonderId)) host.wonders.push(w.wonderId);
+    // Stamp the chosen tile so the wonder's decor renders on the map.
+    if (w.target) {
+      const wtile = getTile(state.map, w.target.col, w.target.row);
+      if (wtile) wtile.wonder = w.wonderId;
+    }
     if (def?.effect.freeTech && owner) {
       const tech = availableTechs(owner)[0];
       if (tech) {
@@ -404,10 +431,11 @@ function completeWork(state: GameState, w: Work): void {
         });
       }
     }
+    const at = w.target ?? (host ? { col: host.col, row: host.row } : undefined);
     log(state, `${owner?.name ?? "Someone"} completed the ${def?.name ?? "Wonder"}!`, {
       actorId: owner?.id,
       targetIds: owner ? [owner.id] : undefined,
-      tile: host ? { col: host.col, row: host.row } : undefined,
+      tile: at,
     });
     if (owner && !owner.isBarbarian && def) {
       emitWonderComplete(
@@ -416,8 +444,8 @@ function completeWork(state: GameState, w: Work): void {
         w.id,
         def.id,
         def.name,
-        host?.col ?? w.hostCityId,
-        host?.row ?? 0,
+        at?.col ?? w.hostCityId,
+        at?.row ?? 0,
       );
     }
     return;

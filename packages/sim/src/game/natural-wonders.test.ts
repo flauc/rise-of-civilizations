@@ -21,7 +21,7 @@ function foundCapital(state: ReturnType<typeof createGame>) {
 
 describe("natural wonders", () => {
   it("places several single-tile natural wonders on the map", () => {
-    const state = createGame({ seed: "nw-map", cols: 48, rows: 32, barbarians: false });
+    const state = createGame({ seed: "nw-map", cols: 48, rows: 32, barbarians: false, naturalWonders: true });
     expect(state.naturalWonderIds.length).toBeGreaterThan(5);
     // Every placed wonder occupies exactly one tile and is a known def.
     for (const id of state.naturalWonderIds) {
@@ -32,8 +32,8 @@ describe("natural wonders", () => {
   });
 
   it("placement is deterministic for the same seed", () => {
-    const a = createGame({ seed: "nw-det", cols: 44, rows: 30, barbarians: false });
-    const b = createGame({ seed: "nw-det", cols: 44, rows: 30, barbarians: false });
+    const a = createGame({ seed: "nw-det", cols: 44, rows: 30, barbarians: false, naturalWonders: true });
+    const b = createGame({ seed: "nw-det", cols: 44, rows: 30, barbarians: false, naturalWonders: true });
     const key = (s: typeof a) => s.map.tiles.map((t) => `${t.col},${t.row}:${t.naturalWonder ?? ""}`).join("|");
     expect(key(a)).toBe(key(b));
   });
@@ -143,8 +143,9 @@ describe("natural wonders", () => {
   });
 
   it("placeNaturalWonders keeps wonders away from start positions", () => {
-    const state = createGame({ seed: "nw-starts", cols: 40, rows: 28, barbarians: false });
+    const state = createGame({ seed: "nw-starts", cols: 40, rows: 28, barbarians: false, naturalWonders: true });
     // Every wonder id placed is a known def.
+    expect(state.naturalWonderIds.length).toBeGreaterThan(0);
     for (const id of state.naturalWonderIds) {
       expect(NATURAL_WONDER_IDS).toContain(id);
     }

@@ -30,6 +30,8 @@ export type ClientMessage =
       capacity?: number;
       aiCount?: number;
       barbarians?: BarbarianActivity;
+      /** Scatter natural wonders across the map. Defaults to off. */
+      naturalWonders?: boolean;
       /** Landmass layout to generate (one big continent, archipelago, real world…). */
       mapType?: MapType;
       /** Starting gold treasury preset for major civ players. */

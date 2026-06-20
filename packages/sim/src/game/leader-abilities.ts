@@ -7,6 +7,7 @@ import { citiesOf, log, makeUnit, unitAt } from "./state";
 import { offsetNeighbors, isCoastalLand } from "./movement";
 import { UNIT_DEFS, type TechId, type UnitTypeId } from "./content";
 import { getCivic } from "./civs";
+import { startingUnitMorale } from "./morale";
 
 export interface LeaderAbilityResult {
   ok: boolean;
@@ -73,7 +74,7 @@ function spawnNearCapital(state: GameState, player: Player, type: UnitTypeId, co
   const tiles = freeSpawnTiles(state, capital.col, capital.row, count, wantsWater);
   for (const t of tiles) {
     const id = state.nextEntityId++;
-    const u = makeUnit(id, player.id, type, t.col, t.row);
+    const u = makeUnit(id, player.id, type, t.col, t.row, 0, startingUnitMorale(state, player.id));
     u.movementLeft = UNIT_DEFS[type].movement;
     state.units.set(id, u);
   }
@@ -88,7 +89,7 @@ function spawnInCoastalCities(state: GameState, player: Player, type: UnitTypeId
     if (tiles.length === 0) continue;
     const t = tiles[0]!;
     const id = state.nextEntityId++;
-    const u = makeUnit(id, player.id, type, t.col, t.row);
+    const u = makeUnit(id, player.id, type, t.col, t.row, 0, startingUnitMorale(state, player.id));
     u.movementLeft = UNIT_DEFS[type].movement;
     state.units.set(id, u);
     spawned++;

@@ -24,6 +24,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SET = join(root, "assets/purchased/Hex Rivers Coasts Seas 1.0.1/Hex Rivers Coasts Seas 1.0.1");
 const RIVERS = join(SET, "Rivers");
 const MOUTHS = join(SET, "River Mouths");
+const TILES = join(SET, "Tiles");
 const OUT = join(root, "packages/client/public/hex-terrain/rivers");
 
 /** asset 6-bit mask (LSB = value 1) -> our direction mask (bit d = connection toward dir d). */
@@ -38,7 +39,7 @@ function assetMaskToDirMask(assetMask) {
 if (existsSync(OUT)) rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
-const counts = { river: 0, lake: 0, mouth: 0 };
+const counts = { river: 0, lake: 0, mouth: 0, mountain: 0 };
 
 // Rivers folder holds both `hexRiver…` channels and `hexRiverLakeEnd…` ponds.
 const reLake = /^hexRiverLakeEnd([01]{6})-(\d+)\.png$/;
@@ -68,4 +69,15 @@ for (const file of readdirSync(MOUTHS)) {
   counts.mouth++;
 }
 
-console.log(`rivers: ${counts.river}, lake-ends: ${counts.lake}, mouths: ${counts.mouth} -> ${OUT}`);
+// Tiles folder holds combined mountain sprites with a river springing from one
+// edge (a mountain river source) → river_mountain_<dir>_<v>.png.
+const reMtn = /^hexMountain\d+-river([01]{6})-(\d+)\.png$/;
+for (const file of readdirSync(TILES)) {
+  const m = reMtn.exec(file);
+  if (!m) continue;
+  const dir = assetMaskToDirMask(parseInt(m[1], 2));
+  copyFileSync(join(TILES, file), join(OUT, `river_mountain_${dir}_${parseInt(m[2], 10)}.png`));
+  counts.mountain++;
+}
+
+console.log(`rivers: ${counts.river}, lake-ends: ${counts.lake}, mouths: ${counts.mouth}, mountain-sources: ${counts.mountain} -> ${OUT}`);

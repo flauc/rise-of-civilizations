@@ -72,6 +72,7 @@ interface MenuState {
     mapType: MapType;
     ais: AiConfig[];
     barbarians: BarbLevel;
+    naturalWonders: boolean;
     startingGold: StartingGold;
   };
   mp: {
@@ -84,6 +85,7 @@ interface MenuState {
     humanColors: string[];
     ais: AiConfig[];
     userId: string;
+    naturalWonders: boolean;
     startingGold: StartingGold;
   };
 }
@@ -144,6 +146,18 @@ function barbarianSelect(id: string, value: string): string {
   ];
   return `<select id="${id}" class="menu-in">${opts
     .map((o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${o.label}</option>`)
+    .join("")}</select>`;
+}
+
+/** A simple On/Off dropdown for a boolean game option. */
+function onOffSelect(id: string, value: boolean): string {
+  const opts = [
+    { value: "off", label: "Off" },
+    { value: "on", label: "On" },
+  ];
+  const current = value ? "on" : "off";
+  return `<select id="${id}" class="menu-in">${opts
+    .map((o) => `<option value="${o.value}"${o.value === current ? " selected" : ""}>${o.label}</option>`)
     .join("")}</select>`;
 }
 
@@ -360,6 +374,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       mapType: "continents",
       ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],
       barbarians: "normal",
+      naturalWonders: false,
       startingGold: "balanced",
     },
     mp: {
@@ -371,6 +386,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       humanColors: [PLAYER_COLORS[0]!, PLAYER_COLORS[1]!],
       ais: [],
       userId: "",
+      naturalWonders: false,
       startingGold: "balanced",
     },
   };
@@ -809,6 +825,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         <div class="menu-hint" id="sp-maptype-desc"></div>
         <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
+        <div class="menu-row"><span>Natural wonders</span>${onOffSelect("sp-wonders", state.sp.naturalWonders)}</div>
         <div class="menu-field">
           <span>Starting treasury</span>
           ${goldChips("sp-gold", state.sp.startingGold)}
@@ -958,6 +975,7 @@ export function createLobby(onStart: (session: Session) => void): void {
           aiCivIds: state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
           colors: [state.sp.color, ...state.sp.ais.map((a) => a.color)],
           barbarians: $select("#sp-barb").value as BarbLevel,
+          naturalWonders: $select("#sp-wonders").value === "on",
           startingGold: state.sp.startingGold,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
@@ -992,6 +1010,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         <div class="menu-row"><span>Map size</span>${mapSelect("mp-map", "medium")}</div>
         <div class="menu-row"><span>Human players</span>${capacitySelect("mp-capacity", state.mp.capacity)}</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("mp-barb", "normal")}</div>
+        <div class="menu-row"><span>Natural wonders</span>${onOffSelect("mp-wonders", state.mp.naturalWonders)}</div>
         <div class="menu-field">
           <span>Starting treasury</span>
           ${goldChips("mp-gold", state.mp.startingGold)}
@@ -1228,6 +1247,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         aiCivIds: state.mp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
         colors: [...state.mp.humanColors, ...state.mp.ais.map((a) => a.color)],
         barbarians: $select("#mp-barb").value as BarbLevel,
+        naturalWonders: $select("#mp-wonders").value === "on",
         startingGold: state.mp.startingGold,
       });
     });
