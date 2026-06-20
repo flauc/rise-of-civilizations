@@ -466,6 +466,21 @@ export function createUI(handlers: UIHandlers): UI {
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
         return;
       }
+      // When a dialog is open, Enter confirms its positive action instead of
+      // ending the turn. The action-confirmation modal (built in main.ts) sits
+      // above everything, so it wins; then the in-game popups in stacking order.
+      const confirmModal = document.getElementById("confirm-modal");
+      if (confirmModal && confirmModal.style.display !== "none") {
+        confirmModal.querySelector<HTMLButtonElement>("#cf-yes")?.click();
+        return;
+      }
+      if (villageDialog.classList.contains("show")) { villageOk.click(); return; }
+      if (turnUpdateDialog.classList.contains("show")) { turnUpdateClose.click(); return; }
+      if (goldDialog.classList.contains("show")) { goldClose.click(); return; }
+      if (logDialog.classList.contains("show")) { logClose.click(); return; }
+      // Blocking overlays with no single positive action: swallow Enter rather
+      // than ending the turn behind them.
+      if (settingsOpen || menuOpen || godModeOpen) return;
       endturn.click();
     }
   });
@@ -483,7 +498,9 @@ export function createUI(handlers: UIHandlers): UI {
   let lastViewerId = -1;
   let lastLogLength = 0;
   let logInitialized = false;
-  let villageQueue: LogEntry[] = [];
+  /** A queued immediate popup (village reward or natural-wonder discovery). */
+  type PopupItem = { title: string; html: string; art?: string };
+  let villageQueue: PopupItem[] = [];
   let turnUpdateQueue: TurnUpdateEvent[] = [];
   let turnUpdateIndex = 0;
   let turnUpdateOpen = false;
@@ -533,18 +550,45 @@ export function createUI(handlers: UIHandlers): UI {
     return `village-rewards/village_reward_${reward}.png`;
   };
 
-  const showVillageDialog = (msg: string, reward?: FeatureRewardType): void => {
-    villageMsg.textContent = msg;
-    if (reward) {
-      villageArt.src = rewardImagePath(reward);
+  const showVillageDialog = (item: PopupItem): void => {
+    villageMsg.innerHTML = item.html;
+    villageTitle.textContent = item.title;
+    if (item.art) {
+      villageArt.src = item.art;
       villageArt.classList.remove("hidden");
-      villageTitle.textContent = reward === "camp_cleared" ? "Camp Cleared" : "Village Discovered";
     } else {
       villageArt.classList.add("hidden");
-      villageTitle.textContent = "Village Discovered";
     }
     villageOverlay.classList.add("show");
     villageDialog.classList.add("show");
+  };
+
+  // Build a popup item from a village/camp reward log entry.
+  const villagePopupItem = (e: LogEntry): PopupItem => ({
+    title: e.reward === "camp_cleared" ? "Camp Cleared" : "Village Discovered",
+    html: escapeHtml(e.message),
+    art: e.reward ? rewardImagePath(e.reward) : undefined,
+  });
+
+  // Build a popup item from a natural-wonder discovery log entry.
+  const wonderPopupItem = (e: LogEntry): PopupItem => {
+    const w = e.wonder!;
+    if (w.allComplete) {
+      return {
+        title: "All Natural Wonders Discovered!",
+        html: escapeHtml(`You have discovered every natural wonder in the world and earned ${w.bonusText}!`),
+        art: "pillars/pillar_explore.png",
+      };
+    }
+    const lines = [escapeHtml(`You discovered ${w.wonderName} and claimed ${w.bonusText}.`)];
+    if (w.firstDiscovery && w.allBonusText) {
+      lines.push(escapeHtml(`Be the first civilization to discover every natural wonder to earn ${w.allBonusText}.`));
+    }
+    return {
+      title: "Natural Wonder Discovered",
+      html: lines.join("<br><br>"),
+      art: w.wonderId ? `natural-wonders/${w.wonderId}.png` : undefined,
+    };
   };
 
   const showBanner = (text: string): void => {
@@ -559,7 +603,7 @@ export function createUI(handlers: UIHandlers): UI {
     villageDialog.classList.remove("show");
     villageQueue.shift();
     if (villageQueue.length > 0) {
-      window.setTimeout(() => showVillageDialog(villageQueue[0]!.message, villageQueue[0]!.reward), 150);
+      window.setTimeout(() => showVillageDialog(villageQueue[0]!), 150);
     }
   };
 
@@ -1059,7 +1103,7 @@ export function createUI(handlers: UIHandlers): UI {
         !lastView?.cheatsEnabled
           ? ""
           : godModeEnabled
-            ? `<button class="btn" id="menu-god">⚡ God Mode</button>`
+            ? `<button class="btn" id="menu-god">God Mode</button>`
             : `<button class="btn" id="menu-enable-god">Enable God Mode</button>`;
       let html =
         `<div class="row" style="justify-content:space-between"><b>Game Menu</b>` +
@@ -1868,22 +1912,22 @@ export function createUI(handlers: UIHandlers): UI {
       .join("");
 
     let html =
-      `<div class="row" style="justify-content:space-between"><b>⚡ God Mode</b>` +
+      `<div class="row" style="justify-content:space-between"><b>God Mode</b>` +
       `<button class="btn" id="god-close">✕</button></div>` +
       `<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">` +
-      `<button class="btn" data-cheat="unlockTechs">🔓 Unlock All Techs</button>` +
-      `<button class="btn" data-cheat="completeWorks">⏩ Complete All Works</button>` +
-      `<button class="btn" data-cheat="healUnits">❤️ Heal All Units</button>` +
-      `<button class="btn" data-cheat="revealMap">👁 Reveal Map</button>` +
-      `<button class="btn" data-cheat="addGold" data-amount="100">🪙 +100 Gold</button>`;
+      `<button class="btn" data-cheat="unlockTechs">Unlock All Techs</button>` +
+      `<button class="btn" data-cheat="completeWorks">Complete All Works</button>` +
+      `<button class="btn" data-cheat="healUnits">Heal All Units</button>` +
+      `<button class="btn" data-cheat="revealMap">Reveal Map</button>` +
+      `<button class="btn" data-cheat="addGold" data-amount="100">+100 Gold</button>`;
 
     if (tileOk) {
       html +=
         `<div class="csub">Selected Tile (${escapeHtml(TERRAIN_NAMES[tile.terrain])})</div>` +
-        `<button class="btn" data-cheat="buildRoad" data-level="1">🛤️ Build Dirt Road</button>` +
-        `<button class="btn" data-cheat="buildRoad" data-level="2">🛤️ Build Paved Road</button>` +
-        `<button class="btn" data-cheat="buildRoad" data-level="3">🛤️ Build Imperial Road</button>` +
-        `<button class="btn" data-cheat="foundCity">🏙️ Found City</button>` +
+        `<button class="btn" data-cheat="buildRoad" data-level="1">Build Dirt Road</button>` +
+        `<button class="btn" data-cheat="buildRoad" data-level="2">Build Paved Road</button>` +
+        `<button class="btn" data-cheat="buildRoad" data-level="3">Build Imperial Road</button>` +
+        `<button class="btn" data-cheat="foundCity">Found City</button>` +
         `<div style="display:flex;gap:6px;align-items:center;margin-top:4px">` +
         `<select id="cheat-unit" class="lobby-in" style="flex:1">${unitOptions}</select>` +
         `<button class="btn" data-cheat="spawnUnit">Spawn Unit</button>` +
@@ -2179,14 +2223,17 @@ export function createUI(handlers: UIHandlers): UI {
         logInitialized = true;
       } else if (view.state.log.length > lastLogLength) {
         const newEntries = view.state.log.slice(lastLogLength);
-        const villageEntries = newEntries.filter(
-          (m) => /village|trap|ambushed|barbarian camp/i.test(m.message) && m.actorId === view.viewerId,
-        );
-        if (villageEntries.length > 0) {
+        const items: PopupItem[] = [];
+        for (const m of newEntries) {
+          if (m.actorId !== view.viewerId) continue;
+          if (m.wonder) items.push(wonderPopupItem(m));
+          else if (/village|trap|ambushed|barbarian camp/i.test(m.message)) items.push(villagePopupItem(m));
+        }
+        if (items.length > 0) {
           const wasEmpty = villageQueue.length === 0;
-          villageQueue.push(...villageEntries);
+          villageQueue.push(...items);
           if (wasEmpty && !villageDialog.classList.contains("show")) {
-            showVillageDialog(villageQueue[0]!.message, villageQueue[0]!.reward);
+            showVillageDialog(villageQueue[0]!);
           }
         }
         lastLogLength = view.state.log.length;

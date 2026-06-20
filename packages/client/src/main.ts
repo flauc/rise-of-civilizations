@@ -37,6 +37,7 @@ import { attachInput } from "./input";
 import { createUI, type CombatOdds, type TileTip } from "./ui";
 import { createLobby } from "./lobby-ui";
 import { loadTerrainAtlas } from "./terrain-assets";
+import { loadCoastAtlas } from "./coast-assets";
 import { loadUnitAtlas } from "./unit-assets";
 import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
@@ -560,6 +561,9 @@ function startGame(session: Session): void {
   const terrainAtlas = loadTerrainAtlas(() => {
     needsRedraw = true;
   });
+  const coastAtlas = loadCoastAtlas(() => {
+    needsRedraw = true;
+  });
   const unitAtlas = loadUnitAtlas(() => {
     needsRedraw = true;
   });
@@ -594,8 +598,10 @@ function startGame(session: Session): void {
         cssHeight,
         fog: { visible, explored },
         terrainAtlas,
+        coastAtlas,
         improvementAtlas,
         resourceAtlas,
+        naturalWonderAtlas,
       });
       const selCity = selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null;
       drawOverlay(ctx!, camera, st(), {
@@ -613,7 +619,6 @@ function startGame(session: Session): void {
         unitAtlas,
         cityAtlas,
         featureAtlas,
-        naturalWonderAtlas,
       });
       ui.render({
         state: st(),

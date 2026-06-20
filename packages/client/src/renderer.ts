@@ -5,6 +5,7 @@ import {
   axialToPixel,
   getTile,
   hashSeed,
+  isWater,
   offsetToAxial,
   pixelToAxial,
   type GameMap,
@@ -15,8 +16,10 @@ import { Camera, type Bounds } from "./camera";
 import { TERRAIN_COLORS, HEX_STROKE, HEX_HOVER_STROKE } from "./palette";
 import { isImageReady, type TerrainAtlas } from "./terrain-assets";
 import { improvementFrameFor, type ImprovementAtlas } from "./improvement-assets";
+import { coastFrameFor, type CoastAtlas } from "./coast-assets";
 import { RESOURCE_DEFS, resourceActive, type GameState, type ResourceId } from "@roc/sim";
 import { type ResourceAtlas } from "./resource-assets";
+import { naturalWonderTileImage, type NaturalWonderAtlas } from "./natural-wonder-assets";
 
 // Hex size (center-to-corner) in world units at zoom 1.
 export const BASE_SIZE = 26;
@@ -222,8 +225,24 @@ export interface RenderOptions {
   hovered?: Offset | undefined;
   fog?: FogState | undefined;
   terrainAtlas?: TerrainAtlas | undefined;
+  coastAtlas?: CoastAtlas | undefined;
   improvementAtlas?: ImprovementAtlas | undefined;
   resourceAtlas?: ResourceAtlas | undefined;
+  naturalWonderAtlas?: NaturalWonderAtlas | undefined;
+}
+
+/** 6-bit land-neighbour mask for a water tile: bit `d` set when the neighbour in
+ *  hex direction `d` is land. Used to pick the matching coast shoreline overlay. */
+function landNeighborMask(map: GameMap, col: number, row: number): number {
+  const here = offsetToAxial({ col, row });
+  let mask = 0;
+  for (let d = 0; d < 6; d++) {
+    const nb = axialToOffset(axialNeighbor(here, d));
+    const t = getTile(map, nb.col, nb.row);
+    // Off-map edges read as water so we don't paint a shoreline against nothing.
+    if (t && !isWater(t.terrain)) mask |= 1 << d;
+  }
+  return mask;
 }
 
 const UNEXPLORED_FILL = "#0a1624";
@@ -420,10 +439,15 @@ export function drawScene(
       continue; // hide terrain entirely
     }
     const variants = opts.terrainAtlas?.images[t.terrain];
-    const img =
+    let img =
       variants && variants.length > 0
         ? variants[hashSeed(`${t.col},${t.row},${t.terrain}`) % variants.length]
         : undefined;
+    // A natural wonder replaces the terrain art with its own full-tile sprite.
+    if (t.naturalWonder) {
+      const wonderImg = naturalWonderTileImage(opts.naturalWonderAtlas, t.naturalWonder);
+      if (wonderImg) img = wonderImg;
+    }
     if (img && isImageReady(img)) {
       // The sprite is a 256x384 image whose bottom 256x256 is the square hex
       // footprint and whose top 128px is transparent overhang. Map the sprite
@@ -439,6 +463,20 @@ export function drawScene(
       ctx.fillStyle = TERRAIN_COLORS[t.terrain];
       ctx.fill();
     }
+
+    // Shoreline overlay: water tiles that border land get a painted coast drawn
+    // along the land-facing edges (drawn over the base water, under the fog).
+    if (isWater(t.terrain)) {
+      const landMask = landNeighborMask(map, t.col, t.row);
+      const coastImg = coastFrameFor(opts.coastAtlas, landMask, t.col, t.row);
+      if (coastImg && isImageReady(coastImg)) {
+        const scale = footprint / coastImg.naturalWidth;
+        const drawW = coastImg.naturalWidth * scale; // == footprint
+        const drawH = coastImg.naturalHeight * scale;
+        ctx.drawImage(coastImg, sx - drawW / 2, sy + footprint / 2 - drawH, drawW, drawH);
+      }
+    }
+
     if (!visible) {
       ctx.fillStyle = FOG_OVERLAY;
       ctx.fill();

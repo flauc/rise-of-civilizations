@@ -94,7 +94,7 @@ function attackStrength(
   if (!ranged && has(unit, "drill") && isRough(targetTerrain)) s += 3;
   if (ranged && has(unit, "accuracy") && isOpen(targetTerrain)) s += 3;
   if (ranged && has(unit, "barrage") && isRough(targetTerrain)) s += 3;
-  if (has(unit, "woodland_warrior") && (targetTerrain === "forest" || targetTerrain === "jungle")) s += 3;
+  if (has(unit, "woodland_warrior") && (targetTerrain === "forest" || targetTerrain === "woods" || targetTerrain === "jungle")) s += 3;
   if (has(unit, "guerrilla") && isRough(targetTerrain)) s += 3;
   if (has(unit, "amphibious") && (targetTerrain === "coast" || targetTerrain === "lake")) s += 3;
 

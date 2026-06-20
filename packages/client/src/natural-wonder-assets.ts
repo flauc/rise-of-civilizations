@@ -11,8 +11,10 @@ function isReady(img: HTMLImageElement): boolean {
   return img.complete && img.naturalWidth > 0;
 }
 
-/** Starts loading every natural-wonder sprite (public/natural-wonders/<id>.png).
- *  Missing art is fine — the overlay falls back to a drawn marker. */
+/** Starts loading every natural-wonder full-tile sprite
+ *  (public/natural-wonders/<id>.png). Each is a 256×384 hex tile, like terrain,
+ *  drawn by the renderer in place of the underlying terrain. Missing art is fine
+ *  — the tile then falls back to its terrain and a name label. */
 export function loadNaturalWonderAtlas(onLoad?: () => void): NaturalWonderAtlas {
   const images: Record<string, HTMLImageElement | undefined> = {};
   let remaining = NATURAL_WONDER_IDS.length;
@@ -32,8 +34,8 @@ export function loadNaturalWonderAtlas(onLoad?: () => void): NaturalWonderAtlas 
   return atlas;
 }
 
-/** The loaded sprite for a wonder id, or undefined if it isn't ready. */
-export function naturalWonderImage(
+/** The loaded full-tile sprite for a wonder id, or undefined if not ready. */
+export function naturalWonderTileImage(
   atlas: NaturalWonderAtlas | undefined,
   id: string,
 ): HTMLImageElement | undefined {

@@ -81,7 +81,7 @@ function isFreshWaterTile(state: GameState, col: number, row: number): boolean {
 /** True if the tile is forest or jungle. */
 function isForestTile(state: GameState, col: number, row: number): boolean {
   const tile = getTile(state.map, col, row);
-  return !!tile && (tile.terrain === "forest" || tile.terrain === "jungle");
+  return !!tile && (tile.terrain === "forest" || tile.terrain === "woods" || tile.terrain === "jungle");
 }
 
 /** True if the tile is a hill or mesa. */

@@ -19,6 +19,7 @@ const TERRAIN_IMAGE_NAMES: Record<TerrainType, string> = {
   tundra: "tundra",
   snow: "snow",
   forest: "forest",
+  woods: "woods",
   jungle: "jungle",
   hills: "hills",
   mountains: "mountains",
@@ -26,9 +27,9 @@ const TERRAIN_IMAGE_NAMES: Record<TerrainType, string> = {
   volcano: "volcano",
 };
 
-// The generator can output up to this many variants per tile:
-//   forest.png, forest_1.png, forest_2.png, forest_3.png, forest_4.png
-const MAX_VARIANTS = 5;
+// Up to this many painted variations per terrain:
+//   forest.png, forest_1.png, … forest_7.png
+const MAX_VARIANTS = 8;
 
 function imageUrl(name: string): string {
   // Vite replaces import.meta.env.BASE_URL with the configured base path.
@@ -67,6 +68,7 @@ export function loadTerrainAtlas(onLoad?: () => void): TerrainAtlas {
     tundra: [],
     snow: [],
     forest: [],
+    woods: [],
     jungle: [],
     hills: [],
     mountains: [],

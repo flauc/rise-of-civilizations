@@ -27,10 +27,11 @@ function classifyLand(
   if (elevation > 0.82) return "mountains";
   if (elevation > 0.7) return "hills";
   if (equatorness < 0.18) return "snow";
-  if (equatorness < 0.32) return moisture > 0.5 ? "forest" : "tundra";
+  // Wetter/denser stands become true forest (+science); lighter stands are woods.
+  if (equatorness < 0.32) return moisture > 0.5 ? (moisture > 0.7 ? "forest" : "woods") : "tundra";
   if (equatorness > 0.78) return moisture > 0.45 ? "jungle" : "desert";
   if (moisture < 0.32) return "desert";
-  if (moisture > 0.62) return "forest";
+  if (moisture > 0.62) return moisture > 0.8 ? "forest" : "woods";
   return equatorness > 0.55 ? "plains" : "grassland";
 }
 
@@ -82,8 +83,61 @@ export function generateMap(opts: WorldGenOptions): GameMap {
   }
 
   const map: GameMap = { cols, rows, tiles };
+  markLakes(map);
   markCoasts(map);
   return map;
+}
+
+/** Odd-r offset neighbours of a tile, clamped to the map. */
+function waterNeighbors(map: GameMap, col: number, row: number): [number, number][] {
+  const odd = row & 1;
+  const dirs = odd
+    ? [[1, 0], [1, -1], [0, -1], [-1, 0], [0, 1], [1, 1]]
+    : [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]];
+  const out: [number, number][] = [];
+  for (const [dc, dr] of dirs) {
+    const nc = col + dc!;
+    const nr = row + dr!;
+    if (nc >= 0 && nr >= 0 && nc < map.cols && nr < map.rows) out.push([nc, nr]);
+  }
+  return out;
+}
+
+/**
+ * Turn enclosed inland bodies of water into lakes. Flood-fills each connected
+ * ocean region; a region that never touches the map edge is landlocked, so
+ * (unless it's a large inland sea) it becomes a lake. The open sea touches the
+ * border and stays ocean.
+ */
+function markLakes(map: GameMap): void {
+  const { cols, rows, tiles } = map;
+  const lakeMax = Math.max(12, Math.round(cols * rows * 0.03));
+  const seen = new Array<boolean>(cols * rows).fill(false);
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const start = row * cols + col;
+      if (seen[start] || tiles[start]!.terrain !== "ocean") continue;
+      const region: number[] = [];
+      let touchesEdge = false;
+      const stack: [number, number][] = [[col, row]];
+      seen[start] = true;
+      while (stack.length) {
+        const [c, r] = stack.pop()!;
+        region.push(r * cols + c);
+        if (c === 0 || r === 0 || c === cols - 1 || r === rows - 1) touchesEdge = true;
+        for (const [nc, nr] of waterNeighbors(map, c, r)) {
+          const ni = nr * cols + nc;
+          if (!seen[ni] && tiles[ni]!.terrain === "ocean") {
+            seen[ni] = true;
+            stack.push([nc, nr]);
+          }
+        }
+      }
+      if (!touchesEdge && region.length <= lakeMax) {
+        for (const i of region) tiles[i]!.terrain = "lake";
+      }
+    }
+  }
 }
 
 /** Turn ocean tiles that border land into coast (for nicer shorelines). */

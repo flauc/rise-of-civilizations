@@ -5,7 +5,6 @@ import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
 import { barbCampFrameFor, villageFrameFor, type FeatureAtlas } from "./feature-assets";
-import { naturalWonderImage, type NaturalWonderAtlas } from "./natural-wonder-assets";
 import { getNaturalWonder } from "@roc/data";
 
 export interface OverlayState {
@@ -25,7 +24,6 @@ export interface OverlayState {
   unitAtlas?: UnitAtlas;
   cityAtlas?: CityAtlas;
   featureAtlas?: FeatureAtlas;
-  naturalWonderAtlas?: NaturalWonderAtlas;
 }
 
 /** "#rrggbb" -> "rgba(r,g,b,a)". */
@@ -291,39 +289,14 @@ export function drawOverlay(
     }
   }
 
-  // ---- natural wonders ----
-  // Each wonder tile shows its sprite (or a gold marker fallback); only the
-  // anchor tile (lexicographically first) carries the name label to avoid
-  // repeating it across a multi-tile wonder.
-  const wonderAnchor = new Map<string, string>();
-  for (const t of state.map.tiles) {
-    if (!t.naturalWonder) continue;
-    const key = `${t.col},${t.row}`;
-    const cur = wonderAnchor.get(t.naturalWonder);
-    if (cur === undefined || key < cur) wonderAnchor.set(t.naturalWonder, key);
-  }
+  // ---- natural wonders: name label (the full-tile art is drawn by the renderer) ----
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  for (const t of state.map.tiles) {
-    if (!t.naturalWonder) continue;
-    const key = `${t.col},${t.row}`;
-    if (!o.explored.has(key)) continue;
-    const s = screen(t.col, t.row);
-    const img = naturalWonderImage(o.naturalWonderAtlas, t.naturalWonder);
-    if (img) {
-      const wSize = size * 1.6;
-      ctx.drawImage(img, s.x - wSize / 2, s.y - wSize * 0.62, wSize, wSize);
-    } else {
-      // Fallback: a translucent gold hex + a sparkle so it always reads as special.
-      ctx.fillStyle = "rgba(224,196,90,0.28)";
-      hexPath(ctx, s.x, s.y, size * 0.92);
-      ctx.fill();
-      ctx.fillStyle = "#f0d77a";
-      ctx.font = `bold ${Math.round(size * 0.5)}px system-ui, sans-serif`;
-      ctx.fillText("✦", s.x, s.y + 1);
-    }
-
-    if (size > 13 && wonderAnchor.get(t.naturalWonder) === key) {
+  if (size > 13) {
+    for (const t of state.map.tiles) {
+      if (!t.naturalWonder) continue;
+      if (!o.explored.has(`${t.col},${t.row}`)) continue;
+      const s = screen(t.col, t.row);
       const label = getNaturalWonder(t.naturalWonder)?.name ?? "Natural Wonder";
       const fontSize = Math.max(8, Math.round(size * 0.24));
       ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
@@ -337,8 +310,6 @@ export function drawOverlay(
       ctx.roundRect(s.x - labelW / 2, labelY, labelW, labelH, labelH / 2);
       ctx.fill();
       ctx.fillStyle = "#f0d77a";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
       ctx.fillText(label, s.x, labelY + labelH / 2);
     }
   }

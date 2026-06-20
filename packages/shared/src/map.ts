@@ -12,6 +12,7 @@ export type TerrainType =
   | "tundra"
   | "snow"
   | "forest"
+  | "woods"
   | "jungle"
   | "hills"
   | "mountains"
@@ -28,6 +29,7 @@ export const TERRAIN_TYPES: readonly TerrainType[] = [
   "tundra",
   "snow",
   "forest",
+  "woods",
   "jungle",
   "hills",
   "mountains",

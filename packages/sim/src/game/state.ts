@@ -321,6 +321,22 @@ export interface TurnUpdateEvent {
   payload?: Record<string, unknown>;
 }
 
+/** Rich data attached to a natural-wonder discovery log entry, driving the
+ *  immediate discovery dialog shown to the civ that found it. */
+export interface WonderDiscoveryInfo {
+  /** Discovered wonder id (omitted for the "all wonders" completion event). */
+  wonderId?: string;
+  wonderName: string;
+  /** Human-readable reward text, e.g. "+90 science, +40 faith". */
+  bonusText: string;
+  /** True if this is the discovering civ's first natural wonder. */
+  firstDiscovery?: boolean;
+  /** Grand reward text shown to first-time discoverers as an incentive. */
+  allBonusText?: string;
+  /** True when this event marks the discoverer completing EVERY wonder. */
+  allComplete?: boolean;
+}
+
 /** One line in the shared turn log, with metadata for per-player filtering. */
 export interface LogEntry {
   message: string;
@@ -336,6 +352,8 @@ export interface LogEntry {
   world?: boolean;
   /** Feature reward category, used by the client to show matching artwork. */
   reward?: FeatureRewardType;
+  /** Natural-wonder discovery payload (drives the discovery dialog). */
+  wonder?: WonderDiscoveryInfo;
 }
 
 export interface GameState {
@@ -456,6 +474,7 @@ export function log(
     tile?: { col: number; row: number };
     world?: boolean;
     reward?: FeatureRewardType;
+    wonder?: WonderDiscoveryInfo;
   } = {},
 ): void {
   state.log.push({ message, turn: state.turn, ...opts });

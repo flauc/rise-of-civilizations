@@ -7,3 +7,4 @@ dist/
 tools/geodata-poc/*.hexmap.json
 Hex Samples
 assets/generated/
+assets/purchased/

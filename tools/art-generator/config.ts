@@ -612,12 +612,15 @@ export const BUILDING_SUBSET: AssetEntry[] = [
   { id: "temple", name: "Temple", description: "an ancient temple with columns", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
 ];
 
+// Each natural wonder is ONE full hex map TILE (256×384, same format as terrain),
+// generated and post-processed exactly like a terrain tile so it tessellates and
+// the renderer can draw it in place of the underlying terrain.
 export const NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.map((w) => ({
   id: w.id,
   name: w.name,
   description: w.desc,
-  aspectRatio: "1:1",
-  size: { width: 256, height: 256 },
+  aspectRatio: "2:3",
+  size: { width: 256, height: 384 },
   category: "natural_wonder" as const,
   referenceTile: DEFAULT_REFERENCE_TILE,
 }));
@@ -725,7 +728,7 @@ export function promptFor(entry: AssetEntry): string {
     return `Create a small standalone map improvement icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated improvement on a clean solid white background. Keep it compact so it reads as a tile overlay. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The improvement should float cleanly on the white background with nothing else in the frame.`;
   }
   if (entry.category === "natural_wonder") {
-    return `Create a small standalone natural-wonder illustration for an ancient turn-based strategy game, to be layered on top of a hex map tile. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the wonder from a near-top-down or three-quarter view, centered, as an isolated landmark on a fully transparent background so the underlying terrain tile shows around it. Fill most of the frame. No text, no UI, no border, no ground plane beyond the landmark itself, no surrounding terrain, no grass, no base platform, and no cast shadow. The wonder should sit cleanly on the transparent background with nothing else in the frame.`;
+    return `Create a flat 2D hand-painted hexagonal strategy game map tile depicting the natural wonder "${entry.name}". ${entry.description}. The ENTIRE hex tile is filled by this one natural wonder as its terrain — the canyon, lake, reef, dunes, falls, forest or peak fills the whole hex, painted top-down/slightly-angled and readable at small sizes. Match the visual style of the attached reference tile: slightly stylized, saturated but natural colors, framed inside a vertical 2:3 pointy-top hex. IMPORTANT: do not include roads, paths, houses, huts, fences, farms, units, text, labels, or any man-made structures. Render as a flat 2D illustration with no 3D perspective, no realistic depth, and no camera angle shifts. Keep the same overall composition, camera angle, and hex footprint as the reference; the artwork must be fully self-contained and look correct in isolation, with nothing continuing off the tile edges. Preserve the soft shadow along the bottom edges of the hex, similar to the reference tile.`;
   }
   if (entry.category === "ui") {
     return `Create a hand-painted game UI button for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render the button horizontally, centered, filling most of the frame, on a fully transparent background. No text, no letters, no icons, no UI labels, no border frame beyond the button itself, and no cast shadow. The button should float cleanly with nothing else in the frame.`;

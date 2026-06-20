@@ -20,14 +20,14 @@ function foundCapital(state: ReturnType<typeof createGame>) {
 }
 
 describe("natural wonders", () => {
-  it("places several multi-tile natural wonders on the map", () => {
+  it("places several single-tile natural wonders on the map", () => {
     const state = createGame({ seed: "nw-map", cols: 48, rows: 32, barbarians: false });
     expect(state.naturalWonderIds.length).toBeGreaterThan(5);
-    // Every placed wonder covers exactly `size` tiles.
+    // Every placed wonder occupies exactly one tile and is a known def.
     for (const id of state.naturalWonderIds) {
-      const def = getNaturalWonder(id)!;
+      expect(getNaturalWonder(id)).toBeDefined();
       const tiles = state.map.tiles.filter((t) => t.naturalWonder === id);
-      expect(tiles.length).toBe(def.size);
+      expect(tiles.length).toBe(1);
     }
   });
 
@@ -90,6 +90,12 @@ describe("natural wonders", () => {
     expect(player.faith).toBe(faithBefore + (def.discoveryBonus.faith ?? 0));
     const entry = state.log.find((l) => l.message.includes("Mount Everest"));
     expect(entry?.world).toBe(true);
+    // The discovery carries rich dialog data: wonder name, bonus text, and (since
+    // it's this civ's first wonder) the grand "all wonders" incentive text.
+    expect(entry?.wonder?.wonderId).toBe("mount_everest");
+    expect(entry?.wonder?.bonusText).toContain("science");
+    expect(entry?.wonder?.firstDiscovery).toBe(true);
+    expect(entry?.wonder?.allBonusText).toBeTruthy();
 
     // A second civ sighting it later does NOT re-award the bonus.
     const p2 = state.players[1]!;

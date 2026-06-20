@@ -12,6 +12,7 @@ export const TERRAIN_COLORS: Record<TerrainType, string> = {
   tundra: "#8a9a8c",
   snow: "#e7eef2",
   forest: "#3f6b3a",
+  woods: "#5c7d3f",
   jungle: "#356b3f",
   hills: "#7a8a4e",
   mountains: "#6d6f76",

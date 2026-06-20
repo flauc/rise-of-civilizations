@@ -755,7 +755,8 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
         continue;
       }
 
-      if (entry.category === "tile" || entry.category === "road" || entry.category === "river") {
+      if (entry.category === "tile" || entry.category === "road" || entry.category === "river" || entry.category === "natural_wonder") {
+        // Natural wonders are full hex tiles — same hex-masked tile pipeline.
         await postProcessTile(rawPath, finalPath, entry);
       } else if (entry.category === "leader" || entry.category === "age" || entry.category === "pillar" || entry.category === "hero" || entry.category === "turn_update") {
         await postProcessPortrait(rawPath, finalPath, entry);

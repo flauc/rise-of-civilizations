@@ -62,7 +62,7 @@ export function isCoastalLand(state: GameState, col: number, row: number): boole
 /** True if the tile is forest or jungle. */
 export function isForestTile(state: GameState, col: number, row: number): boolean {
   const tile = getTile(state.map, col, row);
-  return !!tile && (tile.terrain === "forest" || tile.terrain === "jungle");
+  return !!tile && (tile.terrain === "forest" || tile.terrain === "woods" || tile.terrain === "jungle");
 }
 
 /** Effective movement cost to enter a tile for a specific unit. */
@@ -80,13 +80,13 @@ export function unitMoveCost(state: GameState, unit: Unit, terrain: TerrainType,
   const eff = playerEffects(state, unit.ownerId);
   if (road && (unit.promotions.includes("pathfinder") || unit.promotions.includes("commando"))) return 0;
   if (terrain === "hills" && unit.promotions.includes("pathfinder")) return 1;
-  if ((terrain === "forest" || terrain === "jungle") &&
+  if ((terrain === "forest" || terrain === "woods" || terrain === "jungle") &&
     (unit.promotions.includes("woodland_warrior") || unit.promotions.includes("trailblazer") || unit.promotions.includes("guerrilla"))) {
     return 1;
   }
   if (road) return 1;
   // Leader-ability movement overrides.
-  if (eff.ignoreRoughTerrain && (terrain === "forest" || terrain === "jungle" || terrain === "hills" || terrain === "mesa")) return 1;
+  if (eff.ignoreRoughTerrain && (terrain === "forest" || terrain === "woods" || terrain === "jungle" || terrain === "hills" || terrain === "mesa")) return 1;
   if (eff.ignoreMountainMovement && terrain === "mountains") return 1;
   return moveCost(terrain);
 }
