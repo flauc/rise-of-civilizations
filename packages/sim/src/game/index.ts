@@ -23,6 +23,7 @@ export * from "./specialists";
 export * from "./works";
 export * from "./features";
 export * from "./resources";
+export * from "./natural-wonders";
 export * from "./raiding";
 export * from "./ai";
 export * from "./fortifications";

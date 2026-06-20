@@ -1665,6 +1665,63 @@ const LEADER_QUOTES: Record<string, string> = {
   polynesia: "Across the wide ocean we carried our gods, our seed, and our name.",
   maori: "I have returned from the land of the long white cloud.",
   hawaii: "The life of the land is perpetuated in righteousness.",
+
+  // Expansion civilizations
+  arabia: "Seek knowledge even unto China; the scholar's pen outlasts the sword.",
+  israelites: "Wisdom is better than rubies, and a wise heart builds a kingdom.",
+  nabataeans: "We who hide water in the desert need fear no army.",
+  saba: "From Marib I sent frankincense to every throne under heaven.",
+  mitanni: "Let the horses of Hurri thunder, and kings will sue for peace.",
+  urartu: "Upon the rock of Van I carved my name where no enemy may reach.",
+  greco_bactria: "A thousand cities of Hellas bloom between the Oxus and the Indus.",
+  sogdia: "The road of silk is our river; every caravan a tribute to Samarkand.",
+  khwarazm: "From the Caspian to the Indus, the Shah's word is law.",
+  numidia: "Africa belongs to those who can ride it from dawn to dusk.",
+  fatimids: "In Cairo I raise a city of learning to rival the stars.",
+  ayyubids: "I make war on armies, not on the helpless; let mercy be my conquest.",
+  mamluks: "Slaves we were born, but lions we became; the Mongol tide breaks on us.",
+  almoravids: "Veiled in the desert, we carry the faith on the points of our spears.",
+  swahili: "The monsoon is our highway; gold and porcelain meet at Kilwa.",
+  benin: "Within these walls of earth, bronze remembers what men forget.",
+  kongo: "I have given my kingdom a new faith and a written name.",
+  bulgaria: "Let the emperor's pride fill my cup; the Danube is ours.",
+  serbia: "By this code I bind tsar and peasant alike to justice.",
+  bohemia: "Prague shall be the golden crown upon the brow of the empire.",
+  swiss: "Free men need no king; our pikes are our charter.",
+  aragon: "From Valencia to the isles, the sea answers to Aragon.",
+  scotland: "Now's the day, and now's the hour — for freedom we stand.",
+  gaelic_ireland: "High King of Éire — let the round towers ring from sea to sea.",
+  normans: "Greek, Arab, and Latin serve one crown beneath the Sicilian sun.",
+  visigoths: "From Toledo I rule both the sword and the law of the Goths.",
+  novgorod: "Whoever comes to us with the sword shall perish by the sword.",
+  illyrians: "The sea is free to the Illyrians; let Rome learn to swim.",
+  lusitani: "Strike from the hills and vanish; Rome shall tire before we do.",
+  arevaci: "Numantia does not surrender; we burn before we bow.",
+  thracians: "From the Haemus I summon a host no Greek can number.",
+  dacians: "Better to die free on Sarmizegetusa than live a slave to Rome.",
+  sami: "The reindeer leads, the drum speaks, and the long night is our home.",
+  corinth: "Where two seas meet, Corinth takes its toll.",
+  thebes: "Strike the strongest wing first, and Sparta's wall will break.",
+  eretria: "Our ships carry the alphabet farther than any sword.",
+  crete: "No wall stands long against the archers of Crete.",
+  indus_valley: "We build by the level and the line; the city itself is our temple.",
+  zhou_china: "Heaven has withdrawn its mandate from Shang and given it to Zhou.",
+  delhi_sultanate: "I set the price of bread and the price of kings alike.",
+  mughals: "Let all faiths sit at one table; the realm is wide enough for every prayer.",
+  vijayanagara: "A crowned king should rule with an eye to all his people's welfare.",
+  champa: "The sea brings tribute; let Angkor fear the Cham sail.",
+  sinhala: "Let not one drop of rain reach the sea unused.",
+  khitan: "On horseback we conquer; from the city we rule.",
+  jurchen: "As iron breaks the pot, so the Jurchen break the Liao.",
+  khazars: "Many roads, many faiths, one toll — all pass the Khazar gate.",
+  avars: "Give me your gold, emperor, or give me your provinces.",
+  golden_horde: "From Sarai the princes of the Rus come to kneel for their patents.",
+  chimu: "In Chan Chan we weave walls of adobe and rivers of gold.",
+  moche: "The huaca rises to the sun; in its shadow the lords are gods.",
+  tiwanaku: "At the roof of the world, the raised fields feed multitudes.",
+  tarascans: "Our copper turns back the Mexica; Michoacán bows to no eagle.",
+  taino: "In the areíto we sing the deeds of the caciques and the gods.",
+  tonga: "The ocean is no barrier but a road; its islands send their tribute.",
 };
 
 for (const civ of CIVILIZATIONS) {
@@ -2010,6 +2067,92 @@ export const WONDER_DEFS: WonderDef[] = [
 const WONDER_BY_ID = new Map(WONDER_DEFS.map((w) => [w.id, w]));
 export const getWonder = (id: string | undefined) => (id ? WONDER_BY_ID.get(id) : undefined);
 export const WONDER_IDS: string[] = WONDER_DEFS.map((w) => w.id);
+
+// ---- Natural Wonders -----------------------------------------------------
+// Awe-inspiring features of the natural world (Everest, the Grand Canyon, the
+// Great Barrier Reef…). Unlike the built world-wonders above, these are placed
+// on the map at world-gen, span 1–4 contiguous tiles, and reward the FIRST civ
+// to lay eyes on them. Worked by a citizen inside a civ's borders, each tile
+// also yields bonus output. The first civ to have sighted EVERY natural wonder
+// earns a grand one-time bonus (see ALL_NATURAL_WONDERS_BONUS).
+
+/** A one-time reward granted to a civilization (the first discoverer / completer). */
+export interface NaturalWonderBonus {
+  science?: number;
+  faith?: number;
+  gold?: number;
+  culture?: number;
+  /** Grant the recipient a free, already-available technology. */
+  freeTech?: boolean;
+}
+
+export interface NaturalWonderDef {
+  id: string;
+  name: string;
+  /** Short flavour line shown in the tile panel and discovery announcement. */
+  desc: string;
+  /** How many contiguous tiles the wonder spans (1–4). */
+  size: 1 | 2 | 3 | 4;
+  /** Terrains a wonder tile may occupy (used for placement and rendering). */
+  validTerrain: string[];
+  /** Per-turn bonus yields a citizen working a wonder tile adds to its city. */
+  tileYields: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
+  /** One-time reward to the first civ to sight this wonder. */
+  discoveryBonus: NaturalWonderBonus;
+}
+
+const NW = (d: NaturalWonderDef): NaturalWonderDef => d;
+
+export const NATURAL_WONDER_DEFS: NaturalWonderDef[] = [
+  // ---- single-tile peaks, lakes & landmarks -------------------------------
+  NW({ id: "mount_everest", name: "Mount Everest", desc: "The highest peak on Earth, roof of the world.", size: 1, validTerrain: ["mountains"], tileYields: { science: 2, faith: 1 }, discoveryBonus: { science: 60, faith: 30 } }),
+  NW({ id: "mount_kilimanjaro", name: "Mount Kilimanjaro", desc: "A snow-capped volcano towering over the savanna.", size: 1, validTerrain: ["mountains"], tileYields: { faith: 2, food: 1 }, discoveryBonus: { faith: 50, culture: 20 } }),
+  NW({ id: "mount_fuji", name: "Mount Fuji", desc: "A sacred, perfectly symmetrical volcanic cone.", size: 1, validTerrain: ["mountains", "volcano"], tileYields: { faith: 2, culture: 1 }, discoveryBonus: { faith: 50, culture: 30 } }),
+  NW({ id: "matterhorn", name: "Matterhorn", desc: "An iconic pyramidal Alpine peak on the Swiss-Italian border.", size: 1, validTerrain: ["mountains"], tileYields: { science: 2, culture: 1 }, discoveryBonus: { science: 40, culture: 30 } }),
+  NW({ id: "mount_vesuvius", name: "Mount Vesuvius", desc: "A restless volcano whose ash preserves whole cities.", size: 1, validTerrain: ["volcano", "mountains"], tileYields: { production: 2, science: 1 }, discoveryBonus: { science: 40, gold: 20 } }),
+  NW({ id: "table_mountain", name: "Table Mountain", desc: "A flat-topped massif guarding a great cape.", size: 1, validTerrain: ["mountains", "mesa"], tileYields: { culture: 1, gold: 1, science: 1 }, discoveryBonus: { culture: 40 } }),
+  NW({ id: "uluru", name: "Uluru", desc: "A vast red monolith sacred to its people.", size: 1, validTerrain: ["desert", "mesa"], tileYields: { faith: 2, culture: 1 }, discoveryBonus: { faith: 40, culture: 30 } }),
+  NW({ id: "mount_roraima", name: "Mount Roraima", desc: "A sheer-walled tabletop mountain wreathed in cloud.", size: 1, validTerrain: ["mesa", "mountains"], tileYields: { science: 2, food: 1 }, discoveryBonus: { science: 50 } }),
+  NW({ id: "eye_of_the_sahara", name: "Eye of the Sahara", desc: "A colossal bullseye of rock rings in the desert.", size: 1, validTerrain: ["desert"], tileYields: { science: 2, gold: 1 }, discoveryBonus: { science: 50, gold: 30 } }),
+  NW({ id: "dead_sea", name: "Dead Sea", desc: "The lowest, saltiest water on the planet.", size: 1, validTerrain: ["lake"], tileYields: { gold: 2, faith: 1 }, discoveryBonus: { gold: 60, faith: 20 } }),
+  NW({ id: "niagara_falls", name: "Niagara Falls", desc: "A thundering curtain of falling water.", size: 1, validTerrain: ["lake", "coast"], tileYields: { food: 2, gold: 1, culture: 1 }, discoveryBonus: { culture: 40, gold: 20 } }),
+  NW({ id: "cliffs_of_dover", name: "White Cliffs of Dover", desc: "Gleaming chalk cliffs facing the sea.", size: 1, validTerrain: ["coast", "hills"], tileYields: { gold: 2, culture: 1 }, discoveryBonus: { gold: 40, culture: 20 } }),
+  NW({ id: "giants_causeway", name: "Giant's Causeway", desc: "Interlocking basalt columns marching into the sea.", size: 1, validTerrain: ["coast", "hills"], tileYields: { science: 1, culture: 1, gold: 1 }, discoveryBonus: { science: 40, culture: 20 } }),
+  NW({ id: "pamukkale", name: "Pamukkale", desc: "Cascading white travertine terraces and hot springs.", size: 1, validTerrain: ["hills"], tileYields: { faith: 1, gold: 1, culture: 1 }, discoveryBonus: { faith: 30, culture: 30 } }),
+  NW({ id: "victoria_falls", name: "Victoria Falls", desc: "\"The Smoke That Thunders\" — a mile-wide cataract.", size: 1, validTerrain: ["jungle", "grassland"], tileYields: { food: 1, culture: 2 }, discoveryBonus: { culture: 50 } }),
+
+  // ---- two-tile ranges, lakes & reefs -------------------------------------
+  NW({ id: "grand_canyon", name: "Grand Canyon", desc: "A mile-deep gorge carved over eons.", size: 2, validTerrain: ["mesa", "desert"], tileYields: { science: 1, gold: 1 }, discoveryBonus: { science: 70, gold: 30 } }),
+  NW({ id: "galapagos_islands", name: "Galápagos Islands", desc: "Isolated isles teeming with singular life.", size: 2, validTerrain: ["coast"], tileYields: { science: 2, food: 1 }, discoveryBonus: { science: 80, freeTech: true } }),
+  NW({ id: "lake_baikal", name: "Lake Baikal", desc: "The deepest, oldest freshwater lake on Earth.", size: 2, validTerrain: ["lake"], tileYields: { food: 1, science: 1, gold: 1 }, discoveryBonus: { science: 60, gold: 20 } }),
+  NW({ id: "plitvice_lakes", name: "Plitvice Lakes", desc: "Terraced turquoise lakes linked by waterfalls.", size: 2, validTerrain: ["lake", "forest"], tileYields: { food: 1, culture: 1, gold: 1 }, discoveryBonus: { culture: 40, gold: 20 } }),
+  NW({ id: "moraine_lake", name: "Moraine Lake", desc: "Glacial meltwater of impossible blue beneath the peaks.", size: 2, validTerrain: ["mountains", "lake"], tileYields: { science: 1, culture: 1, gold: 1 }, discoveryBonus: { culture: 30, science: 30 } }),
+  NW({ id: "salar_de_uyuni", name: "Salar de Uyuni", desc: "The world's largest salt flat, a mirror to the sky.", size: 2, validTerrain: ["desert"], tileYields: { gold: 2, production: 1 }, discoveryBonus: { gold: 70 } }),
+  NW({ id: "zhangye_danxia", name: "Zhangye Danxia", desc: "Rainbow-banded sandstone ridges.", size: 2, validTerrain: ["mesa", "desert"], tileYields: { culture: 1, science: 1, gold: 1 }, discoveryBonus: { culture: 40, science: 30 } }),
+  NW({ id: "cappadocia", name: "Cappadocia", desc: "Fairy-chimney spires and hidden cave cities.", size: 2, validTerrain: ["mesa", "hills"], tileYields: { faith: 1, culture: 1, production: 1 }, discoveryBonus: { faith: 30, culture: 40 } }),
+  NW({ id: "yosemite", name: "Yosemite Valley", desc: "Sheer granite walls above ancient sequoias.", size: 2, validTerrain: ["mountains", "forest"], tileYields: { production: 1, culture: 1, science: 1 }, discoveryBonus: { culture: 40, science: 20 } }),
+  NW({ id: "zhangjiajie", name: "Zhangjiajie", desc: "A forest of towering quartzite pillars.", size: 2, validTerrain: ["mountains", "forest"], tileYields: { science: 1, culture: 1, food: 1 }, discoveryBonus: { science: 40, culture: 30 } }),
+  NW({ id: "iguazu_falls", name: "Iguazú Falls", desc: "A vast horseshoe of jungle waterfalls.", size: 2, validTerrain: ["jungle"], tileYields: { food: 1, gold: 1, culture: 1 }, discoveryBonus: { culture: 50, gold: 20 } }),
+  NW({ id: "pantanal", name: "Pantanal", desc: "The world's largest tropical wetland.", size: 2, validTerrain: ["grassland", "jungle"], tileYields: { food: 2, gold: 1 }, discoveryBonus: { gold: 40, science: 20 } }),
+
+  // ---- sprawling three- and four-tile wonders -----------------------------
+  NW({ id: "great_barrier_reef", name: "Great Barrier Reef", desc: "The largest living structure on Earth.", size: 3, validTerrain: ["coast"], tileYields: { food: 2, gold: 1, science: 1 }, discoveryBonus: { gold: 60, science: 40 } }),
+  NW({ id: "amazon_rainforest", name: "Amazon Rainforest", desc: "An immense, teeming green ocean of trees.", size: 4, validTerrain: ["jungle"], tileYields: { food: 1, production: 1, science: 1 }, discoveryBonus: { science: 80, freeTech: true } }),
+  NW({ id: "sahara_dunes", name: "Sahara", desc: "An endless sea of wind-sculpted dunes.", size: 4, validTerrain: ["desert"], tileYields: { gold: 1, faith: 1, production: 1 }, discoveryBonus: { gold: 80, faith: 30 } }),
+];
+
+const NATURAL_WONDER_BY_ID = new Map(NATURAL_WONDER_DEFS.map((w) => [w.id, w]));
+export const getNaturalWonder = (id: string | undefined): NaturalWonderDef | undefined =>
+  id ? NATURAL_WONDER_BY_ID.get(id) : undefined;
+export const NATURAL_WONDER_IDS: string[] = NATURAL_WONDER_DEFS.map((w) => w.id);
+
+/** Grand one-time reward to the first civ to have sighted EVERY natural wonder on the map. */
+export const ALL_NATURAL_WONDERS_BONUS: NaturalWonderBonus = {
+  science: 150,
+  culture: 120,
+  gold: 200,
+  faith: 100,
+};
 
 // ---- Specialist names ----------------------------------------------------
 // Craftsmen are named (best effort) after a real historical master of their

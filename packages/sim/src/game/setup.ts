@@ -9,6 +9,7 @@ import { updateExplored } from "./visibility";
 import { STARTING_TECHS, type UnitTypeId } from "./content";
 import { placeFeatures } from "./features";
 import { placeResources } from "./resources";
+import { placeNaturalWonders } from "./natural-wonders";
 import type { BarbarianActivity } from "./state";
 
 export interface NewGameOptions {
@@ -57,7 +58,7 @@ function startingGoldAmount(preset: "tight" | "balanced" | "generous" | undefine
  */
 export const PLAYER_COLORS = [
   "#e0533d", "#3d7fe0", "#49b85a", "#e0b53d", "#a05ad0", "#3dc8c8",
-  "#d060aa", "#e08a3d", "#5ad07a", "#7a5ad0", "#d07a5a", "#5a9ad0",
+  "#d060aa", "#e08a3d", "#5ad07a", "#7a5ad0", "#d07a5a", "#9fd11f",
   "#c83737", "#2f5fb0", "#2e8f46", "#b89020", "#7a3fb0", "#1f9a9a",
   "#b03f86", "#b86a1f", "#3fa05f", "#5a3fa0", "#a05a3f", "#3f6f9a",
 ];
@@ -272,6 +273,9 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     tradeRoutes: [],
     works: [],
     completedWonders: [],
+    naturalWonderIds: [],
+    discoveredWonders: {},
+    allNaturalWondersClaimedBy: undefined,
     relations: [],
     attitudes: [],
     reputation: {},
@@ -292,6 +296,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
 
   if (activity !== "none") spawnBarbarians(state, barbId, starts, activity);
   placeFeatures(state, starts, activity);
+  placeNaturalWonders(state, starts, seed);
   placeResources(state, starts, seed);
 
   for (const p of players) updateExplored(state, p.id);

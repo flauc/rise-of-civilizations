@@ -4,9 +4,10 @@ import { cityAt, log, makeUnit, unitAt, unitsOf } from "./state";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
+import { naturalWonderYields, naturalWonderCulture } from "./natural-wonders";
 import { expandTerritory } from "./territory";
 import { getWonder, type CivEffects } from "@roc/data";
-import { civEffectsOf, cityEffects, getCivic } from "./civs";
+import { civEffectsOf, cityEffects, getCivic, uniqueUnitForCiv } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
@@ -94,8 +95,11 @@ function tileWorkYields(state: GameState, col: number, row: number, eff: CivEffe
   const tile = getTile(state.map, col, row);
   if (!tile) return ZERO_YIELDS;
   const base = addYields(
-    addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement, tile.improvementLevel)),
-    resourceYields(tile),
+    addYields(
+      addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement, tile.improvementLevel)),
+      resourceYields(tile),
+    ),
+    naturalWonderYields(tile),
   );
   // Leader-ability tile bonuses.
   if (tile.improvement === "mine") {
@@ -167,6 +171,7 @@ export function getCityYields(state: GameState, city: City): CityYields {
     gold += y.gold;
     science += y.science;
     faith += y.faith;
+    culture += naturalWonderCulture(tile); // scenic wonders inspire culture
     if (tile.terrain === "desert") gold += desertGold;
   }
 
@@ -568,7 +573,8 @@ export function availableProduction(state: GameState, player: Player, city: City
     if (def.reqResource && resourceStock(player, def.reqResource.resource) < def.reqResource.count) continue;
     // Naval units can only be built in coastal cities.
     if ((def.cls === "naval_melee" || def.cls === "naval_ranged") && !coastal) continue;
-    out.push({ item: { kind: "unit", id: def.id }, name: def.name, cost: def.cost });
+    const uu = uniqueUnitForCiv(player.civId, def.id);
+    out.push({ item: { kind: "unit", id: def.id }, name: uu?.name ?? def.name, cost: def.cost });
   }
   for (const def of Object.values(BUILDING_DEFS)) {
     if (def.reqTech && !player.researched.has(def.reqTech)) continue;

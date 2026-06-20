@@ -60,6 +60,9 @@ export interface Tile {
   feature?: string;
   /** A natural resource on this tile (e.g. "iron", "bananas", "silk"). */
   resource?: string;
+  /** A natural wonder occupying this tile (e.g. "grand_canyon"); multi-tile
+   *  wonders set the same id on each tile they span. */
+  naturalWonder?: string;
 }
 
 export interface GameMap {

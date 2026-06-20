@@ -30,6 +30,7 @@ export interface TileView {
   ownerCityId?: number;
   feature?: string;
   resource?: string;
+  naturalWonder?: string;
 }
 
 export interface PlayerPublic {
@@ -72,6 +73,12 @@ export interface PlayerView {
   works: Work[];
   /** Wonders already completed in the world. */
   completedWonders: string[];
+  /** Natural-wonder ids placed on this map. */
+  naturalWonderIds: string[];
+  /** First civ to sight each natural wonder (wonderId -> player id). */
+  discoveredWonders: Record<string, number>;
+  /** First civ to have sighted every natural wonder (undefined until claimed). */
+  allNaturalWondersClaimedBy?: number;
   /** Diplomacy known to the viewer. */
   diplomacy: DiploView;
   players: PlayerPublic[];
@@ -141,6 +148,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     if (t.ownerCityId !== undefined) tv.ownerCityId = t.ownerCityId;
     if (t.feature) tv.feature = t.feature;
     if (t.resource) tv.resource = t.resource;
+    if (t.naturalWonder) tv.naturalWonder = t.naturalWonder;
     tiles.push(tv);
   }
 
@@ -185,6 +193,9 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     tradeRoutes: state.tradeRoutes.filter((r) => r.ownerId === playerId).map((r) => ({ ...r })),
     works: state.works.filter((w) => w.ownerId === playerId).map((w) => ({ ...w, cityIds: [...w.cityIds] })),
     completedWonders: [...state.completedWonders],
+    naturalWonderIds: [...state.naturalWonderIds],
+    discoveredWonders: { ...state.discoveredWonders },
+    allNaturalWondersClaimedBy: state.allNaturalWondersClaimedBy,
     diplomacy: buildDiploView(state, playerId),
     players: state.players.map((p) => ({
       id: p.id,
@@ -221,6 +232,9 @@ export interface SerializedState {
   tradeRoutes: TradeRoute[];
   works: Work[];
   completedWonders: string[];
+  naturalWonderIds: string[];
+  discoveredWonders: Record<string, number>;
+  allNaturalWondersClaimedBy?: number;
   relations: Relation[];
   attitudes: Attitude[];
   reputation: Record<number, number>;
@@ -254,6 +268,9 @@ export function serializeState(state: GameState): SerializedState {
     tradeRoutes: state.tradeRoutes,
     works: state.works,
     completedWonders: state.completedWonders,
+    naturalWonderIds: state.naturalWonderIds,
+    discoveredWonders: state.discoveredWonders,
+    allNaturalWondersClaimedBy: state.allNaturalWondersClaimedBy,
     relations: state.relations,
     attitudes: state.attitudes,
     reputation: state.reputation,
@@ -289,6 +306,9 @@ export function deserializeState(s: SerializedState): GameState {
     tradeRoutes: s.tradeRoutes ?? [],
     works: s.works ?? [],
     completedWonders: s.completedWonders ?? [],
+    naturalWonderIds: s.naturalWonderIds ?? [],
+    discoveredWonders: s.discoveredWonders ?? {},
+    allNaturalWondersClaimedBy: s.allNaturalWondersClaimedBy,
     relations: s.relations ?? [],
     attitudes: s.attitudes ?? [],
     reputation: s.reputation ?? {},

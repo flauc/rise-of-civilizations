@@ -6,8 +6,8 @@
 // - Google Gemini Nano Banana 2 (gemini-3.1-flash-image) is the default model.
 
 import { join } from "node:path";
-import { CIVILIZATIONS, WONDER_DEFS } from "@roc/data";
-import { RESOURCE_DEFS, IMPROVEMENT_DEFS } from "@roc/sim";
+import { CIVILIZATIONS, WONDER_DEFS, UNIQUE_UNITS, NATURAL_WONDER_DEFS } from "@roc/data";
+import { RESOURCE_DEFS, IMPROVEMENT_DEFS, UNIT_DEFS } from "@roc/sim";
 
 export interface TargetSize {
   readonly width: number;
@@ -21,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder";
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -114,6 +114,20 @@ export const LEADER_SUBSET: AssetEntry[] = CIVILIZATIONS.map((civ) => ({
   category: "leader" as const,
   referenceTile: DEFAULT_REFERENCE_TILE,
 }));
+
+/** One token per civilization unique unit (reskins a base unit). Output: units/<id>.png. */
+export const UNIQUE_UNIT_SUBSET: AssetEntry[] = UNIQUE_UNITS.map((u) => {
+  const civName = CIVILIZATIONS.find((c) => c.id === u.civId)?.name ?? u.civId;
+  const baseName = UNIT_DEFS[u.replaces as keyof typeof UNIT_DEFS]?.name ?? u.replaces;
+  return {
+    id: u.id,
+    name: u.name,
+    description: `${u.name} — the unique ${baseName.toLowerCase()} of ${civName}; a historically accurate ${baseName.toLowerCase()} with distinctive ${civName} arms, armor, and style`,
+    aspectRatio: "1:1" as const,
+    size: { width: 128, height: 128 },
+    category: "unit" as const,
+  };
+});
 
 export const RESOURCE_SUBSET: AssetEntry[] = Object.values(RESOURCE_DEFS).map((r) => ({
   id: r.id,
@@ -598,8 +612,18 @@ export const BUILDING_SUBSET: AssetEntry[] = [
   { id: "temple", name: "Temple", description: "an ancient temple with columns", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
 ];
 
+export const NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.map((w) => ({
+  id: w.id,
+  name: w.name,
+  description: w.desc,
+  aspectRatio: "1:1",
+  size: { width: 256, height: 256 },
+  category: "natural_wonder" as const,
+  referenceTile: DEFAULT_REFERENCE_TILE,
+}));
+
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -692,13 +716,16 @@ export function promptFor(entry: AssetEntry): string {
     return `Create a small hand-painted river segment for a turn-based strategy game. Subject: ${entry.description}. Render ONLY the water channel on a fully transparent background. The river should be a thin, continuous waterway that reaches exactly the named hex edges and does NOT fill the hex. Match the painted, slightly stylized look of the attached reference tile. No terrain, no grass, no ground, no sky, no buildings, no text, no UI, no border, and no cast shadow. The background must remain transparent.`;
   }
   if (entry.category === "unit") {
-    return `Create a small standalone unit token/icon for an ancient turn-based strategy game spanning the Stone Age to the Classical era. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a near-top-down or three-quarter view, centered, in a static idle pose standing still and facing toward the right side of the image, as an isolated figure on a clean solid white background. Use only materials and technology appropriate to the unit's era and description; no anachronistic weapons, armor, or equipment. No walking, running, attacking, or action motion; no motion blur or dynamic swinging of limbs/weapons. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath the figure. The unit should float cleanly on the white background with nothing else in the frame.`;
+    return `Create a small standalone unit token/icon for an ancient turn-based strategy game spanning the Stone Age to the Classical era. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a near-top-down or three-quarter view, centered, in a static idle pose standing still and facing toward the right side of the image, as an isolated figure on a clean solid white background. Use only materials and technology appropriate to the unit's era and description; no anachronistic weapons, armor, or equipment. No walking, running, attacking, or action motion; no motion blur or dynamic swinging of limbs/weapons. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath the figure. For ships, boats, or naval units, show the vessel alone with NO water, NO sea, NO waves, and NO ripples. The unit should float cleanly on the white background with nothing else in the frame.`;
   }
   if (entry.category === "resource") {
     return `Create a tiny standalone map resource icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the resource as a small, clear symbol or object from a near-top-down or three-quarter view, centered, as an isolated item on a clean solid white background. Keep it smaller than a unit icon so it reads as a map token. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The resource icon should float cleanly on the white background with nothing else in the frame.`;
   }
   if (entry.category === "improvement") {
     return `Create a small standalone map improvement icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated improvement on a clean solid white background. Keep it compact so it reads as a tile overlay. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The improvement should float cleanly on the white background with nothing else in the frame.`;
+  }
+  if (entry.category === "natural_wonder") {
+    return `Create a small standalone natural-wonder illustration for an ancient turn-based strategy game, to be layered on top of a hex map tile. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the wonder from a near-top-down or three-quarter view, centered, as an isolated landmark on a fully transparent background so the underlying terrain tile shows around it. Fill most of the frame. No text, no UI, no border, no ground plane beyond the landmark itself, no surrounding terrain, no grass, no base platform, and no cast shadow. The wonder should sit cleanly on the transparent background with nothing else in the frame.`;
   }
   if (entry.category === "ui") {
     return `Create a hand-painted game UI button for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render the button horizontally, centered, filling most of the frame, on a fully transparent background. No text, no letters, no icons, no UI labels, no border frame beyond the button itself, and no cast shadow. The button should float cleanly with nothing else in the frame.`;

@@ -60,6 +60,7 @@ import {
   tileYields,
   resourceYields,
   resourceActive,
+  naturalWonderYields,
   RESOURCE_DEFS,
   addYields,
   ACTIVE_ABILITY_DEFS,
@@ -85,6 +86,7 @@ import {
   type ProductionItem,
   type FeatureRewardType,
   type ActiveAbilityId,
+  uniqueUnitForCiv,
   type PromotionId,
   type TechId,
   type Unit,
@@ -92,6 +94,7 @@ import {
   type TurnUpdateEvent,
 } from "@roc/sim";
 import type { Tile } from "@roc/shared";
+import { getNaturalWonder } from "@roc/data";
 import { abilityIconHtml, type AbilityAtlas } from "./ability-assets";
 
 export interface CombatOdds {
@@ -124,14 +127,16 @@ interface TileReport {
 /** Build the human-readable benefits/deficits breakdown for a tile. */
 function tileReport(state: GameState, tile: Tile): TileReport {
   const t = tile.terrain;
-  const y = addYields(tileYields(tile), resourceYields(tile));
+  const y = addYields(addYields(tileYields(tile), resourceYields(tile)), naturalWonderYields(tile));
   const water = isWaterTerrain(t);
   const passable = isPassableLand(t);
   const rough = isRough(t);
   const def = terrainDefense(t);
+  const wonder = getNaturalWonder(tile.naturalWonder);
 
   let name = TERRAIN_NAMES[t];
-  if (tile.feature === "village") name = `${TERRAIN_NAMES[t]} · Village`;
+  if (wonder) name = `${wonder.name} ✦`;
+  else if (tile.feature === "village") name = `${TERRAIN_NAMES[t]} · Village`;
   else if (tile.feature === "barb_camp") name = `${TERRAIN_NAMES[t]} · Barbarian Camp`;
 
   let subtitle: string;
@@ -160,6 +165,17 @@ function tileReport(state: GameState, tile: Tile): TileReport {
       const needed = rdef?.improvement ?? "improvement";
       lines.push({ kind: "bad", text: `Needs a ${needed} to activate` });
     }
+  }
+  if (wonder) {
+    const claimed = state.discoveredWonders?.[wonder.id];
+    lines.push({ kind: "good", text: `Natural Wonder — ${wonder.desc}` });
+    if (claimed === undefined) {
+      lines.push({ kind: "good", text: "Undiscovered — first to sight it claims a one-time bonus" });
+    } else {
+      const owner = state.players.find((p) => p.id === claimed);
+      lines.push({ kind: "neutral", text: `Discovered by ${owner?.name ?? "another civ"}` });
+    }
+    lines.push({ kind: "good", text: "Worked by a citizen, this tile yields bonus output" });
   }
   if (tile.feature === "village") lines.push({ kind: "good", text: "Village — a reward when one of your units enters" });
 
@@ -1051,7 +1067,7 @@ export function createUI(handlers: UIHandlers): UI {
         `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
         `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
         `<button class="btn primary" id="menu-save">Save Game</button>` +
-        `<button class="btn" id="menu-settings">⚙ Settings</button>` +
+        `<button class="btn" id="menu-settings">Settings</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki</button>` +
         `<button class="btn" id="menu-log">Game Log</button>` +
         godMenuBtn +
@@ -1554,8 +1570,9 @@ export function createUI(handlers: UIHandlers): UI {
 
     const info = unitInfo(unit.type);
     const stars = unit.level > 1 ? " ★".repeat(unit.level - 1) : "";
+    const displayName = uniqueUnitForCiv(owner?.civId, unit.type)?.name ?? def.name;
     let html =
-      `<div class="row" style="justify-content:space-between"><b style="font-size:15px">${def.name}<span style="color:#ffd967">${stars}</span></b>` +
+      `<div class="row" style="justify-content:space-between"><b style="font-size:15px">${displayName}<span style="color:#ffd967">${stars}</span></b>` +
       `</div>` +
       (owner && !own
         ? `<div class="sub"><span class="dot" style="background:${owner.color};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px"></span>${owner.name}</div>`

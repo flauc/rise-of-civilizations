@@ -20,6 +20,7 @@ import {
   TERRAIN_NAMES,
   isRough,
   serializeState,
+  uniqueUnitForCiv,
   type ActiveAbilityId,
 } from "@roc/sim";
 import { getTile } from "@roc/shared";
@@ -40,6 +41,7 @@ import { loadUnitAtlas } from "./unit-assets";
 import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
 import { loadFeatureAtlas } from "./feature-assets";
+import { loadNaturalWonderAtlas } from "./natural-wonder-assets";
 import { loadResourceAtlas } from "./resource-assets";
 import { loadAbilityAtlas } from "./ability-assets";
 import type { Session } from "./session";
@@ -516,7 +518,7 @@ function startGame(session: Session): void {
         const city = cityAt(st(), off.col, off.row);
         const enemy = unitAt(st(), off.col, off.row);
         next = {
-          targetName: city ? city.name : enemy ? UNIT_DEFS[enemy.type].name : "target",
+          targetName: city ? city.name : enemy ? (uniqueUnitForCiv(st().players.find((p) => p.id === enemy.ownerId)?.civId, enemy.type)?.name ?? UNIT_DEFS[enemy.type].name) : "target",
           toDefender: prev.toDefender,
           toAttacker: prev.toAttacker,
           vsCity: prev.vsCity,
@@ -570,6 +572,9 @@ function startGame(session: Session): void {
   const featureAtlas = loadFeatureAtlas(() => {
     needsRedraw = true;
   });
+  const naturalWonderAtlas = loadNaturalWonderAtlas(() => {
+    needsRedraw = true;
+  });
   const resourceAtlas = loadResourceAtlas(() => {
     needsRedraw = true;
   });
@@ -608,6 +613,7 @@ function startGame(session: Session): void {
         unitAtlas,
         cityAtlas,
         featureAtlas,
+        naturalWonderAtlas,
       });
       ui.render({
         state: st(),

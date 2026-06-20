@@ -356,6 +356,14 @@ export interface GameState {
   works: Work[];
   /** Wonder ids already completed somewhere in the world (each is world-unique). */
   completedWonders: string[];
+  /** Natural-wonder ids placed on this map (the full set a civ must sight to
+   *  claim the "discover them all" bonus). */
+  naturalWonderIds: string[];
+  /** First civ to sight each natural wonder (wonderId -> player id). Set once;
+   *  that civ receives the wonder's one-time discovery bonus. */
+  discoveredWonders: Record<string, number>;
+  /** First civ to have sighted EVERY natural wonder (undefined until claimed). */
+  allNaturalWondersClaimedBy?: number;
   // Diplomacy
   /** Relationship records for met pairs of major civs. */
   relations: Relation[];

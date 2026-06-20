@@ -3,6 +3,7 @@ import type { GameState } from "./state";
 import { citiesOf, unitsOf } from "./state";
 import { unitSight } from "./movement";
 import { detectContacts } from "./diplomacy";
+import { checkNaturalWonderDiscovery } from "./natural-wonders";
 
 const CITY_SIGHT = 3;
 
@@ -37,5 +38,6 @@ export function updateExplored(state: GameState, playerId: number): Set<string> 
   const player = state.players.find((p) => p.id === playerId);
   if (player) for (const k of visible) player.explored.add(k);
   detectContacts(state, playerId, visible); // first contact with newly-sighted civs
+  checkNaturalWonderDiscovery(state, playerId); // award newly-sighted natural wonders
   return visible;
 }

@@ -11,9 +11,9 @@
 //   bun run tools/art-generator/generate.ts --subset terrain
 //   bun run tools/art-generator/generate.ts --all
 
-import { readFile, writeFile, mkdir, access, unlink } from "node:fs/promises";
+import { readFile, writeFile, mkdir, access, unlink, copyFile } from "node:fs/promises";
 import { constants } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, basename } from "node:path";
 import { spawn } from "node:child_process";
 const { argv, env, exit, platform } = process as NodeJS.Process;
 
@@ -31,6 +31,7 @@ import {
   VALID_IMAGE_SIZES,
   TERRAIN_SUBSET,
   UNIT_SUBSET,
+  UNIQUE_UNIT_SUBSET,
   BUILDING_SUBSET,
   CITY_SUBSET,
   IMPROVEMENT_SUBSET,
@@ -51,6 +52,7 @@ import {
   TURN_UPDATE_SUBSET,
   TURN_UPDATE_WONDER_SUBSET,
   TURN_UPDATE_IMPROVEMENT_SUBSET,
+  NATURAL_WONDER_SUBSET,
 } from "./config";
 
 interface Options {
@@ -113,7 +115,8 @@ Options:
   --village-reward <id>  Generate a specific village reward illustration (e.g. village_reward_tech)
   --barbarian-reward <id> Generate a specific barbarian reward illustration (e.g. barb_camp_cleared)
   --turn-update <id>     Generate a specific turn-update portrait (e.g. tradeRouteEstablished or improvement_road)
-  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-improvements, all
+  --natural-wonder <id>  Generate a specific natural wonder illustration (e.g. matterhorn)
+  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-improvements, natural-wonders, all
   --list                 List all available asset IDs and exit
   --model <id>           Gemini model (default: ${DEFAULT_MODEL})
   --size <512|1K|2K|4K>  Gemini image size (default: ${DEFAULT_IMAGE_SIZE})
@@ -273,10 +276,18 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--natural-wonder": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "natural_wonder") fail(`Unknown natural wonder: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--subset": {
         const name = next();
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
         else if (name === "units") entries.push(...UNIT_SUBSET);
+        else if (name === "unique-units") entries.push(...UNIQUE_UNIT_SUBSET);
         else if (name === "buildings") entries.push(...BUILDING_SUBSET);
         else if (name === "improvements") entries.push(...IMPROVEMENT_SUBSET);
         else if (name === "cities") entries.push(...CITY_SUBSET);
@@ -296,8 +307,9 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "turn-updates") entries.push(...TURN_UPDATE_SUBSET);
         else if (name === "turn-update-wonders") entries.push(...TURN_UPDATE_WONDER_SUBSET);
         else if (name === "turn-update-improvements") entries.push(...TURN_UPDATE_IMPROVEMENT_SUBSET);
+        else if (name === "natural-wonders") entries.push(...NATURAL_WONDER_SUBSET);
         else if (name === "all") entries.push(...allEntries());
-        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-improvements, or all.`);
+        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-improvements, natural-wonders, or all.`);
         break;
       }
       case "--all":
@@ -516,8 +528,9 @@ async function postProcessToken(rawPath: string, outPath: string, entry: AssetEn
     source = rembgPath;
   }
 
-  // Color-key a solid white/light background as a fallback/rembg supplement,
-  // trim transparent edges, then pad/crop to the exact target size.
+  // Step 1: color-key the solid white/light background out and trim to the
+  // figure. This "cleaned" image keeps the model's full resolution.
+  const cleaned = `${rawPath}.clean.png`;
   await runCmd("magick", [
     source,
     "-fuzz",
@@ -526,6 +539,22 @@ async function postProcessToken(rawPath: string, outPath: string, entry: AssetEn
     "white",
     "-trim",
     "+repage",
+    "-define",
+    "png:color-type=6",
+    cleaned,
+  ]);
+
+  // Step 2: keep the full-size, background-removed art alongside the token so
+  // the wiki (and any hi-res use) can show big crisp images. units → units-full.
+  if (entry.category === "unit") {
+    const fullDir = join(dirname(outPath), "..", "units-full");
+    await mkdir(fullDir, { recursive: true });
+    await copyFile(cleaned, join(fullDir, basename(outPath)));
+  }
+
+  // Step 3: the resized token, padded/cropped to the exact target size.
+  await runCmd("magick", [
+    cleaned,
     "-resize",
     `${entry.size.width}x${entry.size.height}>`,
     "-background",
@@ -538,6 +567,7 @@ async function postProcessToken(rawPath: string, outPath: string, entry: AssetEn
     "png:color-type=6",
     outPath,
   ]);
+  await unlink(cleaned).catch(() => {});
 }
 
 async function postProcessPortrait(rawPath: string, outPath: string, entry: AssetEntry): Promise<void> {
@@ -680,6 +710,7 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
   const categoryDir =
     entry.category === "building" ? "buildings" :
     entry.category === "improvement" ? "improvements" :
+    entry.category === "natural_wonder" ? "natural-wonders" :
     entry.category === "ui" ? "ui" :
     `${entry.category}s`;
   const rawDir = join(options.outDir, "raw", categoryDir);

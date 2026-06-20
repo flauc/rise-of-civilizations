@@ -147,6 +147,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     if (t.ownerCityId !== undefined) tile.ownerCityId = t.ownerCityId;
     if (t.feature) tile.feature = t.feature;
     if (t.resource) tile.resource = t.resource;
+    if (t.naturalWonder) tile.naturalWonder = t.naturalWonder;
     tiles[t.row * view.cols + t.col] = tile;
     explored.add(`${t.col},${t.row}`);
   }
@@ -207,6 +208,9 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     tradeRoutes: view.tradeRoutes ?? [],
     works: view.works ?? [],
     completedWonders: view.completedWonders ?? [],
+    naturalWonderIds: view.naturalWonderIds ?? [],
+    discoveredWonders: view.discoveredWonders ?? {},
+    allNaturalWondersClaimedBy: view.allNaturalWondersClaimedBy,
     relations: dip?.relations ?? [],
     attitudes: (dip?.attitudeToYou ?? []).map((a) => ({
       from: a.from,

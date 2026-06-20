@@ -1,10 +1,12 @@
-import { cityAt, cityMaxHp, tileYields, resourceYields, addYields, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, type GameState, type TradeRoute } from "@roc/sim";
+import { cityAt, cityMaxHp, tileYields, resourceYields, naturalWonderYields, addYields, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
 import { barbCampFrameFor, villageFrameFor, type FeatureAtlas } from "./feature-assets";
+import { naturalWonderImage, type NaturalWonderAtlas } from "./natural-wonder-assets";
+import { getNaturalWonder } from "@roc/data";
 
 export interface OverlayState {
   viewingPlayerId: number;
@@ -23,6 +25,7 @@ export interface OverlayState {
   unitAtlas?: UnitAtlas;
   cityAtlas?: CityAtlas;
   featureAtlas?: FeatureAtlas;
+  naturalWonderAtlas?: NaturalWonderAtlas;
 }
 
 /** "#rrggbb" -> "rgba(r,g,b,a)". */
@@ -288,6 +291,58 @@ export function drawOverlay(
     }
   }
 
+  // ---- natural wonders ----
+  // Each wonder tile shows its sprite (or a gold marker fallback); only the
+  // anchor tile (lexicographically first) carries the name label to avoid
+  // repeating it across a multi-tile wonder.
+  const wonderAnchor = new Map<string, string>();
+  for (const t of state.map.tiles) {
+    if (!t.naturalWonder) continue;
+    const key = `${t.col},${t.row}`;
+    const cur = wonderAnchor.get(t.naturalWonder);
+    if (cur === undefined || key < cur) wonderAnchor.set(t.naturalWonder, key);
+  }
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const t of state.map.tiles) {
+    if (!t.naturalWonder) continue;
+    const key = `${t.col},${t.row}`;
+    if (!o.explored.has(key)) continue;
+    const s = screen(t.col, t.row);
+    const img = naturalWonderImage(o.naturalWonderAtlas, t.naturalWonder);
+    if (img) {
+      const wSize = size * 1.6;
+      ctx.drawImage(img, s.x - wSize / 2, s.y - wSize * 0.62, wSize, wSize);
+    } else {
+      // Fallback: a translucent gold hex + a sparkle so it always reads as special.
+      ctx.fillStyle = "rgba(224,196,90,0.28)";
+      hexPath(ctx, s.x, s.y, size * 0.92);
+      ctx.fill();
+      ctx.fillStyle = "#f0d77a";
+      ctx.font = `bold ${Math.round(size * 0.5)}px system-ui, sans-serif`;
+      ctx.fillText("✦", s.x, s.y + 1);
+    }
+
+    if (size > 13 && wonderAnchor.get(t.naturalWonder) === key) {
+      const label = getNaturalWonder(t.naturalWonder)?.name ?? "Natural Wonder";
+      const fontSize = Math.max(8, Math.round(size * 0.24));
+      ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+      const textW = ctx.measureText(label).width;
+      const pad = Math.max(1, size * 0.05);
+      const labelH = fontSize + pad * 2;
+      const labelW = textW + pad * 4;
+      const labelY = s.y + size * 0.58;
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.beginPath();
+      ctx.roundRect(s.x - labelW / 2, labelY, labelW, labelH, labelH / 2);
+      ctx.fill();
+      ctx.fillStyle = "#f0d77a";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, s.x, labelY + labelH / 2);
+    }
+  }
+
   // ---- defensive structures (walls / towers) ----
   // Walls hug the tile edges that face the owner's frontier and connect to
   // neighbouring walls/towers at shared corners — drawn dynamically (like roads)
@@ -450,7 +505,7 @@ export function drawOverlay(
       if (size > 17) {
         const t = getTile(state.map, col, row);
         if (t) {
-          const y = addYields(tileYields(t), resourceYields(t));
+          const y = addYields(addYields(tileYields(t), resourceYields(t)), naturalWonderYields(t));
           const parts: string[] = [];
           if (y.food) parts.push(`${y.food}F`);
           if (y.production) parts.push(`${y.production}P`);
@@ -540,17 +595,19 @@ export function drawOverlay(
 
   // Units.
   const unitScale = isMobileScreen() ? MOBILE_UNIT_SCALE : 1;
+  const civByPlayer = new Map(state.players.map((p) => [p.id, p.civId]));
   for (const unit of state.units.values()) {
     const own = unit.ownerId === o.viewingPlayerId;
     if (!own && !o.visible.has(`${unit.col},${unit.row}`)) continue;
+    const uu = uniqueUnitForCiv(civByPlayer.get(unit.ownerId), unit.type);
     const s = screen(unit.col, unit.row);
     const half = size * 0.42 * unitScale;
     const imgSize = half * 1.8;
     const imgX = s.x - imgSize / 2;
     const imgY = s.y - imgSize / 2;
 
-    // Unit sprite (or fallback glyph).
-    const unitImg = o.unitAtlas?.images[unit.type];
+    // Unit sprite (or fallback glyph). Unique units use their own art when present.
+    const unitImg = (uu && o.unitAtlas?.images[uu.id]) || o.unitAtlas?.images[unit.type];
     if (unitImg && isImageReady(unitImg)) {
       ctx.drawImage(unitImg, imgX, imgY, imgSize, imgSize);
     } else if (showLabels) {
@@ -592,7 +649,7 @@ export function drawOverlay(
     // Player-color label above the unit (colored dot + unit name + level stars).
     if (size >= 10) {
       const stars = unit.level > 1 ? " ★".repeat(unit.level - 1) : "";
-      const label = UNIT_DEFS[unit.type].name + stars;
+      const label = (uu?.name ?? UNIT_DEFS[unit.type].name) + stars;
       const fontSize = Math.max(8, Math.round(size * 0.32 * unitScale));
       ctx.font = `${fontSize}px system-ui, sans-serif`;
       const textW = ctx.measureText(label).width;

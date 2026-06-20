@@ -1,9 +1,11 @@
+/// <reference types="vite/client" />
 // In-game encyclopedia / wiki. Gradually expanded reference for civilizations,
 // units, terrain, systems and victory conditions.
 
 import {
   CIVILIZATIONS,
   UNIT_DEFS,
+  UNIQUE_UNITS,
   TERRAIN_NAMES,
   TERRAIN_YIELDS,
   isWaterTerrain,
@@ -75,6 +77,33 @@ function renderCivilizations(): string {
 
 const CLASS_ORDER = ["melee", "ranged", "cavalry", "siege", "recon", "settler", "trader"] as const;
 
+const WIKI_UNIT_STYLE = `<style>
+.wiki-unit-classtitle{font-size:16px;font-weight:700;color:#ffd967;margin:18px 0 6px;text-transform:capitalize}
+.wiki-unit-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin:8px 0 22px}
+.wiki-unit-card{margin:0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 10px;text-align:center}
+.wiki-unit-img{height:160px;display:flex;align-items:center;justify-content:center;margin-bottom:8px}
+.wiki-unit-img img{max-width:100%;max-height:160px;width:auto;height:auto;filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}
+.wiki-unit-name{font-weight:700;font-size:14px;color:#e6d2b8}
+.wiki-unit-stats{font-size:12px;color:#9fb0c0;margin-top:3px}
+.wiki-unit-meta{font-size:11px;color:#8a93a0;margin-top:3px}
+</style>`;
+
+/** A big-image unit card. Uses a crisp ~320px image (units-big), falling back to the token.
+ *  The untouched full-resolution art lives in units-full for hi-res use. */
+function unitCard(id: string, title: string, statsLine: string, metaLine: string): string {
+  const big = `${import.meta.env.BASE_URL}units-big/${id}.png`;
+  const token = `${import.meta.env.BASE_URL}units/${id}.png`;
+  return (
+    `<figure class="wiki-unit-card">` +
+    `<div class="wiki-unit-img"><img src="${big}" loading="lazy" alt="${escapeHtml(title)}" ` +
+    `onerror="this.onerror=null;this.src='${token}'"></div>` +
+    `<figcaption><div class="wiki-unit-name">${escapeHtml(title)}</div>` +
+    (statsLine ? `<div class="wiki-unit-stats">${escapeHtml(statsLine)}</div>` : "") +
+    (metaLine ? `<div class="wiki-unit-meta">${metaLine}</div>` : "") +
+    `</figcaption></figure>`
+  );
+}
+
 function renderUnits(): string {
   const byClass = new Map<string, typeof UNIT_DEFS[keyof typeof UNIT_DEFS][]>();
   for (const u of Object.values(UNIT_DEFS)) {
@@ -83,40 +112,45 @@ function renderUnits(): string {
     byClass.set(u.cls, arr);
   }
 
-  let html = "";
+  let html = WIKI_UNIT_STYLE;
   for (const cls of CLASS_ORDER) {
     const units = byClass.get(cls);
     if (!units || units.length === 0) continue;
-    const rows = units
+    const cards = units
       .map((u) => {
-        const stats = [`Move ${u.movement}`, `Sight ${u.sight}`];
+        const stats = [`${u.cost}⚙`, `Move ${u.movement}`];
         if (MILITARY_CLASSES.has(u.cls)) {
-          stats.push(`Strength ${u.strength}`);
-          if (u.rangedStrength) stats.push(`Ranged ${u.rangedStrength}`);
-          if (u.range) stats.push(`Range ${u.range}`);
+          stats.push(`Str ${u.strength}`);
+          if (u.rangedStrength) stats.push(`Rng ${u.rangedStrength}`);
         }
-        const notes: string[] = [];
-        if (u.founder) notes.push("Founds cities");
-        if (u.trader) notes.push("Establishes trade routes");
-        if (u.reqTech) notes.push(`Requires ${u.reqTech}`);
-        if (u.upkeep > 0) notes.push(`${u.upkeep}🪙/turn upkeep`);
-        if (u.abilities?.length) notes.push(u.abilities.join(", "));
-        return (
-          `<tr>` +
-          `<td><b>${escapeHtml(u.name)}</b></td>` +
-          `<td>${u.cost} prod</td>` +
-          `<td>${stats.join(" · ")}</td>` +
-          `<td>${notes.join(" · ")}</td>` +
-          `</tr>`
-        );
+        const tags: string[] = [];
+        if (u.reqTech) tags.push(escapeHtml(u.reqTech));
+        if (u.founder) tags.push("founds cities");
+        if (u.trader) tags.push("trade routes");
+        return unitCard(u.id, u.name, stats.join(" · "), tags.join(" · "));
       })
       .join("");
     html +=
-      `<div class="wiki-table-wrap">` +
-      `<div class="wiki-table-title">${escapeHtml(cls[0]!.toUpperCase() + cls.slice(1))}</div>` +
-      `<table class="wiki-table"><thead><tr><th>Unit</th><th>Cost</th><th>Stats</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>` +
-      `</div>`;
+      `<div class="wiki-unit-classtitle">${escapeHtml(cls[0]!.toUpperCase() + cls.slice(1))}</div>` +
+      `<div class="wiki-unit-grid">${cards}</div>`;
   }
+
+  // Unique units — every civilization's signature unit, big image + who fields it.
+  const defs = UNIT_DEFS as Record<string, { name: string }>;
+  const uuCards = UNIQUE_UNITS.map((u) => {
+    const civ = getCiv(u.civId);
+    const baseName = defs[u.replaces]?.name ?? u.replaces;
+    const civName = escapeHtml(civ?.name ?? u.civId);
+    // Skip the redundant "replaces X" when the unique unit shares the base unit's name.
+    const meta = u.name.toLowerCase() === baseName.toLowerCase()
+      ? civName
+      : `${civName} · replaces ${escapeHtml(baseName)}`;
+    return unitCard(u.id, u.name, `+${u.bonus} strength`, meta);
+  }).join("");
+  html +=
+    `<div class="wiki-unit-classtitle">Unique Units (${UNIQUE_UNITS.length})</div>` +
+    `<div class="wiki-unit-grid">${uuCards}</div>`;
+
   return section("Units", html);
 }
 
