@@ -246,6 +246,11 @@ export function canStartWork(state: GameState, playerId: number, kind: string, c
   }
   const tier = nextTierAt(tile, kind);
   if (tier === null) return { ok: false, error: "cannot build that here" };
+  // Farming a river tile means draining and channelling it — only possible once
+  // Irrigation has been researched.
+  if (kind === "farm" && tile.river && !playerById(state, playerId)?.researched.has("irrigation")) {
+    return { ok: false, error: "Research Irrigation to farm river tiles" };
+  }
   const needs = workDisciplines(kind);
   const host = nearestCapableCity(state, playerId, col, row, needs);
   if (!host) {

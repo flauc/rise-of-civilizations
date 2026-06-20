@@ -94,6 +94,21 @@ describe("specialists & works", () => {
     expect(applyCommand(s, { type: "startWork", kind: "farm", col: tile.col, row: tile.row }).ok).toBe(true);
   });
 
+  it("blocks farming a river tile until Irrigation is researched", () => {
+    const { s, city } = gameWithCity();
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    tile.river = 0b001001; // a river runs through this grassland
+
+    // Terrain is valid, but without Irrigation the farm is refused.
+    expect(nextTierAt(tile, "farm")).toBe(1);
+    expect(startWork(s, 0, "farm", tile.col, tile.row).ok).toBe(false);
+
+    // Once Irrigation is researched, the river tile can be farmed.
+    s.players[0]!.researched.add("irrigation");
+    expect(startWork(s, 0, "farm", tile.col, tile.row).ok).toBe(true);
+  });
+
   it("refuses to train more craftsmen than the city has citizens", () => {
     const { s, city } = gameWithCity();
     city.population = 1;

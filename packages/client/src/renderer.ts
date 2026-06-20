@@ -17,6 +17,7 @@ import { TERRAIN_COLORS, HEX_STROKE, HEX_HOVER_STROKE } from "./palette";
 import { isImageReady, type TerrainAtlas } from "./terrain-assets";
 import { improvementFrameFor, type ImprovementAtlas } from "./improvement-assets";
 import { coastFrameFor, type CoastAtlas } from "./coast-assets";
+import { riverChannelFrame, riverMouthFrame, type RiverAtlas } from "./river-assets";
 import { RESOURCE_DEFS, resourceActive, type GameState, type ResourceId } from "@roc/sim";
 import { type ResourceAtlas } from "./resource-assets";
 import { naturalWonderTileImage, type NaturalWonderAtlas } from "./natural-wonder-assets";
@@ -226,6 +227,7 @@ export interface RenderOptions {
   fog?: FogState | undefined;
   terrainAtlas?: TerrainAtlas | undefined;
   coastAtlas?: CoastAtlas | undefined;
+  riverAtlas?: RiverAtlas | undefined;
   improvementAtlas?: ImprovementAtlas | undefined;
   resourceAtlas?: ResourceAtlas | undefined;
   naturalWonderAtlas?: NaturalWonderAtlas | undefined;
@@ -247,6 +249,22 @@ function landNeighborMask(map: GameMap, col: number, row: number): number {
 
 const UNEXPLORED_FILL = "#0a1624";
 const FOG_OVERLAY = "rgba(8,16,26,0.5)";
+
+/** Draw a 256x384 hex overlay (coast/river/mouth) aligned to a tile's footprint,
+ *  anchoring the square footprint's bottom so the top 128px overhangs upward. */
+function drawFootprintOverlay(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement | undefined,
+  sx: number,
+  sy: number,
+  footprint: number,
+): void {
+  if (!img || !isImageReady(img)) return;
+  const scale = footprint / img.naturalWidth;
+  const drawW = img.naturalWidth * scale; // == footprint
+  const drawH = img.naturalHeight * scale;
+  ctx.drawImage(img, sx - drawW / 2, sy + footprint / 2 - drawH, drawW, drawH);
+}
 
 /** Draw a tile improvement. Farms use the loaded sprite atlas; everything else
  *  falls back to a simple coloured glyph until dedicated art is added. */
@@ -468,13 +486,22 @@ export function drawScene(
     // along the land-facing edges (drawn over the base water, under the fog).
     if (isWater(t.terrain)) {
       const landMask = landNeighborMask(map, t.col, t.row);
-      const coastImg = coastFrameFor(opts.coastAtlas, landMask, t.col, t.row);
-      if (coastImg && isImageReady(coastImg)) {
-        const scale = footprint / coastImg.naturalWidth;
-        const drawW = coastImg.naturalWidth * scale; // == footprint
-        const drawH = coastImg.naturalHeight * scale;
-        ctx.drawImage(coastImg, sx - drawW / 2, sy + footprint / 2 - drawH, drawW, drawH);
+      drawFootprintOverlay(ctx, coastFrameFor(opts.coastAtlas, landMask, t.col, t.row), sx, sy, footprint);
+      // River mouths fan into the sea here: for each neighbour that is a river
+      // tile pointing back at us, paint the delta over this water tile's edge.
+      const here = offsetToAxial({ col: t.col, row: t.row });
+      for (let d = 0; d < 6; d++) {
+        const nb = axialToOffset(axialNeighbor(here, d));
+        const n = getTile(map, nb.col, nb.row);
+        if (n?.river && (n.river & (1 << ((d + 3) % 6)))) {
+          drawFootprintOverlay(ctx, riverMouthFrame(opts.riverAtlas, 1 << d, t.col, t.row), sx, sy, footprint);
+        }
       }
+    } else if (t.river) {
+      // River overlay on land: the channel reaches every connected edge (including
+      // the one that meets the sea, so the river-mouth tile reads as a real
+      // connector); the matching mouth delta is painted on the adjacent water tile.
+      drawFootprintOverlay(ctx, riverChannelFrame(opts.riverAtlas, t.river, !!t.riverLake, t.col, t.row), sx, sy, footprint);
     }
 
     if (!visible) {
@@ -493,7 +520,8 @@ export function drawScene(
         }
       }
       drawImprovement(ctx, sx, sy, size, t.improvement, t.improvementLevel ?? 1, opts.improvementAtlas, t.col, t.row);
-      if (t.resource) {
+      // A natural wonder's art replaces the whole tile — never overlay a resource icon on it.
+      if (t.resource && !t.naturalWonder) {
         const img = opts.resourceAtlas?.images[t.resource as ResourceId];
         if (img && isImageReady(img)) {
           const iconSize = size * 0.75;

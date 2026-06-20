@@ -65,6 +65,13 @@ export interface Tile {
   /** A natural wonder occupying this tile (e.g. "grand_canyon"); multi-tile
    *  wonders set the same id on each tile they span. */
   naturalWonder?: string;
+  /** River-connection mask: bit `d` set means a river runs across this tile's edge
+   *  toward neighbour direction `d` (HEX_DIRECTIONS). 0/undefined means no river.
+   *  Adjacent river tiles join when each carries the bit pointing at the other. */
+  river?: number;
+  /** Marks this river tile as a spring/terminal lake (renders as a small lake and
+   *  yields bonus science on top of the river's food). */
+  riverLake?: boolean;
 }
 
 export interface GameMap {

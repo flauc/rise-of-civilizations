@@ -38,6 +38,7 @@ import { createUI, type CombatOdds, type TileTip } from "./ui";
 import { createLobby } from "./lobby-ui";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadCoastAtlas } from "./coast-assets";
+import { loadRiverAtlas } from "./river-assets";
 import { loadUnitAtlas } from "./unit-assets";
 import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
@@ -564,6 +565,9 @@ function startGame(session: Session): void {
   const coastAtlas = loadCoastAtlas(() => {
     needsRedraw = true;
   });
+  const riverAtlas = loadRiverAtlas(() => {
+    needsRedraw = true;
+  });
   const unitAtlas = loadUnitAtlas(() => {
     needsRedraw = true;
   });
@@ -599,6 +603,7 @@ function startGame(session: Session): void {
         fog: { visible, explored },
         terrainAtlas,
         coastAtlas,
+        riverAtlas,
         improvementAtlas,
         resourceAtlas,
         naturalWonderAtlas,

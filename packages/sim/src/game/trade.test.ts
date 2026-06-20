@@ -136,6 +136,27 @@ describe("trade routes", () => {
     expect(tradeRouteYield(s, route).gold).toBe(baseYield);
   });
 
+  it("treats rivers as top-grade roads for the bonus once Sailing is researched", () => {
+    const { s, from, to } = gameWithTwoCities();
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tid, to.id, 0);
+    const route = s.tradeRoutes[0]!;
+    const baseYield = tradeRouteYield(s, route).gold;
+
+    // Thread a river along the whole intermediate path (no roads).
+    for (let i = 1; i < route.path.length - 1; i++) {
+      const [col, row] = route.path[i]!.split(",").map(Number) as [number, number];
+      const tile = getTile(s.map, col, row);
+      if (tile) tile.river = 0b001001;
+    }
+    // Without Sailing a river grants nothing.
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield);
+    // With Sailing the river route earns the best-grade (tier 3) connection bonus.
+    s.players[0]!.researched.add("sailing");
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
+  });
+
   it("uses the weakest road tier along the path", () => {
     const { s, from, to } = gameWithTwoCities();
     const tid = s.nextEntityId++;

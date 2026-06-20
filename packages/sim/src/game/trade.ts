@@ -28,19 +28,31 @@ const ROAD_BONUS_BY_TIER: Record<number, number> = { 1: 2, 2: 4, 3: 6 };
 
 const ax = (c: { col: number; row: number }) => offsetToAxial({ col: c.col, row: c.row });
 
-/** Extra gold when every intermediate tile of a route has a road.
- *  Returns the weakest road tier bonus, or 0 if any land tile is unpaved.
+/** Once Sailing is researched a player's rivers become navigable trade arteries,
+ *  carrying caravans like a road and counting as a top-grade road for the route
+ *  connection bonus. */
+function riversConnectFor(state: GameState, ownerId: number): boolean {
+  return !!playerById(state, ownerId)?.researched.has("sailing");
+}
+
+/** Extra gold when every intermediate tile of a route is paved with road — or,
+ *  for a player with Sailing, threaded by a river (a top-grade artery). Returns
+ *  the weakest tier bonus along the path, or 0 if any land tile is unconnected.
  *  Water tiles in the path naturally prevent the bonus. */
 function roadConnectionBonus(state: GameState, route: TradeRoute): number {
   if (route.path.length < 3) return 0;
+  const riverConnects = riversConnectFor(state, route.ownerId);
   let minTier = Number.MAX_SAFE_INTEGER;
   for (let i = 1; i < route.path.length - 1; i++) {
     const key = route.path[i];
     if (!key) return 0;
     const [col, row] = key.split(",").map(Number) as [number, number];
     const tile = getTile(state.map, col, row);
-    if (!tile || !tile.road) return 0;
-    const tier = tile.roadLevel ?? 1;
+    if (!tile) return 0;
+    // A river (with Sailing) counts as the best grade of road; otherwise the tile
+    // must carry an actual road or the connection bonus is lost.
+    const tier = tile.road ? tile.roadLevel ?? 1 : riverConnects && tile.river ? 3 : 0;
+    if (tier === 0) return 0;
     if (tier < minTier) minTier = tier;
   }
   if (minTier === Number.MAX_SAFE_INTEGER) return 0;
@@ -112,10 +124,11 @@ export function canEstablishTradeRoute(state: GameState, unit: Unit): boolean {
 /** Cost for a caravan to traverse a tile when routing. Roads are strongly
  *  preferred so a route hugs an existing road network when one is nearby;
  *  open land is cheap, rough terrain costs more, and water is a last resort. */
-function caravanTileCost(terrain: TerrainType, road: boolean): number {
-  if (road) return 0.5; // hugging a road is cheapest of all
-  if (isWaterTerrain(terrain)) return 3; // detour over water only when unavoidable
-  return moveCost(terrain); // 1 for open land, 2 for rough (forest/jungle/hills/mesa)
+function caravanTileCost(tile: { terrain: TerrainType; road?: boolean; river?: number }, riverConnects: boolean): number {
+  if (riverConnects && tile.river) return 0.45; // follow rivers in preference to roads
+  if (tile.road) return 0.5; // hugging a road is cheapest of all
+  if (isWaterTerrain(tile.terrain)) return 3; // detour over water only when unavoidable
+  return moveCost(tile.terrain); // 1 for open land, 2 for rough (forest/jungle/hills/mesa)
 }
 
 /** Find the cheapest passable path between two cities, preferring roads, via a
@@ -126,6 +139,7 @@ function computeTradeRoutePath(state: GameState, from: City, to: City): string[]
   const start = `${from.col},${from.row}`;
   const goal = `${to.col},${to.row}`;
   if (start === goal) return [start];
+  const riverConnects = riversConnectFor(state, from.ownerId);
 
   const dist = new Map<string, number>();
   const cameFrom = new Map<string, string>();
@@ -147,7 +161,7 @@ function computeTradeRoutePath(state: GameState, from: City, to: City): string[]
       const tile = getTile(state.map, n.col, n.row);
       if (!tile || (!isPassableLand(tile.terrain) && !isWaterTerrain(tile.terrain))) continue;
       const nk = `${n.col},${n.row}`;
-      const next = curCost + caravanTileCost(tile.terrain, tile.road ?? false);
+      const next = curCost + caravanTileCost(tile, riverConnects);
       if (next < (dist.get(nk) ?? Infinity)) {
         dist.set(nk, next);
         cameFrom.set(nk, key);

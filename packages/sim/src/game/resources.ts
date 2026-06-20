@@ -394,7 +394,7 @@ export function placeResources(
 
     const eligible: { col: number; row: number; key: number }[] = [];
     for (const tile of map.tiles) {
-      if (tile.resource || tile.feature) continue;
+      if (tile.resource || tile.feature || tile.naturalWonder) continue;
       if (tile.terrain === "mountains" || tile.terrain === "volcano") continue;
       if (!resourceFitsTerrain(def, tile.terrain)) continue;
       if (tile.ownerCityId !== undefined) continue; // unclaimed only
@@ -407,7 +407,7 @@ export function placeResources(
     for (const e of eligible) {
       if (placed >= target) break;
       const t = getTile(map, e.col, e.row);
-      if (!t || t.resource || t.feature) continue;
+      if (!t || t.resource || t.feature || t.naturalWonder) continue;
       t.resource = id;
       placed++;
     }

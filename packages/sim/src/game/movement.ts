@@ -1,4 +1,5 @@
 import {
+  axialNeighbor,
   axialNeighbors,
   axialToOffset,
   getTile,
@@ -63,6 +64,23 @@ export function isCoastalLand(state: GameState, col: number, row: number): boole
 export function isForestTile(state: GameState, col: number, row: number): boolean {
   const tile = getTile(state.map, col, row);
   return !!tile && (tile.terrain === "forest" || tile.terrain === "woods" || tile.terrain === "jungle");
+}
+
+/** True if a river runs along the edge between two adjacent tiles — crossing it
+ *  costs extra movement (and blunts a melee assault). */
+export function riverBetween(state: GameState, fromCol: number, fromRow: number, toCol: number, toRow: number): boolean {
+  const from = getTile(state.map, fromCol, fromRow);
+  const to = getTile(state.map, toCol, toRow);
+  if (!from?.river && !to?.river) return false;
+  const ax = offsetToAxial({ col: fromCol, row: fromRow });
+  for (let d = 0; d < 6; d++) {
+    const n = axialToOffset(axialNeighbor(ax, d));
+    if (n.col === toCol && n.row === toRow) {
+      const opp = (d + 3) % 6;
+      return ((from?.river ?? 0) & (1 << d)) !== 0 || ((to?.river ?? 0) & (1 << opp)) !== 0;
+    }
+  }
+  return false;
 }
 
 /** Effective movement cost to enter a tile for a specific unit. */

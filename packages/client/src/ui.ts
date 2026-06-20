@@ -138,6 +138,8 @@ function tileReport(state: GameState, tile: Tile): TileReport {
   if (wonder) name = `${wonder.name} ✦`;
   else if (tile.feature === "village") name = `${TERRAIN_NAMES[t]} · Village`;
   else if (tile.feature === "barb_camp") name = `${TERRAIN_NAMES[t]} · Barbarian Camp`;
+  else if (tile.riverLake) name = `${TERRAIN_NAMES[t]} · River Lake`;
+  else if (tile.river) name = `${TERRAIN_NAMES[t]} · River`;
 
   let subtitle: string;
   if (water) subtitle = "Water · naval units only";
@@ -157,6 +159,10 @@ function tileReport(state: GameState, tile: Tile): TileReport {
     lines.push({ kind: "good", text: `${imp} improvement boosts its yields` });
   }
   if (tile.road) lines.push({ kind: "good", text: "Road speeds movement through this tile" });
+  if (tile.river) {
+    lines.push({ kind: "good", text: tile.riverLake ? "River lake — fresh water (+1 food, +1 science)" : "River — fresh water (+1 food)" });
+    lines.push({ kind: "good", text: "Attackers assaulting across the river fight at -25%" });
+  }
   if (tile.resource) {
     const rdef = RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS];
     const rname = rdef?.name ?? tile.resource;
@@ -1614,8 +1620,14 @@ export function createUI(handlers: UIHandlers): UI {
 
     const info = unitInfo(unit.type);
     const stars = unit.level > 1 ? " ★".repeat(unit.level - 1) : "";
-    const displayName = uniqueUnitForCiv(owner?.civId, unit.type)?.name ?? def.name;
-    let html =
+    const uu = uniqueUnitForCiv(owner?.civId, unit.type);
+    const displayName = uu?.name ?? def.name;
+    // Big portrait art (units-big), keyed by unique-unit id when the owner has one,
+    // else the base unit type — matching how the map overlay picks its sprite.
+    const imgId = uu?.id ?? unit.type;
+    const bigSrc = `${import.meta.env.BASE_URL}units-big/${imgId}.png`;
+    const tokenSrc = `${import.meta.env.BASE_URL}units/${imgId}.png`;
+    let headInfo =
       `<div class="row" style="justify-content:space-between"><b style="font-size:15px">${displayName}<span style="color:#ffd967">${stars}</span></b>` +
       `</div>` +
       (owner && !own
@@ -1627,11 +1639,20 @@ export function createUI(handlers: UIHandlers): UI {
       `</div>`;
     if (combatant) {
       const levelMult = 1 + 0.05 * (unit.level - 1);
-      html +=
+      headInfo +=
         `<div style="color:#9fc0dc">⚔️ ${Math.floor(def.strength * levelMult)}` +
         ((def.rangedStrength ?? 0) > 0 ? ` · 🏹 ${Math.floor((def.rangedStrength ?? 0) * levelMult)} (rng ${def.range})` : "") +
         ` · XP ${unit.xp}</div>`;
     }
+    // Header: big unit art on the left, name/stats on the right. Falls back to the
+    // small map token, then hides if no art exists at all.
+    let html =
+      `<div class="row" style="gap:10px;align-items:flex-start">` +
+      `<img src="${bigSrc}" alt="${escapeHtml(displayName)}" ` +
+      `onerror="if(this.dataset.fb){this.style.visibility='hidden'}else{this.dataset.fb='1';this.src='${tokenSrc}'}" ` +
+      `style="width:76px;height:76px;flex:0 0 76px;object-fit:contain;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5))">` +
+      `<div style="flex:1;min-width:0">${headInfo}</div>` +
+      `</div>`;
     if (unit.promotions.length) {
       html +=
         `<div style="margin-top:6px;color:#9fc0dc"><b>Promotions:</b> ` +

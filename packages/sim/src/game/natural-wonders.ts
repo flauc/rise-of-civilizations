@@ -165,7 +165,8 @@ export function placeNaturalWonders(
   for (const def of NATURAL_WONDER_DEFS) {
     const candidates: { col: number; row: number; key: number }[] = [];
     for (const t of map.tiles) {
-      if (occupied(t) || !def.validTerrain.includes(t.terrain)) continue;
+      // Never place a wonder on a river tile or an occupied/invalid tile.
+      if (occupied(t) || t.river || !def.validTerrain.includes(t.terrain)) continue;
       if (!farFromStarts(t.col, t.row)) continue;
       if (unitAt(state, t.col, t.row)) continue;
       candidates.push({ col: t.col, row: t.row, key: hashSeed(`nw:${def.id}:${t.col},${t.row}:${seed}`) });

@@ -31,6 +31,8 @@ export interface TileView {
   feature?: string;
   resource?: string;
   naturalWonder?: string;
+  river?: number;
+  riverLake?: boolean;
 }
 
 export interface PlayerPublic {
@@ -149,6 +151,8 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     if (t.feature) tv.feature = t.feature;
     if (t.resource) tv.resource = t.resource;
     if (t.naturalWonder) tv.naturalWonder = t.naturalWonder;
+    if (t.river) tv.river = t.river;
+    if (t.riverLake) tv.riverLake = true;
     tiles.push(tv);
   }
 

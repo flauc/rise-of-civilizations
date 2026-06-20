@@ -1,90 +1,97 @@
 /// <reference types="vite/client" />
+import { hashSeed } from "@roc/shared";
 
-/** River overlay atlas keyed by `<canonicalMask>`. */
+/**
+ * River overlay atlas (purchased "Hex Rivers Coasts Seas" art).
+ *
+ * Tiles are keyed by OUR runtime direction convention (see tools/sync-river-tiles.mjs):
+ *   - `river_<mask>`       overland channel; bit d = river crosses edge toward dir d
+ *   - `river_lake_<mask>`  spring/terminal pond at a river end (single-bit mask)
+ *   - `river_mouth_<bit>`  river fanning into the sea across one edge (single bit)
+ *
+ * All are transparent 256x384 overlays drawn on top of the base terrain, so they
+ * compose with the coast shoreline and join neighbours at shared edge midpoints.
+ */
 export interface RiverAtlas {
-  readonly images: Readonly<Record<string, HTMLImageElement | undefined>>;
-  /** True once every requested river segment has finished loading or errored. */
+  /** key (e.g. "river_9", "river_lake_8", "river_mouth_1") -> loaded variants. */
+  readonly images: Readonly<Record<string, HTMLImageElement[]>>;
   loaded: boolean;
 }
 
-/** Distinct connection patterns up to hex rotation (0-side omitted). */
-const CONNECTION_MASKS = [1, 3, 5, 7, 9, 11, 13, 15, 21, 23, 27, 31, 63] as const;
+const SINGLE_BITS = [1, 2, 4, 8, 16, 32] as const;
+const RIVER_VARIANTS = 3; // some channels ship up to 3 painted variations
+const MOUTH_VARIANTS = 2;
 
-function imageUrl(id: string): string {
-  return `${import.meta.env.BASE_URL}rivers/${id}.png`;
+function imageUrl(name: string): string {
+  return `${import.meta.env.BASE_URL}hex-terrain/rivers/${name}.png`;
 }
 
-/** Returns true when an image has finished loading and has usable pixels. */
 export function isImageReady(img: HTMLImageElement): boolean {
   return img.complete && img.naturalWidth > 0;
 }
 
-function rotateMask(mask: number, steps: number): number {
-  const s = ((steps % 6) + 6) % 6;
-  return ((mask << s) | (mask >> (6 - s))) & 0b111111;
-}
-
-function canonicalInfo(mask: number): { readonly canonical: number; readonly rotation: number } {
-  let best = mask;
-  let rotation = 0;
-  for (let r = 1; r < 6; r++) {
-    const rotated = rotateMask(mask, r);
-    if (rotated < best) {
-      best = rotated;
-      rotation = r;
-    }
-  }
-  return { canonical: best, rotation };
-}
-
-/**
- * Starts loading river overlay images.
- *
- * `onLoad` is invoked every time an individual segment finishes loading or
- * errors so the render loop can redraw.
- */
+/** Starts loading every river overlay; `onLoad` fires as each finishes/errors. */
 export function loadRiverAtlas(onLoad?: () => void): RiverAtlas {
-  const images: Record<string, HTMLImageElement | undefined> = {};
-  let remaining: number = CONNECTION_MASKS.length;
+  const images: Record<string, HTMLImageElement[]> = {};
+  let remaining = 0;
 
-  for (const mask of CONNECTION_MASKS) {
-    const id = `river_${mask}`;
-    const img = new Image();
-    img.src = imageUrl(id);
+  const want = (key: string, variants: number): void => {
+    images[key] = [];
+    for (let v = 0; v < variants; v++) {
+      const img = new Image();
+      img.src = imageUrl(`${key}_${v}`);
+      remaining++;
+      const done = (ok: boolean): void => {
+        if (ok && isImageReady(img)) images[key]!.push(img);
+        remaining--;
+        if (remaining === 0) (atlas as { loaded: boolean }).loaded = true;
+        onLoad?.();
+      };
+      img.onload = () => done(true);
+      img.onerror = () => done(false);
+    }
+  };
 
-    const onFinish = (): void => {
-      if (isImageReady(img)) {
-        images[id] = img;
-      }
-      remaining--;
-      if (remaining === 0) {
-        (atlas as { loaded: boolean }).loaded = true;
-      }
-      onLoad?.();
-    };
-
-    img.onload = onFinish;
-    img.onerror = () => {
-      remaining--;
-      if (remaining === 0) {
-        (atlas as { loaded: boolean }).loaded = true;
-      }
-      onLoad?.();
-    };
+  for (let mask = 0; mask < 64; mask++) want(`river_${mask}`, RIVER_VARIANTS);
+  for (const bit of SINGLE_BITS) {
+    want(`river_lake_${bit}`, 1);
+    want(`river_mouth_${bit}`, MOUTH_VARIANTS);
   }
 
   const atlas: RiverAtlas = { images, loaded: remaining === 0 };
   return atlas;
 }
 
-/** Returns the overlay image for a river neighbor-edge mask. */
-export function riverFrameFor(atlas: RiverAtlas | undefined, mask: number): HTMLImageElement | undefined {
-  if (!atlas) return undefined;
-  const { canonical } = canonicalInfo(mask);
-  return atlas.images[`river_${canonical}`];
+/** Deterministically pick a variant for a key so a tile is stable across redraws. */
+function pick(atlas: RiverAtlas, key: string, salt: string): HTMLImageElement | undefined {
+  const variants = atlas.images[key];
+  if (!variants || variants.length === 0) return undefined;
+  return variants[hashSeed(`${salt},${key}`) % variants.length];
 }
 
-/** Returns how many 60-degree steps the canonical image must be rotated. */
-export function riverRotationFor(mask: number): number {
-  return canonicalInfo(mask).rotation;
+/** Overland river channel for a connection mask (or the lake-end pond variant). */
+export function riverChannelFrame(
+  atlas: RiverAtlas | undefined,
+  mask: number,
+  lake: boolean,
+  col: number,
+  row: number,
+): HTMLImageElement | undefined {
+  if (!atlas) return undefined;
+  if (lake) {
+    return pick(atlas, `river_lake_${mask}`, `${col},${row}`) ?? pick(atlas, `river_${mask}`, `${col},${row}`);
+  }
+  if (mask === 0) return undefined;
+  return pick(atlas, `river_${mask}`, `${col},${row}`);
+}
+
+/** River-mouth overlay for a single edge bit facing the sea. */
+export function riverMouthFrame(
+  atlas: RiverAtlas | undefined,
+  bit: number,
+  col: number,
+  row: number,
+): HTMLImageElement | undefined {
+  if (!atlas) return undefined;
+  return pick(atlas, `river_mouth_${bit}`, `${col},${row}`);
 }

@@ -148,6 +148,8 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     if (t.feature) tile.feature = t.feature;
     if (t.resource) tile.resource = t.resource;
     if (t.naturalWonder) tile.naturalWonder = t.naturalWonder;
+    if (t.river) tile.river = t.river;
+    if (t.riverLake) tile.riverLake = true;
     tiles[t.row * view.cols + t.col] = tile;
     explored.add(`${t.col},${t.row}`);
   }

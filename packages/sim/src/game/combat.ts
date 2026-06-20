@@ -1,4 +1,4 @@
-import { axialDistance, getTile, offsetToAxial, type TerrainType } from "@roc/shared";
+import { axialDistance, axialNeighbor, axialToOffset, getTile, offsetToAxial, type TerrainType } from "@roc/shared";
 import type { City, GameState, Player, Unit } from "./state";
 import { cityAt, log, playerById, unitAt, areEnemies } from "./state";
 import {
@@ -43,6 +43,23 @@ function isOpen(t: TerrainType): boolean {
 
 function has(unit: Unit, p: PromotionId): boolean {
   return unit.promotions.includes(p);
+}
+
+/** True if a river runs along the edge between two adjacent tiles — i.e. the
+ *  attacker would have to assault across the watercourse. */
+function riverBetween(state: GameState, fromCol: number, fromRow: number, toCol: number, toRow: number): boolean {
+  const from = getTile(state.map, fromCol, fromRow);
+  const to = getTile(state.map, toCol, toRow);
+  if (!from && !to) return false;
+  const ax = offsetToAxial({ col: fromCol, row: fromRow });
+  for (let d = 0; d < 6; d++) {
+    const n = axialToOffset(axialNeighbor(ax, d));
+    if (n.col === toCol && n.row === toRow) {
+      const opp = (d + 3) % 6;
+      return ((from?.river ?? 0) & (1 << d)) !== 0 || ((to?.river ?? 0) & (1 << opp)) !== 0;
+    }
+  }
+  return false;
 }
 
 /** Damage one combatant deals to another given effective strengths. */
@@ -150,6 +167,9 @@ function attackStrength(
   if (ranged && has(unit, "mounted_archer") && def.cls === "cavalry") s += 2;
   if (has(unit, "ranger")) s += 2;
   if (has(unit, "intimidation")) s += 2;
+
+  // Assaulting across a river blunts a melee attack (ranged fire flies over it).
+  if (!ranged && riverBetween(state, unit.col, unit.row, defender.col, defender.row)) s *= 0.75;
 
   return s * woundFactor(unit.hp, unitMaxHp(unit));
 }

@@ -4,9 +4,14 @@
 import {
   makeRng,
   getTile,
+  axialNeighbor,
+  axialToOffset,
+  offsetToAxial,
+  isWater,
   type GameMap,
   type Tile,
   type TerrainType,
+  type Rng,
 } from "@roc/shared";
 import { makeValueNoise } from "./noise";
 
@@ -43,6 +48,7 @@ export function generateMap(opts: WorldGenOptions): GameMap {
   const moisture = makeValueNoise(rng, 48, 4);
 
   const tiles: Tile[] = new Array(cols * rows);
+  const heights = new Float32Array(cols * rows); // raw elevation, for river flow
   const nx = 6 / cols; // noise frequency scale across the map
   const ny = 6 / rows;
 
@@ -79,13 +85,95 @@ export function generateMap(opts: WorldGenOptions): GameMap {
         }
       }
       tiles[row * cols + col] = { col, row, terrain };
+      heights[row * cols + col] = height;
     }
   }
 
   const map: GameMap = { cols, rows, tiles };
   markLakes(map);
   markCoasts(map);
+  generateRivers(map, heights, rng);
   return map;
+}
+
+/** Direction (0..5) from tile A to adjacent tile B, or -1 if not neighbours. */
+function dirBetween(a: Tile, bCol: number, bRow: number): number {
+  const ax = offsetToAxial({ col: a.col, row: a.row });
+  for (let d = 0; d < 6; d++) {
+    const n = axialToOffset(axialNeighbor(ax, d));
+    if (n.col === bCol && n.row === bRow) return d;
+  }
+  return -1;
+}
+
+/**
+ * Carve a handful of rivers that flow from high ground downhill to the sea (or to
+ * a terminal lake). Each step links two tiles by setting, on both, the river bit
+ * pointing at the other — so the painted channels meet at the shared edge midpoint
+ * and join seamlessly. The source tile ends up with a single bit (a spring); a run
+ * that dies in a basin turns its last tile into a small river lake.
+ */
+function generateRivers(map: GameMap, heights: Float32Array, rng: Rng): void {
+  const { cols, rows, tiles } = map;
+  const idx = (c: number, r: number) => r * cols + c;
+  const isLand = (t: Tile | undefined): boolean =>
+    !!t && !isWater(t.terrain) && t.terrain !== "mountains" && t.terrain !== "volcano";
+
+  // Candidate sources: elevated land tiles, away from the very edge.
+  const sources: number[] = [];
+  for (let r = 2; r < rows - 2; r++) {
+    for (let c = 2; c < cols - 2; c++) {
+      const t = tiles[idx(c, r)]!;
+      if (isLand(t) && heights[idx(c, r)]! > 0.55) sources.push(idx(c, r));
+    }
+  }
+  // Pick a generous spread of sources so rivers thread across the whole map.
+  const target = Math.max(12, Math.round((cols * rows) / 30));
+  const chosen: number[] = [];
+  for (let i = sources.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1));
+    [sources[i], sources[j]] = [sources[j]!, sources[i]!];
+  }
+  for (const s of sources) {
+    if (chosen.length >= target) break;
+    const sc = s % cols, sr = (s / cols) | 0;
+    if (chosen.every((o) => Math.abs((o % cols) - sc) + Math.abs(((o / cols) | 0) - sr) > 1)) {
+      chosen.push(s);
+    }
+  }
+
+  for (const start of chosen) {
+    let cur = tiles[start]!;
+    if (cur.river) continue; // already part of a river
+    const visited = new Set<number>([start]);
+    for (let step = 0; step < cols + rows; step++) {
+      // Look at neighbours; flow to the lowest one, allowing descent into water.
+      const here = offsetToAxial({ col: cur.col, row: cur.row });
+      let best: Tile | undefined;
+      let bestH = heights[idx(cur.col, cur.row)]!;
+      for (let d = 0; d < 6; d++) {
+        const n = axialToOffset(axialNeighbor(here, d));
+        const nt = getTile(map, n.col, n.row);
+        if (!nt) continue;
+        if (nt.terrain === "mountains" || nt.terrain === "volcano") continue;
+        const h = heights[idx(n.col, n.row)]!;
+        if (h < bestH - 1e-4) { bestH = h; best = nt; }
+      }
+      if (!best) {
+        // Basin with nowhere to drain: the river pools into a small lake.
+        cur.riverLake = true;
+        break;
+      }
+      const d = dirBetween(cur, best.col, best.row);
+      if (d < 0) break;
+      cur.river = (cur.river ?? 0) | (1 << d);
+      if (isWater(best.terrain)) break; // reached the sea: this edge is a river mouth
+      best.river = (best.river ?? 0) | (1 << ((d + 3) % 6));
+      if (visited.has(idx(best.col, best.row))) break; // merged into an existing river
+      visited.add(idx(best.col, best.row));
+      cur = best;
+    }
+  }
 }
 
 /** Odd-r offset neighbours of a tile, clamped to the map. */
