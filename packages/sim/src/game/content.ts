@@ -49,14 +49,27 @@ export type ActiveAbilityId =
   | "pierce"
   | "harry"
   | "reconnoiter"
+  | "hide"
   // naval
   | "ram"
   | "boarding_party"
   | "greek_fire"
-  | "coastal_bombardment";
+  | "coastal_bombardment"
+  // civ-unique / enhanced (docs/UNIT-ABILITIES.md §8)
+  | "war_cart_charge"
+  | "parthian_shot"
+  | "feigned_retreat"
+  | "hussar_charge"
+  | "othismos"
+  | "last_stand"
+  | "repeating_fire"
+  | "pavise"
+  | "arrow_storm"
+  | "furor"
+  | "siege_assault";
 
 /** A persistent stance a unit enters by forfeiting its movement for the turn. */
-export type StanceId = "brace" | "shield_wall" | "testudo" | "emplace";
+export type StanceId = "brace" | "shield_wall" | "testudo" | "emplace" | "othismos" | "last_stand" | "pavise";
 
 /**
  * How an ability is invoked:
@@ -95,7 +108,20 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
   sunder: A({ id: "sunder", name: "Sunder", verb: "Sunder", glyph: "🔨", kind: "targeted", cooldown: 0, desc: "A crushing blow: lighter damage but the target loses 25% defense until its next turn." }),
   pierce: A({ id: "pierce", name: "Pierce", verb: "Pierce", glyph: "🎯", kind: "targeted", cooldown: 0, desc: "Armor-piercing bolt: ignores 6 points of the target's defense. Reduced range this shot." }),
   harry: A({ id: "harry", name: "Harry", verb: "Harry", glyph: "🐕", kind: "targeted", cooldown: 0, desc: "Low-damage strike that pins the target — it cannot move on its next turn." }),
-  reconnoiter: A({ id: "reconnoiter", name: "Reconnoiter", verb: "Scout Ahead", glyph: "🔭", kind: "self", cooldown: 0, desc: "Forfeit the turn for a vision pulse: +2 sight until your next turn." }),
+  reconnoiter: A({ id: "reconnoiter", name: "Reconnoiter", verb: "Scout Ahead", glyph: "🔭", kind: "self", cooldown: 0, desc: "Forfeit the turn for a vision pulse: +2 sight until your next turn, and reveal hidden enemy units in sight." }),
+  hide: A({ id: "hide", name: "Hide", verb: "Hide", glyph: "🌲 ", kind: "self", cooldown: 0, desc: "Conceal in cover (needs ≥1 movement, forfeits the rest). Invisible to enemies until you act or are discovered. An enemy stepping onto you is ambushed; breaking cover near foes grants an ambush attack bonus." }),
+  // civ-unique / enhanced (docs/UNIT-ABILITIES.md §8)
+  war_cart_charge: A({ id: "war_cart_charge", name: "War-Cart Charge", verb: "Charge", glyph: "🐎", kind: "targeted", cooldown: 0, desc: "An early, lighter charge (+2 attack) that rides through the target — but not over rough terrain." }),
+  parthian_shot: A({ id: "parthian_shot", name: "Parthian Shot", verb: "Parthian Shot", glyph: "🏹", kind: "targeted", cooldown: 0, desc: "Fire on the gallop: shoot even after moving, then fall back a tile for free." }),
+  feigned_retreat: A({ id: "feigned_retreat", name: "Feigned Retreat", verb: "Feign / Charge", glyph: "🐎", kind: "targeted", cooldown: 0, desc: "Dual-mode horse tactic: kite a distant foe (fire & retreat) or close and ride through an adjacent one (charge)." }),
+  hussar_charge: A({ id: "hussar_charge", name: "Winged Charge", verb: "Charge", glyph: "🐎", kind: "targeted", cooldown: 0, desc: "A lance charge that punches through braced spears, ignoring the Set Spears/Shield Wall penalty." }),
+  othismos: A({ id: "othismos", name: "Othismos", verb: "Form Phalanx", glyph: "🛡️", kind: "stance", cooldown: 0, desc: "Shield Wall that also lends adjacent friendly melee +2 attack (the phalanx push). Forfeits movement." }),
+  last_stand: A({ id: "last_stand", name: "Last Stand", verb: "Last Stand", glyph: "🛡️", kind: "stance", cooldown: 0, desc: "Brace whose bonus grows as HP falls (up to +60% near death). Forfeits movement." }),
+  repeating_fire: A({ id: "repeating_fire", name: "Repeating Fire", verb: "Repeating Fire", glyph: "🏹", kind: "targeted", cooldown: 0, desc: "Loose two volleys in one turn; the second shot is weaker." }),
+  pavise: A({ id: "pavise", name: "Pavise", verb: "Set Pavise", glyph: "🛡️", kind: "stance", cooldown: 0, desc: "Plant a pavise shield: +50% defense vs ranged until your next turn. Forfeits movement." }),
+  arrow_storm: A({ id: "arrow_storm", name: "Arrow Storm", verb: "Arrow Storm", glyph: "🏹", kind: "targeted", cooldown: 0, desc: "A long volley (+1 range) that also lightly wounds a second enemy beside the target." }),
+  furor: A({ id: "furor", name: "Furor", verb: "Furor", glyph: "⚔️", kind: "targeted", cooldown: 0, desc: "A fanatic charge: +6 attack this strike, but −4 defense until your next turn." }),
+  siege_assault: A({ id: "siege_assault", name: "Assault Tower", verb: "Assault", glyph: "🪜", kind: "targeted", cooldown: 0, desc: "Storm a city wall: a melee assault that ignores wall defense and shelters its crew." }),
   // naval
   ram: A({ id: "ram", name: "Ram", verb: "Ram", glyph: "⚓", kind: "targeted", cooldown: 0, desc: "Drive the ship into an adjacent enemy vessel (+4 attack)." }),
   boarding_party: A({ id: "boarding_party", name: "Boarding Party", verb: "Board", glyph: "⚔️", kind: "targeted", cooldown: 1, desc: "Grapple and storm an adjacent ship (+5 attack, heal on kill)." }),
@@ -122,7 +148,7 @@ export type TechId =
   | "iron_bloomery" | "carburizing" | "siegecraft" | "torsion_engines"
   | "mathematics" | "engineering" | "coinage" | "philosophy"
   | "cavalry_doctrine" | "horse_archery" | "crossbow"
-  | "monumental_architecture" | "elephantry";
+  | "monumental_architecture" | "elephantry" | "bridge_building";
 
 export const UNIT_MAX_HP = 100;
 
@@ -250,6 +276,56 @@ for (const [id, abilities] of Object.entries(UNIT_ACTIVE_ABILITIES)) {
   UNIT_DEFS[id as UnitTypeId].activeAbilities = abilities;
 }
 
+// Hide is available "across the board" to all foot infantry (land melee/ranged)
+// and to scouts — they can conceal themselves in cover (see stealth.ts). Cavalry,
+// siege and naval units cannot hide unless a unique unit grants it (UNIQUE_ABILITY_OVERRIDES).
+for (const id of Object.keys(UNIT_DEFS) as UnitTypeId[]) {
+  const d = UNIT_DEFS[id];
+  if (d.cls === "melee" || d.cls === "ranged" || id === "scout") {
+    d.activeAbilities = [...(d.activeAbilities ?? []), "hide"];
+  }
+}
+
+/**
+ * Civ unique units that REPLACE their base unit's active-ability list with a
+ * bespoke/enhanced set (docs/UNIT-ABILITIES.md §8). Keyed by unique-unit id
+ * (see UNIQUE_UNITS in @roc/data); resolved per unit by its owner civ in
+ * abilities.ts. Uniques not listed here simply inherit their base unit's
+ * abilities (the civ's flat combat bonus already differentiates them).
+ */
+export const UNIQUE_ABILITY_OVERRIDES: Record<string, ActiveAbilityId[]> = {
+  sumer_war_cart: ["war_cart_charge", "hide"],
+  parthia_parthian_horse_archer: ["parthian_shot"],
+  scythians_scythian_horse_archer: ["parthian_shot", "hide"],
+  mongols_keshig: ["feigned_retreat"],
+  greece_hoplite: ["othismos", "hide"],
+  sparta_spartan_hoplite: ["last_stand", "hide"],
+  celts_gauls_gaesatae: ["furor", "hide"],
+  poland_lithuania_winged_hussar: ["hussar_charge"],
+  han_china_cho_ko_nu: ["repeating_fire", "hide"],
+  genoa_genoese_crossbowman: ["pierce", "pavise", "hide"],
+  anglo_saxon_england_longbowman: ["arrow_storm", "hide"],
+  assyria_siege_tower: ["siege_assault"],
+  // Unique cavalry/skirmishers that gain Hide (some can hide in the open, see stealth.ts).
+  numidia_numidian_cavalry: ["fire_and_retreat", "hide"],
+  lusitani_falcata_warrior: ["sunder", "hide"],
+  maya_holkan: ["skirmish", "hide"],
+};
+
+/**
+ * The active abilities a unit type fields, for static display (wiki, lobby) where
+ * no game state exists. Honors a unique unit's override (UNIQUE_ABILITY_OVERRIDES);
+ * pass `uniqueUnitId` to resolve a civ's unique variant, otherwise the base unit's
+ * abilities are returned. Mirrors `effectiveAbilities` (civs.ts) without a Unit.
+ */
+export function unitActiveAbilityIds(type: UnitTypeId, uniqueUnitId?: string): ActiveAbilityId[] {
+  if (uniqueUnitId) {
+    const override = UNIQUE_ABILITY_OVERRIDES[uniqueUnitId];
+    if (override) return override;
+  }
+  return UNIT_DEFS[type].activeAbilities ?? [];
+}
+
 export const MILITARY_CLASSES: ReadonlySet<UnitClass> = new Set(["melee", "ranged", "cavalry", "siege", "naval_melee", "naval_ranged"]);
 
 export function isMilitary(type: UnitTypeId): boolean {
@@ -344,6 +420,7 @@ export const TECH_DEFS: Record<TechId, TechDef> = {
   iron_bloomery: T("iron_bloomery", "Iron Bloomery", 55, ["smelting"]),
   carburizing: T("carburizing", "Carburizing (Steel)", 72, ["iron_bloomery"]),
   siegecraft: T("siegecraft", "Siegecraft", 58, ["masonry", "the_wheel"]),
+  bridge_building: T("bridge_building", "Bridge Building", 44, ["masonry", "the_wheel"]),
   mathematics: T("mathematics", "Mathematics", 60, ["writing"]),
   torsion_engines: T("torsion_engines", "Torsion Engines", 82, ["siegecraft", "mathematics"]),
   engineering: T("engineering", "Engineering", 66, ["mathematics", "masonry"]),
@@ -483,6 +560,8 @@ export function techUnlocks(techId: TechId): string[] {
   const out: string[] = [];
   for (const d of Object.values(UNIT_DEFS)) if (d.reqTech === techId) out.push(d.name);
   for (const d of Object.values(BUILDING_DEFS)) if (d.reqTech === techId) out.push(d.name);
+  // Techs whose payoff is a map/mechanic rather than a unit or building.
+  if (techId === "bridge_building") out.push("Bridges over rivers");
   return out;
 }
 

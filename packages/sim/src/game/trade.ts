@@ -9,7 +9,7 @@ import type { City, GameState, TradeRoute, Unit } from "./state";
 import { cityAt, log, playerById } from "./state";
 import { UNIT_DEFS } from "./content";
 import { isPassableLand, isWaterTerrain, moveCost, type TerrainType } from "./terrain";
-import { offsetNeighbors } from "./movement";
+import { offsetNeighbors, riverBetween, tileHasBridge } from "./movement";
 import { emitTradeRouteEstablished } from "./turn-updates";
 
 export interface TradeYield {
@@ -42,11 +42,14 @@ function riversConnectFor(state: GameState, ownerId: number): boolean {
 function roadConnectionBonus(state: GameState, route: TradeRoute): number {
   if (route.path.length < 3) return 0;
   const riverConnects = riversConnectFor(state, route.ownerId);
-  let minTier = Number.MAX_SAFE_INTEGER;
-  for (let i = 1; i < route.path.length - 1; i++) {
-    const key = route.path[i];
+  const coords: [number, number][] = [];
+  for (const key of route.path) {
     if (!key) return 0;
-    const [col, row] = key.split(",").map(Number) as [number, number];
+    coords.push(key.split(",").map(Number) as [number, number]);
+  }
+  let minTier = Number.MAX_SAFE_INTEGER;
+  for (let i = 1; i < coords.length - 1; i++) {
+    const [col, row] = coords[i]!;
     const tile = getTile(state.map, col, row);
     if (!tile) return 0;
     // A river (with Sailing) counts as the best grade of road; otherwise the tile
@@ -54,6 +57,17 @@ function roadConnectionBonus(state: GameState, route: TradeRoute): number {
     const tier = tile.road ? tile.roadLevel ?? 1 : riverConnects && tile.river ? 3 : 0;
     if (tier === 0) return 0;
     if (tier < minTier) minTier = tier;
+  }
+  // A river crossing the path severs the road connection unless a bridge carries the
+  // road over it — or the player has Sailing, which makes rivers navigable arteries.
+  if (!riverConnects) {
+    for (let i = 0; i < coords.length - 1; i++) {
+      const [c1, r1] = coords[i]!;
+      const [c2, r2] = coords[i + 1]!;
+      if (riverBetween(state, c1, r1, c2, r2) && !tileHasBridge(state, c1, r1) && !tileHasBridge(state, c2, r2)) {
+        return 0;
+      }
+    }
   }
   if (minTier === Number.MAX_SAFE_INTEGER) return 0;
   return ROAD_BONUS_BY_TIER[minTier] ?? 0;

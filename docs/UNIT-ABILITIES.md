@@ -1,8 +1,9 @@
 # Unit Active Abilities
 
-> **Status (audited 2026-06-19): PARTIALLY IMPLEMENTED — the original "nothing implemented yet" header is stale.**
+> **Status (audited 2026-06-19; §8 + Hide implemented 2026-06-20): PARTIALLY IMPLEMENTED.**
 > - ✅ **§3 generic catalogue is built**: `brace, shield_wall, testudo, emplace, charge, shock_charge, trample, fire_and_retreat, skirmish, sunder, pierce, harry, reconnoiter` plus naval `ram, boarding_party, greek_fire, coastal_bombardment` — defined in `content.ts` (`ACTIVE_ABILITY_DEFS` + per-unit assignment), resolved in `abilities.ts`/`combat.ts`/`commands.ts`, with AI and client UI.
-> - ❌ **§8 civ-unique / enhanced abilities NOT built**: `parthian_shot, feigned_retreat, hussar_charge, othismos, last_stand, repeating_fire, pavise, furor, arrow_storm, siege_assault, war_cart_charge` — no unit is assigned them. They depend on **unique units existing as real types, which they do not** (see [CIVILIZATIONS.md](CIVILIZATIONS.md#implementation-status-audit)).
+> - ✅ **§8 civ-unique / enhanced abilities BUILT** (2026-06-20): `war_cart_charge, parthian_shot, feigned_retreat, hussar_charge, othismos, last_stand, repeating_fire, pavise, arrow_storm, furor, siege_assault`. Now that unique units exist (resolved per civ from a base type), each is mapped in `content.ts` `UNIQUE_ABILITY_OVERRIDES` (keyed by unique-unit id) and resolved by `effectiveAbilities` in `civs.ts`. Mechanics live in `abilities.ts`/`combat.ts`. Reconciliations vs. the §8.2 wishlist: Sassanid Savaran and Timurid Siege Train keep the class default (no bespoke entry yet); Gupta Elephant-Archer keeps Trample (no howdah ranged shot); Maya Holkan/Lusitani/Numidia/Scythian/Sumer also pick up **Hide** (below).
+> - ✅ **Hide / ambush (new layer) BUILT** (2026-06-20): a `hide` self-ability across the board for foot infantry and scouts (forest cover), with curated unique units hiding in more terrain and ambushing harder. See "§11 Hide & ambush" below. Sim in `stealth.ts`; fog enforced in `serialize.ts`.
 > - ❌ **§9 hero signature abilities NOT built**: `duel, rally, grand_ambush, lightning_advance, terror, great_bombard, inspire` — the entire Legends/hero system is unimplemented ([GREAT-PEOPLE.md](GREAT-PEOPLE.md)).
 > - ⚠️ Numbers below are first-draft; treat the §3 entries as "exists, values may differ from code."
 
@@ -560,6 +561,48 @@ packages/client/public/abilities/
 
 > None of these files need to exist for the feature to ship. Drop any subset in and they light up
 > automatically; the rest keep their glyphs.
+
+---
+
+## 11. Hide & ambush (concealment)
+
+A new self-ability, **Hide** (`hide`, glyph 🌲), is available **across the board to all foot
+infantry (land melee/ranged classes) and scouts**. A curated set of unique units can hide in more
+terrain and ambush harder. Implemented in [`stealth.ts`](../packages/sim/src/game/stealth.ts).
+
+**Hiding.** Costs a turn: the unit must have **≥1 movement**, forfeits all remaining movement, and
+becomes **hidden**. Hidden units are **invisible to enemies** — concealed even on a tile the enemy
+can see (fog enforced in `serialize.ts viewForPlayer`). A unit stays hidden across turns until it
+**breaks cover** (moves, attacks, or is woken via the *wake* command) or is **discovered**.
+
+**Cover (terrain).**
+- Default (ordinary infantry/scouts): **forest only** (not woods, not jungle). Moving **breaks cover**.
+- Special uniques hide in more: **Numidian Cavalry** (forest/plains/grassland/desert), **Scythian
+  Horse Archer** (forest/plains/grassland), **Sumerian War-Cart** (forest/plains), **Maya Holkan**
+  (forest/jungle), **Lusitani Falcata Warrior** (forest/hills/plains). These are the "special units"
+  and "unique cavalry" that can hide in the open. Edit `SPECIAL_HIDE` in `stealth.ts` to extend.
+
+**Stealth repositioning.** A curated subset of guerrilla/light uniques — flagged `stealthMove` in
+`SPECIAL_HIDE` (**Lusitani Falcata Warrior**, **Maya Holkan**, **Numidian Cavalry**) — can **move
+while staying concealed**, but only at **one third their normal pace** (`stealthMovement` =
+`max(1, floor(movement/3))`, applied at turn start in `beginTurn`/`startSimultaneousTurn`). Everyone
+else reveals the moment they move. Creeping into position and then striking from concealment chains
+naturally into the ambush attack bonus.
+
+**Ambush — stepping onto a hidden unit.** An enemy that **navigates directly onto** a concealed
+unit's tile is **ambushed**: the hidden unit is revealed and strikes the intruder by surprise (no
+retaliation, the hider's ambush bonus), the intruder defends at **−20%**, is **halted** (does not
+take the tile), and loses its movement. (`combat.ts resolveAmbush`; move interception in
+`commands.ts`; `movement.ts occupancy` lets a mover path onto a concealed enemy.)
+
+**Ambush perk — breaking cover near foes.** When a unit breaks cover **within 2 tiles of an enemy**
+it gains the ambush window: its attacks until the start of its next turn deal **+20% (default)**, or
+**+30%** for the sharper uniques (`ambushBonus`). Read in `combat.ts attackStrength` via
+`unit.ambushReadyUntilTurn` / `unit.ambushBonus`.
+
+**Discovery via Reconnoiter.** A scout's **Reconnoiter** pulse now also **reveals every concealed
+non-friendly unit within (sight + 2) tiles** (`revealHiddenInSight`). Attacking a hidden unit (e.g.
+a ranged shot) also flushes it out.
 
 ---
 

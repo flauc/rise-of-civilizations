@@ -19,13 +19,17 @@ import { pruneBarbarianBribes } from "./bribery";
 import { advanceWorks } from "./works";
 import { gatherPlayerResources } from "./resources";
 import { tickAbilities } from "./abilities";
+import { canStealthMove, stealthMovement } from "./stealth";
 import { diplomacyTick } from "./diplomacy";
 import { aiTakeTurn } from "./ai";
 
 /** Begin a fresh turn for ALL players at once: refresh movement, heal, reveal. */
 export function startSimultaneousTurn(state: GameState): void {
   for (const u of state.units.values()) {
-    if (!u.sleeping) u.movementLeft = unitMovement(state, u);
+    if (u.sleeping) continue;
+    u.movementLeft = unitMovement(state, u);
+    // A concealed stealth-mover creeps at one third its normal pace.
+    if (u.hidden && canStealthMove(state, u)) u.movementLeft = stealthMovement(u.movementLeft);
   }
   for (const p of state.players) {
     healAndReset(state, p);

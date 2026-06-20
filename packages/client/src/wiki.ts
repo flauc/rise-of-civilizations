@@ -86,6 +86,12 @@ const WIKI_UNIT_STYLE = `<style>
 .wiki-unit-name{font-weight:700;font-size:14px;color:#e6d2b8}
 .wiki-unit-stats{font-size:12px;color:#9fb0c0;margin-top:3px}
 .wiki-unit-meta{font-size:11px;color:#8a93a0;margin-top:3px}
+@media(max-width:700px){
+.wiki-unit-classtitle{font-size:15px;margin:14px 0 4px}
+.wiki-unit-grid{grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin:6px 0 18px}
+.wiki-unit-img{height:120px}
+.wiki-unit-img img{max-height:120px}
+}
 </style>`;
 
 /** A big-image unit card. Uses a crisp ~320px image (units-big), falling back to the token.
@@ -440,7 +446,10 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
   root.innerHTML = `
     <div class="wiki-layout">
       <div class="wiki-sidebar">
-        <div class="wiki-title">Encyclopedia</div>
+        <div class="wiki-sidebar-top">
+          <div class="wiki-title">Encyclopedia</div>
+          <button class="btn wiki-close-mobile" id="wiki-close-mobile" aria-label="Close">✕</button>
+        </div>
         <div class="wiki-categories" id="wiki-categories"></div>
       </div>
       <div class="wiki-main">
@@ -458,7 +467,9 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
     #wiki.hidden{display:none !important}
     .wiki-layout{display:flex;width:100%;height:100%}
     .wiki-sidebar{width:260px;flex-shrink:0;background:#15120c;border-right:1px solid var(--edge);padding:20px;overflow:auto}
+    .wiki-sidebar-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .wiki-title{font-family:'Cinzel',Georgia,serif;font-size:22px;font-weight:800;color:#e8dcc5;margin-bottom:18px}
+    .wiki-close-mobile{display:none}
     .wiki-categories{display:flex;flex-direction:column;gap:6px}
     .wiki-cat{padding:10px 12px;border-radius:8px;cursor:pointer;color:#b8aa8d;background:transparent;border:1px solid transparent;font:inherit;font-size:14px;text-align:left;transition:background .12s,border-color .12s,color .12s}
     .wiki-cat:hover{background:rgba(201,162,39,.08);color:#f0d878}
@@ -485,11 +496,27 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
     .wiki-table th,.wiki-table td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--edge)}
     .wiki-table th{background:rgba(201,162,39,.12);color:#f0d878;font-weight:600}
     .wiki-table tr:last-child td{border-bottom:none}
+    .wiki-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
     @media(max-width:700px){
-      .wiki-sidebar{width:180px}
+      /* Stack into a single column: a sticky top bar with the title, a Close
+         button and a horizontally-scrolling category strip, then full-width
+         content. The desktop header (duplicate title + Close) is hidden. */
+      .wiki-layout{flex-direction:column}
+      .wiki-sidebar{width:100%;flex-shrink:0;border-right:none;border-bottom:1px solid var(--edge);
+        padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 10px max(12px,env(safe-area-inset-left));
+        overflow:visible;position:sticky;top:0;z-index:2}
+      .wiki-sidebar-top{margin-bottom:10px}
+      .wiki-title{font-size:18px;margin-bottom:0}
+      .wiki-close-mobile{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:34px;height:34px;padding:0;font-size:15px;line-height:1}
+      .wiki-categories{flex-direction:row;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:4px;scrollbar-width:none}
+      .wiki-categories::-webkit-scrollbar{display:none}
+      .wiki-cat{flex:0 0 auto;white-space:nowrap;padding:8px 14px;font-size:13px}
+      .wiki-header{display:none}
+      .wiki-content{padding:16px max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+      .wiki-section-title{font-size:19px}
       .wiki-grid{grid-template-columns:1fr}
       .wiki-table{font-size:12px}
-      .wiki-table th,.wiki-table td{padding:8px}
+      .wiki-table th,.wiki-table td{padding:8px;white-space:nowrap}
     }`;
 
   document.head.appendChild(style);
@@ -517,10 +544,12 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
     renderCategories();
   }
 
-  root.querySelector<HTMLButtonElement>("#wiki-close")!.addEventListener("click", () => {
+  const doClose = (): void => {
     open = false;
     root.classList.add("hidden");
-  });
+  };
+  root.querySelector<HTMLButtonElement>("#wiki-close")!.addEventListener("click", doClose);
+  root.querySelector<HTMLButtonElement>("#wiki-close-mobile")!.addEventListener("click", doClose);
 
   return {
     open() {

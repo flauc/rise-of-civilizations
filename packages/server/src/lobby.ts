@@ -1,6 +1,6 @@
 // In-memory lobby + match registry. Pure TS (no Bun) so it's unit-testable.
 
-import { createGame, type BarbarianActivity, type GameState, type GameSummary } from "@roc/sim";
+import { createGame, type BarbarianActivity, type GameState, type GameSummary, type MapType } from "@roc/sim";
 import { GameHost } from "./gamehost";
 
 export interface Slot {
@@ -19,6 +19,7 @@ export interface LobbyGame {
   cols?: number;
   rows?: number;
   aiCount: number;
+  mapType: MapType;
   barbarians: BarbarianActivity;
   startingGold: "tight" | "balanced" | "generous";
   /** Civ id per AI opponent; null = a random unique civ. */
@@ -38,6 +39,7 @@ export interface CreateOptions {
   rows?: number;
   capacity?: number;
   aiCount?: number;
+  mapType?: MapType;
   barbarians?: BarbarianActivity;
   startingGold?: "tight" | "balanced" | "generous";
   aiCivIds?: (string | null)[];
@@ -70,6 +72,7 @@ export class Lobby {
       cols: opts.cols,
       rows: opts.rows,
       aiCount,
+      mapType: opts.mapType ?? "continents",
       barbarians: opts.barbarians ?? "normal",
       startingGold: opts.startingGold ?? "balanced",
       aiCivIds,
@@ -113,6 +116,7 @@ export class Lobby {
       seed: game.seed,
       cols: game.cols,
       rows: game.rows,
+      mapType: game.mapType,
       playerNames: names,
       playerCount: names.length + game.aiCount,
       humanSlots: names.length,

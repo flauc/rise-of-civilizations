@@ -43,7 +43,7 @@ const TECH_PREFERENCE: TechId[] = [
   "cultivation", "pottery_kiln", "animal_taming", "native_copper", "smelting",
   "bronze_alloying", "writing", "masonry", "the_wheel", "equestrian",
   "composite_bow", "phalanx", "iron_bloomery", "coinage", "philosophy",
-  "engineering", "carburizing", "siegecraft", "cavalry_doctrine", "crossbow",
+  "engineering", "carburizing", "siegecraft", "bridge_building", "cavalry_doctrine", "crossbow",
 ];
 
 function ax(o: { col: number; row: number }) {
@@ -318,14 +318,15 @@ function aiTrader(state: GameState, unit: Unit, pid: number): void {
 }
 
 function aiMilitary(state: GameState, unit: Unit, pid: number): void {
-  const abilities = unitAbilities(unit);
+  const abilities = unitAbilities(state, unit);
 
   // Horse archers prefer Fire & Retreat: same damage, no counter, and they reposition.
-  if (abilities.includes("fire_and_retreat")) {
-    const t = [...abilityTargets(state, unit, "fire_and_retreat")][0];
+  const kite = abilities.find((a) => a === "fire_and_retreat" || a === "parthian_shot" || a === "feigned_retreat");
+  if (kite) {
+    const t = [...abilityTargets(state, unit, kite)][0];
     if (t) {
       const [col, row] = t.split(",").map(Number) as [number, number];
-      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: "fire_and_retreat", col, row }, pid);
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: kite, col, row }, pid);
       return;
     }
   }
@@ -348,12 +349,17 @@ function aiMilitary(state: GameState, unit: Unit, pid: number): void {
     if (chosen) {
       // Cavalry strike with a charge (extra punch + breakthrough) when hitting a unit.
       const enemy = unitAt(state, chosen.col, chosen.row);
-      const charge = abilities.find((a) => a === "shock_charge" || a === "charge");
+      const charge = abilities.find((a) => a === "shock_charge" || a === "charge" || a === "hussar_charge" || a === "war_cart_charge" || a === "furor");
       if (enemy && charge && abilityTargets(state, unit, charge).has(`${chosen.col},${chosen.row}`)) {
         applyCommand(state, { type: "useAbility", unitId: unit.id, ability: charge, col: chosen.col, row: chosen.row }, pid);
         return;
       }
-      const sunder = abilities.find((a) => a === "sunder" || a === "pierce" || a === "harry");
+      const ranged2 = abilities.find((a) => a === "repeating_fire" || a === "arrow_storm");
+      if (enemy && ranged2 && abilityTargets(state, unit, ranged2).has(`${chosen.col},${chosen.row}`)) {
+        applyCommand(state, { type: "useAbility", unitId: unit.id, ability: ranged2, col: chosen.col, row: chosen.row }, pid);
+        return;
+      }
+      const sunder = abilities.find((a) => a === "sunder" || a === "pierce" || a === "harry" || a === "siege_assault");
       if (enemy && sunder && abilityTargets(state, unit, sunder).has(`${chosen.col},${chosen.row}`)) {
         applyCommand(state, { type: "useAbility", unitId: unit.id, ability: sunder, col: chosen.col, row: chosen.row }, pid);
         return;
@@ -364,8 +370,9 @@ function aiMilitary(state: GameState, unit: Unit, pid: number): void {
   }
 
   // No good attack: brace spears against adjacent enemy cavalry rather than idling.
-  if (abilities.includes("brace") || abilities.includes("shield_wall")) {
-    const stance = abilities.includes("shield_wall") ? "shield_wall" : "brace";
+  const braceLike = abilities.find((a) => a === "shield_wall" || a === "othismos" || a === "last_stand" || a === "brace");
+  if (braceLike) {
+    const stance = braceLike;
     const threatened = [...state.units.values()].some(
       (e) => e.ownerId !== unit.ownerId && UNIT_DEFS[e.type].cls === "cavalry" && axialDistance(ax(unit), ax(e)) <= 2,
     );

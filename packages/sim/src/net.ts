@@ -5,6 +5,7 @@
 import type { Command } from "./game/commands";
 import type { BarbarianActivity } from "./game/state";
 import type { PlayerView } from "./game/serialize";
+import type { MapType } from "./worldgen";
 
 export interface GameSummary {
   id: string;
@@ -29,6 +30,8 @@ export type ClientMessage =
       capacity?: number;
       aiCount?: number;
       barbarians?: BarbarianActivity;
+      /** Landmass layout to generate (one big continent, archipelago, real world…). */
+      mapType?: MapType;
       /** Starting gold treasury preset for major civ players. */
       startingGold?: "tight" | "balanced" | "generous";
       /** Civ id per AI opponent; null/undefined = a random unique civ. */

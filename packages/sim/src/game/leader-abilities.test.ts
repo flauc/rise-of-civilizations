@@ -3,7 +3,7 @@ import { createGame } from "./setup";
 import { applyCommand } from "./commands";
 import { citiesOf, unitsOf, type City } from "./state";
 import { canUseLeaderAbility, useLeaderAbility, getLeaderAbilityForCiv } from "./leader-abilities";
-import { playerEffects } from "./civs";
+import { playerEffects, unitDisplayName, uniqueUnitForUnit } from "./civs";
 
 function foundCapital(state: ReturnType<typeof createGame>): City {
   const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
@@ -83,6 +83,25 @@ describe("leader abilities", () => {
     const res = useLeaderAbility(state, p);
     expect(res.ok).toBe(true);
     expect(city.modifiers.length).toBeGreaterThan(0);
+  });
+
+  it("spawns the civ's unique unit, not the plain base unit", () => {
+    const state = createGame({ seed: "la-rome", cols: 30, rows: 20, barbarians: false, civIds: ["rome"] });
+    const city = foundCapital(state);
+    city.population = 6;
+    const p = player0(state);
+    p.researched.add("iron_bloomery");
+
+    const before = unitsOf(state, 0).length;
+    const res = useLeaderAbility(state, p);
+    expect(res.ok).toBe(true);
+    expect(unitsOf(state, 0).length).toBe(before + 3);
+
+    // The Citizen Levy spawns swordsmen, which resolve to Rome's unique Legionary.
+    const spawned = unitsOf(state, 0).find((u) => u.type === "swordsman")!;
+    expect(spawned).toBeDefined();
+    expect(uniqueUnitForUnit(state, spawned)?.id).toBe("rome_legionary");
+    expect(unitDisplayName(state, spawned)).toBe("Legionary");
   });
 
   it("returns undefined for an unknown civilization", () => {

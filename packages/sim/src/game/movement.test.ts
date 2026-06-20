@@ -1,8 +1,20 @@
 import { describe, it, expect } from "vitest";
 import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
-import { makeUnit } from "./state";
+import { makeUnit, type City } from "./state";
 import { computeReachable, riverBetween } from "./movement";
+
+/** Register a player-0 city in the state and return its id (for tile ownership). */
+function ownedCity(s: ReturnType<typeof flatGame>, col: number, row: number): number {
+  const id = s.nextEntityId++;
+  const city: City = {
+    id, ownerId: 0, name: "Bridgeton", col, row, population: 1,
+    foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+    isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [],
+  };
+  s.cities.set(id, city);
+  return id;
+}
 
 /** A flat grassland map with no units, for controlled movement tests. */
 function flatGame() {
@@ -33,5 +45,30 @@ describe("river crossing movement", () => {
     expect(reach.get("9,10")!.cost).toBe(1);
     // …while fording the river to the east costs an extra point.
     expect(reach.get("11,10")!.cost).toBe(2);
+  });
+
+  it("a bridge waives the ford cost for a road-to-road river crossing", () => {
+    const s = flatGame();
+    const u = makeUnit(s.nextEntityId++, 0, "warrior", 10, 10);
+    u.movementLeft = 4;
+    s.units.set(u.id, u);
+
+    // Roads on both tiles with a river running along the shared east edge.
+    const a = getTile(s.map, 10, 10)!;
+    const b = getTile(s.map, 11, 10)!;
+    a.road = true;
+    b.road = true;
+    a.river = 1 << 0; // direction 0 = E
+
+    // Without the Bridge Building tech the road still has to ford: 1 (road) + 1.
+    expect(computeReachable(s, u).get("11,10")!.cost).toBe(2);
+
+    // Research Bridge Building and place both crossing tiles in owned territory so a
+    // bridge spans the river. The ford penalty is waived (just the road cost remains).
+    const cityId = ownedCity(s, 8, 8);
+    a.ownerCityId = cityId;
+    b.ownerCityId = cityId;
+    s.players[0]!.researched.add("bridge_building");
+    expect(computeReachable(s, u).get("11,10")!.cost).toBe(1);
   });
 });

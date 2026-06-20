@@ -1,6 +1,6 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { City, GameState, ProductionItem } from "./state";
-import { cityAt, currentPlayer, log, playerById, unitsOf, citiesOf } from "./state";
+import { cityAt, currentPlayer, log, playerById, unitsOf, citiesOf, unitAt, areEnemies } from "./state";
 import { isPassableLand, isWaterTerrain } from "./terrain";
 import { computeReachable, isCoastalLand, isCoastalWater, isNavalUnit, isWaterDomain } from "./movement";
 import { updateExplored } from "./visibility";
@@ -9,12 +9,14 @@ import {
   cityMaxHp,
   healAndReset,
   resolveAttack,
+  resolveAmbush,
   availablePromotions,
   towerBombardment,
   unitMaxHp,
 } from "./combat";
 import { barbarianTurn } from "./barbarians";
 import { useAbility, tickAbilities } from "./abilities";
+import { breakCover, canStealthMove, stealthMovement } from "./stealth";
 import { applyVictoryCheck } from "./victory";
 import { convertCitizen, type SpecialistId } from "./specialists";
 import {
@@ -39,6 +41,7 @@ import {
   demandTribute,
   proposeDeal,
   respondProposal,
+  finalizeDeal,
   diplomacyTick,
 } from "./diplomacy";
 import type { DealItem } from "./state";
@@ -93,6 +96,7 @@ export type Command =
   | { type: "demandTribute"; targetId: number; gold?: number; resource?: string }
   | { type: "proposeDeal"; targetId: number; give: DealItem[]; want: DealItem[] }
   | { type: "respondProposal"; proposalId: number; accept: boolean }
+  | { type: "finalizeDeal"; proposalId: number; confirm: boolean }
   | { type: "acknowledgeContact"; otherId: number }
   | { type: "useLeaderAbility" }
   | { type: "endTurn" };
@@ -112,7 +116,10 @@ export function beginTurn(state: GameState): void {
   const player = currentPlayer(state);
   pruneTradeRoutes(state); // drop routes whose cities were lost/captured
   for (const u of unitsOf(state, player.id)) {
-    if (!u.sleeping) u.movementLeft = unitMovement(state, u);
+    if (u.sleeping) continue;
+    u.movementLeft = unitMovement(state, u);
+    // A concealed stealth-mover creeps at one third its normal pace.
+    if (u.hidden && canStealthMove(state, u)) u.movementLeft = stealthMovement(u.movementLeft);
   }
   healAndReset(state, player);
   tickAbilities(state, player); // expire stances/pulses, enforce pins (after movement reset)
@@ -183,10 +190,29 @@ export function applyCommand(
       if (unit.ownerId !== player.id) return fail("not your unit");
       const entry = computeReachable(state, unit).get(`${cmd.col},${cmd.row}`);
       if (!entry) return fail("tile not reachable");
+      // Stepping onto a concealed enemy springs their ambush: the intruder is
+      // halted and struck (−20%), and the hidden unit is revealed. (computeReachable
+      // only routes here because occupancy lets a mover step onto a hidden enemy.)
+      const occupant = unitAt(state, cmd.col, cmd.row);
+      if (occupant && occupant.ownerId !== unit.ownerId && occupant.hidden) {
+        breakCover(state, occupant); // reveal + arm the ambush bonus
+        unit.movementLeft = 0;
+        unit.attackedThisTurn = true;
+        resolveAmbush(state, occupant, unit);
+        log(state, `${player.name}'s ${UNIT_DEFS[unit.type].name} walked into an ambush!`, {
+          actorId: occupant.ownerId,
+          targetIds: [player.id, occupant.ownerId],
+          tile: { col: cmd.col, row: cmd.row },
+        });
+        updateExplored(state, player.id);
+        return ok;
+      }
       unit.col = cmd.col;
       unit.row = cmd.row;
       unit.movementLeft = Math.max(0, unit.movementLeft - entry.cost);
       if (unit.stance === "emplace") unit.stance = null; // moving packs up an emplaced engine
+      // Moving breaks concealment — unless this unit can creep while hidden.
+      if (unit.hidden && !canStealthMove(state, unit)) breakCover(state, unit);
       onUnitEnter(state, unit); // resolve villages / barbarian camps
       updateExplored(state, player.id);
       return ok;
@@ -325,6 +351,10 @@ export function applyCommand(
       const unit = state.units.get(cmd.unitId);
       if (!unit) return fail("no such unit");
       if (unit.ownerId !== player.id) return fail("not your unit");
+      if (unit.hidden) {
+        breakCover(state, unit); // come out of hiding (arms an ambush if foes are near)
+        return ok;
+      }
       if (!unit.sleeping) return fail("unit is not sleeping");
       unit.sleeping = false;
       unit.movementLeft = unitMovement(state, unit);
@@ -497,6 +527,8 @@ export function applyCommand(
       return proposeDeal(state, player.id, cmd.targetId, cmd.give, cmd.want);
     case "respondProposal":
       return respondProposal(state, player.id, cmd.proposalId, cmd.accept);
+    case "finalizeDeal":
+      return finalizeDeal(state, player.id, cmd.proposalId, cmd.confirm);
     case "acknowledgeContact": {
       state.contactQueue = state.contactQueue.filter(
         (e) => !(e.youId === player.id && e.otherId === cmd.otherId),

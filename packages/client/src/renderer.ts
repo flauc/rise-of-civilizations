@@ -18,6 +18,7 @@ import { isImageReady, type TerrainAtlas } from "./terrain-assets";
 import { improvementFrameFor, type ImprovementAtlas } from "./improvement-assets";
 import { coastFrameFor, type CoastAtlas } from "./coast-assets";
 import { riverChannelFrame, riverMouthFrame, type RiverAtlas } from "./river-assets";
+import { roadFrame, type RoadAtlas } from "./road-assets";
 import { RESOURCE_DEFS, resourceActive, type GameState, type ResourceId } from "@roc/sim";
 import { type ResourceAtlas } from "./resource-assets";
 import { naturalWonderTileImage, type NaturalWonderAtlas } from "./natural-wonder-assets";
@@ -228,6 +229,7 @@ export interface RenderOptions {
   terrainAtlas?: TerrainAtlas | undefined;
   coastAtlas?: CoastAtlas | undefined;
   riverAtlas?: RiverAtlas | undefined;
+  roadAtlas?: RoadAtlas | undefined;
   improvementAtlas?: ImprovementAtlas | undefined;
   resourceAtlas?: ResourceAtlas | undefined;
   naturalWonderAtlas?: NaturalWonderAtlas | undefined;
@@ -515,8 +517,15 @@ export function drawScene(
       if (t.road || isCity) {
         const mask = roadMask(map, t.col, t.row, cityKeys);
         if (mask !== 0) {
-          const level = t.road ? (t.roadLevel ?? 1) : maxNeighborRoadLevel(map, t.col, t.row);
-          drawRoadSegment(ctx, sx, sy, corners, mask, level, size);
+          // Prefer the painted road overlay; fall back to the procedural segment
+          // while the atlas is still loading (or a variant failed to load).
+          const img = roadFrame(opts.roadAtlas, mask, !!t.bridge, t.col, t.row);
+          if (img && isImageReady(img)) {
+            drawFootprintOverlay(ctx, img, sx, sy, footprint);
+          } else {
+            const level = t.road ? (t.roadLevel ?? 1) : maxNeighborRoadLevel(map, t.col, t.row);
+            drawRoadSegment(ctx, sx, sy, corners, mask, level, size);
+          }
         }
       }
       drawImprovement(ctx, sx, sy, size, t.improvement, t.improvementLevel ?? 1, opts.improvementAtlas, t.col, t.row);

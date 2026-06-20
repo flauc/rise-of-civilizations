@@ -14,6 +14,33 @@ import {
   type Rng,
 } from "@roc/shared";
 import { makeValueNoise } from "./noise";
+import { isWorldLand } from "./worldmask";
+
+/**
+ * The shape of the world a map is generated as. Procedural types shape the
+ * elevation field into recognizable landmass layouts; "realworld" instead lays
+ * the baked Natural Earth continents down and grows terrain on top of them.
+ */
+export type MapType =
+  | "continents"
+  | "pangaea"
+  | "two_continents"
+  | "three_continents"
+  | "archipelago"
+  | "inland_sea"
+  | "islands"
+  | "realworld";
+
+export const MAP_TYPES: readonly MapType[] = [
+  "continents",
+  "pangaea",
+  "two_continents",
+  "three_continents",
+  "archipelago",
+  "inland_sea",
+  "islands",
+  "realworld",
+];
 
 export interface WorldGenOptions {
   cols: number;
@@ -21,6 +48,84 @@ export interface WorldGenOptions {
   seed: number | string;
   /** Fraction of the map that should be below sea level (0..1). */
   seaLevel?: number;
+  /** Landmass layout to generate. Defaults to "continents". */
+  mapType?: MapType;
+}
+
+/** Smooth 0→1 ramp between edges `a` and `b` (Hermite). */
+function smoothstep(a: number, b: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+
+/** A soft landmass centered at (cx,cy): ~1 at the center, fading to 0 by radius r. */
+function blob(u: number, v: number, cx: number, cy: number, r: number): number {
+  const d = Math.hypot(u - cx, v - cy);
+  return 1 - smoothstep(r * 0.45, r, d);
+}
+
+/**
+ * How a map type shapes generation: a sea level, a noise-frequency multiplier
+ * (higher = more, smaller landmasses), and an elevation multiplier per tile.
+ * `mask` takes normalized position (u,v in 0..1) plus the border `edge` falloff.
+ */
+interface Shaper {
+  seaLevel: number;
+  freq: number;
+  mask(u: number, v: number, edge: number): number;
+}
+
+function shaperFor(type: MapType): Shaper {
+  switch (type) {
+    case "pangaea":
+      // One dominant central supercontinent.
+      return { seaLevel: 0.42, freq: 0.85, mask: (u, v, e) => (0.35 + 0.8 * blob(u, v, 0.5, 0.5, 0.62)) * e };
+    case "two_continents":
+      return {
+        seaLevel: 0.44,
+        freq: 1,
+        mask: (u, v, e) => (0.3 + 0.85 * Math.max(blob(u, v, 0.27, 0.5, 0.42), blob(u, v, 0.73, 0.5, 0.42))) * e,
+      };
+    case "three_continents":
+      return {
+        seaLevel: 0.45,
+        freq: 1.05,
+        mask: (u, v, e) =>
+          (0.28 +
+            0.85 *
+              Math.max(
+                blob(u, v, 0.24, 0.33, 0.34),
+                blob(u, v, 0.75, 0.34, 0.34),
+                blob(u, v, 0.5, 0.74, 0.34),
+              )) *
+          e,
+      };
+    case "inland_sea":
+      // A ring of land wrapped around a central sea (with open ocean at the rim).
+      return {
+        seaLevel: 0.42,
+        freq: 1,
+        mask: (u, v, e) => (0.4 + 0.6 * smoothstep(0.12, 0.4, Math.hypot(u - 0.5, v - 0.5))) * e,
+      };
+    case "archipelago":
+      // Many medium islands: lower land bias + higher-frequency fragmentation.
+      return { seaLevel: 0.5, freq: 1.8, mask: (_u, _v, e) => (0.55 + 0.4 * e) * (0.6 + 0.4 * e) };
+    case "islands":
+      // Lots of small scattered islands.
+      return { seaLevel: 0.58, freq: 2.6, mask: (_u, _v, e) => (0.5 + 0.4 * e) * (0.55 + 0.45 * e) };
+    case "realworld":
+    case "continents":
+    default:
+      // Default: the original behavior — continents kept off the map borders.
+      return { seaLevel: 0.42, freq: 1, mask: (_u, _v, e) => 0.55 + 0.45 * e };
+  }
+}
+
+/** Scatter distinctive elevated terrain (volcanoes, mesas) for variety. */
+function elevatedDetail(terrain: TerrainType, equatorness: number, moisture: number, rng: Rng): TerrainType {
+  if (terrain === "mountains" && rng.next() < 0.08) return "volcano";
+  if (terrain === "hills" && (equatorness > 0.75 || moisture < 0.3) && rng.next() < 0.25) return "mesa";
+  return terrain;
 }
 
 /** Classify a land tile from elevation, moisture and latitude (0=pole, 1=equator). */
@@ -45,46 +150,60 @@ function classifyLand(
 
 export function generateMap(opts: WorldGenOptions): GameMap {
   const { cols, rows } = opts;
-  const seaLevel = opts.seaLevel ?? 0.42;
+  const mapType = opts.mapType ?? "continents";
+  const realWorld = mapType === "realworld";
+  const shaper = shaperFor(mapType);
+  const seaLevel = opts.seaLevel ?? shaper.seaLevel;
   const rng = makeRng(opts.seed);
   const elevation = makeValueNoise(rng, 64, 5);
   const moisture = makeValueNoise(rng, 48, 4);
 
   const tiles: Tile[] = new Array(cols * rows);
   const heights = new Float32Array(cols * rows); // raw elevation, for river flow
-  const nx = 6 / cols; // noise frequency scale across the map
-  const ny = 6 / rows;
+  const nx = (6 / cols) * shaper.freq; // noise frequency scale across the map
+  const ny = (6 / rows) * shaper.freq;
 
   for (let row = 0; row < rows; row++) {
     // Falloff toward the top/bottom edges keeps continents off the borders.
     const latitude = row / (rows - 1); // 0 (north) .. 1 (south)
     const equatorness = 1 - Math.abs(latitude - 0.5) * 2; // 0 at poles, 1 at equator
+    const v = rows > 1 ? row / (rows - 1) : 0.5;
     for (let col = 0; col < cols; col++) {
+      const u = cols > 1 ? col / (cols - 1) : 0.5;
       const e = elevation(col * nx, row * ny);
       const edgeFalloff =
         Math.min(1, (Math.min(col, cols - 1 - col) / (cols * 0.12)) * 1) *
         Math.min(1, (Math.min(row, rows - 1 - row) / (rows * 0.12)) * 1);
-      const height = e * (0.55 + 0.45 * edgeFalloff);
 
       let terrain: TerrainType;
-      if (height < seaLevel) {
-        terrain = "ocean";
+      let height: number;
+      if (realWorld) {
+        // Lay down the real continents, then grow elevation/biomes on the land.
+        if (!isWorldLand(col, row, cols, rows)) {
+          terrain = "ocean";
+          height = seaLevel * 0.5;
+        } else {
+          height = seaLevel + 1e-3 + e * (1 - seaLevel);
+          const m = moisture(col * nx + 13.5, row * ny + 7.25);
+          // Use the SAME normalized relief the procedural maps feed classifyLand,
+          // so mountains/hills stay rare. Feeding raw noise here (which clusters
+          // near 0.5, above the 0.52 mountain threshold) turned whole continents
+          // into impassable ranges.
+          const relief = Math.max(0, (e - seaLevel) / (1 - seaLevel));
+          terrain = elevatedDetail(classifyLand(relief, m, equatorness), equatorness, m, rng);
+        }
       } else {
-        const m = moisture(col * nx + 13.5, row * ny + 7.25);
-        terrain = classifyLand(
-          (height - seaLevel) / (1 - seaLevel),
-          m,
-          equatorness,
-        );
-        // Scatter distinctive elevated terrain for visual and strategic variety.
-        if (terrain === "mountains" && rng.next() < 0.08) {
-          terrain = "volcano";
-        } else if (
-          terrain === "hills" &&
-          (equatorness > 0.75 || m < 0.3) &&
-          rng.next() < 0.25
-        ) {
-          terrain = "mesa";
+        height = e * shaper.mask(u, v, edgeFalloff);
+        if (height < seaLevel) {
+          terrain = "ocean";
+        } else {
+          const m = moisture(col * nx + 13.5, row * ny + 7.25);
+          terrain = elevatedDetail(
+            classifyLand((height - seaLevel) / (1 - seaLevel), m, equatorness),
+            equatorness,
+            m,
+            rng,
+          );
         }
       }
       tiles[row * cols + col] = { col, row, terrain };

@@ -1737,6 +1737,106 @@ export function getCiv(id: string | undefined): CivDef | undefined {
 export const CIV_IDS: string[] = CIVILIZATIONS.map((c) => c.id);
 
 // ===========================================================================
+// Diplomatic personalities. Each AI civ has a temperament that shapes how it
+// conducts diplomacy: some are warlike conquerors, others cautious traders.
+// All weights are 0..1. A few notable civs are hand-tuned; every other civ
+// gets a deterministic, varied default derived from its id so the world still
+// feels diverse without authoring 60+ entries. See diplomacy.ts for use.
+// ===========================================================================
+
+export interface DiploPersonality {
+  /** How readily it declares war. High = seeks conquest at the slightest edge. */
+  aggression: number;
+  /** Willingness to fight when NOT overwhelmingly ahead (pride / risk appetite). */
+  boldness: number;
+  /** Honours deals and pacts; slow to betray or break treaties. */
+  loyalty: number;
+  /** Recovers attitude faster and sues for peace sooner. */
+  forgiveness: number;
+  /** Values gold and trade highly; drives a harder bargain and demands more. */
+  greed: number;
+}
+
+export const DEFAULT_PERSONALITY: DiploPersonality = {
+  aggression: 0.45,
+  boldness: 0.45,
+  loyalty: 0.55,
+  forgiveness: 0.5,
+  greed: 0.5,
+};
+
+/** Hand-tuned temperaments for civs with a strong historical character. */
+const PERSONALITIES: Record<string, Partial<DiploPersonality>> = {
+  // Conquerors — quick to war, proud, unforgiving.
+  mongols: { aggression: 0.95, boldness: 0.9, loyalty: 0.25, forgiveness: 0.2, greed: 0.55 },
+  assyria: { aggression: 0.9, boldness: 0.85, loyalty: 0.3, forgiveness: 0.2, greed: 0.5 },
+  aztec: { aggression: 0.85, boldness: 0.8, loyalty: 0.35, forgiveness: 0.25, greed: 0.4 },
+  huns: { aggression: 0.95, boldness: 0.95, loyalty: 0.2, forgiveness: 0.15, greed: 0.6 },
+  sparta: { aggression: 0.8, boldness: 0.95, loyalty: 0.6, forgiveness: 0.3, greed: 0.3 },
+  rome: { aggression: 0.7, boldness: 0.75, loyalty: 0.5, forgiveness: 0.4, greed: 0.5 },
+  macedon: { aggression: 0.8, boldness: 0.85, loyalty: 0.45, forgiveness: 0.35, greed: 0.45 },
+  persia: { aggression: 0.6, boldness: 0.65, loyalty: 0.55, forgiveness: 0.45, greed: 0.6 },
+  norse: { aggression: 0.75, boldness: 0.8, loyalty: 0.4, forgiveness: 0.35, greed: 0.7 },
+  // Traders & builders — peaceful, pragmatic, loyal.
+  carthage: { aggression: 0.4, boldness: 0.5, loyalty: 0.55, forgiveness: 0.55, greed: 0.85 },
+  phoenicia: { aggression: 0.3, boldness: 0.4, loyalty: 0.65, forgiveness: 0.65, greed: 0.85 },
+  lydia: { aggression: 0.3, boldness: 0.4, loyalty: 0.6, forgiveness: 0.6, greed: 0.9 },
+  egypt: { aggression: 0.35, boldness: 0.45, loyalty: 0.7, forgiveness: 0.6, greed: 0.55 },
+  maurya: { aggression: 0.3, boldness: 0.45, loyalty: 0.75, forgiveness: 0.75, greed: 0.45 },
+  mali: { aggression: 0.3, boldness: 0.4, loyalty: 0.7, forgiveness: 0.65, greed: 0.8 },
+  han_china: { aggression: 0.45, boldness: 0.5, loyalty: 0.7, forgiveness: 0.6, greed: 0.55 },
+  greece: { aggression: 0.45, boldness: 0.55, loyalty: 0.6, forgiveness: 0.55, greed: 0.5 },
+  babylon: { aggression: 0.35, boldness: 0.45, loyalty: 0.65, forgiveness: 0.6, greed: 0.55 },
+  sumer: { aggression: 0.5, boldness: 0.5, loyalty: 0.55, forgiveness: 0.5, greed: 0.5 },
+};
+
+/** Tiny deterministic string hash → [0,1), so unlisted civs still vary. */
+function hash01(s: string, salt: number): number {
+  let h = 2166136261 ^ salt;
+  for (let i = 0; i < s.length; i++) {
+    h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  }
+  // map to [0,1)
+  return ((h >>> 0) % 1000) / 1000;
+}
+
+const PERSONALITY_CACHE = new Map<string, DiploPersonality>();
+
+/**
+ * The diplomatic temperament for a civ. Hand-tuned where defined; otherwise a
+ * deterministic spread around the default so each civ behaves a little
+ * differently. Always returns a full personality (never undefined).
+ */
+export function getPersonality(civId: string | undefined): DiploPersonality {
+  const id = civId ?? "__none__";
+  const cached = PERSONALITY_CACHE.get(id);
+  if (cached) return cached;
+  const tuned = civId ? PERSONALITIES[civId] : undefined;
+  // Deterministic jitter (±0.2) around each field's default when not hand-set.
+  const jitter = (base: number, salt: number) =>
+    Math.max(0, Math.min(1, base + (hash01(id, salt) - 0.5) * 0.4));
+  const p: DiploPersonality = {
+    aggression: tuned?.aggression ?? jitter(DEFAULT_PERSONALITY.aggression, 1),
+    boldness: tuned?.boldness ?? jitter(DEFAULT_PERSONALITY.boldness, 2),
+    loyalty: tuned?.loyalty ?? jitter(DEFAULT_PERSONALITY.loyalty, 3),
+    forgiveness: tuned?.forgiveness ?? jitter(DEFAULT_PERSONALITY.forgiveness, 4),
+    greed: tuned?.greed ?? jitter(DEFAULT_PERSONALITY.greed, 5),
+  };
+  PERSONALITY_CACHE.set(id, p);
+  return p;
+}
+
+/** A short label describing a civ's diplomatic temperament (for the UI). */
+export function personalityLabel(p: DiploPersonality): string {
+  if (p.aggression >= 0.75) return "Warmongering";
+  if (p.aggression >= 0.6) return "Aggressive";
+  if (p.greed >= 0.8) return "Mercantile";
+  if (p.aggression <= 0.35 && p.forgiveness >= 0.6) return "Peaceful";
+  if (p.loyalty >= 0.7) return "Honourable";
+  return "Pragmatic";
+}
+
+// ===========================================================================
 // Unique units. Each civ's unique unit "reskins" a base unit it replaces:
 // when that civ builds (or fields) the base unit it gets the unique name, art
 // (keyed by `id`), and a flat combat bonus. `replaces` is a base UnitTypeId

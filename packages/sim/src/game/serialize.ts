@@ -1,9 +1,10 @@
 import { getTile } from "@roc/shared";
 import type {
   Attitude, BarbarianActivity, BarbarianBribe, City, ContactEvent, GameOver, GameState,
-  LogEntry, Proposal, Relation, Religion, TradeRoute, TurnUpdateEvent, Unit, Work,
+  LogEntry, Proposal, Relation, Religion, TradeRecord, TradeRoute, TurnUpdateEvent, Unit, Work,
 } from "./state";
 import { computeVisible } from "./visibility";
+import { tileHasBridge } from "./movement";
 import { attitudeLabel, attitudeScore } from "./diplomacy";
 import type { TechId } from "./content";
 
@@ -11,12 +12,19 @@ export interface DiploView {
   met: number[];
   /** Relations involving the viewer (full detail). */
   relations: Relation[];
-  /** Each met civ's opinion of the viewer. */
-  attitudeToYou: { from: number; score: number; label: string }[];
+  /** Each met civ's opinion of the viewer, with the reasons that shape it. */
+  attitudeToYou: {
+    from: number;
+    score: number;
+    label: string;
+    modifiers: { reason: string; value: number }[];
+  }[];
   reputation: Record<number, number>;
   contacts: ContactEvent[];
-  /** Pending proposals where the viewer is sender or recipient. */
+  /** Proposals where the viewer is sender or recipient. */
   proposals: Proposal[];
+  /** Diplomatic history (deals, gifts, wars…) involving the viewer. */
+  tradeHistory: TradeRecord[];
 }
 
 // ---- per-player view (fog enforced server-side; never leak unexplored data) --
@@ -33,6 +41,7 @@ export interface TileView {
   naturalWonder?: string;
   river?: number;
   riverLake?: boolean;
+  bridge?: boolean;
 }
 
 export interface PlayerPublic {
@@ -119,7 +128,12 @@ function buildDiploView(state: GameState, playerId: number): DiploView {
     .map((r) => ({ ...r, deals: r.deals.map((d) => ({ ...d })) }));
   const attitudeToYou = met.map((cid) => {
     const score = attitudeScore(state, cid, playerId);
-    return { from: cid, score, label: attitudeLabel(score) };
+    const at = state.attitudes.find((x) => x.from === cid && x.to === playerId);
+    // Surface only player-meaningful modifiers (hide internal markers, drop zeros).
+    const modifiers = (at?.modifiers ?? [])
+      .filter((m) => !m.reason.startsWith("__") && m.value !== 0)
+      .map((m) => ({ reason: m.reason, value: m.value }));
+    return { from: cid, score, label: attitudeLabel(score), modifiers };
   });
   const reputation: Record<number, number> = {};
   for (const cid of [playerId, ...met]) reputation[cid] = state.reputation[cid] ?? 0;
@@ -130,6 +144,9 @@ function buildDiploView(state: GameState, playerId: number): DiploView {
     reputation,
     contacts: state.contactQueue.filter((e) => e.youId === playerId).map((e) => ({ ...e })),
     proposals: state.diploProposals.filter((p) => p.toId === playerId || p.fromId === playerId).map((p) => ({ ...p })),
+    tradeHistory: state.tradeHistory
+      .filter((t) => t.fromId === playerId || t.toId === playerId)
+      .map((t) => ({ ...t })),
   };
 }
 
@@ -153,12 +170,14 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     if (t.naturalWonder) tv.naturalWonder = t.naturalWonder;
     if (t.river) tv.river = t.river;
     if (t.riverLake) tv.riverLake = true;
+    if (tileHasBridge(state, col, row)) tv.bridge = true;
     tiles.push(tv);
   }
 
   const units: Unit[] = [];
   for (const u of state.units.values()) {
-    if (u.ownerId === playerId || visible.has(`${u.col},${u.row}`)) units.push(u);
+    // Hidden enemy units are concealed even on a visible tile until discovered.
+    if (u.ownerId === playerId || (visible.has(`${u.col},${u.row}`) && !u.hidden)) units.push(u);
   }
   const cities: City[] = [];
   for (const c of state.cities.values()) {
@@ -244,6 +263,7 @@ export interface SerializedState {
   reputation: Record<number, number>;
   contactQueue: ContactEvent[];
   diploProposals: Proposal[];
+  tradeHistory: TradeRecord[];
   barbarianActivity: BarbarianActivity;
   barbarianBribes: BarbarianBribe[];
   turnUpdates: TurnUpdateEvent[];
@@ -280,6 +300,7 @@ export function serializeState(state: GameState): SerializedState {
     reputation: state.reputation,
     contactQueue: state.contactQueue,
     diploProposals: state.diploProposals,
+    tradeHistory: state.tradeHistory,
     barbarianActivity: state.barbarianActivity,
     barbarianBribes: state.barbarianBribes,
     turnUpdates: state.turnUpdates,
@@ -318,6 +339,7 @@ export function deserializeState(s: SerializedState): GameState {
     reputation: s.reputation ?? {},
     contactQueue: s.contactQueue ?? [],
     diploProposals: s.diploProposals ?? [],
+    tradeHistory: s.tradeHistory ?? [],
     barbarianActivity: s.barbarianActivity ?? "normal",
     barbarianBribes: s.barbarianBribes ?? [],
     turnUpdates: s.turnUpdates ?? [],

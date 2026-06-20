@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "dev": "bun run --filter @roc/client dev",
+    "dev:no-hmr": "bun run --filter @roc/client dev:no-hmr",
     "build": "bun run --filter @roc/client build",
     "preview": "bun run --filter @roc/client preview",
     "server": "bun run --filter @roc/server start",

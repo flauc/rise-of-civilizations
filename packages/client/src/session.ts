@@ -16,6 +16,7 @@ import {
   type ClientMessage,
   type Command,
   type GameState,
+  type MapType,
   type Player,
   type PlayerView,
   type SerializedState,
@@ -53,6 +54,8 @@ export const MAP_DIMENSIONS: Record<MapSize, { cols: number; rows: number }> = {
 export interface LocalGameOptions {
   seed?: string;
   mapSize?: MapSize;
+  /** Landmass layout to generate. Defaults to "continents". */
+  mapType?: MapType;
   aiCount?: number;
   barbarians?: boolean | BarbarianActivity;
   /** Starting gold treasury preset. */
@@ -86,6 +89,7 @@ export class LocalSession implements Session {
         seed: opts.seed ?? "rise",
         cols: dims.cols,
         rows: dims.rows,
+        mapType: opts.mapType ?? "continents",
         humanSlots: 1,
         playerCount: 1 + aiCount,
         barbarians: opts.barbarians ?? true,
@@ -150,6 +154,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     if (t.naturalWonder) tile.naturalWonder = t.naturalWonder;
     if (t.river) tile.river = t.river;
     if (t.riverLake) tile.riverLake = true;
+    if (t.bridge) tile.bridge = true;
     tiles[t.row * view.cols + t.col] = tile;
     explored.add(`${t.col},${t.row}`);
   }
@@ -217,11 +222,14 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     attitudes: (dip?.attitudeToYou ?? []).map((a) => ({
       from: a.from,
       to: view.yourId,
-      modifiers: [{ reason: "opinion", value: a.score }],
+      // Real reasons so the UI can show the breakdown; sum (minus reputation)
+      // reconstructs the same score the server computed.
+      modifiers: a.modifiers.map((m) => ({ reason: m.reason, value: m.value })),
     })),
     reputation: dip?.reputation ?? {},
     contactQueue: dip?.contacts ?? [],
     diploProposals: dip?.proposals ?? [],
+    tradeHistory: dip?.tradeHistory ?? [],
     barbarianActivity: view.barbarianActivity ?? "normal",
     turnUpdates: view.turnUpdates ?? [],
     nextTurnUpdateId: 1,

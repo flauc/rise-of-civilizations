@@ -10,7 +10,7 @@ import {
 } from "@roc/shared";
 import { moveCost, isPassableLand, isNavalPassable, navalMoveCost, isWaterTerrain, type TerrainType } from "./terrain";
 import type { GameState, Unit } from "./state";
-import { cityAt } from "./state";
+import { cityAt, areEnemies, playerById } from "./state";
 import { UNIT_DEFS, type UnitDef, type TechId } from "./content";
 import { foreignTerritoryOwner } from "./diplomacy";
 import { playerEffects } from "./civs";
@@ -83,6 +83,26 @@ export function riverBetween(state: GameState, fromCol: number, fromRow: number,
   return false;
 }
 
+/** True if a road on this tile is carried over its river by a bridge: the tile
+ *  has both a road and a river, and its territory owner has Bridge Building. */
+export function tileHasBridge(state: GameState, col: number, row: number): boolean {
+  const tile = getTile(state.map, col, row);
+  if (!tile?.road || !tile.river) return false;
+  const ownerId = tile.ownerCityId !== undefined ? state.cities.get(tile.ownerCityId)?.ownerId : undefined;
+  return ownerId !== undefined && hasTech(state, ownerId, "bridge_building");
+}
+
+/** True if the river along the edge between two adjacent ROAD tiles is spanned by a
+ *  bridge. Such a crossing neither costs the extra fording movement nor breaks a
+ *  city-to-city road connection — but the assault penalty for it still applies. */
+export function bridgedRiverCrossing(state: GameState, fromCol: number, fromRow: number, toCol: number, toRow: number): boolean {
+  if (!riverBetween(state, fromCol, fromRow, toCol, toRow)) return false;
+  const from = getTile(state.map, fromCol, fromRow);
+  const to = getTile(state.map, toCol, toRow);
+  if (!from?.road || !to?.road) return false;
+  return tileHasBridge(state, fromCol, fromRow) || tileHasBridge(state, toCol, toRow);
+}
+
 /** Effective movement cost to enter a tile for a specific unit. */
 export function unitMoveCost(state: GameState, unit: Unit, terrain: TerrainType, road: boolean): number {
   const def = UNIT_DEFS[unit.type];
@@ -128,8 +148,16 @@ export interface ReachableEntry {
 /** Set of tile keys occupied by units other than `exclude`. */
 function occupancy(state: GameState, exclude: Unit): Set<string> {
   const occ = new Set<string>();
+  const moverOwner = playerById(state, exclude.ownerId);
   for (const u of state.units.values()) {
-    if (u.id !== exclude.id) occ.add(hexKey({ q: u.col, r: u.row }));
+    if (u.id === exclude.id) continue;
+    // A concealed enemy unit does NOT block movement — stepping onto it springs
+    // an ambush (handled in the move command); the mover can't see it anyway.
+    if (u.hidden && u.ownerId !== exclude.ownerId) {
+      const o = playerById(state, u.ownerId);
+      if (moverOwner && o && areEnemies(moverOwner, o)) continue;
+    }
+    occ.add(hexKey({ q: u.col, r: u.row }));
   }
   return occ;
 }
@@ -198,8 +226,10 @@ export function computeReachable(
       if (!isWaterDomain(unit) && enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
       if (borderBlocked(n.col, n.row)) continue; // foreign territory needs war / open borders
       let enterCost = unitMoveCost(state, unit, tile.terrain, tile.road ?? false);
-      // Fording a river costs an extra movement point (like entering rough terrain).
-      if (!isWaterDomain(unit) && riverBetween(state, cur.col, cur.row, n.col, n.row)) enterCost += 1;
+      // Fording a river costs an extra movement point (like entering rough terrain),
+      // unless a bridge carries the road across it.
+      if (!isWaterDomain(unit) && riverBetween(state, cur.col, cur.row, n.col, n.row) &&
+        !bridgedRiverCrossing(state, cur.col, cur.row, n.col, n.row)) enterCost += 1;
       const step = curCost + enterCost;
       if (step <= budget && step < (best.get(nk) ?? Infinity)) {
         best.set(nk, step);

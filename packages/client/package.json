@@ -6,6 +6,7 @@
   "description": "Canvas + TypeScript game client. Renders the hex map; talks to the server (M3).",
   "scripts": {
     "dev": "vite",
+    "dev:no-hmr": "vite --mode no-hmr",
     "build": "vite build",
     "preview": "vite preview"
   },

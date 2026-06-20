@@ -3,17 +3,21 @@
 // Barbarians are excluded (always hostile). See docs/DIPLOMACY.md.
 
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
-import { getCiv } from "@roc/data";
+import { getCiv, getPersonality, type DiploPersonality } from "@roc/data";
 import type {
   Attitude,
   DealItem,
   GameState,
+  PactTier,
   Player,
+  Proposal,
   Relation,
+  TradeRecord,
+  TradeRecordKind,
 } from "./state";
 import { citiesOf, log, playerById, unitsOf, type City } from "./state";
 import { UNIT_DEFS, isMilitary } from "./content";
-import { RESOURCE_DEFS, tradeableLuxuries, type ResourceId } from "./resources";
+import { RESOURCE_DEFS, empireLuxuryTypes, tradeableLuxuries, type ResourceId } from "./resources";
 import { SPECIALIST_DEFS, type SpecialistId } from "./specialists";
 
 export interface DiploResult {
@@ -26,6 +30,51 @@ const fail = (error: string): DiploResult => ({ ok: false, error });
 const PEACE_COOLDOWN = 10; // turns before war can be re-declared after a peace
 const WARMONGER_SURPRISE = 20;
 const WARMONGER_DENOUNCED = 8;
+const PROPOSAL_PENDING_TTL = 12; // turns a pending proposal survives before lapsing
+const PROPOSAL_RESOLVED_TTL = 6; // turns a resolved (accepted/declined) proposal lingers
+
+// ---- personality ---------------------------------------------------------
+
+/** The diplomatic temperament of a (usually AI) civ. */
+export function personalityOf(state: GameState, playerId: number): DiploPersonality {
+  return getPersonality(playerById(state, playerId)?.civId);
+}
+
+// ---- trade history -------------------------------------------------------
+
+/** A compact human-readable description of one side of a deal. */
+export function describeDealItems(items: DealItem[]): string {
+  if (items.length === 0) return "nothing";
+  return items
+    .map((it) => {
+      switch (it.kind) {
+        case "gold": return `${it.amount} gold`;
+        case "goldPerTurn": return `${it.amount} gold/turn (${it.turns}t)`;
+        case "resource": return `${it.id} (${it.turns}t)`;
+        case "specialist": return `${it.specialistType} (${it.turns}t)`;
+        case "peace": return "peace";
+        case "openBorders": return "open borders";
+        case "pact": return `${it.tier.replace("_", " ")} (${it.turns}t)`;
+        case "declareWarOn": return `war on #${it.civId}`;
+      }
+    })
+    .join(", ");
+}
+
+/** Append an entry to the world's diplomatic history. */
+function recordTrade(
+  state: GameState,
+  fromId: number,
+  toId: number,
+  kind: TradeRecordKind,
+  give: DealItem[],
+  want: DealItem[],
+  note: string,
+): void {
+  const rec: TradeRecord = { id: state.nextEntityId++, turn: state.turn, fromId, toId, kind, give, want, note };
+  state.tradeHistory.push(rec);
+  if (state.tradeHistory.length > 400) state.tradeHistory.splice(0, state.tradeHistory.length - 400);
+}
 
 // ---- relations & attitudes ----------------------------------------------
 
@@ -195,6 +244,7 @@ export function declareWar(state: GameState, aId: number, targetId: number): Dip
   addModifier(state, targetId, aId, "you declared war on us", -45);
   const A = playerById(state, aId)!;
   const T = playerById(state, targetId)!;
+  recordTrade(state, aId, targetId, "war", [], [], `${civName(A)} declared war on ${civName(T)}`);
   log(state, `${civName(A)} declared war on ${civName(T)}!`, { actorId: aId, targetIds: [aId, targetId] });
   return ok;
 }
@@ -209,6 +259,7 @@ export function makePeace(state: GameState, aId: number, targetId: number): Dipl
   if (!aiAcceptsPeace(state, targetId, aId)) return fail("they refuse to make peace");
   setPeace(state, r);
   addModifier(state, targetId, aId, "we made peace", 8, 40);
+  recordTrade(state, aId, targetId, "peace", [], [], `${civName(playerById(state, aId)!)} and ${civName(playerById(state, targetId)!)} made peace`);
   log(state, `${civName(playerById(state, aId)!)} and ${civName(playerById(state, targetId)!)} made peace.`, {
     actorId: aId,
     targetIds: [aId, targetId],
@@ -223,11 +274,17 @@ function hasModifier(state: GameState, from: number, to: number, reason: string)
   return !!at?.modifiers.some((m) => m.reason === reason);
 }
 
+function removeModifier(state: GameState, from: number, to: number, reason: string): void {
+  const at = state.attitudes.find((x) => x.from === from && x.to === to);
+  if (at) at.modifiers = at.modifiers.filter((m) => m.reason !== reason);
+}
+
 export function denounce(state: GameState, aId: number, targetId: number): DiploResult {
   const r = relationBetween(state, aId, targetId);
   if (!r) return fail("you have not met them");
   addModifier(state, targetId, aId, "you denounced us", -25, 40);
   addModifier(state, aId, targetId, "__denounced", 0, 15); // marker: a later war is not a surprise
+  recordTrade(state, aId, targetId, "denounce", [], [], `${civName(playerById(state, aId)!)} denounced ${civName(playerById(state, targetId)!)}`);
   log(state, `${civName(playerById(state, aId)!)} denounced ${civName(playerById(state, targetId)!)}.`, {
     actorId: aId,
     targetIds: [aId, targetId],
@@ -283,71 +340,182 @@ export function gift(state: GameState, aId: number, targetId: number, goldAmt: n
   if (goldAmt <= 0 && !resourceId) return fail("nothing to give");
   const value = Math.min(20, 6 + Math.floor(goldAmt / 25) + (resourceId ? 6 : 0));
   addModifier(state, targetId, aId, "your generous gifts", value, 30);
+  const giftItems: DealItem[] = [];
+  if (goldAmt > 0) giftItems.push({ kind: "gold", amount: goldAmt });
+  if (resourceId) giftItems.push({ kind: "resource", id: resourceId, turns: 0 });
+  recordTrade(state, aId, targetId, "gift", giftItems, [], `${civName(A)} gifted ${describeDealItems(giftItems)} to ${civName(T)}`);
   log(state, `${civName(A)} sent a gift to ${civName(T)}.`, { actorId: aId, targetIds: [aId, targetId] });
   return ok;
 }
 
+/**
+ * Demand tribute under threat. Creates a coercive proposal: the target "gives"
+ * gold/resource for nothing. The recipient (AI evaluated immediately by fear;
+ * human on their turn) accepts only when they judge the demander overwhelmingly
+ * stronger. Refusal sours the relationship; against a proud, aggressive AI a
+ * demand may even provoke war.
+ */
 export function demandTribute(state: GameState, aId: number, targetId: number, goldAmt: number, resourceId?: string): DiploResult {
   if (!relationBetween(state, aId, targetId)) return fail("you have not met them");
-  const target = playerById(state, targetId);
-  if (target?.isHuman) {
-    // Coercive demand → a proposal where the target "gives" tribute for nothing.
-    const want: DealItem[] = [];
-    if (goldAmt > 0) want.push({ kind: "gold", amount: goldAmt });
-    if (resourceId) want.push({ kind: "resource", id: resourceId, turns: 0 });
-    return createProposal(state, aId, targetId, [], want);
-  }
-  // AI complies if afraid (we are much stronger) and not too proud.
-  const fearful = militaryPower(state, aId) > militaryPower(state, targetId) * 1.6;
-  const A = playerById(state, aId)!;
-  const T = playerById(state, targetId)!;
-  if (fearful && (goldAmt <= 0 || T.gold >= goldAmt)) {
-    if (goldAmt > 0) { T.gold -= goldAmt; A.gold += goldAmt; }
-    if (resourceId && (T.resources[resourceId] ?? 0) > 0) { T.resources[resourceId] = (T.resources[resourceId] ?? 0) - 1; A.resources[resourceId] = (A.resources[resourceId] ?? 0) + 1; }
-    addModifier(state, targetId, aId, "you bullied us", -18, 50);
-    log(state, `${civName(T)} paid tribute to ${civName(A)}.`, { actorId: aId, targetIds: [aId, targetId] });
-    return ok;
-  }
-  addModifier(state, targetId, aId, "you made demands of us", -12, 30);
-  return fail("they refuse your demand");
+  const want: DealItem[] = [];
+  if (goldAmt > 0) want.push({ kind: "gold", amount: goldAmt });
+  if (resourceId) want.push({ kind: "resource", id: resourceId, turns: 0 });
+  if (want.length === 0) return fail("demand something");
+  return createProposal(state, aId, targetId, [], want, true);
 }
 
 // ---- deals ---------------------------------------------------------------
 
-export function createProposal(state: GameState, fromId: number, toId: number, give: DealItem[], want: DealItem[]): DiploResult {
-  if (!relationBetween(state, fromId, toId)) return fail("you have not met them");
+const PACT_RANK: Record<PactTier, number> = { none: 0, non_aggression: 1, defensive: 2, alliance: 3 };
+
+/**
+ * If any item in `items` would have no effect because the relation already
+ * provides it (open borders already granted, or a pact of equal/higher tier
+ * already in force), return a player-facing reason; otherwise undefined.
+ */
+function redundantItem(rel: Relation, items: DealItem[]): string | undefined {
+  for (const it of items) {
+    if (it.kind === "openBorders" && rel.openBorders) return "you already have open borders";
+    if (it.kind === "pact" && PACT_RANK[rel.pact] >= PACT_RANK[it.tier]) {
+      return `you already have a ${rel.pact.replace("_", " ")} in force`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Create a proposal and (against an AI recipient) resolve the AI's response
+ * immediately so the proposer gets instant feedback. The proposal carries a
+ * lifecycle status:
+ *  - `pending`   — awaiting a human recipient's response;
+ *  - `accepted`  — recipient agreed; a human proposer must then `finalizeDeal`
+ *                  (an AI proposer / coercive demand applies at once);
+ *  - `declined`  — refused, with a one-line reason the proposer can read.
+ */
+export function createProposal(
+  state: GameState,
+  fromId: number,
+  toId: number,
+  give: DealItem[],
+  want: DealItem[],
+  coercive = false,
+): DiploResult {
+  if (fromId === toId) return fail("you cannot deal with yourself");
+  const rel = relationBetween(state, fromId, toId);
+  if (!rel) return fail("you have not met them");
   if (!canPayItems(state, fromId, give)) return fail("you cannot provide that");
-  state.diploProposals.push({ id: state.nextEntityId++, fromId, toId, give, want });
+  if (give.length === 0 && want.length === 0) return fail("the offer is empty");
+  const redundant = redundantItem(rel, [...give, ...want]);
+  if (redundant) return fail(redundant);
+
+  const prop: Proposal = {
+    id: state.nextEntityId++,
+    fromId,
+    toId,
+    give,
+    want,
+    createdTurn: state.turn,
+    status: "pending",
+    coercive: coercive || undefined,
+  };
+  state.diploProposals.push(prop);
+
+  // A coercive demand is an affront in itself: it sours the target's opinion of
+  // the demander whether or not it is ultimately met.
+  if (coercive) {
+    const pers = personalityOf(state, toId);
+    addModifier(state, toId, fromId, "you made demands of us", -10 - Math.round(pers.aggression * 10), 40);
+  }
+
+  const recipient = playerById(state, toId);
+  if (recipient && !recipient.isHuman && !recipient.isBarbarian) {
+    // Resolve the AI's stance right away.
+    const decision = coercive
+      ? aiDecideDemand(state, toId, fromId, want)
+      : aiDecideOffer(state, toId, fromId, give, want);
+    prop.reason = decision.reason;
+    prop.status = decision.accept ? "accepted" : "declined";
+    if (decision.accept) {
+      const proposerIsAI = !playerById(state, fromId)?.isHuman;
+      // Coercive demands and AI-initiated deals conclude without a finalize step.
+      if (coercive || proposerIsAI) settleProposal(state, prop);
+    }
+  }
   return ok;
 }
 
-/** Propose a deal. Against an AI it is evaluated instantly; against a human it
- *  becomes a pending proposal. */
+/** Propose a (non-coercive) two-sided deal. */
 export function proposeDeal(state: GameState, fromId: number, targetId: number, give: DealItem[], want: DealItem[]): DiploResult {
-  if (!relationBetween(state, fromId, targetId)) return fail("you have not met them");
-  if (!canPayItems(state, fromId, give)) return fail("you cannot provide that");
-  const target = playerById(state, targetId);
-  if (target?.isHuman) return createProposal(state, fromId, targetId, give, want);
-  if (!aiEvaluateOffer(state, targetId, fromId, give, want)) return fail("they reject your offer");
-  if (!canPayItems(state, targetId, want)) return fail("they cannot provide what you ask");
-  applyExchange(state, fromId, targetId, give, want);
-  log(state, `${civName(playerById(state, fromId)!)} struck a deal with ${civName(target!)}.`, {
-    actorId: fromId,
-    targetIds: [fromId, targetId],
-  });
-  return ok;
+  return createProposal(state, fromId, targetId, give, want, false);
 }
 
+/**
+ * The recipient (`toId`) responds to a still-pending proposal. Accepting a deal
+ * proposed by an AI applies it immediately; accepting one proposed by a human
+ * marks it `accepted` and waits for that human to `finalizeDeal`.
+ */
 export function respondProposal(state: GameState, playerId: number, proposalId: number, accept: boolean): DiploResult {
-  const idx = state.diploProposals.findIndex((p) => p.id === proposalId && p.toId === playerId);
-  if (idx < 0) return fail("no such proposal");
-  const prop = state.diploProposals[idx]!;
-  state.diploProposals.splice(idx, 1);
-  if (!accept) return ok;
+  const prop = state.diploProposals.find((p) => p.id === proposalId && p.toId === playerId && p.status === "pending");
+  if (!prop) return fail("no such proposal");
+  if (!accept) {
+    prop.status = "declined";
+    prop.reason = "You rejected the offer.";
+    // A refused coercive demand lets an AI demander escalate to war later.
+    if (prop.coercive && !playerById(state, prop.fromId)?.isHuman) {
+      addModifier(state, prop.fromId, playerId, "__demandRefused", 0, 8);
+    }
+    // Nothing for an AI proposer to see → drop it outright.
+    if (!playerById(state, prop.fromId)?.isHuman) {
+      state.diploProposals = state.diploProposals.filter((p) => p.id !== prop.id);
+    }
+    return ok;
+  }
   if (!canPayItems(state, prop.fromId, prop.give) || !canPayItems(state, prop.toId, prop.want)) {
     return fail("the deal can no longer be honoured");
   }
+  prop.status = "accepted";
+  // A human proposer must confirm; an AI proposer concludes at once.
+  if (!playerById(state, prop.fromId)?.isHuman) return settleProposal(state, prop);
+  return ok;
+}
+
+/**
+ * The proposer (`fromId`) finalizes an accepted proposal (`confirm` true) or
+ * dismisses a resolved one (`confirm` false). This is the explicit second
+ * confirmation a human initiator makes once the other side has agreed.
+ */
+export function finalizeDeal(state: GameState, playerId: number, proposalId: number, confirm: boolean): DiploResult {
+  const prop = state.diploProposals.find((p) => p.id === proposalId && p.fromId === playerId);
+  if (!prop) return fail("no such proposal");
+  if (!confirm) {
+    state.diploProposals = state.diploProposals.filter((p) => p.id !== prop.id);
+    return ok;
+  }
+  if (prop.status !== "accepted") return fail("they have not accepted this offer");
+  return settleProposal(state, prop);
+}
+
+/** Apply an accepted proposal's exchange, record it, and remove the proposal. */
+function settleProposal(state: GameState, prop: Proposal): DiploResult {
+  if (!canPayItems(state, prop.fromId, prop.give) || !canPayItems(state, prop.toId, prop.want)) {
+    state.diploProposals = state.diploProposals.filter((p) => p.id !== prop.id);
+    return fail("the deal can no longer be honoured");
+  }
   applyExchange(state, prop.fromId, prop.toId, prop.give, prop.want);
+  const from = playerById(state, prop.fromId)!;
+  const to = playerById(state, prop.toId)!;
+  if (prop.coercive) {
+    addModifier(state, prop.toId, prop.fromId, "you bullied us", -18, 50);
+    removeModifier(state, prop.fromId, prop.toId, "__demandRefused"); // they complied
+    recordTrade(state, prop.fromId, prop.toId, "tribute", [], prop.want,
+      `${civName(to)} paid tribute (${describeDealItems(prop.want)}) to ${civName(from)}`);
+    log(state, `${civName(to)} paid tribute to ${civName(from)}.`, { actorId: prop.fromId, targetIds: [prop.fromId, prop.toId] });
+  } else {
+    recordTrade(state, prop.fromId, prop.toId, "deal", prop.give, prop.want,
+      `${civName(from)} ⇄ ${civName(to)}: gave ${describeDealItems(prop.give)}, got ${describeDealItems(prop.want)}`);
+    log(state, `${civName(from)} struck a deal with ${civName(to)}.`, { actorId: prop.fromId, targetIds: [prop.fromId, prop.toId] });
+  }
+  state.diploProposals = state.diploProposals.filter((p) => p.id !== prop.id);
   return ok;
 }
 
@@ -480,6 +648,11 @@ export function diplomacyTick(state: GameState): void {
     }
   }
   recomputeImportedLuxuries(state);
+  // Expire stale proposals: pending offers lapse, resolved ones linger briefly.
+  state.diploProposals = state.diploProposals.filter((p) => {
+    const ttl = p.status === "pending" ? PROPOSAL_PENDING_TTL : PROPOSAL_RESOLVED_TTL;
+    return state.turn - p.createdTurn < ttl;
+  });
   for (const at of state.attitudes) {
     at.modifiers = at.modifiers.filter((m) => m.expiresTurn === undefined || state.turn < m.expiresTurn);
   }
@@ -529,17 +702,39 @@ export function militaryPower(state: GameState, playerId: number): number {
   return p;
 }
 
+/** Relative strength of `aId` versus `bId` (>1 means `aId` is stronger). */
+export function powerRatio(state: GameState, aId: number, bId: number): number {
+  return militaryPower(state, aId) / Math.max(1, militaryPower(state, bId));
+}
+
+/**
+ * Whether the AI is willing to make peace, shaped by its temperament. Forgiving
+ * civs sue sooner and at a higher attitude floor; bold/aggressive ones hold out
+ * unless they are clearly losing.
+ */
 function aiAcceptsPeace(state: GameState, aiId: number, otherId: number): boolean {
   const r = relationBetween(state, aiId, otherId);
   if (!r) return false;
+  const p = personalityOf(state, aiId);
   const warDuration = state.turn - r.lastStatusChangeTurn;
-  const losing = militaryPower(state, aiId) < militaryPower(state, otherId) * 0.9;
-  const weary = warDuration >= 12;
+  const losing = powerRatio(state, aiId, otherId) < 0.9;
+  const weary = warDuration >= Math.round(16 - p.forgiveness * 8 - (losing ? 4 : 0));
   const score = attitudeScore(state, aiId, otherId);
-  return losing || weary || score > -30;
+  // A bold AI that is winning would rather press the war.
+  if (!losing && p.boldness > 0.7 && !weary) return score > 30;
+  return losing || weary || score > -40 + p.forgiveness * 40 - p.aggression * 15;
 }
 
-/** Rough gold-value the AI places on a deal item it would RECEIVE. */
+function atWarWithAnyone(state: GameState, aiId: number): boolean {
+  return state.relations.some((r) => (r.a === aiId || r.b === aiId) && r.status === "war");
+}
+
+/**
+ * Rough gold-value the AI places on a deal item it would RECEIVE. Soft, mostly-
+ * symbolic concessions (open borders, a non-aggression pact) are worth little
+ * unless the AI is very friendly or genuinely fears the other civ — so the AI
+ * never pays exorbitant sums for them.
+ */
 function itemValue(state: GameState, aiId: number, otherId: number, item: DealItem): number {
   switch (item.kind) {
     case "gold": return item.amount;
@@ -547,50 +742,237 @@ function itemValue(state: GameState, aiId: number, otherId: number, item: DealIt
     case "resource": return item.turns * 6;
     case "specialist": return item.turns * 4;
     case "peace": return atWar(state, aiId, otherId) ? 80 : 0;
-    case "openBorders": return 10 + attitudeScore(state, aiId, otherId) * 0.2;
+    case "openBorders": {
+      const att = attitudeScore(state, aiId, otherId);
+      // Wanted only when very friendly, or when at war and needing to move armies.
+      const friendly = att >= 60 ? 6 + (att - 60) * 0.25 : att >= 30 ? 2 : -4;
+      return friendly + (atWarWithAnyone(state, aiId) ? 4 : 0);
+    }
     case "pact": {
       const att = attitudeScore(state, aiId, otherId);
       if (item.tier === "alliance" && att < 40) return -999; // won't ally a non-friend
       if (item.tier === "defensive" && att < 10) return -999;
-      return (item.tier === "alliance" ? 30 : item.tier === "defensive" ? 18 : 8) + att * 0.2;
+      const base = item.tier === "alliance" ? 25 : item.tier === "defensive" ? 14 : 6;
+      // A non-aggression pact is chiefly worth buying when you fear the other civ.
+      const fear = item.tier === "non_aggression" ? Math.max(0, powerRatio(state, otherId, aiId) - 1) * 18 : 0;
+      return base + att * 0.15 + fear;
     }
     case "declareWarOn": return -40; // costly favour
   }
 }
 
-function aiEvaluateOffer(state: GameState, aiId: number, fromId: number, give: DealItem[], want: DealItem[]): boolean {
-  // give = what the proposer gives the AI; want = what the AI must give up.
-  const gain = give.reduce((s, it) => s + itemValue(state, aiId, fromId, it), 0);
-  const cost = want.reduce((s, it) => s + itemValue(state, aiId, fromId, it), 0);
-  if (give.some((it) => it.kind === "pact" && itemValue(state, aiId, fromId, it) < -900)) return false;
-  return gain >= cost;
+/** Total gold an item set asks the AI to part with (lump + full term of per-turn). */
+function goldOutlay(items: DealItem[]): number {
+  return items.reduce((s, it) =>
+    s + (it.kind === "gold" ? it.amount : it.kind === "goldPerTurn" ? it.amount * it.turns : 0), 0);
 }
 
-/** An AI civ's diplomatic decisions for its turn. */
+/** Evaluate a (non-coercive) offer from the AI's perspective. */
+function aiDecideOffer(
+  state: GameState,
+  aiId: number,
+  fromId: number,
+  give: DealItem[], // what the proposer gives the AI
+  want: DealItem[], // what the AI must give up
+): { accept: boolean; reason: string } {
+  // A relationship-defining item the AI flatly refuses (e.g. ally a non-friend).
+  if (give.some((it) => it.kind === "pact" && itemValue(state, aiId, fromId, it) < -900)) {
+    return { accept: false, reason: "We will not enter such a pact with you." };
+  }
+  // The AI cannot give resources/specialists it does not possess.
+  if (!canPayItems(state, aiId, want)) {
+    return { accept: false, reason: "We cannot provide what you ask." };
+  }
+  const ai = playerById(state, aiId)!;
+  const p = personalityOf(state, aiId);
+  // It will drain the treasury only to buy peace or when it genuinely fears the
+  // other civ; otherwise it won't spend more than a slice of its gold on soft
+  // concessions — and never gold it doesn't have.
+  const goldAsked = goldOutlay(want);
+  const buyingSafety = give.some((it) => it.kind === "peace") || powerRatio(state, fromId, aiId) > 1.4;
+  const spendCap = buyingSafety ? ai.gold : Math.floor(ai.gold * 0.25);
+  if (goldAsked > spendCap) {
+    return { accept: false, reason: ai.gold < goldAsked ? "We cannot afford that." : "We will not part with so much gold." };
+  }
+  const gain = give.reduce((s, it) => s + itemValue(state, aiId, fromId, it), 0);
+  // Greedy/proud civs overvalue what they part with → drive a harder bargain.
+  const costMult = 1 + (p.greed - 0.5) * 0.4 + Math.max(0, -attitudeScore(state, aiId, fromId)) / 200;
+  const cost = want.reduce((s, it) => s + itemValue(state, aiId, fromId, it), 0) * costMult;
+  if (gain >= cost) {
+    return { accept: true, reason: gain > cost * 1.3 ? "A most generous offer — agreed." : "These terms are acceptable." };
+  }
+  return { accept: false, reason: "Your offer is not worth what you ask." };
+}
+
+/**
+ * Evaluate a coercive tribute demand. The AI yields ONLY when it judges the
+ * demander to hold an overwhelming military advantage, scaled by its boldness —
+ * proud civs demand to be even more outmatched, and a strong, aggressive AI may
+ * answer a demand with war instead.
+ */
+function aiDecideDemand(
+  state: GameState,
+  aiId: number,
+  fromId: number,
+  want: DealItem[],
+): { accept: boolean; reason: string } {
+  const p = personalityOf(state, aiId);
+  const ratio = powerRatio(state, fromId, aiId); // how much stronger the demander is
+  const required = 2.0 + p.boldness * 1.5; // 2.0 (timid) … 3.5 (proud) times our strength
+  const canPay = canPayItems(state, aiId, want);
+  if (ratio >= required && canPay) {
+    return { accept: true, reason: "Your armies leave us no choice. We yield." };
+  }
+  // Remember that the demander was rebuffed, so it can escalate to war later.
+  addModifier(state, fromId, aiId, "__demandRefused", 0, 8);
+  // (The attitude penalty for making a demand is applied in createProposal, so
+  // it lands whether the demand is met or refused.) A proud, strong AI may even
+  // answer the affront with war.
+  if (!canPay) return { accept: false, reason: "We have nothing to give even if we wished to." };
+  const r = relationBetween(state, aiId, fromId);
+  const canWar = r && r.status === "peace" && (r.warAllowedTurn === undefined || state.turn >= r.warAllowedTurn) && r.pact === "none";
+  if (canWar && ratio < 1.0 && p.aggression > 0.7) {
+    declareWar(state, aiId, fromId);
+    return { accept: false, reason: "You dare make demands of us? This means war!" };
+  }
+  return { accept: false, reason: ratio >= 1.3 ? "We will not be bullied — yet." : "You are in no position to make demands." };
+}
+
+/** Distinct specialist types currently trained in a player's cities. */
+function specialistTypesOf(state: GameState, playerId: number): string[] {
+  const set = new Set<string>();
+  for (const c of citiesOf(state, playerId)) for (const s of c.specialists) set.add(s.type);
+  return [...set];
+}
+
+/** Luxuries a player effectively enjoys (owned tiles + active imports). */
+function ownedLuxurySet(state: GameState, playerId: number): Set<string> {
+  const set = new Set<string>(empireLuxuryTypes(state, playerId));
+  const p = playerById(state, playerId);
+  for (const id of p?.importedLuxuries ?? []) set.add(id);
+  return set;
+}
+
+/**
+ * An AI offers the player (or another civ) a fair trade for something it needs:
+ * a luxury it lacks, or — when it has public works under way — a specialist to
+ * build them. Payment reflects its means: a wealthy civ pays gold (per turn),
+ * while a gold-poor civ hoards its coin and prefers to barter a spare luxury.
+ * Returns true if an offer was sent.
+ */
+export function aiInitiateTrade(state: GameState, aiId: number, otherId: number): boolean {
+  const ai = playerById(state, aiId);
+  const other = playerById(state, otherId);
+  if (!ai || !other || other.isBarbarian) return false;
+  // Don't pile offers onto an existing pending proposal between the two.
+  if (state.diploProposals.some((p) => p.fromId === aiId && p.toId === otherId && p.status === "pending")) return false;
+
+  const poor = ai.gold < 80; // short on gold → values coin highly, prefers barter
+  // A spare luxury the AI owns that the other side does NOT — appealing barter.
+  const theirLux = ownedLuxurySet(state, otherId);
+  const spareLux = tradeableLuxuries(state, aiId).find((l) => !theirLux.has(l));
+
+  // --- need 1: a luxury the AI lacks that the other side can spare ---
+  const myLux = ownedLuxurySet(state, aiId);
+  const wantLux = tradeableLuxuries(state, otherId).find((l) => !myLux.has(l) && l !== spareLux);
+  if (wantLux) {
+    const want: DealItem[] = [{ kind: "resource", id: wantLux, turns: 20 }];
+    let give: DealItem[];
+    if (poor && spareLux) give = [{ kind: "resource", id: spareLux, turns: 20 }]; // barter goods-for-goods
+    else if (poor) give = [{ kind: "goldPerTurn", amount: 2, turns: 15 }]; // scrape together a little coin
+    else give = [{ kind: "goldPerTurn", amount: 4, turns: 20 }]; // buy it outright
+    return proposeDeal(state, aiId, otherId, give, want).ok;
+  }
+
+  // --- need 2: a specialist to advance construction (it has works under way) ---
+  const building = state.works.some((w) => w.ownerId === aiId);
+  if (building) {
+    const mySpec = new Set(specialistTypesOf(state, aiId));
+    const wantSpec = specialistTypesOf(state, otherId).find((t) => !mySpec.has(t));
+    if (wantSpec) {
+      const want: DealItem[] = [{ kind: "specialist", specialistType: wantSpec, turns: 15 }];
+      let give: DealItem[];
+      if (poor && spareLux) give = [{ kind: "resource", id: spareLux, turns: 15 }];
+      else if (poor) give = [{ kind: "goldPerTurn", amount: 3, turns: 12 }];
+      else give = [{ kind: "gold", amount: 60 }]; // a hiring fee it can afford
+      if (!canPayItems(state, aiId, give)) return false;
+      return proposeDeal(state, aiId, otherId, give, want).ok;
+    }
+  }
+  return false;
+}
+
+/** An AI civ's diplomatic decisions for its turn, driven by its personality. */
 export function aiConsiderDiplomacy(state: GameState, aiId: number): void {
   const me = playerById(state, aiId);
   if (!me || me.isHuman || me.isBarbarian) return;
+  const p = personalityOf(state, aiId);
   for (const otherId of [...me.met]) {
     const r = relationBetween(state, aiId, otherId);
     if (!r) continue;
+    const other = playerById(state, otherId);
+    if (!other || other.isBarbarian) continue;
     const score = attitudeScore(state, aiId, otherId);
+    const ratio = powerRatio(state, aiId, otherId);
+
     if (r.status === "war") {
-      // sue for peace if weary or losing
-      if (aiAcceptsPeace(state, aiId, otherId) && militaryPower(state, aiId) < militaryPower(state, otherId)) {
-        makePeace(state, aiId, otherId);
+      // Sue for peace when willing (war-weary, losing, or no longer hostile).
+      if (aiAcceptsPeace(state, aiId, otherId)) makePeace(state, aiId, otherId);
+      continue;
+    }
+
+    // ---- at peace ----
+    const canWar = r.pact === "none" && (r.warAllowedTurn === undefined || state.turn >= r.warAllowedTurn);
+    // Aggressive civs need only a slim edge and tolerate a higher attitude; the
+    // peaceful only strike a civ they despise and clearly outmatch. An enemy
+    // already mired in another war is a tempting, cheaper target.
+    const opportunistic = other.atWar.some((id) => id !== aiId && !playerById(state, id)?.isBarbarian);
+    const requiredRatio = (1.6 - p.aggression * 0.7) - (opportunistic ? 0.3 : 0);
+    const scoreThreshold = -55 + p.aggression * 45;
+    const despises = ratio >= requiredRatio && score <= scoreThreshold;
+
+    // Don't act militarily while a demand is still on the table — await the answer.
+    const demandPending = state.diploProposals.some(
+      (pr) => pr.fromId === aiId && pr.toId === otherId && pr.coercive && pr.status === "pending",
+    );
+    if (demandPending) continue;
+
+    const overwhelming = ratio >= 2.0; // can take what it wants by force
+    const refused = hasModifier(state, aiId, otherId, "__demandRefused");
+
+    if (canWar) {
+      // The overwhelmingly strong would rather extort than spend blood — demand
+      // tribute FIRST (the credible threat of war is the lever), provided they
+      // haven't already been rebuffed. Greedy or aggressive civs especially.
+      if (overwhelming && !refused && score < 25 && (p.greed > 0.4 || p.aggression > 0.5)) {
+        const demand = 20 + Math.round((p.greed * 0.5 + p.aggression * 0.5) * 50);
+        demandTribute(state, aiId, otherId, demand);
+        continue;
       }
-      continue;
+      // War: when it despises a civ it can beat, OR to make good on a refused
+      // demand (an aggressive civ follows through on the threat). The truly
+      // warlike are far more willing to actually invade after a snub.
+      const enforceRefusal = refused && ratio >= requiredRatio && p.aggression > 0.45;
+      if (despises || enforceRefusal) {
+        declareWar(state, aiId, otherId);
+        continue;
+      }
     }
-    // at peace: consider war if hostile, strong, and free of pacts
-    const canWar = r.warAllowedTurn === undefined || state.turn >= r.warAllowedTurn;
-    const strong = militaryPower(state, aiId) > militaryPower(state, otherId) * 1.3;
-    if (score <= -40 && strong && r.pact === "none" && canWar) {
-      declareWar(state, aiId, otherId);
-      continue;
+
+    // Friendly, loyal civs cultivate ties: open borders, then non-aggression.
+    if (score >= 40 && r.pact === "none" && (state.turn + aiId) % 13 === 0) {
+      if (!r.openBorders) {
+        proposeDeal(state, aiId, otherId, [{ kind: "openBorders" }], [{ kind: "openBorders" }]);
+        continue;
+      } else if (p.loyalty > 0.6 && score >= 55) {
+        proposeDeal(state, aiId, otherId, [{ kind: "pact", tier: "non_aggression", turns: 25 }], [{ kind: "pact", tier: "non_aggression", turns: 25 }]);
+        continue;
+      }
     }
-    // friendly upkeep: occasionally offer mutual open borders
-    if (score >= 40 && r.pact === "none" && !r.openBorders && (state.turn + aiId) % 13 === 0) {
-      proposeDeal(state, aiId, otherId, [{ kind: "openBorders" }], [{ kind: "openBorders" }]);
+
+    // Not hostile? Seek a mutually useful trade for something the AI needs.
+    if (score > -15 && (state.turn + aiId * 3 + otherId) % 11 === 0) {
+      aiInitiateTrade(state, aiId, otherId);
     }
   }
 }

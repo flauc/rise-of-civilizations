@@ -8,10 +8,12 @@
 import { axialDistance, axialToOffset, getTile, offsetToAxial, type Axial } from "@roc/shared";
 import type { GameState, Player, Unit } from "./state";
 import { areEnemies, cityAt, log, playerById, unitAt, unitsOf } from "./state";
-import { isPassableLand } from "./terrain";
-import { enemyStructureBlocks } from "./movement";
-import { resolveAttack, applyDirectDamage, unitMaxHp } from "./combat";
+import { isPassableLand, isRough } from "./terrain";
+import { enemyStructureBlocks, unitSight } from "./movement";
+import { resolveAttack, applyDirectDamage, secondaryRangedDamage, unitMaxHp } from "./combat";
 import { updateExplored } from "./visibility";
+import { effectiveAbilities } from "./civs";
+import { canHideHere, breakCover, revealHiddenInSight } from "./stealth";
 import {
   ACTIVE_ABILITY_DEFS,
   UNIT_DEFS,
@@ -27,7 +29,7 @@ export interface AbilityResult {
 const ok: AbilityResult = { ok: true };
 const fail = (error: string): AbilityResult => ({ ok: false, error });
 
-const STANCE_ABILITIES = new Set<ActiveAbilityId>(["brace", "shield_wall", "testudo", "emplace"]);
+const STANCE_ABILITIES = new Set<ActiveAbilityId>(["brace", "shield_wall", "testudo", "emplace", "othismos", "last_stand", "pavise"]);
 
 function dist(a: { col: number; row: number }, b: { col: number; row: number }): number {
   return axialDistance(offsetToAxial(a), offsetToAxial(b));
@@ -81,17 +83,18 @@ function panicRoll(state: GameState, unit: Unit): number {
   return h % 100;
 }
 
-function hasAbility(unit: Unit, ability: ActiveAbilityId): boolean {
-  return UNIT_DEFS[unit.type].activeAbilities?.includes(ability) ?? false;
+function hasAbility(state: GameState, unit: Unit, ability: ActiveAbilityId): boolean {
+  return effectiveAbilities(state, unit).includes(ability);
 }
 
 /** Whether `unit` could use `ability` right now (ignoring a specific target). */
 export function canUseAbility(state: GameState, unit: Unit, ability: ActiveAbilityId): AbilityResult {
-  if (!hasAbility(unit, ability)) return fail("unit lacks that ability");
+  if (!hasAbility(state, unit, ability)) return fail("unit lacks that ability");
   if (unit.attackedThisTurn) return fail("already acted this turn");
   if (unit.movementLeft <= 0) return fail("no movement left");
   const ready = unit.abilityCooldowns?.[ability] ?? 0;
   if (ready > state.turn) return fail("ability on cooldown");
+  if (ability === "hide" && !canHideHere(state, unit)) return fail("no cover to hide in here");
   return ok;
 }
 
@@ -115,7 +118,10 @@ export function abilityTargets(state: GameState, unit: Unit, ability: ActiveAbil
 /** Range (in tiles) a targeted ability can reach from the unit. */
 function abilityRange(unit: Unit, ability: ActiveAbilityId): number {
   const def = UNIT_DEFS[unit.type];
-  if (ability === "fire_and_retreat" || ability === "skirmish") return def.range ?? 1;
+  if (ability === "fire_and_retreat" || ability === "skirmish" || ability === "parthian_shot") return def.range ?? 1;
+  if (ability === "feigned_retreat") return Math.max(1, def.range ?? 1); // kite at range or charge adjacent
+  if (ability === "repeating_fire") return def.range ?? 1;
+  if (ability === "arrow_storm") return (def.range ?? 1) + 1;
   if (ability === "pierce") return Math.max(1, (def.range ?? 1) - 1);
   if (ability === "greek_fire" || ability === "coastal_bombardment") return def.range ?? 1;
   return 1; // melee/charge/trample/sunder/harry/ram/boarding_party strike adjacent
@@ -136,6 +142,14 @@ export function useAbility(
   if (!pre.ok) return pre;
   const def = ACTIVE_ABILITY_DEFS[ability];
 
+  // ---- hide (persists across turns; not a one-turn stance) ----
+  if (ability === "hide") {
+    unit.hidden = true;
+    unit.movementLeft = 0; // forfeits remaining movement
+    unit.attackedThisTurn = true; // ends the turn
+    return ok;
+  }
+
   // ---- stances ----
   if (def.kind === "stance") {
     unit.stance = ability as StanceId;
@@ -152,6 +166,7 @@ export function useAbility(
     unit.attackedThisTurn = true;
     if (!unit.abilityCooldowns) unit.abilityCooldowns = {};
     unit.abilityCooldowns[ability] = cooldownAfter(state, ability);
+    revealHiddenInSight(state, unit, unitSight(unit) + 2); // the pulse flushes out hidden units
     updateExplored(state, unit.ownerId); // reveal the wider radius now
     return ok;
   }
@@ -171,14 +186,60 @@ export function useAbility(
   };
 
   switch (ability) {
-    case "charge": {
+    case "charge":
+    case "hussar_charge": {
       const behind = tileBeyond(unit, target);
-      const res = resolveAttack(state, unit, col, row, { ability: "charge" });
+      const res = resolveAttack(state, unit, col, row, { ability });
       if (!res.ok) return res;
       if (state.units.has(unit.id) && tileFree(state, unit, behind.col, behind.row)) {
         unit.col = behind.col;
         unit.row = behind.row;
         updateExplored(state, unit.ownerId);
+      }
+      setCd();
+      return ok;
+    }
+
+    case "war_cart_charge": {
+      const behind = tileBeyond(unit, target);
+      const res = resolveAttack(state, unit, col, row, { ability: "war_cart_charge" });
+      if (!res.ok) return res;
+      // The primitive battle-cart only rides through over open ground.
+      const behindTile = getTile(state.map, behind.col, behind.row);
+      const rough = !behindTile || isRough(behindTile.terrain);
+      if (!rough && state.units.has(unit.id) && tileFree(state, unit, behind.col, behind.row)) {
+        unit.col = behind.col;
+        unit.row = behind.row;
+        updateExplored(state, unit.ownerId);
+      }
+      setCd();
+      return ok;
+    }
+
+    case "feigned_retreat": {
+      if (dist(unit, target) <= 1) {
+        // Close and ride through, like a Charge.
+        const behind = tileBeyond(unit, target);
+        const res = resolveAttack(state, unit, col, row, { ability: "charge" });
+        if (!res.ok) return res;
+        if (state.units.has(unit.id) && tileFree(state, unit, behind.col, behind.row)) {
+          unit.col = behind.col;
+          unit.row = behind.row;
+          updateExplored(state, unit.ownerId);
+        }
+      } else {
+        // Kite, like Fire & Retreat.
+        const threat = { col, row };
+        const res = resolveAttack(state, unit, col, row, { ability: "fire_and_retreat" });
+        if (!res.ok) return res;
+        if (state.units.has(unit.id)) {
+          const back = retreatTile(state, unit, threat);
+          if (back) {
+            unit.col = back.col;
+            unit.row = back.row;
+            updateExplored(state, unit.ownerId);
+          }
+        }
       }
       setCd();
       return ok;
@@ -230,7 +291,8 @@ export function useAbility(
     }
 
     case "fire_and_retreat":
-    case "skirmish": {
+    case "skirmish":
+    case "parthian_shot": {
       const threat = { col, row };
       const res = resolveAttack(state, unit, col, row, { ability });
       if (!res.ok) return res;
@@ -246,11 +308,47 @@ export function useAbility(
       return ok;
     }
 
+    case "repeating_fire": {
+      const res = resolveAttack(state, unit, col, row, { ability: "repeating_fire" });
+      if (!res.ok) return res;
+      const second = unitAt(state, col, row); // a weaker follow-up bolt
+      if (second && second.ownerId !== unit.ownerId) secondaryRangedDamage(state, unit, second, 0.6);
+      setCd();
+      return ok;
+    }
+
+    case "arrow_storm": {
+      const res = resolveAttack(state, unit, col, row, { ability: "arrow_storm" });
+      if (!res.ok) return res;
+      // The volley also lightly wounds a second enemy beside the target.
+      const owner2 = playerById(state, unit.ownerId);
+      for (const u of state.units.values()) {
+        if (u.ownerId === unit.ownerId) continue;
+        if (u.col === col && u.row === row) continue;
+        const o = playerById(state, u.ownerId);
+        if (owner2 && o && areEnemies(owner2, o) && dist({ col, row }, u) === 1) {
+          secondaryRangedDamage(state, unit, u, 0.5);
+          break;
+        }
+      }
+      setCd();
+      return ok;
+    }
+
     case "sunder":
     case "pierce":
-    case "harry": {
+    case "harry":
+    case "siege_assault": {
       const res = resolveAttack(state, unit, col, row, { ability });
       if (!res.ok) return res;
+      setCd();
+      return ok;
+    }
+
+    case "furor": {
+      const res = resolveAttack(state, unit, col, row, { ability: "furor" });
+      if (!res.ok) return res;
+      if (state.units.has(unit.id)) unit.exposedUntilTurn = state.turn + 1; // exposed after the wild charge
       setCd();
       return ok;
     }
@@ -327,9 +425,10 @@ export function tickAbilities(state: GameState, player: Player): void {
   }
 }
 
-/** Active abilities available on a unit (for the client's action buttons). */
-export function unitAbilities(unit: Unit): ActiveAbilityId[] {
-  return UNIT_DEFS[unit.type].activeAbilities ?? [];
+/** Active abilities available on a unit (for the client's action buttons),
+ *  honoring civ-unique overrides. */
+export function unitAbilities(state: GameState, unit: Unit): ActiveAbilityId[] {
+  return effectiveAbilities(state, unit);
 }
 
 export { STANCE_ABILITIES };

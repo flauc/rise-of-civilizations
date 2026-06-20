@@ -5,8 +5,11 @@ import { applyCommand } from "./commands";
 import { updateExplored } from "./visibility";
 import {
   relationBetween, haveMet, atWar, attitudeScore,
-  declareWar, makePeace, gift, proposeDeal, ensureContact, foreignTerritoryOwner,
+  declareWar, makePeace, gift, proposeDeal, demandTribute, finalizeDeal,
+  respondProposal, militaryPower, aiInitiateTrade, aiConsiderDiplomacy,
+  ensureContact, foreignTerritoryOwner,
 } from "./diplomacy";
+import { makeUnit } from "./state";
 import { areEnemies, unitsOf, type GameState } from "./state";
 
 function twoCivGame(): GameState {
@@ -60,11 +63,167 @@ describe("diplomacy", () => {
     s.players[0]!.gold = 100;
     expect(gift(s, 0, 1, 60).ok).toBe(true);
     expect(attitudeScore(s, 1, 0)).toBeGreaterThan(before);
-    // Offer the AI gold for nothing → it accepts and the gold moves.
+    // Offer the AI gold for nothing → it accepts, but a human-initiated deal
+    // must be finalized by the proposer before the gold actually moves.
     s.players[0]!.gold = 100;
     const aiGold = s.players[1]!.gold;
     expect(proposeDeal(s, 0, 1, [{ kind: "gold", amount: 40 }], []).ok).toBe(true);
-    expect(s.players[1]!.gold).toBe(aiGold + 40);
+    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(prop.status).toBe("accepted"); // AI gave instant feedback
+    expect(s.players[1]!.gold).toBe(aiGold); // not yet applied
+    expect(finalizeDeal(s, 0, prop.id, true).ok).toBe(true);
+    expect(s.players[1]!.gold).toBe(aiGold + 40); // applied on finalize
+    expect(s.diploProposals.find((p) => p.id === prop.id)).toBeUndefined();
+  });
+
+  it("a coercive tribute demand only succeeds with overwhelming military advantage", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    s.players[1]!.gold = 200;
+    // No army on either side → the AI is not afraid and refuses.
+    const before = s.players[1]!.gold;
+    expect(demandTribute(s, 0, 1, 50).ok).toBe(true); // the demand is delivered…
+    let prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(prop.coercive).toBe(true);
+    expect(prop.status).toBe("declined"); // …but refused
+    expect(s.players[1]!.gold).toBe(before);
+    s.diploProposals = [];
+    // Give player 0 an overwhelming army; now the AI yields.
+    for (let i = 0; i < 12; i++) {
+      const id = s.nextEntityId++;
+      s.units.set(id, makeUnit(id, 0, "swordsman", 2 + i, 2));
+    }
+    expect(militaryPower(s, 0)).toBeGreaterThan(militaryPower(s, 1) * 2);
+    const myGold = s.players[0]!.gold;
+    expect(demandTribute(s, 0, 1, 50).ok).toBe(true);
+    prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(s.players[0]!.gold).toBe(myGold + 50); // tribute paid immediately
+    expect(prop).toBeUndefined; // coercive demands conclude without a finalize step
+  });
+
+  it("a human recipient must respond, then the proposer finalizes (two humans)", () => {
+    // 2 humans, no AI.
+    const s = createGame({ seed: "dip2", cols: 40, rows: 28, barbarians: false, humanSlots: 2, playerCount: 2 });
+    ensureContact(s, 0, 1);
+    s.players[0]!.gold = 100;
+    expect(proposeDeal(s, 0, 1, [{ kind: "gold", amount: 30 }], []).ok).toBe(true);
+    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(prop.status).toBe("pending"); // waits on the human recipient
+    const aiGold = s.players[1]!.gold;
+    expect(respondProposal(s, 1, prop.id, true).ok).toBe(true);
+    expect(prop.status).toBe("accepted");
+    expect(s.players[1]!.gold).toBe(aiGold); // proposer still must finalize
+    expect(finalizeDeal(s, 0, prop.id, true).ok).toBe(true);
+    expect(s.players[1]!.gold).toBe(aiGold + 30);
+  });
+
+  it("the AI won't pay exorbitant sums for soft concessions (open borders)", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    s.players[1]!.gold = 1000; // even a rich AI shouldn't overpay
+    // Offer open borders in exchange for 200 gold — far above what it is worth.
+    expect(proposeDeal(s, 0, 1, [{ kind: "openBorders" }], [{ kind: "gold", amount: 200 }]).ok).toBe(true);
+    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(prop.status).toBe("declined");
+  });
+
+  it("the AI refuses to spend gold it does not have on a pact", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    s.players[1]!.gold = 5; // nearly broke
+    expect(proposeDeal(s, 0, 1, [{ kind: "pact", tier: "non_aggression", turns: 20 }], [{ kind: "gold", amount: 80 }]).ok).toBe(true);
+    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(prop.status).toBe("declined");
+    expect(prop.reason).toMatch(/afford|so much gold|provide/i);
+  });
+
+  it("the AI won't drain its treasury for a soft pact even when it can pay", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    s.players[1]!.gold = 100; // has the gold, but 80 is far more than 25% of it
+    expect(proposeDeal(s, 0, 1, [{ kind: "pact", tier: "non_aggression", turns: 20 }], [{ kind: "gold", amount: 80 }]).ok).toBe(true);
+    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(prop.status).toBe("declined");
+  });
+
+  it("rejects proposing a concession that is already in force", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    relationBetween(s, 0, 1)!.openBorders = true;
+    expect(proposeDeal(s, 0, 1, [{ kind: "openBorders" }], []).ok).toBe(false);
+  });
+
+  it("a tribute demand lowers standing whether refused or met", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    s.players[1]!.gold = 100;
+    const before = attitudeScore(s, 1, 0);
+    demandTribute(s, 0, 1, 50); // weak demander → refused
+    const afterRefuse = attitudeScore(s, 1, 0);
+    expect(afterRefuse).toBeLessThan(before);
+    // Now field an overwhelming army so the demand is met — standing drops further.
+    s.diploProposals = [];
+    for (let i = 0; i < 12; i++) {
+      const id = s.nextEntityId++;
+      s.units.set(id, makeUnit(id, 0, "swordsman", 2 + i, 2));
+    }
+    demandTribute(s, 0, 1, 30);
+    expect(attitudeScore(s, 1, 0)).toBeLessThan(afterRefuse);
+  });
+
+  it("an AI proposes a trade for a luxury it lacks (paying gold when wealthy)", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    // Give the human a worked wine plantation → a tradeable luxury the AI lacks.
+    const cid = s.nextEntityId++;
+    s.cities.set(cid, { id: cid, ownerId: 0, name: "Mine", col: 6, row: 6, population: 2, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
+    const t = getTile(s.map, 7, 6)!;
+    t.terrain = "grassland"; t.resource = "wine"; t.improvement = "plantation"; t.ownerCityId = cid;
+    s.players[1]!.gold = 200; // wealthy AI → pays with gold
+    expect(aiInitiateTrade(s, 1, 0)).toBe(true);
+    const prop = s.diploProposals.find((p) => p.fromId === 1 && p.toId === 0)!;
+    expect(prop.status).toBe("pending"); // awaits the human's response
+    expect(prop.want.some((it) => it.kind === "resource" && it.id === "wine")).toBe(true);
+    expect(prop.give.some((it) => it.kind === "gold" || it.kind === "goldPerTurn")).toBe(true);
+  });
+
+  it("a gold-poor AI barters a spare luxury instead of paying gold", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    // Human owns wine; AI owns incense (a spare the human lacks).
+    const human = s.nextEntityId++;
+    s.cities.set(human, { id: human, ownerId: 0, name: "Mine", col: 6, row: 6, population: 2, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
+    const tw = getTile(s.map, 7, 6)!; tw.terrain = "grassland"; tw.resource = "wine"; tw.improvement = "plantation"; tw.ownerCityId = human;
+    const aiCity = s.nextEntityId++;
+    s.cities.set(aiCity, { id: aiCity, ownerId: 1, name: "Theirs", col: 20, row: 12, population: 2, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
+    const ti = getTile(s.map, 21, 12)!; ti.terrain = "desert"; ti.resource = "incense"; ti.improvement = "plantation"; ti.ownerCityId = aiCity;
+    s.players[1]!.gold = 10; // broke → prefers to barter goods
+    expect(aiInitiateTrade(s, 1, 0)).toBe(true);
+    const prop = s.diploProposals.find((p) => p.fromId === 1 && p.toId === 0)!;
+    expect(prop.want.some((it) => it.kind === "resource" && it.id === "wine")).toBe(true);
+    expect(prop.give.some((it) => it.kind === "resource" && it.id === "incense")).toBe(true); // bartered, no gold
+  });
+
+  it("an overwhelmingly strong, warlike AI demands tribute before war and escalates if refused", () => {
+    const s = twoCivGame(); // human 0, AI 1
+    ensureContact(s, 0, 1);
+    s.players[1]!.civId = "mongols"; // warlike temperament
+    s.players[0]!.gold = 100;
+    // The AI fields an overwhelming army.
+    for (let i = 0; i < 14; i++) {
+      const id = s.nextEntityId++;
+      s.units.set(id, makeUnit(id, 1, "swordsman", 2 + i, 3));
+    }
+    expect(militaryPower(s, 1)).toBeGreaterThan(militaryPower(s, 0) * 2);
+    // First it demands tribute rather than going straight to war.
+    aiConsiderDiplomacy(s, 1);
+    const demand = s.diploProposals.find((p) => p.fromId === 1 && p.toId === 0 && p.coercive);
+    expect(demand).toBeDefined();
+    expect(atWar(s, 0, 1)).toBe(false);
+    // The human refuses → the AI makes good on the threat next time it deliberates.
+    expect(respondProposal(s, 0, demand!.id, false).ok).toBe(true);
+    aiConsiderDiplomacy(s, 1);
+    expect(atWar(s, 0, 1)).toBe(true);
   });
 
   it("restricts entering a peaceful civ's territory unless at war / open borders", () => {
@@ -91,8 +250,11 @@ describe("diplomacy", () => {
     s.cities.set(c0, { id: c0, ownerId: 0, name: "Mine", col: 5, row: 5, population: 3, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [{ id: 900, type: "carpenter", name: "Test", xp: 0, level: 2 }], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
     const c1 = s.nextEntityId++;
     s.cities.set(c1, { id: c1, ownerId: 1, name: "Theirs", col: 20, row: 12, population: 1, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
-    // Offer the AI the carpenter for free (3 turns) — it accepts a gift.
+    // Offer the AI the carpenter for free (3 turns) — it accepts; we finalize.
     expect(proposeDeal(s, 0, 1, [{ kind: "specialist", specialistType: "carpenter", turns: 3 }], []).ok).toBe(true);
+    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(prop.status).toBe("accepted");
+    expect(finalizeDeal(s, 0, prop.id, true).ok).toBe(true);
     expect(s.cities.get(c1)!.specialists.some((sp) => sp.type === "carpenter")).toBe(true);
     expect(s.cities.get(c0)!.specialists.length).toBe(0); // moved out of the lender
   });

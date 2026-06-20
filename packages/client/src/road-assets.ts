@@ -1,19 +1,31 @@
 /// <reference types="vite/client" />
+import { hashSeed } from "@roc/shared";
 
-/** Road overlay atlas keyed by `<level>_<canonicalMask>`. */
+/**
+ * Road overlay atlas (purchased "Hex Medieval Fantasy Locations" art), re-keyed by
+ * OUR runtime direction convention (see tools/sync-road-tiles.mjs):
+ *   - `road_<mask>`         road segment; bit d = road reaches the edge toward dir d
+ *   - `road_bridge_<mask>`  straight road carried over a river on a bridge
+ *                           (only the 3 straight-through masks: 9, 18, 36)
+ *
+ * All are transparent 256x384 overlays drawn on top of the base terrain, the same
+ * footprint as the river/coast art, so they join neighbours at shared edge
+ * midpoints. The pack ships every non-zero connection mask, so no rotation is
+ * needed at render time — a tile's mask maps straight to an image.
+ */
 export interface RoadAtlas {
-  readonly images: Readonly<Record<string, HTMLImageElement | undefined>>;
+  /** key (e.g. "road_9", "road_bridge_9") -> loaded painted variants. */
+  readonly images: Readonly<Record<string, HTMLImageElement[]>>;
   /** True once every requested road segment has finished loading or errored. */
   loaded: boolean;
 }
 
-const ROAD_TYPES = ["dirt_road", "stone_road", "advanced_stone_road"] as const;
+const ROAD_VARIANTS = 4; // some masks ship up to 4 painted variations
+/** Straight-through masks (opposite edge pairs) that have bridge art. */
+export const BRIDGE_MASKS = [9, 18, 36] as const;
 
-/** Distinct connection patterns up to hex rotation (0-side omitted). */
-const CONNECTION_MASKS = [1, 3, 5, 7, 9, 11, 13, 15, 21, 23, 27, 31, 63] as const;
-
-function imageUrl(id: string): string {
-  return `${import.meta.env.BASE_URL}roads/${id}.png`;
+function imageUrl(name: string): string {
+  return `${import.meta.env.BASE_URL}roads/${name}.png`;
 }
 
 /** Returns true when an image has finished loading and has usable pixels. */
@@ -21,76 +33,61 @@ export function isImageReady(img: HTMLImageElement): boolean {
   return img.complete && img.naturalWidth > 0;
 }
 
-function rotateMask(mask: number, steps: number): number {
-  const s = ((steps % 6) + 6) % 6;
-  return ((mask << s) | (mask >> (6 - s))) & 0b111111;
-}
-
-function canonicalInfo(mask: number): { readonly canonical: number; readonly rotation: number } {
-  let best = mask;
-  let rotation = 0;
-  for (let r = 1; r < 6; r++) {
-    const rotated = rotateMask(mask, r);
-    if (rotated < best) {
-      best = rotated;
-      rotation = r;
-    }
-  }
-  return { canonical: best, rotation };
-}
-
 /**
- * Starts loading road overlay images.
- *
- * `onLoad` is invoked every time an individual segment finishes loading or
- * errors so the render loop can redraw.
+ * Starts loading every road overlay; `onLoad` fires as each finishes/errors so the
+ * render loop can redraw. Missing variants simply error out and are skipped.
  */
 export function loadRoadAtlas(onLoad?: () => void): RoadAtlas {
-  const images: Record<string, HTMLImageElement | undefined> = {};
-  let remaining: number = ROAD_TYPES.length * CONNECTION_MASKS.length;
+  const images: Record<string, HTMLImageElement[]> = {};
+  let remaining = 0;
 
-  for (const type of ROAD_TYPES) {
-    for (const mask of CONNECTION_MASKS) {
-      const id = `${type}_${mask}`;
+  const want = (key: string, variants: number): void => {
+    images[key] = [];
+    for (let v = 0; v < variants; v++) {
       const img = new Image();
-      img.src = imageUrl(id);
-
-      const onFinish = (): void => {
-        if (isImageReady(img)) {
-          images[id] = img;
-        }
+      img.src = imageUrl(`${key}_${v}`);
+      remaining++;
+      const done = (ok: boolean): void => {
+        if (ok && isImageReady(img)) images[key]!.push(img);
         remaining--;
-        if (remaining === 0) {
-          (atlas as { loaded: boolean }).loaded = true;
-        }
+        if (remaining === 0) (atlas as { loaded: boolean }).loaded = true;
         onLoad?.();
       };
-
-      img.onload = onFinish;
-      img.onerror = () => {
-        remaining--;
-        if (remaining === 0) {
-          (atlas as { loaded: boolean }).loaded = true;
-        }
-        onLoad?.();
-      };
+      img.onload = () => done(true);
+      img.onerror = () => done(false);
     }
-  }
+  };
+
+  for (let mask = 1; mask < 64; mask++) want(`road_${mask}`, ROAD_VARIANTS);
+  for (const mask of BRIDGE_MASKS) want(`road_bridge_${mask}`, 1);
 
   const atlas: RoadAtlas = { images, loaded: remaining === 0 };
   return atlas;
 }
 
-/** Returns the overlay image for a road level and neighbor-edge mask. */
-export function roadFrameFor(atlas: RoadAtlas | undefined, level: number | undefined, mask: number): HTMLImageElement | undefined {
-  if (!atlas) return undefined;
-  const type = ROAD_TYPES[(level ?? 1) - 1];
-  if (!type) return undefined;
-  const { canonical } = canonicalInfo(mask);
-  return atlas.images[`${type}_${canonical}`];
+/** Deterministically pick a variant for a key so a tile is stable across redraws. */
+function pick(atlas: RoadAtlas, key: string, salt: string): HTMLImageElement | undefined {
+  const variants = atlas.images[key];
+  if (!variants || variants.length === 0) return undefined;
+  return variants[hashSeed(`${salt},${key}`) % variants.length]!;
 }
 
-/** Returns how many 60-degree steps the canonical image must be rotated. */
-export function roadRotationFor(mask: number): number {
-  return canonicalInfo(mask).rotation;
+/**
+ * Returns the overlay image for a road tile's connection mask. When `bridge` is
+ * set and the road runs straight through (one of {@link BRIDGE_MASKS}), the
+ * bridge variant is used; otherwise the plain road segment.
+ */
+export function roadFrame(
+  atlas: RoadAtlas | undefined,
+  mask: number,
+  bridge: boolean,
+  col: number,
+  row: number,
+): HTMLImageElement | undefined {
+  if (!atlas || mask === 0) return undefined;
+  if (bridge && (BRIDGE_MASKS as readonly number[]).includes(mask)) {
+    const img = pick(atlas, `road_bridge_${mask}`, `${col},${row}`);
+    if (img) return img;
+  }
+  return pick(atlas, `road_${mask}`, `${col},${row}`);
 }

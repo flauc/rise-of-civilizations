@@ -39,6 +39,7 @@ import { createLobby } from "./lobby-ui";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadCoastAtlas } from "./coast-assets";
 import { loadRiverAtlas } from "./river-assets";
+import { loadRoadAtlas } from "./road-assets";
 import { loadUnitAtlas } from "./unit-assets";
 import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
@@ -271,6 +272,7 @@ function startGame(session: Session): void {
     onDemandTribute: (t, g) => session.order({ type: "demandTribute", targetId: t, gold: g }),
     onProposeDeal: (t, give, want) => session.order({ type: "proposeDeal", targetId: t, give, want }),
     onRespondProposal: (id, accept) => session.order({ type: "respondProposal", proposalId: id, accept }),
+    onFinalizeDeal: (id, confirm) => session.order({ type: "finalizeDeal", proposalId: id, confirm }),
     onAcknowledgeContact: (o) => session.order({ type: "acknowledgeContact", otherId: o }),
     onSetProduction: (item) => {
       if (selectedCityId != null) session.order({ type: "setProduction", cityId: selectedCityId, item });
@@ -378,7 +380,7 @@ function startGame(session: Session): void {
   type Suggestion = { kind: "units" | "research" | "civic" | "religion" | "production"; label: string } | null;
   function computeSuggestion(): Suggestion {
     const me = session.getViewerId();
-    const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0 && !u.sleeping);
+    const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0 && !u.sleeping && !u.hidden);
     if (idle.length > 0) return { kind: "units", label: `⮕ Next Unit (${idle.length})` };
     const player = st().players.find((p) => p.id === me);
     if (player && player.researching == null && availableTechs(player).length > 0) {
@@ -404,7 +406,7 @@ function startGame(session: Session): void {
     if (!s) return session.endTurn();
     const me = session.getViewerId();
     if (s.kind === "units") {
-      const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0 && !u.sleeping).sort((a, b) => a.id - b.id);
+      const idle = unitsOf(st(), me).filter((u) => u.movementLeft > 0 && !u.sleeping && !u.hidden).sort((a, b) => a.id - b.id);
       if (idle.length === 0) return;
       const u = idle[idleCycle++ % idle.length]!;
       selectUnit(u.id);
@@ -568,6 +570,9 @@ function startGame(session: Session): void {
   const riverAtlas = loadRiverAtlas(() => {
     needsRedraw = true;
   });
+  const roadAtlas = loadRoadAtlas(() => {
+    needsRedraw = true;
+  });
   const unitAtlas = loadUnitAtlas(() => {
     needsRedraw = true;
   });
@@ -604,6 +609,7 @@ function startGame(session: Session): void {
         terrainAtlas,
         coastAtlas,
         riverAtlas,
+        roadAtlas,
         improvementAtlas,
         resourceAtlas,
         naturalWonderAtlas,

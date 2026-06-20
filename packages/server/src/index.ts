@@ -87,6 +87,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         rows: msg.rows,
         capacity: msg.capacity,
         aiCount: msg.aiCount,
+        mapType: msg.mapType,
         barbarians: msg.barbarians,
         startingGold: msg.startingGold,
         aiCivIds: msg.aiCivIds,

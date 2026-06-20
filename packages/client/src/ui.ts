@@ -246,6 +246,7 @@ export interface UIHandlers {
   onDemandTribute(targetId: number, gold: number): void;
   onProposeDeal(targetId: number, give: DealItem[], want: DealItem[]): void;
   onRespondProposal(proposalId: number, accept: boolean): void;
+  onFinalizeDeal(proposalId: number, confirm: boolean): void;
   onAcknowledgeContact(otherId: number): void;
   onSetProduction(item: ProductionItem): void;
   onSetResearch(techId: TechId): void;
@@ -1718,26 +1719,26 @@ export function createUI(handlers: UIHandlers): UI {
       if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
 
       // Active-ability buttons.
-      const abilities = unitAbilities(unit);
+      const abilities = unitAbilities(state, unit);
       if (abilities.length) {
         if (unit.sleeping) {
           html += `<div class="csub" style="margin-top:8px">💤 Sleeping</div>`;
+        } else if (unit.hidden) {
+          html += `<div class="csub" style="margin-top:8px">🌲 Hidden — concealed from enemies</div>`;
         } else if (unit.stance) {
           html += `<div class="csub" style="margin-top:8px">${ACTIVE_ABILITY_DEFS[unit.stance].glyph} In stance: <b>${ACTIVE_ABILITY_DEFS[unit.stance].name}</b></div>`;
         }
         html +=
-          `<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">` +
+          `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">` +
           abilities
             .map((a) => {
               const ad = ACTIVE_ABILITY_DEFS[a];
               const usable = canUseAbility(state, unit, a).ok;
               return (
                 `<button class="btn" data-ability="${a}" ${usable ? "" : "disabled"} ` +
-                `title="${ad.desc}" style="text-align:left;display:flex;gap:8px;align-items:flex-start;padding:8px 10px${usable ? "" : ";opacity:.5"}">` +
+                `title="${ad.desc}" style="display:inline-flex;gap:8px;align-items:center;padding:8px 10px${usable ? "" : ";opacity:.5"}">` +
                 `${abilityIconHtml(abilityAtlas, a)}` +
-                `<span style="display:flex;flex-direction:column;gap:2px">` +
-                `<b style="color:#fff">${ad.name}</b>` +
-                `<span style="font-size:12px;color:#9fc0dc;font-weight:400;line-height:1.4">${ad.desc}</span></span></button>`
+                `<b style="color:#fff">${ad.name}</b></button>`
               );
             })
             .join("") +
@@ -2215,6 +2216,7 @@ export function createUI(handlers: UIHandlers): UI {
     onDemandTribute: (t, g) => handlers.onDemandTribute(t, g),
     onProposeDeal: (t, give, want) => handlers.onProposeDeal(t, give, want),
     onRespondProposal: (id, acc) => handlers.onRespondProposal(id, acc),
+    onFinalizeDeal: (id, confirm) => handlers.onFinalizeDeal(id, confirm),
     onAcknowledgeContact: (o) => handlers.onAcknowledgeContact(o),
   });
   return {

@@ -17,6 +17,7 @@ import { applyVictoryCheck } from "./victory";
 import { emitCityLost, emitUnitDied } from "./turn-updates";
 import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween } from "./movement";
 import { playerEffects } from "./civs";
+import { breakCover } from "./stealth";
 
 /** Maximum HP for a unit, increasing by 5% per level above 1 plus promotion bonuses. */
 export function unitMaxHp(unit: Unit): number {
@@ -77,8 +78,11 @@ function attackStrength(
   s += civCombatBonus(state, unit);
 
   // Active-ability attack bonuses.
-  const defenderBraced = defender.stance === "brace" || defender.stance === "shield_wall";
+  const defenderBraced = defender.stance === "brace" || defender.stance === "shield_wall" || defender.stance === "othismos" || defender.stance === "last_stand";
   if (!ranged && ability === "charge" && !defenderBraced) s += 4; // braced spears blunt a charge
+  if (!ranged && ability === "war_cart_charge" && !defenderBraced) s += 2; // primitive battle-cart
+  if (!ranged && ability === "hussar_charge") s += 4; // winged lance punches through a brace
+  if (!ranged && ability === "furor") s += 6; // fanatic naked charge
   if (!ranged && ability === "shock_charge") s += 6;
   if (!ranged && ability === "trample") s += 3;
   if (!ranged && ability === "sunder") s -= 2; // a crushing blow lands lighter but debuffs
@@ -151,8 +155,23 @@ function attackStrength(
   if (has(unit, "ranger")) s += 2;
   if (has(unit, "intimidation")) s += 2;
 
+  // Phalanx push: a friendly neighbour holding Othismos lends melee +2 attack.
+  if (!ranged) {
+    for (const u of state.units.values()) {
+      if (u.ownerId === unit.ownerId && u.id !== unit.id && u.stance === "othismos" && dist(unit, u) === 1) {
+        s += 2;
+        break;
+      }
+    }
+  }
+
   // Assaulting across a river blunts a melee attack (ranged fire flies over it).
   if (!ranged && riverBetween(state, unit.col, unit.row, defender.col, defender.row)) s *= 0.75;
+
+  // Ambush perk: a unit that broke cover near foes strikes harder until its next turn.
+  if (unit.ambushReadyUntilTurn !== undefined && state.turn <= unit.ambushReadyUntilTurn) {
+    s *= 1 + (unit.ambushBonus ?? 0.2);
+  }
 
   return s * woundFactor(unit.hp, unitMaxHp(unit));
 }
@@ -215,15 +234,23 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   }
   if (has(unit, "entrenchment") && def.cls === "siege") s += 2;
   if (has(unit, "stalwart")) s += 3;
+  // Furor leaves the fanatic exposed.
+  if (unit.exposedUntilTurn !== undefined && state.turn <= unit.exposedUntilTurn) s -= 4;
 
   s += civCombatBonus(state, unit);
 
   // Stance defensive multipliers.
   let stanceMult = 1;
   if (unit.stance === "brace") stanceMult = attackerCls === "cavalry" ? 1.4 : 1.25;
-  else if (unit.stance === "shield_wall") {
+  else if (unit.stance === "shield_wall" || unit.stance === "othismos") {
     stanceMult = Math.min(1.45, 1.15 + 0.1 * adjacentInfantry(state, unit));
+  } else if (unit.stance === "last_stand") {
+    // Spartan refusal: brace that sharpens as HP drops (up to +60% near death).
+    const missing = 1 - unit.hp / unitMaxHp(unit);
+    const base = attackerCls === "cavalry" ? 1.4 : 1.25;
+    stanceMult = Math.min(1.6, base + 0.35 * missing);
   } else if (unit.stance === "testudo") stanceMult = vsRanged ? 1.5 : 0.9;
+  else if (unit.stance === "pavise") stanceMult = vsRanged ? 1.5 : 1.0;
   else if (unit.stance === "emplace") stanceMult = 0.75;
   // Sundered units defend weaker.
   if (unit.sunderedUntilTurn !== undefined && state.turn <= unit.sunderedUntilTurn) stanceMult *= 0.75;
@@ -379,6 +406,9 @@ export function resolveAttack(
   if (attacker.attackedThisTurn || attacker.movementLeft <= 0) return { ok: false, error: "no attack available" };
   if (attacker.embarked) return { ok: false, error: "embarked units cannot attack" };
 
+  // Striking from concealment springs the ambush: reveal and arm the attacker.
+  breakCover(state, attacker);
+
   const attackerOwner = playerById(state, attacker.ownerId)!;
   const attackerNaval = isNavalUnit(attacker);
   const ranged = isRanged(def);
@@ -387,6 +417,7 @@ export function resolveAttack(
     (ranged && has(attacker, "extended_range_naval") ? 1 : 0);
   if (ranged && attacker.stance === "emplace") range += 1; // emplaced engines reach further
   if (ability === "pierce") range = Math.max(1, range - 1); // careful aimed bolt, shorter
+  if (ability === "arrow_storm") range += 1; // a long massed volley
   const d = dist({ col: attacker.col, row: attacker.row }, { col, row });
   if (d > range) return { ok: false, error: "out of range" };
 
@@ -402,6 +433,7 @@ export function resolveAttack(
     const owner = playerById(state, enemyCity.ownerId);
     if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
     let cityDef = cityDefenseStrength(state, enemyCity);
+    if (ability === "siege_assault" && cityHasWalls(enemyCity)) cityDef = Math.max(1, cityDef - 6); // tower ignores the wall bonus
     const mult = vsCityMultiplier(attacker);
     const eff = playerEffects(state, attacker.ownerId);
     enemyCity.lastAttackedTurn = state.turn;
@@ -429,7 +461,7 @@ export function resolveAttack(
           attEff *= 1 + eff.siegeVsCityDefenseMultiplier / 100;
         }
         enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
-        attacker.hp -= damageFrom(cityDef, attEff);
+        attacker.hp -= Math.round(damageFrom(cityDef, attEff) * (ability === "siege_assault" ? 0.5 : 1)); // the tower shelters its crew
         awardXp(attacker, 4);
         if (enemyCity.hp <= 0 && attacker.hp > 0) {
           if (attackerNaval) {
@@ -448,6 +480,7 @@ export function resolveAttack(
   if (enemyUnit && enemyUnit.ownerId !== attacker.ownerId) {
     const owner = playerById(state, enemyUnit.ownerId);
     if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
+    if (enemyUnit.hidden) enemyUnit.hidden = false; // attacking flushes out a concealed unit
 
     const defenderCls = UNIT_DEFS[enemyUnit.type].cls;
     const defenderIsNaval = isNavalUnit(enemyUnit) || !!enemyUnit.embarked;
@@ -480,8 +513,8 @@ export function resolveAttack(
       let retaliation = damageFrom(defEff, attEff);
       if (has(attacker, "suppression")) retaliation = Math.max(0, retaliation - 3);
       // Charging onto braced spears is punished with heavier retaliation.
-      const defenderBraced = enemyUnit.stance === "brace" || enemyUnit.stance === "shield_wall";
-      if ((ability === "charge" || ability === "shock_charge") && defenderBraced) retaliation = Math.round(retaliation * 1.25);
+      const defenderBraced = enemyUnit.stance === "brace" || enemyUnit.stance === "shield_wall" || enemyUnit.stance === "othismos" || enemyUnit.stance === "last_stand";
+      if ((ability === "charge" || ability === "shock_charge" || ability === "war_cart_charge") && defenderBraced) retaliation = Math.round(retaliation * 1.25);
       attacker.hp -= retaliation;
       awardXp(attacker, 4);
       awardXp(enemyUnit, 4);
@@ -614,6 +647,34 @@ function killUnit(state: GameState, unit: Unit): void {
 export function applyDirectDamage(state: GameState, unit: Unit, dmg: number): void {
   unit.hp -= Math.max(0, Math.round(dmg));
   if (unit.hp <= 0) killUnit(state, unit);
+}
+
+/**
+ * A concealed unit ambushes the intruder that just stepped onto it: a surprise
+ * strike with no retaliation, the hider's ambush bonus, and the intruder caught
+ * off guard (−20% defense). Call `breakCover` on the hider first so its ambush
+ * window/bonus is armed (see stealth.ts / commands.ts).
+ */
+export function resolveAmbush(state: GameState, hider: Unit, intruder: Unit): void {
+  const tile = getTile(state.map, intruder.col, intruder.row);
+  if (!tile) return;
+  const attEff = attackStrength(state, hider, intruder, tile.terrain, false, undefined);
+  const defEff = defenseStrength(state, intruder, hider, false) * 0.8; // surprised: −20%
+  intruder.hp -= damageFrom(attEff, defEff);
+  awardXp(hider, 4);
+  awardXp(intruder, 2);
+  if (intruder.hp <= 0) killUnit(state, intruder);
+}
+
+/** An extra ranged hit at `factor` of full strength (Repeating Fire 2nd shot, Arrow Storm splash). */
+export function secondaryRangedDamage(state: GameState, attacker: Unit, target: Unit, factor: number): void {
+  const tile = getTile(state.map, target.col, target.row);
+  if (!tile) return;
+  const attEff = attackStrength(state, attacker, target, tile.terrain, true, undefined) * factor;
+  const defEff = defenseStrength(state, target, attacker, true);
+  target.hp -= damageFrom(attEff, defEff);
+  awardXp(attacker, 1);
+  if (target.hp <= 0) killUnit(state, target);
 }
 
 function finishAttack(state: GameState, attacker: Unit): void {

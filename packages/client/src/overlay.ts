@@ -578,6 +578,9 @@ export function drawOverlay(
     const imgY = s.y - imgSize / 2;
 
     // Unit sprite (or fallback glyph). Unique units use their own art when present.
+    // Own hidden units render faded so the player can see they're concealed.
+    const concealed = own && unit.hidden;
+    if (concealed) ctx.globalAlpha = 0.5;
     const unitImg = (uu && o.unitAtlas?.images[uu.id]) || o.unitAtlas?.images[unit.type];
     if (unitImg && isImageReady(unitImg)) {
       ctx.drawImage(unitImg, imgX, imgY, imgSize, imgSize);
@@ -588,6 +591,7 @@ export function drawOverlay(
       ctx.textBaseline = "middle";
       ctx.fillText(UNIT_DEFS[unit.type].glyph, s.x, s.y + 1);
     }
+    if (concealed) ctx.globalAlpha = 1;
 
     const selected = o.selectedUnitId === unit.id;
     const fatigued = own && unit.movementLeft <= 0;
@@ -600,12 +604,12 @@ export function drawOverlay(
       ctx.fillText(ACTIVE_ABILITY_DEFS[unit.stance].glyph, s.x - half * 0.9, s.y + half * 0.9);
     }
 
-    // Sleep badge at the unit's lower-right.
-    if (own && unit.sleeping && size > 12) {
+    // Sleep / hide badge at the unit's lower-right.
+    if (own && (unit.sleeping || unit.hidden) && size > 12) {
       ctx.font = `${Math.round(size * 0.42 * unitScale)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("💤", s.x + half * 0.9, s.y + half * 0.9);
+      ctx.fillText(unit.hidden ? "🌲" : "💤", s.x + half * 0.9, s.y + half * 0.9);
     }
 
     // Promotion-available star.

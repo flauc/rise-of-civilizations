@@ -29,6 +29,14 @@ export interface Unit {
   pinnedUntilTurn?: number;
   /** Reconnoiter vision pulse active until the unit's next turn (grants +2 sight). */
   scouting?: boolean;
+  /** Hiding (Hide ability): concealed from enemies until it acts or is discovered. */
+  hidden?: boolean;
+  /** Ambush perk window: attacks made while state.turn <= this get the ambush bonus. */
+  ambushReadyUntilTurn?: number;
+  /** Ambush attack bonus (fraction, e.g. 0.2) granted when this unit broke cover. */
+  ambushBonus?: number;
+  /** Exposed (Furor): −4 defense while state.turn <= this. */
+  exposedUntilTurn?: number;
   /** True when the unit is sleeping: skips moves and stays asleep across turns. */
   sleeping?: boolean;
   /** For barbarians: "col,row" of the camp this unit spawned from. Units sharing
@@ -253,13 +261,55 @@ export interface ContactEvent {
   isPlayerCiv: boolean;
 }
 
-/** A consensual offer awaiting the recipient's accept/reject. */
+/** Lifecycle of a proposal: pending a response, then accepted or declined. */
+export type ProposalStatus = "pending" | "accepted" | "declined";
+
+/**
+ * A consensual offer. The recipient (`toId`) accepts or declines; for a
+ * human-initiated deal the proposer (`fromId`) then finalizes an accepted offer.
+ */
 export interface Proposal {
   id: number;
   fromId: number;
   toId: number;
+  /** What `fromId` offers to give. */
   give: DealItem[];
+  /** What `fromId` asks to receive. */
   want: DealItem[];
+  /** Turn the proposal was created (used for expiry). */
+  createdTurn: number;
+  /** Lifecycle: pending until the recipient responds. */
+  status: ProposalStatus;
+  /** Coercive demand (tribute) — judged by fear, not value; no finalize step. */
+  coercive?: boolean;
+  /** The recipient's one-line reason for their response (especially the AI's). */
+  reason?: string;
+}
+
+/** Kinds of recorded diplomatic events, for the per-civ trade history. */
+export type TradeRecordKind =
+  | "deal"
+  | "gift"
+  | "tribute"
+  | "peace"
+  | "war"
+  | "denounce";
+
+/** An historical record of a concluded diplomatic exchange or event. */
+export interface TradeRecord {
+  id: number;
+  turn: number;
+  /** The civ that initiated the action. */
+  fromId: number;
+  /** The other civ involved. */
+  toId: number;
+  kind: TradeRecordKind;
+  /** What `fromId` gave (from their perspective). */
+  give: DealItem[];
+  /** What `fromId` received in return. */
+  want: DealItem[];
+  /** Short human-readable summary line. */
+  note: string;
 }
 
 /** A trade route carrying goods from one of a player's cities to another. */
@@ -393,6 +443,8 @@ export interface GameState {
   contactQueue: ContactEvent[];
   /** Consensual offers awaiting a response. */
   diploProposals: Proposal[];
+  /** Chronological record of concluded diplomatic exchanges (deals, gifts, wars…). */
+  tradeHistory: TradeRecord[];
   /** Barbarian intensity setting for this game. */
   barbarianActivity: BarbarianActivity;
   /** Active barbarian truces bought via bribery (see bribery.ts). */

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getTile } from "@roc/shared";
+import { getTile, offsetToAxial, axialNeighbor, axialToOffset } from "@roc/shared";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { getCityYields } from "./economy";
@@ -28,6 +28,16 @@ function gameWithTwoCities() {
   };
   s.cities.set(id, second);
   return { s, from: first, to: second };
+}
+
+/** Hex direction (0..5) from tile a to its neighbour b, or -1 if not adjacent. */
+function dirBetween(a: [number, number], b: [number, number]): number {
+  const ax = offsetToAxial({ col: a[0], row: a[1] });
+  for (let d = 0; d < 6; d++) {
+    const n = axialToOffset(axialNeighbor(ax, d));
+    if (n.col === b[0] && n.row === b[1]) return d;
+  }
+  return -1;
 }
 
 describe("trade routes", () => {
@@ -154,6 +164,42 @@ describe("trade routes", () => {
     expect(tradeRouteYield(s, route).gold).toBe(baseYield);
     // With Sailing the river route earns the best-grade (tier 3) connection bonus.
     s.players[0]!.researched.add("sailing");
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
+  });
+
+  it("a river severs the road connection unless a bridge spans it", () => {
+    const { s, from, to } = gameWithTwoCities();
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tid, to.id, 0);
+    const route = s.tradeRoutes[0]!;
+    const baseYield = tradeRouteYield(s, route).gold;
+
+    // Fully pave the intermediate path with imperial roads.
+    for (let i = 1; i < route.path.length - 1; i++) {
+      const [col, row] = route.path[i]!.split(",").map(Number) as [number, number];
+      const tile = getTile(s.map, col, row);
+      if (tile) {
+        tile.road = true;
+        tile.roadLevel = 3;
+      }
+    }
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
+
+    // Run a river along the edge between the first two intermediate road tiles.
+    const a = route.path[1]!.split(",").map(Number) as [number, number];
+    const b = route.path[2]!.split(",").map(Number) as [number, number];
+    const dir = dirBetween(a, b);
+    expect(dir).toBeGreaterThanOrEqual(0);
+    getTile(s.map, a[0], a[1])!.river = 1 << dir;
+    // The unbridged river breaks the road connection, so the bonus is lost.
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield);
+
+    // Research Bridge Building and bring both crossing tiles into owned territory: a
+    // bridge now carries the road over the river and the connection (bonus) returns.
+    s.players[0]!.researched.add("bridge_building");
+    getTile(s.map, a[0], a[1])!.ownerCityId = from.id;
+    getTile(s.map, b[0], b[1])!.ownerCityId = from.id;
     expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
   });
 

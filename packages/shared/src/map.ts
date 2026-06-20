@@ -72,6 +72,12 @@ export interface Tile {
   /** Marks this river tile as a spring/terminal lake (renders as a small lake and
    *  yields bonus science on top of the river's food). */
   riverLake?: boolean;
+  /** A road on this river tile is carried over the water on a bridge (requires the
+   *  Bridge Building tech in the tile's territory). A bridged road-to-road river
+   *  crossing waives the movement ford penalty and keeps the river as a city-to-city
+   *  road connection; the assault penalty for crossing it still applies. Derived
+   *  each turn from road + river + tech, so it is not authored directly. */
+  bridge?: boolean;
 }
 
 export interface GameMap {

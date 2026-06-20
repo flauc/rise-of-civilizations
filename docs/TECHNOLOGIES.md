@@ -78,6 +78,7 @@ This is the **actual** tree the game runs, generated from `TECH_DEFS` in
 | `iron_bloomery` Iron Bloomery | 55 | smelting | U Swordsman, U Pikeman |
 | `carburizing` Carburizing (Steel) | 72 | iron_bloomery | U Longswordsman; → Crossbow |
 | `siegecraft` Siegecraft | 58 | masonry, the_wheel | U Battering Ram, U Catapult |
+| `bridge_building` Bridge Building | 44 | masonry, the_wheel | A Bridges over rivers (roads cross rivers: no ford penalty, keep the assault penalty, count as a city connection) |
 | `mathematics` Mathematics | 60 | writing | → Engineering, Optics, Torsion Engines, Naval Architecture |
 | `torsion_engines` Torsion Engines | 82 | siegecraft, mathematics | U Ballista |
 | `engineering` Engineering | 66 | mathematics, masonry | U Legionary, U Dromon, U War Junk; B Aqueduct; Military Engineer (Forts/Towers/Wonders) |

@@ -1,6 +1,6 @@
 import { axialDistance, getTile, hashSeed, makeRng, offsetToAxial } from "@roc/shared";
 import { CIV_IDS } from "@roc/data";
-import { generateMap } from "../worldgen";
+import { generateMap, type MapType } from "../worldgen";
 import type { GameState, Player } from "./state";
 import { makeUnit } from "./state";
 import { isPassableLand, TERRAIN_YIELDS } from "./terrain";
@@ -16,6 +16,8 @@ export interface NewGameOptions {
   cols?: number;
   rows?: number;
   seed?: number | string;
+  /** Landmass layout to generate (one big continent, archipelago, real world…). */
+  mapType?: MapType;
   /** Display names per civ slot. Length (or playerCount) sets the civ count. */
   playerNames?: string[];
   /** Total civ players (humans + AI). Defaults to playerNames.length or 2. */
@@ -155,7 +157,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   const activity = normalizeBarbarians(opts.barbarians);
   const startGold = startingGoldAmount(opts.startingGold);
 
-  const map = generateMap({ cols, rows, seed });
+  const map = generateMap({ cols, rows, seed, mapType: opts.mapType });
 
   // Assign civs: honour requested ids, fill the rest with random unique civs.
   // Uniqueness is enforced here so two players can never share a civilization even
@@ -281,6 +283,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     reputation: {},
     contactQueue: [],
     diploProposals: [],
+    tradeHistory: [],
     barbarianActivity: activity,
     barbarianBribes: [],
     turnUpdates: [],

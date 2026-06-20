@@ -22,7 +22,7 @@ import {
   type GovernmentDef,
   type UniqueUnitDef,
 } from "@roc/data";
-import { UNIT_DEFS, CIVICS_REQUIRED_TECH } from "./content";
+import { UNIT_DEFS, CIVICS_REQUIRED_TECH, UNIQUE_ABILITY_OVERRIDES, type ActiveAbilityId } from "./content";
 import type { GameState, Player, Unit, City } from "./state";
 import { playerById } from "./state";
 
@@ -38,6 +38,26 @@ export function uniqueUnitForUnit(state: GameState, unit: Unit): UniqueUnitDef |
 /** Display name for a unit: its civ's unique-unit name if it has one, else the base name. */
 export function unitDisplayName(state: GameState, unit: Unit): string {
   return uniqueUnitForUnit(state, unit)?.name ?? UNIT_DEFS[unit.type].name;
+}
+
+/**
+ * The active abilities a unit instance actually has, honoring civ-unique
+ * overrides (docs/UNIT-ABILITIES.md §8). A unique unit listed in
+ * UNIQUE_ABILITY_OVERRIDES replaces its base unit's ability list; everyone else
+ * inherits the base unit's abilities.
+ */
+export function effectiveAbilities(state: GameState, unit: Unit): ActiveAbilityId[] {
+  const uu = uniqueUnitForUnit(state, unit);
+  if (uu) {
+    const override = UNIQUE_ABILITY_OVERRIDES[uu.id];
+    if (override) return override;
+  }
+  return UNIT_DEFS[unit.type].activeAbilities ?? [];
+}
+
+/** Whether a unit instance has a given active ability (civ-unique aware). */
+export function unitHasActiveAbility(state: GameState, unit: Unit, ability: ActiveAbilityId): boolean {
+  return effectiveAbilities(state, unit).includes(ability);
 }
 
 function mergeCityYield(acc: NonNullable<CivEffects["coastalCityYield"]>, src: NonNullable<CivEffects["coastalCityYield"]>): void {

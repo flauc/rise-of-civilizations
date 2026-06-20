@@ -3,7 +3,21 @@
 
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
 import { createWiki } from "./wiki";
-import { CIVILIZATIONS, PLAYER_COLORS, type GameSummary, type SerializedState } from "@roc/sim";
+import {
+  CIVILIZATIONS,
+  PLAYER_COLORS,
+  UNIQUE_UNITS,
+  UNIT_DEFS,
+  ACTIVE_ABILITY_DEFS,
+  unitActiveAbilityIds,
+  isRanged,
+  type GameSummary,
+  type MapType,
+  type SerializedState,
+  type UnitTypeId,
+  type UnitAbility,
+  type ActiveAbilityId,
+} from "@roc/sim";
 import { deleteSave, exportSave, importSave, listSaves, loadSave, type SaveRecord } from "./save-db";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 
@@ -18,6 +32,25 @@ type Screen = "start" | "sp" | "mp" | "load";
 
 type BarbLevel = "none" | "minimal" | "low" | "normal" | "high";
 type StartingGold = "tight" | "balanced" | "generous";
+
+/** Map layout presets, in menu order, each with a short explanation. */
+const MAP_TYPE_OPTIONS: { value: MapType; label: string; desc: string }[] = [
+  { value: "continents", label: "Continents", desc: "A balanced spread of landmasses separated by sea — the classic default." },
+  { value: "pangaea", label: "One Big Continent", desc: "A single supercontinent: everyone shares one landmass with little ocean between." },
+  { value: "two_continents", label: "Two Continents", desc: "Two major landmasses divided by open ocean." },
+  { value: "three_continents", label: "Three Continents", desc: "Three landmasses scattered across the sea." },
+  { value: "archipelago", label: "Archipelago", desc: "Many medium islands — exploration and naval play matter more." },
+  { value: "inland_sea", label: "Inland Sea", desc: "A ring of land wrapped around a central sea." },
+  { value: "islands", label: "Islands", desc: "Lots of small, scattered islands across a wide ocean." },
+  { value: "realworld", label: "Real World (Earth)", desc: "The continents of Earth, baked from real-world geodata." },
+];
+
+/** Starting-treasury presets, shown as chips with explanatory tooltips. */
+const GOLD_OPTIONS: { value: StartingGold; label: string; desc: string }[] = [
+  { value: "tight", label: "Tight", desc: "A smaller buffer — be careful about extra units early." },
+  { value: "balanced", label: "Balanced", desc: "Enough to cover a modest army while your first economy comes online." },
+  { value: "generous", label: "Generous", desc: "A comfortable cushion for several units or early barbarian bribes." },
+];
 
 /** "random" = let the sim assign a random unique civ when the game starts. */
 const RANDOM_CIV = "random";
@@ -36,6 +69,7 @@ interface MenuState {
     civId: string;
     color: string;
     mapSize: MapSize;
+    mapType: MapType;
     ais: AiConfig[];
     barbarians: BarbLevel;
     startingGold: StartingGold;
@@ -45,6 +79,7 @@ interface MenuState {
     handle: string;
     password: string;
     capacity: number;
+    mapType: MapType;
     /** Color per human slot (length tracks capacity). */
     humanColors: string[];
     ais: AiConfig[];
@@ -76,12 +111,14 @@ function civOptions(selected: string, includeRandom: boolean, taken: Set<string>
   return opts.join("");
 }
 
-/** A row of palette swatches; colors used by other players are disabled. */
-function colorPicker(current: string, takenByOthers: Set<string>): string {
-  return `<div class="cp">${PLAYER_COLORS.map((c) => {
+/** A compact color dropdown; colors used by other players are disabled. The
+ * control itself is tinted to the chosen color so the pick is visible at a glance. */
+function colorSelect(current: string, takenByOthers: Set<string>): string {
+  const opts = PLAYER_COLORS.map((c, i) => {
     const taken = takenByOthers.has(c) && c !== current;
-    return `<button type="button" class="cp-dot${c === current ? " sel" : ""}${taken ? " taken" : ""}" data-color="${c}"${taken ? " disabled" : ""} style="--c:${c}"${taken ? ' title="Taken by another player"' : ""}></button>`;
-  }).join("")}</div>`;
+    return `<option value="${c}"${c === current ? " selected" : ""}${taken ? " disabled" : ""} style="background:${c};color:#0f0e0b">Color ${i + 1}${taken ? " (taken)" : ""}</option>`;
+  }).join("");
+  return `<select class="menu-in cp-sel" style="background:${current};color:#0f0e0b;font-weight:700" title="Player color">${opts}</select>`;
 }
 
 function mapSelect(id: string, value: MapSize): string {
@@ -110,15 +147,18 @@ function barbarianSelect(id: string, value: string): string {
     .join("")}</select>`;
 }
 
-function startingGoldSelect(id: string, value: StartingGold): string {
-  const opts: { value: StartingGold; label: string; desc: string }[] = [
-    { value: "tight", label: "Tight start", desc: "A smaller buffer; players must be careful about extra units early." },
-    { value: "balanced", label: "Balanced start", desc: "Enough to cover a modest army while the first economy comes online." },
-    { value: "generous", label: "Generous start", desc: "A comfortable cushion for several units or early barbarian bribes." },
-  ];
-  return `<select id="${id}" class="menu-in">${opts
-    .map((o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)} — ${escapeHtml(o.desc)}</option>`)
-    .join("")}</select>`;
+function mapTypeSelect(id: string, value: MapType): string {
+  return `<select id="${id}" class="menu-in">${MAP_TYPE_OPTIONS.map(
+    (o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`,
+  ).join("")}</select>`;
+}
+
+/** Starting-treasury chips: a compact, aligned row of options with tooltips. */
+function goldChips(id: string, value: StartingGold): string {
+  return `<div class="chips" id="${id}">${GOLD_OPTIONS.map(
+    (o) =>
+      `<button type="button" class="chip${o.value === value ? " sel" : ""}" data-gold="${o.value}" title="${escapeHtml(o.desc)}">${escapeHtml(o.label)}</button>`,
+  ).join("")}</div>`;
 }
 
 function capacitySelect(id: string, value: number): string {
@@ -133,6 +173,183 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
+/** The unique unit a civilization fields, if any (one per civ). */
+function uniqueUnitFor(civId: string): typeof UNIQUE_UNITS[number] | undefined {
+  return UNIQUE_UNITS.find((u) => u.civId === civId);
+}
+
+/** Passive always-on combat modifiers, with player-facing names + tooltips. */
+const PASSIVE_ABILITY_INFO: Record<UnitAbility, { name: string; desc: string }> = {
+  bonus_vs_cavalry: { name: "Anti-Cavalry", desc: "Bonus combat strength when fighting mounted units." },
+  bonus_vs_city: { name: "City Assault", desc: "Bonus combat strength when attacking cities." },
+};
+
+/**
+ * A small icon + name + meta block describing a civ's unique unit. The block is
+ * clickable: it opens an expanded view of the unit's abilities (see
+ * openUnitDetail). Ability details are intentionally NOT shown here — only on
+ * the expanded view — so the selection screen stays uncluttered.
+ */
+function uniqueUnitBlockHtml(civId: string): string {
+  const uu = uniqueUnitFor(civId);
+  const civ = CIVILIZATIONS.find((c) => c.id === civId);
+  if (!uu) {
+    return civ?.uniqueUnit
+      ? `<div class="uu-block"><div class="uu-info"><div class="uu-name">${escapeHtml(civ.uniqueUnit)}</div><div class="uu-meta">Unique unit</div></div></div>`
+      : "";
+  }
+  const base = UNIT_DEFS[uu.replaces as UnitTypeId];
+  const src = `${import.meta.env.BASE_URL}units/${uu.id}.png`;
+  const meta = [
+    "Unique unit",
+    base ? `replaces ${escapeHtml(base.name)}` : "",
+    uu.bonus ? `+${uu.bonus} strength` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return `
+    <button type="button" class="uu-block uu-clickable" data-uu-detail="${uu.id}">
+      <div class="uu-top">
+        <div class="uu-icon"><img class="js-uu-img" src="${src}" alt="" /></div>
+        <div class="uu-info">
+          <div class="uu-name">${escapeHtml(uu.name)}</div>
+          <div class="uu-meta">${meta}</div>
+        </div>
+        <span class="uu-caret" aria-hidden="true">&rsaquo;</span>
+      </div>
+      <div class="uu-hint">View abilities</div>
+    </button>`;
+}
+
+const ABILITY_KIND_LABEL: Record<string, string> = { stance: "Stance", targeted: "Targeted", self: "Self" };
+
+/**
+ * Expanded unique-unit view: stats, every ability with its full description, and
+ * how the unit differs from the base unit it replaces (combat bonus, abilities
+ * gained / lost). Returned as the inner HTML of the detail dialog.
+ */
+function uniqueUnitDetailHtml(uu: typeof UNIQUE_UNITS[number]): string {
+  const base = UNIT_DEFS[uu.replaces as UnitTypeId];
+  const civ = CIVILIZATIONS.find((c) => c.id === uu.civId);
+  const ranged = base ? isRanged(base) : false;
+  const bonus = uu.bonus;
+  const effStr = (base?.strength ?? 0) + (ranged ? 0 : bonus);
+  const effRanged = (base?.rangedStrength ?? 0) + (ranged ? bonus : 0);
+  const src = `${import.meta.env.BASE_URL}units/${uu.id}.png`;
+
+  const stat = (label: string, val: string): string =>
+    `<div class="uud-stat"><span>${label}</span><b>${val}</b></div>`;
+  const stats: string[] = [];
+  if (effStr > 0) stats.push(stat("⚔ Strength", `${effStr}${!ranged && bonus ? ` <span class="uud-plus">+${bonus}</span>` : ""}`));
+  if ((base?.rangedStrength ?? 0) > 0)
+    stats.push(stat("🏹 Ranged", `${effRanged}${ranged && bonus ? ` <span class="uud-plus">+${bonus}</span>` : ""} · range ${base!.range}`));
+  if (base) {
+    stats.push(stat("🥾 Movement", String(base.movement)));
+    stats.push(stat("⚙ Cost", String(base.cost)));
+    if (base.upkeep > 0) stats.push(stat("🪙 Upkeep", `${base.upkeep}/turn`));
+    if (base.reqResource) stats.push(stat("Resource", `${base.reqResource.count} ${escapeHtml(base.reqResource.resource)}`));
+  }
+
+  const baseActive = base?.activeAbilities ?? [];
+  const effActive = unitActiveAbilityIds(uu.replaces as UnitTypeId, uu.id);
+  const gained = effActive.filter((a) => !baseActive.includes(a));
+  const lost = baseActive.filter((a) => !effActive.includes(a));
+
+  const abilityRow = (a: ActiveAbilityId, isNew: boolean): string => {
+    const d = ACTIVE_ABILITY_DEFS[a];
+    return (
+      `<div class="uud-ability"><div class="uud-ability-head"><span class="uud-ability-glyph">${d.glyph}</span>` +
+      `<b>${escapeHtml(d.name)}</b>` +
+      `<span class="uud-ability-kind">${ABILITY_KIND_LABEL[d.kind] ?? d.kind}${d.cooldown ? ` · ${d.cooldown}t cooldown` : ""}</span>` +
+      (isNew ? `<span class="uud-badge">New</span>` : "") +
+      `</div><div class="uud-ability-desc">${escapeHtml(d.desc)}</div></div>`
+    );
+  };
+  const passiveRow = (p: UnitAbility): string => {
+    const info = PASSIVE_ABILITY_INFO[p];
+    return (
+      `<div class="uud-ability"><div class="uud-ability-head"><span class="uud-ability-glyph">●</span>` +
+      `<b>${escapeHtml(info.name)}</b><span class="uud-ability-kind">Passive</span></div>` +
+      `<div class="uud-ability-desc">${escapeHtml(info.desc)}</div></div>`
+    );
+  };
+  const abilityHtml =
+    effActive.map((a) => abilityRow(a, gained.includes(a))).join("") +
+    (base?.abilities ?? []).map(passiveRow).join("");
+
+  const baseName = base?.name ?? uu.replaces;
+  const compareParts: string[] = [];
+  if (bonus) compareParts.push(`<li><b>+${bonus} ${ranged ? "ranged" : "combat"} strength</b> over the ${escapeHtml(baseName)}.</li>`);
+  if (gained.length) compareParts.push(`<li><b>Gains:</b> ${gained.map((a) => escapeHtml(ACTIVE_ABILITY_DEFS[a].name)).join(", ")}.</li>`);
+  if (lost.length) compareParts.push(`<li><b>Loses:</b> ${lost.map((a) => escapeHtml(ACTIVE_ABILITY_DEFS[a].name)).join(", ")}.</li>`);
+  if (!gained.length && !lost.length) compareParts.push(`<li>Same tactical abilities as the ${escapeHtml(baseName)} — its edge is raw combat strength.</li>`);
+
+  return (
+    `<div class="uud-head">` +
+    `<div class="uud-img"><img class="js-uu-img" src="${src}" alt="" /></div>` +
+    `<div class="uud-headinfo">` +
+    `<div class="uud-title">${escapeHtml(uu.name)}</div>` +
+    `<div class="uud-subtitle">Unique unit${civ ? ` of ${escapeHtml(civ.name)}` : ""} · replaces ${escapeHtml(baseName)}</div>` +
+    `<div class="uud-stats">${stats.join("")}</div>` +
+    `</div></div>` +
+    `<div class="uud-section"><div class="uud-section-title">Compared to the ${escapeHtml(baseName)}</div>` +
+    `<ul class="uud-compare">${compareParts.join("")}</ul></div>` +
+    `<div class="uud-section"><div class="uud-section-title">Abilities</div>` +
+    (abilityHtml || `<div class="uud-ability-desc">No special abilities.</div>`) +
+    `</div>`
+  );
+}
+
+/** Hide any unique-unit icons inside `root` whose sprite failed to load. */
+function wireUuImages(root: HTMLElement): void {
+  root.querySelectorAll<HTMLImageElement>(".js-uu-img").forEach((img) => {
+    const hide = () => {
+      const box = img.closest<HTMLElement>(".uu-icon, .uud-img");
+      if (box) box.style.display = "none";
+      else img.style.display = "none";
+    };
+    if (img.complete && img.naturalWidth === 0) hide();
+    img.onerror = hide;
+  });
+}
+
+/**
+ * Open the expanded unique-unit detail as a modal dialog (above the civ picker).
+ * Closed via the ✕, a backdrop click, or Escape.
+ */
+function openUnitDetail(uuId: string): void {
+  const uu = UNIQUE_UNITS.find((u) => u.id === uuId);
+  if (!uu) return;
+  const overlay = document.createElement("div");
+  overlay.className = "uud-overlay";
+  overlay.innerHTML = `
+    <div class="uud-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(uu.name)}">
+      <button class="uud-close" aria-label="Close">✕</button>
+      <div class="uud-content">${uniqueUnitDetailHtml(uu)}</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  wireUuImages(overlay);
+  const close = (): void => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") close();
+  };
+  document.addEventListener("keydown", onKey);
+  overlay.querySelector<HTMLButtonElement>(".uud-close")!.addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+}
+
+/** Wire clickable unique-unit blocks within `root` to open their detail dialog. */
+function wireUuDetail(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>("[data-uu-detail]").forEach((el) =>
+    el.addEventListener("click", () => openUnitDetail(el.dataset.uuDetail!)),
+  );
+}
+
 export function createLobby(onStart: (session: Session) => void): void {
   const state: MenuState = {
     screen: "start",
@@ -140,6 +357,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       civId: CIVS_BY_NAME[0]!.id,
       color: PLAYER_COLORS[0]!,
       mapSize: "medium",
+      mapType: "continents",
       ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],
       barbarians: "normal",
       startingGold: "balanced",
@@ -149,6 +367,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       handle: "",
       password: "",
       capacity: 2,
+      mapType: "continents",
       humanColors: [PLAYER_COLORS[0]!, PLAYER_COLORS[1]!],
       ais: [],
       userId: "",
@@ -194,11 +413,17 @@ export function createLobby(onStart: (session: Session) => void): void {
     .menu-in{font:inherit;font-size:13px;color:#e8dcc5;background:#1f1c14;border:1px solid var(--edge);border-radius:8px;padding:8px 10px;width:100%}
     .menu-in:focus{outline:none;border-color:#c9a227}
     .menu-hint{color:#b8aa8d;font-size:12px;margin-top:6px;line-height:1.4}
+    .menu-field{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+    .menu-field>span{color:#e8dcc5}
+    .chips{display:flex;gap:6px;flex-wrap:wrap}
+    .chip{font:inherit;font-size:12px;color:#b8aa8d;background:#1f1c14;border:1px solid var(--edge);border-radius:999px;padding:6px 12px;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s}
+    .chip:hover{border-color:#c9a227;color:#f0d878}
+    .chip.sel{background:linear-gradient(135deg,#c9a227,#a6821f);border-color:transparent;color:#15120c;font-weight:700}
     .menu-status{color:#f0d878;margin-top:10px;min-height:20px;font-size:13px}
     .menu-back-row{display:flex;gap:10px;margin-top:18px}
     .menu-back-row .menu-btn{width:auto;flex:1}
     .roster-row{display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid var(--edge);border-radius:10px;background:#1f1c14;margin-top:8px}
-    .roster-head{display:flex;align-items:center;gap:8px}
+    .roster-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
     .roster-head .roster-civ{flex:1;min-width:0}
     .roster-tag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#b8aa8d;background:rgba(201,162,39,.08);border-radius:6px;padding:3px 7px;white-space:nowrap}
     .roster-tag.you{color:#15120c;background:linear-gradient(135deg,#c9a227,#a6821f)}
@@ -206,11 +431,7 @@ export function createLobby(onStart: (session: Session) => void): void {
     .roster-remove{flex-shrink:0;width:28px;height:28px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e0907d;cursor:pointer;font-size:13px;line-height:1}
     .roster-remove:hover{background:rgba(138,44,44,.18);border-color:rgba(138,44,44,.4);color:#e0a69a}
     .roster-add{margin-top:10px}
-    .cp{display:flex;flex-wrap:wrap;gap:5px}
-    .cp-dot{width:18px;height:18px;border-radius:50%;background:var(--c);border:2px solid transparent;cursor:pointer;padding:0;transition:transform .08s}
-    .cp-dot.sel{border-color:#fff;box-shadow:0 0 0 2px rgba(255,255,255,.3)}
-    .cp-dot.taken{opacity:.22;cursor:not-allowed}
-    .cp-dot:hover:not(.taken):not(.sel){transform:scale(1.18)}
+    .cp-sel{flex:0 0 auto;width:96px}
     .save-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
     .save-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;border:1px solid var(--edge);border-radius:10px;background:#1f1c14;cursor:pointer;transition:background .12s,border-color .12s}
     .save-row:hover{background:#29251b;border-color:#c9a227}
@@ -242,11 +463,106 @@ export function createLobby(onStart: (session: Session) => void): void {
     .showcase-art{width:100%;height:100%;object-fit:cover;display:block;border-radius:16px}
     .showcase-art-placeholder{position:absolute;inset:0;border:2px dashed rgba(201,162,39,.2);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#b8aa8d;font-size:13px;text-align:center;background:rgba(201,162,39,.05)}
     .showcase-reroll{position:absolute;top:48px;right:56px;z-index:2;margin-top:338px;width:260px}
+    /* Unique-unit block — shared by the showcase and the civ picker. Clickable
+       (a button) to open the expanded ability detail; no ability text inline. */
+    .uu-block{display:block;width:100%;margin-top:12px;padding:10px 12px;background:rgba(201,162,39,.06);border:1px solid rgba(201,162,39,.2);border-radius:10px;text-align:left;font:inherit;color:inherit}
+    .uu-clickable{cursor:pointer;transition:background .12s,border-color .12s}
+    .uu-clickable:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
+    .uu-clickable:focus-visible{outline:2px solid #c9a227;outline-offset:2px}
+    .uu-top{display:flex;align-items:center;gap:12px}
+    .uu-icon{flex:0 0 auto;width:44px;height:44px;border-radius:8px;background:rgba(0,0,0,.25);border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .uu-icon img{width:100%;height:100%;object-fit:contain}
+    .uu-info{min-width:0;flex:1}
+    .uu-name{font-family:'Cinzel',Georgia,serif;font-size:14px;font-weight:700;color:#f0d878}
+    .uu-meta{font-size:12px;color:#b8aa8d;margin-top:2px}
+    .uu-caret{flex:0 0 auto;color:#c9a227;font-size:20px;line-height:1}
+    .uu-hint{font-size:11px;color:#c9a227;margin-top:7px;text-transform:uppercase;letter-spacing:.04em}
+    /* Expanded unique-unit detail dialog */
+    .uud-overlay{position:fixed;inset:0;z-index:80;background:rgba(8,7,5,.8);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
+    .uud-modal{position:relative;width:min(560px,100%);max-height:88%;overflow:auto;background:linear-gradient(180deg,#1f1c14,#15120c);border:1px solid var(--edge);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:22px}
+    .uud-close{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px;z-index:1}
+    .uud-close:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
+    .uud-head{display:flex;gap:16px;align-items:flex-start}
+    .uud-img{flex:0 0 auto;width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);border:1px solid var(--edge);border-radius:12px;overflow:hidden}
+    .uud-img img{max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}
+    .uud-headinfo{min-width:0;flex:1}
+    .uud-title{font-family:'Cinzel',Georgia,serif;font-size:22px;font-weight:800;color:#e8dcc5;padding-right:36px}
+    .uud-subtitle{color:#b8aa8d;font-size:12.5px;margin-top:3px}
+    .uud-stats{display:flex;flex-wrap:wrap;gap:6px 8px;margin-top:12px}
+    .uud-stat{display:flex;align-items:center;gap:6px;font-size:12px;color:#b8aa8d;background:rgba(201,162,39,.08);border:1px solid var(--edge);border-radius:8px;padding:5px 9px}
+    .uud-stat b{color:#e8dcc5}
+    .uud-plus{color:#7fd08a;font-weight:700}
+    .uud-section{margin-top:18px}
+    .uud-section-title{font-family:'Cinzel',Georgia,serif;font-size:13px;font-weight:700;color:#f0d878;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;border-bottom:1px solid var(--edge);padding-bottom:6px}
+    .uud-compare{margin:0;padding-left:20px;color:#e8dcc5;line-height:1.6;font-size:13px}
+    .uud-compare li{margin:3px 0}
+    .uud-ability{padding:9px 0;border-bottom:1px solid rgba(255,255,255,.06)}
+    .uud-ability:last-child{border-bottom:none}
+    .uud-ability-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .uud-ability-glyph{font-size:15px}
+    .uud-ability-head b{color:#e6d2b8;font-size:14px}
+    .uud-ability-kind{font-size:11px;color:#b8aa8d;text-transform:uppercase;letter-spacing:.03em}
+    .uud-badge{font-size:10px;font-weight:700;color:#15120c;background:linear-gradient(135deg,#c9a227,#a6821f);border-radius:999px;padding:2px 7px;text-transform:uppercase;letter-spacing:.04em}
+    .uud-ability-desc{color:#cdbfa6;font-size:12.5px;line-height:1.5;margin-top:4px}
+    /* Roster civ-picker trigger button (replaces the human civ <select>) */
+    .civ-pick-btn{display:flex;align-items:center;gap:8px;flex:1;min-width:0;text-align:left;cursor:pointer;background:#1f1c14}
+    .civ-pick-btn:hover{border-color:#c9a227}
+    .civ-pick-btn .cpb-text{display:flex;flex-direction:column;min-width:0;flex:1}
+    .civ-pick-btn .cpb-name{font-weight:700;color:#e8dcc5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .civ-pick-btn .cpb-leader{font-size:11.5px;color:#b8aa8d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .civ-pick-btn .cpb-caret{flex:0 0 auto;color:#c9a227;font-size:18px;line-height:1}
+    .roster-uu{font-size:12px;color:#b8aa8d;margin-top:2px}
+    .roster-uu b{color:#e8dcc5}
+    /* Civilization picker dialog */
+    .civ-picker-overlay{position:fixed;inset:0;z-index:70;background:rgba(8,7,5,.78);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
+    .civ-picker{display:flex;flex-direction:column;width:min(920px,100%);height:min(660px,100%);background:linear-gradient(180deg,#1f1c14,#15120c);border:1px solid var(--edge);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden}
+    .cp-header{flex:none;display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--edge)}
+    .cp-title{font-family:'Cinzel',Georgia,serif;font-size:20px;font-weight:800;color:#e8dcc5}
+    .cp-close{width:34px;height:34px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px}
+    .cp-close:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
+    .cp-body{flex:1;display:flex;min-height:0}
+    .cp-list{width:300px;flex:none;overflow-y:auto;border-right:1px solid var(--edge);padding:10px;display:flex;flex-direction:column;gap:4px}
+    .cp-item{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:9px 12px;border:1px solid transparent;border-radius:10px;background:transparent;color:#e8dcc5;cursor:pointer;font:inherit}
+    .cp-item:hover{background:rgba(201,162,39,.08)}
+    .cp-item.sel{background:rgba(201,162,39,.16);border-color:#c9a227}
+    .cp-item:disabled{opacity:.4;cursor:not-allowed}
+    .cp-item-name{font-weight:700;font-size:14px}
+    .cp-item-leader{font-size:12px;color:#b8aa8d}
+    .cp-detail{flex:1;overflow-y:auto;padding:22px 24px}
+    .cp-detail-top{display:flex;gap:18px}
+    .cp-portrait{position:relative;flex:0 0 auto;width:170px;height:212px;border-radius:14px;overflow:hidden;border:1px solid var(--edge);background:var(--bg-card)}
+    .cp-portrait-img{width:100%;height:100%;object-fit:cover;display:block}
+    .cp-portrait-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#b8aa8d;font-size:12px;border:2px dashed rgba(201,162,39,.2);border-radius:14px}
+    .cp-headings{min-width:0;flex:1}
+    .cp-civ{font-family:'Cinzel',Georgia,serif;font-size:30px;font-weight:900;color:#e8dcc5;line-height:1.1}
+    .cp-leader{font-family:'Cinzel',Georgia,serif;font-size:17px;color:#f0d878;margin-top:6px;font-weight:600}
+    .cp-quote{font-size:14px;color:#e8dcc5;line-height:1.5;margin-top:12px;font-style:italic}
+    .cp-quote::before{content:"“";opacity:.7}.cp-quote::after{content:"”";opacity:.7}
+    .cp-ability{margin-top:18px;background:rgba(31,28,20,.6);border:1px solid rgba(201,162,39,.25);border-radius:12px;padding:14px 16px}
+    .cp-ability-name{font-family:'Cinzel',Georgia,serif;font-size:14px;font-weight:700;color:#f0d878;margin-bottom:4px}
+    .cp-ability-desc{font-size:13px;color:#e8dcc5;line-height:1.45}
+    .cp-infra{margin-top:12px;font-size:13px;color:#b8aa8d}.cp-infra b{color:#e8dcc5}
+    .cp-footer{flex:none;display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--edge)}
     @media(max-width:860px){
-      #lobby{overflow-y:auto}
-      .lobby-layout{flex-direction:column;height:auto;min-height:100%}
-      .lobby-left{width:100%;border-right:none;padding:max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));overflow:visible}
-      .lobby-right{position:relative;flex:none;width:100%;padding:24px max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left));justify-content:flex-start;overflow:visible;order:-1;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,#0f0e0b 70%)}
+      .civ-picker-overlay{padding:0}
+      .civ-picker{width:100%;height:100%;max-width:none;border-radius:0;border:none}
+      .cp-body{flex-direction:column}
+      .cp-detail{flex:none;order:-1;max-height:48vh;border-bottom:1px solid var(--edge)}
+      .cp-list{width:100%;flex:1;border-right:none}
+      .cp-portrait{width:110px;height:138px}
+      .cp-civ{font-size:24px}
+      .cp-quote{display:none}
+      .uud-overlay{padding:0}
+      .uud-modal{width:100%;height:100%;max-height:100%;border-radius:0;border:none;
+        padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+      .uud-img{width:96px;height:96px}
+      .uud-title{font-size:19px}
+    }
+    @media(max-width:860px){
+      #lobby{overflow-x:hidden;overflow-y:auto}
+      .lobby-layout{flex-direction:column;height:auto;min-height:100%;width:100%;max-width:100%}
+      .lobby-left{width:100%;max-width:100%;border-right:none;padding:max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));overflow:visible}
+      .lobby-right{position:relative;flex:none;width:100%;max-width:100%;padding:24px max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left));justify-content:flex-start;overflow:visible;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,#0f0e0b 70%)}
       .showcase{max-width:none}
       .showcase-art-wrapper{position:static;width:100%;max-width:260px;height:auto;margin:0 auto 16px;border-radius:14px}
       .showcase-art{height:auto;border-radius:14px}
@@ -254,10 +570,19 @@ export function createLobby(onStart: (session: Session) => void): void {
       .showcase-leader{font-size:20px}
       .showcase-quote{font-size:16px;margin-top:14px}
       .showcase-ability{margin-top:18px;padding:14px}
-      .showcase-reroll{position:static;width:100%;max-width:260px;margin:16px auto 0;order:1}
+      .showcase-reroll{position:static;width:100%;max-width:260px;margin:16px auto 0}
       #sp-civ-desc{display:none}
       .menu-btn{padding:14px 16px}
       .menu-in{padding:10px 12px}
+      /* Start screen: menu front-and-center, flavour showcase tucked below it */
+      #lobby[data-screen="start"] .lobby-layout{min-height:100dvh;justify-content:center}
+      #lobby[data-screen="start"] .lobby-left{align-items:center;text-align:center}
+      #lobby[data-screen="start"] .lobby-title,#lobby[data-screen="start"] .lobby-subtitle{width:100%}
+      #lobby[data-screen="start"] .menu-actions{width:100%;max-width:360px}
+      #lobby[data-screen="start"] .lobby-right{order:2;padding-top:8px}
+      /* Single player: the civ picker covers leader previews, so the featured-civ
+         panel is dead weight on a phone — hide it and let the form fill the view. */
+      #lobby[data-screen="sp"] .lobby-right{display:none}
     }`;
   document.head.appendChild(style);
   document.body.appendChild(root);
@@ -297,7 +622,8 @@ export function createLobby(onStart: (session: Session) => void): void {
         <div class="showcase-ability">
           <div class="showcase-ability-name">${escapeHtml(civ.abilityName)}</div>
           <div class="showcase-ability-desc">${escapeHtml(civ.abilityDesc)}</div>
-          <div class="showcase-uniques">Unique Unit: <b>${escapeHtml(civ.uniqueUnit)}</b> · Unique Infrastructure: <b>${escapeHtml(civ.uniqueInfra)}</b></div>
+          ${uniqueUnitBlockHtml(civ.id)}
+          <div class="showcase-uniques">Unique infrastructure: <b>${escapeHtml(civ.uniqueInfra)}</b></div>
         </div>
       </div>`;
     const img = right.querySelector<HTMLImageElement>("#showcase-art");
@@ -315,11 +641,128 @@ export function createLobby(onStart: (session: Session) => void): void {
       };
       reveal();
     }
+    wireUuImages(right);
+    wireUuDetail(right);
     right.querySelector<HTMLButtonElement>("#showcase-reroll")?.addEventListener("click", () => renderShowcase());
+  }
+
+  /**
+   * A full-screen civilization picker: a scrollable list of civs paired with a
+   * rich detail pane (leader portrait, quote, ability, unique unit, unique
+   * infrastructure). On mobile the detail sits on top so a tap reveals it
+   * without scrolling. `takenByOthers` civs (claimed by AI slots) are disabled.
+   */
+  function openCivPicker(
+    currentCivId: string,
+    takenByOthers: Set<string>,
+    onPick: (civId: string) => void,
+  ): void {
+    let selected = currentCivId;
+    const overlay = document.createElement("div");
+    overlay.className = "civ-picker-overlay";
+    overlay.innerHTML = `
+      <div class="civ-picker" role="dialog" aria-modal="true" aria-label="Choose your civilization">
+        <div class="cp-header">
+          <div class="cp-title">Choose your civilization</div>
+          <button class="cp-close" id="cp-close" aria-label="Close">✕</button>
+        </div>
+        <div class="cp-body">
+          <div class="cp-list" id="cp-list"></div>
+          <div class="cp-detail" id="cp-detail"></div>
+        </div>
+        <div class="cp-footer">
+          <button class="menu-btn secondary" id="cp-cancel" style="width:auto">Cancel</button>
+          <button class="menu-btn primary" id="cp-confirm" style="width:auto">Choose <span id="cp-confirm-name"></span></button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const listEl = overlay.querySelector<HTMLDivElement>("#cp-list")!;
+    const detailEl = overlay.querySelector<HTMLDivElement>("#cp-detail")!;
+    const confirmName = overlay.querySelector<HTMLSpanElement>("#cp-confirm-name")!;
+
+    const close = (): void => {
+      overlay.remove();
+      document.removeEventListener("keydown", onKey);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKey);
+
+    listEl.innerHTML = CIVS_BY_NAME.map((c) => {
+      const taken = takenByOthers.has(c.id) && c.id !== currentCivId;
+      return `<button type="button" class="cp-item${c.id === selected ? " sel" : ""}" data-civ="${c.id}"${taken ? " disabled" : ""}>
+        <span class="cp-item-name">${escapeHtml(c.name)}</span>
+        <span class="cp-item-leader">${escapeHtml(c.leader)}${taken ? " · taken" : ""}</span>
+      </button>`;
+    }).join("");
+
+    const renderDetail = (): void => {
+      const civ = CIVILIZATIONS.find((c) => c.id === selected)!;
+      const src = leaderAtlas.images[civ.id]?.src ?? `${import.meta.env.BASE_URL}leaders/${civ.id}.png`;
+      detailEl.innerHTML = `
+        <div class="cp-detail-top">
+          <div class="cp-portrait">
+            <img id="cp-portrait-img" class="cp-portrait-img hidden" src="${src}" alt="" />
+            <div id="cp-portrait-ph" class="cp-portrait-ph">Leader art<br/>coming soon</div>
+          </div>
+          <div class="cp-headings">
+            <div class="cp-civ">${escapeHtml(civ.name)}</div>
+            <div class="cp-leader">${escapeHtml(civ.leader)}</div>
+            ${civ.leaderQuote ? `<div class="cp-quote">${escapeHtml(civ.leaderQuote)}</div>` : ""}
+          </div>
+        </div>
+        <div class="cp-ability">
+          <div class="cp-ability-name">${escapeHtml(civ.abilityName)}</div>
+          <div class="cp-ability-desc">${escapeHtml(civ.abilityDesc)}</div>
+        </div>
+        ${uniqueUnitBlockHtml(civ.id)}
+        <div class="cp-infra">Unique infrastructure: <b>${escapeHtml(civ.uniqueInfra)}</b></div>`;
+      confirmName.textContent = civ.name;
+      const img = detailEl.querySelector<HTMLImageElement>("#cp-portrait-img");
+      const ph = detailEl.querySelector<HTMLDivElement>("#cp-portrait-ph");
+      if (img && ph) {
+        const reveal = (): void => {
+          if (isImageReady(img)) {
+            img.classList.remove("hidden");
+            ph.classList.add("hidden");
+          }
+        };
+        img.onload = reveal;
+        reveal();
+      }
+      wireUuImages(detailEl);
+      wireUuDetail(detailEl);
+    };
+
+    listEl.querySelectorAll<HTMLButtonElement>(".cp-item").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        selected = btn.dataset.civ!;
+        listEl.querySelectorAll(".cp-item").forEach((b) => b.classList.toggle("sel", b === btn));
+        renderDetail();
+        detailEl.scrollTop = 0;
+      }),
+    );
+
+    overlay.querySelector<HTMLButtonElement>("#cp-close")!.addEventListener("click", close);
+    overlay.querySelector<HTMLButtonElement>("#cp-cancel")!.addEventListener("click", close);
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) close();
+    });
+    overlay.querySelector<HTMLButtonElement>("#cp-confirm")!.addEventListener("click", () => {
+      onPick(selected);
+      close();
+    });
+
+    renderDetail();
+    // Bring the selected entry into view on open.
+    listEl.querySelector<HTMLButtonElement>(".cp-item.sel")?.scrollIntoView({ block: "center" });
   }
 
   function showScreen(screen: Screen): void {
     state.screen = screen;
+    root.dataset.screen = screen;
     switch (screen) {
       case "start":
         renderStartScreen();
@@ -362,9 +805,15 @@ export function createLobby(onStart: (session: Session) => void): void {
       </div>
       <div class="menu-section">
         <div class="menu-section-title">Game Options</div>
+        <div class="menu-row"><span>Map type</span>${mapTypeSelect("sp-maptype", state.sp.mapType)}</div>
+        <div class="menu-hint" id="sp-maptype-desc"></div>
         <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
-        <div class="menu-row"><span>Starting treasury</span>${startingGoldSelect("sp-gold", state.sp.startingGold)}</div>
+        <div class="menu-field">
+          <span>Starting treasury</span>
+          ${goldChips("sp-gold", state.sp.startingGold)}
+        </div>
+        <div class="menu-hint" id="sp-gold-desc"></div>
       </div>
       <div class="menu-back-row">
         <button class="menu-btn secondary" id="back2">Back</button>
@@ -385,13 +834,22 @@ export function createLobby(onStart: (session: Session) => void): void {
         state.sp.civId,
         ...state.sp.ais.map((a) => a.civId).filter((c) => c !== RANDOM_CIV),
       ]);
+      const humanCiv = CIVILIZATIONS.find((c) => c.id === state.sp.civId);
+      const humanUu = humanCiv ? uniqueUnitFor(humanCiv.id)?.name ?? humanCiv.uniqueUnit : "";
       const human = `
         <div class="roster-row" data-row="human">
           <div class="roster-head">
             <span class="roster-tag you">You</span>
-            <select class="menu-in roster-civ" data-civ="human">${civOptions(state.sp.civId, false, takenCivs)}</select>
+            <button type="button" class="menu-in civ-pick-btn" data-civ-pick>
+              <span class="cpb-text">
+                <span class="cpb-name">${escapeHtml(humanCiv?.name ?? "Select civilization")}</span>
+                <span class="cpb-leader">${escapeHtml(humanCiv?.leader ?? "")}</span>
+              </span>
+              <span class="cpb-caret">&rsaquo;</span>
+            </button>
+            ${colorSelect(state.sp.color, used)}
           </div>
-          ${colorPicker(state.sp.color, used)}
+          ${humanUu ? `<div class="roster-uu">⚔ Unique unit: <b>${escapeHtml(humanUu)}</b></div>` : ""}
         </div>`;
       const ais = state.sp.ais
         .map(
@@ -400,9 +858,9 @@ export function createLobby(onStart: (session: Session) => void): void {
           <div class="roster-head">
             <span class="roster-tag">AI ${i + 1}</span>
             <select class="menu-in roster-civ" data-civ="ai-${i}">${civOptions(ai.civId, true, takenCivs)}</select>
+            ${colorSelect(ai.color, used)}
             <button type="button" class="roster-remove" data-remove="${i}" title="Remove opponent">✕</button>
           </div>
-          ${colorPicker(ai.color, used)}
         </div>`,
         )
         .join("");
@@ -416,23 +874,28 @@ export function createLobby(onStart: (session: Session) => void): void {
 
     const wireRoster = (): void => {
       const root = $("#sp-roster");
+      root.querySelector<HTMLButtonElement>("[data-civ-pick]")?.addEventListener("click", () => {
+        const takenByOthers = new Set<string>(
+          state.sp.ais.map((a) => a.civId).filter((c) => c !== RANDOM_CIV),
+        );
+        openCivPicker(state.sp.civId, takenByOthers, (civId) => {
+          state.sp.civId = civId;
+          updateCivDesc();
+          renderShowcase(state.sp.civId, false);
+          renderRoster(); // refresh "taken" civ states across AI dropdowns
+        });
+      });
       root.querySelectorAll<HTMLSelectElement>(".roster-civ").forEach((sel) =>
         sel.addEventListener("change", () => {
-          if (sel.dataset.civ === "human") {
-            state.sp.civId = sel.value;
-            updateCivDesc();
-            renderShowcase(state.sp.civId);
-          } else {
-            state.sp.ais[Number(sel.dataset.civ!.slice(3))]!.civId = sel.value;
-          }
+          state.sp.ais[Number(sel.dataset.civ!.slice(3))]!.civId = sel.value;
           renderRoster(); // refresh "taken" civ states across all dropdowns
         }),
       );
-      root.querySelectorAll<HTMLButtonElement>(".cp-dot").forEach((dot) =>
-        dot.addEventListener("click", () => {
-          const rowKey = (dot.closest("[data-row]") as HTMLElement).dataset.row!;
-          if (rowKey === "human") state.sp.color = dot.dataset.color!;
-          else state.sp.ais[Number(rowKey.slice(3))]!.color = dot.dataset.color!;
+      root.querySelectorAll<HTMLSelectElement>(".cp-sel").forEach((sel) =>
+        sel.addEventListener("change", () => {
+          const rowKey = (sel.closest("[data-row]") as HTMLElement).dataset.row!;
+          if (rowKey === "human") state.sp.color = sel.value;
+          else state.sp.ais[Number(rowKey.slice(3))]!.color = sel.value;
           renderRoster();
         }),
       );
@@ -452,6 +915,37 @@ export function createLobby(onStart: (session: Session) => void): void {
     updateCivDesc();
     renderRoster();
     renderShowcase(state.sp.civId, false);
+
+    // Map type: keep a live description below the dropdown.
+    const mapTypeSel = $select("#sp-maptype");
+    const updateMapTypeDesc = () => {
+      $("#sp-maptype-desc").textContent =
+        MAP_TYPE_OPTIONS.find((o) => o.value === state.sp.mapType)?.desc ?? "";
+    };
+    mapTypeSel.addEventListener("change", () => {
+      state.sp.mapType = mapTypeSel.value as MapType;
+      updateMapTypeDesc();
+    });
+    updateMapTypeDesc();
+
+    // Starting treasury: chips with tooltips, mirrored into a description line.
+    const updateGoldDesc = () => {
+      $("#sp-gold-desc").textContent =
+        GOLD_OPTIONS.find((o) => o.value === state.sp.startingGold)?.desc ?? "";
+    };
+    $("#sp-gold")
+      .querySelectorAll<HTMLButtonElement>(".chip")
+      .forEach((chip) =>
+        chip.addEventListener("click", () => {
+          state.sp.startingGold = chip.dataset.gold as StartingGold;
+          $("#sp-gold")
+            .querySelectorAll(".chip")
+            .forEach((c) => c.classList.toggle("sel", c === chip));
+          updateGoldDesc();
+        }),
+      );
+    updateGoldDesc();
+
     $("#back").addEventListener("click", () => showScreen("start"));
     $("#back2").addEventListener("click", () => showScreen("start"));
     $("#sp-start").addEventListener("click", () => {
@@ -460,10 +954,11 @@ export function createLobby(onStart: (session: Session) => void): void {
         new LocalSession({
           civId: state.sp.civId,
           mapSize: $select("#sp-map").value as MapSize,
+          mapType: state.sp.mapType,
           aiCivIds: state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
           colors: [state.sp.color, ...state.sp.ais.map((a) => a.color)],
           barbarians: $select("#sp-barb").value as BarbLevel,
-          startingGold: $select("#sp-gold").value as StartingGold,
+          startingGold: state.sp.startingGold,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
       );
@@ -492,10 +987,16 @@ export function createLobby(onStart: (session: Session) => void): void {
       </div>
       <div id="games" class="hidden menu-section">
         <div class="menu-section-title">Lobby</div>
+        <div class="menu-row"><span>Map type</span>${mapTypeSelect("mp-maptype", state.mp.mapType)}</div>
+        <div class="menu-hint" id="mp-maptype-desc"></div>
         <div class="menu-row"><span>Map size</span>${mapSelect("mp-map", "medium")}</div>
         <div class="menu-row"><span>Human players</span>${capacitySelect("mp-capacity", state.mp.capacity)}</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("mp-barb", "normal")}</div>
-        <div class="menu-row"><span>Starting treasury</span>${startingGoldSelect("mp-gold", state.mp.startingGold)}</div>
+        <div class="menu-field">
+          <span>Starting treasury</span>
+          ${goldChips("mp-gold", state.mp.startingGold)}
+        </div>
+        <div class="menu-hint" id="mp-gold-desc"></div>
         <div class="menu-section-title" style="margin-top:14px">Players & Opponents</div>
         <div id="mp-roster"></div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
@@ -544,8 +1045,8 @@ export function createLobby(onStart: (session: Session) => void): void {
           <div class="roster-head">
             <span class="roster-tag you">Player ${i + 1}</span>
             <span class="roster-note">${i === 0 ? "Host" : "Open slot"} · random civ</span>
+            ${colorSelect(color, used)}
           </div>
-          ${colorPicker(color, used)}
         </div>`,
         )
         .join("");
@@ -559,9 +1060,9 @@ export function createLobby(onStart: (session: Session) => void): void {
           <div class="roster-head">
             <span class="roster-tag">AI ${i + 1}</span>
             <select class="menu-in roster-civ" data-civ="${i}">${civOptions(ai.civId, true, takenCivs)}</select>
+            ${colorSelect(ai.color, used)}
             <button type="button" class="roster-remove" data-remove="${i}" title="Remove opponent">✕</button>
           </div>
-          ${colorPicker(ai.color, used)}
         </div>`,
         )
         .join("");
@@ -578,11 +1079,11 @@ export function createLobby(onStart: (session: Session) => void): void {
           renderRoster(); // refresh "taken" civ states across all dropdowns
         }),
       );
-      root.querySelectorAll<HTMLButtonElement>(".cp-dot").forEach((dot) =>
-        dot.addEventListener("click", () => {
-          const rowKey = (dot.closest("[data-row]") as HTMLElement).dataset.row!;
-          if (rowKey.startsWith("human-")) state.mp.humanColors[Number(rowKey.slice(6))] = dot.dataset.color!;
-          else state.mp.ais[Number(rowKey.slice(3))]!.color = dot.dataset.color!;
+      root.querySelectorAll<HTMLSelectElement>(".cp-sel").forEach((sel) =>
+        sel.addEventListener("change", () => {
+          const rowKey = (sel.closest("[data-row]") as HTMLElement).dataset.row!;
+          if (rowKey.startsWith("human-")) state.mp.humanColors[Number(rowKey.slice(6))] = sel.value;
+          else state.mp.ais[Number(rowKey.slice(3))]!.color = sel.value;
           renderRoster();
         }),
       );
@@ -604,6 +1105,35 @@ export function createLobby(onStart: (session: Session) => void): void {
       renderRoster();
     });
     renderRoster();
+
+    // Map type + starting-treasury chips (same controls as single player).
+    const mpMapTypeSel = $select("#mp-maptype");
+    const updateMpMapTypeDesc = () => {
+      $("#mp-maptype-desc").textContent =
+        MAP_TYPE_OPTIONS.find((o) => o.value === state.mp.mapType)?.desc ?? "";
+    };
+    mpMapTypeSel.addEventListener("change", () => {
+      state.mp.mapType = mpMapTypeSel.value as MapType;
+      updateMpMapTypeDesc();
+    });
+    updateMpMapTypeDesc();
+
+    const updateMpGoldDesc = () => {
+      $("#mp-gold-desc").textContent =
+        GOLD_OPTIONS.find((o) => o.value === state.mp.startingGold)?.desc ?? "";
+    };
+    $("#mp-gold")
+      .querySelectorAll<HTMLButtonElement>(".chip")
+      .forEach((chip) =>
+        chip.addEventListener("click", () => {
+          state.mp.startingGold = chip.dataset.gold as StartingGold;
+          $("#mp-gold")
+            .querySelectorAll(".chip")
+            .forEach((c) => c.classList.toggle("sel", c === chip));
+          updateMpGoldDesc();
+        }),
+      );
+    updateMpGoldDesc();
 
     const renderGames = (games: GameSummary[]) => {
       const list = $("#game-list");
@@ -693,11 +1223,12 @@ export function createLobby(onStart: (session: Session) => void): void {
         name: `${handleEl.value || "Player"}'s game`,
         cols: dims.cols,
         rows: dims.rows,
+        mapType: state.mp.mapType,
         capacity: state.mp.capacity,
         aiCivIds: state.mp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
         colors: [...state.mp.humanColors, ...state.mp.ais.map((a) => a.color)],
         barbarians: $select("#mp-barb").value as BarbLevel,
-        startingGold: $select("#mp-gold").value as StartingGold,
+        startingGold: state.mp.startingGold,
       });
     });
   }

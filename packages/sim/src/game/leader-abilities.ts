@@ -285,7 +285,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
       if (!capital || capital.population < 2) return fail("capital needs 2 population");
       if (!consumeResource(state, player, "horses", 3)) return fail("needs 3 horses");
       removePopulation(state, player, 2);
-      spawnNearCapital(state, player, "rider", 2);
+      // cataphract is the base type the Median Lancer unique replaces.
+      spawnNearCapital(state, player, "cataphract", 2);
       log(state, `${player.name} levied Horse Lords.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
     },
@@ -465,7 +466,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 2) return fail("capital needs 2 population");
       removePopulation(state, player, 2);
-      spawnInCoastalCities(state, player, "bireme", 2);
+      // galley is the base type the Minoan Bireme unique replaces.
+      spawnInCoastalCities(state, player, "galley", 2);
       addPlayerModifier(state, player, "thalassocratic_fleet", { navalMovementBonus: 1 }, 10);
       log(state, `${player.name} launched a Thalassocratic Fleet.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -546,7 +548,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 6) return fail("capital needs 6 population");
       removePopulation(state, player, 6);
-      spawnNearCapital(state, player, "legionary", 3);
+      // swordsman is the base type the Rome Legionary unique replaces.
+      spawnNearCapital(state, player, "swordsman", 3);
       log(state, `${player.name} called a Citizen Levy.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
     },
@@ -608,7 +611,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     use: (state, player) => {
       if (player.gold < 150) return fail("needs 150 gold");
       player.gold -= 150;
-      spawnNearCapital(state, player, "rider", 2);
+      // cataphract is the base type the Gothic Rider unique replaces.
+      spawnNearCapital(state, player, "cataphract", 2);
       const capital = capitalOf(state, player);
       if (capital) capital.population += 1;
       log(state, `${player.name} recruited Foederati.`, { actorId: player.id, targetIds: [player.id] });
@@ -755,7 +759,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
       if (player.gold < 300) return fail("needs 300 gold");
       player.gold -= 300;
       removePopulation(state, player, 2);
-      spawnNearCapital(state, player, "rider", 2);
+      // cataphract is the base type the Hungarian Black Army unique replaces.
+      spawnNearCapital(state, player, "cataphract", 2);
       log(state, `${player.name} signed the Black Army Contract.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
     },
@@ -834,7 +839,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 2) return fail("capital needs 2 population");
       removePopulation(state, player, 2);
-      spawnInCoastalCities(state, player, "bireme", 2);
+      // trireme is the base type the Chola Warship unique replaces.
+      spawnInCoastalCities(state, player, "trireme", 2);
       addPlayerModifier(state, player, "naval_expedition", { navalMovementBonus: 2 }, 10);
       log(state, `${player.name} launched a Naval Expedition.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -1117,7 +1123,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     cooldown: 20,
     use: (state, player) => {
       removePopulation(state, player, Math.min(cityCount(state, player), 3));
-      spawnNearCapital(state, player, "spearman", 2);
+      // swordsman is the base type the Toltec Warrior unique replaces.
+      spawnNearCapital(state, player, "swordsman", 2);
       addPlayerModifier(state, player, "toltecayotl", { unitClassCombat: { melee: 2 } }, 10);
       log(state, `${player.name} raised Toltecayotl War-Bands.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
