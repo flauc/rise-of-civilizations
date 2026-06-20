@@ -1709,16 +1709,7 @@ export function createUI(handlers: UIHandlers): UI {
     }
 
     if (own) {
-      const actions: string[] = [];
-      if (unit.sleeping) {
-        actions.push(`<button class="btn primary" id="wake">Wake</button>`);
-      } else {
-        actions.push(`<button class="btn" id="sleep">Sleep</button>`);
-      }
-      if (def.founder) actions.push(`<button class="btn primary" id="found">Found City</button>`);
-      if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
-
-      // Active-ability buttons.
+      // Status line (sleeping / hidden / in-stance) shown above the action row.
       const abilities = unitAbilities(state, unit);
       if (abilities.length) {
         if (unit.sleeping) {
@@ -1728,22 +1719,28 @@ export function createUI(handlers: UIHandlers): UI {
         } else if (unit.stance) {
           html += `<div class="csub" style="margin-top:8px">${ACTIVE_ABILITY_DEFS[unit.stance].glyph} In stance: <b>${ACTIVE_ABILITY_DEFS[unit.stance].name}</b></div>`;
         }
-        html +=
-          `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">` +
-          abilities
-            .map((a) => {
-              const ad = ACTIVE_ABILITY_DEFS[a];
-              const usable = canUseAbility(state, unit, a).ok;
-              return (
-                `<button class="btn" data-ability="${a}" ${usable ? "" : "disabled"} ` +
-                `title="${ad.desc}" style="display:inline-flex;gap:8px;align-items:center;padding:8px 10px${usable ? "" : ";opacity:.5"}">` +
-                `${abilityIconHtml(abilityAtlas, a)}` +
-                `<b style="color:#fff">${ad.name}</b></button>`
-              );
-            })
-            .join("") +
-          `</div>`;
       }
+
+      // Action and active-ability buttons share one wrapping row, so they sit
+      // side by side and only spill onto a new line when there isn't room.
+      const actions: string[] = [];
+      if (unit.sleeping) {
+        actions.push(`<button class="btn primary" id="wake">Wake</button>`);
+      } else {
+        actions.push(`<button class="btn" id="sleep">Sleep</button>`);
+      }
+      if (def.founder) actions.push(`<button class="btn primary" id="found">Found City</button>`);
+      for (const a of abilities) {
+        const ad = ACTIVE_ABILITY_DEFS[a];
+        const usable = canUseAbility(state, unit, a).ok;
+        actions.push(
+          `<button class="btn" data-ability="${a}" ${usable ? "" : "disabled"} ` +
+            `title="${ad.desc}" style="display:inline-flex;gap:8px;align-items:center;padding:8px 10px${usable ? "" : ";opacity:.5"}">` +
+            `${abilityIconHtml(abilityAtlas, a)}` +
+            `<b style="color:#fff">${ad.name}</b></button>`,
+        );
+      }
+      if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
 
       if (def.trader) {
         const origin = cityAt(state, unit.col, unit.row);
@@ -2059,15 +2056,18 @@ export function createUI(handlers: UIHandlers): UI {
     const perTurn = cityFoodGrowth(state, city, surplus);
     const surplusStr = surplus >= 0 ? `+${surplus}` : `${surplus}`;
     const growthMult = cityGrowthMultiplier(state, city);
+    // Readying a settler pauses growth — mirror the sim's processCity rule.
+    const buildingSettler =
+      city.production?.kind === "unit" && UNIT_DEFS[city.production.id].founder === true;
     const turnsToGrow = perTurn > 0 ? Math.ceil((need - city.foodStored) / perTurn) : Infinity;
-    // Amenity standing: surplus luxuries speed growth, a shortfall is neutral.
+    // Amenity standing: surplus luxuries speed growth, a shortfall slows it.
     const amenities = cityAmenities(state, city);
     const unhappiness = cityUnhappiness(city);
     const luxuryBadge =
       growthMult > 1
         ? ` <span title="Surplus luxuries (${amenities} amenities vs ${unhappiness} unhappiness) speed growth" style="color:#7fd17f">🍷 +${Math.round((growthMult - 1) * 100)}% growth</span>`
-        : amenities < unhappiness
-          ? ` <span title="${unhappiness - amenities} more amenities would start boosting growth" style="color:#9fc0dc">😐 no luxury bonus</span>`
+        : growthMult < 1
+          ? ` <span title="Too few amenities (${amenities} vs ${unhappiness} unhappiness) — ${unhappiness - amenities} more would reach full speed" style="color:#d9a86a">😟 −${Math.round((1 - growthMult) * 100)}% growth</span>`
           : "";
 
     // Specialists: train/release craftsmen from this city's population.
@@ -2124,10 +2124,12 @@ export function createUI(handlers: UIHandlers): UI {
       worksHtml +
       // growth
       `<div style="margin-top:6px">Growth ${Math.floor(city.foodStored)}/${need} ` +
-      (perTurn > 0
-        ? `<span style="color:#9fc0dc">(+${perTurn}/turn · ${turnsToGrow} ${turnsToGrow === 1 ? "turn" : "turns"})</span>`
-        : `<span style="color:#d98a8a">(stalled)</span>`) +
-      luxuryBadge +
+      (buildingSettler
+        ? `<span title="A city pauses growth while it readies a settler" style="color:#d9a86a">(paused — building settler)</span>`
+        : perTurn > 0
+          ? `<span style="color:#9fc0dc">(+${perTurn}/turn · ${turnsToGrow} ${turnsToGrow === 1 ? "turn" : "turns"})</span>`
+          : `<span style="color:#d98a8a">(stalled)</span>`) +
+      (buildingSettler ? "" : luxuryBadge) +
       `<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
       // production
       `<div style="margin-top:6px">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>` +

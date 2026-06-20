@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getTile, type TerrainType } from "@roc/shared";
 import { createGame } from "./setup";
+import { resolveAttack } from "./combat";
 import { applyCommand, beginTurn } from "./commands";
 import { useAbility, unitAbilities } from "./abilities";
 import { breakCover, canStealthMove } from "./stealth";
@@ -47,6 +48,17 @@ describe("hide & ambush", () => {
     expect(useAbility(state, spear, "hide").ok).toBe(true);
     expect(spear.hidden).toBe(true);
     expect(spear.movementLeft).toBe(0); // forfeits remaining movement
+  });
+
+  it("dense cover includes jungle but not light woods", () => {
+    const state = bareGame();
+    const a = place(state, 0, "spearman", 5, 5);
+    setTerrain(state, 5, 5, "jungle");
+    expect(useAbility(state, a, "hide").ok).toBe(true); // jungle is dense cover
+
+    const b = place(state, 0, "spearman", 8, 5);
+    setTerrain(state, 8, 5, "woods");
+    expect(useAbility(state, b, "hide").ok).toBe(false); // light woods give no cover
   });
 
   it("requires at least one movement point to hide", () => {
@@ -137,6 +149,40 @@ describe("civ-unique abilities (§8)", () => {
     playerById(state, 0)!.civId = "egypt"; // no crossbow unique
     const xbow = place(state, 0, "crossbowman", 5, 5);
     expect(unitAbilities(state, xbow).includes("pierce")).toBe(true);
+  });
+
+  it("Bushidō: a cornered Samurai defends harder below 30% HP", () => {
+    const state = bareGame();
+    playerById(state, 1)!.civId = "japan"; // Samurai replaces the Longswordsman
+    setTerrain(state, 6, 5, "grassland");
+    setTerrain(state, 16, 5, "grassland");
+
+    // Two Samurai: one below the 30% threshold (Bushidō on), one above it (off).
+    const low = place(state, 1, "longswordsman", 6, 5);
+    low.hp = 20;
+    const high = place(state, 1, "longswordsman", 16, 5);
+    high.hp = 35;
+
+    resolveAttack(state, place(state, 0, "warrior", 5, 5), low.col, low.row);
+    resolveAttack(state, place(state, 0, "warrior", 15, 5), high.col, high.row);
+
+    // Despite lower HP, Bushidō more than offsets the difference.
+    expect(20 - low.hp).toBeLessThan(35 - high.hp);
+  });
+
+  it("Bushidō is Samurai-only — an ordinary unique gets no low-HP defense bonus", () => {
+    const state = bareGame();
+    playerById(state, 1)!.civId = "egypt"; // no Bushidō unique
+    setTerrain(state, 6, 5, "grassland");
+    setTerrain(state, 16, 5, "grassland");
+    const plainLow = place(state, 1, "longswordsman", 6, 5);
+    plainLow.hp = 20;
+    const plainHigh = place(state, 1, "longswordsman", 16, 5);
+    plainHigh.hp = 35;
+    resolveAttack(state, place(state, 0, "warrior", 5, 5), plainLow.col, plainLow.row);
+    resolveAttack(state, place(state, 0, "warrior", 15, 5), plainHigh.col, plainHigh.row);
+    // Without Bushidō, the lower-HP unit takes at least as much damage.
+    expect(20 - plainLow.hp).toBeGreaterThanOrEqual(35 - plainHigh.hp);
   });
 
   it("Sumer's War-Cart wields the early War-Cart Charge", () => {

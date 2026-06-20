@@ -319,21 +319,24 @@ export function cityUnhappiness(city: City): number {
   return city.population;
 }
 
-/** Bonus to the growth multiplier per surplus amenity, and the cap on that bonus. */
+/** Per-amenity step (each surplus rewards / each shortfall penalises growth by
+ *  this much), and the cap on the surplus bonus. */
 export const GROWTH_AMENITY_BONUS = 0.15;
 
 /**
- * Multiplier applied to a city's food surplus. Lacking luxuries is *not* a
- * penalty — a city whose amenities merely cover its unhappiness grows at the
- * full `1.0` baseline. Surplus amenities (luxuries beyond what the population
- * needs) *reward* growth, up to `1 + GROWTH_AMENITY_BONUS` (1.15). An amenity
- * shortfall never slows growth below the baseline.
+ * Multiplier applied to a city's food surplus, driven by amenities vs unhappiness:
+ *  - amenity *shortfall* slows growth by `GROWTH_AMENITY_BONUS` per missing
+ *    amenity (e.g. a pop-1 city with no amenities → 0.85), floored at 0.3 so a
+ *    fed city never fully halts;
+ *  - amenities exactly covering unhappiness → the `1.0` baseline;
+ *  - *surplus* amenities reward growth up to `1 + GROWTH_AMENITY_BONUS` (1.15).
  */
 export function cityGrowthMultiplier(state: GameState, city: City): number {
   const a = cityAmenities(state, city);
   const u = cityUnhappiness(city);
-  if (a <= u) return 1; // baseline — luxury-poor cities are not penalised
-  return Math.min(1 + GROWTH_AMENITY_BONUS, 1 + GROWTH_AMENITY_BONUS * (a - u));
+  if (a === u) return 1; // baseline — amenities exactly cover unhappiness
+  if (a > u) return Math.min(1 + GROWTH_AMENITY_BONUS, 1 + GROWTH_AMENITY_BONUS * (a - u));
+  return Math.max(0.3, 1 - GROWTH_AMENITY_BONUS * (u - a)); // shortfall slows growth
 }
 
 // ---- map placement --------------------------------------------------------

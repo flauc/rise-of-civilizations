@@ -12,7 +12,7 @@ import {
 } from "./content";
 import { isRough, terrainDefense, isWaterTerrain } from "./terrain";
 import { structureDefense, towerBombard } from "./fortifications";
-import { civCombatBonus } from "./civs";
+import { civCombatBonus, uniqueUnitForUnit } from "./civs";
 import { applyVictoryCheck } from "./victory";
 import { emitCityLost, emitUnitDied } from "./turn-updates";
 import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween } from "./movement";
@@ -44,6 +44,16 @@ function isOpen(t: TerrainType): boolean {
 
 function has(unit: Unit, p: PromotionId): boolean {
   return unit.promotions.includes(p);
+}
+
+/** Uniques living by Bushidō: +30% strength when defending below 30% HP — they fight hardest cornered. */
+const BUSHIDO_UNITS = new Set<string>(["japan_samurai"]);
+
+/** True if this unit gets the passive Bushidō defensive bonus right now. */
+function hasBushido(state: GameState, unit: Unit): boolean {
+  if (unit.hp >= unitMaxHp(unit) * 0.3) return false;
+  const uu = uniqueUnitForUnit(state, unit);
+  return !!uu && BUSHIDO_UNITS.has(uu.id);
 }
 
 /** Damage one combatant deals to another given effective strengths. */
@@ -254,6 +264,8 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   else if (unit.stance === "emplace") stanceMult = 0.75;
   // Sundered units defend weaker.
   if (unit.sunderedUntilTurn !== undefined && state.turn <= unit.sunderedUntilTurn) stanceMult *= 0.75;
+  // Bushidō: a cornered Samurai fights all the harder.
+  if (hasBushido(state, unit)) stanceMult *= 1.3;
 
   return Math.max(1, s) * stanceMult * woundFactor(unit.hp, unitMaxHp(unit));
 }

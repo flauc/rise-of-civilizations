@@ -65,17 +65,22 @@ export function computeWorldBounds(map: GameMap): Bounds {
   };
 }
 
-/** Compute a 6-bit edge mask for a road tile from its neighbors.
- *  A road connects to adjacent roads and to adjacent cities. */
+/** Compute a 6-bit edge mask for a road tile from its neighbors. A road connects
+ *  to adjacent roads and to adjacent cities — but a river along the shared edge
+ *  severs the link until a bridge spans it, so unbridged crossings dead-end at the
+ *  water instead of joining. */
 function roadMask(map: GameMap, col: number, row: number, cityKeys: Set<string>): number {
   const here = offsetToAxial({ col, row });
+  const self = getTile(map, col, row);
   let mask = 0;
   for (let d = 0; d < 6; d++) {
     const nb = axialToOffset(axialNeighbor(here, d));
     const t = getTile(map, nb.col, nb.row);
-    if (t?.road || cityKeys.has(`${nb.col},${nb.row}`)) {
-      mask |= 1 << d;
-    }
+    if (!t?.road && !cityKeys.has(`${nb.col},${nb.row}`)) continue;
+    const opp = (d + 3) % 6;
+    const river = (((self?.river ?? 0) & (1 << d)) | ((t?.river ?? 0) & (1 << opp))) !== 0;
+    if (river && !self?.bridge && !t?.bridge) continue; // unbridged river severs the link
+    mask |= 1 << d;
   }
   return mask;
 }
@@ -431,6 +436,11 @@ export function drawScene(
     cityKeys.add(`${c.col},${c.row}`);
   }
 
+  // Bridges span the river edge SHARED by two road tiles, so they are collected
+  // during the tile loop and painted afterwards (once per edge) on top of the
+  // road network, centred on that edge's midpoint.
+  const bridgeDraws: { img: HTMLImageElement; mx: number; my: number }[] = [];
+
   for (const t of map.tiles) {
     const c = tileCenterWorld(t.col, t.row);
     const sx = camera.worldToScreenX(c.x);
@@ -519,12 +529,36 @@ export function drawScene(
         if (mask !== 0) {
           // Prefer the painted road overlay; fall back to the procedural segment
           // while the atlas is still loading (or a variant failed to load).
-          const img = roadFrame(opts.roadAtlas, mask, !!t.bridge, t.col, t.row);
+          const img = roadFrame(opts.roadAtlas, mask, false, t.col, t.row);
           if (img && isImageReady(img)) {
             drawFootprintOverlay(ctx, img, sx, sy, footprint);
           } else {
             const level = t.road ? (t.roadLevel ?? 1) : maxNeighborRoadLevel(map, t.col, t.row);
             drawRoadSegment(ctx, sx, sy, corners, mask, level, size);
+          }
+        }
+        // A bridge spans a river along the edge between this road tile and a road or
+        // city neighbour. Paint each shared edge once, with the straight-through
+        // bridge centred on that edge's midpoint.
+        if (t.road) {
+          const here = offsetToAxial({ col: t.col, row: t.row });
+          for (let d = 0; d < 6; d++) {
+            const nb = axialToOffset(axialNeighbor(here, d));
+            const n = getTile(map, nb.col, nb.row);
+            const nIsCity = cityKeys.has(`${nb.col},${nb.row}`);
+            if (!n?.road && !nIsCity) continue;
+            const opp = (d + 3) % 6;
+            const riverOnEdge = (((t.river ?? 0) & (1 << d)) | ((n?.river ?? 0) & (1 << opp))) !== 0;
+            if (!riverOnEdge || (!t.bridge && !n?.bridge)) continue;
+            // Draw each shared edge once: a road↔road edge from the lower-coordinate
+            // tile; a road↔city edge always from the road tile (cities never initiate).
+            if (n?.road && !nIsCity && (nb.row < t.row || (nb.row === t.row && nb.col < t.col))) continue;
+            const bridgeMask = (1 << d) | (1 << opp); // one of 9/18/36
+            const bImg = roadFrame(opts.roadAtlas, bridgeMask, true, t.col, t.row);
+            if (bImg && isImageReady(bImg)) {
+              const m = sideMidpoint(corners, (6 - d) % 6, sx, sy);
+              bridgeDraws.push({ img: bImg, mx: m.x, my: m.y });
+            }
           }
         }
       }
@@ -554,6 +588,11 @@ export function drawScene(
       }
     }
     drawn++;
+  }
+
+  // Bridges last, so they sit on top of the road network at each river crossing.
+  for (const b of bridgeDraws) {
+    drawFootprintOverlay(ctx, b.img, b.mx, b.my, footprint);
   }
 
   // Hover highlight on top.

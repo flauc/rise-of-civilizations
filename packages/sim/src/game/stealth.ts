@@ -12,8 +12,8 @@ import type { GameState, Unit } from "./state";
 import { areEnemies, playerById } from "./state";
 import { uniqueUnitForUnit, unitHasActiveAbility } from "./civs";
 
-/** Default cover: ordinary infantry/scouts only conceal in dense forest. */
-const DEFAULT_HIDE_TERRAINS: readonly TerrainType[] = ["forest"];
+/** Default cover: ordinary infantry/scouts conceal in dense forest or jungle (not light woods). */
+const DEFAULT_HIDE_TERRAINS: readonly TerrainType[] = ["forest", "jungle"];
 const DEFAULT_AMBUSH_BONUS = 0.2;
 
 export interface HideProfile {

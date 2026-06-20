@@ -92,14 +92,15 @@ export function tileHasBridge(state: GameState, col: number, row: number): boole
   return ownerId !== undefined && hasTech(state, ownerId, "bridge_building");
 }
 
-/** True if the river along the edge between two adjacent ROAD tiles is spanned by a
- *  bridge. Such a crossing neither costs the extra fording movement nor breaks a
- *  city-to-city road connection — but the assault penalty for it still applies. */
+/** True if the river along the edge between two adjacent road connectors (a road
+ *  tile or a city) is spanned by a bridge. Such a crossing neither costs the extra
+ *  fording movement nor breaks a city-to-city road connection — but the assault
+ *  penalty for it still applies. */
 export function bridgedRiverCrossing(state: GameState, fromCol: number, fromRow: number, toCol: number, toRow: number): boolean {
   if (!riverBetween(state, fromCol, fromRow, toCol, toRow)) return false;
-  const from = getTile(state.map, fromCol, fromRow);
-  const to = getTile(state.map, toCol, toRow);
-  if (!from?.road || !to?.road) return false;
+  const fromConn = !!getTile(state.map, fromCol, fromRow)?.road || !!cityAt(state, fromCol, fromRow);
+  const toConn = !!getTile(state.map, toCol, toRow)?.road || !!cityAt(state, toCol, toRow);
+  if (!fromConn || !toConn) return false;
   return tileHasBridge(state, fromCol, fromRow) || tileHasBridge(state, toCol, toRow);
 }
 

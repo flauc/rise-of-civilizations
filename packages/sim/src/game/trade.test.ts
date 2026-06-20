@@ -11,6 +11,7 @@ import {
   tradeRouteDestinations,
 } from "./trade";
 import { citiesOf, makeUnit, unitsOf, type City } from "./state";
+import { viewForPlayer } from "./serialize";
 
 /** A game where player 0 owns two cities a few tiles apart. */
 function gameWithTwoCities() {
@@ -201,6 +202,37 @@ describe("trade routes", () => {
     getTile(s.map, a[0], a[1])!.ownerCityId = from.id;
     getTile(s.map, b[0], b[1])!.ownerCityId = from.id;
     expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
+  });
+
+  it("serializes a bridge flag for a roaded river crossing only once the tech is researched", () => {
+    const { s, from } = gameWithTwoCities();
+    // Two owned, adjacent road tiles east of the city with a river on their shared edge.
+    const a: [number, number] = [from.col + 2, from.row];
+    const bAx = axialNeighbor(offsetToAxial({ col: a[0], row: a[1] }), 0); // E neighbour
+    const bOff = axialToOffset(bAx);
+    const b: [number, number] = [bOff.col, bOff.row];
+    const d = dirBetween(a, b);
+    for (const [col, row] of [a, b]) {
+      const tile = getTile(s.map, col, row)!;
+      tile.road = true;
+      tile.roadLevel = 1;
+      tile.ownerCityId = from.id;
+      s.players[0]!.explored.add(`${col},${row}`);
+    }
+    getTile(s.map, a[0], a[1])!.river = 1 << d;
+    getTile(s.map, b[0], b[1])!.river = 1 << ((d + 3) % 6);
+
+    const bridgeFlag = () => {
+      const view = viewForPlayer(s, 0);
+      const ta = view.tiles.find((t) => t.col === a[0] && t.row === a[1]);
+      return ta?.bridge ?? false;
+    };
+
+    // No tech → the river is unbridged, so no bridge reaches the client.
+    expect(bridgeFlag()).toBe(false);
+    // Research Bridge Building → the crossing now serializes a bridge for rendering.
+    s.players[0]!.researched.add("bridge_building");
+    expect(bridgeFlag()).toBe(true);
   });
 
   it("uses the weakest road tier along the path", () => {

@@ -396,7 +396,12 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   // Food / growth. Surplus amenities speed growth; a shortfall never slows it
   // below baseline. cityFoodGrowth is the shared sim/UI source of truth.
   const surplus = y.food - city.population;
-  city.foodStored += cityFoodGrowth(state, city, surplus);
+  const foodDelta = cityFoodGrowth(state, city, surplus);
+  // A city readying a settler pauses growth: the food a settler would consume
+  // isn't banked toward a new citizen (a deficit can still starve the city).
+  const buildingSettler =
+    city.production?.kind === "unit" && UNIT_DEFS[city.production.id].founder === true;
+  city.foodStored += buildingSettler && foodDelta > 0 ? 0 : foodDelta;
   if (city.foodStored < 0) {
     if (city.population > 1) {
       city.population -= 1;
@@ -408,7 +413,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       });
     }
     city.foodStored = 0;
-  } else {
+  } else if (!buildingSettler) {
     const need = foodToGrow(city.population);
     if (city.foodStored >= need) {
       city.foodStored -= need;

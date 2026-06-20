@@ -106,14 +106,23 @@ describe("resources & amenities", () => {
     expect(cityAmenities(state, city)).toBe(2);
   });
 
-  it("lacking luxuries is neutral — never a growth penalty", () => {
+  it("an amenity shortfall slows growth (0.85 for a pop-1 city with none)", () => {
     const state = createGame({ seed: "res-happy", cols: 30, rows: 20, barbarians: false });
     const city = foundCapital(state);
-    city.population = 4; // high unhappiness, no luxuries
+    city.population = 1; // unhappiness 1, no luxuries → deficit 1
     city.foodStored = 0;
 
     expect(cityAmenities(state, city)).toBe(0);
-    expect(cityGrowthMultiplier(state, city)).toBe(1);
+    expect(cityGrowthMultiplier(state, city)).toBeCloseTo(0.85);
+  });
+
+  it("a deep amenity shortfall is floored at 0.3", () => {
+    const state = createGame({ seed: "res-floor", cols: 30, rows: 20, barbarians: false });
+    const city = foundCapital(state);
+    city.population = 10; // deficit 10 → 1 - 1.5 = -0.5, floored
+
+    expect(cityAmenities(state, city)).toBe(0);
+    expect(cityGrowthMultiplier(state, city)).toBe(0.3);
   });
 
   it("surplus luxuries reward growth up to the +15% cap", () => {

@@ -141,10 +141,13 @@ function classifyLand(
   if (elevation > 0.38) return "hills";
   if (equatorness < 0.18) return "snow";
   // Wetter/denser stands become true forest (+science); lighter stands are woods.
-  if (equatorness < 0.32) return moisture > 0.5 ? (moisture > 0.7 ? "forest" : "woods") : "tundra";
+  // The forest cutoff splits the wet range near its middle so forest is about as
+  // common as woods (the old 0.7/0.8 cutoffs sat in the noise's rare upper tail,
+  // yielding almost no forest).
+  if (equatorness < 0.32) return moisture > 0.5 ? (moisture > 0.59 ? "forest" : "woods") : "tundra";
   if (equatorness > 0.78) return moisture > 0.45 ? "jungle" : "desert";
   if (moisture < 0.32) return "desert";
-  if (moisture > 0.62) return moisture > 0.8 ? "forest" : "woods";
+  if (moisture > 0.62) return moisture > 0.70 ? "forest" : "woods";
   return equatorness > 0.55 ? "plains" : "grassland";
 }
 

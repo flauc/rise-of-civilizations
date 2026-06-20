@@ -576,7 +576,7 @@ can see (fog enforced in `serialize.ts viewForPlayer`). A unit stays hidden acro
 **breaks cover** (moves, attacks, or is woken via the *wake* command) or is **discovered**.
 
 **Cover (terrain).**
-- Default (ordinary infantry/scouts): **forest only** (not woods, not jungle). Moving **breaks cover**.
+- Default (ordinary infantry/scouts): **forest or jungle** (dense cover — not light *woods*). Moving **breaks cover**.
 - Special uniques hide in more: **Numidian Cavalry** (forest/plains/grassland/desert), **Scythian
   Horse Archer** (forest/plains/grassland), **Sumerian War-Cart** (forest/plains), **Maya Holkan**
   (forest/jungle), **Lusitani Falcata Warrior** (forest/hills/plains). These are the "special units"

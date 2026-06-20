@@ -58,6 +58,33 @@ if (!ctx) throw new Error("2D canvas context unavailable");
 createLobby(startGame);
 
 function startGame(session: Session): void {
+  // Loading veil: the map paints progressively as sprite atlases stream in (and
+  // larger maps like Real World take a moment), so cover the canvas with a themed
+  // spinner until the world is fully rendered rather than showing a half-built map.
+  if (!document.getElementById("game-loading-style")) {
+    const gs = document.createElement("style");
+    gs.id = "game-loading-style";
+    gs.textContent = `
+      #game-loading{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 38%,#1b1812 0%,#0f0e0b 70%);transition:opacity .45s ease}
+      #game-loading.hide{opacity:0;pointer-events:none}
+      #game-loading .gl-box{display:flex;flex-direction:column;align-items:center;gap:18px}
+      #game-loading .gl-spinner{width:46px;height:46px;border-radius:50%;border:4px solid rgba(201,162,39,.22);border-top-color:#c9a227;animation:gl-spin .8s linear infinite}
+      #game-loading .gl-text{font-family:'Cinzel',Georgia,serif;color:#e8dcc5;font-size:16px;letter-spacing:.6px}
+      @keyframes gl-spin{to{transform:rotate(360deg)}}`;
+    document.head.appendChild(gs);
+  }
+  const loadingEl = document.createElement("div");
+  loadingEl.id = "game-loading";
+  loadingEl.innerHTML = `<div class="gl-box"><div class="gl-spinner"></div><div class="gl-text">Preparing the world…</div></div>`;
+  document.body.appendChild(loadingEl);
+  let loadingHidden = false;
+  function hideLoading(): void {
+    if (loadingHidden) return;
+    loadingHidden = true;
+    loadingEl.classList.add("hide");
+    window.setTimeout(() => loadingEl.remove(), 500);
+  }
+
   const camera = new Camera();
   let dpr = 1;
   let cssWidth = 0;
@@ -595,6 +622,26 @@ function startGame(session: Session): void {
     needsRedraw = true;
   });
   ui.setAbilityAtlas(abilityAtlas);
+
+  // The map and overlay draw from these atlases; the loading veil lifts once every
+  // one has finished streaming (loaded or errored) and a full frame has painted.
+  const coreAtlases = [
+    terrainAtlas, coastAtlas, riverAtlas, roadAtlas, unitAtlas, cityAtlas,
+    improvementAtlas, featureAtlas, naturalWonderAtlas, resourceAtlas, abilityAtlas,
+  ];
+  // Lift the veil once every atlas has streamed in — but never wait longer than
+  // this cap, so a slow connection (or a stalled sprite) can't trap the player on
+  // the loading screen. By the cap the map and starting units are painted; the
+  // rest (improvements, abilities) pop in harmlessly. Driven by a timer rather
+  // than the rAF loop, so it still fires if the tab is briefly backgrounded.
+  const loadDeadline = performance.now() + 6000;
+  const readyPoll = window.setInterval(() => {
+    if (coreAtlases.every((a) => a.loaded) || performance.now() >= loadDeadline) {
+      window.clearInterval(readyPoll);
+      needsRedraw = true; // repaint at full quality, then lift the veil
+      hideLoading();
+    }
+  }, 150);
 
   function frame(): void {
     if (needsRedraw && session.hasState()) {

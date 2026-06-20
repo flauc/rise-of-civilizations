@@ -1,8 +1,39 @@
 import { describe, it, expect } from "vitest";
-import { foodToGrow, applyUnitUpkeep, unitUpkeep } from "./economy";
+import { foodToGrow, applyUnitUpkeep, unitUpkeep, processCity } from "./economy";
 import { createGame } from "./setup";
-import { makeUnit, type Player } from "./state";
+import { applyCommand } from "./commands";
+import { citiesOf, makeUnit, unitsOf, type Player } from "./state";
 import { UNIT_DEFS } from "./content";
+
+function foundCapital(state: ReturnType<typeof createGame>) {
+  const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+  applyCommand(state, { type: "foundCity", unitId: settler.id }, 0);
+  return citiesOf(state, 0)[0]!;
+}
+
+describe("settler production pauses growth", () => {
+  it("a city building a settler does not grow even with stored food at the cap", () => {
+    const state = createGame({ seed: "grow-settler", cols: 30, rows: 20, barbarians: false });
+    const player = state.players[0]!;
+    const city = foundCapital(state);
+    city.foodStored = foodToGrow(city.population); // already at the growth threshold
+    city.production = { kind: "unit", id: "settler" };
+
+    processCity(state, city, player);
+    expect(city.population).toBe(1); // settler held growth back
+  });
+
+  it("the same city grows once it is no longer building a settler", () => {
+    const state = createGame({ seed: "grow-settler", cols: 30, rows: 20, barbarians: false });
+    const player = state.players[0]!;
+    const city = foundCapital(state);
+    city.foodStored = foodToGrow(city.population);
+    city.production = { kind: "unit", id: "warrior" };
+
+    processCity(state, city, player);
+    expect(city.population).toBe(2); // non-settler production lets it grow
+  });
+});
 
 describe("foodToGrow", () => {
   it("uses a flatter curve so small cities grow faster", () => {
