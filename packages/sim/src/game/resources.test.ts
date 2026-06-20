@@ -106,14 +106,33 @@ describe("resources & amenities", () => {
     expect(cityAmenities(state, city)).toBe(2);
   });
 
-  it("unhappiness reduces growth when amenities are low", () => {
+  it("lacking luxuries is neutral — never a growth penalty", () => {
     const state = createGame({ seed: "res-happy", cols: 30, rows: 20, barbarians: false });
     const city = foundCapital(state);
-    city.population = 4; // high unhappiness
+    city.population = 4; // high unhappiness, no luxuries
     city.foodStored = 0;
 
     expect(cityAmenities(state, city)).toBe(0);
-    expect(cityGrowthMultiplier(state, city)).toBeLessThan(1);
+    expect(cityGrowthMultiplier(state, city)).toBe(1);
+  });
+
+  it("surplus luxuries reward growth up to the +15% cap", () => {
+    const state = createGame({ seed: "res-lux", cols: 30, rows: 20, barbarians: false });
+    const city = foundCapital(state);
+    city.population = 1; // unhappiness 1
+
+    // Two distinct luxuries owned → 2 amenities, surplus of 1 over unhappiness.
+    const wine = getTile(state.map, city.col + 1, city.row)!;
+    wine.resource = "wine";
+    wine.improvement = "plantation";
+    wine.ownerCityId = city.id;
+    const silk = getTile(state.map, city.col - 1, city.row)!;
+    silk.resource = "silk";
+    silk.improvement = "plantation";
+    silk.ownerCityId = city.id;
+
+    expect(cityAmenities(state, city)).toBe(2);
+    expect(cityGrowthMultiplier(state, city)).toBeCloseTo(1.15);
   });
 
   it("placeResources is deterministic for the same seed", () => {

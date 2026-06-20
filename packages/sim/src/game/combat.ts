@@ -1,4 +1,4 @@
-import { axialDistance, axialNeighbor, axialToOffset, getTile, offsetToAxial, type TerrainType } from "@roc/shared";
+import { axialDistance, getTile, offsetToAxial, type TerrainType } from "@roc/shared";
 import type { City, GameState, Player, Unit } from "./state";
 import { cityAt, log, playerById, unitAt, areEnemies } from "./state";
 import {
@@ -15,7 +15,7 @@ import { structureDefense, towerBombard } from "./fortifications";
 import { civCombatBonus } from "./civs";
 import { applyVictoryCheck } from "./victory";
 import { emitCityLost, emitUnitDied } from "./turn-updates";
-import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile } from "./movement";
+import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween } from "./movement";
 import { playerEffects } from "./civs";
 
 /** Maximum HP for a unit, increasing by 5% per level above 1 plus promotion bonuses. */
@@ -43,23 +43,6 @@ function isOpen(t: TerrainType): boolean {
 
 function has(unit: Unit, p: PromotionId): boolean {
   return unit.promotions.includes(p);
-}
-
-/** True if a river runs along the edge between two adjacent tiles — i.e. the
- *  attacker would have to assault across the watercourse. */
-function riverBetween(state: GameState, fromCol: number, fromRow: number, toCol: number, toRow: number): boolean {
-  const from = getTile(state.map, fromCol, fromRow);
-  const to = getTile(state.map, toCol, toRow);
-  if (!from && !to) return false;
-  const ax = offsetToAxial({ col: fromCol, row: fromRow });
-  for (let d = 0; d < 6; d++) {
-    const n = axialToOffset(axialNeighbor(ax, d));
-    if (n.col === toCol && n.row === toRow) {
-      const opp = (d + 3) % 6;
-      return ((from?.river ?? 0) & (1 << d)) !== 0 || ((to?.river ?? 0) & (1 << opp)) !== 0;
-    }
-  }
-  return false;
 }
 
 /** Damage one combatant deals to another given effective strengths. */

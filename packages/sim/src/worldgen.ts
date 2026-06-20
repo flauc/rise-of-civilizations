@@ -29,8 +29,11 @@ function classifyLand(
   moisture: number,
   equatorness: number,
 ): TerrainType {
-  if (elevation > 0.82) return "mountains";
-  if (elevation > 0.7) return "hills";
+  // The fractal value-noise clusters near 0.5, so these thresholds are tuned to
+  // that distribution to yield a visible amount of high ground (~3% mountains,
+  // ~10% hills of all land) rather than the near-zero the old 0.7/0.82 gave.
+  if (elevation > 0.52) return "mountains";
+  if (elevation > 0.38) return "hills";
   if (equatorness < 0.18) return "snow";
   // Wetter/denser stands become true forest (+science); lighter stands are woods.
   if (equatorness < 0.32) return moisture > 0.5 ? (moisture > 0.7 ? "forest" : "woods") : "tundra";

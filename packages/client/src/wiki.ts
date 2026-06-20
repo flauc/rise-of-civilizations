@@ -224,8 +224,20 @@ function renderTerrain(): string {
   return (
     section(
       "Terrain",
-      `<p>Tiles provide yields when worked and modify movement and combat. Forests, jungles and hills are rough ground that slows attackers and aids defenders.</p>` +
+      `<p>Tiles provide yields when worked and modify movement and combat. Forests, woods, jungles, hills and mesas are rough ground that slows attackers and aids defenders.</p>` +
+        `<p><b>Woods vs. Forest:</b> both are tree-covered and rough, but a true <b>Forest</b> is the denser, knowledge-rich woodland and yields an extra <b>+1 science</b> over open <b>Woods</b>.</p>` +
+        `<p><b>Water bodies:</b> <b>Lakes</b> are calm inland fresh water, <b>Coasts</b> are the shallow seas that ring the land, and <b>Oceans</b> are the deep open sea (crossable only once Astronomy is researched).</p>` +
         `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Terrain</th><th>Yields</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+    ) +
+    section(
+      "Rivers &amp; Fresh Water",
+      `<p>Rivers thread across the land as an overlay on top of whatever terrain they cross. Any tile a river runs through gains <b>+1 food</b>, and a <b>river lake</b> (where a river springs or pools) adds a further <b>+1 science</b>.</p>` +
+        `<ul>` +
+        `<li><b>Defense:</b> a unit attacking across a river fights at <b>-25%</b> strength.</li>` +
+        `<li><b>Movement:</b> crossing a river costs <b>+1 movement</b>, just like entering rough terrain.</li>` +
+        `<li><b>Farms:</b> a river tile can only be farmed once <b>Irrigation</b> has been researched.</li>` +
+        `<li><b>Trade:</b> after <b>Sailing</b>, your rivers become navigable trade arteries — caravans follow them in preference to roads and a river-connected route earns the same gold bonus as the best grade of road.</li>` +
+        `</ul>`,
     ) +
     section(
       "Improvements",
@@ -242,7 +254,7 @@ function renderCombat(): string {
     ) +
     section(
       "Rough & Open Terrain",
-      `<p>Defenders on Hills, Forest or Jungle gain a combat bonus and cost extra movement to enter. Open terrain is faster to cross but offers no defensive bonus.</p>`,
+      `<p>Defenders on Hills, Forest, Woods, Jungle or Mesa gain a combat bonus and cost extra movement to enter. Open terrain is faster to cross but offers no defensive bonus. Attacking across a river costs the attacker 25% of its strength and an extra movement point to ford.</p>`,
     ) +
     section(
       "Ranged Units",

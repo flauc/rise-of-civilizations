@@ -44,6 +44,10 @@ import {
   cityDefenseStrength,
   cityMaxHp,
   foodToGrow,
+  cityFoodGrowth,
+  cityGrowthMultiplier,
+  cityAmenities,
+  cityUnhappiness,
   unitMaxHp,
   unitUpkeep,
   getCiv,
@@ -162,6 +166,7 @@ function tileReport(state: GameState, tile: Tile): TileReport {
   if (tile.river) {
     lines.push({ kind: "good", text: tile.riverLake ? "River lake — fresh water (+1 food, +1 science)" : "River — fresh water (+1 food)" });
     lines.push({ kind: "good", text: "Attackers assaulting across the river fight at -25%" });
+    lines.push({ kind: "bad", text: "Crossing the river costs +1 movement" });
   }
   if (tile.resource) {
     const rdef = RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS];
@@ -2046,8 +2051,23 @@ export function createUI(handlers: UIHandlers): UI {
       : 0;
     const foodPct = Math.min(100, (city.foodStored / need) * 100);
 
-    const surplus = y.food - city.population * 2;
+    // Each citizen eats 1 food. The food actually banked per turn (perTurn) can
+    // differ from the raw surplus once the amenity growth multiplier applies, so
+    // we read both from the sim's shared helpers to stay in lock-step with it.
+    const surplus = y.food - city.population;
+    const perTurn = cityFoodGrowth(state, city, surplus);
     const surplusStr = surplus >= 0 ? `+${surplus}` : `${surplus}`;
+    const growthMult = cityGrowthMultiplier(state, city);
+    const turnsToGrow = perTurn > 0 ? Math.ceil((need - city.foodStored) / perTurn) : Infinity;
+    // Amenity standing: surplus luxuries speed growth, a shortfall is neutral.
+    const amenities = cityAmenities(state, city);
+    const unhappiness = cityUnhappiness(city);
+    const luxuryBadge =
+      growthMult > 1
+        ? ` <span title="Surplus luxuries (${amenities} amenities vs ${unhappiness} unhappiness) speed growth" style="color:#7fd17f">🍷 +${Math.round((growthMult - 1) * 100)}% growth</span>`
+        : amenities < unhappiness
+          ? ` <span title="${unhappiness - amenities} more amenities would start boosting growth" style="color:#9fc0dc">😐 no luxury bonus</span>`
+          : "";
 
     // Specialists: train/release craftsmen from this city's population.
     const free = workerSlots(city);
@@ -2102,7 +2122,12 @@ export function createUI(handlers: UIHandlers): UI {
       specHtml +
       worksHtml +
       // growth
-      `<div style="margin-top:6px">Growth ${Math.floor(city.foodStored)}/${need}<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
+      `<div style="margin-top:6px">Growth ${Math.floor(city.foodStored)}/${need} ` +
+      (perTurn > 0
+        ? `<span style="color:#9fc0dc">(+${perTurn}/turn · ${turnsToGrow} ${turnsToGrow === 1 ? "turn" : "turns"})</span>`
+        : `<span style="color:#d98a8a">(stalled)</span>`) +
+      luxuryBadge +
+      `<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
       // production
       `<div style="margin-top:6px">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>` +
       `<button class="btn primary" id="open-prod" style="width:100%;margin-top:6px">Choose Production ▸ <span style="color:#cfe3f7;font-weight:400">(${options.length})</span></button>` +

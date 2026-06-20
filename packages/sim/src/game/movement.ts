@@ -197,7 +197,9 @@ export function computeReachable(
       if (city && city.ownerId !== unit.ownerId) continue;
       if (!isWaterDomain(unit) && enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
       if (borderBlocked(n.col, n.row)) continue; // foreign territory needs war / open borders
-      const enterCost = unitMoveCost(state, unit, tile.terrain, tile.road ?? false);
+      let enterCost = unitMoveCost(state, unit, tile.terrain, tile.road ?? false);
+      // Fording a river costs an extra movement point (like entering rough terrain).
+      if (!isWaterDomain(unit) && riverBetween(state, cur.col, cur.row, n.col, n.row)) enterCost += 1;
       const step = curCost + enterCost;
       if (step <= budget && step < (best.get(nk) ?? Infinity)) {
         best.set(nk, step);

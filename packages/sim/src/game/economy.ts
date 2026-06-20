@@ -277,6 +277,23 @@ export function foodToGrow(population: number): number {
   return 8 + 3 * (population - 1);
 }
 
+/** Raw food surplus a city banks each turn before the growth multiplier:
+ *  total food yield minus 1 per citizen. Negative when the city is starving. */
+export function cityFoodSurplus(state: GameState, city: City): number {
+  return getCityYields(state, city).food - city.population;
+}
+
+/**
+ * Net food actually added to (or drained from) a city's store this turn. A
+ * positive surplus is scaled by the amenity growth multiplier but always nets at
+ * least +1 so a fed city never stalls; a deficit drains at the raw rate. This is
+ * the single source of truth shared by the sim and the UI's growth read-out.
+ */
+export function cityFoodGrowth(state: GameState, city: City, surplus = cityFoodSurplus(state, city)): number {
+  if (surplus <= 0) return surplus;
+  return Math.max(1, Math.floor(surplus * cityGrowthMultiplier(state, city)));
+}
+
 const keyOf = (t: { col: number; row: number }) => `${t.col},${t.row}`;
 
 /** A per-city scorer ranking a tile by how profitable it is to work — using the
@@ -376,10 +393,10 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   autoAssignCitizens(state, city);
   const y = getCityYields(state, city);
 
-  // Food / growth (happiness can reduce surplus growth but not increase it).
+  // Food / growth. Surplus amenities speed growth; a shortfall never slows it
+  // below baseline. cityFoodGrowth is the shared sim/UI source of truth.
   const surplus = y.food - city.population;
-  const growthMult = cityGrowthMultiplier(state, city);
-  city.foodStored += surplus > 0 ? Math.floor(surplus * growthMult) : surplus;
+  city.foodStored += cityFoodGrowth(state, city, surplus);
   if (city.foodStored < 0) {
     if (city.population > 1) {
       city.population -= 1;
