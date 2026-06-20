@@ -8,9 +8,11 @@
 //   - coast -> hexOceanCalm (gentle shallow coastal sea)
 //   - ocean -> hexOcean     (deep choppy open sea with whitecaps)
 //
-// Terrains with no good match in the pack (snow, jungle, mesa, volcano) are left
-// untouched so their existing art is kept. Tundra keeps its existing base tile
-// (tundra.png) and gains the marsh tiles as extra variants (see APPEND below).
+// The tropical jungle band (jungle/wetlands/bog) is painted from the Tropics &
+// Wetlands pack, and the polar band (snow/tundra/taiga) from the Cold Lands pack,
+// so each frozen or steamy region reads as a mix of distinct, differently-yielding
+// tiles. Terrains with no good match in any pack (mesa, volcano) are left untouched
+// so their existing art is kept.
 //
 // Run from the repo root:  node tools/sync-terrain-tiles.mjs
 
@@ -21,6 +23,8 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const BASIC = join(root, "assets/purchased/Hex Terrain Basic 1.3.0/Hex Terrain Basic 1.3.0/Tiles");
 const SEAS = join(root, "assets/purchased/Hex Rivers Coasts Seas 1.0.1/Hex Rivers Coasts Seas 1.0.1/Tiles");
+const TROPICS = join(root, "assets/purchased/Hex Tropics Wetlands 1.1.0/Hex Tropics Wetlands 1.1.0/Tiles");
+const COLD = join(root, "assets/purchased/Hex Cold Lands 1.1/Hex Cold Lands 1.1/Tiles");
 const OUT = join(root, "packages/client/public/hex-terrain");
 
 // game terrain -> ordered list of [sourceDir, tilePrefix]; each prefix has 00–03.
@@ -35,13 +39,19 @@ const MAP = {
   ocean: [[BASIC, "hexOcean"]],
   coast: [[SEAS, "hexOceanCalm"]],
   lake: [[SEAS, "hexLake"]],
+  // Tropical band — distinct wet biomes.
+  jungle: [[TROPICS, "hexJungle"]], // dense biodiverse jungle (food/prod/science)
+  wetlands: [[TROPICS, "hexWetlands"], [TROPICS, "hexSwamp"]], // fertile flooded marsh (food)
+  bog: [[TROPICS, "hexBog"]], // murky peat bog (faith)
+  // Polar band — distinct frozen biomes.
+  snow: [[COLD, "hexSnowField"]], // barren ice sheet (0 yield)
+  tundra: [[COLD, "hexPlainsColdSnowCovered"], [COLD, "hexPlainsColdSnowTransition"]], // frozen steppe (food/science)
+  taiga: [[COLD, "hexForestPineSnowCovered"], [COLD, "hexForestPineSnowTransition"]], // snowy boreal forest (production)
 };
 
 // Terrains that KEEP their existing base tile and only gain extra variants from
 // the pack (copied as `<terrain>_1.png`…). The base `<terrain>.png` is untouched.
-const APPEND = {
-  tundra: [[BASIC, "hexMarsh"]], // marshy wetland variety on top of the existing tundra art
-};
+const APPEND = {};
 
 mkdirSync(OUT, { recursive: true });
 

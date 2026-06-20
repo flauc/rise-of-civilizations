@@ -1,7 +1,7 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City, Player, Unit } from "./state";
 import { cityAt, log, makeUnit, unitAt, unitsOf } from "./state";
-import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, type Yields } from "./terrain";
+import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, isForestTerrain, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
 import { naturalWonderYields, naturalWonderCulture } from "./natural-wonders";
@@ -78,10 +78,10 @@ function isFreshWaterTile(state: GameState, col: number, row: number): boolean {
   return false;
 }
 
-/** True if the tile is forest or jungle. */
+/** True if the tile carries tree cover (forest/woods/jungle/taiga). */
 function isForestTile(state: GameState, col: number, row: number): boolean {
   const tile = getTile(state.map, col, row);
-  return !!tile && (tile.terrain === "forest" || tile.terrain === "woods" || tile.terrain === "jungle");
+  return !!tile && isForestTerrain(tile.terrain);
 }
 
 /** True if the tile is a hill or mesa. */

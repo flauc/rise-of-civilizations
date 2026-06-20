@@ -139,13 +139,28 @@ function classifyLand(
   // ~10% hills of all land) rather than the near-zero the old 0.7/0.82 gave.
   if (elevation > 0.52) return "mountains";
   if (elevation > 0.38) return "hills";
-  if (equatorness < 0.18) return "snow";
+  // Polar band: a frozen mix rather than a uniform ice sheet. Drier ground stays
+  // barren snow (0 yield); a moderately moist belt is frozen tundra steppe; the
+  // wettest pockets grow snowy boreal taiga (production).
+  if (equatorness < 0.18) {
+    if (moisture < 0.4) return "snow";
+    if (moisture > 0.62) return "taiga";
+    return "tundra";
+  }
   // Wetter/denser stands become true forest (+science); lighter stands are woods.
   // The forest cutoff splits the wet range near its middle so forest is about as
   // common as woods (the old 0.7/0.8 cutoffs sat in the noise's rare upper tail,
   // yielding almost no forest).
   if (equatorness < 0.32) return moisture > 0.5 ? (moisture > 0.59 ? "forest" : "woods") : "tundra";
-  if (equatorness > 0.78) return moisture > 0.45 ? "jungle" : "desert";
+  // Equatorial band: a wet gradient instead of uniform jungle. Dry edges are
+  // desert; the moist belt is dense jungle; wetter lowland is fertile wetlands
+  // (food); the soggiest extremes turn to poor peat bog.
+  if (equatorness > 0.78) {
+    if (moisture < 0.45) return "desert";
+    if (moisture < 0.62) return "jungle";
+    if (moisture < 0.78) return "wetlands";
+    return "bog";
+  }
   if (moisture < 0.32) return "desert";
   if (moisture > 0.62) return moisture > 0.70 ? "forest" : "woods";
   return equatorness > 0.55 ? "plains" : "grassland";

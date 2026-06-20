@@ -10,10 +10,13 @@ export type TerrainType =
   | "grassland"
   | "desert"
   | "tundra"
+  | "taiga"
   | "snow"
   | "forest"
   | "woods"
   | "jungle"
+  | "wetlands"
+  | "bog"
   | "hills"
   | "mountains"
   | "mesa"
@@ -27,10 +30,13 @@ export const TERRAIN_TYPES: readonly TerrainType[] = [
   "grassland",
   "desert",
   "tundra",
+  "taiga",
   "snow",
   "forest",
   "woods",
   "jungle",
+  "wetlands",
+  "bog",
   "hills",
   "mountains",
   "mesa",

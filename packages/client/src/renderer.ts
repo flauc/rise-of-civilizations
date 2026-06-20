@@ -255,7 +255,49 @@ function landNeighborMask(map: GameMap, col: number, row: number): number {
 }
 
 const UNEXPLORED_FILL = "#0a1624";
-const FOG_OVERLAY = "rgba(8,16,26,0.5)";
+// Opaque fog colour painted into the offscreen mask; the whole mask is then
+// composited over the scene at FOG_ALPHA so overlapping shapes never stack into
+// darker seams. (Same hue/strength as the old "rgba(8,16,26,0.5)" overlay.)
+const FOG_SOLID = "rgb(8,16,26)";
+const FOG_ALPHA = 0.5;
+
+// A fog "silhouette" is the terrain sprite recoloured to a flat fog colour, so a
+// fogged tile's tall art (mountains, forests) is covered all the way to its peak
+// rather than only inside the flat hex. Cached per source image (built once).
+const fogSilhouetteCache = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
+function fogSilhouette(img: HTMLImageElement): HTMLCanvasElement {
+  let c = fogSilhouetteCache.get(img);
+  if (!c) {
+    c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const cx = c.getContext("2d")!;
+    cx.drawImage(img, 0, 0);
+    cx.globalCompositeOperation = "source-in"; // keep only the sprite's alpha shape
+    cx.fillStyle = FOG_SOLID;
+    cx.fillRect(0, 0, c.width, c.height);
+    fogSilhouetteCache.set(img, c);
+  }
+  return c;
+}
+
+// Reused full-screen scratch buffer for the fog mask (sized to the canvas).
+let fogLayerCanvas: HTMLCanvasElement | null = null;
+let fogLayerCtx: CanvasRenderingContext2D | null = null;
+function getFogLayer(w: number, h: number): {
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+} {
+  if (!fogLayerCanvas) {
+    fogLayerCanvas = document.createElement("canvas");
+    fogLayerCtx = fogLayerCanvas.getContext("2d");
+  }
+  if (fogLayerCanvas.width !== w || fogLayerCanvas.height !== h) {
+    fogLayerCanvas.width = w;
+    fogLayerCanvas.height = h;
+  }
+  return { canvas: fogLayerCanvas, ctx: fogLayerCtx! };
+}
 
 /** Draw a 256x384 hex overlay (coast/river/mouth) aligned to a tile's footprint,
  *  anchoring the square footprint's bottom so the top 128px overhangs upward. */
@@ -441,6 +483,12 @@ export function drawScene(
   // road network, centred on that edge's midpoint.
   const bridgeDraws: { img: HTMLImageElement; mx: number; my: number }[] = [];
 
+  // Fog is painted in a dedicated pass AFTER all terrain (below), so it covers
+  // overhanging sprites and the seams where neighbouring tiles overlap. Here we
+  // just record which tiles need fog and the sprite drawn on each.
+  const fogDraws: { img: HTMLImageElement | undefined; sx: number; sy: number }[] = [];
+  const unexploredDraws: { sx: number; sy: number }[] = [];
+
   for (const t of map.tiles) {
     const c = tileCenterWorld(t.col, t.row);
     const sx = camera.worldToScreenX(c.x);
@@ -464,9 +512,8 @@ export function drawScene(
     }
     ctx.closePath();
     if (!explored) {
-      ctx.fillStyle = UNEXPLORED_FILL;
-      ctx.fill();
-      continue; // hide terrain entirely
+      unexploredDraws.push({ sx, sy }); // hidden under an opaque fill in the fog pass
+      continue; // skip terrain entirely
     }
     const variants = opts.terrainAtlas?.images[t.terrain];
     let img =
@@ -517,8 +564,9 @@ export function drawScene(
     }
 
     if (!visible) {
-      ctx.fillStyle = FOG_OVERLAY;
-      ctx.fill();
+      // Defer the fog veil to the post-terrain pass; remember the sprite so the
+      // veil can follow its silhouette (covering peaks above the flat hex).
+      fogDraws.push({ img, sx, sy });
     }
 
     // Tile improvements & roads (only worth drawing when reasonably zoomed in).
@@ -593,6 +641,54 @@ export function drawScene(
   // Bridges last, so they sit on top of the road network at each river crossing.
   for (const b of bridgeDraws) {
     drawFootprintOverlay(ctx, b.img, b.mx, b.my, footprint);
+  }
+
+  // ---- Fog of war -------------------------------------------------------
+  // Painted after everything else so it covers tall overhanging sprites and the
+  // overlaps between neighbouring tiles. Unexplored tiles are hidden under an
+  // opaque fill; explored-but-unseen tiles are veiled by a single half-strength
+  // mask (built opaque offscreen, then composited once) that hugs each sprite.
+  const traceHex = (c: CanvasRenderingContext2D, sx: number, sy: number): void => {
+    c.beginPath();
+    c.moveTo(sx + corners[0]!.x, sy + corners[0]!.y);
+    for (let i = 1; i < 6; i++) c.lineTo(sx + corners[i]!.x, sy + corners[i]!.y);
+    c.closePath();
+  };
+
+  if (unexploredDraws.length > 0) {
+    ctx.fillStyle = UNEXPLORED_FILL;
+    for (const u of unexploredDraws) {
+      traceHex(ctx, u.sx, u.sy);
+      ctx.fill();
+    }
+  }
+
+  if (fogDraws.length > 0) {
+    const layer = getFogLayer(ctx.canvas.width, ctx.canvas.height);
+    const fc = layer.ctx;
+    fc.setTransform(1, 0, 0, 1, 0, 0);
+    fc.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+    fc.setTransform(dpr, 0, 0, dpr, 0, 0);
+    fc.fillStyle = FOG_SOLID;
+    for (const f of fogDraws) {
+      // Hex floor: covers water, flat terrain and tiles whose sprite isn't ready.
+      traceHex(fc, f.sx, f.sy);
+      fc.fill();
+      // Sprite silhouette: covers tall art up to its peak (matches the main draw).
+      if (f.img && isImageReady(f.img)) {
+        const sil = fogSilhouette(f.img);
+        const scale = footprint / sil.width;
+        const drawW = sil.width * scale; // == footprint
+        const drawH = sil.height * scale;
+        fc.drawImage(sil, f.sx - drawW / 2, f.sy + footprint / 2 - drawH, drawW, drawH);
+      }
+    }
+    // Composite the opaque mask once at half strength: a uniform veil, no seams.
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = FOG_ALPHA;
+    ctx.drawImage(layer.canvas, 0, 0);
+    ctx.restore();
   }
 
   // Hover highlight on top.

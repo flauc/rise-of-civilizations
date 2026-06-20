@@ -22,6 +22,7 @@ import {
   serializeState,
   uniqueUnitForCiv,
   type ActiveAbilityId,
+  type GameState,
 } from "@roc/sim";
 import { getTile } from "@roc/shared";
 import { Camera } from "./camera";
@@ -103,12 +104,24 @@ function startGame(session: Session): void {
   let incursion = new Map<string, number>(); // foreign peace tiles -> owner id
   let cityWorkable = new Set<string>();
   let visible = new Set<string>();
+  let liftFog = false; // God Mode: render the whole map with no fog
   let gameOverShown = false;
   let hoverOdds: CombatOdds | null = null;
   let idleCycle = 0;
   let mpSaves: SaveRecord[] = [];
 
   const st = () => session.getState();
+
+  // Every tile key, cached per map — used to reveal the whole board in God Mode.
+  let allKeysCache: { tiles: GameState["map"]["tiles"]; keys: Set<string> } | null = null;
+  function allTileKeys(state: GameState): Set<string> {
+    if (allKeysCache?.tiles === state.map.tiles) return allKeysCache.keys;
+    const keys = new Set<string>();
+    for (const t of state.map.tiles) keys.add(`${t.col},${t.row}`);
+    allKeysCache = { tiles: state.map.tiles, keys };
+    return keys;
+  }
+
   function recomputeOverlays(): void {
     const u = selectedUnitId != null ? st().units.get(selectedUnitId) : undefined;
     if (!u || u.ownerId !== session.getViewerId()) {
@@ -375,6 +388,10 @@ function startGame(session: Session): void {
     onCheat: (action) => {
       const res = session.cheat?.(action);
       if (res && !res.ok) ui.banner(res.error ?? "Cheat failed");
+    },
+    onToggleLiftFog: (enabled) => {
+      liftFog = enabled;
+      needsRedraw = true;
     },
     onTurnUpdateLocate: (tile) => {
       centerOn(tile.col, tile.row);
@@ -647,12 +664,16 @@ function startGame(session: Session): void {
     if (needsRedraw && session.hasState()) {
       needsRedraw = false;
       const me = session.getViewerId();
-      const explored = st().players.find((p) => p.id === me)?.explored ?? new Set<string>();
+      // God Mode "Lift Fog": reveal the entire map (local single-player only —
+      // the online session is server-filtered and never holds hidden state).
+      const allKeys = liftFog ? allTileKeys(st()) : null;
+      const explored = allKeys ?? st().players.find((p) => p.id === me)?.explored ?? new Set<string>();
+      const drawVisible = allKeys ?? visible;
       drawScene(ctx!, st(), camera, {
         dpr,
         cssWidth,
         cssHeight,
-        fog: { visible, explored },
+        fog: liftFog ? undefined : { visible: drawVisible, explored },
         terrainAtlas,
         coastAtlas,
         riverAtlas,
@@ -664,7 +685,7 @@ function startGame(session: Session): void {
       const selCity = selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null;
       drawOverlay(ctx!, camera, st(), {
         viewingPlayerId: me,
-        visible,
+        visible: drawVisible,
         explored,
         selectedUnitId,
         selectedCityId,
@@ -691,6 +712,7 @@ function startGame(session: Session): void {
         suggestion: computeSuggestion(),
         mpSaves,
         cheatsEnabled: !session.isOnline,
+        liftFog,
       });
     }
     requestAnimationFrame(frame);

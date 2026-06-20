@@ -62,12 +62,12 @@ const DEFENSE_BASE: Record<DefenseKind, number> = { wall: 4, tower: 5 };
 
 export const ECON_TERRAIN: Record<EconKind, ReadonlySet<string> | null> = {
   farm: new Set(["grassland", "plains"]),
-  lumber_camp: new Set(["forest", "woods", "jungle"]),
+  lumber_camp: new Set(["forest", "woods", "jungle", "taiga"]),
   mine: new Set(["hills", "desert", "mesa"]),
   quarry: new Set(["hills", "desert", "mesa"]),
   pasture: new Set(["grassland", "plains", "tundra", "hills", "desert"]),
-  plantation: new Set(["grassland", "plains", "hills", "forest", "woods", "jungle", "desert"]),
-  camp: new Set(["forest", "woods", "jungle", "tundra"]),
+  plantation: new Set(["grassland", "plains", "hills", "forest", "woods", "jungle", "wetlands", "desert"]),
+  camp: new Set(["forest", "woods", "jungle", "taiga", "tundra"]),
   fishing_boats: new Set(["coast", "lake", "ocean"]),
   road: null, // any passable land
 };

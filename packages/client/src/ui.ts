@@ -223,6 +223,8 @@ export interface UIView {
   mpSaves?: SaveRecord[];
   /** True when the local session supports God Mode cheats. */
   cheatsEnabled?: boolean;
+  /** True while God Mode's "Lift Fog of War" reveal is active. */
+  liftFog?: boolean;
 }
 
 export interface UIHandlers {
@@ -266,6 +268,8 @@ export interface UIHandlers {
   onMenuOpen(): void;
   onLoadMpSave(blob: string): Promise<void>;
   onCheat(action: CheatAction): void;
+  /** Toggle God Mode's render-only "Lift Fog of War" reveal. */
+  onToggleLiftFog(enabled: boolean): void;
   onTurnUpdateLocate(tile: { col: number; row: number }): void;
   onTurnUpdateOpenProduction(cityId: number): void;
   onTurnUpdateOpenResearch(): void;
@@ -1943,6 +1947,8 @@ export function createUI(handlers: UIHandlers): UI {
       `<button class="btn" data-cheat="completeWorks">Complete All Works</button>` +
       `<button class="btn" data-cheat="healUnits">Heal All Units</button>` +
       `<button class="btn" data-cheat="revealMap">Reveal Map</button>` +
+      `<button class="btn" id="god-liftfog"${view.liftFog ? ` style="background:#2f5a2f;border-color:#4a8a4a"` : ""}>` +
+      `Lift Fog of War: ${view.liftFog ? "On" : "Off"}</button>` +
       `<button class="btn" data-cheat="addGold" data-amount="100">+100 Gold</button>`;
 
     if (tileOk) {
@@ -1971,6 +1977,9 @@ export function createUI(handlers: UIHandlers): UI {
     godPanel.querySelector<HTMLButtonElement>("#god-close")!.addEventListener("click", () => {
       godModeOpen = false;
       renderGodMode(view);
+    });
+    godPanel.querySelector<HTMLButtonElement>("#god-liftfog")?.addEventListener("click", () => {
+      handlers.onToggleLiftFog(!view.liftFog);
     });
     godPanel.querySelectorAll<HTMLButtonElement>("[data-cheat]").forEach((el) => {
       el.addEventListener("click", () => {

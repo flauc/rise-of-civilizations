@@ -230,8 +230,9 @@ function renderTerrain(): string {
   return (
     section(
       "Terrain",
-      `<p>Tiles provide yields when worked and modify movement and combat. Forests, woods, jungles, hills and mesas are rough ground that slows attackers and aids defenders.</p>` +
+      `<p>Tiles provide yields when worked and modify movement and combat. Forests, woods, jungle, taiga, hills, mesas and the soggy wetlands and bogs are all rough ground that slows attackers; tree cover and high ground also aid defenders (open marsh does not).</p>` +
         `<p><b>Woods vs. Forest:</b> both are tree-covered and rough, but a true <b>Forest</b> is the denser, knowledge-rich woodland and yields an extra <b>+1 science</b> over open <b>Woods</b>.</p>` +
+        `<p><b>Cold &amp; tropical biomes:</b> the poles spread from barren <b>Snow</b> (no yield) through frozen <b>Tundra</b> steppe (food + science) to snowy <b>Taiga</b> pine forest (production); the tropics range from dense <b>Jungle</b> through fertile <b>Wetlands</b> (food) to poor <b>Bog</b> (a trickle of faith).</p>` +
         `<p><b>Water bodies:</b> <b>Lakes</b> are calm inland fresh water, <b>Coasts</b> are the shallow seas that ring the land, and <b>Oceans</b> are the deep open sea (crossable only once Astronomy is researched).</p>` +
         `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Terrain</th><th>Yields</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table></div>`,
     ) +
@@ -260,7 +261,7 @@ function renderCombat(): string {
     ) +
     section(
       "Rough & Open Terrain",
-      `<p>Defenders on Hills, Forest, Woods, Jungle or Mesa gain a combat bonus and cost extra movement to enter. Open terrain is faster to cross but offers no defensive bonus. Attacking across a river costs the attacker 25% of its strength and an extra movement point to ford.</p>`,
+      `<p>Defenders on Hills, Forest, Woods, Jungle, Taiga or Mesa gain a combat bonus, and all rough ground (those plus Wetlands and Bog) costs extra movement to enter. Open terrain — including the soggy marshes, which give no cover — is no help to a defender. Attacking across a river costs the attacker 25% of its strength and an extra movement point to ford.</p>`,
     ) +
     section(
       "Ranged Units",

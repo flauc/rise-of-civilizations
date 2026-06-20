@@ -10,7 +10,7 @@ import {
   type ActiveAbilityId,
   type PromotionId,
 } from "./content";
-import { isRough, terrainDefense, isWaterTerrain } from "./terrain";
+import { isRough, terrainDefense, isWaterTerrain, isForestTerrain } from "./terrain";
 import { structureDefense, towerBombard } from "./fortifications";
 import { civCombatBonus, uniqueUnitForUnit } from "./civs";
 import { applyVictoryCheck } from "./victory";
@@ -108,7 +108,7 @@ function attackStrength(
   if (!ranged && has(unit, "drill") && isRough(targetTerrain)) s += 3;
   if (ranged && has(unit, "accuracy") && isOpen(targetTerrain)) s += 3;
   if (ranged && has(unit, "barrage") && isRough(targetTerrain)) s += 3;
-  if (has(unit, "woodland_warrior") && (targetTerrain === "forest" || targetTerrain === "woods" || targetTerrain === "jungle")) s += 3;
+  if (has(unit, "woodland_warrior") && isForestTerrain(targetTerrain)) s += 3;
   if (has(unit, "guerrilla") && isRough(targetTerrain)) s += 3;
   if (has(unit, "amphibious") && (targetTerrain === "coast" || targetTerrain === "lake")) s += 3;
 

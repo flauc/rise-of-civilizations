@@ -8,7 +8,7 @@ import {
   type GameMap,
   type Offset,
 } from "@roc/shared";
-import { moveCost, isPassableLand, isNavalPassable, navalMoveCost, isWaterTerrain, type TerrainType } from "./terrain";
+import { moveCost, isPassableLand, isNavalPassable, navalMoveCost, isWaterTerrain, isForestTerrain, isRough, type TerrainType } from "./terrain";
 import type { GameState, Unit } from "./state";
 import { cityAt, areEnemies, playerById } from "./state";
 import { UNIT_DEFS, type UnitDef, type TechId } from "./content";
@@ -60,10 +60,10 @@ export function isCoastalLand(state: GameState, col: number, row: number): boole
   return false;
 }
 
-/** True if the tile is forest or jungle. */
+/** True if the tile carries tree cover (forest/woods/jungle/taiga). */
 export function isForestTile(state: GameState, col: number, row: number): boolean {
   const tile = getTile(state.map, col, row);
-  return !!tile && (tile.terrain === "forest" || tile.terrain === "woods" || tile.terrain === "jungle");
+  return !!tile && isForestTerrain(tile.terrain);
 }
 
 /** True if a river runs along the edge between two adjacent tiles — crossing it
@@ -119,13 +119,13 @@ export function unitMoveCost(state: GameState, unit: Unit, terrain: TerrainType,
   const eff = playerEffects(state, unit.ownerId);
   if (road && (unit.promotions.includes("pathfinder") || unit.promotions.includes("commando"))) return 0;
   if (terrain === "hills" && unit.promotions.includes("pathfinder")) return 1;
-  if ((terrain === "forest" || terrain === "woods" || terrain === "jungle") &&
+  if (isForestTerrain(terrain) &&
     (unit.promotions.includes("woodland_warrior") || unit.promotions.includes("trailblazer") || unit.promotions.includes("guerrilla"))) {
     return 1;
   }
   if (road) return 1;
   // Leader-ability movement overrides.
-  if (eff.ignoreRoughTerrain && (terrain === "forest" || terrain === "woods" || terrain === "jungle" || terrain === "hills" || terrain === "mesa")) return 1;
+  if (eff.ignoreRoughTerrain && isRough(terrain)) return 1;
   if (eff.ignoreMountainMovement && terrain === "mountains") return 1;
   return moveCost(terrain);
 }
