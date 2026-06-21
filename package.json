@@ -20,7 +20,8 @@
     "generate-leaders": "bun run tools/art-generator/generate.ts --subset leaders",
     "generate-great-people": "bun run tools/art-generator/generate.ts --subset great-people",
     "generate-legends": "bun run tools/art-generator/generate.ts --subset legends",
-    "generate-legend-units": "bun run tools/art-generator/generate.ts --subset legend-units"
+    "generate-legend-units": "bun run tools/art-generator/generate.ts --subset legend-units",
+    "generate-unique-infra": "bun run tools/art-generator/generate.ts --subset unique-infra"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

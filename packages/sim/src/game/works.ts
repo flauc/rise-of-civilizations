@@ -6,7 +6,7 @@
 // cities. See docs/SPECIALISTS-AND-WORKS.md.
 
 import { axialDistance, getTile, offsetToAxial, type Tile } from "@roc/shared";
-import { getWonder, WONDER_DEFS } from "@roc/data";
+import { getWonder, WONDER_DEFS, UNIQUE_IMPROVEMENTS, type UniqueInfraDef } from "@roc/data";
 import type { City, Discipline, GameState, Specialist, Work } from "./state";
 import { citiesOf, cityAt, log, playerById } from "./state";
 import { isPassableLand } from "./terrain";
@@ -88,6 +88,18 @@ export function isEconKind(kind: string): kind is EconKind {
   return kind in ECON_BASE;
 }
 
+// ---- civ-unique tile improvements (single-tier, owner-civ only) ------------
+const UNIQUE_IMP_BASE = 5; // labour, scaled by distance
+const UNIQUE_IMP_BY_KIND = new Map<string, UniqueInfraDef>(UNIQUE_IMPROVEMENTS.map((u) => [u.id, u]));
+
+/** Whether a kind string is a civ-unique tile improvement (kind === its infra id). */
+export function isUniqueImpKind(kind: string): boolean {
+  return UNIQUE_IMP_BY_KIND.has(kind);
+}
+function uniqueImpDef(kind: string): UniqueInfraDef | undefined {
+  return UNIQUE_IMP_BY_KIND.get(kind);
+}
+
 /** Discipline required for an economic work kind. */
 export function workDiscipline(kind: EconKind): Discipline {
   return ECON_DISCIPLINE[kind];
@@ -98,6 +110,7 @@ export function isDefenseKind(kind: string): kind is DefenseKind {
 
 /** Human-readable name of a work kind at a tier. */
 export function workName(kind: string, tier: number): string {
+  if (isUniqueImpKind(kind)) return uniqueImpDef(kind)!.name;
   const i = Math.min(MAX_TIER, Math.max(1, tier)) - 1;
   if (isEconKind(kind)) return ECON_NAMES[kind][i]!;
   if (isDefenseKind(kind)) return DEFENSE_NAMES[kind][i]!;
@@ -158,6 +171,13 @@ export function nextTierAt(tile: Tile, kind: string): number | null {
     const cur = tile.structure && tile.structure.kind === kind ? tile.structure.tier : 0;
     return cur < MAX_TIER ? cur + 1 : null;
   }
+  if (isUniqueImpKind(kind)) {
+    const def = uniqueImpDef(kind)!;
+    if (tile.structure) return null;
+    if (def.terrain && !def.terrain.includes(tile.terrain)) return null;
+    if (tile.improvement && tile.improvement !== kind) return null;
+    return tile.improvement === kind ? null : 1; // single tier
+  }
   return null;
 }
 
@@ -181,6 +201,10 @@ export function workLabourFor(
     // Defensive works need both a Mason and a Military Engineer.
     return { masonry: Math.ceil(base), engineering: Math.ceil(base) };
   }
+  if (isUniqueImpKind(kind)) {
+    const disc = uniqueImpDef(kind)!.discipline ?? "carpentry";
+    return { [disc]: Math.ceil(UNIQUE_IMP_BASE * tier * distMult) };
+  }
   return {};
 }
 
@@ -194,6 +218,7 @@ function tileOwnedBy(state: GameState, tile: Tile, playerId: number): boolean {
 export function workDisciplines(kind: string): Discipline[] {
   if (isEconKind(kind)) return [ECON_DISCIPLINE[kind]];
   if (isDefenseKind(kind)) return ["masonry", "engineering"];
+  if (isUniqueImpKind(kind)) return [uniqueImpDef(kind)!.discipline ?? "carpentry"];
   return [];
 }
 
@@ -244,10 +269,17 @@ function nearestCapableCity(
 
 /** Validate a tile/defensive work without mutating (drives the build UI). */
 export function canStartWork(state: GameState, playerId: number, kind: string, col: number, row: number): WorkResult {
-  if (!isEconKind(kind) && !isDefenseKind(kind)) return { ok: false, error: "unknown work" };
+  if (!isEconKind(kind) && !isDefenseKind(kind) && !isUniqueImpKind(kind)) return { ok: false, error: "unknown work" };
   const tile = getTile(state.map, col, row);
   if (!tile) return { ok: false, error: "no such tile" };
   if (!tileOwnedBy(state, tile, playerId)) return { ok: false, error: "tile not in your territory" };
+  // A civ's unique improvement can only be built by that civ, once its tech is known.
+  if (isUniqueImpKind(kind)) {
+    const p = playerById(state, playerId);
+    const def = uniqueImpDef(kind)!;
+    if (p?.civId !== def.civId) return { ok: false, error: "not your civilization's unique improvement" };
+    if (!(p.researched as ReadonlySet<string>).has(def.reqTech)) return { ok: false, error: `requires ${def.reqTech}` };
+  }
   if (state.works.some((w) => w.ownerId === playerId && w.target && w.target.col === col && w.target.row === row)) {
     return { ok: false, error: "this tile is already being worked" };
   }
@@ -464,7 +496,7 @@ function completeWork(state: GameState, w: Work): void {
   if (w.kind === "road") {
     tile.road = true;
     tile.roadLevel = tier;
-  } else if (isEconKind(w.kind)) {
+  } else if (isEconKind(w.kind) || isUniqueImpKind(w.kind)) {
     tile.improvement = w.kind;
     tile.improvementLevel = tier;
   } else if (isDefenseKind(w.kind)) {

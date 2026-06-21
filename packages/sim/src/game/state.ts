@@ -58,7 +58,8 @@ export interface Unit {
 
 export type ProductionItem =
   | { kind: "unit"; id: UnitTypeId }
-  | { kind: "building"; id: BuildingId };
+  // id is a BuildingId or a civ-unique building id (see UNIQUE_INFRA in @roc/data).
+  | { kind: "building"; id: string };
 
 /** A craft a specialist practises; Works require labour of specific disciplines. */
 export type Discipline = "carpentry" | "survey" | "masonry" | "architecture" | "engineering";
@@ -84,7 +85,8 @@ export interface City {
   foodStored: number;
   productionStored: number;
   production: ProductionItem | null;
-  buildings: BuildingId[];
+  /** Built building ids — BuildingId values plus any civ-unique building id. */
+  buildings: string[];
   /** Craftsmen trained from this city's population. */
   specialists: Specialist[];
   /** Wonder ids completed and hosted in this city. */

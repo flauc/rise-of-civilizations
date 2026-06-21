@@ -56,6 +56,8 @@ import {
   getCityYields,
   territorySize,
   BUILDING_DEFS,
+  getBuildingDef,
+  uniqueImprovementForCiv,
   IMPROVEMENT_DEFS,
   PROMOTION_DEFS,
   TECH_DEFS,
@@ -348,11 +350,11 @@ function downloadJson(filename: string, json: string): void {
 }
 
 function prodCost(item: ProductionItem): number {
-  return item.kind === "unit" ? UNIT_DEFS[item.id].cost : BUILDING_DEFS[item.id].cost;
+  return item.kind === "unit" ? UNIT_DEFS[item.id].cost : getBuildingDef(item.id)?.cost ?? 0;
 }
 
 function prodName(item: ProductionItem): string {
-  return item.kind === "unit" ? UNIT_DEFS[item.id].name : BUILDING_DEFS[item.id].name;
+  return item.kind === "unit" ? UNIT_DEFS[item.id].name : getBuildingDef(item.id)?.name ?? item.id;
 }
 
 export function createUI(handlers: UIHandlers): UI {
@@ -2336,7 +2338,11 @@ export function createUI(handlers: UIHandlers): UI {
         `<button class="btn" id="work-cancel" data-work-id="${existing.id}" style="margin-top:6px">Cancel</button>`;
     } else if (ownsTile) {
       let needHint = "";
-      const btns = WORK_KINDS.map((k) => {
+      // Offer the viewer civ's unique tile improvement alongside the base works.
+      const vplayer = state.players.find((p) => p.id === viewerId);
+      const uimp = uniqueImprovementForCiv(vplayer?.civId);
+      const kinds = uimp ? [...WORK_KINDS, uimp.id] : WORK_KINDS;
+      const btns = kinds.map((k) => {
         const tier = nextTierAt(tile, k);
         if (tier === null) return "";
         const verb = tier > 1 ? "Upgrade → " : "";
@@ -2640,7 +2646,7 @@ export function createUI(handlers: UIHandlers): UI {
         return `<div style="margin-top:6px;color:#9fc0dc;font-size:12px">🐪 Trade routes (${routes.length}): ${names} — +${totalGold}🪙</div>`;
       })() +
       (city.buildings.length
-        ? `<div style="margin-top:6px;color:#9fc0dc;font-size:12px">Built: ${city.buildings.map((b) => BUILDING_DEFS[b].name).join(", ")}</div>`
+        ? `<div style="margin-top:6px;color:#9fc0dc;font-size:12px">Built: ${city.buildings.map((b) => getBuildingDef(b)?.name ?? b).join(", ")}</div>`
         : "");
 
     cityPanel

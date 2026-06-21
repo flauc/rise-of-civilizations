@@ -37,7 +37,7 @@ import {
   type LegendType,
 } from "@roc/data";
 import type { TerrainType, Unit } from "@roc/sim";
-import { uniqueUnitBlockHtml, wireUuDetail, wireUuImages } from "./unique-unit";
+import { uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, wireUuDetail, wireUuImages } from "./unique-unit";
 
 export type WikiCategory =
   | "civilizations"
@@ -89,6 +89,7 @@ const WIKI_CIV_STYLE = `<style>
 .wiki-civ-portrait img{width:100%;height:100%;object-fit:cover;object-position:50% 22%;display:block}
 .wiki-civ-body{padding:12px 14px;display:flex;flex-direction:column;gap:2px}
 .wiki-civ-body .uu-block{margin-top:10px}
+.wiki-civ-body .la-block{margin-top:10px}
 </style>`;
 
 function renderCivilizations(): string {
@@ -102,8 +103,9 @@ function renderCivilizations(): string {
       `<div class="wiki-card-sub">Leader: <b>${escapeHtml(c.leader)}</b></div>` +
       `<div class="wiki-card-quote">${escapeHtml(c.leaderQuote || "")}</div>` +
       `<div class="wiki-card-body"><b>${escapeHtml(c.abilityName)}</b> — ${escapeHtml(c.abilityDesc)}</div>` +
+      leaderAbilityBlockHtml(c.id) +
       uniqueUnitBlockHtml(c.id) +
-      `<div class="wiki-card-meta">Unique Infrastructure: <b>${escapeHtml(c.uniqueInfra)}</b></div>` +
+      uniqueInfraBlockHtml(c.id) +
       `</div></div>`
     );
   }).join("");

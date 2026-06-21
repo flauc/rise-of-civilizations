@@ -69,7 +69,7 @@ export function cityGreatPersonPoints(city: City): Partial<Record<GreatPersonCla
     out[cls] = (out[cls] ?? 0) + n;
   };
   for (const b of city.buildings) {
-    const src = BUILDING_GP_POINTS[b];
+    const src = BUILDING_GP_POINTS[b as keyof typeof BUILDING_GP_POINTS];
     if (!src) continue;
     for (const cls of Object.keys(src) as GreatPersonClass[]) add(cls, src[cls]!);
   }

@@ -12,6 +12,10 @@ import {
   ACTIVE_ABILITY_DEFS,
   unitActiveAbilityIds,
   isRanged,
+  getLeaderAbilityForCiv,
+  leaderAbilityUnlockLabel,
+  uniqueInfraForCiv,
+  TECH_DEFS,
   type UnitTypeId,
   type UnitAbility,
   type ActiveAbilityId,
@@ -69,6 +73,50 @@ export function uniqueUnitBlockHtml(civId: string): string {
       </div>
       <div class="uu-hint">View abilities</div>
     </button>`;
+}
+
+/**
+ * The civ's active **Leader Ability**: a powerful, cooldown-gated action (distinct
+ * from the always-on Civ Ability shown above it). Surfaces the name, an accurate
+ * effect summary, its tech/civic unlock, and cooldown so the picker conveys what
+ * actually makes each civ play differently. Returns "" if the civ has none.
+ */
+export function leaderAbilityBlockHtml(civId: string): string {
+  const la = getLeaderAbilityForCiv(civId);
+  if (!la) return "";
+  return (
+    `<div class="la-block">` +
+    `<div class="la-top"><span class="la-glyph" aria-hidden="true">✦</span>` +
+    `<div class="la-info"><div class="la-name">${escapeHtml(la.name)}</div>` +
+    `<div class="la-tag">Leader ability · active</div></div></div>` +
+    `<div class="la-desc">${escapeHtml(la.desc)}</div>` +
+    `<div class="la-foot">Unlocks with <b>${escapeHtml(leaderAbilityUnlockLabel(la))}</b> · ${la.cooldown}-turn cooldown</div>` +
+    `</div>`
+  );
+}
+
+/**
+ * The civ's unique infrastructure — a real EXTRA building or tile improvement
+ * (see UNIQUE_INFRA in @roc/data), not a flavor string. Shows its art, whether it
+ * is a building or improvement, an effect summary, and its tech unlock. Reuses the
+ * `.uu-*` block styling; the sprite hides gracefully (wireUuImages) when missing.
+ */
+export function uniqueInfraBlockHtml(civId: string): string {
+  const inf = uniqueInfraForCiv(civId);
+  if (!inf) return "";
+  const dir = inf.kind === "building" ? "buildings" : "improvements";
+  const src = `${ASSET_BASE_URL}${dir}/${inf.id}.png`;
+  const tech = TECH_DEFS[inf.reqTech as keyof typeof TECH_DEFS]?.name ?? inf.reqTech;
+  const kindLabel = inf.kind === "building" ? "Unique building" : "Unique tile improvement";
+  return (
+    `<div class="uu-block">` +
+    `<div class="uu-top">` +
+    `<div class="uu-icon"><img class="js-uu-img" src="${src}" alt="" /></div>` +
+    `<div class="uu-info"><div class="uu-name">${escapeHtml(inf.name)}</div>` +
+    `<div class="uu-meta">${kindLabel} · unlocks with ${escapeHtml(tech)}</div></div></div>` +
+    `<div class="uu-meta" style="margin-top:7px">${escapeHtml(inf.desc)}</div>` +
+    `</div>`
+  );
 }
 
 const ABILITY_KIND_LABEL: Record<string, string> = { stance: "Stance", targeted: "Targeted", self: "Self" };

@@ -6,7 +6,7 @@ import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
 import { naturalWonderYields, naturalWonderCulture } from "./natural-wonders";
 import { expandTerritory } from "./territory";
-import { getWonder, type CivEffects } from "@roc/data";
+import { getWonder, uniqueBuildingForCiv, type CivEffects } from "@roc/data";
 import { civEffectsOf, cityEffects, getCivic, uniqueUnitForCiv } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
@@ -25,6 +25,7 @@ import {
   TECH_DEFS,
   UNIT_DEFS,
   advanceResearchQueue,
+  getBuildingDef,
   type TechId,
 } from "./content";
 
@@ -179,9 +180,10 @@ export function getCityYields(state: GameState, city: City): CityYields {
   // Specialists give a small flat craft upkeep to their city between/while at work.
   production += Math.floor(city.specialists.length * 0.25);
 
-  // Buildings.
+  // Buildings (generic + civ-unique).
   for (const b of city.buildings) {
-    const def = BUILDING_DEFS[b];
+    const def = getBuildingDef(b);
+    if (!def) continue;
     food += def.yields.food ?? 0;
     production += def.yields.production ?? 0;
     gold += def.yields.gold ?? 0;
@@ -447,7 +449,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
     const cost =
       city.production.kind === "unit"
         ? UNIT_DEFS[city.production.id].cost
-        : BUILDING_DEFS[city.production.id].cost;
+        : getBuildingDef(city.production.id)?.cost ?? Infinity;
     if (city.productionStored >= cost) {
       city.productionStored -= cost;
       if (city.production.kind === "unit") {
@@ -475,17 +477,17 @@ export function processCity(state: GameState, city: City, owner: Player): void {
           city.row,
         );
       } else {
-        const bdef = BUILDING_DEFS[city.production.id];
+        const bdef = getBuildingDef(city.production.id);
         if (!city.buildings.includes(city.production.id)) {
           city.buildings.push(city.production.id);
         }
-        if (bdef.reqResource) {
+        if (bdef?.reqResource) {
           owner.resources[bdef.reqResource.resource] = Math.max(
             0,
             (owner.resources[bdef.reqResource.resource] ?? 0) - bdef.reqResource.count,
           );
         }
-        log(state, `${city.name} built a ${bdef.name}.`, {
+        log(state, `${city.name} built a ${bdef?.name ?? city.production.id}.`, {
           actorId: city.ownerId,
           targetIds: [city.ownerId],
           tile: { col: city.col, row: city.row },
@@ -496,7 +498,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
           city.id,
           city.name,
           city.production,
-          bdef.name,
+          bdef?.name ?? city.production.id,
           city.col,
           city.row,
         );
@@ -616,6 +618,12 @@ export function availableProduction(state: GameState, player: Player, city: City
       name: def.name,
       cost: def.cost,
     });
+  }
+  // The civ's unique building (an extra building, offered only to this civ once
+  // its tech is known and it hasn't already been built here).
+  const ub = uniqueBuildingForCiv(player.civId);
+  if (ub && player.researched.has(ub.reqTech as TechId) && !city.buildings.includes(ub.id)) {
+    out.push({ item: { kind: "building", id: ub.id }, name: ub.name, cost: ub.cost });
   }
   return out;
 }

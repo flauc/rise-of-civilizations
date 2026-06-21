@@ -4,6 +4,8 @@
 // Units are numerous and role-rich: many are available from the start, others
 // are unlocked by specific technologies.
 
+import { UNIQUE_INFRA_BUILDINGS } from "@roc/data";
+
 export type UnitTypeId =
   // civilian
   | "settler" | "trader"
@@ -541,8 +543,31 @@ export function unitInfo(type: UnitTypeId): UnitInfo {
   return { role: ROLE[d.cls], stats: stats.join(" · "), note: notes.join(" · ") };
 }
 
-export function buildingInfo(id: BuildingId): string {
-  const d = BUILDING_DEFS[id];
+/**
+ * Synthesized building defs for civ-unique buildings (see UNIQUE_INFRA in
+ * @roc/data). They behave like normal buildings — flat host-city yields and a
+ * production cost — but are only offered to the owning civ (see availableProduction)
+ * and additionally carry empire-wide CivEffects merged in playerEffects.
+ */
+const UNIQUE_BUILDING_DEFS: Record<string, BuildingDef> = {};
+for (const u of UNIQUE_INFRA_BUILDINGS) {
+  UNIQUE_BUILDING_DEFS[u.id] = {
+    id: u.id as BuildingId,
+    name: u.name,
+    cost: u.cost,
+    reqTech: u.reqTech as TechId,
+    yields: u.yields,
+  };
+}
+
+/** Resolve a building id to its def, honoring civ-unique buildings. */
+export function getBuildingDef(id: string): BuildingDef | undefined {
+  return BUILDING_DEFS[id as BuildingId] ?? UNIQUE_BUILDING_DEFS[id];
+}
+
+export function buildingInfo(id: string): string {
+  const d = getBuildingDef(id);
+  if (!d) return "—";
   const y = d.yields;
   const parts: string[] = [];
   if (y.food) parts.push(`+${y.food} 🍞`);

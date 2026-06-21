@@ -1,4 +1,24 @@
 import type { Yields } from "./terrain";
+import { UNIQUE_IMPROVEMENTS } from "@roc/data";
+
+// Civ-unique tile improvements (see UNIQUE_INFRA in @roc/data). Single-tier: their
+// worked yields are the same regardless of level. Keyed by the improvement id,
+// which is also the tile.improvement kind string the Works system stamps.
+const UNIQUE_IMP_YIELDS: Record<string, Yields> = {};
+for (const u of UNIQUE_IMPROVEMENTS) {
+  UNIQUE_IMP_YIELDS[u.id] = {
+    food: u.yields.food ?? 0,
+    production: u.yields.production ?? 0,
+    gold: u.yields.gold ?? 0,
+    science: u.yields.science ?? 0,
+    faith: u.yields.faith ?? 0,
+  };
+}
+
+/** Whether a kind string is a civ-unique tile improvement. */
+export function isUniqueImprovementKind(kind: string): boolean {
+  return kind in UNIQUE_IMP_YIELDS;
+}
 
 // Tile improvements now come in three tiers, built by city specialists via Works
 // (see works.ts). This module holds their per-tier yields; the unit-driven build
@@ -69,6 +89,8 @@ const ZERO: Yields = { food: 0, production: 0, gold: 0, science: 0, faith: 0 };
 /** Worked-yield bonus a tile's improvement contributes, given its kind + tier. */
 export function improvementYields(kind: string | undefined, level = 1): Yields {
   if (!kind) return ZERO;
+  const uniq = UNIQUE_IMP_YIELDS[kind];
+  if (uniq) return uniq; // civ-unique improvement (single tier)
   const def = IMPROVEMENT_DEFS[kind as ImprovementKind];
   if (!def) return ZERO;
   const tier = def.tiers[Math.min(3, Math.max(1, level)) - 1] ?? {};

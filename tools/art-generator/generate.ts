@@ -32,6 +32,7 @@ import {
   TERRAIN_SUBSET,
   UNIT_SUBSET,
   UNIQUE_UNIT_SUBSET,
+  UNIQUE_INFRA_SUBSET,
   BUILDING_SUBSET,
   CITY_SUBSET,
   IMPROVEMENT_SUBSET,
@@ -96,6 +97,7 @@ Usage:
   bun run tools/art-generator/generate.ts --subset terrain
   bun run tools/art-generator/generate.ts --subset units
   bun run tools/art-generator/generate.ts --subset buildings
+  bun run tools/art-generator/generate.ts --subset unique-infra
   bun run tools/art-generator/generate.ts --subset improvements
   bun run tools/art-generator/generate.ts --subset leaders
   bun run tools/art-generator/generate.ts --subset dirt-roads
@@ -313,6 +315,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
         else if (name === "units") entries.push(...UNIT_SUBSET);
         else if (name === "unique-units") entries.push(...UNIQUE_UNIT_SUBSET);
+        else if (name === "unique-infra") entries.push(...UNIQUE_INFRA_SUBSET);
         else if (name === "buildings") entries.push(...BUILDING_SUBSET);
         else if (name === "improvements") entries.push(...IMPROVEMENT_SUBSET);
         else if (name === "cities") entries.push(...CITY_SUBSET);

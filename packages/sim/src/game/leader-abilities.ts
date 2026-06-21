@@ -5,7 +5,7 @@ import { getTile } from "@roc/shared";
 import type { GameState, Player, City } from "./state";
 import { citiesOf, log, makeUnit, unitAt, unitsOf } from "./state";
 import { offsetNeighbors, isCoastalLand } from "./movement";
-import { UNIT_DEFS, type TechId, type UnitTypeId } from "./content";
+import { UNIT_DEFS, TECH_DEFS, type TechId, type UnitTypeId } from "./content";
 import { getCivic } from "./civs";
 import {
   startingUnitMorale,
@@ -24,6 +24,9 @@ export interface LeaderAbilityResult {
 export interface LeaderAbilityDef {
   id: string;
   name: string;
+  /** Player-facing summary of the active ability's effect (benefit + cost),
+   *  kept in step with `use`. Surfaced in the civ picker and wiki. */
+  desc: string;
   unlock: { kind: "tech"; id: TechId } | { kind: "civic"; id: string };
   cooldown: number;
   use: (state: GameState, player: Player) => LeaderAbilityResult;
@@ -205,6 +208,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   sumer: {
     id: "sumer",
     name: "City of Uruk Levy",
+    desc: "Spawn 2 War-Carts by the capital. Costs 2 capital population and 100 gold.",
     unlock: { kind: "tech", id: "the_wheel" },
     cooldown: 15,
     use: (state, player) => {
@@ -221,6 +225,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   akkad: {
     id: "akkad",
     name: "Sons of Sargon Mobilization",
+    desc: "All cities +25% production for 10 turns, but −5% food.",
     unlock: { kind: "tech", id: "bronze_alloying" },
     cooldown: 20,
     use: (state, player) => {
@@ -233,6 +238,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   babylon: {
     id: "babylon",
     name: "Code of Laws",
+    desc: "Instantly finish your current civic and gain Great Statesman progress; −20% science for 5 turns.",
     unlock: { kind: "tech", id: "writing" },
     cooldown: 25,
     use: (state, player) => {
@@ -246,6 +252,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   assyria: {
     id: "assyria",
     name: "Library of Nineveh",
+    desc: "Steal a random technology from a rival you're at war with; −10% culture for 5 turns.",
     unlock: { kind: "tech", id: "iron_bloomery" },
     cooldown: 25,
     use: (state, player) => {
@@ -258,6 +265,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   hittites: {
     id: "hittites",
     name: "Iron of Hatti",
+    desc: "Mines give +2 production for 10 turns, but −1 food each.",
     unlock: { kind: "tech", id: "iron_bloomery" },
     cooldown: 20,
     use: (state, player) => {
@@ -269,6 +277,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   elam: {
     id: "elam",
     name: "Chogha Zanbil Devotion",
+    desc: "Capital +50% Wonder production and +10% faith for 10 turns; other cities −20% production.",
     unlock: { kind: "tech", id: "masonry" },
     cooldown: 25,
     use: (state, player) => {
@@ -282,6 +291,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   phoenicia: {
     id: "phoenicia",
     name: "Colonial Expedition",
+    desc: "Gain a free Settler and naval units +1 movement for 10 turns. Costs 2 capital population.",
     unlock: { kind: "tech", id: "sailing" },
     cooldown: 25,
     use: (state, player) => {
@@ -297,6 +307,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   lydia: {
     id: "lydia",
     name: "Debase the Stater",
+    desc: "Instantly gain 300 gold; −15% gold in all cities for 10 turns.",
     unlock: { kind: "tech", id: "coinage" },
     cooldown: 20,
     use: (state, player) => {
@@ -311,6 +322,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   median_empire: {
     id: "median_empire",
     name: "Horse Lords' Levy",
+    desc: "Spawn 2 Median Lancers by the capital. Costs 2 population and 3 horses.",
     unlock: { kind: "tech", id: "equestrian" },
     cooldown: 20,
     use: (state, player) => {
@@ -327,6 +339,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   persia: {
     id: "persia",
     name: "Satrapal Tribute",
+    desc: "Instantly gain 200 gold; −15% production for 5 turns.",
     unlock: { kind: "civic", id: "statecraft" },
     cooldown: 25,
     use: (state, player) => {
@@ -339,6 +352,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   parthia: {
     id: "parthia",
     name: "Parthian Shot",
+    desc: "Cavalry +3 combat strength and +1 movement for 10 turns; melee −2 strength.",
     unlock: { kind: "tech", id: "equestrian" },
     cooldown: 20,
     use: (state, player) => {
@@ -351,6 +365,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   sassanid_persia: {
     id: "sassanid_persia",
     name: "Eranshahr Renovation",
+    desc: "All cities +25% culture and +5% food for 10 turns; −20% gold.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 25,
     use: (state, player) => {
@@ -365,6 +380,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   egypt: {
     id: "egypt",
     name: "Monumental Building Spree",
+    desc: "All cities +25% Wonder production for 10 turns. Costs up to 4 population.",
     unlock: { kind: "tech", id: "masonry" },
     cooldown: 25,
     use: (state, player) => {
@@ -377,6 +393,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   kush_nubia: {
     id: "kush_nubia",
     name: "City of the Dead Rush",
+    desc: "Desert cities +3 production and +2 faith for 10 turns; non-desert cities −10% food.",
     unlock: { kind: "tech", id: "masonry" },
     cooldown: 20,
     use: (state, player) => {
@@ -389,6 +406,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   carthage: {
     id: "carthage",
     name: "Alpine Crossing",
+    desc: "Land units ignore rough terrain and +1 movement for 5 turns, but take 5 damage per turn.",
     unlock: { kind: "tech", id: "engineering" },
     cooldown: 20,
     use: (state, player) => {
@@ -401,6 +419,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   aksum: {
     id: "aksum",
     name: "Red Sea Trade Mission",
+    desc: "Trade routes +5 gold and +2 faith for 10 turns; −15% gold in all cities.",
     unlock: { kind: "tech", id: "coinage" },
     cooldown: 25,
     use: (state, player) => {
@@ -413,6 +432,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   ethiopia_zagwe: {
     id: "ethiopia_zagwe",
     name: "Rock-Hewn Pilgrimage",
+    desc: "Gain 50 faith and all cities +10% faith for 10 turns; −15% production.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 20,
     use: (state, player) => {
@@ -426,6 +446,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   mali: {
     id: "mali",
     name: "Hajj to Mecca",
+    desc: "Gain 500 gold and +10% faith for 10 turns; −30% production and lose 1 population per city.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 30,
     use: (state, player) => {
@@ -440,6 +461,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   ghana_empire: {
     id: "ghana_empire",
     name: "Gold of Wagadu",
+    desc: "Instantly gain 300 gold; lose 100 science progress and −10% science for 10 turns.",
     unlock: { kind: "tech", id: "coinage" },
     cooldown: 20,
     use: (state, player) => {
@@ -453,6 +475,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   songhai: {
     id: "songhai",
     name: "Timbuktu Scholarship",
+    desc: "Gain 100 science, +25% science and Great Scientist progress for 5 turns; −30% gold.",
     unlock: { kind: "tech", id: "philosophy" },
     cooldown: 25,
     use: (state, player) => {
@@ -467,6 +490,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   great_zimbabwe: {
     id: "great_zimbabwe",
     name: "Cattle Drive",
+    desc: "Pastures +2 gold and +1 food for 10 turns; −5% food in all cities.",
     unlock: { kind: "tech", id: "coinage" },
     cooldown: 20,
     use: (state, player) => {
@@ -479,6 +503,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   kanem_bornu: {
     id: "kanem_bornu",
     name: "Trans-Saharan Caravan",
+    desc: "Gain 250 gold and +1 trade-route capacity for 10 turns; land units −1 movement.",
     unlock: { kind: "civic", id: "trade_routes" },
     cooldown: 25,
     use: (state, player) => {
@@ -494,6 +519,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   minoans: {
     id: "minoans",
     name: "Thalassocratic Fleet",
+    desc: "Spawn 2 Biremes in coastal cities and naval +1 movement for 10 turns. Costs 2 capital population.",
     unlock: { kind: "tech", id: "sailing" },
     cooldown: 20,
     use: (state, player) => {
@@ -510,6 +536,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   mycenaean_greece: {
     id: "mycenaean_greece",
     name: "Heroic Muster",
+    desc: "Spawn 2 Spearmen and melee +2 strength for 10 turns. Costs 4 population.",
     unlock: { kind: "tech", id: "bronze_alloying" },
     cooldown: 20,
     use: (state, player) => {
@@ -525,6 +552,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   greece: {
     id: "greece",
     name: "Delian League Tribute",
+    desc: "Gain 200 gold and +10% culture for 10 turns; −10% science.",
     unlock: { kind: "civic", id: "political_philosophy" },
     cooldown: 25,
     use: (state, player) => {
@@ -538,6 +566,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   sparta: {
     id: "sparta",
     name: "Agoge Mobilization",
+    desc: "All cities +10% production, melee +2 strength and +25 unit morale for 10 turns. Costs up to 3 population.",
     unlock: { kind: "tech", id: "iron_bloomery" },
     cooldown: 25,
     use: (state, player) => {
@@ -552,6 +581,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   macedon: {
     id: "macedon",
     name: "Hellenistic Campaign",
+    desc: "All units +1 movement and +3 combat strength for 10 turns; −20% gold and −20% science.",
     unlock: { kind: "civic", id: "statecraft" },
     cooldown: 25,
     use: (state, player) => {
@@ -564,6 +594,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   etruscans: {
     id: "etruscans",
     name: "Twelve Cities Congress",
+    desc: "Gain 50 gold and +1 trade-route capacity for 10 turns; −10% production for 5 turns.",
     unlock: { kind: "tech", id: "coinage" },
     cooldown: 20,
     use: (state, player) => {
@@ -577,6 +608,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   rome: {
     id: "rome",
     name: "Citizen Levy",
+    desc: "Spawn 3 Legionaries by the capital. Costs 6 population.",
     unlock: { kind: "tech", id: "iron_bloomery" },
     cooldown: 15,
     use: (state, player) => {
@@ -592,6 +624,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   celts_gauls: {
     id: "celts_gauls",
     name: "Druidic Uprising",
+    desc: "Forests +2 faith and units in forest +3 strength for 10 turns; −20% science.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 20,
     use: (state, player) => {
@@ -604,6 +637,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   byzantium: {
     id: "byzantium",
     name: "Corpus Juris Civilis",
+    desc: "Instantly finish your current civic; +10% culture for 10 turns and −15% production for 5 turns.",
     unlock: { kind: "civic", id: "political_philosophy" },
     cooldown: 25,
     use: (state, player) => {
@@ -617,6 +651,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   norse: {
     id: "norse",
     name: "Viking Raid",
+    desc: "Naval +2 movement, +50% coastal-raid gold and warships +2 strength for 10 turns; −10% production.",
     unlock: { kind: "tech", id: "sailing" },
     cooldown: 20,
     use: (state, player) => {
@@ -629,6 +664,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   franks: {
     id: "franks",
     name: "Carolingian Renaissance",
+    desc: "All cities +25% culture and +10% faith for 10 turns; −20% gold.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 25,
     use: (state, player) => {
@@ -641,6 +677,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   goths: {
     id: "goths",
     name: "Foederati Recruitment",
+    desc: "Spawn 2 Gothic Riders and gain 1 capital population. Costs 150 gold.",
     unlock: { kind: "civic", id: "statecraft" },
     cooldown: 20,
     use: (state, player) => {
@@ -657,6 +694,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   anglo_saxon_england: {
     id: "anglo_saxon_england",
     name: "Fyrd Levy",
+    desc: "Spawn 4 Spearmen by the capital; −20% production for 5 turns.",
     unlock: { kind: "civic", id: "statecraft" },
     cooldown: 20,
     use: (state, player) => {
@@ -672,6 +710,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   france: {
     id: "france",
     name: "Divine Mandate",
+    desc: "All units +3 combat strength, +20 empire and +30 unit morale for 10 turns; −15% culture.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 25,
     use: (state, player) => {
@@ -689,6 +728,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   castile_spain: {
     id: "castile_spain",
     name: "Reconquista",
+    desc: "Melee +4 strength versus cities for 10 turns; −10% culture.",
     unlock: { kind: "civic", id: "political_philosophy" },
     cooldown: 20,
     use: (state, player) => {
@@ -701,6 +741,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   portugal: {
     id: "portugal",
     name: "Age of Exploration",
+    desc: "Naval +2 movement and coastal cities +3 gold for 10 turns; land units −1 movement.",
     unlock: { kind: "tech", id: "astronomy" },
     cooldown: 25,
     use: (state, player) => {
@@ -713,6 +754,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   venice: {
     id: "venice",
     name: "Arsenale Rush",
+    desc: "Spawn 3 Galleys in coastal cities; −25% gold for 5 turns.",
     unlock: { kind: "tech", id: "shipbuilding" },
     cooldown: 20,
     use: (state, player) => {
@@ -725,6 +767,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   genoa: {
     id: "genoa",
     name: "Bank of San Giorgio",
+    desc: "Instantly gain 400 gold; −10% production in all cities for 10 turns.",
     unlock: { kind: "tech", id: "coinage" },
     cooldown: 20,
     use: (state, player) => {
@@ -737,6 +780,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   dutch_republic: {
     id: "dutch_republic",
     name: "Polder Reclamation",
+    desc: "Coastal cities +2 population and +3 food for 10 turns; −15% production for 5 turns.",
     unlock: { kind: "tech", id: "engineering" },
     cooldown: 25,
     use: (state, player) => {
@@ -753,6 +797,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   holy_roman_empire: {
     id: "holy_roman_empire",
     name: "Imperial Diet",
+    desc: "All cities +20% production and +2 production from hills for 10 turns; −10% culture.",
     unlock: { kind: "civic", id: "statecraft" },
     cooldown: 25,
     use: (state, player) => {
@@ -766,6 +811,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   kievan_rus: {
     id: "kievan_rus",
     name: "Kievan Baptism",
+    desc: "Gain 100 faith and +25% culture for 10 turns; all units −2 combat strength.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 20,
     use: (state, player) => {
@@ -779,6 +825,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   poland_lithuania: {
     id: "poland_lithuania",
     name: "Golden Liberty",
+    desc: "All cities +10% production and +10% culture for 10 turns; −15% gold.",
     unlock: { kind: "civic", id: "statecraft" },
     cooldown: 25,
     use: (state, player) => {
@@ -791,6 +838,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   hungary: {
     id: "hungary",
     name: "Black Army Contract",
+    desc: "Spawn 2 Black Army cavalry by the capital. Costs 300 gold and 2 population.",
     unlock: { kind: "civic", id: "statecraft" },
     cooldown: 20,
     use: (state, player) => {
@@ -810,6 +858,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   han_china: {
     id: "han_china",
     name: "Great Wall Mobilization",
+    desc: "All cities +50% defensive-building production and ranged +2 strength for 10 turns. Costs up to 4 population.",
     unlock: { kind: "tech", id: "masonry" },
     cooldown: 25,
     use: (state, player) => {
@@ -823,6 +872,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   china_tang_song: {
     id: "china_tang_song",
     name: "Imperial Examination",
+    desc: "Gain 200 science, +25% science, +10% culture and Great Scientist progress for 10 turns; all units −2 strength.",
     unlock: { kind: "tech", id: "philosophy" },
     cooldown: 25,
     use: (state, player) => {
@@ -837,6 +887,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   china_ming: {
     id: "china_ming",
     name: "Treasure Fleet",
+    desc: "Spawn 2 War Junks, naval +2 movement and trade routes +5 gold for 10 turns; −15% production for 5 turns.",
     unlock: { kind: "tech", id: "astronomy" },
     cooldown: 30,
     use: (state, player) => {
@@ -850,6 +901,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   maurya: {
     id: "maurya",
     name: "Dharma Edicts",
+    desc: "All cities +15% faith and +10% culture for 10 turns; all units −3 strength and −15 morale.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 25,
     use: (state, player) => {
@@ -863,6 +915,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   gupta_india: {
     id: "gupta_india",
     name: "Golden Age Patronage",
+    desc: "All cities +30% science and +15% culture plus Great Scientist/Artist progress for 10 turns; −20% gold.",
     unlock: { kind: "tech", id: "philosophy" },
     cooldown: 25,
     use: (state, player) => {
@@ -878,6 +931,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   chola: {
     id: "chola",
     name: "Naval Expedition",
+    desc: "Spawn 2 Warships in coastal cities and naval +2 movement for 10 turns. Costs 2 population.",
     unlock: { kind: "tech", id: "shipbuilding" },
     cooldown: 20,
     use: (state, player) => {
@@ -894,6 +948,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   japan: {
     id: "japan",
     name: "Sakoku Edict",
+    desc: "All cities +25% production and +25% culture for 10 turns; trade routes −10 gold and all units −1 movement.",
     unlock: { kind: "tech", id: "crossbow" },
     cooldown: 30,
     use: (state, player) => {
@@ -906,6 +961,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   korea: {
     id: "korea",
     name: "Hangul Scholars",
+    desc: "Gain 150 science and 150 culture plus Great Scientist/Artist progress; −10% production for 5 turns.",
     unlock: { kind: "tech", id: "writing" },
     cooldown: 25,
     use: (state, player) => {
@@ -921,6 +977,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   tibet: {
     id: "tibet",
     name: "Roof of the World Pilgrimage",
+    desc: "All cities +20% faith and units cross mountains freely for 10 turns; −15% gold.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 20,
     use: (state, player) => {
@@ -934,6 +991,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   dai_viet_vietnam: {
     id: "dai_viet_vietnam",
     name: "Nine Dragons Ambush",
+    desc: "Melee and ranged +3 strength and all units +1 movement for 10 turns; −15% science.",
     unlock: { kind: "civic", id: "military_training" },
     cooldown: 20,
     use: (state, player) => {
@@ -946,6 +1004,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   khmer: {
     id: "khmer",
     name: "Baray Irrigation",
+    desc: "All cities +15% food, +5% production and bonus fresh-water yields for 10 turns; −10% gold.",
     unlock: { kind: "tech", id: "engineering" },
     cooldown: 25,
     use: (state, player) => {
@@ -958,6 +1017,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   srivijaya: {
     id: "srivijaya",
     name: "Maritime Mandala",
+    desc: "Gain a free Settler and coastal tiles +2 gold for 10 turns. Costs 1 capital population.",
     unlock: { kind: "tech", id: "astronomy" },
     cooldown: 25,
     use: (state, player) => {
@@ -973,6 +1033,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   majapahit: {
     id: "majapahit",
     name: "Nusantara Unity",
+    desc: "All cities +10% faith and +10% culture for 10 turns; −10% science.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 20,
     use: (state, player) => {
@@ -985,6 +1046,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   pagan_burma: {
     id: "pagan_burma",
     name: "Pagoda Building Spree",
+    desc: "All cities +50% Holy Site and Temple production for 10 turns; −15% gold.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 25,
     use: (state, player) => {
@@ -997,6 +1059,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   ayutthaya_siam: {
     id: "ayutthaya_siam",
     name: "Father Governs Children",
+    desc: "Gain 100 culture and +10% culture for 10 turns; −10% production for 5 turns.",
     unlock: { kind: "civic", id: "political_philosophy" },
     cooldown: 20,
     use: (state, player) => {
@@ -1012,6 +1075,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   scythians: {
     id: "scythians",
     name: "Steppe Nomad Surge",
+    desc: "Mounted units heal +20 HP per turn and cavalry +1 movement for 10 turns; −15% culture.",
     unlock: { kind: "tech", id: "equestrian" },
     cooldown: 20,
     use: (state, player) => {
@@ -1024,6 +1088,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   xiongnu: {
     id: "xiongnu",
     name: "Raiding Confederacy",
+    desc: "Gain 200 gold, cavalry +3 strength and +25% raid gold for 10 turns; −10% culture.",
     unlock: { kind: "tech", id: "equestrian" },
     cooldown: 20,
     use: (state, player) => {
@@ -1037,6 +1102,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   huns: {
     id: "huns",
     name: "Scourge of God",
+    desc: "All units +4 strength (and +4 versus cities), +15 empire and +15 unit morale for 10 turns; −10% food.",
     unlock: { kind: "tech", id: "iron_bloomery" },
     cooldown: 20,
     use: (state, player) => {
@@ -1051,6 +1117,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   gokturks: {
     id: "gokturks",
     name: "Sky Tengri Mobilization",
+    desc: "Cavalry +2 strength and mounted units +1 sight for 10 turns; −20% science.",
     unlock: { kind: "tech", id: "equestrian" },
     cooldown: 20,
     use: (state, player) => {
@@ -1063,6 +1130,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   seljuks: {
     id: "seljuks",
     name: "Ghazi Jihad",
+    desc: "Melee +3 strength and captured cities keep +2 population for 10 turns; −10% culture.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 25,
     use: (state, player) => {
@@ -1076,6 +1144,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   mongols: {
     id: "mongols",
     name: "Ortöö Relay",
+    desc: "Spawn 2 Keshigs and cavalry +2 movement for 10 turns; −20% gold. Costs 3 horses.",
     unlock: { kind: "tech", id: "equestrian" },
     cooldown: 30,
     use: (state, player) => {
@@ -1090,6 +1159,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   timurids: {
     id: "timurids",
     name: "Tower of Skulls",
+    desc: "Melee +3 strength and raids yield science for 10 turns; −15% culture.",
     unlock: { kind: "civic", id: "statecraft" },
     cooldown: 25,
     use: (state, player) => {
@@ -1102,6 +1172,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   ottomans: {
     id: "ottomans",
     name: "Great Bombard",
+    desc: "Spawn 2 Catapults and siege +50% versus city defenses for 1 turn; −25% production for 5 turns.",
     unlock: { kind: "tech", id: "engineering" },
     cooldown: 25,
     use: (state, player) => {
@@ -1117,6 +1188,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   olmec: {
     id: "olmec",
     name: "Colossal Head",
+    desc: "Gain 100 culture and capital +10% culture for 10 turns; −10% production for 5 turns.",
     unlock: { kind: "tech", id: "masonry" },
     cooldown: 20,
     use: (state, player) => {
@@ -1131,6 +1203,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   maya: {
     id: "maya",
     name: "Long Count Prophecy",
+    desc: "All cities +25% science and +10% faith for 10 turns; −10% food.",
     unlock: { kind: "tech", id: "astronomy" },
     cooldown: 25,
     use: (state, player) => {
@@ -1143,6 +1216,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   zapotec: {
     id: "zapotec",
     name: "Cloud Temple Ritual",
+    desc: "Farms +1 food and +1 faith for 10 turns; −10% production.",
     unlock: { kind: "tech", id: "cultivation" },
     cooldown: 20,
     use: (state, player) => {
@@ -1155,6 +1229,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   teotihuacan: {
     id: "teotihuacan",
     name: "Avenue of the Dead",
+    desc: "Capital +25% production and +10% culture for 10 turns; other cities −5% culture.",
     unlock: { kind: "tech", id: "masonry" },
     cooldown: 25,
     use: (state, player) => {
@@ -1168,6 +1243,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   toltec: {
     id: "toltec",
     name: "Toltecayotl War-Bands",
+    desc: "Spawn 2 Toltec Warriors and melee +2 strength for 10 turns. Costs up to 3 population.",
     unlock: { kind: "tech", id: "bronze_alloying" },
     cooldown: 20,
     use: (state, player) => {
@@ -1182,6 +1258,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   aztec: {
     id: "aztec",
     name: "Flower War",
+    desc: "Melee +3 strength, raids yield science and +20 unit morale for 10 turns; −15% culture.",
     unlock: { kind: "civic", id: "military_tradition" },
     cooldown: 25,
     use: (state, player) => {
@@ -1195,6 +1272,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   inca: {
     id: "inca",
     name: "Mit'a Labor Draft",
+    desc: "All cities +30% production for 10 turns; −10% food and lose up to 8 population.",
     unlock: { kind: "tech", id: "engineering" },
     cooldown: 25,
     use: (state, player) => {
@@ -1208,6 +1286,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   muisca: {
     id: "muisca",
     name: "El Dorado Offering",
+    desc: "Gain 250 gold and +10% faith for 10 turns; −15% production for 5 turns.",
     unlock: { kind: "tech", id: "coinage" },
     cooldown: 20,
     use: (state, player) => {
@@ -1221,6 +1300,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   mississippian_cahokia: {
     id: "mississippian_cahokia",
     name: "Mound Builders' Feast",
+    desc: "All cities +15% food for 10 turns; −15% production for 5 turns.",
     unlock: { kind: "tech", id: "cultivation" },
     cooldown: 20,
     use: (state, player) => {
@@ -1233,6 +1313,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   haudenosaunee: {
     id: "haudenosaunee",
     name: "Great Law of Peace",
+    desc: "Gain 100 culture and all cities +15% culture and +10% production for 10 turns; −10% production for the first 5 turns.",
     unlock: { kind: "civic", id: "political_philosophy" },
     cooldown: 25,
     use: (state, player) => {
@@ -1246,6 +1327,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   pueblo: {
     id: "pueblo",
     name: "Cliff Dwelling Defense",
+    desc: "Hills +1 production and ranged +2 strength for 10 turns; −10% food.",
     unlock: { kind: "tech", id: "masonry" },
     cooldown: 20,
     use: (state, player) => {
@@ -1261,6 +1343,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   polynesia: {
     id: "polynesia",
     name: "Wayfinding Expedition",
+    desc: "Naval +2 movement and island cities +2 food for 10 turns; land units −1 movement.",
     unlock: { kind: "tech", id: "sailing" },
     cooldown: 20,
     use: (state, player) => {
@@ -1273,6 +1356,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   maori: {
     id: "maori",
     name: "Haka War Challenge",
+    desc: "Melee +3 strength for 10 turns; −10% culture.",
     unlock: { kind: "tech", id: "bronze_alloying" },
     cooldown: 20,
     use: (state, player) => {
@@ -1285,6 +1369,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   hawaii: {
     id: "hawaii",
     name: "Aloha ʻĀina Unification",
+    desc: "All cities +25% production and +10% culture for 10 turns; −15% gold.",
     unlock: { kind: "civic", id: "political_philosophy" },
     cooldown: 25,
     use: (state, player) => {
@@ -1299,7 +1384,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   // EXPANSION leaders (docs/CIVILIZATIONS-EXPANSION.md)
   // ===========================================================================
   arabia: {
-    id: "arabia", name: "Translation Movement", unlock: { kind: "tech", id: "philosophy" }, cooldown: 25,
+    id: "arabia", name: "Translation Movement",
+    desc: "Gain 200 science and +25% science for 10 turns; −20% gold.", unlock: { kind: "tech", id: "philosophy" }, cooldown: 25,
     use: (state, player) => {
       player.scienceProgress += 200;
       addPlayerModifier(state, player, "translation_movement", { yieldPercent: { science: 25 } }, 10);
@@ -1309,7 +1395,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   israelites: {
-    id: "israelites", name: "Wisdom of Solomon", unlock: { kind: "tech", id: "writing" }, cooldown: 25,
+    id: "israelites", name: "Wisdom of Solomon",
+    desc: "Instantly finish your current civic and gain 100 culture; −15% production for 5 turns.", unlock: { kind: "tech", id: "writing" }, cooldown: 25,
     use: (state, player) => {
       finishCurrentCivic(state, player);
       player.cultureProgress += 100;
@@ -1319,7 +1406,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   nabataeans: {
-    id: "nabataeans", name: "Hidden Cisterns", unlock: { kind: "tech", id: "masonry" }, cooldown: 20,
+    id: "nabataeans", name: "Hidden Cisterns",
+    desc: "Desert cities +3 food and +2 production for 10 turns; −15% gold.", unlock: { kind: "tech", id: "masonry" }, cooldown: 20,
     use: (state, player) => {
       allCitiesModifier(state, player, "hidden_cisterns", { desertCityYield: { food: 3, production: 2 } }, 10);
       allCitiesModifier(state, player, "hidden_cisterns_cost", { yieldPercent: { gold: -15 } }, 10);
@@ -1328,7 +1416,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   saba: {
-    id: "saba", name: "Queen's Caravan", unlock: { kind: "tech", id: "coinage" }, cooldown: 25,
+    id: "saba", name: "Queen's Caravan",
+    desc: "Instantly gain 400 gold and 50 faith. Costs 2 capital population.", unlock: { kind: "tech", id: "coinage" }, cooldown: 25,
     use: (state, player) => {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 2) return fail("capital needs 2 population");
@@ -1340,7 +1429,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   mitanni: {
-    id: "mitanni", name: "Hurrian Charioteers", unlock: { kind: "tech", id: "chariotry" }, cooldown: 20,
+    id: "mitanni", name: "Hurrian Charioteers",
+    desc: "Spawn 2 War Chariots by the capital. Costs 2 population and 3 horses.", unlock: { kind: "tech", id: "chariotry" }, cooldown: 20,
     use: (state, player) => {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 2) return fail("capital needs 2 population");
@@ -1352,7 +1442,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   urartu: {
-    id: "urartu", name: "Citadel of Van", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
+    id: "urartu", name: "Citadel of Van",
+    desc: "All cities +50% defensive-building production and melee +2 strength for 10 turns; −15% gold.", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
     use: (state, player) => {
       allCitiesModifier(state, player, "citadel_of_van", { defensiveBuildingProductionBonus: 50 }, 10);
       addPlayerModifier(state, player, "citadel_of_van_combat", { unitClassCombat: { melee: 2 } }, 10);
@@ -1362,7 +1453,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   greco_bactria: {
-    id: "greco_bactria", name: "Indo-Greek Expansion", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
+    id: "greco_bactria", name: "Indo-Greek Expansion",
+    desc: "All units +1 movement and +3 combat strength for 10 turns; −20% science.", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "indo_greek", { allUnitMovementBonus: 1, unitClassCombat: { melee: 3, cavalry: 3, ranged: 3 } }, 10);
       allCitiesModifier(state, player, "indo_greek_cost", { yieldPercent: { science: -20 } }, 10);
@@ -1371,7 +1463,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   sogdia: {
-    id: "sogdia", name: "Silk Road Caravan", unlock: { kind: "civic", id: "trade_routes" }, cooldown: 25,
+    id: "sogdia", name: "Silk Road Caravan",
+    desc: "Gain 250 gold and +1 trade-route capacity for 10 turns; land units −1 movement.", unlock: { kind: "civic", id: "trade_routes" }, cooldown: 25,
     use: (state, player) => {
       player.gold += 250;
       addPlayerModifier(state, player, "silk_road", { tradeRouteCapacityBonus: 1 }, 10);
@@ -1381,7 +1474,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   khwarazm: {
-    id: "khwarazm", name: "Mobilize the Shah's Host", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 20,
+    id: "khwarazm", name: "Mobilize the Shah's Host",
+    desc: "Spawn 3 Lancers by the capital. Costs 300 gold and 2 population.", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 20,
     use: (state, player) => {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 2) return fail("capital needs 2 population");
@@ -1394,7 +1488,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   numidia: {
-    id: "numidia", name: "Numidian Skirmish", unlock: { kind: "tech", id: "equestrian" }, cooldown: 20,
+    id: "numidia", name: "Numidian Skirmish",
+    desc: "Cavalry +1 movement and mounted units heal +20 HP per turn for 10 turns; −15% culture.", unlock: { kind: "tech", id: "equestrian" }, cooldown: 20,
     use: (state, player) => {
       addPlayerModifier(state, player, "numidian_skirmish", { cavalryMovementBonus: 1, mountedHealPerTurn: 20 }, 10);
       allCitiesModifier(state, player, "numidian_skirmish_cost", { yieldPercent: { culture: -15 } }, 10);
@@ -1403,7 +1498,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   fatimids: {
-    id: "fatimids", name: "Found al-Qahira", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
+    id: "fatimids", name: "Found al-Qahira",
+    desc: "Capital +25% production and +25% science and gain 100 faith for 10 turns; −20% gold.", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
     use: (state, player) => {
       const capital = capitalOf(state, player);
       if (capital) addCityModifier(state, capital, "found_al_qahira", { yieldPercent: { production: 25, science: 25 } }, 10);
@@ -1414,7 +1510,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   ayyubids: {
-    id: "ayyubids", name: "Reconquest of Jerusalem", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
+    id: "ayyubids", name: "Reconquest of Jerusalem",
+    desc: "Melee +4 strength versus cities and all units heal +5 HP per turn for 10 turns; −10% gold.", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "reconquest", { meleeVsCityBonus: 4, unitHealPerTurn: 5 }, 10);
       allCitiesModifier(state, player, "reconquest_cost", { yieldPercent: { gold: -10 } }, 10);
@@ -1423,7 +1520,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   mamluks: {
-    id: "mamluks", name: "Faris Charge", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
+    id: "mamluks", name: "Faris Charge",
+    desc: "Spawn 2 Mamluks and cavalry +3 strength for 10 turns. Costs 300 gold.", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
     use: (state, player) => {
       if (player.gold < 300) return fail("needs 300 gold");
       player.gold -= 300;
@@ -1434,7 +1532,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   almoravids: {
-    id: "almoravids", name: "Murabitun Jihad", unlock: { kind: "civic", id: "mysticism" }, cooldown: 20,
+    id: "almoravids", name: "Murabitun Jihad",
+    desc: "Melee +3 strength for 10 turns; −20% science.", unlock: { kind: "civic", id: "mysticism" }, cooldown: 20,
     use: (state, player) => {
       addPlayerModifier(state, player, "murabitun_jihad", { unitClassCombat: { melee: 3 } }, 10);
       allCitiesModifier(state, player, "murabitun_jihad_cost", { yieldPercent: { science: -20 } }, 10);
@@ -1443,7 +1542,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   swahili: {
-    id: "swahili", name: "Monsoon Winds", unlock: { kind: "tech", id: "sailing" }, cooldown: 25,
+    id: "swahili", name: "Monsoon Winds",
+    desc: "Trade routes +5 gold and naval +2 movement for 10 turns; −15% production.", unlock: { kind: "tech", id: "sailing" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "monsoon_winds", { tradeRouteGoldBonus: 5, navalMovementBonus: 2 }, 10);
       allCitiesModifier(state, player, "monsoon_winds_cost", { yieldPercent: { production: -15 } }, 10);
@@ -1452,7 +1552,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   benin: {
-    id: "benin", name: "Edo Bronze Casting", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
+    id: "benin", name: "Edo Bronze Casting",
+    desc: "Gain 150 culture and all cities +50% defensive-building production for 10 turns; −15% gold.", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
     use: (state, player) => {
       player.cultureProgress += 150;
       allCitiesModifier(state, player, "edo_bronze", { defensiveBuildingProductionBonus: 50 }, 10);
@@ -1462,7 +1563,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   kongo: {
-    id: "kongo", name: "Catholic Conversion", unlock: { kind: "civic", id: "mysticism" }, cooldown: 20,
+    id: "kongo", name: "Catholic Conversion",
+    desc: "Gain 100 faith and +25% culture for 10 turns; −15% production.", unlock: { kind: "civic", id: "mysticism" }, cooldown: 20,
     use: (state, player) => {
       player.faith += 100;
       allCitiesModifier(state, player, "catholic_conversion", { yieldPercent: { culture: 25 } }, 10);
@@ -1472,7 +1574,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   bulgaria: {
-    id: "bulgaria", name: "Nikephoros' Skull", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
+    id: "bulgaria", name: "Nikephoros' Skull",
+    desc: "Melee +3 strength versus cities and captured cities keep +2 population for 10 turns; −15% culture.", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "nikephoros_skull", { meleeVsCityBonus: 3, captureCityPopulationBonus: 2 }, 10);
       allCitiesModifier(state, player, "nikephoros_skull_cost", { yieldPercent: { culture: -15 } }, 10);
@@ -1481,7 +1584,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   serbia: {
-    id: "serbia", name: "Dušan's Code", unlock: { kind: "civic", id: "political_philosophy" }, cooldown: 25,
+    id: "serbia", name: "Dušan's Code",
+    desc: "Instantly finish your current civic; +10% culture for 10 turns and −15% production for 5 turns.", unlock: { kind: "civic", id: "political_philosophy" }, cooldown: 25,
     use: (state, player) => {
       finishCurrentCivic(state, player);
       allCitiesModifier(state, player, "dusans_code", { yieldPercent: { culture: 10 } }, 10);
@@ -1491,7 +1595,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   bohemia: {
-    id: "bohemia", name: "Golden Bull", unlock: { kind: "tech", id: "philosophy" }, cooldown: 25,
+    id: "bohemia", name: "Golden Bull",
+    desc: "Instantly gain 150 science, 150 culture and 200 gold; −10% production for 5 turns.", unlock: { kind: "tech", id: "philosophy" }, cooldown: 25,
     use: (state, player) => {
       player.scienceProgress += 150;
       player.cultureProgress += 150;
@@ -1502,7 +1607,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   swiss: {
-    id: "swiss", name: "Pike Square", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
+    id: "swiss", name: "Pike Square",
+    desc: "Spawn 2 Halberdiers and melee +4 strength for 10 turns. Costs 200 gold.", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
     use: (state, player) => {
       if (player.gold < 200) return fail("needs 200 gold");
       player.gold -= 200;
@@ -1513,7 +1619,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   aragon: {
-    id: "aragon", name: "Conquest of Valencia", unlock: { kind: "tech", id: "shipbuilding" }, cooldown: 25,
+    id: "aragon", name: "Conquest of Valencia",
+    desc: "Melee +4 strength versus cities and coastal cities +3 gold for 10 turns; −15% science.", unlock: { kind: "tech", id: "shipbuilding" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "conquest_valencia", { meleeVsCityBonus: 4, coastalCityYield: { gold: 3 } }, 10);
       allCitiesModifier(state, player, "conquest_valencia_cost", { yieldPercent: { science: -15 } }, 10);
@@ -1522,7 +1629,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   scotland: {
-    id: "scotland", name: "Bannockburn", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
+    id: "scotland", name: "Bannockburn",
+    desc: "Melee +2 strength for 10 turns; −10% gold.", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
     use: (state, player) => {
       addPlayerModifier(state, player, "bannockburn", { unitClassCombat: { melee: 2 } }, 10);
       allCitiesModifier(state, player, "bannockburn_cost", { yieldPercent: { gold: -10 } }, 10);
@@ -1531,7 +1639,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   gaelic_ireland: {
-    id: "gaelic_ireland", name: "Battle of Clontarf", unlock: { kind: "tech", id: "carburizing" }, cooldown: 20,
+    id: "gaelic_ireland", name: "Battle of Clontarf",
+    desc: "Spawn 2 Gallowglass and melee +2 strength for 10 turns. Costs 2 population.", unlock: { kind: "tech", id: "carburizing" }, cooldown: 20,
     use: (state, player) => {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 2) return fail("capital needs 2 population");
@@ -1543,7 +1652,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   normans: {
-    id: "normans", name: "Conquest of Sicily", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
+    id: "normans", name: "Conquest of Sicily",
+    desc: "Cavalry +3 strength and captured cities keep +1 population for 10 turns; −15% culture.", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "conquest_sicily", { unitClassCombat: { cavalry: 3 }, captureCityPopulationBonus: 1 }, 10);
       allCitiesModifier(state, player, "conquest_sicily_cost", { yieldPercent: { culture: -15 } }, 10);
@@ -1552,7 +1662,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   visigoths: {
-    id: "visigoths", name: "Liber Iudiciorum", unlock: { kind: "civic", id: "statecraft" }, cooldown: 25,
+    id: "visigoths", name: "Liber Iudiciorum",
+    desc: "Instantly finish your current civic; melee +2 strength for 10 turns and −15% gold.", unlock: { kind: "civic", id: "statecraft" }, cooldown: 25,
     use: (state, player) => {
       finishCurrentCivic(state, player);
       addPlayerModifier(state, player, "liber_iudiciorum", { unitClassCombat: { melee: 2 } }, 10);
@@ -1562,7 +1673,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   novgorod: {
-    id: "novgorod", name: "Battle on the Ice", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
+    id: "novgorod", name: "Battle on the Ice",
+    desc: "Gain 200 gold and melee +2 strength for 10 turns; −15% production for 5 turns.", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
     use: (state, player) => {
       addPlayerModifier(state, player, "battle_on_ice", { unitClassCombat: { melee: 2 } }, 10);
       player.gold += 200;
@@ -1572,7 +1684,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   illyrians: {
-    id: "illyrians", name: "Adriatic Raid", unlock: { kind: "tech", id: "sailing" }, cooldown: 20,
+    id: "illyrians", name: "Adriatic Raid",
+    desc: "+50% coastal-raid gold and naval +2 movement for 10 turns; −10% production.", unlock: { kind: "tech", id: "sailing" }, cooldown: 20,
     use: (state, player) => {
       addPlayerModifier(state, player, "adriatic_raid", { coastalRaidGoldPercent: 50, navalMovementBonus: 2 }, 10);
       allCitiesModifier(state, player, "adriatic_raid_cost", { yieldPercent: { production: -10 } }, 10);
@@ -1581,7 +1694,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   lusitani: {
-    id: "lusitani", name: "Guerrilla War", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
+    id: "lusitani", name: "Guerrilla War",
+    desc: "Melee +3 strength and units ignore rough terrain for 10 turns; −15% gold.", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 20,
     use: (state, player) => {
       addPlayerModifier(state, player, "guerrilla_war", { unitClassCombat: { melee: 3 }, ignoreRoughTerrain: true }, 10);
       allCitiesModifier(state, player, "guerrilla_war_cost", { yieldPercent: { gold: -15 } }, 10);
@@ -1590,7 +1704,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   arevaci: {
-    id: "arevaci", name: "Siege of Numantia", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
+    id: "arevaci", name: "Siege of Numantia",
+    desc: "All cities +50% defensive-building production and melee +4 strength for 10 turns; −10% production.", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
     use: (state, player) => {
       allCitiesModifier(state, player, "siege_numantia", { defensiveBuildingProductionBonus: 50 }, 10);
       addPlayerModifier(state, player, "siege_numantia_combat", { unitClassCombat: { melee: 4 } }, 10);
@@ -1600,7 +1715,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   thracians: {
-    id: "thracians", name: "Mercenary Levy", unlock: { kind: "tech", id: "bronze_alloying" }, cooldown: 20,
+    id: "thracians", name: "Mercenary Levy",
+    desc: "Spawn 3 Peltasts and ranged +2 strength for 10 turns. Costs 200 gold.", unlock: { kind: "tech", id: "bronze_alloying" }, cooldown: 20,
     use: (state, player) => {
       if (player.gold < 200) return fail("needs 200 gold");
       player.gold -= 200;
@@ -1611,7 +1727,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   dacians: {
-    id: "dacians", name: "Sarmizegetusa Stand", unlock: { kind: "tech", id: "carburizing" }, cooldown: 25,
+    id: "dacians", name: "Sarmizegetusa Stand",
+    desc: "Gain 150 gold and melee +3 strength for 10 turns; −15% science.", unlock: { kind: "tech", id: "carburizing" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "sarmizegetusa", { unitClassCombat: { melee: 3 } }, 10);
       player.gold += 150;
@@ -1621,7 +1738,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   sami: {
-    id: "sami", name: "Drum of the Noaidi", unlock: { kind: "civic", id: "mysticism" }, cooldown: 20,
+    id: "sami", name: "Drum of the Noaidi",
+    desc: "Gain 50 faith and land units +1 movement for 10 turns; −10% production.", unlock: { kind: "civic", id: "mysticism" }, cooldown: 20,
     use: (state, player) => {
       player.faith += 50;
       addPlayerModifier(state, player, "drum_of_noaidi", { landMovementBonus: 1 }, 10);
@@ -1631,7 +1749,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   corinth: {
-    id: "corinth", name: "Isthmian Games", unlock: { kind: "tech", id: "coinage" }, cooldown: 20,
+    id: "corinth", name: "Isthmian Games",
+    desc: "Gain 250 gold and +10% culture for 10 turns; −10% production.", unlock: { kind: "tech", id: "coinage" }, cooldown: 20,
     use: (state, player) => {
       player.gold += 250;
       allCitiesModifier(state, player, "isthmian_games", { yieldPercent: { culture: 10 } }, 10);
@@ -1641,7 +1760,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   thebes: {
-    id: "thebes", name: "Oblique Phalanx", unlock: { kind: "tech", id: "phalanx" }, cooldown: 25,
+    id: "thebes", name: "Oblique Phalanx",
+    desc: "Spawn 2 Sacred Band and melee +4 strength for 10 turns. Costs 2 population.", unlock: { kind: "tech", id: "phalanx" }, cooldown: 25,
     use: (state, player) => {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 2) return fail("capital needs 2 population");
@@ -1653,7 +1773,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   eretria: {
-    id: "eretria", name: "Found a Colony", unlock: { kind: "tech", id: "sailing" }, cooldown: 25,
+    id: "eretria", name: "Found a Colony",
+    desc: "Gain a free Settler and coastal cities +2 gold for 10 turns. Costs 1 population.", unlock: { kind: "tech", id: "sailing" }, cooldown: 25,
     use: (state, player) => {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 1) return fail("capital needs population");
@@ -1665,7 +1786,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   crete: {
-    id: "crete", name: "Hire the Cretan Archers", unlock: { kind: "tech", id: "composite_bow" }, cooldown: 20,
+    id: "crete", name: "Hire the Cretan Archers",
+    desc: "Spawn 2 Cretan Archers and ranged +3 strength for 10 turns. Costs 200 gold.", unlock: { kind: "tech", id: "composite_bow" }, cooldown: 20,
     use: (state, player) => {
       if (player.gold < 200) return fail("needs 200 gold");
       player.gold -= 200;
@@ -1676,7 +1798,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   indus_valley: {
-    id: "indus_valley", name: "Grid Planning", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
+    id: "indus_valley", name: "Grid Planning",
+    desc: "Farms and fresh-water tiles +1 food for 10 turns; −15% gold.", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
     use: (state, player) => {
       allCitiesModifier(state, player, "grid_planning", { farmTileFoodBonus: 1, freshWaterTileFoodBonus: 1 }, 10);
       allCitiesModifier(state, player, "grid_planning_cost", { yieldPercent: { gold: -15 } }, 10);
@@ -1685,7 +1808,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   zhou_china: {
-    id: "zhou_china", name: "Mandate of Heaven", unlock: { kind: "tech", id: "writing" }, cooldown: 25,
+    id: "zhou_china", name: "Mandate of Heaven",
+    desc: "Gain 150 culture and melee +4 strength versus cities for 10 turns; −10% production.", unlock: { kind: "tech", id: "writing" }, cooldown: 25,
     use: (state, player) => {
       player.cultureProgress += 150;
       addPlayerModifier(state, player, "mandate_of_heaven", { meleeVsCityBonus: 4 }, 10);
@@ -1695,7 +1819,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   delhi_sultanate: {
-    id: "delhi_sultanate", name: "Market Reforms", unlock: { kind: "tech", id: "coinage" }, cooldown: 25,
+    id: "delhi_sultanate", name: "Market Reforms",
+    desc: "Gain 300 gold and all cities +10% food for 10 turns; −15% science.", unlock: { kind: "tech", id: "coinage" }, cooldown: 25,
     use: (state, player) => {
       player.gold += 300;
       allCitiesModifier(state, player, "market_reforms", { yieldPercent: { food: 10 } }, 10);
@@ -1705,7 +1830,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   mughals: {
-    id: "mughals", name: "Din-i Ilahi", unlock: { kind: "tech", id: "philosophy" }, cooldown: 25,
+    id: "mughals", name: "Din-i Ilahi",
+    desc: "All cities +25% culture and +10% science for 10 turns; lose 50 faith.", unlock: { kind: "tech", id: "philosophy" }, cooldown: 25,
     use: (state, player) => {
       allCitiesModifier(state, player, "din_i_ilahi", { yieldPercent: { culture: 25, science: 10 } }, 10);
       player.faith = Math.max(0, player.faith - 50);
@@ -1714,7 +1840,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   vijayanagara: {
-    id: "vijayanagara", name: "Amuktamalyada", unlock: { kind: "civic", id: "political_philosophy" }, cooldown: 25,
+    id: "vijayanagara", name: "Amuktamalyada",
+    desc: "+25% gold and +25% faith for 10 turns; −15% production.", unlock: { kind: "civic", id: "political_philosophy" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "amuktamalyada", { yieldPercent: { gold: 25, faith: 25 } }, 10);
       allCitiesModifier(state, player, "amuktamalyada_cost", { yieldPercent: { production: -15 } }, 10);
@@ -1723,7 +1850,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   champa: {
-    id: "champa", name: "Sack of Angkor", unlock: { kind: "tech", id: "shipbuilding" }, cooldown: 20,
+    id: "champa", name: "Sack of Angkor",
+    desc: "+50% coastal-raid gold and naval +2 movement for 10 turns; −10% production.", unlock: { kind: "tech", id: "shipbuilding" }, cooldown: 20,
     use: (state, player) => {
       addPlayerModifier(state, player, "sack_of_angkor", { coastalRaidGoldPercent: 50, navalMovementBonus: 2 }, 10);
       allCitiesModifier(state, player, "sack_of_angkor_cost", { yieldPercent: { production: -10 } }, 10);
@@ -1732,7 +1860,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   sinhala: {
-    id: "sinhala", name: "Polonnaruwa Tanks", unlock: { kind: "tech", id: "engineering" }, cooldown: 25,
+    id: "sinhala", name: "Polonnaruwa Tanks",
+    desc: "Fresh-water tiles +2 food and +1 production for 10 turns; −10% gold.", unlock: { kind: "tech", id: "engineering" }, cooldown: 25,
     use: (state, player) => {
       allCitiesModifier(state, player, "polonnaruwa_tanks", { freshWaterTileFoodBonus: 2, freshWaterTileProductionBonus: 1 }, 10);
       allCitiesModifier(state, player, "polonnaruwa_tanks_cost", { yieldPercent: { gold: -10 } }, 10);
@@ -1741,7 +1870,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   khitan: {
-    id: "khitan", name: "Ordo Levy", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 20,
+    id: "khitan", name: "Ordo Levy",
+    desc: "Spawn 2 Ordo Cavalry and cavalry +1 movement for 10 turns. Costs 1 population and 3 horses.", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 20,
     use: (state, player) => {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 1) return fail("capital needs population");
@@ -1754,7 +1884,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   jurchen: {
-    id: "jurchen", name: "Tieta Charge", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
+    id: "jurchen", name: "Tieta Charge",
+    desc: "Cavalry +3 strength and captured cities keep +2 population for 10 turns; −15% gold.", unlock: { kind: "tech", id: "cavalry_doctrine" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "tieta_charge", { unitClassCombat: { cavalry: 3 }, captureCityPopulationBonus: 2 }, 10);
       allCitiesModifier(state, player, "tieta_charge_cost", { yieldPercent: { gold: -15 } }, 10);
@@ -1763,7 +1894,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   khazars: {
-    id: "khazars", name: "Conversion of Bulan", unlock: { kind: "tech", id: "coinage" }, cooldown: 20,
+    id: "khazars", name: "Conversion of Bulan",
+    desc: "Instantly gain 100 faith and 200 gold; −10% science for 10 turns.", unlock: { kind: "tech", id: "coinage" }, cooldown: 20,
     use: (state, player) => {
       player.faith += 100;
       player.gold += 200;
@@ -1773,7 +1905,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   avars: {
-    id: "avars", name: "Siege of 626", unlock: { kind: "tech", id: "siegecraft" }, cooldown: 25,
+    id: "avars", name: "Siege of 626",
+    desc: "Gain 150 gold, melee +4 strength versus cities and cavalry +4 strength for 10 turns; −10% production.", unlock: { kind: "tech", id: "siegecraft" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "siege_626", { meleeVsCityBonus: 4, unitClassCombat: { cavalry: 4 } }, 10);
       player.gold += 150;
@@ -1783,7 +1916,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   golden_horde: {
-    id: "golden_horde", name: "Tribute of the Rus", unlock: { kind: "tech", id: "equestrian" }, cooldown: 25,
+    id: "golden_horde", name: "Tribute of the Rus",
+    desc: "Gain 400 gold and +25% raid gold for 10 turns; −10% culture.", unlock: { kind: "tech", id: "equestrian" }, cooldown: 25,
     use: (state, player) => {
       player.gold += 400;
       addPlayerModifier(state, player, "tribute_of_rus", { raidGoldPercent: 25 }, 10);
@@ -1793,7 +1927,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   chimu: {
-    id: "chimu", name: "Goldsmiths of Chimor", unlock: { kind: "tech", id: "masonry" }, cooldown: 20,
+    id: "chimu", name: "Goldsmiths of Chimor",
+    desc: "Instantly gain 250 gold and 100 culture; −10% production for 5 turns.", unlock: { kind: "tech", id: "masonry" }, cooldown: 20,
     use: (state, player) => {
       player.gold += 250;
       player.cultureProgress += 100;
@@ -1803,7 +1938,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   moche: {
-    id: "moche", name: "Sacrifice Ceremony", unlock: { kind: "tech", id: "ritual_burial" }, cooldown: 25,
+    id: "moche", name: "Sacrifice Ceremony",
+    desc: "Gain 100 faith and melee +3 strength for 10 turns. Costs 2 capital population.", unlock: { kind: "tech", id: "ritual_burial" }, cooldown: 25,
     use: (state, player) => {
       const capital = capitalOf(state, player);
       if (!capital || capital.population < 2) return fail("capital needs 2 population");
@@ -1815,7 +1951,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   tiwanaku: {
-    id: "tiwanaku", name: "Raised Fields", unlock: { kind: "tech", id: "cultivation" }, cooldown: 20,
+    id: "tiwanaku", name: "Raised Fields",
+    desc: "Fresh-water tiles +3 food for 10 turns; −10% production.", unlock: { kind: "tech", id: "cultivation" }, cooldown: 20,
     use: (state, player) => {
       allCitiesModifier(state, player, "raised_fields", { freshWaterTileFoodBonus: 3 }, 10);
       allCitiesModifier(state, player, "raised_fields_cost", { yieldPercent: { production: -10 } }, 10);
@@ -1824,7 +1961,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   tarascans: {
-    id: "tarascans", name: "Bronze Arms", unlock: { kind: "tech", id: "smelting" }, cooldown: 25,
+    id: "tarascans", name: "Bronze Arms",
+    desc: "All units +2 combat strength and all cities +25% production for 10 turns; −10% gold.", unlock: { kind: "tech", id: "smelting" }, cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "bronze_arms", { unitClassCombat: { melee: 2, cavalry: 2, ranged: 2 } }, 10);
       allCitiesModifier(state, player, "bronze_arms_prod", { yieldPercent: { production: 25 } }, 10);
@@ -1834,7 +1972,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   taino: {
-    id: "taino", name: "Areíto Gathering", unlock: { kind: "civic", id: "political_philosophy" }, cooldown: 20,
+    id: "taino", name: "Areíto Gathering",
+    desc: "Gain 50 faith and +10% culture for 10 turns; −10% production for 5 turns.", unlock: { kind: "civic", id: "political_philosophy" }, cooldown: 20,
     use: (state, player) => {
       player.faith += 50;
       allCitiesModifier(state, player, "areito", { yieldPercent: { culture: 10 } }, 10);
@@ -1844,7 +1983,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     },
   },
   tonga: {
-    id: "tonga", name: "Voyage of Tribute", unlock: { kind: "tech", id: "sailing" }, cooldown: 20,
+    id: "tonga", name: "Voyage of Tribute",
+    desc: "Island cities +3 gold and +1 faith and naval +2 movement for 10 turns; land units −1 movement.", unlock: { kind: "tech", id: "sailing" }, cooldown: 20,
     use: (state, player) => {
       addPlayerModifier(state, player, "voyage_of_tribute", { islandCityYield: { gold: 3, faith: 1 }, navalMovementBonus: 2 }, 10);
       addPlayerModifier(state, player, "voyage_of_tribute_cost", { landMovementBonus: -1 }, 10);
@@ -1856,6 +1996,12 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
 
 export function getLeaderAbilityForCiv(civId: string): LeaderAbilityDef | undefined {
   return LEADER_ABILITIES[civId];
+}
+
+/** Display name of the tech or civic that unlocks a leader ability. */
+export function leaderAbilityUnlockLabel(def: LeaderAbilityDef): string {
+  if (def.unlock.kind === "tech") return TECH_DEFS[def.unlock.id].name;
+  return getCivic(def.unlock.id)?.name ?? def.unlock.id;
 }
 
 export function canUseLeaderAbility(state: GameState, player: Player): LeaderAbilityResult {

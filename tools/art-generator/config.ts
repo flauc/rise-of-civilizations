@@ -6,7 +6,7 @@
 // - Google Gemini Nano Banana 2 (gemini-3.1-flash-image) is the default model.
 
 import { join } from "node:path";
-import { CIVILIZATIONS, WONDER_DEFS, UNIQUE_UNITS, NATURAL_WONDER_DEFS, GREAT_PEOPLE, GREAT_PERSON_CLASS_INFO, LEGENDS } from "@roc/data";
+import { CIVILIZATIONS, WONDER_DEFS, UNIQUE_UNITS, UNIQUE_INFRA, NATURAL_WONDER_DEFS, GREAT_PEOPLE, GREAT_PERSON_CLASS_INFO, LEGENDS } from "@roc/data";
 import { RESOURCE_DEFS, IMPROVEMENT_DEFS, UNIT_DEFS } from "@roc/sim";
 
 export interface TargetSize {
@@ -176,6 +176,21 @@ export const UNIQUE_UNIT_SUBSET: AssetEntry[] = UNIQUE_UNITS.map((u) => {
     aspectRatio: "1:1" as const,
     size: { width: 128, height: 128 },
     category: "unit" as const,
+  };
+});
+
+/** One icon per civilization unique infrastructure (building or tile improvement).
+ *  Output: buildings/<id>.png or improvements/<id>.png (by kind/category). */
+export const UNIQUE_INFRA_SUBSET: AssetEntry[] = UNIQUE_INFRA.map((u) => {
+  const civName = CIVILIZATIONS.find((c) => c.id === u.civId)?.name ?? u.civId;
+  return {
+    id: u.id,
+    name: u.name,
+    description: `${u.art} — the unique ${u.kind === "improvement" ? "tile improvement" : "building"} of ${civName}`,
+    aspectRatio: "1:1" as const,
+    size: { width: 128, height: 128 },
+    category: u.kind === "improvement" ? ("improvement" as const) : ("building" as const),
+    referenceTile: DEFAULT_REFERENCE_TILE,
   };
 });
 
@@ -712,7 +727,7 @@ export const WONDER_TILE_SUBSET: AssetEntry[] = GENERATED_WONDER_TILES.map((w) =
 }));
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...UNIQUE_INFRA_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {

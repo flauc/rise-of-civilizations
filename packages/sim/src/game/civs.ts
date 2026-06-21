@@ -16,19 +16,27 @@ import {
   UNIQUE_UNIT_IDS,
   uniqueUnitForCiv,
   getUniqueUnit,
+  UNIQUE_INFRA,
+  UNIQUE_IMPROVEMENTS,
+  uniqueInfraForCiv,
+  uniqueBuildingForCiv,
+  uniqueImprovementForCiv,
+  getUniqueInfra,
   type CivDef,
   type CivEffects,
   type CivicDef,
   type GovernmentDef,
   type UniqueUnitDef,
+  type UniqueInfraDef,
 } from "@roc/data";
 import { UNIT_DEFS, CIVICS_REQUIRED_TECH, UNIQUE_ABILITY_OVERRIDES, type ActiveAbilityId } from "./content";
 import type { GameState, Player, Unit, City } from "./state";
-import { playerById } from "./state";
+import { playerById, citiesOf } from "./state";
 
 export { CIVILIZATIONS, getCiv, CIVICS, GOVERNMENTS, getCivic, getGovernment, getPolicy, nextCityNameForCiv };
 export { UNIQUE_UNITS, UNIQUE_UNIT_IDS, uniqueUnitForCiv, getUniqueUnit };
-export type { CivDef, CivEffects, CivicDef, GovernmentDef, UniqueUnitDef };
+export { UNIQUE_INFRA, UNIQUE_IMPROVEMENTS, uniqueInfraForCiv, uniqueBuildingForCiv, uniqueImprovementForCiv, getUniqueInfra };
+export type { CivDef, CivEffects, CivicDef, GovernmentDef, UniqueUnitDef, UniqueInfraDef };
 
 /** The unique unit a unit's owner fields in place of its base type, if any. */
 export function uniqueUnitForUnit(state: GameState, unit: Unit): UniqueUnitDef | undefined {
@@ -133,6 +141,17 @@ export function playerEffects(state: GameState, playerId: number): CivEffects {
   mergeInto(acc, getCiv(p.civId)?.effects);
   mergeInto(acc, getGovernment(p.government)?.effects);
   for (const policyId of p.policies) mergeInto(acc, getPolicy(policyId)?.effects);
+  // Civ-unique buildings raised anywhere in the empire contribute their
+  // empire-wide effects — once each, no matter how many cities built them.
+  const seenInfra = new Set<string>();
+  for (const c of citiesOf(state, playerId)) {
+    for (const b of c.buildings) {
+      if (seenInfra.has(b)) continue;
+      seenInfra.add(b);
+      const inf = getUniqueInfra(b);
+      if (inf?.effects) mergeInto(acc, inf.effects);
+    }
+  }
   // Founder beliefs of the player's religion apply to their empire.
   const religion = p.foundedReligionId ? state.religions.find((r) => r.id === p.foundedReligionId) : undefined;
   if (religion) for (const b of religion.beliefs) mergeInto(acc, getBelief(b)?.effects);

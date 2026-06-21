@@ -2,6 +2,7 @@
 
 import { ASSET_BASE_URL } from "./asset-base";
 import { hashSeed } from "@roc/shared";
+import { UNIQUE_IMPROVEMENTS } from "@roc/sim";
 
 const VARIANTS = 5; // base + _1 .. _4
 const TIERS = 3;
@@ -86,6 +87,14 @@ export function loadImprovementAtlas(onLoad?: () => void): ImprovementAtlas {
     const img = new Image();
     img.src = legacyFarmUrl(v);
     trackImage(img, "farm_t1");
+  }
+
+  // Civ-unique tile improvements are single-tier: one sprite (improvements/<id>.png)
+  // serves the map (keyed as `<id>_t1`) — the same file the civ picker shows.
+  for (const u of UNIQUE_IMPROVEMENTS) {
+    const img = new Image();
+    img.src = `${ASSET_BASE_URL}improvements/${u.id}.png`;
+    trackImage(img, `${u.id}_t1`);
   }
 
   const atlas: ImprovementAtlas = { images, loaded: remaining === 0 };

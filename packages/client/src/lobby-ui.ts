@@ -12,7 +12,7 @@ import {
   type MapType,
   type SerializedState,
 } from "@roc/sim";
-import { uniqueUnitFor, uniqueUnitBlockHtml, wireUuImages, wireUuDetail } from "./unique-unit";
+import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, wireUuImages, wireUuDetail } from "./unique-unit";
 import { deleteSave, exportSave, importSave, listSaves, loadSave, type SaveRecord } from "./save-db";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 
@@ -317,6 +317,17 @@ export function createLobby(onStart: (session: Session) => void): void {
     .uu-meta{font-size:12px;color:#b8aa8d;margin-top:2px}
     .uu-caret{flex:0 0 auto;color:#c9a227;font-size:20px;line-height:1}
     .uu-hint{font-size:11px;color:#c9a227;margin-top:7px;text-transform:uppercase;letter-spacing:.04em}
+    /* Leader-ability block — the civ's active, cooldown-gated power (shared by the
+       lobby showcase, civ picker, and the in-game wiki). */
+    .la-block{margin-top:12px;padding:10px 12px;background:rgba(110,86,201,.08);border:1px solid rgba(150,128,224,.28);border-radius:10px}
+    .la-top{display:flex;align-items:center;gap:10px}
+    .la-glyph{flex:0 0 auto;width:30px;height:30px;border-radius:8px;background:rgba(150,128,224,.16);border:1px solid rgba(150,128,224,.3);display:flex;align-items:center;justify-content:center;color:#c9b8f0;font-size:15px}
+    .la-info{min-width:0;flex:1}
+    .la-name{font-family:'Cinzel',Georgia,serif;font-size:14px;font-weight:700;color:#cbbcf2}
+    .la-tag{font-size:11px;color:#9a8fb8;text-transform:uppercase;letter-spacing:.04em;margin-top:1px}
+    .la-desc{font-size:12.5px;color:#e8dcc5;line-height:1.45;margin-top:8px}
+    .la-foot{font-size:11px;color:#9a8fb8;margin-top:7px}
+    .la-foot b{color:#cbbcf2}
     /* Expanded unique-unit detail dialog */
     .uud-overlay{position:fixed;inset:0;z-index:80;background:rgba(8,7,5,.8);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
     .uud-modal{position:relative;width:min(560px,100%);max-height:88%;overflow:auto;background:linear-gradient(180deg,#1f1c14,#15120c);border:1px solid var(--edge);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:22px}
@@ -462,8 +473,9 @@ export function createLobby(onStart: (session: Session) => void): void {
         <div class="showcase-ability">
           <div class="showcase-ability-name">${escapeHtml(civ.abilityName)}</div>
           <div class="showcase-ability-desc">${escapeHtml(civ.abilityDesc)}</div>
+          ${leaderAbilityBlockHtml(civ.id)}
           ${uniqueUnitBlockHtml(civ.id)}
-          <div class="showcase-uniques">Unique infrastructure: <b>${escapeHtml(civ.uniqueInfra)}</b></div>
+          ${uniqueInfraBlockHtml(civ.id)}
         </div>
       </div>`;
     const img = right.querySelector<HTMLImageElement>("#showcase-art");
@@ -557,8 +569,9 @@ export function createLobby(onStart: (session: Session) => void): void {
           <div class="cp-ability-name">${escapeHtml(civ.abilityName)}</div>
           <div class="cp-ability-desc">${escapeHtml(civ.abilityDesc)}</div>
         </div>
+        ${leaderAbilityBlockHtml(civ.id)}
         ${uniqueUnitBlockHtml(civ.id)}
-        <div class="cp-infra">Unique infrastructure: <b>${escapeHtml(civ.uniqueInfra)}</b></div>`;
+        ${uniqueInfraBlockHtml(civ.id)}`;
       confirmName.textContent = civ.name;
       const img = detailEl.querySelector<HTMLImageElement>("#cp-portrait-img");
       const ph = detailEl.querySelector<HTMLDivElement>("#cp-portrait-ph");
