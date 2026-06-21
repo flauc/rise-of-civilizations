@@ -15,6 +15,7 @@ import { abilityTargets, canUseAbility, unitAbilities } from "./abilities";
 import { availableProduction, availableTechs } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
 import { canFoundReligion, availableReligionNames } from "./religion";
+import { availableLegends, canRecruitLegend } from "./legends";
 import { canUseLeaderAbility } from "./leader-abilities";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
 import { aiConsiderDiplomacy, atWar } from "./diplomacy";
@@ -414,6 +415,11 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     applyCommand(state, { type: "useLeaderAbility" }, playerId);
   }
 
+  // Put any recruited Great People straight to work (their instant effects).
+  for (const id of [...(player.greatPeople ?? [])]) {
+    applyCommand(state, { type: "activateGreatPerson", greatPersonId: id }, playerId);
+  }
+
   if (!player.researching) {
     const techs = availableTechs(player);
     if (techs.length > 0) {
@@ -435,6 +441,15 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   }
   for (const pol of unlockedPolicies(player)) {
     if (!player.policies.includes(pol)) applyCommand(state, { type: "togglePolicy", policyId: pol }, playerId);
+  }
+
+  // Recruit a Legend when faith allows — prefer a land hero, else any available.
+  if (state.legendsEnabled) {
+    const options = availableLegends(state);
+    const pick = options.find((l) => l.type === "land") ?? options[0];
+    if (pick && canRecruitLegend(state, playerId, pick.id).ok) {
+      applyCommand(state, { type: "recruitLegend", legendId: pick.id }, playerId);
+    }
   }
 
   // Found a religion once enough faith is stored.

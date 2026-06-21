@@ -324,6 +324,8 @@ function startGame(session: Session): void {
     onSetGovernment: (governmentId) => session.order({ type: "setGovernment", governmentId }),
     onTogglePolicy: (policyId) => session.order({ type: "togglePolicy", policyId }),
     onFoundReligion: (cityId, name, beliefs) => session.order({ type: "foundReligion", cityId, name, beliefs }),
+    onActivateGreatPerson: (greatPersonId) => session.order({ type: "activateGreatPerson", greatPersonId }),
+    onRecruitLegend: (legendId) => session.order({ type: "recruitLegend", legendId }),
     onEstablishTrade: (destCityId) => {
       if (selectedUnitId != null) session.order({ type: "establishTradeRoute", unitId: selectedUnitId, destCityId });
       clearSelection();
@@ -411,6 +413,12 @@ function startGame(session: Session): void {
     },
     onTurnUpdateOpenCivics: () => {
       ui.openCivics();
+    },
+    onTurnUpdateOpenGreatPeople: () => {
+      ui.openGreatPeople();
+    },
+    onTurnUpdateOpenLegends: () => {
+      ui.openLegends();
     },
     onTurnUpdateOpenGold: () => {
       // The gold dialog is driven by a state flag inside ui.ts; simulate a click.

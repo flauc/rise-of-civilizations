@@ -58,6 +58,8 @@ export interface LocalGameOptions {
   mapType?: MapType;
   aiCount?: number;
   barbarians?: boolean | BarbarianActivity;
+  /** Enable the Legends (heroes) feature. Defaults to on. */
+  legends?: boolean;
   /** Scatter natural wonders across the map. Defaults to off. */
   naturalWonders?: boolean;
   /** Starting gold treasury preset. */
@@ -95,6 +97,7 @@ export class LocalSession implements Session {
         humanSlots: 1,
         playerCount: 1 + aiCount,
         barbarians: opts.barbarians ?? true,
+        legends: opts.legends ?? true,
         naturalWonders: opts.naturalWonders ?? false,
         startingGold: opts.startingGold ?? "balanced",
         civIds,
@@ -186,6 +189,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     importedLuxuries: [],
     gold: p.id === view.yourId ? view.you.gold : 0,
     globalMorale: p.id === view.yourId ? view.you.globalMorale : 50,
+    moraleLog: p.id === view.yourId ? (view.you.moraleLog ?? []).map((e) => ({ ...e })) : [],
     researched: new Set(p.id === view.yourId ? view.you.researched : []),
     researching: p.id === view.yourId ? view.you.researching : null,
     researchQueue: p.id === view.yourId ? view.you.researchQueue : [],
@@ -202,6 +206,10 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     bribesPaid: p.id === view.yourId ? (view.you.bribesPaid ?? 0) : 0,
     leaderAbilityLastUsedTurn: p.id === view.yourId ? (view.you.leaderAbilityLastUsedTurn ?? -Infinity) : -Infinity,
     modifiers: [],
+    greatPeoplePoints: p.id === view.yourId ? { ...(view.you.greatPeoplePoints ?? {}) } : {},
+    greatPeopleEarned: p.id === view.yourId ? { ...(view.you.greatPeopleEarned ?? {}) } : {},
+    greatPeople: p.id === view.yourId ? [...(view.you.greatPeople ?? [])] : [],
+    legendsRecruited: p.id === view.yourId ? (view.you.legendsRecruited ?? 0) : 0,
   }));
 
   const state: GameState = {
@@ -219,6 +227,9 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     tradeRoutes: view.tradeRoutes ?? [],
     works: view.works ?? [],
     completedWonders: view.completedWonders ?? [],
+    recruitedGreatPeople: view.recruitedGreatPeople ?? [],
+    legendsEnabled: view.legendsEnabled ?? true,
+    recruitedLegends: view.recruitedLegends ?? [],
     naturalWonderIds: view.naturalWonderIds ?? [],
     discoveredWonders: view.discoveredWonders ?? {},
     allNaturalWondersClaimedBy: view.allNaturalWondersClaimedBy,

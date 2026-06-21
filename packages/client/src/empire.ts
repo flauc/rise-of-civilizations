@@ -34,10 +34,13 @@ const STYLE = `
 #empire{position:fixed;top:0;right:0;bottom:0;left:auto;width:min(460px,92vw);z-index:55;background:#0d1b27;border-left:1px solid var(--edge);box-shadow:-8px 0 24px rgba(0,0,0,.35);display:flex;flex-direction:column;transform:translateX(0);transition:transform .2s ease,pointer-events 0s}
 #empire.hidden{transform:translateX(100%);pointer-events:none}
 .emp-box{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden}
-.emp-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--edge)}
+.emp-head{position:relative;display:flex;align-items:center;gap:10px;padding:12px 16px;padding-right:52px;border-bottom:1px solid var(--edge)}
 .emp-tab{padding:7px 14px;border-radius:8px;cursor:pointer;color:#b8d4ec;background:transparent;border:1px solid transparent;font:inherit;font-size:14px}
 .emp-tab.active{background:#213a52;border-color:var(--edge);color:#fff;font-weight:700}
 .emp-title{font-weight:800;font-size:17px;color:#fff;margin-right:8px}
+.emp-x{position:absolute;top:8px;right:12px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%;border:1px solid var(--edge);background:#11202e;color:#fff;font-size:16px;line-height:1;cursor:pointer}
+.emp-x:hover{background:#17304e}
+@media(max-width:640px){.emp-title{display:none}.emp-tab{padding:7px 11px;font-size:13px}}
 .emp-body{flex:1;overflow:auto;padding:14px 16px}
 .emp-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--edge);border-radius:9px;margin-top:7px;cursor:pointer;background:#11202e}
 .emp-row:hover{background:#17304470;border-color:#3a5d7c}
@@ -84,7 +87,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     `<button class="emp-tab" data-tab="cities">Cities</button>` +
     `<button class="emp-tab" data-tab="units">Units</button>` +
     `<button class="emp-tab" data-tab="specialists">Specialists</button>` +
-    `<span style="flex:1"></span><button class="btn" id="emp-close">Close</button></div>` +
+    `<button class="emp-x" id="emp-close" title="Close" aria-label="Close">✕</button></div>` +
     `<div class="emp-body" id="emp-body"></div></div>`;
   document.body.appendChild(root);
 

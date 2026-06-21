@@ -33,6 +33,8 @@ import { establishTradeRoute, pruneTradeRoutes } from "./trade";
 import { pillageTile, plunderTradeRoute, sackCityCommand } from "./raiding";
 import { bribeBarbarian, recruitBarbarian, pruneBarbarianBribes } from "./bribery";
 import { useLeaderAbility } from "./leader-abilities";
+import { accrueGreatPeople, activateGreatPerson } from "./great-people";
+import { recruitLegend, tickLegends } from "./legends";
 import {
   declareWar,
   makePeace,
@@ -100,6 +102,8 @@ export type Command =
   | { type: "finalizeDeal"; proposalId: number; confirm: boolean }
   | { type: "acknowledgeContact"; otherId: number }
   | { type: "useLeaderAbility" }
+  | { type: "activateGreatPerson"; greatPersonId: string }
+  | { type: "recruitLegend"; legendId: string; cityId?: number }
   | { type: "endTurn" };
 
 export interface CommandResult {
@@ -125,12 +129,14 @@ export function beginTurn(state: GameState): void {
   healAndReset(state, player);
   decayGlobalMorale(state, player); // global morale slips when wins dry up
   tickAbilities(state, player); // expire stances/pulses, enforce pins (after movement reset)
+  tickLegends(state, player.id); // retire heroes whose lifespan has elapsed
   gatherPlayerResources(state, player.id);
   for (const c of citiesOf(state, player.id)) {
     c.rangedAttackUsed = false;
     processCity(state, c, player);
   }
   applyUnitUpkeep(state, player); // empire-wide unit maintenance after city income
+  accrueGreatPeople(state, player); // class points -> recruit Great People
   advanceWorks(state, player.id); // specialists labour on public works
   towerBombardment(state, player.id); // towers fire on adjacent enemies
   // Religion spreads + diplomacy ticks once per round (at the start of player 0's turn).
@@ -179,6 +185,17 @@ export function applyCommand(
     case "useLeaderAbility": {
       const result = useLeaderAbility(state, player);
       return result.ok ? ok : fail(result.error ?? "leader ability failed");
+    }
+
+    case "activateGreatPerson": {
+      const result = activateGreatPerson(state, player, cmd.greatPersonId);
+      return result.ok ? ok : fail(result.error ?? "could not activate Great Person");
+    }
+
+    case "recruitLegend": {
+      const result = recruitLegend(state, player.id, cmd.legendId, cmd.cityId);
+      if (result.ok) updateExplored(state, player.id);
+      return result.ok ? ok : fail(result.error ?? "could not recruit Legend");
     }
 
     case "endTurn": {

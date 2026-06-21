@@ -6,7 +6,7 @@
 // - Google Gemini Nano Banana 2 (gemini-3.1-flash-image) is the default model.
 
 import { join } from "node:path";
-import { CIVILIZATIONS, WONDER_DEFS, UNIQUE_UNITS, NATURAL_WONDER_DEFS } from "@roc/data";
+import { CIVILIZATIONS, WONDER_DEFS, UNIQUE_UNITS, NATURAL_WONDER_DEFS, GREAT_PEOPLE, GREAT_PERSON_CLASS_INFO, LEGENDS } from "@roc/data";
 import { RESOURCE_DEFS, IMPROVEMENT_DEFS, UNIT_DEFS } from "@roc/sim";
 
 export interface TargetSize {
@@ -21,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder" | "wonder_tile";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder" | "wonder_tile" | "great_person" | "legend";
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -88,6 +88,18 @@ export const UNIT_SUBSET: AssetEntry[] = [
   { id: "battering_ram", name: "Battering Ram", description: "a wooden siege ram with a roofed frame and crew pushing it", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "catapult", name: "Catapult", description: "a classical torsion catapult stone-throwing siege engine", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "ballista", name: "Ballista", description: "a large bolt-shooting ballista siege engine", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // naval — warships (melee)
+  { id: "galley", name: "Galley", description: "an early oared wooden galley warship with a single bank of oars and a small square sail, ancient Mediterranean style", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "bireme", name: "Bireme", description: "an ancient war galley with two banks of oars and a bronze ram at the prow", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "trireme", name: "Trireme", description: "a classical Greek trireme warship with three banks of oars, a single sail, and a bronze ram at the bow", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "quinquereme", name: "Quinquereme", description: "a large ancient war galley with multiple banks of oars, a reinforced bronze ram, and a raised fighting deck", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "longship", name: "Longship", description: "a Viking longship with a single square sail, rows of oars, a carved dragon-head prow, and round shields along the hull", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "caravel", name: "Caravel", description: "a small ocean-going caravel with lateen and square sails on two or three masts, an Age of Exploration sailing ship", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // naval — ranged
+  { id: "dromon", name: "Dromon", description: "a Byzantine dromon war galley with lateen sails and oars, armed with a Greek-fire siphon at the bow", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "war_junk", name: "War Junk", description: "a Chinese war junk with battened ribbed sails, a high stern, and a sturdy wooden hull", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "galleass", name: "Galleass", description: "a large oared-and-sailed galleass warship with gun ports and a raised fighting platform", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "galleon", name: "Galleon", description: "a tall multi-masted galleon with square sails, a high sterncastle, and rows of cannon ports", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
 ];
 
 export const CITY_SUBSET: AssetEntry[] = [
@@ -114,6 +126,44 @@ export const LEADER_SUBSET: AssetEntry[] = CIVILIZATIONS.map((civ) => ({
   category: "leader" as const,
   referenceTile: DEFAULT_REFERENCE_TILE,
 }));
+
+/** One portrait per Great Person, in the same painted style as leader portraits.
+ *  Output: great-people/<id>.png. */
+export const GREAT_PERSON_SUBSET: AssetEntry[] = GREAT_PEOPLE.map((g) => ({
+  id: g.id,
+  name: g.name,
+  description: `the renowned ${GREAT_PERSON_CLASS_INFO[g.cls].name} of the ${g.era} era`,
+  aspectRatio: "3:4",
+  size: { width: 320, height: 400 },
+  category: "great_person" as const,
+  referenceTile: DEFAULT_REFERENCE_TILE,
+}));
+
+/** One portrait per Legend (hero), in the same painted style as leader portraits.
+ *  Output: legends/<id>.png. */
+export const LEGEND_SUBSET: AssetEntry[] = LEGENDS.map((l) => ({
+  id: l.id,
+  name: l.name,
+  description: `the legendary ${l.type === "naval" ? "admiral" : l.type === "support" ? "leader" : "warrior"} hero of the ${l.era} era`,
+  aspectRatio: "3:4",
+  size: { width: 320, height: 400 },
+  category: "legend" as const,
+  referenceTile: DEFAULT_REFERENCE_TILE,
+}));
+
+/** One on-map UNIT TOKEN per Legend (hero), keyed by the legend id so the overlay
+ *  can draw it for the hero unit. Output: units/<id>.png. */
+export const LEGEND_UNIT_SUBSET: AssetEntry[] = LEGENDS.map((l) => {
+  const base = UNIT_DEFS[l.baseType as keyof typeof UNIT_DEFS]?.name ?? l.baseType;
+  return {
+    id: l.id,
+    name: l.name,
+    description: `${l.name}, the legendary ${l.era}-era hero, depicted as a single heroic, ornate ${base.toLowerCase()} champion with distinctive regalia, finer armor, and a commanding presence that sets the hero apart from ordinary soldiers`,
+    aspectRatio: "1:1" as const,
+    size: { width: 128, height: 128 },
+    category: "unit" as const,
+  };
+});
 
 /** One token per civilization unique unit (reskins a base unit). Output: units/<id>.png. */
 export const UNIQUE_UNIT_SUBSET: AssetEntry[] = UNIQUE_UNITS.map((u) => {
@@ -662,7 +712,7 @@ export const WONDER_TILE_SUBSET: AssetEntry[] = GENERATED_WONDER_TILES.map((w) =
 }));
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -744,8 +794,11 @@ export function promptFor(entry: AssetEntry): string {
   if (entry.category === "tile") {
     return `Create a flat 2D hand-painted hexagonal strategy game tile for "${entry.name}". ${entry.description}. Match the visual style of the attached reference tile: slightly stylized, saturated but natural colors, readable at small sizes, and framed inside a vertical 2:3 pointy-top hex. IMPORTANT: do not include roads, paths, houses, huts, fences, farms, or any buildings or man-made structures — those will be added as separate tile improvements. Render as a flat 2D illustration with no 3D perspective, no realistic depth, no depth-of-field, and no camera angle shifts. Keep the same overall composition, camera angle, and hex footprint as the reference; vary only subtle natural details like texture, lighting, and vegetation so the grid remains uniform. The artwork must be fully self-contained and look correct in isolation; avoid paths, rivers, shadows, or objects that appear to continue off the tile edges. Preserve the soft shadow along the bottom edges of the hex, similar to the reference tile.`;
   }
-  if (entry.category === "leader") {
-    const subject = LEADER_SUBJECT_OVERRIDES[entry.id] ?? `${entry.name}, ruler of ${entry.description}`;
+  if (entry.category === "leader" || entry.category === "great_person" || entry.category === "legend") {
+    const subject =
+      entry.category === "leader"
+        ? LEADER_SUBJECT_OVERRIDES[entry.id] ?? `${entry.name}, ruler of ${entry.description}`
+        : `${entry.name}, ${entry.description}, depicted as the real historical figure in period-accurate dress`;
     return `Create a stylized hand-painted portrait of ${subject}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Depict a SINGLE person — exactly one figure, a solo portrait, never a group, crowd, or multiple people. Render a waist-up portrait facing slightly toward the viewer, set against a soft painted background such as ancient parchment, a mural, or a neutral textured wall visible only behind the head and shoulders. The figure is large and fills most of the frame: the head sits near the top and the clothed chest and torso continue straight down so the body is cropped cleanly by the bottom edge of the image. The entire lower half of the image must be filled with the figure's solidly painted clothing and body — never empty background, and absolutely NO fade, gradient, vignette, spotlight falloff, smoke, or dissolve of the figure into the background at the torso, bottom, or sides; the body stays fully opaque all the way to the lower edge. Do not make the background transparent. Use clothing, regalia, and materials appropriate to the civilization's era and geography. NO text, NO letters, NO numbers, NO percentages, NO plus signs, NO symbols, NO UI elements, NO ability descriptions, NO stat boxes, NO border, NO frame, NO modern objects, NO ground plane, NO terrain, and NO cast shadow underneath the figure.`;
   }
   if (entry.category === "road") {

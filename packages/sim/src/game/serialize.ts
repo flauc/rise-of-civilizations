@@ -1,7 +1,7 @@
 import { getTile } from "@roc/shared";
 import type {
   Attitude, BarbarianActivity, BarbarianBribe, City, ContactEvent, GameOver, GameState,
-  LogEntry, Proposal, Relation, Religion, TradeRecord, TradeRoute, TurnUpdateEvent, Unit, Work,
+  LogEntry, MoraleEvent, Proposal, Relation, Religion, TradeRecord, TradeRoute, TurnUpdateEvent, Unit, Work,
 } from "./state";
 import { computeVisible } from "./visibility";
 import { tileHasBridge } from "./movement";
@@ -62,6 +62,8 @@ export interface PlayerView {
     gold: number;
     /** Empire-wide morale (0–200; base 50). */
     globalMorale: number;
+    /** Recent global-morale changes (most recent last) for the morale dialog. */
+    moraleLog: MoraleEvent[];
     scienceProgress: number;
     researching: TechId | null;
     researchQueue: TechId[];
@@ -80,6 +82,14 @@ export interface PlayerView {
     barbarianBribes: { campKey: string; untilTurn: number }[];
     /** Last turn the viewer used their leader ability; -Infinity if never used. */
     leaderAbilityLastUsedTurn: number;
+    /** Great-person points accumulated per class. */
+    greatPeoplePoints: Partial<Record<string, number>>;
+    /** Lifetime figures earned per class (drives the rising threshold). */
+    greatPeopleEarned: Partial<Record<string, number>>;
+    /** Recruited Great People not yet activated (figure ids). */
+    greatPeople: string[];
+    /** Lifetime count of Legends recruited (drives the rising cost). */
+    legendsRecruited: number;
   };
   religions: Religion[];
   /** The viewer's own trade routes (for the map overlay + city panel). */
@@ -88,6 +98,12 @@ export interface PlayerView {
   works: Work[];
   /** Wonders already completed in the world. */
   completedWonders: string[];
+  /** Great-person ids already recruited by anyone (gone for the world). */
+  recruitedGreatPeople: string[];
+  /** Whether the Legends feature is on this game. */
+  legendsEnabled: boolean;
+  /** Legend ids currently recruited somewhere in the world. */
+  recruitedLegends: string[];
   /** Natural-wonder ids placed on this map. */
   naturalWonderIds: string[];
   /** First civ to sight each natural wonder (wonderId -> player id). */
@@ -200,6 +216,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     you: {
       gold: me?.gold ?? 0,
       globalMorale: me?.globalMorale ?? GLOBAL_MORALE_BASE,
+      moraleLog: me?.moraleLog ? me.moraleLog.map((e) => ({ ...e })) : [],
       scienceProgress: me?.scienceProgress ?? 0,
       researching: me?.researching ?? null,
       researchQueue: me?.researchQueue ?? [],
@@ -214,6 +231,10 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
       resources: me?.resources ?? {},
       bribesPaid: me?.bribesPaid ?? 0,
       leaderAbilityLastUsedTurn: me?.leaderAbilityLastUsedTurn ?? -Infinity,
+      greatPeoplePoints: { ...(me?.greatPeoplePoints ?? {}) },
+      greatPeopleEarned: { ...(me?.greatPeopleEarned ?? {}) },
+      greatPeople: [...(me?.greatPeople ?? [])],
+      legendsRecruited: me?.legendsRecruited ?? 0,
       barbarianBribes: state.barbarianBribes
         .filter((b) => b.playerId === playerId)
         .map((b) => ({ campKey: b.campKey, untilTurn: b.untilTurn })),
@@ -222,6 +243,9 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     tradeRoutes: state.tradeRoutes.filter((r) => r.ownerId === playerId).map((r) => ({ ...r })),
     works: state.works.filter((w) => w.ownerId === playerId).map((w) => ({ ...w, cityIds: [...w.cityIds] })),
     completedWonders: [...state.completedWonders],
+    recruitedGreatPeople: [...(state.recruitedGreatPeople ?? [])],
+    legendsEnabled: state.legendsEnabled ?? true,
+    recruitedLegends: [...(state.recruitedLegends ?? [])],
     naturalWonderIds: [...state.naturalWonderIds],
     discoveredWonders: { ...state.discoveredWonders },
     allNaturalWondersClaimedBy: state.allNaturalWondersClaimedBy,
@@ -261,6 +285,9 @@ export interface SerializedState {
   tradeRoutes: TradeRoute[];
   works: Work[];
   completedWonders: string[];
+  recruitedGreatPeople: string[];
+  legendsEnabled: boolean;
+  recruitedLegends: string[];
   naturalWonderIds: string[];
   discoveredWonders: Record<string, number>;
   allNaturalWondersClaimedBy?: number;
@@ -298,6 +325,9 @@ export function serializeState(state: GameState): SerializedState {
     tradeRoutes: state.tradeRoutes,
     works: state.works,
     completedWonders: state.completedWonders,
+    recruitedGreatPeople: state.recruitedGreatPeople ?? [],
+    legendsEnabled: state.legendsEnabled ?? true,
+    recruitedLegends: state.recruitedLegends ?? [],
     naturalWonderIds: state.naturalWonderIds,
     discoveredWonders: state.discoveredWonders,
     allNaturalWondersClaimedBy: state.allNaturalWondersClaimedBy,
@@ -337,6 +367,9 @@ export function deserializeState(s: SerializedState): GameState {
     tradeRoutes: s.tradeRoutes ?? [],
     works: s.works ?? [],
     completedWonders: s.completedWonders ?? [],
+    recruitedGreatPeople: s.recruitedGreatPeople ?? [],
+    legendsEnabled: s.legendsEnabled ?? true,
+    recruitedLegends: s.recruitedLegends ?? [],
     naturalWonderIds: s.naturalWonderIds ?? [],
     discoveredWonders: s.discoveredWonders ?? {},
     allNaturalWondersClaimedBy: s.allNaturalWondersClaimedBy,
@@ -360,6 +393,10 @@ export function deserializeState(s: SerializedState): GameState {
       bribesPaid: p.bribesPaid ?? 0,
       leaderAbilityLastUsedTurn: p.leaderAbilityLastUsedTurn ?? -Infinity,
       modifiers: p.modifiers ?? [],
+      greatPeoplePoints: p.greatPeoplePoints ?? {},
+      greatPeopleEarned: p.greatPeopleEarned ?? {},
+      greatPeople: p.greatPeople ?? [],
+      legendsRecruited: p.legendsRecruited ?? 0,
       researched: new Set(Array.isArray(p.researched) ? (p.researched as TechId[]) : []),
       civicsResearched: new Set(Array.isArray(p.civicsResearched) ? p.civicsResearched : []),
       explored: new Set(Array.isArray(p.explored) ? p.explored : []),

@@ -59,8 +59,10 @@ const STYLE = `
 .dc-actions{display:flex;gap:10px;justify-content:center;padding:14px;border-top:1px solid var(--edge)}
 #diplomacy{position:fixed;top:0;right:0;bottom:0;width:min(460px,96vw);z-index:54;background:#0d1b27;border-left:1px solid var(--edge);box-shadow:-8px 0 24px rgba(0,0,0,.35);display:flex;flex-direction:column;transform:translateX(0);transition:transform .2s ease}
 #diplomacy.hidden{transform:translateX(100%);pointer-events:none}
-.dp-head{display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--edge)}
+.dp-head{position:relative;display:flex;align-items:center;gap:8px;padding:12px 16px;padding-right:52px;border-bottom:1px solid var(--edge)}
 .dp-title{font-weight:800;font-size:17px;color:#fff;flex:1}
+.dp-x{position:absolute;top:8px;right:12px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%;border:1px solid var(--edge);background:#11202e;color:#fff;font-size:16px;line-height:1;cursor:pointer}
+.dp-x:hover{background:#17304e}
 .dp-body{flex:1;overflow:auto;padding:12px 14px}
 .dp-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--edge);border-radius:9px;margin-top:7px;cursor:pointer;background:#11202e}
 .dp-row:hover{background:#17304470;border-color:#3a5d7c}
@@ -265,7 +267,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       `<div class="dp-head">` +
       (selected !== null ? `<button class="btn" id="dp-back">←</button>` : "") +
       `<span class="dp-title">🕊️ Diplomacy</span>` +
-      `<button class="btn" id="dp-close">Close</button></div>` +
+      `<button class="dp-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
       `<div class="dp-body">${body}${resultMsg ? `<div class="dp-empty" style="color:#ffd967">${resultMsg}</div>` : ""}</div>`;
     wire(state, viewerId);
   }

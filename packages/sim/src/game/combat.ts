@@ -13,6 +13,7 @@ import {
 import { isRough, terrainDefense, isWaterTerrain, isForestTerrain } from "./terrain";
 import { structureDefense, towerBombard } from "./fortifications";
 import { civCombatBonus, uniqueUnitForUnit } from "./civs";
+import { legendCombatBonus } from "./legends";
 import { applyVictoryCheck } from "./victory";
 import { emitCityLost, emitUnitDied } from "./turn-updates";
 import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween } from "./movement";
@@ -87,6 +88,7 @@ function attackStrength(
   const defenderCls = UNIT_DEFS[defender.type].cls;
   let s = (ranged ? def.rangedStrength ?? 0 : def.strength) * levelMultiplier(unit);
   s += civCombatBonus(state, unit);
+  s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
 
   // Active-ability attack bonuses.
   const defenderBraced = defender.stance === "brace" || defender.stance === "shield_wall" || defender.stance === "othismos" || defender.stance === "last_stand";
@@ -249,6 +251,7 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   if (unit.exposedUntilTurn !== undefined && state.turn <= unit.exposedUntilTurn) s -= 4;
 
   s += civCombatBonus(state, unit);
+  s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
 
   // Stance defensive multipliers.
   let stanceMult = 1;

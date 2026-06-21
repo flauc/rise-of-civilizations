@@ -19,8 +19,21 @@ import {
   BRIBE_TURNS,
   BARBARIAN_BRIBE_BASE,
   barbarianRecruitCost,
+  greatPersonThreshold,
+  legendCost,
+  legendBaseName,
 } from "@roc/sim";
-import { WONDER_DEFS, MASTER_CRAFTSMEN, getCiv } from "@roc/data";
+import {
+  WONDER_DEFS,
+  MASTER_CRAFTSMEN,
+  getCiv,
+  GREAT_PEOPLE,
+  GREAT_PERSON_CLASSES,
+  GREAT_PERSON_CLASS_INFO,
+  LEGENDS,
+  type GreatPersonClass,
+  type LegendType,
+} from "@roc/data";
 import type { TerrainType, Unit } from "@roc/sim";
 
 export type WikiCategory =
@@ -31,6 +44,8 @@ export type WikiCategory =
   | "specialists"
   | "combat"
   | "morale"
+  | "great_people"
+  | "legends"
   | "cities"
   | "religion"
   | "victory";
@@ -48,6 +63,8 @@ const CATEGORIES: CategoryDef[] = [
   { id: "specialists", name: "Specialists & Works" },
   { id: "combat", name: "Combat" },
   { id: "morale", name: "Morale" },
+  { id: "great_people", name: "Great People" },
+  { id: "legends", name: "Legends" },
   { id: "cities", name: "Cities" },
   { id: "religion", name: "Religion" },
   { id: "victory", name: "Victory" },
@@ -77,7 +94,20 @@ function renderCivilizations(): string {
   return section("Civilizations", `<div class="wiki-grid">${list}</div>`);
 }
 
-const CLASS_ORDER = ["melee", "ranged", "cavalry", "siege", "recon", "settler", "trader"] as const;
+const CLASS_ORDER = ["melee", "ranged", "cavalry", "siege", "naval_melee", "naval_ranged", "recon", "settler", "trader"] as const;
+
+/** Display titles for each unit class section in the wiki. */
+const CLASS_TITLES: Record<string, string> = {
+  melee: "Melee",
+  ranged: "Ranged",
+  cavalry: "Cavalry",
+  siege: "Siege",
+  naval_melee: "Naval — Warships",
+  naval_ranged: "Naval — Ranged",
+  recon: "Recon",
+  settler: "Civilian",
+  trader: "Trade",
+};
 
 const WIKI_UNIT_STYLE = `<style>
 .wiki-unit-classtitle{font-size:16px;font-weight:700;color:#ffd967;margin:18px 0 6px;text-transform:capitalize}
@@ -139,7 +169,7 @@ function renderUnits(): string {
       })
       .join("");
     html +=
-      `<div class="wiki-unit-classtitle">${escapeHtml(cls[0]!.toUpperCase() + cls.slice(1))}</div>` +
+      `<div class="wiki-unit-classtitle">${escapeHtml(CLASS_TITLES[cls] ?? cls[0]!.toUpperCase() + cls.slice(1))}</div>` +
       `<div class="wiki-unit-grid">${cards}</div>`;
   }
 
@@ -345,6 +375,161 @@ function renderMorale(): string {
   );
 }
 
+const WIKI_PORTRAIT_STYLE = `<style>
+.wiki-portrait-cat{font-size:16px;font-weight:700;color:#ffd967;margin:18px 0 6px;text-transform:capitalize}
+.wiki-portrait-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin:8px 0 22px}
+.wiki-portrait-card{margin:0;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px;text-align:left;display:flex;gap:10px}
+.wiki-portrait-img{flex:0 0 64px}
+.wiki-portrait-img img{width:64px;height:80px;object-fit:cover;border-radius:8px;border:1px solid rgba(201,162,39,.3)}
+.wiki-portrait-name{font-weight:700;font-size:14px;color:#e6d2b8}
+.wiki-portrait-sub{font-size:11px;color:#9fb0c0;margin-top:2px}
+.wiki-portrait-body{font-size:11.5px;color:#b8aa8d;margin-top:5px;line-height:1.35}
+@media(max-width:700px){
+.wiki-portrait-grid{grid-template-columns:1fr;gap:10px}
+}
+</style>`;
+
+/** A portrait card: image on the left, name + meta + body on the right. */
+function portraitCard(imgBase: string, id: string, title: string, sub: string, body: string): string {
+  const src = `${import.meta.env.BASE_URL}${imgBase}/${id}.png`;
+  return (
+    `<figure class="wiki-portrait-card">` +
+    `<div class="wiki-portrait-img"><img src="${src}" loading="lazy" alt="${escapeHtml(title)}" onerror="this.style.visibility='hidden'"></div>` +
+    `<figcaption><div class="wiki-portrait-name">${escapeHtml(title)}</div>` +
+    `<div class="wiki-portrait-sub">${sub}</div>` +
+    `<div class="wiki-portrait-body">${escapeHtml(body)}</div></figcaption></figure>`
+  );
+}
+
+/** Plain-English description of each great-person class's instant activation. */
+const GP_EFFECT_TEXT: Record<GreatPersonClass, string> = {
+  general: "Drills your land army — every land military unit earns a free promotion — and lifts empire morale.",
+  admiral: "Heals your fleet and army to full and lifts empire morale.",
+  scientist: "A burst of science (a eureka) that speeds your current research.",
+  engineer: "A surge of production in your best city, hurrying its current build.",
+  merchant: "A windfall of gold straight to your treasury.",
+  prophet: "A burst of faith toward founding or spreading a religion.",
+  artist: "A burst of culture that inspires your empire.",
+  statesman: "A burst of culture that speeds your civic reforms.",
+};
+
+/** Buildings (and the capital) that feed each class's point pool. */
+const GP_SOURCE_TEXT: Record<GreatPersonClass, string> = {
+  general: "Barracks, Stables",
+  admiral: "Harbors, Lighthouses",
+  scientist: "Archives (Library), Academies",
+  engineer: "Workshops, Forges",
+  merchant: "Markets, Harbors",
+  prophet: "Shrines, Temples",
+  artist: "Monuments, Amphitheaters",
+  statesman: "your capital (seat of government)",
+};
+
+function renderGreatPeople(): string {
+  let gallery = WIKI_PORTRAIT_STYLE;
+  for (const cls of GREAT_PERSON_CLASSES) {
+    const info = GREAT_PERSON_CLASS_INFO[cls];
+    const figures = GREAT_PEOPLE.filter((g) => g.cls === cls);
+    if (figures.length === 0) continue;
+    const cards = figures
+      .map((g) => portraitCard("great-people", g.id, g.name, `${g.era} era`, g.desc))
+      .join("");
+    gallery +=
+      `<div class="wiki-portrait-cat">${info.glyph} ${escapeHtml(info.name)}s — earned from ${escapeHtml(GP_SOURCE_TEXT[cls])}</div>` +
+      `<div class="wiki-portrait-body" style="margin:0 0 6px">${escapeHtml(GP_EFFECT_TEXT[cls])}</div>` +
+      `<div class="wiki-portrait-grid">${cards}</div>`;
+  }
+
+  return (
+    section(
+      "What They Are",
+      `<p><b>Great People</b> are finite, named historical figures — scientists, generals, prophets, artists and more — earned by running the right kind of empire. They are not generic units; each is a one-time recruit you <b>activate</b> for a powerful instant effect.</p>`,
+    ) +
+    section(
+      "Earning Class Points",
+      `<p>Each class has its own <b>point pool</b> that fills a little every turn from matching buildings (and, for Statesmen, your capital's seat of government):</p>` +
+        `<ul>` +
+        GREAT_PERSON_CLASSES.map(
+          (cls) =>
+            `<li>${GREAT_PERSON_CLASS_INFO[cls].glyph} <b>${escapeHtml(GREAT_PERSON_CLASS_INFO[cls].name)}</b> — ${escapeHtml(GP_SOURCE_TEXT[cls])}</li>`,
+        ).join("") +
+        `</ul>` +
+        `<p>Build Archives and Academies to court Scientists, Markets and Harbors for Merchants, Barracks for Generals, Shrines and Temples for Prophets, and so on. Open the <b>🎖️ Great People</b> panel to watch each pool fill.</p>`,
+    ) +
+    section(
+      "Recruiting",
+      `<p>When a pool reaches its threshold you <b>recruit the next available figure</b> of that class, in roughly era order. Each figure is <b>globally unique</b> — once any civilization recruits them, they are gone for the rest of that game, so there is real competition for the best ones.</p>` +
+        `<p>Your first figure of a class costs <b>${greatPersonThreshold(0)}</b> points; each later one of that class costs <b>${greatPersonThreshold(1) - greatPersonThreshold(0)}</b> more (${greatPersonThreshold(0)} → ${greatPersonThreshold(1)} → ${greatPersonThreshold(2)} → …).</p>`,
+    ) +
+    section(
+      "Activation",
+      `<p>A recruited figure waits in your <b>🎖️ Great People</b> panel until you <b>activate</b> them — a one-time effect themed to their class:</p>` +
+        `<ul>` +
+        GREAT_PERSON_CLASSES.map(
+          (cls) =>
+            `<li>${GREAT_PERSON_CLASS_INFO[cls].glyph} <b>${escapeHtml(GREAT_PERSON_CLASS_INFO[cls].name)}</b> — ${escapeHtml(GP_EFFECT_TEXT[cls])}</li>`,
+        ).join("") +
+        `</ul>`,
+    ) +
+    section(`The Figures (${GREAT_PEOPLE.length})`, gallery)
+  );
+}
+
+const LEGEND_TYPE_TITLE: Record<LegendType, string> = {
+  land: "Land Heroes",
+  naval: "Naval Heroes",
+  support: "Support Heroes",
+};
+
+function renderLegends(): string {
+  let gallery = WIKI_PORTRAIT_STYLE;
+  for (const type of ["land", "naval", "support"] as LegendType[]) {
+    const heroes = LEGENDS.filter((l) => l.type === type);
+    if (heroes.length === 0) continue;
+    const cards = heroes
+      .map((l) =>
+        portraitCard(
+          "legends",
+          l.id,
+          l.name,
+          `${l.era} · ${legendBaseName(l)} · via ${l.recruitVia}`,
+          `${l.abilityDesc} Aura: ${l.auraDesc} (+${l.auraBonus} to adjacent allies). Lifespan ${l.lifespan} turns${l.rechargeable ? ", recharges" : ""}.`,
+        ),
+      )
+      .join("");
+    gallery +=
+      `<div class="wiki-portrait-cat">${escapeHtml(LEGEND_TYPE_TITLE[type])}</div>` +
+      `<div class="wiki-portrait-grid">${cards}</div>`;
+  }
+
+  return (
+    section(
+      "Heroes of Legend",
+      `<p><b>Legends</b> are the great heroes of history — powerful, one-of-a-kind units who fight at the head of your armies. They are a core feature, on by default, and can be switched off when you create a game.</p>` +
+        `<p>Each legend reskins a strong base unit but stands far above it: a hero carries its own combat bonus, <b>heartens nearby allies</b>, and is marked on the map by a glowing gold ring, a crown, and its own name.</p>`,
+    ) +
+    section(
+      "Recruiting a Hero",
+      `<p>Legends are summoned with <b>faith</b>. Open the <b>⭐ Legends</b> panel, spend faith, and the hero appears at one of your cities (naval heroes on the adjacent water). Your first hero costs <b>${legendCost(0)} faith</b>; each later one costs <b>${legendCost(1) - legendCost(0)}</b> more (${legendCost(0)} → ${legendCost(1)} → ${legendCost(2)} → …).</p>` +
+        `<p>Every legend is <b>globally unique</b> while alive — only one civilization can field a given hero at a time.</p>`,
+    ) +
+    section(
+      "Lifespan",
+      `<p>Heroes are precious and do not last forever. After their <b>lifespan</b> (about 30 turns) elapses, a hero <b>passes into legend</b> and leaves the field. A few <b>rechargeable</b> heroes (such as Joan of Arc) return to the pool when they retire and may be recruited again.</p>`,
+    ) +
+    section(
+      "In Battle",
+      `<p>A legend is a battlefield anchor:</p>` +
+        `<ul>` +
+        `<li><b>Hero strength</b> — the legend itself fights with a large combat bonus on top of its base unit.</li>` +
+        `<li><b>Inspiring aura</b> — adjacent friendly <i>military</i> units gain a flat combat bonus while they stand beside the hero (auras from multiple heroes do not stack — the strongest applies).</li>` +
+        `<li><b>Steadfast</b> — heroes muster with very high morale, so they rarely waver or rout.</li>` +
+        `</ul>`,
+    ) +
+    section(`The Heroes (${LEGENDS.length})`, gallery)
+  );
+}
+
 function renderCities(): string {
   return (
     section(
@@ -500,6 +685,8 @@ const RENDERERS: Record<WikiCategory, () => string> = {
   specialists: renderSpecialists,
   combat: renderCombat,
   morale: renderMorale,
+  great_people: renderGreatPeople,
+  legends: renderLegends,
   cities: renderCities,
   religion: renderReligion,
   victory: renderVictory,
@@ -569,8 +756,14 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
     @media(max-width:700px){
       /* Stack into a single column: a sticky top bar with the title, a Close
          button and a horizontally-scrolling category strip, then full-width
-         content. The desktop header (duplicate title + Close) is hidden. */
-      .wiki-layout{flex-direction:column}
+         content. The whole overlay scrolls (the sidebar pins at the top via
+         position:sticky); the desktop header (duplicate title + Close) is
+         hidden. We scroll the overlay itself rather than the content pane so the
+         flex column doesn't trap the content at an unconstrained height. */
+      #wiki{display:block;overflow-y:auto;-webkit-overflow-scrolling:touch}
+      .wiki-layout{flex-direction:column;height:auto;min-height:100%}
+      .wiki-main{flex:none;min-height:0}
+      .wiki-content{flex:none;overflow:visible}
       .wiki-sidebar{width:100%;flex-shrink:0;border-right:none;border-bottom:1px solid var(--edge);
         padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) 10px max(12px,env(safe-area-inset-left));
         overflow:visible;position:sticky;top:0;z-index:2}
@@ -611,6 +804,10 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
     titleEl.textContent = CATEGORIES.find((c) => c.id === category)?.name ?? "";
     contentEl.innerHTML = RENDERERS[category]();
     renderCategories();
+    // Jump back to the top when switching pages. The scroll container is the
+    // content pane on desktop and the whole overlay on mobile, so reset both.
+    contentEl.scrollTop = 0;
+    root.scrollTop = 0;
   }
 
   const doClose = (): void => {

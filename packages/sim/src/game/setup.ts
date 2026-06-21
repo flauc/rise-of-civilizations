@@ -27,6 +27,8 @@ export interface NewGameOptions {
   humanSlots?: number;
   /** Barbarian intensity. `false` = none, `true` = normal. */
   barbarians?: boolean | BarbarianActivity;
+  /** Enable the Legends (heroes) feature. Defaults to on. */
+  legends?: boolean;
   /** Scatter natural wonders across the map. Defaults to off. */
   naturalWonders?: boolean;
   /** Starting gold treasury preset for major civ players. */
@@ -158,6 +160,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   const count = Math.max(1, opts.playerCount ?? opts.playerNames?.length ?? 2);
   const humanSlots = opts.humanSlots ?? count;
   const activity = normalizeBarbarians(opts.barbarians);
+  const legendsEnabled = opts.legends ?? true;
   const startGold = startingGoldAmount(opts.startingGold);
 
   const map = generateMap({ cols, rows, seed, mapType: opts.mapType });
@@ -232,6 +235,10 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       bribesPaid: 0,
       leaderAbilityLastUsedTurn: -Infinity,
       modifiers: [],
+      greatPeoplePoints: {},
+      greatPeopleEarned: {},
+      greatPeople: [],
+      legendsRecruited: 0,
     });
   }
   const barbId = count;
@@ -262,6 +269,10 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       bribesPaid: 0,
       leaderAbilityLastUsedTurn: -Infinity,
       modifiers: [],
+      greatPeoplePoints: {},
+      greatPeopleEarned: {},
+      greatPeople: [],
+      legendsRecruited: 0,
     });
   }
 
@@ -280,6 +291,9 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     tradeRoutes: [],
     works: [],
     completedWonders: [],
+    recruitedGreatPeople: [],
+    legendsEnabled,
+    recruitedLegends: [],
     naturalWonderIds: [],
     discoveredWonders: {},
     allNaturalWondersClaimedBy: undefined,

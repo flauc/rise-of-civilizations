@@ -47,6 +47,10 @@ const makePlayer = (id: number): Player => ({
   bribesPaid: 0,
   leaderAbilityLastUsedTurn: -Infinity,
   modifiers: [],
+  greatPeoplePoints: {},
+  greatPeopleEarned: {},
+  greatPeople: [],
+  legendsRecruited: 0,
 });
 
 const makeCity = (id: number, ownerId: number, name: string, col: number, row: number): City => ({

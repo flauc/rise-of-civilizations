@@ -84,6 +84,12 @@ import {
   canParleyWith,
   BRIBE_TURNS,
   BARBARIAN_DIPLOMACY_TECH,
+  greatPersonThreshold,
+  nextAvailableFigure,
+  playerGreatPersonPerTurn,
+  availableLegends,
+  legendCost,
+  legendBaseName,
   type City,
   type GameState,
   type ImprovementKind,
@@ -99,7 +105,16 @@ import {
   type TurnUpdateEvent,
 } from "@roc/sim";
 import type { Tile } from "@roc/shared";
-import { getNaturalWonder, WONDER_DEFS, getWonder } from "@roc/data";
+import {
+  getNaturalWonder,
+  WONDER_DEFS,
+  getWonder,
+  getGreatPerson,
+  GREAT_PERSON_CLASSES,
+  GREAT_PERSON_CLASS_INFO,
+  getLegend,
+  type GreatPersonClass,
+} from "@roc/data";
 import { abilityIconHtml, type AbilityAtlas } from "./ability-assets";
 
 export interface CombatOdds {
@@ -258,6 +273,8 @@ export interface UIHandlers {
   onSetGovernment(governmentId: string): void;
   onTogglePolicy(policyId: string): void;
   onFoundReligion(cityId: number, name: string, beliefs: string[]): void;
+  onActivateGreatPerson(greatPersonId: string): void;
+  onRecruitLegend(legendId: string): void;
   onEstablishTrade(destCityId: number): void;
   onBribeBarbarian(unitId: number): void;
   onRecruitBarbarian(unitId: number): void;
@@ -275,6 +292,8 @@ export interface UIHandlers {
   onTurnUpdateOpenProduction(cityId: number): void;
   onTurnUpdateOpenResearch(): void;
   onTurnUpdateOpenCivics(): void;
+  onTurnUpdateOpenGreatPeople(): void;
+  onTurnUpdateOpenLegends(): void;
   onTurnUpdateOpenGold(): void;
   onTurnUpdateDismiss(): void;
 }
@@ -285,6 +304,8 @@ export interface UI {
   openResearch(): void;
   openCivics(): void;
   openReligion(): void;
+  openGreatPeople(): void;
+  openLegends(): void;
   openTechTree(): void;
   openGodMode(): void;
   openTurnUpdates(): void;
@@ -343,6 +364,8 @@ export function createUI(handlers: UIHandlers): UI {
   const techtree = div("techtree", "panel hidden");
   const civics = div("civics", "panel hidden");
   const religionPanel = div("religion", "panel hidden");
+  const greatPeoplePanel = div("great-people", "panel hidden");
+  const legendsPanel = div("legends", "panel hidden");
   const production = div("production", "panel hidden");
   const log = div("log", "");
   const bannerEl = div("banner", "");
@@ -395,6 +418,43 @@ export function createUI(handlers: UIHandlers): UI {
   };
   goldClose.addEventListener("click", hideGoldDialog);
   goldOverlay.addEventListener("click", hideGoldDialog);
+
+  const moraleOverlay = div("morale-overlay", "");
+  const moraleDialog = div("morale-dialog", "");
+  moraleDialog.innerHTML =
+    `<button class="morale-x" id="morale-close" title="Close" aria-label="Close">✕</button>` +
+    `<div class="morale-dialog-title">Empire Morale</div>` +
+    `<div id="morale-dialog-content"></div>` +
+    `<button class="btn morale-explain-toggle" id="morale-explain-toggle"></button>` +
+    `<div id="morale-explain" class="morale-explain hidden">` +
+    `<p>Empire morale runs from <b>0 to 200</b> and starts at <b>50</b>. It sets the floor for the morale of newly trained units (a fresh unit starts near <b>50 + half</b> your empire morale) and shifts with your fortunes on the battlefield.</p>` +
+    `<p><b>What raises it:</b> winning battles, promoting units, recruiting a Great Person, and declaring war while already confident.</p>` +
+    `<p><b>What lowers it:</b> losing units in battle, and declaring war when your army is already shaky.</p>` +
+    `<p><b>Drift:</b> a few quiet turns after your last morale gain, morale slowly fades back toward the base of 50 — it never decays below 50, only lost battles can push it lower.</p>` +
+    `<p><b>Why it matters:</b> high morale makes units hit harder and hold ground, and keeps them from breaking and routing under fire; low morale does the opposite.</p>` +
+    `</div>`;
+  const moraleDialogContent = moraleDialog.querySelector<HTMLDivElement>("#morale-dialog-content")!;
+  const moraleExplain = moraleDialog.querySelector<HTMLDivElement>("#morale-explain")!;
+  const moraleExplainToggle = moraleDialog.querySelector<HTMLButtonElement>("#morale-explain-toggle")!;
+  const moraleClose = moraleDialog.querySelector<HTMLButtonElement>("#morale-close")!;
+  let moraleDialogOpen = false;
+  let moraleExplainOpen = false;
+  const syncMoraleExplain = (): void => {
+    moraleExplain.classList.toggle("hidden", !moraleExplainOpen);
+    moraleExplainToggle.textContent = moraleExplainOpen ? "How morale works ▴" : "How morale works ▾";
+  };
+  syncMoraleExplain();
+  const hideMoraleDialog = (): void => {
+    moraleDialogOpen = false;
+    moraleOverlay.classList.remove("show");
+    moraleDialog.classList.remove("show");
+  };
+  moraleExplainToggle.addEventListener("click", () => {
+    moraleExplainOpen = !moraleExplainOpen;
+    syncMoraleExplain();
+  });
+  moraleClose.addEventListener("click", hideMoraleDialog);
+  moraleOverlay.addEventListener("click", hideMoraleDialog);
 
   const turnUpdateOverlay = div("turn-update-overlay", "");
   const turnUpdateDialog = div("turn-update-dialog", "");
@@ -459,6 +519,10 @@ export function createUI(handlers: UIHandlers): UI {
         hideGoldDialog();
         return;
       }
+      if (moraleDialog.classList.contains("show")) {
+        hideMoraleDialog();
+        return;
+      }
       if (settingsOpen) {
         closeSettings();
         return;
@@ -506,6 +570,8 @@ export function createUI(handlers: UIHandlers): UI {
   let techtreeOpen = false;
   let civicsOpen = false;
   let religionOpen = false;
+  let greatPeopleOpen = false;
+  let legendsOpen = false;
   let productionOpen = false;
   let tileExpanded = false;
   let prodCityId: number | null = null;
@@ -546,11 +612,15 @@ export function createUI(handlers: UIHandlers): UI {
     researchOpen = false;
     civicsOpen = false;
     religionOpen = false;
+    greatPeopleOpen = false;
+    legendsOpen = false;
     productionOpen = false;
     techtreeOpen = false;
     renderResearch(state);
     renderCivics(state);
     renderReligion(state);
+    renderGreatPeople(state);
+    renderLegends(state);
     renderProduction(state);
     renderTechTree(state);
   };
@@ -634,6 +704,12 @@ export function createUI(handlers: UIHandlers): UI {
     if (ev.type === "improvementComplete" && ev.payload?.kind) {
       return `turn-updates/improvement_${ev.payload.kind}.png`;
     }
+    if (ev.type === "greatPersonRecruited" && ev.payload?.greatPersonId) {
+      return `great-people/${ev.payload.greatPersonId}.png`;
+    }
+    if (ev.type === "legendRecruited" && ev.payload?.legendId) {
+      return `legends/${ev.payload.legendId}.png`;
+    }
     return `turn-updates/${ev.type}.png`;
   };
 
@@ -687,6 +763,10 @@ export function createUI(handlers: UIHandlers): UI {
         return "City Lost";
       case "cityGrew":
         return "City Grew";
+      case "greatPersonRecruited":
+        return "Great Person Recruited";
+      case "legendRecruited":
+        return "A Legend Rises";
       case "treasuryExhausted":
         return "Treasury Exhausted";
       default:
@@ -710,6 +790,12 @@ export function createUI(handlers: UIHandlers): UI {
     }
     if (ev.type === "treasuryExhausted") {
       buttons.push(`<button class="btn primary" data-tu-gold>Open Treasury</button>`);
+    }
+    if (ev.type === "greatPersonRecruited") {
+      buttons.push(`<button class="btn primary" data-tu-greatpeople>Put to Work</button>`);
+    }
+    if (ev.type === "legendRecruited") {
+      buttons.push(`<button class="btn primary" data-tu-legends>View Legends</button>`);
     }
     if (ev.type === "tradeRouteEstablished") {
       const destCol = ev.payload?.destCol;
@@ -780,6 +866,18 @@ export function createUI(handlers: UIHandlers): UI {
     turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-gold]").forEach((el) =>
       el.addEventListener("click", () => {
         handlers.onTurnUpdateOpenGold();
+        hideTurnUpdateDialog();
+      }),
+    );
+    turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-greatpeople]").forEach((el) =>
+      el.addEventListener("click", () => {
+        handlers.onTurnUpdateOpenGreatPeople();
+        hideTurnUpdateDialog();
+      }),
+    );
+    turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-legends]").forEach((el) =>
+      el.addEventListener("click", () => {
+        handlers.onTurnUpdateOpenLegends();
         hideTurnUpdateDialog();
       }),
     );
@@ -938,6 +1036,14 @@ export function createUI(handlers: UIHandlers): UI {
     const cityCount = myCities.length;
     const specCount = myCities.reduce((n, c) => n + c.specialists.length, 0);
     const unitCount = unitsOf(state, viewerId).length;
+    const gpReady = (player.greatPeople ?? []).length;
+    const legendsOn = state.legendsEnabled !== false;
+    const myLegends = unitsOf(state, viewerId).filter((u) => u.legendId).length;
+    const canRecruitLegendNow =
+      legendsOn &&
+      player.faith >= legendCost(player.legendsRecruited ?? 0) &&
+      citiesOf(state, viewerId).length > 0 &&
+      availableLegends(state).length > 0;
 
     topbar.innerHTML = `
       <div class="tb-grp">
@@ -952,13 +1058,15 @@ export function createUI(handlers: UIHandlers): UI {
           `<span class="tb-pl">🏛️</span><b>${cName}</b><span class="tb-score">+${cul}</span></button>` : ""}
         ${showReligion ? `<button class="tb-pill" id="religion-btn" title="Religion">` +
           `<span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b><span class="tb-score">+${fth}</span></button>` : ""}
-        <span class="tb-pill" id="morale-pill" title="Empire morale (0–200). New units start with morale near half this value; battlefield wins raise it, losses lower it.">
-          <span class="tb-pl">🎌</span><b style="color:${moraleColor}">${morale}</b></span>
+        <button class="tb-pill" id="morale-pill" title="Empire morale (0–200). Tap for recent events and how morale works.">
+          <span class="tb-pl">🎌</span><b style="color:${moraleColor}">${morale}</b></button>
       </div>
       <div class="tb-grp">
         <button class="tb-pill empire" id="cities-btn" title="Cities"><span class="tb-pl">🏙️</span><b>${cityCount}</b></button>
         <button class="tb-pill empire" id="units-btn" title="Units"><span class="tb-pl">⚔️</span><b>${unitCount}</b></button>
         <button class="tb-pill empire" id="specialists-btn" title="Specialists"><span class="tb-pl">👷</span><b>${specCount}</b></button>
+        <button class="tb-pill empire ${gpReady ? "has-badge" : ""}" id="great-people-btn" title="Great People"><span class="tb-pl">🎖️</span><b>${gpReady}</b>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>
+        ${legendsOn ? `<button class="tb-pill empire ${canRecruitLegendNow ? "has-badge" : ""}" id="legends-btn" title="Legends"><span class="tb-pl">⭐</span><b>${myLegends}</b>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : ""}
         <button class="tb-pill" id="diplo-pill" title="Diplomacy">
           <span class="tb-pl">🕊️</span><b>${player.met.length}</b></button>
         <button class="tb-pill ${turnUpdateHasNew ? "has-badge" : ""}" id="turn-update-btn" title="Turn Updates">
@@ -1023,6 +1131,40 @@ export function createUI(handlers: UIHandlers): UI {
         renderCivics(state);
       });
     }
+    topbar.querySelector<HTMLButtonElement>("#great-people-btn")!.addEventListener("click", () => {
+      const opening = !greatPeopleOpen;
+      greatPeopleOpen = !greatPeopleOpen;
+      researchOpen = false;
+      civicsOpen = false;
+      religionOpen = false;
+      if (opening) {
+        closeSideSheets();
+        menuOpen = false;
+        renderMenu(state);
+      }
+      renderGreatPeople(state);
+      renderResearch(state);
+      renderCivics(state);
+      renderReligion(state);
+    });
+    topbar.querySelector<HTMLButtonElement>("#legends-btn")?.addEventListener("click", () => {
+      const opening = !legendsOpen;
+      legendsOpen = !legendsOpen;
+      researchOpen = false;
+      civicsOpen = false;
+      religionOpen = false;
+      greatPeopleOpen = false;
+      if (opening) {
+        closeSideSheets();
+        menuOpen = false;
+        renderMenu(state);
+      }
+      renderLegends(state);
+      renderGreatPeople(state);
+      renderResearch(state);
+      renderCivics(state);
+      renderReligion(state);
+    });
     const openEmpire = (tab: EmpireTab) => {
       const opening = !empire.isOpen();
       if (opening) {
@@ -1060,6 +1202,7 @@ export function createUI(handlers: UIHandlers): UI {
     topbar.querySelector<HTMLButtonElement>("#gold-btn")!.addEventListener("click", () => {
       goldDialogOpen = !goldDialogOpen;
       if (goldDialogOpen) {
+        hideMoraleDialog();
         closeSideSheets();
         closePickers(state);
         menuOpen = false;
@@ -1067,31 +1210,44 @@ export function createUI(handlers: UIHandlers): UI {
       }
       renderGoldDialog(state);
     });
+    topbar.querySelector<HTMLButtonElement>("#morale-pill")!.addEventListener("click", () => {
+      moraleDialogOpen = !moraleDialogOpen;
+      if (moraleDialogOpen) {
+        hideGoldDialog();
+        closeSideSheets();
+        closePickers(state);
+        menuOpen = false;
+        renderMenu(state);
+      }
+      renderMoraleDialog(state);
+    });
     topbar.querySelector<HTMLButtonElement>("#turn-update-btn")!.addEventListener("click", () => {
       turnUpdateHasNew = false;
       showTurnUpdateDialog();
     });
 
-    // Mobile bottom bar: mirrors the topbar actions as icon-only buttons.
+    // Mobile bottom bar: action icons. Gold, research, civics, religion and
+    // morale live in the top bar's resource group on mobile, so they are not
+    // repeated here.
     bottomBar.innerHTML =
       `<div class="bb-grp">` +
-      `<button class="bb-chip gold-chip" data-bb="gold" title="Gold">🪙 ${Math.floor(player.gold)} <span style="${goldClass}">(${goldSign}${Math.abs(netGold)})</span></button>` +
-      `<button class="bb-btn" data-bb="research" title="Research" style="--p:${researchPct}%"><span>🔬</span><i>+${sci}</i></button>` +
-      (showCivics ? `<button class="bb-btn" data-bb="civics" title="${gov?.name ?? "Government"}" style="--p:${civicPct}%"><span>🏛️</span><i>+${cul}</i></button>` : "") +
-      (showReligion ? `<button class="bb-btn" data-bb="religion" title="Religion"><span>☮️</span><i>${Math.floor(player.faith)} +${fth}</i></button>` : "") +
-      `<button class="bb-btn" data-bb="empire" title="Empire"><span>🏙️</span><i>${cityCount}</i></button>` +
-      `<button class="bb-btn ${turnUpdateHasNew ? "has-badge" : ""}" data-bb="turn-update" title="Turn Updates"><span>📜</span><i>Updates</i>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>` +
+      `<button class="bb-btn" data-bb="empire" title="Cities"><span>🏙️</span><i>${cityCount}</i></button>` +
+      `<button class="bb-btn" data-bb="units" title="Units"><span>⚔️</span><i>${unitCount}</i></button>` +
+      `<button class="bb-btn" data-bb="specialists" title="Specialists"><span>👷</span><i>${specCount}</i></button>` +
+      `<button class="bb-btn ${gpReady ? "has-badge" : ""}" data-bb="great-people" title="Great People"><span>🎖️</span><i>${gpReady}</i>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>` +
+      (legendsOn ? `<button class="bb-btn ${canRecruitLegendNow ? "has-badge" : ""}" data-bb="legends" title="Legends"><span>⭐</span><i>${myLegends}</i>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : "") +
+      `<button class="bb-btn ${turnUpdateHasNew ? "has-badge" : ""}" data-bb="turn-update" title="Turn Updates"><span>📜</span>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>` +
       `<button class="bb-btn" data-bb="diplo" title="Diplomacy"><span>🕊️</span><i>${player.met.length}</i></button>` +
       `<button class="bb-btn" data-bb="menu" title="Menu"><span>☰</span></button>` +
       `</div>`;
     const bbMap: Record<string, string> = {
-      research: "#research-btn",
-      civics: "#civics-btn",
-      religion: "#religion-btn",
       empire: "#cities-btn",
+      units: "#units-btn",
+      specialists: "#specialists-btn",
+      "great-people": "#great-people-btn",
+      legends: "#legends-btn",
       diplo: "#diplo-pill",
       menu: "#menu-btn",
-      gold: "#gold-btn",
       "turn-update": "#turn-update-btn",
     };
     bottomBar.querySelectorAll<HTMLButtonElement>("[data-bb]").forEach((el) => {
@@ -1336,6 +1492,39 @@ export function createUI(handlers: UIHandlers): UI {
     html += `</div>`;
 
     goldDialogContent.innerHTML = html;
+  };
+
+  const renderMoraleDialog = (state: GameState): void => {
+    moraleOverlay.classList.toggle("show", moraleDialogOpen);
+    moraleDialog.classList.toggle("show", moraleDialogOpen);
+    if (!moraleDialogOpen) return;
+
+    const player = state.players[state.currentPlayerIndex]!;
+    const morale = Math.round(player.globalMorale ?? 50);
+    const color = morale >= 100 ? "#7ee787" : morale >= 50 ? "#ffd700" : "#ff8a8a";
+    const label = morale >= 150 ? "Triumphant" : morale >= 100 ? "Confident" : morale >= 50 ? "Steady" : "Wavering";
+    const events = [...(player.moraleLog ?? [])].reverse(); // most recent first
+
+    let html = `<div class="morale-header">`;
+    html += `<span class="morale-value" style="color:${color}">🎌 ${morale}</span>`;
+    html += `<span class="morale-state">${label} <span class="sub">/ 200</span></span>`;
+    html += `</div>`;
+    html += `<div class="morale-bar"><div class="morale-bar-fill" style="width:${(morale / 200) * 100}%;background:${color}"></div></div>`;
+
+    html += `<div class="gold-section"><div class="gold-section-title">Recent events</div>`;
+    if (events.length === 0) {
+      html += `<div class="gold-row"><span class="sub">No morale changes yet. Win battles, promote units, or recruit a Great Person to lift it.</span></div>`;
+    } else {
+      for (const e of events) {
+        const cls = e.delta >= 0 ? "gold-positive" : "gold-negative";
+        const sign = e.delta > 0 ? "+" : "";
+        html += `<div class="gold-row"><span>${escapeHtml(e.reason)} <span class="sub">· turn ${e.turn}</span></span>` +
+          `<span class="gold-amount ${cls}">${sign}${e.delta}</span></div>`;
+      }
+    }
+    html += `</div>`;
+
+    moraleDialogContent.innerHTML = html;
   };
 
   const renderResearch = (state: GameState): void => {
@@ -1623,6 +1812,140 @@ export function createUI(handlers: UIHandlers): UI {
     });
   };
 
+  const renderGreatPeople = (state: GameState): void => {
+    greatPeoplePanel.classList.toggle("hidden", !greatPeopleOpen);
+    if (!greatPeopleOpen) return;
+    const player = state.players[state.currentPlayerIndex]!;
+    const perTurn = playerGreatPersonPerTurn(state, player.id);
+    const ready = (player.greatPeople ?? []).map((id) => getGreatPerson(id)).filter(Boolean);
+
+    let html = `<div class="row" style="justify-content:space-between"><b>🎖️ Great People</b><button class="btn" id="gpclose">✕</button></div>`;
+    html += `<div class="sub">Build the right buildings to earn class points. When a pool fills you recruit the next great figure — there are only so many to go round.</div>`;
+
+    // Recruited figures awaiting activation.
+    html += `<div class="csub">Recruited (${ready.length})</div>`;
+    if (ready.length === 0) {
+      html += `<div class="sub">No Great People are waiting. Keep earning points below.</div>`;
+    } else {
+      html += ready
+        .map((g) => {
+          const info = GREAT_PERSON_CLASS_INFO[g!.cls];
+          return (
+            `<div class="tech" data-gp="${g!.id}">` +
+            `<img class="portrait-thumb" src="${import.meta.env.BASE_URL}great-people/${g!.id}.png" alt="" onerror="this.style.display='none'">` +
+            `<div style="flex:1">` +
+            `<b>${info.glyph} ${g!.name}</b> <span class="sub">· ${info.name} · ${g!.era}</span>` +
+            `<div class="sub">${g!.desc}</div></div>` +
+            `<button class="btn primary" data-gp-use="${g!.id}">Activate</button></div>`
+          );
+        })
+        .join("");
+    }
+
+    // Per-class progress toward the next figure.
+    html += `<div class="csub">Progress</div>`;
+    html += GREAT_PERSON_CLASSES.map((cls) => {
+      const info = GREAT_PERSON_CLASS_INFO[cls];
+      const pts = Math.floor(player.greatPeoplePoints?.[cls] ?? 0);
+      const earned = player.greatPeopleEarned?.[cls] ?? 0;
+      const next = nextAvailableFigure(state, cls as GreatPersonClass);
+      const per = perTurn[cls] ?? 0;
+      if (!next) {
+        return `<div class="sub">${info.glyph} <b>${info.name}</b> — all figures recruited</div>`;
+      }
+      const cost = greatPersonThreshold(earned);
+      const pct = Math.min(100, (pts / cost) * 100);
+      return (
+        `<div style="margin-top:4px">${info.glyph} <b>${next.name}</b> ` +
+        `<span class="sub">· ${info.name}${per ? ` · +${per}/turn` : ""}</span>` +
+        `<div class="bar"><i style="width:${pct}%;background:#d9b44a"></i></div>` +
+        `<span class="sub">${pts}/${cost}</span></div>`
+      );
+    }).join("");
+
+    greatPeoplePanel.innerHTML = html;
+    greatPeoplePanel.querySelector<HTMLButtonElement>("#gpclose")!.addEventListener("click", () => {
+      greatPeopleOpen = false;
+      greatPeoplePanel.classList.add("hidden");
+    });
+    greatPeoplePanel.querySelectorAll<HTMLButtonElement>("[data-gp-use]").forEach((el) =>
+      el.addEventListener("click", () => {
+        handlers.onActivateGreatPerson(el.dataset.gpUse!);
+      }),
+    );
+  };
+
+  const renderLegends = (state: GameState): void => {
+    legendsPanel.classList.toggle("hidden", !legendsOpen);
+    if (!legendsOpen) return;
+    const player = state.players[state.currentPlayerIndex]!;
+    const viewerId = lastViewerId >= 0 ? lastViewerId : player.id;
+    const cost = legendCost(player.legendsRecruited ?? 0);
+    const canAfford = player.faith >= cost;
+    const hasCity = citiesOf(state, player.id).length > 0;
+    const typeGlyph: Record<string, string> = { land: "⚔️", naval: "⚓", support: "✨" };
+
+    let html = `<div class="row" style="justify-content:space-between"><b>⭐ Legends</b><button class="btn" id="lgclose">✕</button></div>`;
+    if (!state.legendsEnabled) {
+      html += `<div class="locked-note">🔒 Legends are disabled for this game.</div>`;
+      legendsPanel.innerHTML = html;
+      legendsPanel.querySelector<HTMLButtonElement>("#lgclose")!.addEventListener("click", () => {
+        legendsOpen = false;
+        legendsPanel.classList.add("hidden");
+      });
+      return;
+    }
+    html += `<div class="sub">Recruit a hero with faith. Each is a powerful, one-of-a-kind unit with a lifespan — once recruited it is gone for everyone.</div>`;
+    html += `<div class="sub" style="margin-top:4px">☮️ Faith: <b style="color:#fff">${Math.floor(player.faith)}</b> · next hero costs <b style="color:${canAfford ? "#7ee787" : "#ff8a8a"}">${cost}</b></div>`;
+
+    // Active legends (the viewer's hero units, with turns remaining).
+    const active = unitsOf(state, viewerId).filter((u) => u.legendId);
+    if (active.length > 0) {
+      html += `<div class="csub">Your Legends (${active.length})</div>`;
+      html += active
+        .map((u) => {
+          const def = getLegend(u.legendId);
+          const left = (u.legendExpiresOnTurn ?? state.turn) - state.turn;
+          return `<div class="sub">${typeGlyph[def?.type ?? "land"]} <b style="color:#fff">${def?.name ?? "Hero"}</b> — ${left} turn${left === 1 ? "" : "s"} remain</div>`;
+        })
+        .join("");
+    }
+
+    // Available legends to recruit.
+    html += `<div class="csub">Available Heroes</div>`;
+    const avail = availableLegends(state);
+    if (avail.length === 0) {
+      html += `<div class="sub">Every Legend has been recruited.</div>`;
+    } else {
+      html += avail
+        .map((l) => {
+          const dis = !canAfford || !hasCity;
+          return (
+            `<div class="tech" data-legend="${l.id}">` +
+            `<img class="portrait-thumb" src="${import.meta.env.BASE_URL}legends/${l.id}.png" alt="" onerror="this.style.display='none'">` +
+            `<div style="flex:1">` +
+            `<b>${typeGlyph[l.type]} ${l.name}</b> <span class="sub">· ${l.era} · ${legendBaseName(l)}</span>` +
+            `<div class="sub">${l.abilityDesc}</div>` +
+            `<div class="sub">Aura: ${l.auraDesc} (+${l.auraBonus} adjacent) · lifespan ${l.lifespan}t${l.rechargeable ? " · recharges" : ""}</div></div>` +
+            `<button class="btn primary" data-legend-recruit="${l.id}"${dis ? " disabled" : ""}>Recruit</button></div>`
+          );
+        })
+        .join("");
+    }
+
+    legendsPanel.innerHTML = html;
+    legendsPanel.querySelector<HTMLButtonElement>("#lgclose")!.addEventListener("click", () => {
+      legendsOpen = false;
+      legendsPanel.classList.add("hidden");
+    });
+    legendsPanel.querySelectorAll<HTMLButtonElement>("[data-legend-recruit]").forEach((el) =>
+      el.addEventListener("click", () => {
+        if (el.disabled) return;
+        handlers.onRecruitLegend(el.dataset.legendRecruit!);
+      }),
+    );
+  };
+
   const renderUnitPanel = (state: GameState, unit: Unit | null, viewerId: number, odds?: CombatOdds | null): void => {
     if (!unit) {
       unitPanel.classList.add("hidden");
@@ -1637,10 +1960,11 @@ export function createUI(handlers: UIHandlers): UI {
     const info = unitInfo(unit.type);
     const stars = unit.level > 1 ? " ★".repeat(unit.level - 1) : "";
     const uu = uniqueUnitForCiv(owner?.civId, unit.type);
-    const displayName = uu?.name ?? def.name;
-    // Big portrait art (units-big), keyed by unique-unit id when the owner has one,
-    // else the base unit type — matching how the map overlay picks its sprite.
-    const imgId = uu?.id ?? unit.type;
+    const legendDef = unit.legendId ? getLegend(unit.legendId) : undefined;
+    const displayName = legendDef?.name ?? uu?.name ?? def.name;
+    // Big portrait art (units-big), keyed by the legend id for heroes, then the
+    // unique-unit id, else the base unit type — matching the map overlay's sprite.
+    const imgId = unit.legendId ?? uu?.id ?? unit.type;
     const bigSrc = `${import.meta.env.BASE_URL}units-big/${imgId}.png`;
     const tokenSrc = `${import.meta.env.BASE_URL}units/${imgId}.png`;
     let headInfo =
@@ -2295,6 +2619,8 @@ export function createUI(handlers: UIHandlers): UI {
       renderTechTree(view.state);
       renderCivics(view.state);
       renderReligion(view.state);
+      renderGreatPeople(view.state);
+      renderLegends(view.state);
       renderProduction(view.state);
       renderUnitPanel(view.state, view.selectedUnit, view.viewerId, view.odds);
       renderTilePanel(view.state, view.selectedTile ?? null, view.viewerId, view.cheatsEnabled ?? false);
@@ -2304,6 +2630,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderGameOver(view.state);
       renderMenu(view.state);
       renderGoldDialog(view.state);
+      renderMoraleDialog(view.state);
       renderAction(view);
 
       // Hide the docked city/unit/tile panels whenever a higher-layer sheet or modal
@@ -2315,11 +2642,14 @@ export function createUI(handlers: UIHandlers): UI {
         researchOpen ||
         civicsOpen ||
         religionOpen ||
+        greatPeopleOpen ||
+        legendsOpen ||
         productionOpen ||
         techtreeOpen ||
         menuOpen ||
         godModeOpen ||
         goldDialogOpen ||
+        moraleDialogOpen ||
         turnUpdateOpen ||
         settingsOpen;
       if (overlayOpen) {
@@ -2395,6 +2725,16 @@ export function createUI(handlers: UIHandlers): UI {
       if (!lastState) return;
       religionOpen = true;
       renderReligion(lastState);
+    },
+    openGreatPeople() {
+      if (!lastState) return;
+      greatPeopleOpen = true;
+      renderGreatPeople(lastState);
+    },
+    openLegends() {
+      if (!lastState) return;
+      legendsOpen = true;
+      renderLegends(lastState);
     },
     openTechTree() {
       if (!lastState) return;

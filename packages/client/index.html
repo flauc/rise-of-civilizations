@@ -426,10 +426,12 @@
         color: var(--parchment);
         font-size: 16px;
       }
-      /* Research / civics / religion / production / save modal */
+      /* Research / civics / religion / great people / production / save modal */
       #research,
       #civics,
       #religion,
+      #great-people,
+      #legends,
       #production,
       #save-modal {
         left: 50%;
@@ -637,6 +639,15 @@
       }
       .tech:hover {
         background: rgba(201, 162, 39, 0.1);
+      }
+      .portrait-thumb {
+        width: 44px;
+        height: 55px;
+        object-fit: cover;
+        border-radius: 6px;
+        border: 1px solid var(--edge);
+        margin-right: 8px;
+        flex-shrink: 0;
       }
       /* transient banner */
       #banner {
@@ -891,6 +902,132 @@
         margin-top: 14px;
         align-self: center;
       }
+      /* Morale dialog — mirrors the treasury dialog, plus an expandable explainer. */
+      #morale-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 14, 11, 0.72);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 60;
+      }
+      #morale-overlay.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #morale-dialog {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: min(520px, calc(100vw - 32px));
+        max-height: 80vh;
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 16px;
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 61;
+      }
+      #morale-dialog.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .morale-dialog-title {
+        font-family: 'Cinzel', Georgia, serif;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--parchment);
+        margin-bottom: 12px;
+        padding-right: 40px;
+      }
+      .morale-x {
+        position: absolute;
+        top: 12px;
+        right: 14px;
+        width: 34px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border-radius: 50%;
+        border: 1px solid var(--edge);
+        background: var(--bg-card);
+        color: var(--parchment);
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      .morale-x:hover {
+        background: rgba(201, 162, 39, 0.14);
+        color: var(--accent-bright);
+      }
+      #morale-dialog-content {
+        overflow: auto;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--parchment);
+      }
+      .morale-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 8px;
+      }
+      .morale-value {
+        font-family: 'Cinzel', Georgia, serif;
+        font-size: 22px;
+        font-weight: 700;
+      }
+      .morale-state {
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--parchment);
+      }
+      .morale-bar {
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+        margin-bottom: 6px;
+      }
+      .morale-bar-fill {
+        height: 100%;
+        border-radius: 999px;
+        transition: width 0.3s ease;
+      }
+      .morale-explain-toggle {
+        margin-top: 12px;
+        align-self: flex-start;
+        font-size: 12px;
+        padding: 6px 12px;
+      }
+      .morale-explain {
+        margin-top: 10px;
+        font-size: 12.5px;
+        line-height: 1.55;
+        color: var(--parchment-dim);
+        overflow: auto;
+        border-top: 1px solid var(--edge);
+        padding-top: 8px;
+      }
+      .morale-explain p {
+        margin: 0 0 8px;
+      }
+      .morale-explain b {
+        color: var(--parchment);
+      }
+      #morale-dialog .btn.primary {
+        margin-top: 14px;
+        align-self: center;
+      }
       .bb-chip.gold-chip {
         cursor: pointer;
       }
@@ -898,7 +1035,7 @@
         position: relative;
       }
       #turn-update-btn.has-badge,
-      .bb-btn[data-bb="turn-update"].has-badge {
+      .bb-btn.has-badge {
         border-color: #c9a24a;
         overflow: visible;
       }
@@ -1179,12 +1316,32 @@
           right: max(6px, env(safe-area-inset-right));
           font-size: 13px;
         }
-        #topbar .tb-grp:nth-child(2),
+        /* Empire group (cities/units/etc.) lives in the bottom bar on mobile. */
         #topbar .tb-grp:nth-child(3) {
           display: none;
         }
+        /* Resource group (gold/research/civics/religion/morale) stays in the
+           top bar but compacted: drop the long tech/civic names, keep icons
+           and per-turn scores. */
+        #topbar .tb-res {
+          gap: 4px;
+        }
+        #topbar .tb-res .tb-pill {
+          max-width: none;
+          padding: 4px 8px 5px;
+          gap: 3px;
+        }
+        #topbar #research-btn b,
+        #topbar #civics-btn b {
+          display: none;
+        }
+        #topbar .tb-score {
+          margin-left: 2px;
+        }
+        /* The resources wrap onto their own row, so the player/civ label keeps
+           the full width of the first row (only truncating very long names). */
         .tb-civ {
-          max-width: 58vw;
+          max-width: 64vw;
         }
         #leader-avatar {
           display: flex;
@@ -1206,8 +1363,8 @@
           align-items: center;
           gap: 4px;
           bottom: max(6px, env(safe-area-inset-bottom));
-          right: max(6px, env(safe-area-inset-right));
-          left: auto;
+          left: max(6px, env(safe-area-inset-left));
+          right: auto;
           top: auto;
           padding: 4px 6px;
           border-radius: 10px;
@@ -1284,16 +1441,16 @@
           z-index: 10;
         }
         #endturn {
-          left: max(6px, env(safe-area-inset-left));
-          right: auto;
+          right: max(6px, env(safe-area-inset-right));
+          left: auto;
           bottom: max(6px, env(safe-area-inset-bottom));
           transform: none;
           width: 40px;
           height: 40px;
         }
         #endturn2 {
-          left: calc(52px + env(safe-area-inset-left));
-          right: auto;
+          right: calc(52px + env(safe-area-inset-right));
+          left: auto;
           bottom: max(6px, env(safe-area-inset-bottom));
           transform: none;
           width: 28px;
@@ -1302,6 +1459,8 @@
         #research,
         #civics,
         #religion,
+        #great-people,
+        #legends,
         #production,
         #save-modal {
           width: calc(100vw - 20px);

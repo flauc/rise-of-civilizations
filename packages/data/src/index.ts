@@ -238,7 +238,7 @@ export const CIVILIZATIONS: CivDef[] = [
     leader: "Dido",
     abilityName: "Mediterranean Colonies",
     abilityDesc: "Cheap coastal settlers, extended naval range, and extra trade gold.",
-    uniqueUnit: "Bireme",
+    uniqueUnit: "Phoenician Bireme",
     uniqueInfra: "Cothon",
     effects: { yieldPercent: { gold: 15 } },
     cityNames: ["Tyre", "Sidon", "Byblos", "Carthage", "Utica", "Gades", "Leptis Magna", "Hadrumetum", "Motya", "Kition"],
@@ -334,7 +334,7 @@ export const CIVILIZATIONS: CivDef[] = [
     leader: "Hannibal",
     abilityName: "Phoenician Heritage",
     abilityDesc: "Coastal capital bonus, stronger naval movement, and mountain-crossing armies.",
-    uniqueUnit: "War Elephant",
+    uniqueUnit: "Carthaginian War Elephant",
     uniqueInfra: "Cothon",
     effects: { yieldPercent: { gold: 15 }, unitClassCombat: { cavalry: 1 } },
     cityNames: ["Carthage", "Utica", "Hadrumetum", "Leptis Magna", "Gades", "Panormus", "Lilybaeum", "Motya", "Cirta", "Hippo Regius"],
@@ -448,7 +448,7 @@ export const CIVILIZATIONS: CivDef[] = [
     leader: "Pericles",
     abilityName: "Plato's Republic",
     abilityDesc: "+20% science; melee units +2 combat strength.",
-    uniqueUnit: "Hoplite",
+    uniqueUnit: "Greek Hoplite",
     uniqueInfra: "Acropolis",
     effects: { yieldPercent: { science: 20 }, unitClassCombat: { melee: 2 } },
     cityNames: ["Athens", "Sparta", "Corinth", "Thebes", "Delphi", "Olympia", "Argos", "Ephesus", "Miletus", "Syracuse"],
@@ -492,7 +492,7 @@ export const CIVILIZATIONS: CivDef[] = [
     leader: "Trajan",
     abilityName: "All Roads Lead to Rome",
     abilityDesc: "New cities are founded with a free Monument.",
-    uniqueUnit: "Legionary",
+    uniqueUnit: "Roman Legionary",
     uniqueInfra: "Roman Bath",
     effects: { newCityFreeBuilding: "monument" },
     cityNames: ["Rome", "Ostia", "Antium", "Capua", "Pompeii", "Cumae", "Neapolis", "Arretium", "Mediolanum", "Aquileia"],
@@ -514,7 +514,7 @@ export const CIVILIZATIONS: CivDef[] = [
     leader: "Justinian",
     abilityName: "Taxis",
     abilityDesc: "Units gain bonus strength against civilizations of other religions.",
-    uniqueUnit: "Cataphract",
+    uniqueUnit: "Byzantine Cataphract",
     uniqueInfra: "Hippodrome",
     effects: { unitClassCombat: { melee: 1, cavalry: 1 } },
     cityNames: ["Constantinople", "Thessalonica", "Nicomedia", "Antioch", "Trebizond", "Ephesus", "Nicaea", "Smyrna", "Adrianople", "Athens"],
@@ -525,7 +525,7 @@ export const CIVILIZATIONS: CivDef[] = [
     leader: "Harald Hardrada",
     abilityName: "Knarr",
     abilityDesc: "+15% gold from raiding; melee units +2 combat strength.",
-    uniqueUnit: "Longship",
+    uniqueUnit: "Norse Longship",
     uniqueInfra: "Stave Church",
     effects: { yieldPercent: { gold: 15 }, unitClassCombat: { melee: 2 }, raidGoldPercent: 15, coastalRaidGoldPercent: 15 },
     cityNames: ["Kaupang", "Birka", "Hedeby", "Trondheim", "Oslo", "Reykjavik", "York", "Dublin", "Ribe", "Visby"],
@@ -705,7 +705,7 @@ export const CIVILIZATIONS: CivDef[] = [
     leader: "Yongle",
     abilityName: "Treasure Fleets",
     abilityDesc: "Massive coastal cities; ocean trade and exploration yield extra gold.",
-    uniqueUnit: "War Junk",
+    uniqueUnit: "Ming War Junk",
     uniqueInfra: "Porcelain Tower",
     effects: { yieldPercent: { gold: 15 } },
     cityNames: ["Beijing", "Nanjing", "Hangzhou", "Suzhou", "Xi'an", "Guangzhou", "Quanzhou", "Fuzhou", "Yangzhou", "Chengdu"],
@@ -716,7 +716,7 @@ export const CIVILIZATIONS: CivDef[] = [
     leader: "Ashoka",
     abilityName: "Dharma",
     abilityDesc: "+20% food; cavalry (elephants) +2 combat strength.",
-    uniqueUnit: "War Elephant",
+    uniqueUnit: "Mauryan War Elephant",
     uniqueInfra: "Stepwell",
     effects: { yieldPercent: { food: 20 }, unitClassCombat: { cavalry: 2 } },
     cityNames: ["Pataliputra", "Taxila", "Ujjain", "Vidisha", "Mathura", "Sarnath", "Kosambi", "Rajagriha", "Varanasi", "Kaushambi"],
@@ -1855,8 +1855,11 @@ export interface UniqueUnitDef {
   bonus: number;
 }
 
-function uu(civId: string, name: string, replaces: string, bonus = 3): UniqueUnitDef {
-  const slug = name
+function uu(civId: string, name: string, replaces: string, bonus = 3, idName = name): UniqueUnitDef {
+  // The art/lookup id is derived from `idName` (defaults to `name`). Passing an
+  // explicit `idName` lets the display `name` carry a civ prefix (e.g. "Roman
+  // Legionary") while keeping a stable id (rome_legionary) for art and overrides.
+  const slug = idName
     .toLowerCase()
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "")
@@ -1873,7 +1876,7 @@ export const UNIQUE_UNITS: UniqueUnitDef[] = [
   uu("assyria", "Siege Tower", "battering_ram"),
   uu("hittites", "Hittite Chariot", "war_chariot"),
   uu("elam", "Susian Archer", "archer"),
-  uu("phoenicia", "Bireme", "galley"),
+  uu("phoenicia", "Phoenician Bireme", "galley", 3, "Bireme"),
   uu("lydia", "Heavy Cavalry", "cataphract"),
   // Persia & Iran
   uu("median_empire", "Median Lancer", "cataphract"),
@@ -1883,7 +1886,7 @@ export const UNIQUE_UNITS: UniqueUnitDef[] = [
   // Egypt & Africa
   uu("egypt", "Maryannu Chariot", "war_chariot"),
   uu("kush_nubia", "Nubian Archer", "archer"),
-  uu("carthage", "War Elephant", "war_elephant"),
+  uu("carthage", "Carthaginian War Elephant", "war_elephant", 3, "War Elephant"),
   uu("aksum", "Aksumite Spearman", "spearman"),
   uu("ethiopia_zagwe", "Oromo Cavalry", "rider"),
   uu("mali", "Mandekalu Cavalry", "cataphract"),
@@ -1894,14 +1897,14 @@ export const UNIQUE_UNITS: UniqueUnitDef[] = [
   // Mediterranean & Europe
   uu("minoans", "Minoan Bireme", "galley"),
   uu("mycenaean_greece", "Mycenaean Spearman", "spearman"),
-  uu("greece", "Hoplite", "spearman"),
+  uu("greece", "Greek Hoplite", "spearman", 3, "Hoplite"),
   uu("sparta", "Spartan Hoplite", "hoplite"),
   uu("macedon", "Hypaspist", "swordsman"),
   uu("etruscans", "Etruscan Hoplite", "hoplite"),
-  uu("rome", "Legionary", "swordsman"),
+  uu("rome", "Roman Legionary", "swordsman", 3, "Legionary"),
   uu("celts_gauls", "Gaesatae", "axeman"),
-  uu("byzantium", "Cataphract", "cataphract"),
-  uu("norse", "Longship", "longship"),
+  uu("byzantium", "Byzantine Cataphract", "cataphract", 3, "Cataphract"),
+  uu("norse", "Norse Longship", "longship", 3, "Longship"),
   uu("franks", "Frankish Paladin", "cataphract"),
   uu("goths", "Gothic Rider", "cataphract"),
   uu("anglo_saxon_england", "Longbowman", "crossbowman"),
@@ -1918,8 +1921,8 @@ export const UNIQUE_UNITS: UniqueUnitDef[] = [
   // Central, South & East Asia
   uu("han_china", "Cho-Ko-Nu", "crossbowman"),
   uu("china_tang_song", "Fire Lancer", "pikeman"),
-  uu("china_ming", "War Junk", "war_junk"),
-  uu("maurya", "War Elephant", "war_elephant"),
+  uu("china_ming", "Ming War Junk", "war_junk", 3, "War Junk"),
+  uu("maurya", "Mauryan War Elephant", "war_elephant", 3, "War Elephant"),
   uu("gupta_india", "Gupta Elephant Archer", "war_elephant"),
   uu("chola", "Chola Warship", "trireme"),
   uu("japan", "Samurai", "longswordsman"),
@@ -2424,3 +2427,234 @@ export function specialistNameCandidates(civId: string | undefined, discipline: 
   const region = REGION_CRAFT_NAMES[craftRegionForCiv(civId)] ?? [];
   return [...sameCiv, ...otherMasters, ...region];
 }
+
+// ---- Great People --------------------------------------------------------
+// Finite, named historical figures earned by accumulating per-class points (from
+// buildings/wonders each turn). Recruiting one is a one-time, globally-unique
+// event — once a figure is taken in a game, it is gone for everyone (competition
+// for the best ones). Each recruit can be ACTIVATED once for an instant, themed
+// effect. See docs/GREAT-PEOPLE.md. Auras / tile-improvement activations are a
+// future extension; every figure here resolves to an instant effect hook the sim
+// implements in packages/sim/src/game/great-people.ts.
+
+/** A point pool / discipline a Great Person belongs to. */
+export type GreatPersonClass =
+  | "general"
+  | "admiral"
+  | "scientist"
+  | "engineer"
+  | "merchant"
+  | "prophet"
+  | "artist"
+  | "statesman";
+
+/** The instant effect a Great Person applies when activated. */
+export type GreatPersonEffect =
+  | "eureka" // scientist: a burst of science toward research
+  | "windfall" // merchant: a burst of gold
+  | "masterwork" // engineer: a burst of production in your best city
+  | "inspiration" // artist: a burst of culture
+  | "revelation" // prophet: a burst of faith
+  | "reform" // statesman: a burst of culture toward civics
+  | "drill" // general: a free promotion to your land military + a morale lift
+  | "flagship"; // admiral: heal your fleet & army and lift morale
+
+export type GreatPersonEra = "Bronze" | "Classical" | "Medieval" | "Exploration";
+
+export interface GreatPersonDef {
+  id: string;
+  name: string;
+  cls: GreatPersonClass;
+  era: GreatPersonEra;
+  effect: GreatPersonEffect;
+  /** Signature-effect flavour, shown in the UI. */
+  desc: string;
+}
+
+const GP = (
+  id: string,
+  name: string,
+  cls: GreatPersonClass,
+  era: GreatPersonEra,
+  effect: GreatPersonEffect,
+  desc: string,
+): GreatPersonDef => ({ id, name, cls, era, effect, desc });
+
+/** Display metadata per class (glyph + the point-pool's name). */
+export const GREAT_PERSON_CLASS_INFO: Record<GreatPersonClass, { name: string; glyph: string }> = {
+  general: { name: "Great General", glyph: "⚔️" },
+  admiral: { name: "Great Admiral", glyph: "⚓" },
+  scientist: { name: "Great Scientist", glyph: "🔬" },
+  engineer: { name: "Great Engineer", glyph: "🛠️" },
+  merchant: { name: "Great Merchant", glyph: "💰" },
+  prophet: { name: "Great Prophet", glyph: "☮️" },
+  artist: { name: "Great Artist", glyph: "🎭" },
+  statesman: { name: "Great Statesman", glyph: "🏛️" },
+};
+
+export const GREAT_PERSON_CLASSES = Object.keys(GREAT_PERSON_CLASS_INFO) as GreatPersonClass[];
+
+// Figures are ordered (earliest era first) so recruitment hands out the
+// era-appropriate figure next. The historical signature lives in `desc`; the
+// concrete `effect` keeps the same theme (scientists → science, generals → a
+// battlefield promotion, etc.).
+export const GREAT_PEOPLE: GreatPersonDef[] = [
+  // ---- Great Generals (land military) ------------------------------------
+  GP("sun_tzu", "Sun Tzu", "general", "Classical", "drill", "Master strategist: drills your land army, granting each a free promotion."),
+  GP("hannibal_barca", "Hannibal Barca", "general", "Classical", "drill", "Crosses the impossible: rallies your land army with a free promotion."),
+  GP("scipio_africanus", "Scipio Africanus", "general", "Classical", "drill", "Conqueror of Carthage: hardens your legions with a free promotion."),
+  GP("julius_caesar", "Julius Caesar", "general", "Classical", "drill", "Veteran commander: your land army earns a free promotion."),
+  GP("belisarius", "Belisarius", "general", "Medieval", "drill", "Wins outnumbered: steels your land army with a free promotion."),
+  GP("khalid", "Khalid ibn al-Walid", "general", "Medieval", "drill", "The Drawn Sword of God: your land army earns a free promotion."),
+  GP("subutai", "Subutai", "general", "Medieval", "drill", "Peerless horde-marshal: your land army earns a free promotion."),
+  GP("joan_of_arc", "Joan of Arc", "general", "Medieval", "drill", "Inspires the host: your land army earns a free promotion."),
+  GP("gonzalo", "Gonzalo de Córdoba", "general", "Exploration", "drill", "Father of the tercio: your land army earns a free promotion."),
+
+  // ---- Great Admirals (naval) --------------------------------------------
+  GP("themistocles", "Themistocles", "admiral", "Classical", "flagship", "Victor of Salamis: heals your fleet and army and lifts morale."),
+  GP("gaius_duilius", "Gaius Duilius", "admiral", "Classical", "flagship", "First Roman sea-triumph: heals your fleet and army and lifts morale."),
+  GP("artemisia", "Artemisia", "admiral", "Classical", "flagship", "Cunning at sea: heals your fleet and army and lifts morale."),
+  GP("leif_erikson", "Leif Erikson", "admiral", "Medieval", "flagship", "Bold ocean voyager: heals your fleet and army and lifts morale."),
+  GP("zheng_he", "Zheng He", "admiral", "Exploration", "flagship", "Treasure-fleet admiral: heals your fleet and army and lifts morale."),
+  GP("yi_sun_sin", "Yi Sun-sin", "admiral", "Exploration", "flagship", "Undefeated at sea: heals your fleet and army and lifts morale."),
+
+  // ---- Great Scientists --------------------------------------------------
+  GP("archimedes", "Archimedes", "scientist", "Classical", "eureka", "Eureka! A flash of insight bursts your current research forward."),
+  GP("hypatia", "Hypatia", "scientist", "Classical", "eureka", "Scholar of Alexandria: a burst of science speeds your research."),
+  GP("aristotle", "Aristotle", "scientist", "Classical", "eureka", "The Philosopher: a burst of science speeds your research."),
+  GP("aryabhata", "Aryabhata", "scientist", "Classical", "eureka", "Pioneer of astronomy: a burst of science speeds your research."),
+  GP("al_khwarizmi", "Al-Khwarizmi", "scientist", "Medieval", "eureka", "Father of algebra: a great burst of science speeds your research."),
+  GP("ibn_al_haytham", "Ibn al-Haytham", "scientist", "Medieval", "eureka", "Father of optics: a burst of science speeds your research."),
+  GP("copernicus", "Nicolaus Copernicus", "scientist", "Exploration", "eureka", "Turned the heavens: a great burst of science speeds your research."),
+
+  // ---- Great Engineers ---------------------------------------------------
+  GP("imhotep", "Imhotep", "engineer", "Bronze", "masterwork", "Architect of the first pyramid: a surge of production in your best city."),
+  GP("vitruvius", "Vitruvius", "engineer", "Classical", "masterwork", "Master builder: a surge of production in your best city."),
+  GP("su_song", "Su Song", "engineer", "Medieval", "masterwork", "Clockwork genius: a surge of production in your best city."),
+  GP("brunelleschi", "Filippo Brunelleschi", "engineer", "Medieval", "masterwork", "Raised the great dome: a large surge of production in your best city."),
+  GP("mimar_sinan", "Mimar Sinan", "engineer", "Exploration", "masterwork", "Imperial architect: a surge of production in your best city."),
+  GP("da_vinci", "Leonardo da Vinci", "engineer", "Exploration", "masterwork", "Universal genius: a great surge of production in your best city."),
+
+  // ---- Great Merchants ---------------------------------------------------
+  GP("zhang_qian", "Zhang Qian", "merchant", "Classical", "windfall", "Opened the Silk Road: a windfall of gold flows to your treasury."),
+  GP("marco_polo", "Marco Polo", "merchant", "Medieval", "windfall", "Far-travelled trader: a windfall of gold flows to your treasury."),
+  GP("ibn_battuta", "Ibn Battuta", "merchant", "Medieval", "windfall", "Greatest medieval traveller: a windfall of gold flows to your treasury."),
+  GP("wang_anshi", "Wang Anshi", "merchant", "Medieval", "windfall", "Reforming minister: a windfall of gold flows to your treasury."),
+  GP("cosimo", "Cosimo de' Medici", "merchant", "Exploration", "windfall", "Banker of Florence: a large windfall of gold flows to your treasury."),
+  GP("fugger", "Jakob Fugger", "merchant", "Exploration", "windfall", "Richest man of his age: a huge windfall of gold flows to your treasury."),
+
+  // ---- Great Prophets ----------------------------------------------------
+  GP("zarathustra", "Zarathustra", "prophet", "Bronze", "revelation", "Prophet of the sacred fire: a burst of faith toward a religion."),
+  GP("confucius", "Confucius", "prophet", "Classical", "revelation", "The Great Sage: a burst of faith toward a religion."),
+  GP("laozi", "Laozi", "prophet", "Classical", "revelation", "Sage of the Way: a burst of faith toward a religion."),
+  GP("siddhartha", "Siddhartha Gautama", "prophet", "Classical", "revelation", "The Awakened One: a burst of faith toward a religion."),
+  GP("augustine", "Augustine of Hippo", "prophet", "Medieval", "revelation", "Great theologian: a burst of faith toward a religion."),
+  GP("aquinas", "Thomas Aquinas", "prophet", "Medieval", "revelation", "The Angelic Doctor: a great burst of faith toward a religion."),
+  GP("rumi", "Rumi", "prophet", "Medieval", "revelation", "Mystic poet: a burst of faith toward a religion."),
+
+  // ---- Great Artists (writers / artists / musicians) ---------------------
+  GP("homer", "Homer", "artist", "Classical", "inspiration", "Father of epic poetry: a burst of culture inspires your empire."),
+  GP("sappho", "Sappho", "artist", "Classical", "inspiration", "The Tenth Muse: a burst of culture inspires your empire."),
+  GP("valmiki", "Valmiki", "artist", "Classical", "inspiration", "First poet of the epic: a burst of culture inspires your empire."),
+  GP("phidias", "Phidias", "artist", "Classical", "inspiration", "Greatest classical sculptor: a burst of culture inspires your empire."),
+  GP("murasaki", "Murasaki Shikibu", "artist", "Medieval", "inspiration", "Author of the first novel: a burst of culture inspires your empire."),
+  GP("giotto", "Giotto", "artist", "Medieval", "inspiration", "Father of the Renaissance: a burst of culture inspires your empire."),
+  GP("dante", "Dante Alighieri", "artist", "Exploration", "inspiration", "Author of the Commedia: a great burst of culture inspires your empire."),
+  GP("michelangelo", "Michelangelo", "artist", "Exploration", "inspiration", "Supreme master: a great burst of culture inspires your empire."),
+
+  // ---- Great Statesmen / Lawgivers ---------------------------------------
+  GP("solon", "Solon", "statesman", "Classical", "reform", "The Lawgiver: a burst of culture speeds your civic reforms."),
+  GP("lycurgus", "Lycurgus", "statesman", "Classical", "reform", "Founder of Sparta's order: a burst of culture speeds your civic reforms."),
+  GP("chanakya", "Chanakya", "statesman", "Classical", "reform", "Author of the Arthashastra: a burst of culture speeds your civic reforms."),
+  GP("cicero", "Cicero", "statesman", "Classical", "reform", "Greatest Roman orator: a burst of culture speeds your civic reforms."),
+  GP("justinian", "Justinian", "statesman", "Medieval", "reform", "Codifier of Roman law: a great burst of culture speeds your civic reforms."),
+  GP("yelu_chucai", "Yelü Chucai", "statesman", "Medieval", "reform", "Reforming administrator: a burst of culture speeds your civic reforms."),
+  GP("eleanor", "Eleanor of Aquitaine", "statesman", "Medieval", "reform", "Queen of two realms: a burst of culture speeds your civic reforms."),
+  GP("thomas_more", "Thomas More", "statesman", "Exploration", "reform", "Author of Utopia: a great burst of culture speeds your civic reforms."),
+];
+
+const GREAT_PERSON_BY_ID = new Map(GREAT_PEOPLE.map((g) => [g.id, g]));
+export const getGreatPerson = (id: string | undefined): GreatPersonDef | undefined =>
+  id ? GREAT_PERSON_BY_ID.get(id) : undefined;
+
+/** Figures of a class, in recruit order (earliest era first). */
+export const greatPeopleOfClass = (cls: GreatPersonClass): GreatPersonDef[] =>
+  GREAT_PEOPLE.filter((g) => g.cls === cls);
+
+// ---- Legends (Heroes) — the core "Legends" feature -----------------------
+// Powerful, limited unique units recruited with faith. Each has a passive aura
+// (heartens adjacent friendly units), its own combat strength bonus, and a
+// lifespan (turns active before it "passes into legend"). On by default,
+// toggleable off per game. See docs/GREAT-PEOPLE.md §2. Each legend reskins an
+// existing base unit (`baseType`); the per-legend signature *active* ability from
+// the doc is recorded as `ability`/`abilityDesc` flavour (the base unit's own
+// active abilities still apply) — bespoke hero powers are a future extension.
+
+export type LegendType = "land" | "naval" | "support";
+export type LegendRecruitVia = "Faith" | "Culture" | "Conquest" | "Wonder" | "Quest";
+
+export interface LegendDef {
+  id: string;
+  name: string;
+  era: GreatPersonEra;
+  type: LegendType;
+  /** Historical recruitment path (flavour; all legends cost faith in-game). */
+  recruitVia: LegendRecruitVia;
+  /** Existing unit id this legend is built on (its body & base abilities). */
+  baseType: string;
+  /** Flat combat-strength bonus for the legend itself. */
+  combatBonus: number;
+  /** Flat combat-strength bonus to adjacent friendly military units (aura). */
+  auraBonus: number;
+  /** Turns the legend stays on the map before retiring. */
+  lifespan: number;
+  /** If true, retiring returns the legend to the pool to be recruited again. */
+  rechargeable: boolean;
+  /** Signature active-ability flavour id (see UNIT-ABILITIES.md §9). */
+  ability: string;
+  abilityDesc: string;
+  auraDesc: string;
+}
+
+const L = (d: LegendDef): LegendDef => d;
+
+export const LEGENDS: LegendDef[] = [
+  // ---- Bronze ------------------------------------------------------------
+  L({ id: "gilgamesh", name: "Gilgamesh", era: "Bronze", type: "land", recruitVia: "Quest", baseType: "axeman", combatBonus: 9, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "inspire", abilityDesc: "Inspires adjacent units; bonus vs barbarians and beasts.", auraDesc: "Adjacent allies fight harder." }),
+  L({ id: "hammurabi", name: "Hammurabi", era: "Bronze", type: "support", recruitVia: "Wonder", baseType: "warrior", combatBonus: 2, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "lawgiver", abilityDesc: "Grants insight while present; reduces unrest.", auraDesc: "Adjacent allies stand firm under the law." }),
+  L({ id: "ramesses_ii", name: "Ramesses II", era: "Bronze", type: "support", recruitVia: "Faith", baseType: "war_chariot", combatBonus: 4, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "monument_builder", abilityDesc: "Massive wonder/district production aura.", auraDesc: "Adjacent allies are emboldened." }),
+  // ---- Classical ---------------------------------------------------------
+  L({ id: "cyrus", name: "Cyrus the Great", era: "Classical", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 9, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "lightning_conquest", abilityDesc: "Fast conquest; captured cities keep loyalty.", auraDesc: "Adjacent allies move with the king." }),
+  L({ id: "leonidas", name: "Leonidas", era: "Classical", type: "land", recruitVia: "Culture", baseType: "hoplite", combatBonus: 8, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "last_stand", abilityDesc: "Last stand: huge defensive bonus when outnumbered.", auraDesc: "Adjacent allies hold the line." }),
+  L({ id: "alexander", name: "Alexander", era: "Classical", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 10, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "undaunted", abilityDesc: "No war-weariness; capturing cities heals the army.", auraDesc: "Adjacent allies are undaunted." }),
+  L({ id: "hannibal", name: "Hannibal", era: "Classical", type: "land", recruitVia: "Quest", baseType: "war_elephant", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "grand_ambush", abilityDesc: "Crossing/ambush mastery; flanking aura.", auraDesc: "Adjacent allies flank the enemy." }),
+  L({ id: "sun_tzu_legend", name: "Sun Tzu", era: "Classical", type: "support", recruitVia: "Culture", baseType: "swordsman", combatBonus: 3, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "art_of_war", abilityDesc: "Army-wide XP & free promotions; reveals enemy plans.", auraDesc: "Adjacent allies fight with discipline." }),
+  L({ id: "qin_shi_huang", name: "Qin Shi Huang", era: "Classical", type: "support", recruitVia: "Wonder", baseType: "swordsman", combatBonus: 3, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "great_wall", abilityDesc: "Builders/army surge; speeds a wonder.", auraDesc: "Adjacent allies labour and fight tirelessly." }),
+  L({ id: "ashoka", name: "Ashoka", era: "Classical", type: "support", recruitVia: "Faith", baseType: "war_elephant", combatBonus: 4, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "dhamma", abilityDesc: "Converts war into faith; amenities aura.", auraDesc: "Adjacent allies are heartened." }),
+  L({ id: "boudica", name: "Boudica", era: "Classical", type: "land", recruitVia: "Quest", baseType: "war_chariot", combatBonus: 8, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "rally", abilityDesc: "Converts nearby barbarians; rally vs occupiers.", auraDesc: "Adjacent allies are roused to fury." }),
+  L({ id: "julius_caesar_legend", name: "Julius Caesar", era: "Classical", type: "land", recruitVia: "Conquest", baseType: "legionary", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "veteran_legions", abilityDesc: "Gold/culture from victories; veteran legions.", auraDesc: "Adjacent legions fight as veterans." }),
+  L({ id: "cleopatra", name: "Cleopatra", era: "Classical", type: "support", recruitVia: "Faith", baseType: "warrior", combatBonus: 2, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "allure", abilityDesc: "Trade/diplomacy & gold aura; allure.", auraDesc: "Adjacent allies are inspired by her presence." }),
+  // ---- Medieval ----------------------------------------------------------
+  L({ id: "attila", name: "Attila", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "horse_archer", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "terror", abilityDesc: "Siege from movement; raze for production.", auraDesc: "Adjacent allies spread terror." }),
+  L({ id: "belisarius", name: "Belisarius", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "outnumbered", abilityDesc: "Outnumbered army fights at full strength.", auraDesc: "Adjacent allies never waver when outnumbered." }),
+  L({ id: "charlemagne", name: "Charlemagne", era: "Medieval", type: "support", recruitVia: "Faith", baseType: "longswordsman", combatBonus: 5, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "crown", abilityDesc: "Faith + military synergy; crowns/loyalty.", auraDesc: "Adjacent allies are heartened by the crown." }),
+  L({ id: "harald_hardrada", name: "Harald Hardrada", era: "Medieval", type: "naval", recruitVia: "Conquest", baseType: "longship", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "coastal_raid", abilityDesc: "Coastal raiding gold; ocean voyaging early.", auraDesc: "Adjacent ships raid mercilessly." }),
+  L({ id: "el_cid", name: "El Cid", era: "Medieval", type: "land", recruitVia: "Quest", baseType: "cataphract", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "frontier", abilityDesc: "Combat vs other religions; frontier loyalty.", auraDesc: "Adjacent allies are steadfast on the frontier." }),
+  L({ id: "saladin", name: "Saladin", era: "Medieval", type: "land", recruitVia: "Faith", baseType: "cataphract", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "holy_ground", abilityDesc: "Heal on holy ground; bonus vs other faiths.", auraDesc: "Adjacent allies fight for the faith." }),
+  L({ id: "genghis_khan", name: "Genghis Khan", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "horse_archer", combatBonus: 10, auraBonus: 5, lifespan: 30, rechargeable: false, ability: "terror", abilityDesc: "Supercharges cavalry (move/sight/combat); terror.", auraDesc: "Adjacent horsemen become unstoppable." }),
+  L({ id: "subutai", name: "Subutai", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "horse_archer", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "hit_and_run", abilityDesc: "Mounted-ranged hit-and-run mastery; flanking aura.", auraDesc: "Adjacent horse archers strike and fade." }),
+  L({ id: "joan_of_arc_legend", name: "Joan of Arc", era: "Medieval", type: "land", recruitVia: "Faith", baseType: "longswordsman", combatBonus: 8, auraBonus: 5, lifespan: 30, rechargeable: true, ability: "martyr", abilityDesc: "Rally: heal + combat surge; martyr resurrection once.", auraDesc: "Adjacent allies are filled with holy fervour." }),
+  L({ id: "tomoe_gozen", name: "Tomoe Gozen", era: "Medieval", type: "land", recruitVia: "Quest", baseType: "horse_archer", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "duelist", abilityDesc: "Massive single-combat strength; mounted archery.", auraDesc: "Adjacent allies are emboldened by her duels." }),
+  L({ id: "mansa_musa", name: "Mansa Musa", era: "Medieval", type: "support", recruitVia: "Faith", baseType: "warrior", combatBonus: 2, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "golden_flood", abilityDesc: "Flood of gold; trade-route value aura.", auraDesc: "Adjacent allies march on golden coin." }),
+  // ---- Exploration -------------------------------------------------------
+  L({ id: "tamerlane", name: "Tamerlane", era: "Exploration", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 10, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "devastation", abilityDesc: "Siege devastation; plunder enriches the empire.", auraDesc: "Adjacent allies devastate all before them." }),
+  L({ id: "mehmed_ii", name: "Mehmed II", era: "Exploration", type: "support", recruitVia: "Wonder", baseType: "catapult", combatBonus: 6, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "great_bombard", abilityDesc: "Great Bombard siege; walls fall faster.", auraDesc: "Adjacent siege engines batter the walls." }),
+  L({ id: "pachacuti", name: "Pachacuti", era: "Exploration", type: "support", recruitVia: "Culture", baseType: "swordsman", combatBonus: 3, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "mountain_logistics", abilityDesc: "Mountain logistics & terrace food aura; rapid expansion.", auraDesc: "Adjacent allies cross the mountains with ease." }),
+  L({ id: "zheng_he_legend", name: "Zheng He", era: "Exploration", type: "naval", recruitVia: "Wonder", baseType: "trireme", combatBonus: 8, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "treasure_fleet", abilityDesc: "Treasure fleet: trade/diplomacy & exploration aura.", auraDesc: "Adjacent ships sail with the treasure fleet." }),
+  L({ id: "yi_sun_sin_legend", name: "Yi Sun-sin", era: "Exploration", type: "naval", recruitVia: "Quest", baseType: "trireme", combatBonus: 10, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "turtle_ship", abilityDesc: "Armored ships; crushing naval defense.", auraDesc: "Adjacent ships are shielded like the turtle ship." }),
+];
+
+const LEGEND_BY_ID = new Map(LEGENDS.map((l) => [l.id, l]));
+export const getLegend = (id: string | undefined): LegendDef | undefined =>
+  id ? LEGEND_BY_ID.get(id) : undefined;
+export const LEGEND_IDS: string[] = LEGENDS.map((l) => l.id);

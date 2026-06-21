@@ -36,6 +36,9 @@ import {
   CITY_SUBSET,
   IMPROVEMENT_SUBSET,
   LEADER_SUBSET,
+  GREAT_PERSON_SUBSET,
+  LEGEND_SUBSET,
+  LEGEND_UNIT_SUBSET,
   ROAD_SUBSET,
   DIRT_ROAD_SUBSET,
   STONE_ROAD_SUBSET,
@@ -221,6 +224,20 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--great-person": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "great_person") fail(`Unknown great person: ${id}`);
+        entries.push(e);
+        break;
+      }
+      case "--legend": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "legend") fail(`Unknown legend: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--road": {
         const id = next();
         const e = findEntry(id);
@@ -300,6 +317,9 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "improvements") entries.push(...IMPROVEMENT_SUBSET);
         else if (name === "cities") entries.push(...CITY_SUBSET);
         else if (name === "leaders") entries.push(...LEADER_SUBSET);
+        else if (name === "great-people") entries.push(...GREAT_PERSON_SUBSET);
+        else if (name === "legends") entries.push(...LEGEND_SUBSET);
+        else if (name === "legend-units") entries.push(...LEGEND_UNIT_SUBSET);
         else if (name === "dirt-roads") entries.push(...DIRT_ROAD_SUBSET);
         else if (name === "stone-roads") entries.push(...STONE_ROAD_SUBSET);
         else if (name === "advanced-stone-roads") entries.push(...ADVANCED_STONE_ROAD_SUBSET);
@@ -721,6 +741,8 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
     entry.category === "improvement" ? "improvements" :
     entry.category === "natural_wonder" ? "natural-wonders" :
     entry.category === "wonder_tile" ? "wonders" :
+    entry.category === "great_person" ? "great-people" :
+    entry.category === "legend" ? "legends" :
     entry.category === "ui" ? "ui" :
     `${entry.category}s`;
   const rawDir = join(options.outDir, "raw", categoryDir);
@@ -768,7 +790,7 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
       if (entry.category === "tile" || entry.category === "road" || entry.category === "river" || entry.category === "natural_wonder") {
         // Natural wonders are full hex tiles — same hex-masked tile pipeline.
         await postProcessTile(rawPath, finalPath, entry);
-      } else if (entry.category === "leader" || entry.category === "age" || entry.category === "pillar" || entry.category === "hero" || entry.category === "turn_update") {
+      } else if (entry.category === "leader" || entry.category === "great_person" || entry.category === "legend" || entry.category === "age" || entry.category === "pillar" || entry.category === "hero" || entry.category === "turn_update") {
         await postProcessPortrait(rawPath, finalPath, entry);
       } else if (entry.category === "icon" && entry.id === "favicon") {
         await postProcessFavicon(rawPath, finalDir, entry);

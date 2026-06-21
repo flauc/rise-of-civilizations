@@ -29,4 +29,6 @@ export * from "./raiding";
 export * from "./ai";
 export * from "./fortifications";
 export * from "./leader-abilities";
+export * from "./great-people";
+export * from "./legends";
 export * from "./turn-updates";

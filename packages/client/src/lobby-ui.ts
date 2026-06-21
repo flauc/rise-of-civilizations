@@ -73,6 +73,7 @@ interface MenuState {
     ais: AiConfig[];
     barbarians: BarbLevel;
     naturalWonders: boolean;
+    legends: boolean;
     startingGold: StartingGold;
   };
   mp: {
@@ -375,6 +376,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],
       barbarians: "normal",
       naturalWonders: false,
+      legends: true,
       startingGold: "balanced",
     },
     mp: {
@@ -826,6 +828,7 @@ export function createLobby(onStart: (session: Session) => void): void {
         <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
         <div class="menu-row"><span>Natural wonders</span>${onOffSelect("sp-wonders", state.sp.naturalWonders)}</div>
+        <div class="menu-row"><span>Legends (heroes)</span>${onOffSelect("sp-legends", state.sp.legends)}</div>
         <div class="menu-field">
           <span>Starting treasury</span>
           ${goldChips("sp-gold", state.sp.startingGold)}
@@ -976,6 +979,7 @@ export function createLobby(onStart: (session: Session) => void): void {
           colors: [state.sp.color, ...state.sp.ais.map((a) => a.color)],
           barbarians: $select("#sp-barb").value as BarbLevel,
           naturalWonders: $select("#sp-wonders").value === "on",
+          legends: $select("#sp-legends").value === "on",
           startingGold: state.sp.startingGold,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),

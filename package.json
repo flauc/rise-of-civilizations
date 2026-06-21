@@ -16,7 +16,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "generate-art": "bun run tools/art-generator/generate.ts",
-    "generate-leaders": "bun run tools/art-generator/generate.ts --subset leaders"
+    "generate-leaders": "bun run tools/art-generator/generate.ts --subset leaders",
+    "generate-great-people": "bun run tools/art-generator/generate.ts --subset great-people",
+    "generate-legends": "bun run tools/art-generator/generate.ts --subset legends",
+    "generate-legend-units": "bun run tools/art-generator/generate.ts --subset legend-units"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

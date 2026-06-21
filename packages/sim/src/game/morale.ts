@@ -6,7 +6,7 @@
 // whether a unit routed (see docs note in shared/rng.ts).
 
 import { axialDistance, axialNeighbors, axialToOffset, makeRng, offsetToAxial, getTile } from "@roc/shared";
-import type { GameState, Player, Unit } from "./state";
+import type { GameState, MoraleEvent, Player, Unit } from "./state";
 import { areEnemies, cityAt, log, playerById, unitAt } from "./state";
 import { UNIT_DEFS } from "./content";
 import { isPassableLand, isWaterTerrain } from "./terrain";
@@ -141,6 +141,24 @@ export function adjustGlobalMorale(player: Player | undefined, delta: number): v
   player.globalMorale = clampGlobalMorale(globalMoraleOf(player) + delta);
 }
 
+/** Most recent morale changes kept per player for the morale dialog. */
+export const MORALE_LOG_MAX = 20;
+
+/** Record a global-morale change for the dialog. `before` is the player's global
+ *  morale captured *before* the change was applied; the logged delta is the actual
+ *  whole-point movement, so clamping at the 0/200 bounds is reflected faithfully. */
+export function recordMoraleEvent(state: GameState, playerId: number, before: number, reason: string): void {
+  const player = playerById(state, playerId);
+  if (!player) return;
+  const delta = globalMoraleOf(player) - before;
+  if (delta === 0) return;
+  const event: MoraleEvent = { turn: state.turn, delta, reason };
+  (player.moraleLog ??= []).push(event);
+  if (player.moraleLog.length > MORALE_LOG_MAX) {
+    player.moraleLog.splice(0, player.moraleLog.length - MORALE_LOG_MAX);
+  }
+}
+
 export function changeUnitMorale(unit: Unit, delta: number): void {
   unit.morale = clampUnitMorale(unitMorale(unit) + delta);
 }
@@ -161,7 +179,9 @@ export function onEnemyDefeated(state: GameState, killer: Unit, defeated: Unit):
   const adj = Math.round(KILL_MORALE_ADJACENT * factor);
   changeUnitMorale(killer, self);
   for (const f of adjacentFriendlies(state, killer)) changeUnitMorale(f, adj);
+  const before = globalMoraleOf(playerById(state, killer.ownerId));
   adjustGlobalMorale(playerById(state, killer.ownerId), self * GLOBAL_MORALE_SHARE);
+  recordMoraleEvent(state, killer.ownerId, before, factor < 1 ? "Defeated a barbarian band" : "Won a battle");
   recordMoraleGain(state, killer.ownerId);
 }
 
@@ -169,14 +189,18 @@ export function onEnemyDefeated(state: GameState, killer: Unit, defeated: Unit):
  *  while the dying unit is still on the map (before it is removed). */
 export function onUnitLost(state: GameState, dead: Unit): void {
   for (const f of adjacentFriendlies(state, dead)) changeUnitMorale(f, -DEATH_MORALE_ADJACENT);
+  const before = globalMoraleOf(playerById(state, dead.ownerId));
   adjustGlobalMorale(playerById(state, dead.ownerId), -DEATH_MORALE_ADJACENT * GLOBAL_MORALE_SHARE);
+  recordMoraleEvent(state, dead.ownerId, before, "Lost a unit in battle");
 }
 
 /** A unit was promoted: it and nearby friendlies are inspired; global morale lifts. */
 export function onUnitPromoted(state: GameState, unit: Unit): void {
   changeUnitMorale(unit, PROMOTE_MORALE_SELF);
   for (const f of adjacentFriendlies(state, unit)) changeUnitMorale(f, PROMOTE_MORALE_ADJACENT);
+  const before = globalMoraleOf(playerById(state, unit.ownerId));
   adjustGlobalMorale(playerById(state, unit.ownerId), PROMOTE_MORALE_SELF * GLOBAL_MORALE_SHARE);
+  recordMoraleEvent(state, unit.ownerId, before, "A unit was promoted");
   recordMoraleGain(state, unit.ownerId);
 }
 
@@ -196,6 +220,7 @@ export function decayGlobalMorale(state: GameState, player: Player): void {
   const ratePct = Math.min(MORALE_DECAY_MAX_PCT, decayTurns * MORALE_DECAY_START_PCT);
   const decayed = g - (g * ratePct) / 100;
   player.globalMorale = Math.max(GLOBAL_MORALE_BASE, Math.round(decayed));
+  recordMoraleEvent(state, player.id, g, "Morale faded without recent victories");
 }
 
 /**
@@ -207,7 +232,9 @@ export function onWarDeclared(state: GameState, playerId: number): void {
   const player = playerById(state, playerId);
   if (!player) return;
   const globalHigh = globalMoraleOf(player) >= MORALE_NEUTRAL;
+  const before = globalMoraleOf(player);
   adjustGlobalMorale(player, globalHigh ? WAR_GLOBAL_SWING : -WAR_GLOBAL_SWING);
+  recordMoraleEvent(state, playerId, before, globalHigh ? "Declared war — army emboldened" : "Declared war — army unnerved");
   if (globalHigh) recordMoraleGain(state, playerId);
   for (const u of state.units.values()) {
     if (u.ownerId !== playerId) continue;

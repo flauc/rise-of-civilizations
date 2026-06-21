@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { UNIT_DEFS, UNIQUE_UNIT_IDS, type UnitTypeId } from "@roc/sim";
+import { LEGEND_IDS } from "@roc/data";
 
 /** Per-unit image atlas used by the overlay renderer. Keyed by base UnitTypeId
  *  AND by unique-unit id (e.g. "rome_legionary"). */
@@ -28,7 +29,7 @@ export function isImageReady(img: HTMLImageElement): boolean {
 export function loadUnitAtlas(onLoad?: () => void): UnitAtlas {
   const images: Record<string, HTMLImageElement | undefined> = {};
 
-  const unitIds: string[] = [...(Object.keys(UNIT_DEFS) as UnitTypeId[]), ...UNIQUE_UNIT_IDS];
+  const unitIds: string[] = [...(Object.keys(UNIT_DEFS) as UnitTypeId[]), ...UNIQUE_UNIT_IDS, ...LEGEND_IDS];
   let remaining = unitIds.length;
 
   for (const type of unitIds) {

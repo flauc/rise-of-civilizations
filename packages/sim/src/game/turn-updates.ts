@@ -1,3 +1,4 @@
+import type { GreatPersonDef, LegendDef } from "@roc/data";
 import type { GameState, ProductionItem, TurnUpdateEvent, TurnUpdateType } from "./state";
 import { log } from "./state";
 
@@ -190,6 +191,32 @@ export function emitCityGrew(
     cityId,
     tile: { col, row },
     payload: { population },
+  });
+}
+
+export function emitGreatPersonRecruited(
+  state: GameState,
+  playerId: number,
+  figure: GreatPersonDef,
+): void {
+  emitTurnUpdate(state, {
+    type: "greatPersonRecruited",
+    playerId,
+    message: `${figure.name} has joined your civilization — a ${figure.cls} of the ${figure.era} era.`,
+    payload: { greatPersonId: figure.id, name: figure.name, cls: figure.cls },
+  });
+}
+
+export function emitLegendRecruited(
+  state: GameState,
+  playerId: number,
+  legend: LegendDef,
+): void {
+  emitTurnUpdate(state, {
+    type: "legendRecruited",
+    playerId,
+    message: `The Legend ${legend.name} has joined your cause — ${legend.abilityDesc}`,
+    payload: { legendId: legend.id, name: legend.name, type: legend.type },
   });
 }
 

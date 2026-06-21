@@ -1,5 +1,5 @@
 import type { GameMap } from "@roc/shared";
-import type { CivEffects } from "@roc/data";
+import type { CivEffects, GreatPersonClass } from "@roc/data";
 import { UNIT_DEFS, UNIT_MAX_HP, type ActiveAbilityId, type BuildingId, type PromotionId, type StanceId, type TechId, type UnitTypeId } from "./content";
 
 export interface Unit {
@@ -50,6 +50,10 @@ export interface Unit {
   /** When set, the unit has routed and forfeits all actions while
    *  state.turn <= this (enforced at its turn start, see tickAbilities). */
   routedUntilTurn?: number;
+  /** Legend (hero) id this unit embodies, if it is a Legend (see legends.ts). */
+  legendId?: string;
+  /** Turn after which the legend retires ("passes into legend"). */
+  legendExpiresOnTurn?: number;
 }
 
 export type ProductionItem =
@@ -126,6 +130,9 @@ export interface Player {
   /** Turn this player last *earned* morale (kill/promotion/spirited war). Global
    *  morale only begins to decay a few turns after this (see morale.ts). */
   lastMoraleGainTurn?: number;
+  /** Recent global-morale changes (most recent last), for the morale dialog.
+   *  Capped to the last MORALE_LOG_MAX entries; absent on legacy saves. */
+  moraleLog?: MoraleEvent[];
   researched: Set<TechId>;
   researching: TechId | null;
   /** Techs waiting to be researched after the current one (target-path queue). */
@@ -159,12 +166,31 @@ export interface Player {
   leaderAbilityLastUsedTurn: number;
   /** Active timed empire-wide modifiers from leader abilities. */
   modifiers: PlayerModifier[];
+  // Great People (see great-people.ts)
+  /** Accumulated great-person points per class (filled by buildings each turn). */
+  greatPeoplePoints: Partial<Record<GreatPersonClass, number>>;
+  /** Lifetime count of figures earned per class (drives the rising threshold). */
+  greatPeopleEarned: Partial<Record<GreatPersonClass, number>>;
+  /** Recruited Great People not yet activated (figure ids, ready to use). */
+  greatPeople: string[];
+  /** Lifetime count of Legends this player has recruited (drives the rising cost). */
+  legendsRecruited: number;
 }
 
 export interface PlayerModifier {
   source: string;
   effect: Partial<CivEffects>;
   expiresOnTurn: number;
+}
+
+/** A single change to empire-wide morale, surfaced in the morale dialog. */
+export interface MoraleEvent {
+  /** Game turn the change happened on. */
+  turn: number;
+  /** Signed change to global morale (already rounded to whole points). */
+  delta: number;
+  /** Short human-readable cause, e.g. "Won a battle". */
+  reason: string;
 }
 
 export interface CityModifier {
@@ -363,6 +389,8 @@ export type TurnUpdateType =
   | "improvementPillaged"
   | "cityLost"
   | "cityGrew"
+  | "greatPersonRecruited"
+  | "legendRecruited"
   | "treasuryExhausted";
 
 /** A structured event shown to a specific player in the turn-start update dialog. */
@@ -436,6 +464,13 @@ export interface GameState {
   works: Work[];
   /** Wonder ids already completed somewhere in the world (each is world-unique). */
   completedWonders: string[];
+  /** Great-person ids already recruited by anyone (each figure is world-unique). */
+  recruitedGreatPeople: string[];
+  /** Whether the Legends (heroes) feature is on for this game. */
+  legendsEnabled: boolean;
+  /** Legend ids currently recruited somewhere in the world (each is world-unique
+   *  while alive; a rechargeable legend returns to the pool when it retires). */
+  recruitedLegends: string[];
   /** Natural-wonder ids placed on this map (the full set a civ must sight to
    *  claim the "discover them all" bonus). */
   naturalWonderIds: string[];

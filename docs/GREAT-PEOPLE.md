@@ -1,6 +1,10 @@
 # Great People & Legends
 
-> ⛔ **Status: NOT IMPLEMENTED (design only) — audited 2026-06-19.** Nothing in this document exists in the code. There is **no Great Person system** (no class point pools, no recruitment, no figures) and **no Legends/heroes system** (no recruitment paths, lifespans, auras, or signature abilities) in `packages/sim` or `packages/data`. The "Specialists" that *do* exist (`specialists.ts`) are unrelated craftsmen for Public Works — see [SPECIALISTS-AND-WORKS.md](SPECIALISTS-AND-WORKS.md) — not the Great People below. Despite Legends being billed as a "core feature" in [PLAN.md](PLAN.md), none of it is built yet. Treat every table here as a backlog spec, not a description of the game.
+> ✅ **Status: IMPLEMENTED (2026-06-21), with simplifications.** Both systems are live in `packages/sim` + `packages/data` with UI, AI, save/load, an in-game wiki category each, and generated portrait art. **What's faithful:** the full named rosters (every figure/hero below exists by name, era, and class/type), the point-pool → recruit → activate flow for Great People, and the faith-recruit → lifespan → aura flow for Legends. **What's simplified (read the per-section "Implementation" notes):**
+> - **Great People effects are per-CLASS, not per-figure** — every Scientist gives the same instant eureka, every General the same army drill, etc. The unique signature in each figure's row is *flavour text*, not a distinct coded effect. All effects are **instant one-shots**; auras, placed improvements (a General's Citadel), unit-attach, and Great Works / tourism are **not** implemented (the Writer/Artist/Musician classes are merged into one **Artist** culture class).
+> - **Legends are recruited with FAITH** (a rising cost), not the varied per-hero paths (Faith/Culture/Conquest/Wonder/Quest) — those are flavour. Each hero reskins a base unit and carries a flat combat bonus + an adjacent-ally aura + a lifespan; the per-hero **signature active ability** is flavour (the base unit's own abilities apply). The optional **Mythic toggle** is not built.
+>
+> The "Specialists" in `specialists.ts` remain a *separate* system (craftsmen for Public Works — see [SPECIALISTS-AND-WORKS.md](SPECIALISTS-AND-WORKS.md)), unrelated to the Great People here.
 
 Two related "character" systems:
 
@@ -14,9 +18,11 @@ Two related "character" systems:
 ## 1. Great People
 
 ### How they work
-- Each **class** has its own point pool, filled by matching specialists/buildings (e.g. Library/University → Scientist points; Temple/Cathedral → Prophet points; Barracks/combat → General points).
+- Each **class** has its own point pool, filled by matching buildings each turn.
 - When a pool fills you **recruit the next available figure** for that class (figures unlock roughly in era order; once recruited globally they're gone for that game — competition for the best ones).
 - Activation is either an **instant effect**, a **placed tile improvement** (e.g. a General's Citadel), or **attaching to a unit/city** (passive aura).
+
+> **Implementation (`great-people.ts`, `@roc/data` `GREAT_PEOPLE`).** Eight classes: **General, Admiral, Scientist, Engineer, Merchant, Prophet, Artist, Statesman** — the design's Writers/Artists/Musicians are merged into one **Artist** (culture) class. Per-turn class points come from buildings: Archive/Academy → Scientist; Market/Harbor → Merchant; Harbor/Lighthouse → Admiral; Barracks/Stable → General; Workshop/Forge → Engineer; Shrine/Temple → Prophet; Monument/Amphitheater → Artist; the **capital** (seat of government) → Statesman. The first figure of a class costs **60** points, each later one **+50** (60 → 110 → 160 …). Recruits wait in the 🎖️ panel until **activated** for a one-shot, **per-class** effect (the figure's own row is flavour): Scientist → **+160 science** (eureka); Merchant → **+250 gold**; Engineer → **+150 production** in your best city; Artist → **+150 culture**; Statesman → **+150 culture** (toward civics); Prophet → **+200 faith**; General → a **free promotion to every land military unit** + morale; Admiral → **heal your fleet & army** + morale. Auras, placed improvements, unit-attach, and Great Works/tourism are **not** built. AI activates recruits immediately; an in-game **Wiki → Great People** category and generated portraits (`great-people/<id>.png`) round it out.
 
 ### 1.1 Great Generals (land military)
 *Earned from: combat, Barracks/Armory, Military civics. Effect template: combat aura to nearby units + a one-shot (build Citadel, instant promotion, or retreat).*

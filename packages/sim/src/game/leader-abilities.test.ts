@@ -101,7 +101,7 @@ describe("leader abilities", () => {
     const spawned = unitsOf(state, 0).find((u) => u.type === "swordsman")!;
     expect(spawned).toBeDefined();
     expect(uniqueUnitForUnit(state, spawned)?.id).toBe("rome_legionary");
-    expect(unitDisplayName(state, spawned)).toBe("Legionary");
+    expect(unitDisplayName(state, spawned)).toBe("Roman Legionary");
   });
 
   it("returns undefined for an unknown civilization", () => {

@@ -5,7 +5,7 @@ import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
 import { barbCampFrameFor, villageFrameFor, type FeatureAtlas } from "./feature-assets";
-import { getNaturalWonder } from "@roc/data";
+import { getNaturalWonder, getLegend } from "@roc/data";
 
 export interface OverlayState {
   viewingPlayerId: number;
@@ -577,11 +577,27 @@ export function drawOverlay(
     const imgX = s.x - imgSize / 2;
     const imgY = s.y - imgSize / 2;
 
+    // Legend (hero) units wear a glowing gold ring so they stand out on the map.
+    if (unit.legendId) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, half * 1.15, 0, Math.PI * 2);
+      ctx.strokeStyle = "#ffd24a";
+      ctx.lineWidth = Math.max(2, size * 0.06);
+      ctx.shadowColor = "#ffd24a";
+      ctx.shadowBlur = size * 0.35;
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Unit sprite (or fallback glyph). Unique units use their own art when present.
     // Own hidden units render faded so the player can see they're concealed.
     const concealed = own && unit.hidden;
     if (concealed) ctx.globalAlpha = 0.5;
-    const unitImg = (uu && o.unitAtlas?.images[uu.id]) || o.unitAtlas?.images[unit.type];
+    const unitImg =
+      (unit.legendId && o.unitAtlas?.images[unit.legendId]) ||
+      (uu && o.unitAtlas?.images[uu.id]) ||
+      o.unitAtlas?.images[unit.type];
     if (unitImg && isImageReady(unitImg)) {
       ctx.drawImage(unitImg, imgX, imgY, imgSize, imgSize);
     } else if (showLabels) {
@@ -621,10 +637,19 @@ export function drawOverlay(
       ctx.fillText("★", s.x + half * 0.9, s.y - half * 0.9);
     }
 
+    // Legend crown badge at the unit's upper-left.
+    if (unit.legendId && size > 12) {
+      ctx.font = `${Math.round(size * 0.45 * unitScale)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("👑", s.x - half * 0.9, s.y - half * 0.9);
+    }
+
     // Player-color label above the unit (colored dot + unit name + level stars).
     if (size >= 10) {
+      const legendName = unit.legendId ? getLegend(unit.legendId)?.name : undefined;
       const stars = unit.level > 1 ? " ★".repeat(unit.level - 1) : "";
-      const label = (uu?.name ?? UNIT_DEFS[unit.type].name) + stars;
+      const label = (legendName ?? uu?.name ?? UNIT_DEFS[unit.type].name) + stars;
       const fontSize = Math.max(8, Math.round(size * 0.32 * unitScale));
       ctx.font = `${fontSize}px system-ui, sans-serif`;
       const textW = ctx.measureText(label).width;
