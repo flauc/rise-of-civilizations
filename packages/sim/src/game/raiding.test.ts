@@ -137,12 +137,12 @@ describe("raiding", () => {
     const tile = getTile(state.map, coastalCol, coastalRow)!;
     tile.ownerCityId = city.id;
     tile.improvement = "farm";
-    tile.improvementLevel = 1; // base 30, +15% raid +15% coastal => 39
+    tile.improvementLevel = 1; // base 30, +15% coastal-raid => 34
 
     const raider = place(state, 0, "warrior", coastalCol, coastalRow);
     const res = pillageTile(state, raider.id, 0);
     expect(res.ok).toBe(true);
-    expect(res.gold).toBe(Math.floor(30 * (1 + 0.15 + 0.15)));
+    expect(res.gold).toBe(Math.floor(30 * (1 + 0.15)));
   });
 
   it("raider promotion adds +10 gold from pillaging", () => {

@@ -23,6 +23,8 @@ export type UnitTypeId =
   | "crossbowman" | "legionary" | "war_elephant"
   // siege
   | "battering_ram" | "catapult" | "ballista"
+  // early gunpowder
+  | "hand_cannon" | "matchlock" | "bombard"
   // naval melee
   | "galley" | "bireme" | "trireme" | "quinquereme" | "longship" | "caravel"
   // naval ranged
@@ -150,7 +152,9 @@ export type TechId =
   | "iron_bloomery" | "carburizing" | "siegecraft" | "torsion_engines"
   | "mathematics" | "engineering" | "coinage" | "philosophy"
   | "cavalry_doctrine" | "horse_archery" | "crossbow"
-  | "monumental_architecture" | "elephantry" | "bridge_building";
+  | "monumental_architecture" | "elephantry" | "bridge_building"
+  // Early gunpowder
+  | "gunpowder" | "firearms";
 
 export const UNIT_MAX_HP = 100;
 
@@ -184,6 +188,13 @@ export interface UnitDef {
   /** Fraction (0–1) by which this unit's chance to rout is reduced — disciplined
    *  elites and heavy units stand their ground (see morale.ts). */
   routeResistance?: number;
+  /** Gunpowder weapon: very strong, but its ranged shot must be reloaded — it
+   *  fires every other turn (loads one turn, fires the next). New units start
+   *  with a charge already loaded (see combat.ts / state.ts `loaded`). */
+  gunpowder?: boolean;
+  /** Passively reveals concealed enemy units within this many tiles each turn
+   *  (e.g. war dogs sniff out hidden ambushers; see stealth.ts). */
+  detectHiddenRadius?: number;
 }
 
 const U = (d: UnitDef): UnitDef => d;
@@ -200,13 +211,13 @@ export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
   hunter: U({ id: "hunter", name: "Hunter", glyph: "H", cls: "ranged", movement: 2, sight: 3, cost: 13, upkeep: 1, strength: 5, rangedStrength: 7, range: 1 }),
 
   firehard_spear: U({ id: "firehard_spear", name: "Fire-Hardened Spearman", glyph: "F", cls: "melee", movement: 2, sight: 2, cost: 15, upkeep: 1, strength: 9, reqTech: "fire_hardening", abilities: ["bonus_vs_cavalry"] }),
-  war_dog: U({ id: "war_dog", name: "War Dogs", glyph: "D", cls: "melee", movement: 3, sight: 2, cost: 12, upkeep: 1, strength: 6, reqTech: "animal_taming" }),
+  war_dog: U({ id: "war_dog", name: "War Dogs", glyph: "D", cls: "melee", movement: 3, sight: 2, cost: 12, upkeep: 1, strength: 6, reqTech: "animal_taming", detectHiddenRadius: 2 }),
   archer: U({ id: "archer", name: "Archer", glyph: "A", cls: "ranged", movement: 2, sight: 2, cost: 18, upkeep: 1, strength: 6, rangedStrength: 11, range: 2, reqTech: "composite_bow" }),
 
   axeman: U({ id: "axeman", name: "Bronze Axeman", glyph: "X", cls: "melee", movement: 2, sight: 2, cost: 19, upkeep: 2, strength: 13, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 } }),
   maceman: U({ id: "maceman", name: "Maceman", glyph: "M", cls: "melee", movement: 2, sight: 2, cost: 18, upkeep: 2, strength: 11, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_city"] }),
   spearman: U({ id: "spearman", name: "Spearman", glyph: "P", cls: "melee", movement: 2, sight: 2, cost: 18, upkeep: 2, strength: 11, reqTech: "bronze_alloying", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"], routeResistance: 0.3 }),
-  hoplite: U({ id: "hoplite", name: "Hoplite", glyph: "O", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 13, reqTech: "phalanx", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"], routeResistance: 0.5 }),
+  hoplite: U({ id: "hoplite", name: "Heavy Spearman", glyph: "O", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 13, reqTech: "phalanx", reqResource: { resource: "copper", count: 1 }, abilities: ["bonus_vs_cavalry"], routeResistance: 0.5 }),
 
   light_chariot: U({ id: "light_chariot", name: "Light Chariot", glyph: "y", cls: "cavalry", movement: 4, sight: 2, cost: 18, upkeep: 2, strength: 9, reqTech: "the_wheel", reqResource: { resource: "horses", count: 1 } }),
   war_chariot: U({ id: "war_chariot", name: "War Chariot", glyph: "Y", cls: "cavalry", movement: 4, sight: 2, cost: 24, upkeep: 2, strength: 13, reqTech: "chariotry", reqResource: { resource: "horses", count: 1 } }),
@@ -218,12 +229,19 @@ export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
   pikeman: U({ id: "pikeman", name: "Pikeman", glyph: "K", cls: "melee", movement: 2, sight: 2, cost: 20, upkeep: 2, strength: 14, reqTech: "iron_bloomery", reqResource: { resource: "iron", count: 1 }, abilities: ["bonus_vs_cavalry"], routeResistance: 0.4 }),
   cataphract: U({ id: "cataphract", name: "Cataphract", glyph: "T", cls: "cavalry", movement: 3, sight: 2, cost: 28, upkeep: 3, strength: 17, reqTech: "cavalry_doctrine", reqResource: { resource: "horses", count: 1 }, routeResistance: 0.5 }),
   crossbowman: U({ id: "crossbowman", name: "Crossbowman", glyph: "V", cls: "ranged", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 8, rangedStrength: 14, range: 2, reqTech: "crossbow" }),
-  legionary: U({ id: "legionary", name: "Legionary", glyph: "E", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 15, reqTech: "engineering", routeResistance: 0.6 }),
+  legionary: U({ id: "legionary", name: "Heavy Infantry", glyph: "E", cls: "melee", movement: 2, sight: 2, cost: 22, upkeep: 2, strength: 15, reqTech: "engineering", routeResistance: 0.6 }),
   war_elephant: U({ id: "war_elephant", name: "War Elephant", glyph: "N", cls: "cavalry", movement: 3, sight: 2, cost: 30, upkeep: 3, strength: 16, reqTech: "elephantry", reqResource: { resource: "elephants", count: 1 }, abilities: ["bonus_vs_city"], routeResistance: 0.4 }),
 
   battering_ram: U({ id: "battering_ram", name: "Battering Ram", glyph: "U", cls: "siege", movement: 2, sight: 2, cost: 16, upkeep: 2, strength: 6, rangedStrength: 10, range: 1, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),
   catapult: U({ id: "catapult", name: "Catapult", glyph: "I", cls: "siege", movement: 2, sight: 2, cost: 25, upkeep: 2, strength: 6, rangedStrength: 14, range: 2, reqTech: "siegecraft", abilities: ["bonus_vs_city"] }),
   ballista: U({ id: "ballista", name: "Ballista", glyph: "b", cls: "siege", movement: 2, sight: 2, cost: 30, upkeep: 3, strength: 7, rangedStrength: 16, range: 2, reqTech: "torsion_engines", abilities: ["bonus_vs_city"] }),
+
+  // ---- early gunpowder -----------------------------------------------------
+  // Devastating firepower offset by a reload: each fires only every other turn
+  // (see the `gunpowder` flag + combat.ts reload logic). New units start loaded.
+  hand_cannon: U({ id: "hand_cannon", name: "Hand Cannon", glyph: "n", cls: "ranged", movement: 2, sight: 2, cost: 30, upkeep: 2, strength: 9, rangedStrength: 26, range: 1, reqTech: "gunpowder", gunpowder: true }),
+  matchlock: U({ id: "matchlock", name: "Matchlock Infantry", glyph: "k", cls: "ranged", movement: 2, sight: 2, cost: 38, upkeep: 3, strength: 12, rangedStrength: 32, range: 1, reqTech: "firearms", gunpowder: true }),
+  bombard: U({ id: "bombard", name: "Bombard", glyph: "ß", cls: "siege", movement: 1, sight: 2, cost: 44, upkeep: 3, strength: 8, rangedStrength: 30, range: 2, reqTech: "gunpowder", gunpowder: true, abilities: ["bonus_vs_city"] }),
 
   // ---- naval melee ---------------------------------------------------------
   galley: U({ id: "galley", name: "Galley", glyph: "g", cls: "naval_melee", movement: 3, sight: 2, cost: 20, upkeep: 2, strength: 10, reqTech: "sailing" }),
@@ -265,6 +283,7 @@ const UNIT_ACTIVE_ABILITIES: Partial<Record<UnitTypeId, ActiveAbilityId[]>> = {
   war_elephant: ["trample"],
   catapult: ["emplace"],
   ballista: ["emplace"],
+  bombard: ["emplace"],
   // naval
   galley: ["ram"],
   bireme: ["ram"],
@@ -315,6 +334,17 @@ export const UNIQUE_ABILITY_OVERRIDES: Record<string, ActiveAbilityId[]> = {
   numidia_numidian_cavalry: ["fire_and_retreat", "hide"],
   lusitani_falcata_warrior: ["sunder", "hide"],
   maya_holkan: ["skirmish", "hide"],
+  // Spread to more iconic uniques (reusing existing ability mechanics, class-fit).
+  japan_samurai: ["sunder", "last_stand", "hide"], // Bushido — fights on while wounded
+  ottomans_janissary: ["pierce", "pavise", "hide"], // elite gunners
+  crete_cretan_archer: ["arrow_storm", "hide"], // famed mercenary archers
+  thebes_sacred_band: ["othismos", "hide"], // Theban phalanx
+  mycenaean_greece_mycenaean_spearman: ["othismos", "hide"],
+  huns_hunnic_horde: ["feigned_retreat"],
+  xiongnu_xiongnu_horse_archer: ["parthian_shot", "hide"],
+  golden_horde_tatar_horse_archer: ["feigned_retreat"],
+  aztec_eagle_warrior: ["furor", "hide"], // ferocious shock infantry
+  maori_toa: ["furor", "hide"], // haka ferocity
 };
 
 /**
@@ -436,6 +466,10 @@ export const TECH_DEFS: Record<TechId, TechDef> = {
   crossbow: T("crossbow", "Crossbow", 65, ["carburizing"]),
   monumental_architecture: T("monumental_architecture", "Monumental Architecture", 70, ["masonry", "writing"]),
   elephantry: T("elephantry", "Elephantry", 64, ["animal_taming", "bronze_alloying"]),
+
+  // Early gunpowder — the close of the era (caps at hand cannons, matchlocks, bombards).
+  gunpowder: T("gunpowder", "Gunpowder", 95, ["carburizing", "engineering"]),
+  firearms: T("firearms", "Firearms", 110, ["gunpowder"]),
 };
 
 export const ALL_TECHS: TechId[] = Object.keys(TECH_DEFS) as TechId[];
@@ -533,6 +567,8 @@ export function unitInfo(type: UnitTypeId): UnitInfo {
   const notes: string[] = [];
   if (d.abilities?.includes("bonus_vs_cavalry")) notes.push("bonus vs cavalry");
   if (d.abilities?.includes("bonus_vs_city")) notes.push("bonus vs cities");
+  if (d.gunpowder) notes.push("gunpowder: fires every other turn (reloads after firing)");
+  if (d.detectHiddenRadius) notes.push(`reveals hidden units within ${d.detectHiddenRadius} tiles`);
   if (d.builder) notes.push("3 build charges");
   if (d.founder) notes.push("consumed to found a city");
   if (d.trader) notes.push("consumed to set up a trade route");

@@ -36,11 +36,11 @@ describe("civilizations", () => {
     expect(unitMovement(s, otherRider)).toBe(UNIT_DEFS.rider.movement);
   });
 
-  it("Greece gives melee units +2 combat", () => {
+  it("Greece gives melee units +1 combat", () => {
     const s = game();
     s.players[0]!.civId = "greece";
     const warrior = inject(s, 0, "warrior", 5, 5);
-    expect(civCombatBonus(s, warrior)).toBe(2);
+    expect(civCombatBonus(s, warrior)).toBe(1);
   });
 
   it("Rome founds new cities with a free Monument", () => {

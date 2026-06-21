@@ -70,7 +70,7 @@ export const UNIT_SUBSET: AssetEntry[] = [
   { id: "axeman", name: "Bronze Axeman", description: "a bronze-age warrior with a bronze axe and simple leather or bronze armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "maceman", name: "Maceman", description: "a bronze-age warrior with a stone or bronze mace and hide or leather armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "spearman", name: "Spearman", description: "a bronze-age spearman with a long bronze spear and a simple shield", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "hoplite", name: "Hoplite", description: "a classical hoplite with bronze cuirass, crested helmet, large round shield, and long spear", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "hoplite", name: "Heavy Spearman", description: "a heavy spear infantryman with a bronze cuirass, helmet, large round shield, and long thrusting spear (generic, not nation-specific)", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   // cavalry
   { id: "light_chariot", name: "Light Chariot", description: "a fast two-wheeled wooden chariot pulled by horses with a driver holding a bow or javelin", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "war_chariot", name: "War Chariot", description: "a heavier two-wheeled wooden chariot pulled by horses with an armored crew", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
@@ -82,12 +82,16 @@ export const UNIT_SUBSET: AssetEntry[] = [
   { id: "pikeman", name: "Pikeman", description: "an infantry soldier with a long iron-tipped pike and simple armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "cataphract", name: "Cataphract", description: "a heavily armored mounted rider on a barded horse with a lance or sword", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "crossbowman", name: "Crossbowman", description: "a soldier aiming a crossbow, wearing simple medieval-style armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "legionary", name: "Legionary", description: "a Roman-style legionary with a short iron gladius, rectangular shield, and segmented armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "legionary", name: "Heavy Infantry", description: "a disciplined professional heavy infantryman with a short iron sword, large rectangular shield, helmet, and lamellar armor (generic, not nation-specific)", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "war_elephant", name: "War Elephant", description: "a war elephant with a wooden howdah and crew, used in battle", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   // siege
   { id: "battering_ram", name: "Battering Ram", description: "a wooden siege ram with a roofed frame and crew pushing it", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "catapult", name: "Catapult", description: "a classical torsion catapult stone-throwing siege engine", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "ballista", name: "Ballista", description: "a large bolt-shooting ballista siege engine", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // early gunpowder
+  { id: "hand_cannon", name: "Hand Cannon", description: "a late-medieval handgunner firing an early hand cannon, a short iron tube on a wooden stock with a smoking touch-hole", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "matchlock", name: "Matchlock Infantry", description: "an early matchlock arquebusier soldier aiming a long matchlock firearm rested on a forked stand, with a smoldering match cord", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "bombard", name: "Bombard", description: "a huge early siege bombard cannon, a massive cast-bronze barrel on a heavy timber cradle, of the kind that breached the walls of Constantinople", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   // naval — warships (melee)
   { id: "galley", name: "Galley", description: "an early oared wooden galley warship with a single bank of oars and a small square sail, ancient Mediterranean style", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "bireme", name: "Bireme", description: "an ancient war galley with two banks of oars and a bronze ram at the prow", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
@@ -165,6 +169,16 @@ export const LEGEND_UNIT_SUBSET: AssetEntry[] = LEGENDS.map((l) => {
   };
 });
 
+/** Per-unit description overrides for unique units whose appearance differs from
+ *  their base unit (e.g. a "crossbowman" that is actually a war wagon). Keyed by
+ *  unique-unit id; falls back to the generated base-unit description otherwise. */
+const UNIQUE_UNIT_DESCRIPTION_OVERRIDES: Record<string, string> = {
+  ottomans_janissary:
+    "an elite Ottoman Janissary musketeer of the 15th–16th century: a single foot soldier shouldering a long matchlock musket (tüfek) with a smoldering match cord, NOT a crossbow; wearing the distinctive tall white felt börk cap with a long flowing rear flap, a long ornate kaftan robe in deep red and blue with a sash belt, and a yatağan short sabre at the waist; historically accurate elite Ottoman gunpowder infantry, facing to the right",
+  bohemia_hussite_war_wagon:
+    "a 15th-century Hussite war wagon (vozová hradba / Wagenburg): a sturdy four-wheeled wooden battle wagon faced with thick reinforced timber side boards and pavise mantlets pierced by loopholes, crewed by Bohemian Hussite soldiers firing early gunpowder handcannons (píšťala / hand gonne) and crossbows from behind the planking, with a long war flail and hooked polearm visible; horse-drawn fortress-on-wheels, not a lone foot soldier",
+};
+
 /** One token per civilization unique unit (reskins a base unit). Output: units/<id>.png. */
 export const UNIQUE_UNIT_SUBSET: AssetEntry[] = UNIQUE_UNITS.map((u) => {
   const civName = CIVILIZATIONS.find((c) => c.id === u.civId)?.name ?? u.civId;
@@ -172,7 +186,7 @@ export const UNIQUE_UNIT_SUBSET: AssetEntry[] = UNIQUE_UNITS.map((u) => {
   return {
     id: u.id,
     name: u.name,
-    description: `${u.name} — the unique ${baseName.toLowerCase()} of ${civName}; a historically accurate ${baseName.toLowerCase()} with distinctive ${civName} arms, armor, and style`,
+    description: UNIQUE_UNIT_DESCRIPTION_OVERRIDES[u.id] ?? `${u.name} — the unique ${baseName.toLowerCase()} of ${civName}; a historically accurate ${baseName.toLowerCase()} with distinctive ${civName} arms, armor, and style`,
     aspectRatio: "1:1" as const,
     size: { width: 128, height: 128 },
     category: "unit" as const,

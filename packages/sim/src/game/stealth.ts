@@ -11,6 +11,7 @@ import { axialDistance, getTile, offsetToAxial, type TerrainType } from "@roc/sh
 import type { GameState, Unit } from "./state";
 import { areEnemies, playerById } from "./state";
 import { uniqueUnitForUnit, unitHasActiveAbility } from "./civs";
+import { UNIT_DEFS } from "./content";
 
 /** Default cover: ordinary infantry/scouts conceal in dense forest, jungle, or
  *  snowy taiga (not light woods). */
@@ -106,5 +107,34 @@ export function revealHiddenInSight(state: GameState, scout: Unit, range: number
   for (const u of state.units.values()) {
     if (u.ownerId === scout.ownerId || !u.hidden) continue;
     if (dist(scout, u) <= range) u.hidden = false;
+  }
+}
+
+/**
+ * Passive concealment-detection sweep for a player: every unit that detects
+ * hidden units (e.g. war dogs, `detectHiddenRadius`) flushes out concealed enemy
+ * units within its radius. Run whenever the player's visibility updates (turn
+ * start and after each move), so ambushers near a war dog are exposed.
+ */
+export function detectHiddenUnits(state: GameState, playerId: number): void {
+  const owner = playerById(state, playerId);
+  if (!owner) return;
+  const detectors: { unit: Unit; radius: number }[] = [];
+  for (const u of state.units.values()) {
+    if (u.ownerId !== playerId) continue;
+    const radius = UNIT_DEFS[u.type].detectHiddenRadius;
+    if (radius && radius > 0) detectors.push({ unit: u, radius });
+  }
+  if (detectors.length === 0) return;
+  for (const u of state.units.values()) {
+    if (!u.hidden || u.ownerId === playerId) continue;
+    const o = playerById(state, u.ownerId);
+    if (!o || !areEnemies(owner, o)) continue;
+    for (const d of detectors) {
+      if (dist(d.unit, u) <= d.radius) {
+        u.hidden = false;
+        break;
+      }
+    }
   }
 }

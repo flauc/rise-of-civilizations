@@ -4,6 +4,7 @@ import { citiesOf, unitsOf } from "./state";
 import { unitSight } from "./movement";
 import { detectContacts } from "./diplomacy";
 import { checkNaturalWonderDiscovery } from "./natural-wonders";
+import { detectHiddenUnits } from "./stealth";
 
 const CITY_SIGHT = 3;
 
@@ -37,6 +38,7 @@ export function updateExplored(state: GameState, playerId: number): Set<string> 
   const visible = computeVisible(state, playerId);
   const player = state.players.find((p) => p.id === playerId);
   if (player) for (const k of visible) player.explored.add(k);
+  detectHiddenUnits(state, playerId); // war dogs etc. sniff out concealed ambushers
   detectContacts(state, playerId, visible); // first contact with newly-sighted civs
   checkNaturalWonderDiscovery(state, playerId); // award newly-sighted natural wonders
   return visible;

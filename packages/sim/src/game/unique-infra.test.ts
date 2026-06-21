@@ -43,12 +43,12 @@ describe("unique infrastructure", () => {
 
   it("applies a unique building's empire-wide CivEffects once it is built", () => {
     const s = game();
-    s.players[0]!.civId = "sparta"; // Syssitia → empire-wide melee +1
+    s.players[0]!.civId = "carthage"; // Cothon → empire-wide naval +1 movement
     const city = foundCity(s, 0);
-    const ub = uniqueBuildingForCiv("sparta")!;
-    const before = playerEffects(s, 0).unitClassCombat?.melee ?? 0;
+    const ub = uniqueBuildingForCiv("carthage")!;
+    const before = playerEffects(s, 0).navalMovementBonus ?? 0;
     city.buildings.push(ub.id);
-    const after = playerEffects(s, 0).unitClassCombat?.melee ?? 0;
+    const after = playerEffects(s, 0).navalMovementBonus ?? 0;
     expect(after).toBe(before + 1);
   });
 

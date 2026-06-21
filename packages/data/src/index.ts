@@ -171,10 +171,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Sumer",
     leader: "Gilgamesh",
     abilityName: "Epic Quest",
-    abilityDesc: "+10% production.",
+    abilityDesc: "+10% production, +5% science.",
     uniqueUnit: "War-Cart",
     uniqueInfra: "Ziggurat",
-    effects: { yieldPercent: { production: 10 } },
+    effects: { yieldPercent: { production: 10, science: 5 } },
     cityNames: ["Ur", "Uruk", "Eridu", "Lagash", "Nippur", "Kish", "Umma", "Larsa", "Shuruppak", "Girsu"],
   },
   {
@@ -193,10 +193,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Babylon",
     leader: "Hammurabi",
     abilityName: "Enuma Anu Enlil",
-    abilityDesc: "+10% science.",
+    abilityDesc: "+15% science.",
     uniqueUnit: "Bowman",
     uniqueInfra: "Walls of Babylon",
-    effects: { yieldPercent: { science: 10 } },
+    effects: { yieldPercent: { science: 15 } },
     cityNames: ["Babylon", "Borsippa", "Sippar", "Kish", "Nippur", "Uruk", "Ur", "Larsa", "Isin", "Dilbat"],
   },
   {
@@ -274,10 +274,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Persia",
     leader: "Cyrus",
     abilityName: "Satrapies",
-    abilityDesc: "+20% gold; melee units +2 combat strength.",
+    abilityDesc: "+15% gold; melee units +1 combat strength.",
     uniqueUnit: "Immortal",
     uniqueInfra: "Pairidaeza",
-    effects: { yieldPercent: { gold: 20 }, unitClassCombat: { melee: 2 } },
+    effects: { yieldPercent: { gold: 15 }, unitClassCombat: { melee: 1 } },
     cityNames: ["Persepolis", "Pasargadae", "Susa", "Ecbatana", "Sardis", "Babylon", "Tyre", "Memphis", "Nineveh", "Bactra"],
   },
   {
@@ -425,10 +425,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Minoans",
     leader: "Minos",
     abilityName: "Thalassocracy",
-    abilityDesc: "+10% gold.",
+    abilityDesc: "+10% gold, +5% culture.",
     uniqueUnit: "Minoan Bireme",
     uniqueInfra: "Labyrinth Palace",
-    effects: { yieldPercent: { gold: 10 } },
+    effects: { yieldPercent: { gold: 10, culture: 5 } },
     cityNames: ["Knossos", "Phaistos", "Malia", "Zakros", "Gournia", "Thera", "Akrotiri", "Tylissos", "Archanes", "Amnissos"],
   },
   {
@@ -447,10 +447,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Greece",
     leader: "Pericles",
     abilityName: "Plato's Republic",
-    abilityDesc: "+20% science; melee units +2 combat strength.",
+    abilityDesc: "+15% science; melee units +1 combat strength.",
     uniqueUnit: "Greek Hoplite",
     uniqueInfra: "Acropolis",
-    effects: { yieldPercent: { science: 20 }, unitClassCombat: { melee: 2 } },
+    effects: { yieldPercent: { science: 15 }, unitClassCombat: { melee: 1 } },
     cityNames: ["Athens", "Sparta", "Corinth", "Thebes", "Delphi", "Olympia", "Argos", "Ephesus", "Miletus", "Syracuse"],
   },
   {
@@ -469,10 +469,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Macedon",
     leader: "Alexander",
     abilityName: "Hellenistic Fusion",
-    abilityDesc: "Melee units +2 combat strength; cavalry +1 combat strength.",
+    abilityDesc: "Melee units +1 combat strength; cavalry +1 combat strength.",
     uniqueUnit: "Hypaspist",
     uniqueInfra: "Basilikoi Paides",
-    effects: { unitClassCombat: { melee: 2, cavalry: 1 } },
+    effects: { unitClassCombat: { melee: 1, cavalry: 1 } },
     cityNames: ["Pella", "Aegae", "Thessalonica", "Amphipolis", "Philippi", "Beroea", "Edessa", "Dion", "Stagira", "Pydna"],
   },
   {
@@ -502,10 +502,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Celts / Gauls",
     leader: "Vercingetorix",
     abilityName: "Druidic Lore",
-    abilityDesc: "Melee units +1 combat strength.",
+    abilityDesc: "Melee units +1 combat strength; +1 faith from forests in your territory.",
     uniqueUnit: "Gaesatae",
     uniqueInfra: "Oppidum",
-    effects: { unitClassCombat: { melee: 1 } },
+    effects: { unitClassCombat: { melee: 1 }, forestTileFaithBonus: 1 },
     cityNames: ["Alesia", "Bibracte", "Gergovia", "Lutetia", "Avaricum", "Numantia", "Camulodunum", "Verlamion", "Glauberg", "Heuneburg"],
   },
   {
@@ -524,10 +524,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Norse",
     leader: "Harald Hardrada",
     abilityName: "Knarr",
-    abilityDesc: "+15% gold; melee units +2 combat strength; +15% gold from raiding; +15% gold from coastal raids.",
+    abilityDesc: "+15% gold; melee units +1 combat strength; +15% gold from coastal raids.",
     uniqueUnit: "Norse Longship",
     uniqueInfra: "Stave Church",
-    effects: { yieldPercent: { gold: 15 }, unitClassCombat: { melee: 2 }, raidGoldPercent: 15, coastalRaidGoldPercent: 15 },
+    effects: { yieldPercent: { gold: 15 }, unitClassCombat: { melee: 1 }, coastalRaidGoldPercent: 15 },
     cityNames: ["Kaupang", "Birka", "Hedeby", "Trondheim", "Oslo", "Reykjavik", "York", "Dublin", "Ribe", "Visby"],
   },
   {
@@ -557,10 +557,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Anglo-Saxon / England",
     leader: "Alfred",
     abilityName: "Workshop of the World",
-    abilityDesc: "+15% production; ranged units +2 combat strength.",
+    abilityDesc: "+10% production; ranged units +2 combat strength.",
     uniqueUnit: "Longbowman",
     uniqueInfra: "Manor House",
-    effects: { yieldPercent: { production: 15 }, unitClassCombat: { ranged: 2 } },
+    effects: { yieldPercent: { production: 10 }, unitClassCombat: { ranged: 2 } },
     cityNames: ["Winchester", "London", "York", "Canterbury", "Lincoln", "Gloucester", "Worcester", "Durham", "Exeter", "Oxford"],
   },
   {
@@ -568,10 +568,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "France",
     leader: "Joan of Arc",
     abilityName: "Grand Tour",
-    abilityDesc: "+10% gold.",
+    abilityDesc: "+10% gold, +5% culture.",
     uniqueUnit: "Garde Écossaise",
     uniqueInfra: "Château",
-    effects: { yieldPercent: { gold: 10 } },
+    effects: { yieldPercent: { gold: 10, culture: 5 } },
     cityNames: ["Paris", "Orléans", "Tours", "Reims", "Lyon", "Marseille", "Bordeaux", "Rouen", "Avignon", "Toulouse"],
   },
   {
@@ -645,10 +645,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Kievan Rus",
     leader: "Yaroslav",
     abilityName: "Lavra",
-    abilityDesc: "+10% production.",
+    abilityDesc: "+10% production; +1 faith from forests in your territory.",
     uniqueUnit: "Druzhina",
     uniqueInfra: "Lavra",
-    effects: { yieldPercent: { production: 10 } },
+    effects: { yieldPercent: { production: 10 }, forestTileFaithBonus: 1 },
     cityNames: ["Kyiv", "Novgorod", "Vladimir", "Suzdal", "Chernigov", "Polotsk", "Smolensk", "Pereyaslavl", "Galich", "Rostov"],
   },
   {
@@ -715,10 +715,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Maurya",
     leader: "Ashoka",
     abilityName: "Dharma",
-    abilityDesc: "+20% food; cavalry +2 combat strength.",
+    abilityDesc: "+15% food; cavalry +1 combat strength.",
     uniqueUnit: "Mauryan War Elephant",
     uniqueInfra: "Stepwell",
-    effects: { yieldPercent: { food: 20 }, unitClassCombat: { cavalry: 2 } },
+    effects: { yieldPercent: { food: 15 }, unitClassCombat: { cavalry: 1 } },
     cityNames: ["Pataliputra", "Taxila", "Ujjain", "Vidisha", "Mathura", "Sarnath", "Kosambi", "Rajagriha", "Varanasi", "Kaushambi"],
   },
   {
@@ -781,10 +781,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Dai Viet (Vietnam)",
     leader: "Le Loi",
     abilityName: "Nine Dragons",
-    abilityDesc: "Melee units +1 combat strength.",
+    abilityDesc: "Melee units +1 combat strength; +1 combat strength for units in forests.",
     uniqueUnit: "Voi Chiến",
     uniqueInfra: "Thành",
-    effects: { unitClassCombat: { melee: 1 } },
+    effects: { unitClassCombat: { melee: 1 }, forestTileCombatBonus: 1 },
     cityNames: ["Hanoi", "Thăng Long", "Huế", "Hoa Lư", "Thanh Hóa", "Nam Định", "Nghệ An", "Vinh", "Đồng Nai", "Saigon"],
   },
   {
@@ -836,10 +836,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Ayutthaya (Siam)",
     leader: "Ramkhamhaeng",
     abilityName: "Father Governs Children",
-    abilityDesc: "+10% science.",
+    abilityDesc: "+10% science, +5% faith.",
     uniqueUnit: "Siamese War Elephant",
     uniqueInfra: "Wat",
-    effects: { yieldPercent: { science: 10 } },
+    effects: { yieldPercent: { science: 10, faith: 5 } },
     cityNames: ["Ayutthaya", "Sukhothai", "Chiang Mai", "Thonburi", "Phitsanulok", "Nakhon Si Thammarat", "Lopburi", "Pattaya", "Bangkok", "Lampang"],
   },
 
@@ -906,10 +906,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Mongols",
     leader: "Genghis Khan",
     abilityName: "Örtöö",
-    abilityDesc: "Cavalry +2 combat strength; cavalry +1 movement.",
+    abilityDesc: "Cavalry +1 combat strength; cavalry +1 movement.",
     uniqueUnit: "Keshig",
     uniqueInfra: "Ordu",
-    effects: { cavalryMovementBonus: 1, unitClassCombat: { cavalry: 2 } },
+    effects: { cavalryMovementBonus: 1, unitClassCombat: { cavalry: 1 } },
     cityNames: ["Karakorum", "Khanbaliq", "Samarkand", "Bukhara", "Merv", "Nishapur", "Tabriz", "Sarai", "Bolghar", "Almaliq"],
   },
   {
@@ -917,10 +917,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Timurids",
     leader: "Tamerlane",
     abilityName: "Sword of Islam",
-    abilityDesc: "+10% science; cavalry +2 combat strength; +15% gold from raiding; raids also yield science.",
+    abilityDesc: "+10% science; cavalry +1 combat strength; +15% gold from raiding; raids also yield science.",
     uniqueUnit: "Timurid Siege Train",
     uniqueInfra: "Registan",
-    effects: { yieldPercent: { science: 10 }, unitClassCombat: { cavalry: 2 }, raidGoldPercent: 15, raidSciencePercent: 50 },
+    effects: { yieldPercent: { science: 10 }, unitClassCombat: { cavalry: 1 }, raidGoldPercent: 15, raidSciencePercent: 50 },
     cityNames: ["Samarkand", "Bukhara", "Herat", "Isfahan", "Shiraz", "Mashhad", "Tabriz", "Kabul", "Balkh", "Damascus"],
   },
   {
@@ -943,10 +943,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Olmec",
     leader: "Council",
     abilityName: "Mother Culture",
-    abilityDesc: "+10% production.",
+    abilityDesc: "+10% production, +5% culture.",
     uniqueUnit: "Olmec Spearman",
     uniqueInfra: "Colossal Head",
-    effects: { yieldPercent: { production: 10 } },
+    effects: { yieldPercent: { production: 10, culture: 5 } },
     cityNames: ["San Lorenzo", "La Venta", "Tres Zapotes", "Laguna de los Cerros", "Las Bocas", "El Manatí", "Chalcatzingo", "San José Mogote", "La Mojarra", "Potrero Nuevo"],
   },
   {
@@ -954,10 +954,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Maya",
     leader: "Pacal the Great",
     abilityName: "Mayab",
-    abilityDesc: "+10% science.",
+    abilityDesc: "+10% science, +5% culture.",
     uniqueUnit: "Holkan",
     uniqueInfra: "Observatory",
-    effects: { yieldPercent: { science: 10 } },
+    effects: { yieldPercent: { science: 10, culture: 5 } },
     cityNames: ["Tikal", "Palenque", "Chichen Itza", "Copán", "Calakmul", "Uxmal", "Caracol", "Yaxha", "Bonampak", "Tulum"],
   },
   {
@@ -965,10 +965,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Zapotec",
     leader: "Cocijo priesthood",
     abilityName: "Cloud People",
-    abilityDesc: "Melee units +1 combat strength.",
+    abilityDesc: "+5% culture; melee units +1 combat strength.",
     uniqueUnit: "Zapotec Warrior",
     uniqueInfra: "Danzante Temple",
-    effects: { unitClassCombat: { melee: 1 } },
+    effects: { unitClassCombat: { melee: 1 }, yieldPercent: { culture: 5 } },
     cityNames: ["Monte Albán", "Mitla", "San José Mogote", "Dainzu", "Lambityeco", "Yagul", "Zaachila", "Huamelulpan", "Huitzo", "Teotitlán"],
   },
   {
@@ -998,10 +998,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Aztec",
     leader: "Montezuma",
     abilityName: "Legend of the Eagle",
-    abilityDesc: "Melee units +3 combat strength.",
+    abilityDesc: "Melee units +2 combat strength.",
     uniqueUnit: "Eagle Warrior",
     uniqueInfra: "Tlachtli",
-    effects: { unitClassCombat: { melee: 3 } },
+    effects: { unitClassCombat: { melee: 2 } },
     cityNames: ["Tenochtitlan", "Texcoco", "Tlacopan", "Cholula", "Tlaxcala", "Tenayuca", "Azcapotzalco", "Cuauhtitlan", "Xochimilco", "Otumba"],
   },
   {
@@ -1009,10 +1009,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Inca",
     leader: "Pachacuti",
     abilityName: "Mit'a",
-    abilityDesc: "+10% food.",
+    abilityDesc: "+10% food; +1 food from fresh-water tiles.",
     uniqueUnit: "Warak'aq",
     uniqueInfra: "Terrace Farm",
-    effects: { yieldPercent: { food: 10 } },
+    effects: { yieldPercent: { food: 10 }, freshWaterTileFoodBonus: 1 },
     cityNames: ["Cusco", "Machu Picchu", "Quito", "Lima", "Chan Chan", "Tiwanaku", "Huaraz", "Vilcabamba", "Ollantaytambo", "Sacsayhuamán"],
   },
   {
@@ -1031,10 +1031,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Mississippian (Cahokia)",
     leader: "Great Sun",
     abilityName: "Mound Builders",
-    abilityDesc: "+10% production.",
+    abilityDesc: "+10% production, +5% culture.",
     uniqueUnit: "Cahokian Warrior",
     uniqueInfra: "Earthwork Mound",
-    effects: { yieldPercent: { production: 10 } },
+    effects: { yieldPercent: { production: 10, culture: 5 } },
     cityNames: ["Cahokia", "Moundville", "Etowah", "Spiro", "Kincaid", "Angel", "Emerald", "Wickliffe", "Winterville", "Nodena"],
   },
   {
@@ -1042,10 +1042,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Haudenosaunee (Iroquois)",
     leader: "Hiawatha",
     abilityName: "Great League",
-    abilityDesc: "+10% production.",
+    abilityDesc: "+5% food, +10% production.",
     uniqueUnit: "Mohawk Warrior",
     uniqueInfra: "Longhouse",
-    effects: { yieldPercent: { production: 10 } },
+    effects: { yieldPercent: { production: 10, food: 5 } },
     cityNames: ["Onondaga", "Seneca", "Cayuga", "Oneida", "Mohawk", "Tuscarora", "Ganondagan", "Canandaigua", "Buffalo", "Caughnawaga"],
   },
   {
@@ -1053,10 +1053,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Pueblo",
     leader: "Council",
     abilityName: "Cliff Dwellers",
-    abilityDesc: "+10% production.",
+    abilityDesc: "+10% production; +1 production from hill tiles.",
     uniqueUnit: "Pueblo Skirmisher",
     uniqueInfra: "Cliff Palace",
-    effects: { yieldPercent: { production: 10 } },
+    effects: { yieldPercent: { production: 10 }, hillTileProductionBonus: 1 },
     cityNames: ["Chaco Canyon", "Mesa Verde", "Taos", "Acoma", "Zuni", "Hopi", "Canyon de Chelly", "Bandelier", "Pecos", "San Ildefonso"],
   },
 
@@ -1090,10 +1090,10 @@ export const CIVILIZATIONS: CivDef[] = [
     name: "Hawaiʻi",
     leader: "Kamehameha",
     abilityName: "Aloha ʻĀina",
-    abilityDesc: "+10% gold.",
+    abilityDesc: "+10% gold; +1 gold from coastal water tiles.",
     uniqueUnit: "Hawaiian Koa",
     uniqueInfra: "Heiau",
-    effects: { yieldPercent: { gold: 10 } },
+    effects: { yieldPercent: { gold: 10 }, coastalTileGoldBonus: 1 },
     cityNames: ["Honolulu", "Hilo", "Kailua", "Lahaina", "Waipahu", "Pearl City", "Kahului", "Kona", "Molokai", "Kauai"],
   },
 
@@ -1111,9 +1111,9 @@ export const CIVILIZATIONS: CivDef[] = [
   {
     id: "israelites", name: "Israelites", leader: "Solomon",
     abilityName: "Kingdom of David",
-    abilityDesc: "+15% production toward Wonders; +1 faith per trade route.",
+    abilityDesc: "+5% culture; +15% production toward Wonders; +1 faith per trade route.",
     uniqueUnit: "Gibborim", uniqueInfra: "First Temple",
-    effects: { wonderProductionBonus: 15, tradeRouteFaithBonus: 1 },
+    effects: { wonderProductionBonus: 15, tradeRouteFaithBonus: 1, yieldPercent: { culture: 5 } },
     cityNames: ["Jerusalem", "Samaria", "Hebron", "Bethlehem", "Jericho", "Beersheba", "Megiddo", "Lachish", "Shechem", "Dan"],
   },
   {
@@ -1171,9 +1171,9 @@ export const CIVILIZATIONS: CivDef[] = [
   {
     id: "khwarazm", name: "Khwarazm", leader: "Ala ad-Din Muhammad II",
     abilityName: "Shahs of Khwarazm",
-    abilityDesc: "+15% gold; military upkeep +20%.",
+    abilityDesc: "+15% gold; +2 gold per trade route.",
     uniqueUnit: "Khwarazmian Lancer", uniqueInfra: "Gurganj Bazaar",
-    effects: { yieldPercent: { gold: 15 }, militaryMaintenanceCostMultiplier: 0.2 },
+    effects: { yieldPercent: { gold: 15 }, tradeRouteGoldBonus: 2 },
     cityNames: ["Gurganj", "Khiva", "Kath", "Hazarasp", "Merv", "Nishapur", "Otrar", "Urgench", "Samarkand", "Bukhara"],
   },
 
@@ -1339,9 +1339,9 @@ export const CIVILIZATIONS: CivDef[] = [
   {
     id: "illyrians", name: "Illyrians", leader: "Teuta",
     abilityName: "Adriatic Pirates",
-    abilityDesc: "Naval units +1 movement; +50% gold from coastal raids.",
+    abilityDesc: "Naval units +1 movement; +35% gold from coastal raids.",
     uniqueUnit: "Liburnian", uniqueInfra: "Gradina",
-    effects: { coastalRaidGoldPercent: 50, navalMovementBonus: 1 },
+    effects: { coastalRaidGoldPercent: 35, navalMovementBonus: 1 },
     cityNames: ["Scodra", "Rhizon", "Lissus", "Epidamnus", "Apollonia", "Daorson", "Salona", "Narona", "Bylis", "Amantia"],
   },
   {
@@ -1467,17 +1467,17 @@ export const CIVILIZATIONS: CivDef[] = [
   {
     id: "champa", name: "Champa", leader: "Jaya Indravarman IV",
     abilityName: "Lords of the Sea",
-    abilityDesc: "Naval units +1 movement; +50% gold from coastal raids.",
+    abilityDesc: "Naval units +1 movement; +35% gold from coastal raids.",
     uniqueUnit: "Cham Raider", uniqueInfra: "My Son Tower",
-    effects: { coastalRaidGoldPercent: 50, navalMovementBonus: 1 },
+    effects: { coastalRaidGoldPercent: 35, navalMovementBonus: 1 },
     cityNames: ["Indrapura", "Vijaya", "Simhapura", "Kauthara", "Panduranga", "Amaravati", "Virapura", "Rajapura", "Bal Hangov", "Bal Sri Banoy"],
   },
   {
     id: "sinhala", name: "Sinhala", leader: "Parakramabahu I",
     abilityName: "Let No Drop Waste",
-    abilityDesc: "+1 food and +1 production from fresh-water tiles.",
+    abilityDesc: "+5% food; +1 food and +1 production from fresh-water tiles.",
     uniqueUnit: "Sinhala War Elephant", uniqueInfra: "Wewa",
-    effects: { freshWaterTileFoodBonus: 1, freshWaterTileProductionBonus: 1 },
+    effects: { yieldPercent: { food: 5 }, freshWaterTileFoodBonus: 1, freshWaterTileProductionBonus: 1 },
     cityNames: ["Anuradhapura", "Polonnaruwa", "Sigiriya", "Kandy", "Dambadeniya", "Yapahuwa", "Kurunegala", "Mahagama", "Tissamaharama", "Kelaniya"],
   },
   {
@@ -1511,9 +1511,9 @@ export const CIVILIZATIONS: CivDef[] = [
   {
     id: "avars", name: "Avars", leader: "Bayan I",
     abilityName: "Ring of the Avars",
-    abilityDesc: "Cavalry +2 combat strength; +25% gold from raiding.",
+    abilityDesc: "Cavalry +1 combat strength; +25% gold from raiding.",
     uniqueUnit: "Avar Lancer", uniqueInfra: "Hring",
-    effects: { unitClassCombat: { cavalry: 2 }, raidGoldPercent: 25 },
+    effects: { unitClassCombat: { cavalry: 1 }, raidGoldPercent: 25 },
     cityNames: ["Hring", "Sirmium", "Singidunum", "Aquincum", "Savaria", "Carnuntum", "Mursa", "Bassiana", "Brigetio", "Cibalae"],
   },
   {
@@ -1855,7 +1855,26 @@ export interface UniqueUnitDef {
   bonus: number;
 }
 
-function uu(civId: string, name: string, replaces: string, bonus = 3, idName = name): UniqueUnitDef {
+// Primary strength of each base unit a unique unit may replace (melee/cavalry/naval
+// use combat strength; ranged use ranged strength). Mirrors UNIT_DEFS in the sim —
+// kept here only to scale the unique-unit bonus, so @roc/data stays dependency-free.
+const BASE_UNIT_PRIMARY: Record<string, number> = {
+  warrior: 8, slinger: 7, javelineer: 8, hunter: 7, light_chariot: 9, archer: 11,
+  axeman: 13, maceman: 11, spearman: 11, hoplite: 13, war_chariot: 13, rider: 10,
+  horse_archer: 9, battering_ram: 10, swordsman: 15, longswordsman: 18, pikeman: 14,
+  cataphract: 17, crossbowman: 14, legionary: 15, war_elephant: 16, catapult: 14,
+  ballista: 16, galley: 10, bireme: 14, trireme: 16, quinquereme: 20, longship: 12,
+  caravel: 14, dromon: 14, war_junk: 16, galleass: 18, galleon: 20,
+};
+
+/** Unique-unit combat bonus scaled by base-unit strength so a flat boost is fair
+ *  across eras: cheap/early bases (≤8) get +2, mid (9–15) +3, heavy/late (≥16) +4. */
+function scaledUuBonus(replaces: string): number {
+  const p = BASE_UNIT_PRIMARY[replaces] ?? 11;
+  return p <= 8 ? 2 : p >= 16 ? 4 : 3;
+}
+
+function uu(civId: string, name: string, replaces: string, bonus = scaledUuBonus(replaces), idName = name): UniqueUnitDef {
   // The art/lookup id is derived from `idName` (defaults to `name`). Passing an
   // explicit `idName` lets the display `name` carry a civ prefix (e.g. "Roman
   // Legionary") while keeping a stable id (rome_legionary) for art and overrides.
@@ -1886,7 +1905,7 @@ export const UNIQUE_UNITS: UniqueUnitDef[] = [
   // Egypt & Africa
   uu("egypt", "Maryannu Chariot", "war_chariot"),
   uu("kush_nubia", "Nubian Archer", "archer"),
-  uu("carthage", "Carthaginian War Elephant", "war_elephant", 3, "War Elephant"),
+  uu("carthage", "Carthaginian War Elephant", "war_elephant", 4, "War Elephant"),
   uu("aksum", "Aksumite Spearman", "spearman"),
   uu("ethiopia_zagwe", "Oromo Cavalry", "rider"),
   uu("mali", "Mandekalu Cavalry", "cataphract"),
@@ -1903,7 +1922,7 @@ export const UNIQUE_UNITS: UniqueUnitDef[] = [
   uu("etruscans", "Etruscan Hoplite", "hoplite"),
   uu("rome", "Roman Legionary", "swordsman", 3, "Legionary"),
   uu("celts_gauls", "Gaesatae", "axeman"),
-  uu("byzantium", "Byzantine Cataphract", "cataphract", 3, "Cataphract"),
+  uu("byzantium", "Byzantine Cataphract", "cataphract", 4, "Cataphract"),
   uu("norse", "Norse Longship", "longship", 3, "Longship"),
   uu("franks", "Frankish Paladin", "cataphract"),
   uu("goths", "Gothic Rider", "cataphract"),
@@ -1921,8 +1940,8 @@ export const UNIQUE_UNITS: UniqueUnitDef[] = [
   // Central, South & East Asia
   uu("han_china", "Cho-Ko-Nu", "crossbowman"),
   uu("china_tang_song", "Fire Lancer", "pikeman"),
-  uu("china_ming", "Ming War Junk", "war_junk", 3, "War Junk"),
-  uu("maurya", "Mauryan War Elephant", "war_elephant", 3, "War Elephant"),
+  uu("china_ming", "Ming War Junk", "war_junk", 4, "War Junk"),
+  uu("maurya", "Mauryan War Elephant", "war_elephant", 4, "War Elephant"),
   uu("gupta_india", "Gupta Elephant Archer", "war_elephant"),
   uu("chola", "Chola Warship", "trireme"),
   uu("japan", "Samurai", "longswordsman"),
@@ -2105,10 +2124,10 @@ const INFRA_OVERRIDES: Record<string, InfraOverride> = {
   carthage: { reqTech: "sailcloth", yields: { gold: 2 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +2 gold and naval units +1 movement empire-wide." },
   phoenicia: { reqTech: "sailcloth", yields: { gold: 2 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +2 gold and naval units +1 movement empire-wide." },
   portugal: { reqTech: "astronomy", yields: { gold: 3 }, effects: { tradeRouteGoldBonus: 2 }, desc: "Unique building — +3 gold and +2 gold per trade route empire-wide." },
-  sparta: { reqTech: "bronze_alloying", yields: { production: 1 }, effects: { unitClassCombat: { melee: 1 } }, desc: "Unique building — +1 production and melee units +1 combat strength empire-wide." },
+  sparta: { reqTech: "bronze_alloying", yields: { production: 2 }, desc: "Unique building — +2 production." },
   rome: { reqTech: "engineering", yields: { culture: 1, food: 1 }, effects: { yieldPercent: { culture: 10 } }, desc: "Unique building — +1 culture, +1 food, and +10% culture empire-wide." },
   greece: { reqTech: "masonry", yields: { culture: 2, science: 1 }, desc: "Unique building — +2 culture and +1 science." },
-  norse: { reqTech: "sailcloth", yields: { faith: 2, culture: 1 }, effects: { coastalRaidGoldPercent: 10 }, desc: "Unique building — +2 faith, +1 culture, and +10% gold from coastal raids empire-wide." },
+  norse: { reqTech: "sailcloth", yields: { faith: 2, culture: 1 }, desc: "Unique building — +2 faith and +1 culture." },
 };
 
 /** Slugify a name into a stable art/lookup id (matches the unique-unit scheme). */

@@ -45,6 +45,7 @@ const TECH_PREFERENCE: TechId[] = [
   "bronze_alloying", "writing", "masonry", "the_wheel", "equestrian",
   "composite_bow", "phalanx", "iron_bloomery", "coinage", "philosophy",
   "engineering", "carburizing", "siegecraft", "bridge_building", "cavalry_doctrine", "crossbow",
+  "gunpowder", "firearms",
 ];
 
 function ax(o: { col: number; row: number }) {

@@ -54,6 +54,12 @@ export interface Unit {
   legendId?: string;
   /** Turn after which the legend retires ("passes into legend"). */
   legendExpiresOnTurn?: number;
+  /** Gunpowder units only: true when a shot is charged and ready to fire. Firing
+   *  empties it; it reloads at its next turn start (see combat.ts). */
+  loaded?: boolean;
+  /** Gunpowder units only: true on the turn the unit is reloading — it cannot
+   *  fire this turn even though `loaded` is now set. Cleared next turn. */
+  reloading?: boolean;
 }
 
 export type ProductionItem =
@@ -544,6 +550,8 @@ export function makeUnit(
     abilityCooldowns: {},
     sleeping: false,
     morale,
+    // Gunpowder units enter the field with a charge already loaded.
+    loaded: UNIT_DEFS[type].gunpowder ? true : undefined,
   };
 }
 

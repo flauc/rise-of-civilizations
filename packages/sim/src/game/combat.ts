@@ -429,6 +429,12 @@ export function resolveAttack(
   const attackerOwner = playerById(state, attacker.ownerId)!;
   const attackerNaval = isNavalUnit(attacker);
   const ranged = isRanged(def);
+
+  // Gunpowder weapons can only fire a charged shot — they reload (and cannot
+  // fire) on the turn after firing. See healAndReset for the reload tick.
+  if (ranged && def.gunpowder && (!attacker.loaded || attacker.reloading)) {
+    return { ok: false, error: attacker.reloading ? "reloading this turn" : "needs to reload" };
+  }
   let range = (ranged ? def.range ?? 1 : 1) +
     (has(attacker, "extended_range") ? 1 : 0) +
     (ranged && has(attacker, "extended_range_naval") ? 1 : 0);
@@ -707,6 +713,9 @@ function finishAttack(state: GameState, attacker: Unit): void {
   if (!state.units.has(attacker.id)) return;
   attacker.attackedThisTurn = true;
   attacker.movementLeft = 0;
+  // A gunpowder shot spends its charge; the unit must reload next turn.
+  const def = UNIT_DEFS[attacker.type];
+  if (def.gunpowder && isRanged(def)) attacker.loaded = false;
 }
 
 /** True if `attacker` can legally target a tile/unit/city in the given domain. */
@@ -729,6 +738,8 @@ export function computeAttackTargets(state: GameState, unit: Unit): Set<string> 
   if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return out;
   if (unit.attackedThisTurn || unit.movementLeft <= 0) return out;
   if (unit.embarked) return out;
+  // A gunpowder weapon with no loaded charge (mid-reload) cannot fire this turn.
+  if (def.gunpowder && isRanged(def) && (!unit.loaded || unit.reloading)) return out;
   const owner = playerById(state, unit.ownerId);
   if (!owner) return out;
   const range = (isRanged(def) ? def.range ?? 1 : 1) +
@@ -847,6 +858,16 @@ export function healAndReset(state: GameState, player: Player): void {
   for (const u of own) {
     u.attackedLastTurn = u.attackedThisTurn;
     u.attackedThisTurn = false;
+    // Gunpowder reload tick: an empty weapon spends this turn reloading (it
+    // becomes loaded but cannot fire until next turn); a loaded one is ready.
+    if (UNIT_DEFS[u.type].gunpowder) {
+      if (!u.loaded) {
+        u.loaded = true;
+        u.reloading = true;
+      } else {
+        u.reloading = false;
+      }
+    }
   }
   const eff = playerEffects(state, player.id);
   for (const u of own) {

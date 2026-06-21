@@ -2104,6 +2104,12 @@ export function createUI(handlers: UIHandlers): UI {
           ? ` · <span style="color:#ff8a8a">⚑ Routed</span>`
           : "";
       headInfo += `<div style="margin-top:2px">🎌 Morale <b style="color:${mColor}">${m}</b><span style="color:#9fc0dc">${mEffect}</span>${routed}</div>`;
+      if (def.gunpowder) {
+        const loaded = unit.loaded && !unit.reloading;
+        headInfo += loaded
+          ? `<div style="margin-top:2px;color:#7ee787">🔫 Loaded — ready to fire</div>`
+          : `<div style="margin-top:2px;color:#ffb86b">🔄 Reloading — fires next turn</div>`;
+      }
     }
     // Header: big unit art on the left, name/stats on the right. Falls back to the
     // small map token, then hides if no art exists at all.
