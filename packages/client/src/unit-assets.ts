@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { ASSET_BASE_URL } from "./asset-base";
 import { UNIT_DEFS, UNIQUE_UNIT_IDS, type UnitTypeId } from "@roc/sim";
 import { LEGEND_IDS } from "@roc/data";
 
@@ -11,7 +12,7 @@ export interface UnitAtlas {
 }
 
 function imageUrl(name: string): string {
-  return `${import.meta.env.BASE_URL}units/${name}.png`;
+  return `${ASSET_BASE_URL}units/${name}.png`;
 }
 
 /** Returns true when an image has finished loading and has usable pixels. */

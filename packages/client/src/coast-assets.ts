@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { ASSET_BASE_URL } from "./asset-base";
 import { hashSeed } from "@roc/shared";
 
 /**
@@ -22,7 +23,7 @@ export interface CoastAtlas {
 const VARIANTS = 2;
 
 function imageUrl(name: string): string {
-  return `${import.meta.env.BASE_URL}hex-terrain/coasts/${name}.png`;
+  return `${ASSET_BASE_URL}hex-terrain/coasts/${name}.png`;
 }
 
 /** Returns true when an image has finished loading and has usable pixels. */

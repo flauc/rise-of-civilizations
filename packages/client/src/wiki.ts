@@ -2,6 +2,7 @@
 // In-game encyclopedia / wiki. Gradually expanded reference for civilizations,
 // units, terrain, systems and victory conditions.
 
+import { ASSET_BASE_URL } from "./asset-base";
 import {
   CIVILIZATIONS,
   UNIT_DEFS,
@@ -92,7 +93,7 @@ const WIKI_CIV_STYLE = `<style>
 
 function renderCivilizations(): string {
   const list = CIVILIZATIONS.map((c) => {
-    const portrait = `${import.meta.env.BASE_URL}leaders/${c.id}.png`;
+    const portrait = `${ASSET_BASE_URL}leaders/${c.id}.png`;
     return (
       `<div class="wiki-card wiki-civ-card" id="wiki-civ-${c.id}">` +
       `<div class="wiki-civ-portrait"><img src="${portrait}" loading="lazy" alt="${escapeHtml(c.leader)}" onerror="this.closest('.wiki-civ-portrait').style.display='none'"></div>` +
@@ -144,8 +145,8 @@ const WIKI_UNIT_STYLE = `<style>
 /** A big-image unit card. Uses a crisp ~320px image (units-big), falling back to the token.
  *  The untouched full-resolution art lives in units-full for hi-res use. */
 function unitCard(id: string, title: string, statsLine: string, metaLine: string): string {
-  const big = `${import.meta.env.BASE_URL}units-big/${id}.png`;
-  const token = `${import.meta.env.BASE_URL}units/${id}.png`;
+  const big = `${ASSET_BASE_URL}units-big/${id}.png`;
+  const token = `${ASSET_BASE_URL}units/${id}.png`;
   return (
     `<figure class="wiki-unit-card">` +
     `<div class="wiki-unit-img"><img src="${big}" loading="lazy" alt="${escapeHtml(title)}" ` +
@@ -238,7 +239,7 @@ function renderGameplay(): string {
         `<li><b>Balanced start</b> — <b>75🪙</b>. Enough to cover a modest army for ~15–25 turns while the first economy (trade route / Market / Harbor) comes online. Keeps early expansion viable without removing tension.</li>` +
         `<li><b>Generous start</b> — <b>150🪙</b>. A comfortable cushion; players can support several units or bribe barbarians early without immediate gold anxiety. Reduces early economic tension.</li>` +
         `</ul>` +
-        `<p>If your treasury drops below zero after paying upkeep, you will see a warning in the turn log. Try to grow your economy through trade routes, coastal/lake tiles, Markets, and Harbors before your starting gold runs out.</p>` +
+        `<p>If your treasury drops below zero after paying upkeep, your army goes <b>bankrupt</b>: your costliest units are disbanded until you are solvent and your troops' morale collapses (see the <b>Morale</b> section). Try to grow your economy through trade routes, coastal/lake tiles, Markets, and Harbors before your starting gold runs out.</p>` +
         `<p>You can also dial upkeep up or down empire-wide with the <b>Military Pay</b> setting (−100% to +200%), which trades gold against army morale — see the <b>Morale</b> section.</p>`,
     ) +
     section(
@@ -355,10 +356,21 @@ function renderMorale(): string {
       `<p>Morale is earned and lost on the battlefield:</p>` +
         `<ul>` +
         `<li><b>Defeat an enemy</b> — the victorious unit's morale jumps, adjacent friendly units gain a smaller boost, and your global morale rises by <b>10%</b> of the victor's gain.</li>` +
-        `<li><b>Lose one of your units</b> — every adjacent friendly unit's morale drops, and global morale falls by 10% of that loss. Repeated defeats are the <i>only</i> thing that can drag global morale below its base of 50.</li>` +
+        `<li><b>Lose one of your units</b> — every adjacent friendly unit's morale drops, and global morale falls by 10% of that loss.</li>` +
         `<li><b>Promote a unit</b> — the promotion heartens that unit and its neighbours, and lifts global morale.</li>` +
         `<li><b>Beating barbarians counts for less</b> — defeating a barbarian gives only about <b>half</b> the morale of beating a rival civilization's soldier. Glory is won against real foes.</li>` +
-        `</ul>`,
+        `</ul>` +
+        `<p>Defeats in battle and <b>bankruptcy</b> (see below) are the only things that can drag global morale <i>below</i> its base of 50.</p>`,
+    ) +
+    section(
+      "Bankruptcy",
+      `<p>An army marches on its pay. If your treasury cannot cover unit <b>upkeep</b> at the end of a turn, your most expensive units are <b>disbanded</b> until you are solvent again — and the unpaid wages <b>gut your army's spirit</b>:</p>` +
+        `<ul>` +
+        `<li>Global morale <b>plunges by 30</b> — a drastic blow that can push it well below the base of 50.</li>` +
+        `<li>Every surviving unit loses <b>25 morale</b> on the spot, leaving a demoralised army that fights weakly and routs easily.</li>` +
+        `<li>This happens <b>every turn</b> you remain insolvent, so a prolonged cash crisis can collapse an army's will to fight entirely.</li>` +
+        `</ul>` +
+        `<p>Keep an eye on your treasury: lean on trade routes, Markets and Harbors, ease off <b>Military Pay</b>, or trim your army <i>before</i> the gold runs out rather than letting bankruptcy do it for you.</p>`,
     ) +
     section(
       "Decay",
@@ -366,7 +378,7 @@ function renderMorale(): string {
         `<ul>` +
         `<li>Decay only begins <b>3 turns after</b> the last time morale was earned (a kill, promotion, or a spirited war declaration).</li>` +
         `<li>It then <b>ramps up</b>: roughly <b>1% per turn</b> at first, accelerating up to <b>10% per turn</b> the longer your armies sit idle.</li>` +
-        `<li>Decay <b>never drops global morale below 50</b> — only losing battles can do that.</li>` +
+        `<li>Decay <b>never drops global morale below 50</b> — only losing battles or bankruptcy can do that.</li>` +
         `</ul>` +
         `<p>The lesson: a confident empire must keep winning to stay confident.</p>`,
     ) +
@@ -418,7 +430,7 @@ const WIKI_PORTRAIT_STYLE = `<style>
 
 /** A portrait card: image on the left, name + meta + body on the right. */
 function portraitCard(imgBase: string, id: string, title: string, sub: string, body: string): string {
-  const src = `${import.meta.env.BASE_URL}${imgBase}/${id}.png`;
+  const src = `${ASSET_BASE_URL}${imgBase}/${id}.png`;
   return (
     `<figure class="wiki-portrait-card">` +
     `<div class="wiki-portrait-img"><img src="${src}" loading="lazy" alt="${escapeHtml(title)}" onerror="this.style.visibility='hidden'"></div>` +

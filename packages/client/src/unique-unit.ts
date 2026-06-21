@@ -4,6 +4,7 @@
 // Civilizations page, so the two stay identical. The `.uu-*` / `.uud-*` CSS is
 // injected globally by the lobby (createLobby runs at startup).
 
+import { ASSET_BASE_URL } from "./asset-base";
 import {
   CIVILIZATIONS,
   UNIQUE_UNITS,
@@ -48,7 +49,7 @@ export function uniqueUnitBlockHtml(civId: string): string {
       : "";
   }
   const base = UNIT_DEFS[uu.replaces as UnitTypeId];
-  const src = `${import.meta.env.BASE_URL}units/${uu.id}.png`;
+  const src = `${ASSET_BASE_URL}units/${uu.id}.png`;
   const meta = [
     "Unique unit",
     base ? `replaces ${escapeHtml(base.name)}` : "",
@@ -84,7 +85,7 @@ export function uniqueUnitDetailHtml(uu: typeof UNIQUE_UNITS[number]): string {
   const bonus = uu.bonus;
   const effStr = (base?.strength ?? 0) + (ranged ? 0 : bonus);
   const effRanged = (base?.rangedStrength ?? 0) + (ranged ? bonus : 0);
-  const src = `${import.meta.env.BASE_URL}units/${uu.id}.png`;
+  const src = `${ASSET_BASE_URL}units/${uu.id}.png`;
 
   const stat = (label: string, val: string): string =>
     `<div class="uud-stat"><span>${label}</span><b>${val}</b></div>`;

@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { ASSET_BASE_URL } from "./asset-base";
 import { TERRAIN_TYPES, type TerrainType } from "@roc/shared";
 
 /** Per-terrain image atlas used by the renderer. */
@@ -36,7 +37,7 @@ const MAX_VARIANTS = 8;
 
 function imageUrl(name: string): string {
   // Vite replaces import.meta.env.BASE_URL with the configured base path.
-  return `${import.meta.env.BASE_URL}hex-terrain/${name}.png`;
+  return `${ASSET_BASE_URL}hex-terrain/${name}.png`;
 }
 
 function variantUrls(name: string): string[] {

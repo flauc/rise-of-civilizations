@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { ASSET_BASE_URL } from "./asset-base";
 import { hashSeed } from "@roc/shared";
 
 /**
@@ -25,7 +26,7 @@ const ROAD_VARIANTS = 4; // some masks ship up to 4 painted variations
 export const BRIDGE_MASKS = [9, 18, 36] as const;
 
 function imageUrl(name: string): string {
-  return `${import.meta.env.BASE_URL}roads/${name}.png`;
+  return `${ASSET_BASE_URL}roads/${name}.png`;
 }
 
 /** Returns true when an image has finished loading and has usable pixels. */

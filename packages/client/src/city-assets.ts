@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+import { ASSET_BASE_URL } from "./asset-base";
+
 const CITY_COUNT = 10;
 const FRAMES_PER_TIER = 5; // base + _1 .. _4
 
@@ -11,7 +13,7 @@ export interface CityAtlas {
 
 function imageUrl(tier: number, frame: number): string {
   const suffix = frame === 0 ? "" : `_${frame}`;
-  return `${import.meta.env.BASE_URL}buildings/city_${tier}${suffix}.png`;
+  return `${ASSET_BASE_URL}buildings/city_${tier}${suffix}.png`;
 }
 
 /** Returns true when an image has finished loading and has usable pixels. */

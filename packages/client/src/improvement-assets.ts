@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import { ASSET_BASE_URL } from "./asset-base";
 import { hashSeed } from "@roc/shared";
 
 const VARIANTS = 5; // base + _1 .. _4
@@ -30,12 +31,12 @@ export function isImageReady(img: HTMLImageElement): boolean {
 
 function improvementUrl(kind: string, tier: number, variant: number): string {
   const suffix = variant === 0 ? "" : `_${variant}`;
-  return `${import.meta.env.BASE_URL}improvements/${kind}_t${tier}${suffix}.png`;
+  return `${ASSET_BASE_URL}improvements/${kind}_t${tier}${suffix}.png`;
 }
 
 function legacyFarmUrl(variant: number): string {
   const suffix = variant === 0 ? "" : `_${variant}`;
-  return `${import.meta.env.BASE_URL}buildings/farm${suffix}.png`;
+  return `${ASSET_BASE_URL}buildings/farm${suffix}.png`;
 }
 
 /** Start loading tiered improvement sprites. */

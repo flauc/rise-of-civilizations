@@ -4,6 +4,12 @@ import { createGame } from "./setup";
 import { applyCommand } from "./commands";
 import { citiesOf, makeUnit, unitsOf, type Player } from "./state";
 import { UNIT_DEFS } from "./content";
+import {
+  GLOBAL_MORALE_BASE,
+  BANKRUPTCY_GLOBAL_MORALE_PENALTY,
+  BANKRUPTCY_UNIT_MORALE_PENALTY,
+  unitMorale,
+} from "./morale";
 
 function foundCapital(state: ReturnType<typeof createGame>) {
   const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
@@ -74,6 +80,45 @@ describe("unit upkeep", () => {
     applyUnitUpkeep(state, player);
     expect(unitUpkeep(state, warrior)).toBe(2); // round(1 * 1.5)
     expect(player.gold).toBe(98);
+  });
+
+  it("bankruptcy disbands units and craters army morale", () => {
+    const state = createGame({ playerCount: 1, barbarians: false });
+    const player = state.players[0]!;
+    player.globalMorale = GLOBAL_MORALE_BASE; // 50
+    player.gold = 1; // not enough to pay two warriors (upkeep 1 each)
+    state.units.clear();
+    const w1 = makeUnit(state.nextEntityId++, player.id, "warrior", 0, 0, 0, 120);
+    const w2 = makeUnit(state.nextEntityId++, player.id, "warrior", 1, 1, 0, 120);
+    state.units.set(w1.id, w1);
+    state.units.set(w2.id, w2);
+
+    applyUnitUpkeep(state, player);
+
+    // One warrior is disbanded to regain solvency.
+    const survivors = unitsOf(state, player.id);
+    expect(survivors.length).toBe(1);
+    expect(player.gold).toBe(0);
+    // Global morale plunges by the bankruptcy penalty, dropping below base 50.
+    expect(player.globalMorale).toBe(GLOBAL_MORALE_BASE - BANKRUPTCY_GLOBAL_MORALE_PENALTY);
+    // The surviving unit loses heart too.
+    expect(unitMorale(survivors[0]!)).toBe(120 - BANKRUPTCY_UNIT_MORALE_PENALTY);
+  });
+
+  it("a solvent player suffers no bankruptcy morale hit", () => {
+    const state = createGame({ playerCount: 1, barbarians: false });
+    const player = state.players[0]!;
+    player.globalMorale = GLOBAL_MORALE_BASE;
+    player.gold = 100;
+    state.units.clear();
+    const w = makeUnit(state.nextEntityId++, player.id, "warrior", 0, 0, 0, 120);
+    state.units.set(w.id, w);
+
+    applyUnitUpkeep(state, player);
+
+    expect(unitsOf(state, player.id).length).toBe(1);
+    expect(player.globalMorale).toBe(GLOBAL_MORALE_BASE); // unchanged
+    expect(unitMorale(w)).toBe(120); // unchanged
   });
 
   it("skips barbarian players", () => {

@@ -1,6 +1,7 @@
 // Pre-game menu: a proper start screen with navigable sub-screens for
 // single-player setup, multiplayer lobby, and loading saved games.
 
+import { ASSET_BASE_URL } from "./asset-base";
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
 import { createWiki } from "./wiki";
 import { createRoadmap } from "./roadmap";
@@ -409,7 +410,7 @@ export function createLobby(onStart: (session: Session) => void): void {
       .showcase-leader{font-size:20px}
       .showcase-quote{font-size:16px;margin-top:14px}
       .showcase-ability{margin-top:18px;padding:14px}
-      .showcase-reroll{position:static;width:100%;max-width:260px;margin:16px auto 0}
+      .showcase-reroll{display:none}
       #sp-civ-desc{display:none}
       .menu-btn{padding:14px 16px}
       .menu-in{padding:10px 12px}
@@ -443,7 +444,7 @@ export function createLobby(onStart: (session: Session) => void): void {
 
   function renderShowcase(civId?: string, allowReroll = true): void {
     const civ = (civId ? CIVILIZATIONS.find((c) => c.id === civId) : undefined) ?? pickRandomCiv();
-    const src = leaderAtlas.images[civ.id]?.src ?? `${import.meta.env.BASE_URL}leaders/${civ.id}.png`;
+    const src = leaderAtlas.images[civ.id]?.src ?? `${ASSET_BASE_URL}leaders/${civ.id}.png`;
     const rerollBtn = allowReroll
       ? `<button class="menu-btn secondary showcase-reroll" id="showcase-reroll">Show another civilization</button>`
       : "";
@@ -539,7 +540,7 @@ export function createLobby(onStart: (session: Session) => void): void {
 
     const renderDetail = (): void => {
       const civ = CIVILIZATIONS.find((c) => c.id === selected)!;
-      const src = leaderAtlas.images[civ.id]?.src ?? `${import.meta.env.BASE_URL}leaders/${civ.id}.png`;
+      const src = leaderAtlas.images[civ.id]?.src ?? `${ASSET_BASE_URL}leaders/${civ.id}.png`;
       detailEl.innerHTML = `
         <div class="cp-detail-top">
           <div class="cp-portrait">

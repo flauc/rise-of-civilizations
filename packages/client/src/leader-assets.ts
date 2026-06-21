@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { ASSET_BASE_URL } from "./asset-base";
 import { CIVILIZATIONS } from "@roc/sim";
 
 /** Per-civilization leader portrait atlas used by the Start Screen. */
@@ -9,7 +10,7 @@ export interface LeaderAtlas {
 }
 
 function imageUrl(civId: string): string {
-  return `${import.meta.env.BASE_URL}leaders/${civId}.png`;
+  return `${ASSET_BASE_URL}leaders/${civId}.png`;
 }
 
 /** Returns true when an image has finished loading and has usable pixels. */

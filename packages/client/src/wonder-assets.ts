@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import { ASSET_BASE_URL } from "./asset-base";
 import { WONDER_IDS } from "@roc/data";
 
 export interface WonderAtlas {
@@ -21,7 +22,7 @@ export function loadWonderAtlas(onLoad?: () => void): WonderAtlas {
   const atlas: WonderAtlas = { images, loaded: remaining === 0 };
   for (const id of WONDER_IDS) {
     const img = new Image();
-    img.src = `${import.meta.env.BASE_URL}wonders/${id}.png`;
+    img.src = `${ASSET_BASE_URL}wonders/${id}.png`;
     const done = (): void => {
       if (isReady(img)) images[id] = img;
       remaining--;

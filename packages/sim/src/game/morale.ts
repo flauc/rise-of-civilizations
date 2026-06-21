@@ -66,6 +66,13 @@ export const WAR_GLOBAL_SWING = 10;
 /** Each of the declarer's units shifts morale by this when war is declared. */
 export const WAR_UNIT_SWING = 8;
 
+// ---- bankruptcy ----------------------------------------------------------
+
+/** Global morale lost the turn the treasury cannot pay its troops' upkeep. */
+export const BANKRUPTCY_GLOBAL_MORALE_PENALTY = 30;
+/** Each of the player's units loses this much morale when its wages go unpaid. */
+export const BANKRUPTCY_UNIT_MORALE_PENALTY = 25;
+
 // ---- military pay (upkeep modifier) --------------------------------------
 
 /** Bounds on the player's military-pay setting, as a percent of base upkeep. */
@@ -298,6 +305,24 @@ export function onWarDeclared(state: GameState, playerId: number): void {
   for (const u of state.units.values()) {
     if (u.ownerId !== playerId) continue;
     changeUnitMorale(u, unitMorale(u) >= MORALE_NEUTRAL ? WAR_UNIT_SWING : -WAR_UNIT_SWING);
+  }
+}
+
+/**
+ * The treasury ran dry and the army's wages went unpaid: a catastrophe for morale.
+ * The empire's global morale plunges and every one of its units loses heart sharply
+ * (this can drag global morale below its base of 50). Call this once per turn that
+ * upkeep cannot be met, after any forced disbanding.
+ */
+export function onBankruptcy(state: GameState, playerId: number): void {
+  const player = playerById(state, playerId);
+  if (!player) return;
+  const before = globalMoraleOf(player);
+  adjustGlobalMorale(player, -BANKRUPTCY_GLOBAL_MORALE_PENALTY);
+  recordMoraleEvent(state, playerId, before, "Treasury bankrupt — troops unpaid");
+  for (const u of state.units.values()) {
+    if (u.ownerId !== playerId) continue;
+    changeUnitMorale(u, -BANKRUPTCY_UNIT_MORALE_PENALTY);
   }
 }
 

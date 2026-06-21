@@ -1,3 +1,4 @@
+import { ASSET_BASE_URL, assetUrl } from "./asset-base";
 import { renderTechTreeInto } from "./techtree";
 import { createWiki } from "./wiki";
 import { createEmpire, type Tab as EmpireTab } from "./empire";
@@ -705,9 +706,9 @@ export function createUI(handlers: UIHandlers): UI {
 
   const rewardImagePath = (reward: FeatureRewardType): string => {
     if (reward === "camp_cleared") {
-      return "barbarian-rewards/barb_camp_cleared.png";
+      return assetUrl("barbarian-rewards/barb_camp_cleared.png");
     }
-    return `village-rewards/village_reward_${reward}.png`;
+    return assetUrl(`village-rewards/village_reward_${reward}.png`);
   };
 
   const showVillageDialog = (item: PopupItem): void => {
@@ -747,7 +748,7 @@ export function createUI(handlers: UIHandlers): UI {
     return {
       title: "Natural Wonder Discovered",
       html: lines.join("<br><br>"),
-      art: w.wonderId ? `natural-wonders/${w.wonderId}.png` : undefined,
+      art: w.wonderId ? assetUrl(`natural-wonders/${w.wonderId}.png`) : undefined,
     };
   };
 
@@ -772,18 +773,18 @@ export function createUI(handlers: UIHandlers): UI {
 
   const turnUpdateImagePath = (ev: TurnUpdateEvent): string => {
     if (ev.type === "wonderComplete" && ev.payload?.wonderId) {
-      return `turn-updates/wonder_${ev.payload.wonderId}.png`;
+      return assetUrl(`turn-updates/wonder_${ev.payload.wonderId}.png`);
     }
     if (ev.type === "improvementComplete" && ev.payload?.kind) {
-      return `turn-updates/improvement_${ev.payload.kind}.png`;
+      return assetUrl(`turn-updates/improvement_${ev.payload.kind}.png`);
     }
     if (ev.type === "greatPersonRecruited" && ev.payload?.greatPersonId) {
-      return `great-people/${ev.payload.greatPersonId}.png`;
+      return assetUrl(`great-people/${ev.payload.greatPersonId}.png`);
     }
     if (ev.type === "legendRecruited" && ev.payload?.legendId) {
-      return `legends/${ev.payload.legendId}.png`;
+      return assetUrl(`legends/${ev.payload.legendId}.png`);
     }
-    return `turn-updates/${ev.type}.png`;
+    return assetUrl(`turn-updates/${ev.type}.png`);
   };
 
   const hideTurnUpdateDialog = (): void => {
@@ -889,7 +890,7 @@ export function createUI(handlers: UIHandlers): UI {
       hideTurnUpdateDialog();
       return;
     }
-    const genericPath = `turn-updates/${ev.type}.png`;
+    const genericPath = assetUrl(`turn-updates/${ev.type}.png`);
     const specificPath = turnUpdateImagePath(ev);
     turnUpdateArt.src = specificPath;
     turnUpdateArt.onerror = () => {
@@ -897,7 +898,7 @@ export function createUI(handlers: UIHandlers): UI {
       if (turnUpdateArt.src.endsWith(specificPath) && specificPath !== genericPath) {
         turnUpdateArt.src = genericPath;
       } else {
-        turnUpdateArt.src = "leaders/rome.png";
+        turnUpdateArt.src = assetUrl("leaders/rome.png");
         turnUpdateArt.onerror = null;
       }
     };
@@ -966,7 +967,7 @@ export function createUI(handlers: UIHandlers): UI {
         (ev, i) =>
           `<button class="tu-row" data-tu-row="${i}">` +
           `<img class="tu-row-art" src="${turnUpdateImagePath(ev)}" alt="" ` +
-          `onerror="this.onerror=null;this.src='turn-updates/${ev.type}.png'" />` +
+          `onerror="this.onerror=null;this.src='${assetUrl(`turn-updates/${ev.type}.png`)}'" />` +
           `<span class="tu-row-text"><b>${escapeHtml(updateTitleFor(ev))}</b>` +
           `<span>${escapeHtml(ev.message)}</span></span>` +
           `<span class="tu-row-chevron">›</span>` +
@@ -1151,7 +1152,7 @@ export function createUI(handlers: UIHandlers): UI {
     if (civ) {
       leaderAvatar.classList.remove("empty");
       leaderAvatar.innerHTML =
-        `<img src="${import.meta.env.BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" title="${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)}" onerror="this.style.visibility='hidden'">` +
+        `<img src="${ASSET_BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" title="${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)}" onerror="this.style.visibility='hidden'">` +
         `<div class="leader-avatar-label"><b>${escapeHtml(civ.name)}</b><span>${escapeHtml(civ.leader)}</span></div>`;
     } else {
       leaderAvatar.classList.add("empty");
@@ -1942,7 +1943,7 @@ export function createUI(handlers: UIHandlers): UI {
           const info = GREAT_PERSON_CLASS_INFO[g!.cls];
           return (
             `<div class="tech" data-gp="${g!.id}">` +
-            `<img class="portrait-thumb" src="${import.meta.env.BASE_URL}great-people/${g!.id}.png" alt="" onerror="this.style.display='none'">` +
+            `<img class="portrait-thumb" src="${ASSET_BASE_URL}great-people/${g!.id}.png" alt="" onerror="this.style.display='none'">` +
             `<div style="flex:1">` +
             `<b>${info.glyph} ${g!.name}</b> <span class="sub">· ${info.name} · ${g!.era}</span>` +
             `<div class="sub">${g!.desc}</div></div>` +
@@ -2032,7 +2033,7 @@ export function createUI(handlers: UIHandlers): UI {
           const dis = !canAfford || !hasCity;
           return (
             `<div class="tech" data-legend="${l.id}">` +
-            `<img class="portrait-thumb" src="${import.meta.env.BASE_URL}legends/${l.id}.png" alt="" onerror="this.style.display='none'">` +
+            `<img class="portrait-thumb" src="${ASSET_BASE_URL}legends/${l.id}.png" alt="" onerror="this.style.display='none'">` +
             `<div style="flex:1">` +
             `<b>${typeGlyph[l.type]} ${l.name}</b> <span class="sub">· ${l.era} · ${legendBaseName(l)}</span>` +
             `<div class="sub">${l.abilityDesc}</div>` +
@@ -2075,8 +2076,8 @@ export function createUI(handlers: UIHandlers): UI {
     // Big portrait art (units-big), keyed by the legend id for heroes, then the
     // unique-unit id, else the base unit type — matching the map overlay's sprite.
     const imgId = unit.legendId ?? uu?.id ?? unit.type;
-    const bigSrc = `${import.meta.env.BASE_URL}units-big/${imgId}.png`;
-    const tokenSrc = `${import.meta.env.BASE_URL}units/${imgId}.png`;
+    const bigSrc = `${ASSET_BASE_URL}units-big/${imgId}.png`;
+    const tokenSrc = `${ASSET_BASE_URL}units/${imgId}.png`;
     let headInfo =
       `<div class="row" style="justify-content:space-between"><b style="font-size:15px">${displayName}<span style="color:#ffd967">${stars}</span></b>` +
       `</div>` +

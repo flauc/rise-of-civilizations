@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { ASSET_BASE_URL } from "./asset-base";
 import { RESOURCE_DEFS, RESOURCE_IDS, type ResourceId } from "@roc/sim";
 
 /** Per-resource image atlas used by the renderer. */
@@ -9,7 +10,7 @@ export interface ResourceAtlas {
 }
 
 function imageUrl(name: string): string {
-  return `${import.meta.env.BASE_URL}resources/${name}.png`;
+  return `${ASSET_BASE_URL}resources/${name}.png`;
 }
 
 /** Returns true when an image has finished loading and has usable pixels. */

@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 
+import { ASSET_BASE_URL } from "./asset-base";
 import { hashSeed } from "@roc/shared";
 
 const VILLAGE_FRAMES = 5; // village.png, village_1.png .. village_4.png
@@ -13,7 +14,7 @@ export interface FeatureAtlas {
 
 function frameUrl(base: string, frame: number): string {
   const suffix = frame === 0 ? "" : `_${frame}`;
-  return `${import.meta.env.BASE_URL}buildings/${base}${suffix}.png`;
+  return `${ASSET_BASE_URL}buildings/${base}${suffix}.png`;
 }
 
 /** Returns true when an image has finished loading and has usable pixels. */

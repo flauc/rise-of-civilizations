@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { ASSET_BASE_URL } from "./asset-base";
 import { hashSeed } from "@roc/shared";
 
 /**
@@ -26,7 +27,7 @@ const RIVER_VARIANTS = 3; // some channels ship up to 3 painted variations
 const MOUTH_VARIANTS = 2;
 
 function imageUrl(name: string): string {
-  return `${import.meta.env.BASE_URL}hex-terrain/rivers/${name}.png`;
+  return `${ASSET_BASE_URL}hex-terrain/rivers/${name}.png`;
 }
 
 export function isImageReady(img: HTMLImageElement): boolean {

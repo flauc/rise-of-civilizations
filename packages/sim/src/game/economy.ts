@@ -11,7 +11,7 @@ import { civEffectsOf, cityEffects, getCivic, uniqueUnitForCiv } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
-import { startingUnitMorale, BARRACKS_MORALE_BONUS, upkeepGoldMultiplier } from "./morale";
+import { startingUnitMorale, BARRACKS_MORALE_BONUS, upkeepGoldMultiplier, onBankruptcy } from "./morale";
 import { offsetNeighbors, isCoastalLand } from "./movement";
 import {
   emitCityGrew,
@@ -574,6 +574,9 @@ export function applyUnitUpkeep(state: GameState, player: Player): void {
       state.units.delete(u.id);
       player.gold += unitUpkeep(state, u);
     }
+    // Unpaid wages gut the army's spirit: global morale plunges and every
+    // surviving unit loses heart (see onBankruptcy in morale.ts).
+    onBankruptcy(state, player.id);
   }
 }
 

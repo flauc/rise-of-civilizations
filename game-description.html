@@ -1,213 +1,97 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="Rise of Civilizations — a turn-based 4X strategy game from the Ancient Era to the Age of Exploration."
-    />
-    <title>Rise of Civilizations — Game Description</title>
-    <style>
-      :root {
-        --bg: #14110d;
-        --panel: #1d1913;
-        --panel-soft: #262017;
-        --ink: #f2e9d8;
-        --muted: #b6a98f;
-        --accent: #d4a24a;
-        --line: #3a3024;
-      }
-      * { box-sizing: border-box; }
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--ink);
-        font-family: "Lato", "Segoe UI", system-ui, sans-serif;
-        line-height: 1.6;
-      }
-      .wrap { max-width: 860px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
-      header { text-align: center; border-bottom: 1px solid var(--line); padding-bottom: 2.5rem; margin-bottom: 2.5rem; }
-      .pretitle { letter-spacing: 0.25em; text-transform: uppercase; color: var(--accent); font-size: 0.8rem; margin: 0 0 0.75rem; }
-      h1 {
-        font-family: "Cinzel", Georgia, serif;
-        font-size: clamp(2rem, 5vw, 3.1rem);
-        margin: 0 0 1rem;
-        line-height: 1.15;
-      }
-      h1 .accent { color: var(--accent); }
-      .subtitle { color: var(--muted); font-size: 1.15rem; max-width: 38rem; margin: 0 auto; }
-      h2 {
-        font-family: "Cinzel", Georgia, serif;
-        font-size: 1.6rem;
-        margin: 2.75rem 0 0.5rem;
-        color: var(--ink);
-      }
-      .lead { color: var(--muted); margin: 0 0 1.5rem; }
-      .stats {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 1rem;
-        margin: 2rem 0 0;
-      }
-      .stat {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 1rem 0.5rem;
-        text-align: center;
-      }
-      .stat strong { display: block; font-size: 1.6rem; color: var(--accent); font-family: "Cinzel", serif; }
-      .stat span { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
-      .cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
-      .card {
-        background: var(--panel);
-        border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 1.25rem 1.4rem;
-      }
-      .card h3 { margin: 0 0 0.35rem; font-family: "Cinzel", serif; color: var(--accent); font-size: 1.15rem; }
-      .card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
-      ul.features { list-style: none; padding: 0; margin: 0; }
-      ul.features li {
-        padding: 0.65rem 0 0.65rem 1.4rem;
-        border-bottom: 1px solid var(--line);
-        position: relative;
-        color: var(--muted);
-      }
-      ul.features li:last-child { border-bottom: none; }
-      ul.features li::before { content: "◆"; color: var(--accent); position: absolute; left: 0; font-size: 0.8rem; top: 0.8rem; }
-      table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
-      th, td { text-align: left; padding: 0.7rem 0.75rem; border-bottom: 1px solid var(--line); }
-      th { color: var(--accent); font-family: "Cinzel", serif; font-weight: 600; font-size: 0.9rem; }
-      td { color: var(--ink); font-size: 0.95rem; }
-      td.years { color: var(--muted); white-space: nowrap; }
-      .cta {
-        text-align: center;
-        margin-top: 3rem;
-        padding: 2rem;
-        background: var(--panel-soft);
-        border: 1px solid var(--line);
-        border-radius: 12px;
-      }
-      .cta p { color: var(--muted); margin: 0.5rem 0 1.25rem; }
-      .btn {
-        display: inline-block;
-        background: var(--accent);
-        color: #1a140a;
-        text-decoration: none;
-        font-weight: 700;
-        padding: 0.8rem 1.8rem;
-        border-radius: 8px;
-        font-family: "Cinzel", serif;
-      }
-      .note { font-size: 0.85rem; margin-top: 1rem; }
-      footer { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--line); }
-      @media (max-width: 640px) {
-        .stats { grid-template-columns: repeat(2, 1fr); }
-        .cards { grid-template-columns: 1fr; }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="wrap">
-      <header>
-        <p class="pretitle">4000 BCE — 1550 CE</p>
-        <h1>Rise of Civilizations<br /><span class="accent">Forge an Empire Through the Ages</span></h1>
-        <p class="subtitle">
-          A turn-based 4X strategy game played in your browser. Lead one of 130+ civilizations
-          from the first mud-brick cities to the Age of Exploration.
-        </p>
-        <div class="stats">
-          <div class="stat"><strong>130+</strong><span>Civilizations</span></div>
-          <div class="stat"><strong>5</strong><span>Eras</span></div>
-          <div class="stat"><strong>85+</strong><span>Technologies</span></div>
-          <div class="stat"><strong>4X</strong><span>Strategy</span></div>
-        </div>
-      </header>
+<h1>Rise of Civilizations - Forge an Empire Through the Ages</h1>
 
-      <section>
-        <h2>The Four Pillars of Empire</h2>
-        <p class="lead">
-          Every decision shapes your civilization. Explore unknown frontiers, expand your borders,
-          exploit the land, and exterminate those who stand in your way.
-        </p>
-        <div class="cards">
-          <div class="card">
-            <h3>Explore</h3>
-            <p>Chart unknown lands, dispatch scouts, and reveal resources from wheat fields to iron mines.</p>
-          </div>
-          <div class="card">
-            <h3>Expand</h3>
-            <p>Found cities across continents, claim territory, and build roads that bind your empire together.</p>
-          </div>
-          <div class="card">
-            <h3>Exploit</h3>
-            <p>Assign citizens, improve tiles, trade luxuries, and balance food, production, gold, and science.</p>
-          </div>
-          <div class="card">
-            <h3>Exterminate</h3>
-            <p>Wage tactical wars with unique units, promotions, and combined-arms combat across land and sea.</p>
-          </div>
-        </div>
-      </section>
+<p><em>4000 BCE - 1550 CE</em></p>
 
-      <section>
-        <h2>Choose Your Legacy</h2>
-        <p class="lead">
-          From Sumerian war-carts to Mongol hordes and Inca terrace farms, each of the 130+ civilizations
-          brings a unique leader, ability, unit, and infrastructure spanning every region of the ancient
-          and medieval world.
-        </p>
-      </section>
+<p>
+  Rise of Civilizations is a turn-based 4X strategy game played in your browser.
+  Lead one of 130+ civilizations from the first mud-brick cities to the Age of
+  Exploration, across 5 eras and 85+ technologies.
+</p>
 
-      <section>
-        <h2>Five Ages of History</h2>
-        <p class="lead">
-          Advance from stone tools to square-rigged galleons. Each era unlocks new units, buildings,
-          governments, and ways to win.
-        </p>
-        <table>
-          <thead>
-            <tr><th>Era</th><th>Years</th><th>Highlights</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>Stone / Dawn</td><td class="years">4000–3000 BCE</td><td>First tribes, farms, and mud-brick cities.</td></tr>
-            <tr><td>Bronze Age</td><td class="years">3000–1200 BCE</td><td>Chariots, ziggurats, and the first empires.</td></tr>
-            <tr><td>Iron / Classical</td><td class="years">1200 BCE–500 CE</td><td>Legions, phalanxes, philosophy, and great roads.</td></tr>
-            <tr><td>Medieval / Faith</td><td class="years">500–1300 CE</td><td>Knights, castles, samurai, and cathedrals.</td></tr>
-            <tr><td>Exploration</td><td class="years">1300–1550 CE</td><td>Caravels, gunpowder, printing, and global trade.</td></tr>
-          </tbody>
-        </table>
-      </section>
+<h2>The Four Pillars of Empire</h2>
 
-      <section>
-        <h2>A Living World of Hexes</h2>
-        <p class="lead">
-          Procedural maps and real-world geodata presets mean no two games are alike. Deserts, jungles,
-          mountains, rivers, and coastlines shape every empire's story.
-        </p>
-        <ul class="features">
-          <li>Procedural continents, archipelagos, and Earth presets</li>
-          <li>Bonus, luxury, and strategic resources to fight over</li>
-          <li>Combined-arms tactics with melee, ranged, cavalry, and siege</li>
-          <li>Districts, wonders, and veteran units with earned names</li>
-        </ul>
-      </section>
+<p>
+  Every decision shapes your civilization. Explore unknown frontiers, expand your
+  borders, exploit the land, and exterminate those who stand in your way.
+</p>
 
-      <section class="cta">
-        <h2>The World Awaits Its Next Ruler</h2>
-        <p>
-          Play single-player against AI, hotseat with friends, or join online multiplayer.
-          Your empire begins with a single settler.
-        </p>
-        <a class="btn" href="https://game.rise-of-civilizations.com">Play in Browser</a>
-        <p class="note">No install required. Works on desktop and mobile.</p>
-      </section>
+<ul>
+  <li><strong>Explore</strong> - Chart unknown lands, dispatch scouts, and reveal resources from wheat fields to iron mines.</li>
+  <li><strong>Expand</strong> - Found cities across continents, claim territory, and build roads that bind your empire together.</li>
+  <li><strong>Exploit</strong> - Assign citizens, improve tiles, trade luxuries, and balance food, production, gold, and science.</li>
+  <li><strong>Exterminate</strong> - Wage tactical wars with unique units, promotions, and combined-arms combat across land and sea.</li>
+</ul>
 
-      <footer>
-        Rise of Civilizations — a browser-first 4X strategy project.
-      </footer>
-    </div>
-  </body>
-</html>
+<h2>Choose Your Legacy</h2>
+
+<p>
+  From Sumerian war-carts to Mongol hordes and Inca terrace farms, each of the
+  130+ civilizations brings a unique leader, ability, unit, and infrastructure
+  spanning every region of the ancient and medieval world.
+</p>
+
+<h2>Five Ages of History</h2>
+
+<p>
+  Advance from stone tools to square-rigged galleons. Each era unlocks new units,
+  buildings, governments, and ways to win.
+</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Era</th>
+      <th>Years</th>
+      <th>Highlights</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Stone / Dawn</td>
+      <td>4000–3000 BCE</td>
+      <td>First tribes, farms, and mud-brick cities.</td>
+    </tr>
+    <tr>
+      <td>Bronze Age</td>
+      <td>3000–1200 BCE</td>
+      <td>Chariots, ziggurats, and the first empires.</td>
+    </tr>
+    <tr>
+      <td>Iron / Classical</td>
+      <td>1200 BCE–500 CE</td>
+      <td>Legions, phalanxes, philosophy, and great roads.</td>
+    </tr>
+    <tr>
+      <td>Medieval / Faith</td>
+      <td>500–1300 CE</td>
+      <td>Knights, castles, samurai, and cathedrals.</td>
+    </tr>
+    <tr>
+      <td>Exploration</td>
+      <td>1300–1550 CE</td>
+      <td>Caravels, gunpowder, printing, and global trade.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>A Living World of Hexes</h2>
+
+<p>
+  Procedural maps and real-world geodata presets mean no two games are alike.
+  Deserts, jungles, mountains, rivers, and coastlines shape every empire's story.
+</p>
+
+<ul>
+  <li>Procedural continents, archipelagos, and Earth presets</li>
+  <li>Bonus, luxury, and strategic resources to fight over</li>
+  <li>Combined-arms tactics with melee, ranged, cavalry, and siege</li>
+  <li>Districts, wonders, and veteran units with earned names</li>
+</ul>
+
+<h2>The World Awaits Its Next Ruler</h2>
+
+<p>
+  Play single-player against AI, hotseat with friends, or join online multiplayer.
+  Your empire begins with a single settler. No install required - works on desktop
+  and mobile.
+</p>

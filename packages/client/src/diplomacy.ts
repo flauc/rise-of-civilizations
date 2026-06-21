@@ -4,6 +4,7 @@
 // Self-contained like empire.ts; ui.ts only toggles it and re-renders per frame.
 // Re-renders are signature-gated so the deal builder's inputs survive frames.
 
+import { ASSET_BASE_URL } from "./asset-base";
 import {
   relationBetween,
   attitudeScore,
@@ -149,7 +150,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   let lastSig = ""; // re-render only when meaningful state changes
 
   const portrait = (civId?: string): string =>
-    civId ? `${import.meta.env.BASE_URL}leaders/${civId}.png` : "";
+    civId ? `${ASSET_BASE_URL}leaders/${civId}.png` : "";
   const civOf = (pid: number, state: GameState) =>
     getCiv(state.players.find((x) => x.id === pid)?.civId);
   const civName = (pid: number, state: GameState): string => {

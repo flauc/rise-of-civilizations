@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { ASSET_BASE_URL } from "./asset-base";
 import { ACTIVE_ABILITY_DEFS, type ActiveAbilityId } from "@roc/sim";
 
 /**
@@ -13,7 +14,7 @@ export interface AbilityAtlas {
 }
 
 function imageUrl(name: string): string {
-  return `${import.meta.env.BASE_URL}abilities/${name}.png`;
+  return `${ASSET_BASE_URL}abilities/${name}.png`;
 }
 
 function isReady(img: HTMLImageElement): boolean {

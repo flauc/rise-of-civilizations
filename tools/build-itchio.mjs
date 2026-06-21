@@ -3,11 +3,21 @@
 // itch.io serves the uploaded zip from a sandboxed iframe and expects
 // `index.html` at the *root* of the archive (not nested in a folder), with
 // every asset referenced via relative paths. The Vite config already sets
-// `base: "./"`, so the build output in packages/client/dist is fully
-// relative — this script just runs that build and zips its contents.
+// `base: "./"`, so the build output in packages/client/dist is fully relative.
 //
-// The zip is written with Node's built-in zlib (DEFLATE) so there are no
-// extra dependencies to install. Run via: `bun run itch.io-version`.
+// The full image set is ~120 MB, far too large to bundle into the itch.io zip.
+// So the heavy art folders are hosted on our server instead: this build sets
+// `VITE_ASSET_BASE_URL` so the client loads every image from that server (see
+// src/asset-base.ts), and keeps only the app shell (index.html, JS bundle, UI
+// chrome, PWA icons) in the zip.
+//
+// Usage:
+//   bun run itch.io-version -- --asset-base=https://assets.example.com/
+//   # or:  VITE_ASSET_BASE_URL=https://assets.example.com/ bun run itch.io-version
+//
+// Outputs (under dist-itchio/):
+//   rise-of-civilizations-itchio-v<version>.zip  -> upload to itch.io
+//   server-assets/                               -> upload to the asset server
 
 import { spawnSync } from "node:child_process";
 import { deflateRawSync } from "node:zlib";
@@ -17,6 +27,8 @@ import {
   statSync,
   writeFileSync,
   mkdirSync,
+  rmSync,
+  cpSync,
 } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, resolve } from "node:path";
@@ -26,20 +38,45 @@ const repoRoot = resolve(here, "..");
 const clientDir = join(repoRoot, "packages", "client");
 const distDir = join(clientDir, "dist");
 const outDir = join(repoRoot, "dist-itchio");
+const serverAssetsDir = join(outDir, "server-assets");
 
-// --- 1. Build the client -------------------------------------------------
-console.log("> building client (vite build)…");
+// --- 0. Resolve the asset server base URL --------------------------------
+const argBase = process.argv
+  .slice(2)
+  .find((a) => a.startsWith("--asset-base="))
+  ?.slice("--asset-base=".length);
+const assetBase = (argBase || process.env.VITE_ASSET_BASE_URL || "").trim();
+
+if (!assetBase) {
+  console.error(
+    "! No asset server URL provided.\n" +
+      "  The itch.io build hosts game images on our server (they're too large\n" +
+      "  to bundle), so it needs to know where they'll live.\n\n" +
+      "  Pass one of:\n" +
+      "    bun run itch.io-version -- --asset-base=https://assets.example.com/\n" +
+      "    VITE_ASSET_BASE_URL=https://assets.example.com/ bun run itch.io-version\n",
+  );
+  process.exit(1);
+}
+if (!/^https?:\/\//.test(assetBase)) {
+  console.error(`! asset base must be an absolute http(s) URL, got: ${assetBase}`);
+  process.exit(1);
+}
+
+// --- 1. Build the client (with images pointed at the asset server) -------
+console.log(`> building client (assets -> ${assetBase})…`);
 const build = spawnSync("bun", ["run", "--filter", "@roc/client", "build"], {
   cwd: repoRoot,
   stdio: "inherit",
   shell: process.platform === "win32",
+  env: { ...process.env, VITE_ASSET_BASE_URL: assetBase },
 });
 if (build.status !== 0) {
   console.error("! client build failed");
   process.exit(build.status ?? 1);
 }
 
-// --- 2. Collect files from dist/ ----------------------------------------
+// --- 2. Collect files, split into "bundled" vs "server-hosted" -----------
 /** @returns {string[]} absolute file paths under `dir`, recursively */
 function walk(dir) {
   const out = [];
@@ -51,18 +88,39 @@ function walk(dir) {
   return out;
 }
 
-const files = walk(distDir).map((abs) => ({
+// A dist file is bundled into the zip if it's the app shell: any root-level
+// file (index.html, manifest.json, sw.js, the small PWA icons) plus the JS
+// bundle (assets/) and the tiny UI chrome images (ui/, referenced from inline
+// CSS by relative path). Everything else is game art served from the server.
+function isBundled(name) {
+  if (!name.includes("/")) return true;
+  const top = name.split("/")[0];
+  return top === "assets" || top === "ui";
+}
+
+const all = walk(distDir).map((abs) => ({
   abs,
   // Zip entry names must use forward slashes and be relative to dist/.
   name: relative(distDir, abs).split("\\").join("/"),
 }));
 
-if (files.length === 0) {
+if (all.length === 0) {
   console.error(`! no files found in ${distDir}`);
   process.exit(1);
 }
 
-// --- 3. Build the zip in memory -----------------------------------------
+const bundled = all.filter((f) => isBundled(f.name));
+const hosted = all.filter((f) => !isBundled(f.name));
+
+// --- 3. Stage server-hosted assets for upload ----------------------------
+rmSync(serverAssetsDir, { recursive: true, force: true });
+for (const f of hosted) {
+  const dest = join(serverAssetsDir, f.name);
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(f.abs, dest);
+}
+
+// --- 4. Build the zip (app shell only) in memory -------------------------
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
   for (let n = 0; n < 256; n++) {
@@ -87,12 +145,12 @@ const localParts = [];
 const centralParts = [];
 let offset = 0;
 
-for (const file of files) {
+for (const file of bundled) {
   const data = readFileSync(file.abs);
   const nameBuf = Buffer.from(file.name, "utf8");
   const crc = crc32(data);
 
-  // STORE tiny/already-compressed payloads where DEFLATE wouldn't help.
+  // STORE already-compressed payloads where DEFLATE wouldn't help.
   const deflated = deflateRawSync(data, { level: 9 });
   const useDeflate = deflated.length < data.length;
   const method = useDeflate ? 8 : 0;
@@ -142,15 +200,15 @@ const eocd = Buffer.alloc(22);
 eocd.writeUInt32LE(0x06054b50, 0); // end of central dir signature
 eocd.writeUInt16LE(0, 4); // disk number
 eocd.writeUInt16LE(0, 6); // disk with central dir
-eocd.writeUInt16LE(files.length, 8); // entries on this disk
-eocd.writeUInt16LE(files.length, 10); // total entries
+eocd.writeUInt16LE(bundled.length, 8); // entries on this disk
+eocd.writeUInt16LE(bundled.length, 10); // total entries
 eocd.writeUInt32LE(centralDir.length, 12); // central dir size
 eocd.writeUInt32LE(localData.length, 16); // central dir offset
 eocd.writeUInt16LE(0, 20); // comment length
 
 const zip = Buffer.concat([localData, centralDir, eocd]);
 
-// --- 4. Write it out -----------------------------------------------------
+// --- 5. Write outputs ----------------------------------------------------
 mkdirSync(outDir, { recursive: true });
 const version = JSON.parse(
   readFileSync(join(repoRoot, "package.json"), "utf8"),
@@ -158,6 +216,23 @@ const version = JSON.parse(
 const zipPath = join(outDir, `rise-of-civilizations-itchio-v${version}.zip`);
 writeFileSync(zipPath, zip);
 
-const mb = (zip.length / (1024 * 1024)).toFixed(2);
-console.log(`\n✓ packaged ${files.length} files → ${relative(repoRoot, zipPath)} (${mb} MB)`);
-console.log("  Upload this zip to itch.io and tick \"This file will be played in the browser\".");
+const sum = (files) => files.reduce((n, f) => n + statSync(f.abs).size, 0);
+const mb = (bytes) => (bytes / (1024 * 1024)).toFixed(2);
+const hostedDirs = [...new Set(hosted.map((f) => f.name.split("/")[0]))].sort();
+
+console.log(
+  `\n✓ zip:           ${relative(repoRoot, zipPath)} ` +
+    `(${bundled.length} files, ${mb(zip.length)} MB)`,
+);
+console.log(
+  `✓ server-assets: ${relative(repoRoot, serverAssetsDir)}${"/"} ` +
+    `(${hosted.length} files, ${mb(sum(hosted))} MB)`,
+);
+console.log(`    folders: ${hostedDirs.join(", ")}`);
+console.log("\nNext steps:");
+console.log(`  1. Upload server-assets/ to your host so its contents are served at:`);
+console.log(`       ${assetBase}`);
+console.log(`     (e.g. ${assetBase}units/warrior.png must resolve)`);
+console.log("  2. Upload the zip to itch.io, tick \"This file will be played in the browser\".");
+console.log("  3. The asset host must send permissive CORS headers (Access-Control-Allow-Origin)");
+console.log("     since itch.io games run on a different origin (*.hwcdn.net / itch.zone).");
