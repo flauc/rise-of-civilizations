@@ -1,11 +1,12 @@
 # Leader Abilities
 
-> **Status (audited 2026-06-19): IMPLEMENTED, with reduced effects.** All 82 leader abilities exist in `packages/sim/src/game/leader-abilities.ts` with real effects, tech/civic unlocks, and cooldowns. **However, several documented benefits and costs below are NOT in the code because the underlying systems don't exist** — and per the audit's intent these count as *not implemented*:
+> **Status (audited 2026-06-19; updated 2026-06-21): IMPLEMENTED, with reduced effects.** Every one of the **137** playable civilizations now has a coded active leader ability in `packages/sim/src/game/leader-abilities.ts` (`LEADER_ABILITIES`, keyed by civ id) with real effects, tech/civic unlocks, and cooldowns. **The tables below only tabulate the original ~82-civ roster; the expansion civilizations (`arabia`, `israelites`, `nabataeans`, … — see [CIVILIZATIONS-EXPANSION.md](CIVILIZATIONS-EXPANSION.md)) also have abilities in code that are not yet written up here.** **Several documented benefits and costs below are NOT in the code because the underlying systems don't exist** — and per the audit's intent these count as *not implemented*:
 > - **Envoys / city-states** (e.g. "+2 envoys with every city-state", "lose 1 envoy") — no city-state or envoy system exists; these clauses are dropped or replaced with gold/culture in code.
 > - **Diplomatic favor / standing penalties** (e.g. "−5 diplomatic favor per turn", "diplomatic standing worsens") — no diplomatic-favor metric exists.
-> - **War-weariness** (e.g. France "ignore war-weariness") — war-weariness is not modeled.
+> - ~~**War-weariness** (e.g. France "ignore war-weariness") — war-weariness is not modeled.~~ **(addressed via morale, 2026-06-21):** a two-tier **morale** system now exists ([MORALE in the wiki] / `morale.ts`), so "war-weariness" maps onto it. **France's Divine Mandate** lifts empire morale **+20** and every unit **+30** (holy fervor that steels the army against war-weariness); **Sparta's Agoge** (+25 unit morale) and **Aztec's Flower War** (+20) embolden the host; **Attila's Scourge of God** (+15 empire / +15 unit) — terror that hardens its own horde; and conversely **Ashoka's Dharma Edicts** *lowers* unit morale **−15** (a turn to pacifism saps fighting spirit). See "Now-implementable effects" below.
 > - **Amenity costs/benefits** (e.g. "lose 1 amenity", "+1 amenity") — amenities exist only as a resource yield; per-city timed amenity modifiers from abilities are mostly not wired.
-> - ~~**Unique-unit spawns** spawn the **base** unit instead~~ **(implemented 2026-06-20):** unique units now exist as civ-resolved overlays on base types (see `UNIQUE_UNITS` in `packages/data/src/index.ts`), so spawn abilities spawn the base type their civ's unique *replaces* and the spawned unit resolves to the unique automatically. E.g. Sumer's "2 War-Carts" spawns `light_chariot` (→ War-Cart), Rome's "3 Legionaries" spawns `swordsman` (→ Legionary), the Median Lancer's Levy spawns `cataphract` (→ Median Lancer). Abilities whose flavor text names a *generic* unit (England's "4 Spearmen", Venice's "3 Galleys", Phoenicia's free Settler) still spawn the plain base unit.
+> - ~~**Unique-unit spawns** spawn the **base** unit instead~~ **(implemented 2026-06-20):** unique units now exist as civ-resolved overlays on base types (see `UNIQUE_UNITS` in `packages/data/src/index.ts`), so spawn abilities spawn the base type their civ's unique *replaces* and the spawned unit resolves to the unique automatically. E.g. Sumer's "2 War-Carts" spawns `light_chariot` (→ War-Cart), Rome's "3 Legionaries" spawns `swordsman` (→ **Roman Legionary**), the Median Lancer's Levy spawns `cataphract` (→ Median Lancer). Abilities whose flavor text names a *generic* unit (England's "4 Spearmen", Venice's "3 Galleys", Phoenicia's free Settler) still spawn the plain base unit.
+>   - **Unique-unit display names are civ-prefixed (2026-06-21)** wherever a unique unit's name collided with a regular unit's name, so the two are never confused: **Roman Legionary, Greek Hoplite, Byzantine Cataphract, Norse Longship, Carthaginian War Elephant, Mauryan War Elephant, Phoenician Bireme, Ming War Junk** (the lookup id — e.g. `rome_legionary` — is unchanged; only the display `name`/`CivDef.uniqueUnit` carry the prefix). So Rome's Citizen Levy below now reads "Roman Legionary" everywhere it's shown, even though the table still labels the benefit "3 Legionaries".
 > - **Unlock columns are inaccurate**: the tech/civic names here (Iron Working, Horseback Riding, Theology, Currency, Education, Feudalism, Gunpowder…) do **not** match the shipped tech/civic ids (`iron_bloomery`, `equestrian`, `mysticism`, `coinage`, `philosophy`, `statecraft`…). See the actual `unlock` field per civ in `leader-abilities.ts`.
 > - **Civ naming drift**: this doc labels some civs differently from the data — "Ostrogoths"→`goths`, "England"→`anglo_saxon_england`, "Qin/Tang China"→`han_china`/`china_tang_song`, "Rapa Nui"→`polynesia`, "Vietnam"→`dai_viet_vietnam`, etc.
 
@@ -33,6 +34,39 @@ These abilities are *active* (a button or command the player chooses to use), no
 - Cooldowns are global to the player, not per city.
 - If the ability costs population, it is consumed from the **capital** first (or distributed across eligible cities if the cost exceeds capital population). If there isn't enough population, the ability cannot be used.
 - Temporary yield/combat modifiers are tracked as timed **player effects** and decay automatically.
+
+---
+
+## Now-implementable effects (2026-06-21)
+
+The 2026-06-19 audit flagged several ability clauses as un-codeable because the underlying system didn't exist. The **morale** and **Great People** systems (and **Legends**) have since shipped, so some of those clauses are now wired in. These are *additions* layered on top of each ability's existing combat/yield effects.
+
+### Morale (`morale.ts`) — fervor & war-weariness
+A leader ability can now shift **empire morale** (0–200, base 50) and/or apply a flat change to **every existing unit's morale** (helpers `shiftGlobalMorale` / `rallyUnits` in `leader-abilities.ts`).
+
+| Civ | Ability | Morale effect |
+|-----|---------|---------------|
+| **France** (Joan of Arc) | Divine Mandate | **+20 empire**, **+30 to every unit** — the design's "ignore war-weariness", as a fervor buffer |
+| **Sparta** (Leonidas) | Agoge Mobilization | **+25 to every unit** (warrior-society discipline) |
+| **Aztec** (Montezuma) | Flower War | **+20 to every unit** (warriors emboldened for the sacred war) |
+| **Huns** (Attila) | Scourge of God | **+15 empire**, **+15 to every unit** (dread that stiffens its own horde) |
+| **Maurya** (Ashoka) | Dharma Edicts | **−15 to every unit** — a *cost*: the turn to pacifism saps fighting spirit |
+
+### Great People (`great-people.ts`) — patronage & scholarship
+A "patronage / golden-age / scholarship" ability now grants **Great Person points** toward a class (helper `grantGreatPersonPoints`), hastening that class's next recruit.
+
+| Civ | Ability | Points granted |
+|-----|---------|----------------|
+| **Gupta** (Chandragupta II) | Golden Age Patronage | **+40 Scientist, +40 Artist** |
+| **Songhai** (Askia) | Timbuktu Scholarship | **+50 Scientist** |
+| **Tang/Song China** (Taizong) | Imperial Examination | **+40 Scientist** |
+| **Korea** (Sejong) | Hangul Scholars | **+30 Scientist, +30 Artist** |
+| **Babylon** (Hammurabi) | Code of Laws | **+50 Statesman** (the lawgiver) |
+
+### Legends (`legends.ts`)
+Legends are a **separate** faith-driven, globally-unique hero-recruitment system (see [GREAT-PEOPLE.md](GREAT-PEOPLE.md) §2) and don't map cleanly onto the repeatable, cooldown-gated leader-ability model, so **no leader ability grants a Legend**. Faith-themed abilities indirectly help (faith funds Legend recruitment), but that link is intentionally left implicit.
+
+> Still **not** modeled (no system yet): envoys / city-states, diplomatic-favor metrics, and per-city timed amenity modifiers.
 
 ---
 

@@ -159,6 +159,8 @@ Heroes are **recruitable, powerful, limited units** central to the game's identi
 
 **Type:** `land` / `naval` / `support`. **Recruit via:** the path that fits the hero (Faith, Culture, Conquest, Wonder, Quest). **Lifespan:** turns active before they retire (some rechargeable).
 
+> **Implementation (`legends.ts`, `@roc/data` `LEGENDS`).** All heroes below exist with their era and type. They are recruited from the **⭐ Legends** panel by spending **faith** — the "Recruit via" column is flavour; the real cost is faith, rising **150 → 250 → 350 …** per hero. Each is **globally unique** while alive. On recruit, the hero spawns at one of your cities (naval heroes on adjacent water) as a unit reskinning a base type (`baseType`), with a flat **combat bonus**, an **aura** giving adjacent friendly military +combat (strongest nearby aura only; no stacking), and a **lifespan** (~30 turns; a few — e.g. Joan of Arc — are *rechargeable* and return to the pool when they retire). On the map a hero shows a gold ring, a 👑 crown, and its name. The per-hero **signature active ability** in the table is **flavour** — the base unit's own active abilities apply, but the bespoke hero powers in [UNIT-ABILITIES.md §9](UNIT-ABILITIES.md) are not coded. Enabled by default; a per-game **Legends** toggle (lobby + `legendsEnabled`) switches the whole feature off. AI recruits heroes when it can afford them; an in-game **Wiki → Legends** category, generated **portraits** (`legends/<id>.png`) and **map unit tokens** (`units/<id>.png`) complete it. The optional **Mythic toggle** is not built.
+
 | Legend | Era | Type | Signature ability | Recruit via |
 |--------|-----|------|-------------------|-------------|
 | Gilgamesh | Bronze | land | Inspires adjacent units; bonus vs barbarians/beasts | Quest (slay a beast camp) |
@@ -195,8 +197,9 @@ Heroes are **recruitable, powerful, limited units** central to the game's identi
 
 ---
 
-## Implementation notes
-- **Schema (great person):** `{ id, name, class, era, effect: hookName, kind: 'instant'|'improvement'|'attach', work?: greatWorkId }`.
-- **Schema (legend):** `{ id, name, era, type, recruitVia, ability: hookName, lifespan, rechargeable, baseStats }`.
-- Effect/ability `hookName`s are implemented and unit-tested in `packages/sim`; `tools/` validates every figure references a real hook and (for legends) a valid recruit path.
-- Cross-references: civ leaders that double as Legends are linked in [CIVILIZATIONS.md](CIVILIZATIONS.md); unlock eras align with [TECHNOLOGIES.md](TECHNOLOGIES.md).
+## Implementation notes (as built)
+- **Great person schema** (`@roc/data` `GreatPersonDef`): `{ id, name, cls: GreatPersonClass, era, effect: GreatPersonEffect, desc }`. `effect` is one of eight **class-level** hooks (`eureka | windfall | masterwork | inspiration | revelation | reform | drill | flagship`) resolved in `great-people.ts`; there is no per-figure `kind`/`work` field (all activations are instant).
+- **Legend schema** (`@roc/data` `LegendDef`): `{ id, name, era, type, recruitVia, baseType, combatBonus, auraBonus, lifespan, rechargeable, ability, abilityDesc, auraDesc }`. `recruitVia`/`ability`/`abilityDesc` are flavour; the coded mechanics are `baseType` + `combatBonus` + `auraBonus` + `lifespan` + `rechargeable`.
+- **State:** `Player.greatPeoplePoints` / `greatPeopleEarned` / `greatPeople[]` and `GameState.recruitedGreatPeople[]`; `Player.legendsRecruited`, `GameState.legendsEnabled` / `recruitedLegends[]`; a Legend on the map is a `Unit` with `legendId` + `legendExpiresOnTurn`. All serialized for save/load and the multiplayer player-view.
+- **Commands:** `activateGreatPerson { greatPersonId }`, `recruitLegend { legendId, cityId? }`. Accrual/recruitment runs in `beginTurn` (`accrueGreatPeople`), lifespans retire in `beginTurn` (`tickLegends`). Tested in `great-people.test.ts` (12) + `legends.test.ts` (9).
+- Cross-references: civ leaders that double as Legends are linked in [CIVILIZATIONS.md](CIVILIZATIONS.md); eras align with [TECHNOLOGIES.md](TECHNOLOGIES.md).

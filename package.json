@@ -11,6 +11,7 @@
     "dev": "bun run --filter @roc/client dev",
     "dev:no-hmr": "bun run --filter @roc/client dev:no-hmr",
     "build": "bun run --filter @roc/client build",
+    "itch.io-version": "bun run tools/build-itchio.mjs",
     "preview": "bun run --filter @roc/client preview",
     "server": "bun run --filter @roc/server start",
     "typecheck": "tsc -p tsconfig.json --noEmit",

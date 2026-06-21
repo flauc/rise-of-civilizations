@@ -66,6 +66,16 @@ export const WAR_GLOBAL_SWING = 10;
 /** Each of the declarer's units shifts morale by this when war is declared. */
 export const WAR_UNIT_SWING = 8;
 
+// ---- military pay (upkeep modifier) --------------------------------------
+
+/** Bounds on the player's military-pay setting, as a percent of base upkeep. */
+export const UPKEEP_MODIFIER_MIN = -100;
+export const UPKEEP_MODIFIER_MAX = 200;
+/** Pay above this percent stops decay entirely and begins to *raise* morale. */
+export const UPKEEP_GAIN_THRESHOLD = 100;
+/** Global morale gained per turn at the maximum pay setting. */
+export const UPKEEP_MAX_MORALE_GAIN = 4;
+
 // ---- routing -------------------------------------------------------------
 
 /** Route chance at morale 0 (before route resistance). */
@@ -183,6 +193,8 @@ export function onEnemyDefeated(state: GameState, killer: Unit, defeated: Unit):
   adjustGlobalMorale(playerById(state, killer.ownerId), self * GLOBAL_MORALE_SHARE);
   recordMoraleEvent(state, killer.ownerId, before, factor < 1 ? "Defeated a barbarian band" : "Won a battle");
   recordMoraleGain(state, killer.ownerId);
+  const victor = playerById(state, killer.ownerId);
+  if (victor) victor.battlesWon = (victor.battlesWon ?? 0) + 1;
 }
 
 /** One of our units died: nearby friendlies waver; global morale drops. Call this
@@ -204,23 +216,70 @@ export function onUnitPromoted(state: GameState, unit: Unit): void {
   recordMoraleGain(state, unit.ownerId);
 }
 
+// ---- military pay helpers ------------------------------------------------
+
+/** The player's military-pay setting (percent of base upkeep), clamped to range. */
+export function upkeepModifierPct(player: Player | undefined): number {
+  return Math.max(UPKEEP_MODIFIER_MIN, Math.min(UPKEEP_MODIFIER_MAX, player?.upkeepModifierPct ?? 0));
+}
+
+/** Gold-upkeep multiplier from the pay setting: 0× at −100%, 1× at 0, 3× at +200%. */
+export function upkeepGoldMultiplier(player: Player | undefined): number {
+  return 1 + upkeepModifierPct(player) / 100;
+}
+
+/** How the pay setting scales morale decay: 2× at −100% pay, 1× at 0%, and 0×
+ *  (no decay at all) once pay reaches +100% or more. */
+export function upkeepDecayMultiplier(pct: number): number {
+  return Math.max(0, 1 - pct / UPKEEP_GAIN_THRESHOLD);
+}
+
+/** Morale *gained* per turn from over-funding the army: 0 up to +100% pay, then
+ *  ramping to UPKEEP_MAX_MORALE_GAIN at the +200% maximum. */
+export function upkeepMoraleGain(pct: number): number {
+  if (pct <= UPKEEP_GAIN_THRESHOLD) return 0;
+  return ((pct - UPKEEP_GAIN_THRESHOLD) / (UPKEEP_MODIFIER_MAX - UPKEEP_GAIN_THRESHOLD)) * UPKEEP_MAX_MORALE_GAIN;
+}
+
 /**
- * Slow global-morale decay. Nothing happens for the first few turns after the last
- * morale gain; after that, morale slips by a percentage that ramps from 1%/turn up
- * to 10%/turn the longer it stays unearned. Decay never pushes morale below the
- * base of 50 — only losing battles can do that. Call once per player per round.
+ * Per-turn global-morale upkeep tick. Two coupled effects of the military-pay
+ * setting (`upkeepModifierPct`):
+ *  - **Decay** of morale above the base of 50 begins a few turns after the last
+ *    gain, ramping from 1%/turn up to 10%/turn — but the pay setting scales it:
+ *    starving the army (−100%) doubles decay, while paying +100% halts it.
+ *  - **Gain**: paying past +100% actively *raises* morale each turn (up to the max
+ *    at +200%), so a lavishly funded army's spirits climb even between battles.
+ * Decay never drops morale below 50 — only losing battles can. Pay-driven gain is
+ * not "earned glory", so it does not reset the decay grace timer. Once per round.
  */
 export function decayGlobalMorale(state: GameState, player: Player): void {
+  const pct = upkeepModifierPct(player);
+
+  // Well-funded armies climb in morale each turn, regardless of the grace window.
+  const gain = upkeepMoraleGain(pct);
+  if (gain > 0) {
+    const before = globalMoraleOf(player);
+    adjustGlobalMorale(player, gain);
+    recordMoraleEvent(state, player.id, before, "A well-paid army's spirits rise");
+  }
+
   const last = player.lastMoraleGainTurn ?? -Infinity;
   const sinceGain = state.turn - last;
   if (sinceGain <= MORALE_DECAY_GRACE) return;
   const g = globalMoraleOf(player);
   if (g <= GLOBAL_MORALE_BASE) return; // decay never drops morale below the base
+  const decayMult = upkeepDecayMultiplier(pct);
+  if (decayMult <= 0) return; // pay is high enough to fully arrest decay
   const decayTurns = sinceGain - MORALE_DECAY_GRACE; // 1, 2, 3, …
   const ratePct = Math.min(MORALE_DECAY_MAX_PCT, decayTurns * MORALE_DECAY_START_PCT);
-  const decayed = g - (g * ratePct) / 100;
+  const decayed = g - (g * ratePct * decayMult) / 100;
   player.globalMorale = Math.max(GLOBAL_MORALE_BASE, Math.round(decayed));
-  recordMoraleEvent(state, player.id, g, "Morale faded without recent victories");
+  recordMoraleEvent(
+    state,
+    player.id,
+    g,
+    pct < 0 ? "Morale slumped — the army is underpaid" : "Morale faded without recent victories",
+  );
 }
 
 /**

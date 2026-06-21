@@ -15,11 +15,15 @@ import {
   decayGlobalMorale,
   routeChance,
   maybeRoute,
+  upkeepGoldMultiplier,
+  upkeepMoraleGain,
+  upkeepDecayMultiplier,
   GLOBAL_MORALE_BASE,
   KILL_MORALE_SELF,
   KILL_MORALE_ADJACENT,
   DEATH_MORALE_ADJACENT,
 } from "./morale";
+import { unitUpkeep } from "./economy";
 
 function warAll(state: GameState): void {
   for (const a of state.players) {
@@ -249,6 +253,73 @@ describe("morale — declaring war", () => {
     onWarDeclared(state, 1);
     expect(shaky.globalMorale).toBeLessThan(70);
     expect(unitMorale(shakyUnit)).toBeLessThan(60);
+  });
+});
+
+describe("morale — military pay (upkeep)", () => {
+  it("scales gold upkeep from 0× at −100% to 3× at +200%", () => {
+    expect(upkeepGoldMultiplier({ upkeepModifierPct: -100 } as never)).toBeCloseTo(0);
+    expect(upkeepGoldMultiplier({ upkeepModifierPct: 0 } as never)).toBeCloseTo(1);
+    expect(upkeepGoldMultiplier({ upkeepModifierPct: 200 } as never)).toBeCloseTo(3);
+    expect(upkeepGoldMultiplier(undefined)).toBeCloseTo(1);
+
+    const state = bareGame();
+    const u = place(state, 0, "swordsman", 5, 5); // base upkeep 2
+    const base = unitUpkeep(state, u);
+    expect(base).toBeGreaterThan(0);
+    playerById(state, 0)!.upkeepModifierPct = -100;
+    expect(unitUpkeep(state, u)).toBe(0); // starved army costs nothing
+    playerById(state, 0)!.upkeepModifierPct = 100;
+    expect(unitUpkeep(state, u)).toBe(base * 2); // double pay, double cost
+  });
+
+  it("pay slows, halts, or reverses morale decay", () => {
+    const mk = (pid: number, pct: number) => {
+      const p = playerById(bareState, pid)!;
+      p.globalMorale = 120;
+      p.lastMoraleGainTurn = 0;
+      p.upkeepModifierPct = pct;
+      return p;
+    };
+    const bareState = bareGame();
+    bareState.turn = 8; // well past the grace window
+
+    const starved = mk(0, -100);
+    decayGlobalMorale(bareState, starved);
+    const starvedDrop = 120 - starved.globalMorale;
+
+    const normal = mk(1, 0);
+    decayGlobalMorale(bareState, normal);
+    const normalDrop = 120 - normal.globalMorale;
+
+    // Underpaying decays faster than the baseline.
+    expect(starvedDrop).toBeGreaterThan(normalDrop);
+    expect(normalDrop).toBeGreaterThan(0);
+
+    // Paying +100% fully arrests decay.
+    const funded = mk(0, 100);
+    funded.globalMorale = 120;
+    decayGlobalMorale(bareState, funded);
+    expect(funded.globalMorale).toBe(120);
+  });
+
+  it("over-funding the army raises morale each turn, even between battles", () => {
+    expect(upkeepMoraleGain(100)).toBe(0);
+    expect(upkeepMoraleGain(200)).toBeGreaterThan(0);
+    expect(upkeepMoraleGain(150)).toBeGreaterThan(0);
+    expect(upkeepMoraleGain(150)).toBeLessThan(upkeepMoraleGain(200));
+    expect(upkeepDecayMultiplier(-100)).toBeCloseTo(2);
+    expect(upkeepDecayMultiplier(0)).toBeCloseTo(1);
+    expect(upkeepDecayMultiplier(100)).toBeCloseTo(0);
+
+    const state = bareGame();
+    const p = playerById(state, 0)!;
+    p.globalMorale = 80;
+    p.lastMoraleGainTurn = 0;
+    p.upkeepModifierPct = 200; // lavish pay
+    state.turn = 20; // long since a battle — decay would normally bite
+    decayGlobalMorale(state, p);
+    expect(p.globalMorale).toBeGreaterThan(80); // morale climbs instead of fading
   });
 });
 

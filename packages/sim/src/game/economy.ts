@@ -1,6 +1,6 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City, Player, Unit } from "./state";
-import { cityAt, log, makeUnit, unitAt, unitsOf } from "./state";
+import { cityAt, log, makeUnit, playerById, unitAt, unitsOf } from "./state";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, isForestTerrain, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
@@ -11,7 +11,7 @@ import { civEffectsOf, cityEffects, getCivic, uniqueUnitForCiv } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
-import { startingUnitMorale, BARRACKS_MORALE_BONUS } from "./morale";
+import { startingUnitMorale, BARRACKS_MORALE_BONUS, upkeepGoldMultiplier } from "./morale";
 import { offsetNeighbors, isCoastalLand } from "./movement";
 import {
   emitCityGrew,
@@ -540,12 +540,14 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   city.hp = Math.min(city.hp, maxHp);
 }
 
-/** Per-unit gold upkeep, modified by the owner's militaryMaintenanceCostMultiplier. */
+/** Per-unit gold upkeep, modified by the owner's militaryMaintenanceCostMultiplier
+ *  and their military-pay setting (see morale.ts upkeepGoldMultiplier). */
 export function unitUpkeep(state: GameState, unit: Unit): number {
   const base = UNIT_DEFS[unit.type].upkeep ?? 0;
   if (base <= 0) return 0;
   const mult = civEffectsOf(state, unit.ownerId).militaryMaintenanceCostMultiplier ?? 1;
-  return Math.round(base * mult);
+  const payMult = upkeepGoldMultiplier(playerById(state, unit.ownerId));
+  return Math.round(base * mult * payMult);
 }
 
 /** Deduct empire-wide unit upkeep from a player's treasury after cities have produced yields. */

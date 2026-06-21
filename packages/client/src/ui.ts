@@ -87,6 +87,7 @@ import {
   greatPersonThreshold,
   nextAvailableFigure,
   playerGreatPersonPerTurn,
+  scoreBreakdown,
   availableLegends,
   legendCost,
   legendBaseName,
@@ -288,6 +289,8 @@ export interface UIHandlers {
   onCheat(action: CheatAction): void;
   /** Toggle God Mode's render-only "Lift Fog of War" reveal. */
   onToggleLiftFog(enabled: boolean): void;
+  /** Set the empire's military-pay level (percent of base upkeep, −100…+200). */
+  onSetUpkeepModifier(pct: number): void;
   onTurnUpdateLocate(tile: { col: number; row: number }): void;
   onTurnUpdateOpenProduction(cityId: number): void;
   onTurnUpdateOpenResearch(): void;
@@ -402,6 +405,70 @@ export function createUI(handlers: UIHandlers): UI {
   logClose.addEventListener("click", hideLogDialog);
   logOverlay.addEventListener("click", hideLogDialog);
 
+  const leaderboardOverlay = div("leaderboard-overlay", "");
+  const leaderboardDialog = div("leaderboard-dialog", "");
+  leaderboardDialog.innerHTML =
+    `<div class="log-dialog-title">Civilization Standings</div>` +
+    `<div id="leaderboard-content"></div>` +
+    `<button class="btn primary" id="leaderboard-close">Close</button>`;
+  const leaderboardContent = leaderboardDialog.querySelector<HTMLDivElement>("#leaderboard-content")!;
+  const leaderboardClose = leaderboardDialog.querySelector<HTMLButtonElement>("#leaderboard-close")!;
+  const hideLeaderboard = (): void => {
+    leaderboardOverlay.classList.remove("show");
+    leaderboardDialog.classList.remove("show");
+  };
+  const showLeaderboard = (state: GameState): void => {
+    const viewerId = lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? -1);
+    const rows = state.players
+      .filter((p) => !p.isBarbarian)
+      .map((p) => {
+        const breakdown = scoreBreakdown(state, p.id);
+        const cities = citiesOf(state, p.id).length;
+        const units = unitsOf(state, p.id).length;
+        const alive = cities > 0 || units > 0;
+        return { player: p, breakdown, alive };
+      })
+      .sort((a, b) => b.breakdown.total - a.breakdown.total);
+
+    const body = rows
+      .map((r, i) => {
+        const civ = getCiv(r.player.civId);
+        const label = civ ? `${escapeHtml(civ.name)}` : escapeHtml(r.player.name);
+        const sub = civ ? escapeHtml(r.player.name) : r.player.isHuman ? "Human" : "AI";
+        const you = r.player.id === viewerId ? ` <span class="lb-you">You</span>` : "";
+        const fallen = r.alive ? "" : ` <span class="lb-fallen">Fallen</span>`;
+        const b = r.breakdown;
+        const detail =
+          `<span title="Cities">🏛️ ${b.cities}</span>` +
+          `<span title="Population">👥 ${b.population}</span>` +
+          `<span title="Technology">🔬 ${b.techs}</span>` +
+          `<span title="Civics">📜 ${b.civics}</span>` +
+          `<span title="Units">🛡️ ${b.units}</span>` +
+          `<span title="Gold">🪙 ${b.gold}</span>` +
+          `<span title="Battles won">⚔️ ${b.battles}</span>` +
+          `<span title="Cities conquered">🔥 ${b.conquests}</span>`;
+        return (
+          `<div class="lb-row${r.player.id === viewerId ? " lb-self" : ""}${r.alive ? "" : " lb-dead"}">` +
+          `<div class="lb-rank">${i + 1}</div>` +
+          `<div class="lb-swatch" style="background:${r.player.color}"></div>` +
+          `<div class="lb-name"><b>${label}${you}${fallen}</b><span class="lb-sub">${sub}</span></div>` +
+          `<div class="lb-detail">${detail}</div>` +
+          `<div class="lb-total">${b.total}</div>` +
+          `</div>`
+        );
+      })
+      .join("");
+
+    leaderboardContent.innerHTML =
+      `<div class="lb-caption">Turn ${state.turn} of ${state.turnLimit} · highest score wins if the turn limit is reached</div>` +
+      `<div class="lb-list">${body}</div>` +
+      `<div class="lb-legend">🏛️ Cities · 👥 Population · 🔬 Technology · 📜 Civics · 🛡️ Units · 🪙 Gold · ⚔️ Battles won · 🔥 Cities conquered</div>`;
+    leaderboardOverlay.classList.add("show");
+    leaderboardDialog.classList.add("show");
+  };
+  leaderboardClose.addEventListener("click", hideLeaderboard);
+  leaderboardOverlay.addEventListener("click", hideLeaderboard);
+
   const goldOverlay = div("gold-overlay", "");
   const goldDialog = div("gold-dialog", "");
   goldDialog.innerHTML =
@@ -431,6 +498,7 @@ export function createUI(handlers: UIHandlers): UI {
     `<p><b>What raises it:</b> winning battles, promoting units, recruiting a Great Person, and declaring war while already confident.</p>` +
     `<p><b>What lowers it:</b> losing units in battle, and declaring war when your army is already shaky.</p>` +
     `<p><b>Drift:</b> a few quiet turns after your last morale gain, morale slowly fades back toward the base of 50 — it never decays below 50, only lost battles can push it lower.</p>` +
+    `<p><b>Military pay:</b> set how much you pay your army (−100% to +200% of normal upkeep). Paying more costs gold but slows the drift; at +100% decay stops entirely, and beyond that a lavishly funded army's morale actually climbs each turn. Paying less saves gold but makes morale fade faster.</p>` +
     `<p><b>Why it matters:</b> high morale makes units hit harder and hold ground, and keeps them from breaking and routing under fire; low morale does the opposite.</p>` +
     `</div>`;
   const moraleDialogContent = moraleDialog.querySelector<HTMLDivElement>("#morale-dialog-content")!;
@@ -515,6 +583,10 @@ export function createUI(handlers: UIHandlers): UI {
         hideLogDialog();
         return;
       }
+      if (leaderboardDialog.classList.contains("show")) {
+        hideLeaderboard();
+        return;
+      }
       if (goldDialog.classList.contains("show")) {
         hideGoldDialog();
         return;
@@ -559,6 +631,7 @@ export function createUI(handlers: UIHandlers): UI {
       if (turnUpdateDialog.classList.contains("show")) { turnUpdateClose.click(); return; }
       if (goldDialog.classList.contains("show")) { goldClose.click(); return; }
       if (logDialog.classList.contains("show")) { logClose.click(); return; }
+      if (leaderboardDialog.classList.contains("show")) { leaderboardClose.click(); return; }
       // Blocking overlays with no single positive action: swallow Enter rather
       // than ending the turn behind them.
       if (settingsOpen || menuOpen || godModeOpen) return;
@@ -1291,6 +1364,7 @@ export function createUI(handlers: UIHandlers): UI {
         `<button class="btn primary" id="menu-save">Save Game</button>` +
         `<button class="btn" id="menu-settings">Settings</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki</button>` +
+        `<button class="btn" id="menu-leaderboard">Leaderboard</button>` +
         `<button class="btn" id="menu-log">Game Log</button>` +
         godMenuBtn +
         `<button class="btn" id="menu-leave">Leave Game</button>` +
@@ -1328,6 +1402,11 @@ export function createUI(handlers: UIHandlers): UI {
         closePickers(state);
         renderMenu(state);
         wiki.open();
+      });
+      saveModal.querySelector<HTMLButtonElement>("#menu-leaderboard")!.addEventListener("click", () => {
+        menuOpen = false;
+        renderMenu(state);
+        showLeaderboard(state);
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-log")!.addEventListener("click", () => {
         logDialogContent.innerHTML = visibleLog(state, lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? 0))
@@ -1511,6 +1590,34 @@ export function createUI(handlers: UIHandlers): UI {
     html += `</div>`;
     html += `<div class="morale-bar"><div class="morale-bar-fill" style="width:${(morale / 200) * 100}%;background:${color}"></div></div>`;
 
+    // ---- Military pay (upkeep modifier) ----
+    const pay = Math.round(player.upkeepModifierPct ?? 0);
+    const payMult = 1 + pay / 100;
+    const payEffect =
+      pay > 100
+        ? `<span class="gold-positive">raises morale each turn</span>`
+        : pay === 100
+          ? `<span class="gold-positive">halts morale decay</span>`
+          : pay > 0
+            ? `slows morale decay`
+            : pay === 0
+              ? `normal morale decay`
+              : `<span class="gold-negative">speeds morale decay</span>`;
+    const presets = [-100, -50, 0, 50, 100, 150, 200];
+    html += `<div class="gold-section"><div class="gold-section-title">Military pay</div>`;
+    html += `<div class="gold-row"><span>Upkeep <span class="sub">×${payMult.toFixed(2)} gold</span></span>` +
+      `<span class="gold-amount">${pay > 0 ? "+" : ""}${pay}%</span></div>`;
+    html += `<div class="gold-row"><span class="sub">Effect: ${payEffect}</span></div>`;
+    html += `<div class="morale-pay-row">` +
+      presets
+        .map(
+          (v) =>
+            `<button class="btn morale-pay-btn ${v === pay ? "active" : ""}" data-pay="${v}">${v > 0 ? "+" : ""}${v}%</button>`,
+        )
+        .join("") +
+      `</div>`;
+    html += `</div>`;
+
     html += `<div class="gold-section"><div class="gold-section-title">Recent events</div>`;
     if (events.length === 0) {
       html += `<div class="gold-row"><span class="sub">No morale changes yet. Win battles, promote units, or recruit a Great Person to lift it.</span></div>`;
@@ -1525,6 +1632,9 @@ export function createUI(handlers: UIHandlers): UI {
     html += `</div>`;
 
     moraleDialogContent.innerHTML = html;
+    moraleDialogContent.querySelectorAll<HTMLButtonElement>("[data-pay]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onSetUpkeepModifier(Number(el.dataset.pay))),
+    );
   };
 
   const renderResearch = (state: GameState): void => {

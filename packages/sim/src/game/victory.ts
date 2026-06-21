@@ -6,14 +6,76 @@
 import type { GameState, GameOver, Player } from "./state";
 import { citiesOf, log, unitsOf } from "./state";
 
-/** A simple aggregate score for the score victory and end-game ranking. */
-export function playerScore(state: GameState, playerId: number): number {
+/** Points awarded per unit of each contributor to a civilization's score. */
+export const SCORE_WEIGHTS = {
+  /** Per city you own. */
+  city: 10,
+  /** Per point of city population (citizen). */
+  population: 2,
+  /** Per technology researched. */
+  tech: 5,
+  /** Per civic (culture-tree advance) researched. */
+  civic: 5,
+  /** Per military/civilian unit fielded. */
+  unit: 1,
+  /** Per 10 gold in the treasury. */
+  goldPer10: 1,
+  /** Per battle won (enemy unit defeated in combat). */
+  battle: 2,
+  /** Per enemy city captured by conquest. */
+  conquest: 15,
+} as const;
+
+/** The score contribution of each category, plus the total. */
+export interface ScoreBreakdown {
+  cities: number;
+  population: number;
+  techs: number;
+  civics: number;
+  units: number;
+  gold: number;
+  battles: number;
+  conquests: number;
+  total: number;
+}
+
+/** Breakdown of a player's score into its contributing parts (see SCORE_WEIGHTS). */
+export function scoreBreakdown(state: GameState, playerId: number): ScoreBreakdown {
   const cities = citiesOf(state, playerId);
   const pop = cities.reduce((n, c) => n + c.population, 0);
   const player = state.players.find((p) => p.id === playerId);
-  const techs = player ? player.researched.size : 0;
-  const units = unitsOf(state, playerId).length;
-  return cities.length * 10 + pop * 2 + techs * 5 + units + Math.floor((player?.gold ?? 0) / 10);
+  const techCount = player ? player.researched.size : 0;
+  const civicCount = player ? player.civicsResearched.size : 0;
+  const unitCount = unitsOf(state, playerId).length;
+  const gold = player?.gold ?? 0;
+
+  const parts = {
+    cities: cities.length * SCORE_WEIGHTS.city,
+    population: pop * SCORE_WEIGHTS.population,
+    techs: techCount * SCORE_WEIGHTS.tech,
+    civics: civicCount * SCORE_WEIGHTS.civic,
+    units: unitCount * SCORE_WEIGHTS.unit,
+    gold: Math.floor(gold / 10) * SCORE_WEIGHTS.goldPer10,
+    battles: (player?.battlesWon ?? 0) * SCORE_WEIGHTS.battle,
+    conquests: (player?.citiesCaptured ?? 0) * SCORE_WEIGHTS.conquest,
+  };
+  return {
+    ...parts,
+    total:
+      parts.cities +
+      parts.population +
+      parts.techs +
+      parts.civics +
+      parts.units +
+      parts.gold +
+      parts.battles +
+      parts.conquests,
+  };
+}
+
+/** A simple aggregate score for the score victory and end-game ranking. */
+export function playerScore(state: GameState, playerId: number): number {
+  return scoreBreakdown(state, playerId).total;
 }
 
 function isAlive(state: GameState, p: Player): boolean {

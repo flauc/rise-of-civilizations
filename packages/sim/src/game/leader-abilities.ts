@@ -1,13 +1,20 @@
 // Active leader abilities (docs/LEADER-ABILITIES.md).
 
-import type { CivEffects } from "@roc/data";
+import type { CivEffects, GreatPersonClass } from "@roc/data";
 import { getTile } from "@roc/shared";
 import type { GameState, Player, City } from "./state";
-import { citiesOf, log, makeUnit, unitAt } from "./state";
+import { citiesOf, log, makeUnit, unitAt, unitsOf } from "./state";
 import { offsetNeighbors, isCoastalLand } from "./movement";
 import { UNIT_DEFS, type TechId, type UnitTypeId } from "./content";
 import { getCivic } from "./civs";
-import { startingUnitMorale } from "./morale";
+import {
+  startingUnitMorale,
+  adjustGlobalMorale,
+  changeUnitMorale,
+  globalMoraleOf,
+  recordMoraleEvent,
+  recordMoraleGain,
+} from "./morale";
 
 export interface LeaderAbilityResult {
   ok: boolean;
@@ -169,6 +176,30 @@ function consumeResource(state: GameState, player: Player, resource: string, amo
   return true;
 }
 
+// ---- morale / great-people helpers (now that those systems exist) ----------
+
+/** Shift the player's empire-wide morale and log it for the morale dialog. A
+ *  positive shift also resets the morale-decay grace timer. Used by abilities
+ *  whose flavor is about national fervor or war-weariness. */
+function shiftGlobalMorale(state: GameState, player: Player, delta: number, reason: string): void {
+  const before = globalMoraleOf(player);
+  adjustGlobalMorale(player, delta);
+  recordMoraleEvent(state, player.id, before, reason);
+  if (delta > 0) recordMoraleGain(state, player.id);
+}
+
+/** Apply a flat morale change to every one of the player's units (a martial
+ *  fervor that steels — or, when negative, dampens — the whole army). */
+function rallyUnits(state: GameState, player: Player, delta: number): void {
+  for (const u of unitsOf(state, player.id)) changeUnitMorale(u, delta);
+}
+
+/** Grant great-person points toward a class — patronage/scholarship that draws
+ *  great minds, hastening that class's next recruit (see great-people.ts). */
+function grantGreatPersonPoints(player: Player, cls: GreatPersonClass, amount: number): void {
+  player.greatPeoplePoints[cls] = (player.greatPeoplePoints[cls] ?? 0) + amount;
+}
+
 export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   // Mesopotamia & the Near East
   sumer: {
@@ -206,6 +237,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     cooldown: 25,
     use: (state, player) => {
       finishCurrentCivic(state, player);
+      grantGreatPersonPoints(player, "statesman", 50); // Hammurabi's lawgiving hastens a Great Statesman
       addPlayerModifier(state, player, "code_of_laws", { yieldPercent: { science: -20 } }, 5);
       log(state, `${player.name} proclaimed a Code of Laws.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -426,6 +458,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     use: (state, player) => {
       player.scienceProgress += 100;
       addPlayerModifier(state, player, "timbuktu", { yieldPercent: { science: 25 } }, 5);
+      grantGreatPersonPoints(player, "scientist", 50); // the madrasas of Timbuktu attract a Great Scientist
       addPlayerModifier(state, player, "timbuktu_cost", { yieldPercent: { gold: -30 } }, 5);
       log(state, `${player.name} funded Timbuktu Scholarship.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -510,6 +543,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     use: (state, player) => {
       allCitiesModifier(state, player, "agoge", { yieldPercent: { production: 10 } }, 10);
       addPlayerModifier(state, player, "agoge_combat", { unitClassCombat: { melee: 2 } }, 10);
+      rallyUnits(state, player, 25); // a warrior society hardens every soldier's nerve
       removePopulation(state, player, Math.min(cityCount(state, player), 3));
       log(state, `${player.name} began Agoge Mobilization.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -642,6 +676,11 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "divine_mandate", { unitClassCombat: { melee: 3, ranged: 3, cavalry: 3 } }, 10);
+      // Holy fervor steels the army against war-weariness — the design's "ignore
+      // war-weariness", expressed through the morale system: a surge of empire and
+      // unit morale that buffers the coming campaign.
+      shiftGlobalMorale(state, player, 20, "Divine Mandate");
+      rallyUnits(state, player, 30);
       allCitiesModifier(state, player, "divine_mandate_cost", { yieldPercent: { culture: -15 } }, 10);
       log(state, `${player.name} proclaimed a Divine Mandate.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -789,6 +828,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     use: (state, player) => {
       player.scienceProgress += 200;
       addPlayerModifier(state, player, "imperial_examination", { yieldPercent: { science: 25, culture: 10 } }, 10);
+      grantGreatPersonPoints(player, "scientist", 40); // merit scholars rise toward a Great Scientist
       addPlayerModifier(state, player, "imperial_examination_cost", { unitClassCombat: { melee: -2, cavalry: -2, ranged: -2 } }, 10);
       log(state, `${player.name} held the Imperial Examination.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -815,6 +855,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     use: (state, player) => {
       allCitiesModifier(state, player, "dharma_edicts", { yieldPercent: { faith: 15, culture: 10 } }, 10);
       addPlayerModifier(state, player, "dharma_edicts_cost", { unitClassCombat: { melee: -3, cavalry: -3, ranged: -3 } }, 10);
+      rallyUnits(state, player, -15); // a turn to pacifism saps the army's fighting spirit
       log(state, `${player.name} issued the Dharma Edicts.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
     },
@@ -826,6 +867,9 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "gupta_golden_age", { yieldPercent: { science: 30, culture: 15 } }, 10);
+      // A golden age of patronage draws great minds to the court.
+      grantGreatPersonPoints(player, "scientist", 40);
+      grantGreatPersonPoints(player, "artist", 40);
       allCitiesModifier(state, player, "gupta_cost", { yieldPercent: { gold: -20 } }, 10);
       log(state, `${player.name} ushered in Golden Age Patronage.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -867,6 +911,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     use: (state, player) => {
       player.scienceProgress += 150;
       player.cultureProgress += 150;
+      grantGreatPersonPoints(player, "scientist", 30); // the Hall of Worthies cultivates great minds
+      grantGreatPersonPoints(player, "artist", 30);
       allCitiesModifier(state, player, "hangul_cost", { yieldPercent: { production: -10 } }, 5);
       log(state, `${player.name} funded Hangul Scholars.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -995,6 +1041,8 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     cooldown: 20,
     use: (state, player) => {
       addPlayerModifier(state, player, "scourge_of_god", { unitClassCombat: { cavalry: 4, melee: 4 }, meleeVsCityBonus: 4 }, 10);
+      shiftGlobalMorale(state, player, 15, "Scourge of God"); // dread of the horde stiffens its own spine
+      rallyUnits(state, player, 15);
       allCitiesModifier(state, player, "scourge_of_god_cost", { yieldPercent: { food: -10 } }, 10);
       log(state, `${player.name} unleashed the Scourge of God.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -1138,6 +1186,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
     cooldown: 25,
     use: (state, player) => {
       addPlayerModifier(state, player, "flower_war", { unitClassCombat: { melee: 3 }, raidSciencePercent: 50 }, 10);
+      rallyUnits(state, player, 20); // warriors emboldened by the sacred war
       allCitiesModifier(state, player, "flower_war_cost", { yieldPercent: { culture: -15 } }, 10);
       log(state, `${player.name} declared a Flower War.`, { actorId: player.id, targetIds: [player.id] });
       return ok();

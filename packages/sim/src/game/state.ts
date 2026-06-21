@@ -130,6 +130,10 @@ export interface Player {
   /** Turn this player last *earned* morale (kill/promotion/spirited war). Global
    *  morale only begins to decay a few turns after this (see morale.ts). */
   lastMoraleGainTurn?: number;
+  /** Military-pay setting (−100…+200, default 0). Scales every unit's gold upkeep
+   *  by this percent and, via morale.ts, slows/reverses global-morale decay the
+   *  more the army is paid. Undefined on legacy saves (treated as 0). */
+  upkeepModifierPct?: number;
   /** Recent global-morale changes (most recent last), for the morale dialog.
    *  Capped to the last MORALE_LOG_MAX entries; absent on legacy saves. */
   moraleLog?: MoraleEvent[];
@@ -175,6 +179,12 @@ export interface Player {
   greatPeople: string[];
   /** Lifetime count of Legends this player has recruited (drives the rising cost). */
   legendsRecruited: number;
+  /** Lifetime battles won (enemy units defeated in combat). Feeds the score;
+   *  absent on legacy saves (treated as 0). */
+  battlesWon?: number;
+  /** Lifetime enemy cities captured by conquest. Feeds the score; absent on
+   *  legacy saves (treated as 0). */
+  citiesCaptured?: number;
 }
 
 export interface PlayerModifier {

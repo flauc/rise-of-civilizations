@@ -239,6 +239,8 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       greatPeopleEarned: {},
       greatPeople: [],
       legendsRecruited: 0,
+      battlesWon: 0,
+      citiesCaptured: 0,
     });
   }
   const barbId = count;
@@ -273,6 +275,8 @@ export function createGame(opts: NewGameOptions = {}): GameState {
       greatPeopleEarned: {},
       greatPeople: [],
       legendsRecruited: 0,
+      battlesWon: 0,
+      citiesCaptured: 0,
     });
   }
 

@@ -60,7 +60,7 @@ import {
   nextCityNameForCiv,
 } from "./civs";
 import { aiTakeTurn } from "./ai";
-import { onUnitPromoted, decayGlobalMorale } from "./morale";
+import { onUnitPromoted, decayGlobalMorale, UPKEEP_MODIFIER_MIN, UPKEEP_MODIFIER_MAX } from "./morale";
 import { UNIT_DEFS, TECH_DEFS, techUnlocked, computeResearchPath, advanceResearchQueue, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId } from "./content";
 
 export type Command =
@@ -104,6 +104,7 @@ export type Command =
   | { type: "useLeaderAbility" }
   | { type: "activateGreatPerson"; greatPersonId: string }
   | { type: "recruitLegend"; legendId: string; cityId?: number }
+  | { type: "setUpkeepModifier"; pct: number }
   | { type: "endTurn" };
 
 export interface CommandResult {
@@ -552,6 +553,15 @@ export function applyCommand(
     case "acknowledgeContact": {
       state.contactQueue = state.contactQueue.filter(
         (e) => !(e.youId === player.id && e.otherId === cmd.otherId),
+      );
+      return ok;
+    }
+
+    case "setUpkeepModifier": {
+      if (!Number.isFinite(cmd.pct)) return fail("invalid pay setting");
+      player.upkeepModifierPct = Math.max(
+        UPKEEP_MODIFIER_MIN,
+        Math.min(UPKEEP_MODIFIER_MAX, Math.round(cmd.pct)),
       );
       return ok;
     }

@@ -22,6 +22,7 @@ import {
   greatPersonThreshold,
   legendCost,
   legendBaseName,
+  SCORE_WEIGHTS,
 } from "@roc/sim";
 import {
   WONDER_DEFS,
@@ -35,6 +36,7 @@ import {
   type LegendType,
 } from "@roc/data";
 import type { TerrainType, Unit } from "@roc/sim";
+import { uniqueUnitBlockHtml, wireUuDetail, wireUuImages } from "./unique-unit";
 
 export type WikiCategory =
   | "civilizations"
@@ -80,18 +82,31 @@ function section(title: string, body: string): string {
   return `<div class="wiki-section"><div class="wiki-section-title">${escapeHtml(title)}</div>${body}</div>`;
 }
 
+const WIKI_CIV_STYLE = `<style>
+.wiki-civ-card{display:flex;flex-direction:column;padding:0;overflow:hidden}
+.wiki-civ-portrait{width:100%;aspect-ratio:3/2;background:var(--bg-card);overflow:hidden}
+.wiki-civ-portrait img{width:100%;height:100%;object-fit:cover;object-position:50% 22%;display:block}
+.wiki-civ-body{padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.wiki-civ-body .uu-block{margin-top:10px}
+</style>`;
+
 function renderCivilizations(): string {
-  const list = CIVILIZATIONS.map(
-    (c) =>
-      `<div class="wiki-card" id="wiki-civ-${c.id}">` +
+  const list = CIVILIZATIONS.map((c) => {
+    const portrait = `${import.meta.env.BASE_URL}leaders/${c.id}.png`;
+    return (
+      `<div class="wiki-card wiki-civ-card" id="wiki-civ-${c.id}">` +
+      `<div class="wiki-civ-portrait"><img src="${portrait}" loading="lazy" alt="${escapeHtml(c.leader)}" onerror="this.closest('.wiki-civ-portrait').style.display='none'"></div>` +
+      `<div class="wiki-civ-body">` +
       `<div class="wiki-card-title">${escapeHtml(c.name)}</div>` +
       `<div class="wiki-card-sub">Leader: <b>${escapeHtml(c.leader)}</b></div>` +
       `<div class="wiki-card-quote">${escapeHtml(c.leaderQuote || "")}</div>` +
       `<div class="wiki-card-body"><b>${escapeHtml(c.abilityName)}</b> — ${escapeHtml(c.abilityDesc)}</div>` +
-      `<div class="wiki-card-meta">Unique Unit: <b>${escapeHtml(c.uniqueUnit)}</b> · Unique Infrastructure: <b>${escapeHtml(c.uniqueInfra)}</b></div>` +
-      `</div>`,
-  ).join("");
-  return section("Civilizations", `<div class="wiki-grid">${list}</div>`);
+      uniqueUnitBlockHtml(c.id) +
+      `<div class="wiki-card-meta">Unique Infrastructure: <b>${escapeHtml(c.uniqueInfra)}</b></div>` +
+      `</div></div>`
+    );
+  }).join("");
+  return WIKI_CIV_STYLE + section("Civilizations", `<div class="wiki-grid">${list}</div>`);
 }
 
 const CLASS_ORDER = ["melee", "ranged", "cavalry", "siege", "naval_melee", "naval_ranged", "recon", "settler", "trader"] as const;
@@ -223,7 +238,8 @@ function renderGameplay(): string {
         `<li><b>Balanced start</b> — <b>75🪙</b>. Enough to cover a modest army for ~15–25 turns while the first economy (trade route / Market / Harbor) comes online. Keeps early expansion viable without removing tension.</li>` +
         `<li><b>Generous start</b> — <b>150🪙</b>. A comfortable cushion; players can support several units or bribe barbarians early without immediate gold anxiety. Reduces early economic tension.</li>` +
         `</ul>` +
-        `<p>If your treasury drops below zero after paying upkeep, you will see a warning in the turn log. Try to grow your economy through trade routes, coastal/lake tiles, Markets, and Harbors before your starting gold runs out.</p>`,
+        `<p>If your treasury drops below zero after paying upkeep, you will see a warning in the turn log. Try to grow your economy through trade routes, coastal/lake tiles, Markets, and Harbors before your starting gold runs out.</p>` +
+        `<p>You can also dial upkeep up or down empire-wide with the <b>Military Pay</b> setting (−100% to +200%), which trades gold against army morale — see the <b>Morale</b> section.</p>`,
     ) +
     section(
       "Barbarians & Parley",
@@ -353,6 +369,17 @@ function renderMorale(): string {
         `<li>Decay <b>never drops global morale below 50</b> — only losing battles can do that.</li>` +
         `</ul>` +
         `<p>The lesson: a confident empire must keep winning to stay confident.</p>`,
+    ) +
+    section(
+      "Military Pay",
+      `<p>You set how generously your army is paid — its <b>upkeep</b> — anywhere from <b>−100%</b> to <b>+200%</b> of the normal rate. This single lever trades gold against morale:</p>` +
+        `<ul>` +
+        `<li><b>Gold cost:</b> pay scales every unit's gold upkeep directly. At <b>−100%</b> your army costs nothing to maintain; at <b>0%</b> it costs the normal amount; at <b>+200%</b> it costs <b>three times</b> as much.</li>` +
+        `<li><b>Underpaying (below 0%)</b> — saves gold but makes global morale <b>decay faster</b> (down to double speed at −100%). A starved army loses heart quickly.</li>` +
+        `<li><b>Overpaying (above 0%)</b> — costs gold but <b>slows the decay</b>; at <b>+100%</b> decay stops entirely.</li>` +
+        `<li><b>Lavish pay (above +100%)</b> — flips the balance: instead of fading, global morale actively <b>rises each turn</b>, climbing fastest at the +200% maximum.</li>` +
+        `</ul>` +
+        `<p>Adjust it any time from the <b>🎌 morale</b> panel. Crank pay up before a hard campaign to keep your troops eager, then ease off in peacetime to refill the treasury — just remember morale will start to slide once you do.</p>`,
     ) +
     section(
       "Declaring War",
@@ -668,7 +695,19 @@ function renderVictory(): string {
     ) +
     section(
       "Score",
-      `<p>If the turn limit is reached, the civilization with the highest score — based on population, cities, wonders, technology and culture — wins.</p>`,
+      `<p>If no one has won outright by the time the <b>turn limit</b> is reached, the civilization with the highest <b>score</b> is declared the winner. Score is a running tally of everything your civilization has built up, so it rises and falls with your fortunes throughout the game — there is no separate "score victory" to pursue, it is simply the tie-breaker that decides an otherwise undecided game.</p>` +
+        `<p>Your score is recalculated every turn from everything your civilization has achieved, so you <b>gain</b> points by founding or capturing cities, growing their population, advancing your research and culture, fielding units, filling your treasury, winning battles and conquering enemy cities — and you <b>lose</b> the living parts just as quickly if a city is captured, citizens starve, units die or gold is spent. Battles won and cities conquered are permanent achievements and never decay. Each contributor is worth:</p>` +
+        `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Source</th><th>Points</th></tr></thead><tbody>` +
+        `<tr><td>City owned</td><td>${SCORE_WEIGHTS.city} each</td></tr>` +
+        `<tr><td>Population (per citizen)</td><td>${SCORE_WEIGHTS.population} each</td></tr>` +
+        `<tr><td>Technology researched</td><td>${SCORE_WEIGHTS.tech} each</td></tr>` +
+        `<tr><td>Civic researched</td><td>${SCORE_WEIGHTS.civic} each</td></tr>` +
+        `<tr><td>Unit fielded</td><td>${SCORE_WEIGHTS.unit} each</td></tr>` +
+        `<tr><td>Gold in treasury</td><td>${SCORE_WEIGHTS.goldPer10} per 10</td></tr>` +
+        `<tr><td>Battle won</td><td>${SCORE_WEIGHTS.battle} each</td></tr>` +
+        `<tr><td>City conquered</td><td>${SCORE_WEIGHTS.conquest} each</td></tr>` +
+        `</tbody></table></div>` +
+        `<p>You can compare your score against every other civilization at any time from the <b>☰ Menu → Leaderboard</b>.</p>`,
     ) +
     section(
       "Coming Soon",
@@ -803,6 +842,12 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
   function render(): void {
     titleEl.textContent = CATEGORIES.find((c) => c.id === category)?.name ?? "";
     contentEl.innerHTML = RENDERERS[category]();
+    // The Civilizations page reuses the lobby's clickable unique-unit blocks +
+    // detail dialog; wire them up on the freshly-rendered content.
+    if (category === "civilizations") {
+      wireUuDetail(contentEl);
+      wireUuImages(contentEl);
+    }
     renderCategories();
     // Jump back to the top when switching pages. The scroll container is the
     // content pane on desktop and the whole overlay on mobile, so reset both.

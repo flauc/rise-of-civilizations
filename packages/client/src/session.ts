@@ -189,6 +189,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     importedLuxuries: [],
     gold: p.id === view.yourId ? view.you.gold : 0,
     globalMorale: p.id === view.yourId ? view.you.globalMorale : 50,
+    upkeepModifierPct: p.id === view.yourId ? (view.you.upkeepModifierPct ?? 0) : 0,
     moraleLog: p.id === view.yourId ? (view.you.moraleLog ?? []).map((e) => ({ ...e })) : [],
     researched: new Set(p.id === view.yourId ? view.you.researched : []),
     researching: p.id === view.yourId ? view.you.researching : null,

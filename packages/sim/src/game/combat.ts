@@ -397,6 +397,7 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
   attacker.col = city.col;
   attacker.row = city.row;
   const taker = playerById(state, attacker.ownerId);
+  if (taker) taker.citiesCaptured = (taker.citiesCaptured ?? 0) + 1;
   log(state, `${taker?.name ?? "Someone"} captured ${city.name}${oldOwner ? ` from ${oldOwner.name}` : ""}.`, {
     actorId: attacker.ownerId,
     targetIds: oldOwner ? [oldOwner.id] : undefined,

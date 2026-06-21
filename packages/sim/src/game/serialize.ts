@@ -62,6 +62,8 @@ export interface PlayerView {
     gold: number;
     /** Empire-wide morale (0–200; base 50). */
     globalMorale: number;
+    /** Military-pay setting (−100…+200) scaling unit upkeep and morale decay. */
+    upkeepModifierPct: number;
     /** Recent global-morale changes (most recent last) for the morale dialog. */
     moraleLog: MoraleEvent[];
     scienceProgress: number;
@@ -216,6 +218,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     you: {
       gold: me?.gold ?? 0,
       globalMorale: me?.globalMorale ?? GLOBAL_MORALE_BASE,
+      upkeepModifierPct: me?.upkeepModifierPct ?? 0,
       moraleLog: me?.moraleLog ? me.moraleLog.map((e) => ({ ...e })) : [],
       scienceProgress: me?.scienceProgress ?? 0,
       researching: me?.researching ?? null,
@@ -386,6 +389,7 @@ export function deserializeState(s: SerializedState): GameState {
     players: s.players.map((p) => ({
       ...p,
       globalMorale: p.globalMorale ?? GLOBAL_MORALE_BASE,
+      upkeepModifierPct: p.upkeepModifierPct ?? 0,
       researchQueue: p.researchQueue ?? [],
       met: p.met ?? [],
       atWar: p.atWar ?? [],
@@ -397,6 +401,8 @@ export function deserializeState(s: SerializedState): GameState {
       greatPeopleEarned: p.greatPeopleEarned ?? {},
       greatPeople: p.greatPeople ?? [],
       legendsRecruited: p.legendsRecruited ?? 0,
+      battlesWon: p.battlesWon ?? 0,
+      citiesCaptured: p.citiesCaptured ?? 0,
       researched: new Set(Array.isArray(p.researched) ? (p.researched as TechId[]) : []),
       civicsResearched: new Set(Array.isArray(p.civicsResearched) ? p.civicsResearched : []),
       explored: new Set(Array.isArray(p.explored) ? p.explored : []),

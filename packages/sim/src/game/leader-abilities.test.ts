@@ -108,3 +108,52 @@ describe("leader abilities", () => {
     expect(getLeaderAbilityForCiv("not_a_civ")).toBeUndefined();
   });
 });
+
+describe("leader abilities — morale & great people", () => {
+  it("France's Divine Mandate lifts empire and unit morale (war-weariness)", () => {
+    const state = createGame({ seed: "la-france", cols: 30, rows: 20, barbarians: false, civIds: ["france"] });
+    foundCapital(state);
+    const p = player0(state);
+    p.civicsResearched.add("mysticism");
+    const warrior = unitsOf(state, 0).find((u) => u.type === "warrior")!;
+    const beforeGlobal = p.globalMorale;
+    const beforeUnit = warrior.morale ?? 100;
+
+    expect(useLeaderAbility(state, p).ok).toBe(true);
+    expect(p.globalMorale).toBeGreaterThan(beforeGlobal);
+    expect(warrior.morale!).toBeGreaterThan(beforeUnit);
+  });
+
+  it("Maurya's Dharma Edicts dampens the army's morale (pacifism cost)", () => {
+    const state = createGame({ seed: "la-maurya", cols: 30, rows: 20, barbarians: false, civIds: ["maurya"] });
+    foundCapital(state);
+    const p = player0(state);
+    p.civicsResearched.add("mysticism");
+    const warrior = unitsOf(state, 0).find((u) => u.type === "warrior")!;
+    const before = warrior.morale ?? 100;
+
+    expect(useLeaderAbility(state, p).ok).toBe(true);
+    expect(warrior.morale!).toBeLessThan(before);
+  });
+
+  it("Gupta's Golden Age Patronage grants Great Person points", () => {
+    const state = createGame({ seed: "la-gupta", cols: 30, rows: 20, barbarians: false, civIds: ["gupta_india"] });
+    foundCapital(state);
+    const p = player0(state);
+    p.researched.add("philosophy");
+
+    expect(useLeaderAbility(state, p).ok).toBe(true);
+    expect(p.greatPeoplePoints.scientist ?? 0).toBeGreaterThan(0);
+    expect(p.greatPeoplePoints.artist ?? 0).toBeGreaterThan(0);
+  });
+
+  it("Babylon's Code of Laws grants Great Statesman points", () => {
+    const state = createGame({ seed: "la-babylon", cols: 30, rows: 20, barbarians: false, civIds: ["babylon"] });
+    foundCapital(state);
+    const p = player0(state);
+    p.researched.add("writing");
+
+    expect(useLeaderAbility(state, p).ok).toBe(true);
+    expect(p.greatPeoplePoints.statesman ?? 0).toBeGreaterThan(0);
+  });
+});

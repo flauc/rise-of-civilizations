@@ -396,6 +396,7 @@ function startGame(session: Session): void {
       liftFog = enabled;
       needsRedraw = true;
     },
+    onSetUpkeepModifier: (pct) => session.order({ type: "setUpkeepModifier", pct }),
     onTurnUpdateLocate: (tile) => {
       centerOn(tile.col, tile.row);
       needsRedraw = true;
