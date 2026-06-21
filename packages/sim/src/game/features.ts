@@ -19,7 +19,7 @@ import {
 } from "./state";
 import { UNIT_DEFS, isMilitary, type UnitTypeId } from "./content";
 import { unitMaxHp } from "./combat";
-import { startingUnitMorale } from "./morale";
+import { onBarbCampCleared, startingUnitMorale } from "./morale";
 import { availableTechs } from "./economy";
 import { expandTerritory } from "./territory";
 import { offsetNeighbors } from "./movement";
@@ -189,6 +189,7 @@ export function clearBarbCamp(state: GameState, unit: Unit, player: Player): voi
   if (unit.promotions.includes("forager")) {
     unit.hp = Math.min(unitMaxHp(unit), unit.hp + 8);
   }
+  onBarbCampCleared(state, unit);
   log(state, `${player.name} cleared a barbarian camp (+${gold} gold).`, {
     actorId: player.id,
     targetIds: [player.id],

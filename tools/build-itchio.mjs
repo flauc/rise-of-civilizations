@@ -47,6 +47,12 @@ const argBase = process.argv
   ?.slice("--asset-base=".length);
 const assetBase = (argBase || process.env.VITE_ASSET_BASE_URL || "").trim();
 
+// By default we assume the art is already served at the asset base (e.g. the
+// regular web build is deployed there, so /leaders/*.png etc. already exist).
+// Pass --stage-assets to also copy the art into dist-itchio/server-assets/ for
+// uploading to a host that does NOT already have it.
+const stageAssets = process.argv.slice(2).includes("--stage-assets");
+
 if (!assetBase) {
   console.error(
     "! No asset server URL provided.\n" +
@@ -112,12 +118,15 @@ if (all.length === 0) {
 const bundled = all.filter((f) => isBundled(f.name));
 const hosted = all.filter((f) => !isBundled(f.name));
 
-// --- 3. Stage server-hosted assets for upload ----------------------------
+// --- 3. (Optional) stage server-hosted assets for upload -----------------
+// Only when --stage-assets is passed; normally the host already serves them.
 rmSync(serverAssetsDir, { recursive: true, force: true });
-for (const f of hosted) {
-  const dest = join(serverAssetsDir, f.name);
-  mkdirSync(dirname(dest), { recursive: true });
-  cpSync(f.abs, dest);
+if (stageAssets) {
+  for (const f of hosted) {
+    const dest = join(serverAssetsDir, f.name);
+    mkdirSync(dirname(dest), { recursive: true });
+    cpSync(f.abs, dest);
+  }
 }
 
 // --- 4. Build the zip (app shell only) in memory -------------------------
@@ -218,21 +227,31 @@ writeFileSync(zipPath, zip);
 
 const sum = (files) => files.reduce((n, f) => n + statSync(f.abs).size, 0);
 const mb = (bytes) => (bytes / (1024 * 1024)).toFixed(2);
-const hostedDirs = [...new Set(hosted.map((f) => f.name.split("/")[0]))].sort();
 
 console.log(
-  `\n✓ zip:           ${relative(repoRoot, zipPath)} ` +
+  `\n✓ zip: ${relative(repoRoot, zipPath)} ` +
     `(${bundled.length} files, ${mb(zip.length)} MB)`,
 );
 console.log(
-  `✓ server-assets: ${relative(repoRoot, serverAssetsDir)}${"/"} ` +
-    `(${hosted.length} files, ${mb(sum(hosted))} MB)`,
+  `  ${hosted.length} image files (${mb(sum(hosted))} MB) excluded — ` +
+    `loaded at runtime from ${assetBase}`,
 );
-console.log(`    folders: ${hostedDirs.join(", ")}`);
+
+if (stageAssets) {
+  const hostedDirs = [...new Set(hosted.map((f) => f.name.split("/")[0]))].sort();
+  console.log(
+    `✓ server-assets: ${relative(repoRoot, serverAssetsDir)}/ ` +
+      `(folders: ${hostedDirs.join(", ")})`,
+  );
+  console.log("  -> upload these so they're served at the asset base above.");
+}
+
 console.log("\nNext steps:");
-console.log(`  1. Upload server-assets/ to your host so its contents are served at:`);
-console.log(`       ${assetBase}`);
-console.log(`     (e.g. ${assetBase}units/warrior.png must resolve)`);
+console.log(`  1. Make sure the art is served at ${assetBase}`);
+console.log(`     (e.g. ${assetBase}units/warrior.png must resolve). If your normal`);
+console.log("     web build is deployed there, it already is — nothing to upload.");
+console.log("     Otherwise re-run with --stage-assets to get an uploadable copy.");
 console.log("  2. Upload the zip to itch.io, tick \"This file will be played in the browser\".");
-console.log("  3. The asset host must send permissive CORS headers (Access-Control-Allow-Origin)");
-console.log("     since itch.io games run on a different origin (*.hwcdn.net / itch.zone).");
+console.log("  3. The asset host must allow cross-origin reads (Access-Control-Allow-Origin: *)");
+console.log("     — itch.io games run on a different origin, and the game draws these");
+console.log("     images onto a <canvas>, so without CORS the canvas gets tainted.");

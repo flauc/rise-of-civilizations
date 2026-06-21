@@ -370,7 +370,7 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   harbor: B({ id: "harbor", name: "Harbor", cost: 24, reqTech: "sailcloth", yields: { gold: 2 }, effect: "harbor" }),
   lighthouse: B({ id: "lighthouse", name: "Lighthouse", cost: 30, reqTech: "optics", yields: { gold: 1, science: 1 }, effect: "lighthouse" }),
   monument: B({ id: "monument", name: "Monument", cost: 22, reqTech: "monumental_architecture", yields: { culture: 2 } }),
-  amphitheater: B({ id: "amphitheater", name: "Amphitheater", cost: 26, reqTech: "ritual_burial", yields: { culture: 3 } }),
+  amphitheater: B({ id: "amphitheater", name: "Amphitheater", cost: 26, reqTech: "writing", yields: { culture: 3 } }),
   shrine: B({ id: "shrine", name: "Shrine", cost: 18, reqTech: "ritual_burial", yields: { faith: 2 } }),
   temple: B({ id: "temple", name: "Temple", cost: 28, reqTech: "writing", yields: { faith: 2, culture: 1 } }),
 };

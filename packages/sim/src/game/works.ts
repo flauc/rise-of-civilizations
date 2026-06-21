@@ -139,7 +139,14 @@ export function nextTierAt(tile: Tile, kind: string): number | null {
   if (isEconKind(kind)) {
     if (tile.structure) return null; // occupied by a defensive structure
     const terrains = ECON_TERRAIN[kind];
-    if (terrains && !terrains.has(tile.terrain)) return null;
+    // Farms can also be cut into otherwise-unfarmable land a river crosses, by
+    // draining and channelling it — Nile/Mesopotamia style. That extra
+    // eligibility is gated on Irrigation in canStartWork.
+    const terrainOk =
+      !terrains ||
+      terrains.has(tile.terrain) ||
+      (kind === "farm" && !!tile.river && isPassableLand(tile.terrain));
+    if (!terrainOk) return null;
     if (tile.improvement && tile.improvement !== kind) return null; // a different improvement is here
     const cur = tile.improvement === kind ? tile.improvementLevel ?? 1 : 0;
     return cur < MAX_TIER ? cur + 1 : null;

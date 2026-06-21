@@ -38,7 +38,7 @@ This is the **actual** tree the game runs, generated from `TECH_DEFS` in
 | `hide_working` Hide-Working | 18 | knapping | → Weaving, Composite Bow |
 | `animal_taming` Animal Taming | 20 | foraging | U War Dogs; → Wheel, Equestrianism, Elephantry |
 | `cultivation` Plant Cultivation | 18 | foraging | Farms (Carpenter); → Pottery, Irrigation |
-| `ritual_burial` Ritual & Burial | 16 | foraging | B Shrine, B Amphitheater |
+| `ritual_burial` Ritual & Burial | 16 | foraging | B Shrine |
 | `parley` Parley | 16 | foraging | diplomacy/contact flavor (no direct build) |
 | `pottery_kiln` Pottery & Kilns | 24 | cultivation | B Granary; → Native Copper, Masonry, Writing |
 
@@ -54,7 +54,7 @@ This is the **actual** tree the game runs, generated from `TECH_DEFS` in
 | `masonry` Masonry | 35 | pottery_kiln | B Walls; Mason & Architect (Mines, Quarries, Wonders) |
 | `weaving` Weaving | 26 | hide_working | → Sailcloth, Sailing |
 | `composite_bow` Composite Bow | 38 | hide_working, bronze_alloying | U Archer |
-| `writing` Writing | 36 | pottery_kiln | B Archive, B Temple; **unlocks Civics tree**; → Math, Coinage, Philosophy |
+| `writing` Writing | 36 | pottery_kiln | B Archive, B Temple, B Amphitheater; **unlocks Civics tree**; → Math, Coinage, Philosophy |
 | `irrigation` Irrigation | 30 | cultivation | improved farm yields |
 | `sailcloth` Sailcloth | 32 | weaving | U Longship; B Harbor |
 | `chariotry` Chariotry | 46 | the_wheel, bronze_alloying | U War Chariot |

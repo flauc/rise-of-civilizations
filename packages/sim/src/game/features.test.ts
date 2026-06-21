@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn } from "./commands";
-import { triggerVillage, spawnFromCamps } from "./features";
+import { triggerVillage, spawnFromCamps, clearBarbCamp } from "./features";
 import { unitsOf, type GameState, type Unit } from "./state";
+import { globalMoraleOf, unitMorale } from "./morale";
 import { getTile } from "@roc/shared";
 
 function firstUnit(state: GameState, ownerId: number): Unit {
@@ -43,6 +44,18 @@ describe("map features", () => {
       if (unitsOf(state, barbId).length > before) spawnedMore = true;
     }
     expect(spawnedMore).toBe(true);
+  });
+
+  it("clearing a barbarian camp raises unit and global morale", () => {
+    const state = createGame({ seed: "feat-morale", cols: 44, rows: 30, barbarians: true });
+    beginTurn(state);
+    const unit = firstUnit(state, 0);
+    const player = state.players[0]!;
+    const moraleBefore = globalMoraleOf(player);
+    const unitMoraleBefore = unitMorale(unit);
+    clearBarbCamp(state, unit, player);
+    expect(globalMoraleOf(player)).toBeGreaterThan(moraleBefore);
+    expect(unitMorale(unit)).toBeGreaterThan(unitMoraleBefore);
   });
 
   it("disabling barbarians removes barbarian players, units, and camps", () => {

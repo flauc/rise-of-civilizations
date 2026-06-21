@@ -109,6 +109,23 @@ describe("specialists & works", () => {
     expect(startWork(s, 0, "farm", tile.col, tile.row).ok).toBe(true);
   });
 
+  it("lets a river irrigate otherwise-unfarmable terrain (e.g. desert)", () => {
+    const { s, city } = gameWithCity();
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    tile.terrain = "desert"; // not in the farm terrain whitelist
+
+    // A dry desert tile can never be farmed.
+    expect(nextTierAt(tile, "farm")).toBe(null);
+
+    // A river crossing it makes it eligible, but only with Irrigation.
+    tile.river = 0b001001;
+    expect(nextTierAt(tile, "farm")).toBe(1);
+    expect(startWork(s, 0, "farm", tile.col, tile.row).ok).toBe(false);
+    s.players[0]!.researched.add("irrigation");
+    expect(startWork(s, 0, "farm", tile.col, tile.row).ok).toBe(true);
+  });
+
   it("refuses to train more craftsmen than the city has citizens", () => {
     const { s, city } = gameWithCity();
     city.population = 1;

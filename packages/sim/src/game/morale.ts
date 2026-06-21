@@ -49,6 +49,10 @@ export const BARRACKS_MORALE_BONUS = 25;
 const GLOBAL_MORALE_SHARE = 0.1;
 /** Morale from defeating a barbarian, as a fraction of defeating a major civ. */
 export const BARBARIAN_KILL_FACTOR = 0.5;
+/** Morale the clearing unit gains for wiping out a barbarian camp. */
+export const CAMP_CLEAR_MORALE_SELF = 14;
+/** Global morale gained by the empire for clearing a barbarian camp. */
+export const CAMP_CLEAR_GLOBAL_MORALE = 4;
 
 // ---- decay ---------------------------------------------------------------
 
@@ -202,6 +206,15 @@ export function onEnemyDefeated(state: GameState, killer: Unit, defeated: Unit):
   recordMoraleGain(state, killer.ownerId);
   const victor = playerById(state, killer.ownerId);
   if (victor) victor.battlesWon = (victor.battlesWon ?? 0) + 1;
+}
+
+/** Wiping out a barbarian camp heartens the clearing unit and lifts empire morale. */
+export function onBarbCampCleared(state: GameState, unit: Unit): void {
+  changeUnitMorale(unit, CAMP_CLEAR_MORALE_SELF);
+  const before = globalMoraleOf(playerById(state, unit.ownerId));
+  adjustGlobalMorale(playerById(state, unit.ownerId), CAMP_CLEAR_GLOBAL_MORALE);
+  recordMoraleEvent(state, unit.ownerId, before, "Cleared a barbarian camp");
+  recordMoraleGain(state, unit.ownerId);
 }
 
 /** One of our units died: nearby friendlies waver; global morale drops. Call this
