@@ -5,6 +5,7 @@ import { ASSET_BASE_URL } from "./asset-base";
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
 import { createWiki } from "./wiki";
 import { createRoadmap } from "./roadmap";
+import { createCredits } from "./credits";
 import {
   CIVILIZATIONS,
   PLAYER_COLORS,
@@ -218,6 +219,7 @@ export function createLobby(onStart: (session: Session) => void): void {
 
   const wiki = createWiki();
   const roadmap = createRoadmap();
+  const credits = createCredits();
 
   const root = document.createElement("div");
   root.id = "lobby";
@@ -642,12 +644,14 @@ export function createLobby(onStart: (session: Session) => void): void {
         <button class="menu-btn" data-screen="load">Load Game</button>
         <button class="menu-btn" id="lobby-wiki">Wiki</button>
         <button class="menu-btn" id="lobby-roadmap">Roadmap</button>
+        <button class="menu-btn" id="lobby-credits">Credits</button>
       </div>`;
     left.querySelectorAll<HTMLButtonElement>("[data-screen]").forEach((el) =>
       el.addEventListener("click", () => showScreen(el.dataset.screen as Screen)),
     );
     left.querySelector<HTMLButtonElement>("#lobby-wiki")?.addEventListener("click", () => wiki.open());
     left.querySelector<HTMLButtonElement>("#lobby-roadmap")?.addEventListener("click", () => roadmap.open());
+    left.querySelector<HTMLButtonElement>("#lobby-credits")?.addEventListener("click", () => credits.open());
   }
 
   function renderSinglePlayer(): void {

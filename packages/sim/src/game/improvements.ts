@@ -32,7 +32,9 @@ export type ImprovementKind =
   | "pasture"
   | "plantation"
   | "camp"
-  | "fishing_boats";
+  | "fishing_boats"
+  | "fishery"
+  | "saltern";
 
 export interface ImprovementDef {
   kind: ImprovementKind;
@@ -81,6 +83,19 @@ export const IMPROVEMENT_DEFS: Record<ImprovementKind, ImprovementDef> = {
     kind: "fishing_boats",
     name: "Fishing Boats",
     tiers: [{ food: 1, gold: 1 }, { food: 1, gold: 2 }, { food: 2, gold: 2 }],
+  },
+  // Water improvements unlocked by Maritime Foraging. Fishery leans food +
+  // production (drying racks, processing); Saltern is a coastal gold engine
+  // (evaporating brine for the salt trade).
+  fishery: {
+    kind: "fishery",
+    name: "Fishery",
+    tiers: [{ food: 1, production: 1 }, { food: 2, production: 1 }, { food: 2, production: 2 }],
+  },
+  saltern: {
+    kind: "saltern",
+    name: "Salt Pans",
+    tiers: [{ gold: 1 }, { gold: 2 }, { gold: 2, food: 1 }],
   },
 };
 

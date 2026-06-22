@@ -436,6 +436,29 @@ function drawImprovement(
       ctx.fill();
       break;
     }
+    case "fishery": {
+      // A net stretched between two posts over the water.
+      ctx.strokeStyle = "#d8e6ee";
+      ctx.lineWidth = Math.max(1, s * 0.05);
+      ctx.strokeRect(sx - s * 0.22, sy - s * 0.16, s * 0.44, s * 0.32);
+      ctx.beginPath();
+      ctx.moveTo(sx - s * 0.22, sy - s * 0.16);
+      ctx.lineTo(sx + s * 0.22, sy + s * 0.16);
+      ctx.moveTo(sx + s * 0.22, sy - s * 0.16);
+      ctx.lineTo(sx - s * 0.22, sy + s * 0.16);
+      ctx.stroke();
+      break;
+    }
+    case "saltern": {
+      // Grid of evaporation ponds glinting with white salt.
+      ctx.fillStyle = "#eef0e6";
+      for (let i = 0; i < 2; i++) {
+        for (let j = 0; j < 2; j++) {
+          ctx.fillRect(sx - s * 0.22 + i * s * 0.24, sy - s * 0.22 + j * s * 0.24, s * 0.18, s * 0.18);
+        }
+      }
+      break;
+    }
     default:
       // Unknown improvement: small neutral marker.
       ctx.fillStyle = "#999";

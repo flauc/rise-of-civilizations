@@ -3,7 +3,14 @@ import { createGame } from "./setup";
 import { beginTurn } from "./commands";
 import { triggerVillage, spawnFromCamps, clearBarbCamp } from "./features";
 import { unitsOf, type GameState, type Unit } from "./state";
-import { globalMoraleOf, unitMorale } from "./morale";
+import {
+  globalMoraleOf,
+  onVillageGlobalMorale,
+  onVillageUnitMorale,
+  unitMorale,
+  VILLAGE_GLOBAL_MORALE,
+  VILLAGE_UNIT_MORALE,
+} from "./morale";
 import { getTile } from "@roc/shared";
 
 function firstUnit(state: GameState, ownerId: number): Unit {
@@ -56,6 +63,27 @@ describe("map features", () => {
     clearBarbCamp(state, unit, player);
     expect(globalMoraleOf(player)).toBeGreaterThan(moraleBefore);
     expect(unitMorale(unit)).toBeGreaterThan(unitMoraleBefore);
+  });
+
+  it("a village can grant a large morale boost to a single unit", () => {
+    const state = createGame({ seed: "feat-vill-umorale", cols: 44, rows: 30, barbarians: true });
+    beginTurn(state);
+    const unit = firstUnit(state, 0);
+    const before = unitMorale(unit);
+    onVillageUnitMorale(state, unit);
+    expect(unitMorale(unit)).toBe(before + VILLAGE_UNIT_MORALE);
+  });
+
+  it("a village can grant a smaller morale boost to the whole empire", () => {
+    const state = createGame({ seed: "feat-vill-gmorale", cols: 44, rows: 30, barbarians: true });
+    beginTurn(state);
+    const player = state.players[0]!;
+    const before = globalMoraleOf(player);
+    onVillageGlobalMorale(state, player);
+    expect(globalMoraleOf(player)).toBe(before + VILLAGE_GLOBAL_MORALE);
+    // a global lift is recorded for the morale dialog and resets the decay grace
+    expect(player.moraleLog?.some((e) => e.reason.includes("village"))).toBe(true);
+    expect(player.lastMoraleGainTurn).toBe(state.turn);
   });
 
   it("disabling barbarians removes barbarian players, units, and camps", () => {

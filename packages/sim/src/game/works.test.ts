@@ -126,6 +126,25 @@ describe("specialists & works", () => {
     expect(startWork(s, 0, "farm", tile.col, tile.row).ok).toBe(true);
   });
 
+  it("gates water improvements (fishery) behind the Maritime Foraging tech", () => {
+    const { s, city } = gameWithCity();
+    // Agrimensors (the survey craft water works need) require The Wheel.
+    s.players[0]!.researched.add("the_wheel");
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "agrimensor", delta: 1 });
+
+    // A coastal tile owned by the city.
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    tile.terrain = "coast";
+
+    // Terrain is valid, but without Maritime Foraging the fishery is refused.
+    expect(nextTierAt(tile, "fishery")).toBe(1);
+    expect(startWork(s, 0, "fishery", tile.col, tile.row).ok).toBe(false);
+
+    // Once researched, the fishery can be built.
+    s.players[0]!.researched.add("maritime_foraging");
+    expect(startWork(s, 0, "fishery", tile.col, tile.row).ok).toBe(true);
+  });
+
   it("refuses to train more craftsmen than the city has citizens", () => {
     const { s, city } = gameWithCity();
     city.population = 1;

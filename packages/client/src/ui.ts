@@ -717,6 +717,7 @@ export function createUI(handlers: UIHandlers): UI {
     villageMsg.innerHTML = item.html;
     villageTitle.textContent = item.title;
     if (item.art) {
+      villageArt.onerror = () => villageArt.classList.add("hidden");
       villageArt.src = item.art;
       villageArt.classList.remove("hidden");
     } else {
@@ -1120,6 +1121,13 @@ export function createUI(handlers: UIHandlers): UI {
       player.faith >= legendCost(player.legendsRecruited ?? 0) &&
       citiesOf(state, viewerId).length > 0 &&
       availableLegends(state).length > 0;
+    // Proposals needing the viewer's attention: incoming offers awaiting a
+    // response, plus our own offers the other side accepted and we must finalize.
+    const diploActionable = state.diploProposals.filter(
+      (p) =>
+        (p.toId === viewerId && p.status === "pending") ||
+        (p.fromId === viewerId && p.status === "accepted"),
+    ).length;
 
     topbar.innerHTML = `
       <div class="tb-grp">
@@ -1143,8 +1151,8 @@ export function createUI(handlers: UIHandlers): UI {
         <button class="tb-pill empire" id="specialists-btn" title="Specialists"><span class="tb-pl">👷</span><b>${specCount}</b></button>
         <button class="tb-pill empire ${gpReady ? "has-badge" : ""}" id="great-people-btn" title="Great People"><span class="tb-pl">🎖️</span><b>${gpReady}</b>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>
         ${legendsOn ? `<button class="tb-pill empire ${canRecruitLegendNow ? "has-badge" : ""}" id="legends-btn" title="Legends"><span class="tb-pl">⭐</span><b>${myLegends}</b>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : ""}
-        <button class="tb-pill" id="diplo-pill" title="Diplomacy">
-          <span class="tb-pl">🕊️</span><b>${player.met.length}</b></button>
+        <button class="tb-pill ${diploActionable ? "has-badge" : ""}" id="diplo-pill" title="${diploActionable ? `Diplomacy — ${diploActionable} proposal${diploActionable > 1 ? "s" : ""} need your attention` : "Diplomacy"}">
+          <span class="tb-pl">🕊️</span><b>${player.met.length}</b>${diploActionable ? `<span class="tu-badge"></span>` : ""}</button>
         <button class="tb-pill ${turnUpdateHasNew ? "has-badge" : ""}" id="turn-update-btn" title="Turn Updates">
           <span class="tb-pl">📜</span><b>Updates</b>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>
         <button class="tb-pill" id="menu-btn" title="Menu">
@@ -1313,7 +1321,7 @@ export function createUI(handlers: UIHandlers): UI {
       `<button class="bb-btn ${gpReady ? "has-badge" : ""}" data-bb="great-people" title="Great People"><span>🎖️</span><i>${gpReady}</i>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>` +
       (legendsOn ? `<button class="bb-btn ${canRecruitLegendNow ? "has-badge" : ""}" data-bb="legends" title="Legends"><span>⭐</span><i>${myLegends}</i>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : "") +
       `<button class="bb-btn ${turnUpdateHasNew ? "has-badge" : ""}" data-bb="turn-update" title="Turn Updates"><span>📜</span>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>` +
-      `<button class="bb-btn" data-bb="diplo" title="Diplomacy"><span>🕊️</span><i>${player.met.length}</i></button>` +
+      `<button class="bb-btn ${diploActionable ? "has-badge" : ""}" data-bb="diplo" title="Diplomacy"><span>🕊️</span><i>${player.met.length}</i>${diploActionable ? `<span class="tu-badge"></span>` : ""}</button>` +
       `<button class="bb-btn" data-bb="menu" title="Menu"><span>☰</span></button>` +
       `</div>`;
     const bbMap: Record<string, string> = {
@@ -2276,12 +2284,14 @@ export function createUI(handlers: UIHandlers): UI {
     unitPanel.querySelector<HTMLButtonElement>("[data-recruit]")?.addEventListener("click", () => handlers.onRecruitBarbarian(unit.id));
   };
 
-  const WORK_KINDS = ["farm", "lumber_camp", "mine", "quarry", "road", "wall", "tower"];
+  const WORK_KINDS = ["farm", "lumber_camp", "mine", "quarry", "fishery", "saltern", "road", "wall", "tower"];
   const CHEAT_WORK_KINDS = [
     "farm",
     "lumber_camp",
     "mine",
     "quarry",
+    "fishery",
+    "saltern",
     "pasture",
     "plantation",
     "camp",

@@ -260,6 +260,8 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
       if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "farm")) kind = "farm";
       else if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "lumber_camp")) kind = "lumber_camp";
       else if (!kind && haveDiscipline("masonry") && nextTierAt(tile, "mine")) kind = "mine";
+      else if (!kind && haveDiscipline("survey") && player.researched.has("maritime_foraging") && nextTierAt(tile, "fishery"))
+        kind = "fishery";
       else if (!kind && haveDiscipline("survey") && nextTierAt(tile, "road")) kind = "road";
       if (kind && applyCommand(state, { type: "startWork", kind, col, row }, pid).ok) return;
     }

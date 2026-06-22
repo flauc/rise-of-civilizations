@@ -43,6 +43,10 @@ export const DEATH_MORALE_ADJACENT = 12;
 export const PROMOTE_MORALE_SELF = 12;
 /** Morale gained by friendlies adjacent to a freshly promoted unit. */
 export const PROMOTE_MORALE_ADJACENT = 5;
+/** Each level beyond the first amplifies a unit's promotion and death morale swings
+ *  by this fraction — a seasoned veteran's triumph (or loss) moves morale further
+ *  than a raw recruit's. */
+export const LEVEL_MORALE_FACTOR = 0.25;
 /** Bonus starting morale for units trained in a city with a Barracks. */
 export const BARRACKS_MORALE_BONUS = 25;
 /** Global morale moves by this fraction of the triggering unit-morale change. */
@@ -53,6 +57,10 @@ export const BARBARIAN_KILL_FACTOR = 0.5;
 export const CAMP_CLEAR_MORALE_SELF = 14;
 /** Global morale gained by the empire for clearing a barbarian camp. */
 export const CAMP_CLEAR_GLOBAL_MORALE = 4;
+/** A village's gift of heart to a single unit — a large personal morale boost. */
+export const VILLAGE_UNIT_MORALE = 40;
+/** A village's festivities cheering the whole empire — a smaller global boost. */
+export const VILLAGE_GLOBAL_MORALE = 6;
 
 // ---- decay ---------------------------------------------------------------
 
@@ -184,6 +192,12 @@ export function changeUnitMorale(unit: Unit, delta: number): void {
   unit.morale = clampUnitMorale(unitMorale(unit) + delta);
 }
 
+/** Multiplier on a unit's promotion/death morale swings from its veterancy (1.0 at
+ *  level 1). Legacy units without a level count as level 1. */
+export function levelMoraleScale(unit: Unit): number {
+  return 1 + LEVEL_MORALE_FACTOR * Math.max(0, (unit.level ?? 1) - 1);
+}
+
 // ---- battlefield morale events ------------------------------------------
 
 /** Remember that `playerId` just earned morale (resets the decay grace timer). */
@@ -208,6 +222,19 @@ export function onEnemyDefeated(state: GameState, killer: Unit, defeated: Unit):
   if (victor) victor.battlesWon = (victor.battlesWon ?? 0) + 1;
 }
 
+/** A village rallied a single unit's spirits — a large personal morale boost. */
+export function onVillageUnitMorale(state: GameState, unit: Unit): void {
+  changeUnitMorale(unit, VILLAGE_UNIT_MORALE);
+}
+
+/** A village's festivities lifted the whole empire's morale — a smaller global boost. */
+export function onVillageGlobalMorale(state: GameState, player: Player): void {
+  const before = globalMoraleOf(player);
+  adjustGlobalMorale(player, VILLAGE_GLOBAL_MORALE);
+  recordMoraleEvent(state, player.id, before, "A village's festivities cheered the empire");
+  recordMoraleGain(state, player.id);
+}
+
 /** Wiping out a barbarian camp heartens the clearing unit and lifts empire morale. */
 export function onBarbCampCleared(state: GameState, unit: Unit): void {
   changeUnitMorale(unit, CAMP_CLEAR_MORALE_SELF);
@@ -220,18 +247,24 @@ export function onBarbCampCleared(state: GameState, unit: Unit): void {
 /** One of our units died: nearby friendlies waver; global morale drops. Call this
  *  while the dying unit is still on the map (before it is removed). */
 export function onUnitLost(state: GameState, dead: Unit): void {
-  for (const f of adjacentFriendlies(state, dead)) changeUnitMorale(f, -DEATH_MORALE_ADJACENT);
+  // Losing a seasoned veteran shakes the army more than losing a raw recruit.
+  const loss = Math.round(DEATH_MORALE_ADJACENT * levelMoraleScale(dead));
+  for (const f of adjacentFriendlies(state, dead)) changeUnitMorale(f, -loss);
   const before = globalMoraleOf(playerById(state, dead.ownerId));
-  adjustGlobalMorale(playerById(state, dead.ownerId), -DEATH_MORALE_ADJACENT * GLOBAL_MORALE_SHARE);
+  adjustGlobalMorale(playerById(state, dead.ownerId), -loss * GLOBAL_MORALE_SHARE);
   recordMoraleEvent(state, dead.ownerId, before, "Lost a unit in battle");
 }
 
-/** A unit was promoted: it and nearby friendlies are inspired; global morale lifts. */
+/** A unit was promoted: it and nearby friendlies are inspired; global morale lifts.
+ *  Each successive level the unit reaches makes the rally that much stronger. */
 export function onUnitPromoted(state: GameState, unit: Unit): void {
-  changeUnitMorale(unit, PROMOTE_MORALE_SELF);
-  for (const f of adjacentFriendlies(state, unit)) changeUnitMorale(f, PROMOTE_MORALE_ADJACENT);
+  const scale = levelMoraleScale(unit);
+  const self = Math.round(PROMOTE_MORALE_SELF * scale);
+  const adj = Math.round(PROMOTE_MORALE_ADJACENT * scale);
+  changeUnitMorale(unit, self);
+  for (const f of adjacentFriendlies(state, unit)) changeUnitMorale(f, adj);
   const before = globalMoraleOf(playerById(state, unit.ownerId));
-  adjustGlobalMorale(playerById(state, unit.ownerId), PROMOTE_MORALE_SELF * GLOBAL_MORALE_SHARE);
+  adjustGlobalMorale(playerById(state, unit.ownerId), self * GLOBAL_MORALE_SHARE);
   recordMoraleEvent(state, unit.ownerId, before, "A unit was promoted");
   recordMoraleGain(state, unit.ownerId);
 }

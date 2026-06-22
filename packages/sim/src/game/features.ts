@@ -19,7 +19,7 @@ import {
 } from "./state";
 import { UNIT_DEFS, isMilitary, type UnitTypeId } from "./content";
 import { unitMaxHp } from "./combat";
-import { onBarbCampCleared, startingUnitMorale } from "./morale";
+import { onBarbCampCleared, onUnitPromoted, onVillageGlobalMorale, onVillageUnitMorale, startingUnitMorale } from "./morale";
 import { availableTechs } from "./economy";
 import { expandTerritory } from "./territory";
 import { offsetNeighbors } from "./movement";
@@ -98,7 +98,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
 
   // Weighted reward table (negative outcome is rare).
   const roll = rng.next();
-  if (roll < 0.22 && techs.length > 0) {
+  if (roll < 0.2 && techs.length > 0) {
     const tech = techs[Math.floor(rng.next() * techs.length)]!;
     player.researched.add(tech);
     if (player.researching === tech) player.researching = null;
@@ -108,7 +108,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       tile: { col: unit.col, row: unit.row },
       reward: "tech",
     });
-  } else if (roll < 0.4) {
+  } else if (roll < 0.34) {
     const gold = 30 + Math.floor(rng.next() * 40);
     player.gold += gold;
     log(state, `${player.name} found ${gold} gold in a village.`, {
@@ -117,7 +117,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       tile: { col: unit.col, row: unit.row },
       reward: "gold",
     });
-  } else if (roll < 0.55 && city) {
+  } else if (roll < 0.47 && city) {
     const prod = 20 + Math.floor(rng.next() * 25);
     city.productionStored += prod;
     log(state, `A village sped up production in ${city.name}.`, {
@@ -126,7 +126,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       tile: { col: unit.col, row: unit.row },
       reward: "production",
     });
-  } else if (roll < 0.68 && city) {
+  } else if (roll < 0.58 && city) {
     city.population += 1;
     expandTerritory(state, city);
     log(state, `A village added a citizen to ${city.name}.`, {
@@ -135,7 +135,25 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       tile: { col: unit.col, row: unit.row },
       reward: "population",
     });
-  } else if (roll < 0.8) {
+  } else if (roll < 0.68) {
+    // A village rouses this unit to great heart — a large personal morale boost.
+    onVillageUnitMorale(state, unit);
+    log(state, `Villagers feasted the ${UNIT_DEFS[unit.type].name}, raising its spirits.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+      reward: "unit_morale",
+    });
+  } else if (roll < 0.76) {
+    // Word of the village's welcome spreads — a smaller empire-wide morale lift.
+    onVillageGlobalMorale(state, player);
+    log(state, `A village's hospitality heartened ${player.name}'s people.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+      reward: "global_morale",
+    });
+  } else if (roll < 0.85) {
     const type: UnitTypeId = rng.next() < 0.5 ? "scout" : "warrior";
     if (spawnUnitNear(state, player.id, type, unit.col, unit.row)) {
       log(state, `A village provided a free ${UNIT_DEFS[type].name}.`, {
@@ -145,8 +163,9 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
         reward: "unit",
       });
     }
-  } else if (roll < 0.92 && isMilitary(unit.type)) {
+  } else if (roll < 0.93 && isMilitary(unit.type)) {
     unit.unspentPromotions += 1;
+    onUnitPromoted(state, unit); // battle wisdom also heartens the unit (scales with level)
     log(state, `${UNIT_DEFS[unit.type].name} gained battle wisdom (free promotion) at a village.`, {
       actorId: player.id,
       targetIds: [player.id],

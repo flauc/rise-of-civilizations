@@ -145,7 +145,7 @@ export type TechId =
   // Copper / Bronze
   | "native_copper" | "smelting" | "bronze_alloying" | "the_wheel" | "equestrian"
   | "masonry" | "weaving" | "composite_bow" | "writing" | "irrigation"
-  | "sailcloth" | "chariotry" | "phalanx"
+  | "sailcloth" | "chariotry" | "phalanx" | "maritime_foraging"
   // Naval / Maritime
   | "sailing" | "shipbuilding" | "naval_architecture" | "optics" | "astronomy" | "cartography"
   // Iron / Classical
@@ -439,6 +439,7 @@ export const TECH_DEFS: Record<TechId, TechDef> = {
   composite_bow: T("composite_bow", "Composite Bow", 38, ["hide_working", "bronze_alloying"]),
   writing: T("writing", "Writing", 36, ["pottery_kiln"]),
   irrigation: T("irrigation", "Irrigation", 30, ["cultivation"]),
+  maritime_foraging: T("maritime_foraging", "Maritime Foraging", 30, ["pottery_kiln"]),
   sailcloth: T("sailcloth", "Sailcloth", 32, ["weaving"]),
   chariotry: T("chariotry", "Chariotry", 46, ["the_wheel", "bronze_alloying"]),
   phalanx: T("phalanx", "Phalanx Doctrine", 46, ["bronze_alloying"]),
@@ -619,13 +620,41 @@ export function buildingInfo(id: string): string {
   return parts.join(", ") || "—";
 }
 
-/** Names of units/buildings a tech unlocks (for the research picker). */
+/**
+ * Map/mechanic/system unlocks whose payoff is neither a unit nor a building, so
+ * they cannot be derived from UNIT_DEFS / BUILDING_DEFS. These are otherwise
+ * invisible in the research picker and tech tree, so they are curated here as a
+ * single source of truth for both surfaces. Keep in sync with the gates that
+ * actually enforce them (works.ts, trade.ts, movement.ts, specialists.ts, etc.).
+ */
+export const TECH_SYSTEM_UNLOCKS: Partial<Record<TechId, string[]>> = {
+  // Systems gated behind a tech (see CIVICS/RELIGION/BARBARIAN_DIPLOMACY constants).
+  [CIVICS_REQUIRED_TECH]: ["Civics"],
+  [RELIGION_REQUIRED_TECH]: ["Religion"],
+  [BARBARIAN_DIPLOMACY_TECH]: ["Bribe & recruit barbarians"],
+  // Tile-improvement & map mechanics.
+  irrigation: ["Farms on river tiles"],
+  maritime_foraging: ["Fishery & Saltern improvements"],
+  bridge_building: ["Bridges over rivers"],
+  sailing: ["Sea trade routes"],
+  astronomy: ["Ocean travel for ships"],
+  // New specialist types (see specialists.ts).
+  the_wheel: ["Agrimensor specialist"],
+  masonry: ["Mason & Architect specialists"],
+  engineering: ["Military Engineer specialist"],
+};
+
+/** Map/mechanic/system unlocks for a tech (not units or buildings). */
+export function techSystemUnlocks(techId: TechId): string[] {
+  return TECH_SYSTEM_UNLOCKS[techId] ?? [];
+}
+
+/** Names of everything a tech unlocks — units, buildings, and mechanics (for the research picker). */
 export function techUnlocks(techId: TechId): string[] {
   const out: string[] = [];
   for (const d of Object.values(UNIT_DEFS)) if (d.reqTech === techId) out.push(d.name);
   for (const d of Object.values(BUILDING_DEFS)) if (d.reqTech === techId) out.push(d.name);
-  // Techs whose payoff is a map/mechanic rather than a unit or building.
-  if (techId === "bridge_building") out.push("Bridges over rivers");
+  out.push(...techSystemUnlocks(techId));
   return out;
 }
 

@@ -7,9 +7,7 @@ import {
   BUILDING_DEFS,
   TECH_DEFS,
   UNIT_DEFS,
-  CIVICS_REQUIRED_TECH,
-  RELIGION_REQUIRED_TECH,
-  BARBARIAN_DIPLOMACY_TECH,
+  techSystemUnlocks,
   type GameState,
   type TechId,
 } from "@roc/sim";
@@ -29,10 +27,7 @@ const ALL_TECHS = Object.keys(TECH_DEFS) as TechId[];
 function unlocksOf(techId: TechId): { units: string[]; buildings: string[]; systems: string[] } {
   const units = Object.values(UNIT_DEFS).filter((d) => d.reqTech === techId).map((d) => d.name);
   const buildings = Object.values(BUILDING_DEFS).filter((d) => d.reqTech === techId).map((d) => d.name);
-  const systems: string[] = [];
-  if (techId === CIVICS_REQUIRED_TECH) systems.push("Civics");
-  if (techId === RELIGION_REQUIRED_TECH) systems.push("Religion");
-  if (techId === BARBARIAN_DIPLOMACY_TECH) systems.push("Bribe & Recruit Barbarians");
+  const systems = techSystemUnlocks(techId);
   return { units, buildings, systems };
 }
 

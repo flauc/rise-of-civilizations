@@ -266,6 +266,18 @@ const IMPROVEMENT_KINDS: Omit<ImprovementTierDef, "tier">[] = [
     description: "small wooden fishing boats with nets and baskets",
   },
   {
+    id: "fishery",
+    name: "Fishery",
+    description:
+      "an open fishing platform raised on tall wooden stilts standing in the open sea, with fishing nets dipping into the water, fish-drying racks, baskets of fish, and a small moored rowing boat alongside",
+  },
+  {
+    id: "saltern",
+    name: "Salt Pans",
+    description:
+      "a grid of shallow salt-evaporation pans flooded with shimmering blue-green seawater, divided by low walls, with white sea salt crystallizing and small heaps of harvested salt along the edges",
+  },
+  {
     id: "tower",
     name: "Tower",
     description: "a tall defensive stone tower with crenellations",
@@ -278,17 +290,37 @@ const TIER_STYLE: Record<1 | 2 | 3, string> = {
   3: "grand, advanced, large scale, with dressed stone, tile, engineered channels, and polished details",
 };
 
-export const IMPROVEMENT_SUBSET: AssetEntry[] = IMPROVEMENT_KINDS.flatMap((kind) =>
-  ([1, 2, 3] as const).map((tier) => ({
+// Improvements built on water tiles. They are framed as structures standing in
+// the open sea (see promptFor) and use a water-appropriate tier ladder that does
+// not pull the model toward dry-land buildings.
+export const WATER_IMPROVEMENT_IDS = new Set<string>(["fishery", "saltern"]);
+
+const WATER_TIER_STYLE: Record<1 | 2 | 3, string> = {
+  1: "simple and primitive, small scale, rough timber poles and woven materials",
+  2: "improved and organized, medium scale, sturdier timber piers and stone edging",
+  3: "grand and advanced, large scale, solid timber-and-stone construction with refined details",
+};
+
+/** True if an improvement kind/asset id (e.g. "fishery" or "saltern_t2") is water-based. */
+export function isWaterImprovementId(id: string): boolean {
+  return WATER_IMPROVEMENT_IDS.has(id.replace(/_t[123]$/, ""));
+}
+
+export const IMPROVEMENT_SUBSET: AssetEntry[] = IMPROVEMENT_KINDS.flatMap((kind) => {
+  const water = WATER_IMPROVEMENT_IDS.has(kind.id);
+  const tierStyle = water ? WATER_TIER_STYLE : TIER_STYLE;
+  // Water improvements draw their water as part of the sprite, so don't strip it.
+  const tail = water ? "No dry land, no buildings on land" : "No walls, no background terrain";
+  return ([1, 2, 3] as const).map((tier) => ({
     id: `${kind.id}_t${tier}`,
     name: `${kind.name} (Tier ${tier})`,
-    description: `${kind.description}; tier ${tier} style: ${TIER_STYLE[tier]}. No walls, no background terrain`,
+    description: `${kind.description}; tier ${tier} style: ${tierStyle[tier]}. ${tail}`,
     aspectRatio: "1:1" as const,
     size: { width: 128, height: 128 },
     category: "improvement" as const,
-    referenceTile: DEFAULT_REFERENCE_TILE,
-  })),
-);
+    referenceTile: water ? "hexOcean00.png" : DEFAULT_REFERENCE_TILE,
+  }));
+});
 
 export const ICON_SUBSET: AssetEntry[] = [
   {
@@ -656,6 +688,24 @@ export const VILLAGE_REWARD_SUBSET: AssetEntry[] = [
     referenceTile: DEFAULT_REFERENCE_TILE,
   },
   {
+    id: "village_reward_unit_morale",
+    name: "Village Reward: Unit Morale",
+    description: "a lone warrior feasted and honoured by villagers around a bonfire, sharing food and drink, the soldier's face lit with renewed resolve and high spirits",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "village_reward_global_morale",
+    name: "Village Reward: Global Morale",
+    description: "a joyous village celebration with banners, music, and dancing crowds, word of welcome spreading, a hopeful uplifting mood over the whole settlement",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
     id: "village_reward_ambush",
     name: "Village Reward: Ambush",
     description: "a barbarian ambush at night, fierce warriors with crude weapons leaping from behind village huts, flames and smoke",
@@ -843,6 +893,9 @@ export function promptFor(entry: AssetEntry): string {
     return `Create a tiny standalone map resource icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the resource as a small, clear symbol or object from a near-top-down or three-quarter view, centered, as an isolated item on a clean solid white background. Keep it smaller than a unit icon so it reads as a map token. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The resource icon should float cleanly on the white background with nothing else in the frame.`;
   }
   if (entry.category === "improvement") {
+    if (isWaterImprovementId(entry.id)) {
+      return `Create a small standalone map improvement icon for an ancient turn-based strategy game. IMPORTANT: this improvement is built ON WATER and must read clearly as a structure standing in the open sea — NOT a house, hut, cabin, or building on dry land, and NOT sitting on grass, sand, or soil. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render it from a three-quarter or near-top-down view, centered, as an isolated improvement on a clean solid white background, with gentle blue-green water ripples ONLY right at its waterline/base as part of the sprite. Keep it compact so it reads as a tile overlay. Absolutely NO dry ground, NO grass, NO sand, NO dirt, NO field, NO enclosing hut or house walls, NO thatched roof, NO fence, NO text, NO UI, NO border, and NO cast shadow. Everything except the improvement and the small ripples at its waterline must be clean solid white so the background can be removed cleanly.`;
+    }
     return `Create a small standalone map improvement icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated improvement on a clean solid white background. Keep it compact so it reads as a tile overlay. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The improvement should float cleanly on the white background with nothing else in the frame.`;
   }
   if (entry.category === "natural_wonder") {

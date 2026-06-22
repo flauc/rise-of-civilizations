@@ -385,7 +385,7 @@ function placeUnit(state: GameState, city: City, type: keyof typeof UNIT_DEFS): 
       spawn(n.col, n.row);
       return;
     }
-    if (!wantsWater && tile.terrain !== "mountains") {
+    if (!wantsWater && tile.terrain !== "mountains" && !isWaterTerrain(tile.terrain)) {
       spawn(n.col, n.row);
       return;
     }

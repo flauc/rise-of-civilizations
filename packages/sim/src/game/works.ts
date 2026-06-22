@@ -11,6 +11,7 @@ import type { City, Discipline, GameState, Specialist, Work } from "./state";
 import { citiesOf, cityAt, log, playerById } from "./state";
 import { isPassableLand } from "./terrain";
 import { availableTechs } from "./economy";
+import { TECH_DEFS, type TechId } from "./content";
 import {
   SPECIALIST_DEFS,
   grantSpecialistXp,
@@ -29,6 +30,8 @@ export type EconKind =
   | "plantation"
   | "camp"
   | "fishing_boats"
+  | "fishery"
+  | "saltern"
   | "road";
 export type { DefenseKind };
 export type WorkKind = EconKind | DefenseKind | "wonder";
@@ -45,7 +48,16 @@ const ECON_DISCIPLINE: Record<EconKind, Discipline> = {
   plantation: "carpentry",
   camp: "carpentry",
   fishing_boats: "survey",
+  fishery: "survey",
+  saltern: "survey",
   road: "survey",
+};
+
+// Econ improvements gated behind a researched technology (loose TechId strings).
+// Most improvements are available from the start; these unlock with progress.
+export const ECON_REQ_TECH: Partial<Record<EconKind, TechId>> = {
+  fishery: "maritime_foraging",
+  saltern: "maritime_foraging",
 };
 export const ECON_BASE: Record<EconKind, number> = {
   farm: 3,
@@ -56,6 +68,8 @@ export const ECON_BASE: Record<EconKind, number> = {
   plantation: 3,
   camp: 3,
   fishing_boats: 3,
+  fishery: 4,
+  saltern: 3,
   road: 2,
 };
 const DEFENSE_BASE: Record<DefenseKind, number> = { wall: 4, tower: 5 };
@@ -69,6 +83,8 @@ export const ECON_TERRAIN: Record<EconKind, ReadonlySet<string> | null> = {
   plantation: new Set(["grassland", "plains", "hills", "forest", "woods", "jungle", "wetlands", "desert"]),
   camp: new Set(["forest", "woods", "jungle", "taiga", "tundra"]),
   fishing_boats: new Set(["coast", "lake", "ocean"]),
+  fishery: new Set(["coast", "lake", "ocean"]),
+  saltern: new Set(["coast", "lake"]),
   road: null, // any passable land
 };
 
@@ -82,6 +98,8 @@ export const ECON_NAMES: Record<EconKind, [string, string, string]> = {
   plantation: ["Plantation", "Estate", "Great Plantation"],
   camp: ["Camp", "Trapper Post", "Hunting Lodge"],
   fishing_boats: ["Fishing Boats", "Fishing Fleet", "Commercial Fishery"],
+  fishery: ["Fishery", "Fishing Wharf", "Grand Fishery"],
+  saltern: ["Salt Pans", "Saltern", "Salt Works"],
 };
 
 export function isEconKind(kind: string): kind is EconKind {
@@ -285,6 +303,14 @@ export function canStartWork(state: GameState, playerId: number, kind: string, c
   }
   const tier = nextTierAt(tile, kind);
   if (tier === null) return { ok: false, error: "cannot build that here" };
+  // Some econ improvements are locked behind a technology (e.g. water works
+  // unlocked by Maritime Foraging).
+  if (isEconKind(kind)) {
+    const req = ECON_REQ_TECH[kind];
+    if (req && !playerById(state, playerId)?.researched.has(req)) {
+      return { ok: false, error: `requires ${TECH_DEFS[req].name}` };
+    }
+  }
   // Farming a river tile means draining and channelling it — only possible once
   // Irrigation has been researched.
   if (kind === "farm" && tile.river && !playerById(state, playerId)?.researched.has("irrigation")) {

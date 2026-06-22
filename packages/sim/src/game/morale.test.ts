@@ -139,6 +139,36 @@ describe("morale — battlefield swings", () => {
     expect(unitMorale(u)).toBeGreaterThan(100);
     expect(unitMorale(ally)).toBeGreaterThan(100);
   });
+
+  it("a higher-level unit's promotion gives a bigger morale boost", () => {
+    const state = bareGame();
+    const rookie = place(state, 0, "warrior", 5, 5, 100);
+    onUnitPromoted(state, rookie);
+    const rookieGain = unitMorale(rookie) - 100;
+
+    const veteran = place(state, 0, "warrior", 15, 15, 100);
+    veteran.level = 4;
+    onUnitPromoted(state, veteran);
+    const veteranGain = unitMorale(veteran) - 100;
+
+    expect(veteranGain).toBeGreaterThan(rookieGain);
+  });
+
+  it("losing a higher-level unit inflicts a bigger morale penalty", () => {
+    const state = bareGame();
+    const rookie = place(state, 0, "warrior", 5, 5, 100);
+    const allyA = place(state, 0, "warrior", 6, 5, 100);
+    onUnitLost(state, rookie);
+    const rookieLoss = 100 - unitMorale(allyA);
+
+    const veteran = place(state, 0, "warrior", 15, 15, 100);
+    veteran.level = 4;
+    const allyB = place(state, 0, "warrior", 16, 15, 100);
+    onUnitLost(state, veteran);
+    const veteranLoss = 100 - unitMorale(allyB);
+
+    expect(veteranLoss).toBeGreaterThan(rookieLoss);
+  });
 });
 
 describe("morale — routing", () => {

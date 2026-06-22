@@ -389,6 +389,8 @@ export type FeatureRewardType =
   | "production"
   | "population"
   | "unit"
+  | "unit_morale"
+  | "global_morale"
   | "promotion"
   | "ambush"
   | "cache"

@@ -16,6 +16,8 @@ const IMPROVEMENT_KINDS = [
   "plantation",
   "camp",
   "fishing_boats",
+  "fishery",
+  "saltern",
   "tower",
 ] as const;
 

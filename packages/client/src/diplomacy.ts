@@ -47,6 +47,17 @@ export interface DiploHandlers {
 const STYLE = `
 #diplo-contact{position:fixed;inset:0;z-index:65;background:rgba(6,12,20,.82);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center}
 #diplo-contact.show{display:flex}
+#diplo-proposal{position:fixed;inset:0;z-index:66;background:rgba(6,12,20,.82);backdrop-filter:blur(3px);display:none;align-items:center;justify-content:center}
+#diplo-proposal.show{display:flex}
+.dpm-body{display:flex;gap:16px;padding:18px;align-items:flex-start}
+.dpm-portrait{width:96px;height:112px;object-fit:cover;border-radius:10px;border:1px solid var(--edge);background:#16293c;flex:none}
+.dpm-info{flex:1;min-width:0}
+.dpm-civ{font-weight:800;color:#fff;font-size:17px}
+.dpm-leader{color:#cfe3f7;margin-bottom:2px}
+.dpm-att{color:#9fc0dc;font-size:12px}
+.dpm-exch{font-size:13px;color:#eaf3fb;margin-top:10px;line-height:1.6;padding:8px 10px;background:#10283a;border:1px solid #234763;border-radius:8px}
+.dpm-exch b{color:#ffd967}
+.dpm-reason{font-size:12.5px;color:#cfe3f7;font-style:italic;margin-top:8px}
 .dc-box{width:min(760px,94vw);background:#0d1b27;border:1px solid var(--edge);border-radius:14px;overflow:hidden}
 .dc-title{text-align:center;font-weight:800;font-size:16px;color:#ffd967;padding:12px;border-bottom:1px solid var(--edge)}
 .dc-cards{display:flex;align-items:stretch}
@@ -139,6 +150,13 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   document.body.appendChild(modal);
   let showingContact: number | null = null; // otherId currently in the modal
 
+  // --- incoming-proposal modal (pops the instant another civ proposes to us) ---
+  const propModal = document.createElement("div");
+  propModal.id = "diplo-proposal";
+  document.body.appendChild(propModal);
+  let showingProposal: number | null = null; // proposal id currently in the modal
+  const seenProposals = new Set<number>(); // proposals we've already surfaced
+
   // --- contacts side panel ---
   const panel = document.createElement("div");
   panel.id = "diplomacy";
@@ -210,6 +228,65 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       if (e.youId !== viewerId) continue;
       if (e.isPlayerCiv) { handlers.onAcknowledgeContact(e.otherId); continue; } // no modal vs other humans
       showContact(state, viewerId, e.otherId);
+      return;
+    }
+  }
+
+  // ---- incoming proposal modal ----
+  function showProposal(state: GameState, viewerId: number, p: Proposal): void {
+    showingProposal = p.id;
+    const themCiv = civOf(p.fromId, state);
+    const themP = state.players.find((x) => x.id === p.fromId);
+    const att = attitudeLabel(attitudeScore(state, p.fromId, viewerId));
+    const coercive = !!p.coercive;
+    const title = coercive ? "⚠ A demand has been made of you" : "📨 A deal has been proposed to you";
+    const exch = coercive
+      ? `<div class="dpm-exch">They demand: <b>${describeItems(p.want)}</b></div>`
+      : `<div class="dpm-exch">They give: <b>${describeItems(p.give)}</b><br/>You give: <b>${describeItems(p.want)}</b></div>`;
+    propModal.innerHTML =
+      `<div class="dc-box"><div class="dc-title">${title}</div>` +
+      `<div class="dpm-body">` +
+      `<img class="dpm-portrait" src="${portrait(themCiv?.id)}" onerror="this.style.visibility='hidden'"/>` +
+      `<div class="dpm-info">` +
+      `<div class="dpm-civ">${themCiv?.name ?? themP?.name ?? "Them"}</div>` +
+      `<div class="dpm-leader">${themCiv?.leader ?? ""}</div>` +
+      `<div class="dpm-att">Feeling ${att} toward you</div>` +
+      exch +
+      (p.reason ? `<div class="dpm-reason">“${p.reason}”</div>` : "") +
+      `</div></div>` +
+      `<div class="dc-actions">` +
+      `<button class="btn primary" id="dpm-accept">${coercive ? "Submit" : "Accept"}</button>` +
+      (coercive ? "" : `<button class="btn" id="dpm-counter">Counter offer</button>`) +
+      `<button class="btn" id="dpm-decline">${coercive ? "Refuse" : "Decline"}</button>` +
+      `</div></div>`;
+    propModal.classList.add("show");
+    const dismiss = () => { propModal.classList.remove("show"); showingProposal = null; };
+    propModal.querySelector<HTMLButtonElement>("#dpm-accept")!.addEventListener("click", () => {
+      handlers.onRespondProposal(p.id, true); dismiss();
+    });
+    propModal.querySelector<HTMLButtonElement>("#dpm-decline")!.addEventListener("click", () => {
+      handlers.onRespondProposal(p.id, false); dismiss();
+    });
+    // Counter: drop into the negotiation view for that civ, where the offer is
+    // listed under "Pending business" alongside the full deal builder.
+    propModal.querySelector<HTMLButtonElement>("#dpm-counter")?.addEventListener("click", () => {
+      dismiss();
+      open = true;
+      panel.classList.remove("hidden");
+      selected = p.fromId;
+      resultMsg = "";
+      forceRender(state, viewerId);
+    });
+  }
+
+  /** Surface the first not-yet-seen pending proposal addressed to the viewer. */
+  function handleIncomingProposals(state: GameState, viewerId: number): void {
+    if (showingContact !== null || showingProposal !== null) return; // a dialog is up
+    for (const p of state.diploProposals) {
+      if (p.toId !== viewerId || p.status !== "pending") continue;
+      if (seenProposals.has(p.id)) continue;
+      seenProposals.add(p.id);
+      showProposal(state, viewerId, p);
       return;
     }
   }
@@ -512,6 +589,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   return {
     render(state, viewerId) {
       handleContacts(state, viewerId);
+      handleIncomingProposals(state, viewerId);
       if (!open) return;
       const sig = signature(state, viewerId);
       if (sig === lastSig) return; // keep deal-builder inputs intact between frames
