@@ -12,32 +12,40 @@ export interface GameSummary {
   name: string;
   status: "lobby" | "active";
   players: number; // filled human slots
-  capacity: number;
+  capacity: number; // total human slots
   hostUserId: string;
+  /** Whether a password is required to join. */
+  hasPassword: boolean;
 }
 
-/** One human player slot in a pre-game lobby room. */
+export type SlotKind = "human" | "ai";
+
+/** One player slot (human seat or AI opponent) in a pre-game lobby room. */
 export interface LobbySlot {
-  slot: number;
-  playerId: number;
-  /** Set once a user occupies the slot; absent = open. */
+  /** Stable slot id (independent of position). */
+  id: number;
+  kind: SlotKind;
+  /** Set once a user occupies a human seat; absent = open. */
   userId?: string;
   handle?: string;
-  /** The civ this player chose; absent = a random unique civ at start. */
+  /** Chosen civ (human pick or AI assignment); absent = random at start. */
   civId?: string;
+  /** Player color. */
+  color?: string;
 }
 
-/** Live, broadcast view of a single game's lobby (who's seated + their civ). */
+/** Live, broadcast view of a single game's lobby (roster + config). */
 export interface LobbyRoom {
   gameId: string;
   name: string;
   hostUserId: string;
-  capacity: number;
+  mapType: MapType;
+  mapSize?: string;
+  barbarians: BarbarianActivity;
+  naturalWonders: boolean;
+  startingGold: "tight" | "balanced" | "generous";
+  hasPassword: boolean;
   slots: LobbySlot[];
-  /** Civ id per AI opponent; null = a random unique civ. */
-  aiCivIds: (string | null)[];
-  /** Color per slot (humans first, then AI); null = auto-assigned at start. */
-  colors: (string | null)[];
 }
 
 export type ClientMessage =
@@ -64,9 +72,32 @@ export type ClientMessage =
       aiCivIds?: (string | null)[];
       /** Color per player slot (humans first, then AI); null/undefined = auto. */
       colors?: (string | null)[];
+      /** Human-readable map size label, kept for the lobby editor. */
+      mapSize?: string;
+      /** Optional join password. */
+      password?: string;
     }
-  | { t: "joinGame"; gameId: string }
+  | { t: "joinGame"; gameId: string; password?: string }
   | { t: "pickCiv"; gameId: string; civId: string | null } // choose your lobby civ; null = random
+  // --- host-only lobby management (game must be in the "lobby" state) ---
+  | {
+      t: "configureGame";
+      gameId: string;
+      name?: string;
+      /** Empty string clears the password. */
+      password?: string;
+      cols?: number;
+      rows?: number;
+      mapSize?: string;
+      mapType?: MapType;
+      barbarians?: BarbarianActivity;
+      naturalWonders?: boolean;
+      startingGold?: "tight" | "balanced" | "generous";
+    }
+  | { t: "addSlot"; gameId: string; kind: "human" | "ai" }
+  | { t: "removeSlot"; gameId: string; slotId: number }
+  | { t: "updateSlot"; gameId: string; slotId: number; kind?: "human" | "ai"; civId?: string | null; color?: string }
+  | { t: "kickSlot"; gameId: string; slotId: number }
   | { t: "startGame"; gameId: string }
   | { t: "order"; cmd: Command }
   | { t: "ready" } // end-of-turn: ready for simultaneous resolution
@@ -78,8 +109,9 @@ export type ServerMessage =
   | { t: "authOk"; token: string; userId: string; handle: string }
   | { t: "error"; message: string }
   | { t: "games"; games: GameSummary[] }
-  | { t: "joined"; gameId: string; slot: number; playerId: number }
+  | { t: "joined"; gameId: string; slotId: number }
   | { t: "lobby"; room: LobbyRoom } // live pre-game roster (seats + chosen civs)
+  | { t: "kicked"; gameId: string } // the host removed you from the game
   | { t: "started"; gameId: string }
   | { t: "state"; view: PlayerView; awaiting: number[] }
   | { t: "orderRejected"; reason: string }

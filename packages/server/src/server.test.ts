@@ -19,7 +19,7 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     const lobby = new Lobby();
     const g = lobby.create("Test Match", "uA", "Alice", { seed: "seed-mp" });
     const joined = lobby.join(g.id, "uB", "Bob");
-    expect("playerId" in joined && joined.playerId).toBe(1);
+    expect("slotId" in joined).toBe(true);
 
     expect(lobby.start(g.id)).toEqual({ ok: true });
     const host = lobby.get(g.id)!.host!;
@@ -76,8 +76,7 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
   it("supports host-defined capacity up to 12 players", () => {
     const lobby = new Lobby();
     const g = lobby.create("Big Match", "uA", "Alice", { seed: "seed-big", capacity: 5 });
-    expect(g.capacity).toBe(5);
-    expect(g.slots.length).toBe(5);
+    expect(g.slots.filter((s) => s.kind === "human").length).toBe(5);
 
     lobby.join(g.id, "uB", "Bob");
     lobby.join(g.id, "uC", "Carol");
@@ -98,13 +97,13 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
       aiCivIds: ["rome", null, "sumer", null, null, null, null],
       colors: ["#111111", "#222222"],
     });
-    expect(g.aiCount).toBe(7);
+    expect(g.slots.filter((s) => s.kind === "ai").length).toBe(7);
 
     expect(lobby.start(g.id)).toEqual({ ok: true });
     const players = lobby.get(g.id)!.host!.state.players.filter((p) => !p.isBarbarian);
     expect(players.length).toBe(8); // 1 human + 7 AI
 
-    // The host's chosen human color and AI civ assignments survive.
+    // The host's chosen human color and AI civ assignments survive (humans first).
     expect(players[0]!.color).toBe("#111111");
     expect(players[1]!.civId).toBe("rome");
     expect(players[3]!.civId).toBe("sumer");
@@ -114,14 +113,65 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(new Set(colors).size).toBe(colors.length);
   });
 
-  it("clamps AI count to at most 12", () => {
+  it("caps the total roster at 24 slots", () => {
     const lobby = new Lobby();
     const g = lobby.create("Too Many", "uA", "Alice", {
       seed: "seed-clamp",
       capacity: 1,
       aiCount: 50,
     });
-    expect(g.aiCount).toBe(12);
+    expect(g.slots.length).toBe(24);
+    expect(g.slots.filter((s) => s.kind === "ai").length).toBe(23);
+  });
+
+  it("lets the host edit the roster: add/toggle/remove slots and kick players", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Editable", "uA", "Alice", { seed: "seed-edit", capacity: 2 });
+    lobby.join(g.id, "uB", "Bob");
+
+    // Add an AI slot, then verify the roster shape.
+    expect(lobby.addSlot(g.id, "uA", "ai")).toEqual({ ok: true });
+    let room = lobby.room(g.id)!;
+    expect(room.slots.length).toBe(3);
+    expect(room.slots.filter((s) => s.kind === "human").length).toBe(2);
+
+    // Non-host cannot edit.
+    expect("error" in lobby.addSlot(g.id, "uB", "ai")).toBe(true);
+
+    // Toggling Bob's seat to AI evicts Bob.
+    const bobSlot = lobby.room(g.id)!.slots.find((s) => s.userId === "uB")!;
+    const r = lobby.updateSlot(g.id, "uA", bobSlot.id, { kind: "ai" });
+    expect(r).toEqual({ ok: true, kicked: "uB" });
+    expect(lobby.slotOf(g.id, "uB")).toBeUndefined();
+
+    // Host cannot remove their own seat or the last human seat.
+    const hostSlot = lobby.room(g.id)!.slots.find((s) => s.userId === "uA")!;
+    expect("error" in lobby.removeSlot(g.id, "uA", hostSlot.id)).toBe(true);
+
+    // Open a fresh human seat for Carol, then kick her out of it.
+    expect(lobby.addSlot(g.id, "uA", "human")).toEqual({ ok: true });
+    expect(lobby.join(g.id, "uC", "Carol")).toHaveProperty("slotId");
+    const carolSlot = lobby.room(g.id)!.slots.find((s) => s.userId === "uC")!;
+    expect(lobby.kick(g.id, "uA", carolSlot.id)).toEqual({ ok: true, kicked: "uC" });
+    expect(lobby.slotOf(g.id, "uC")).toBeUndefined();
+  });
+
+  it("enforces a join password and only the host can start", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Private", "uA", "Alice", { seed: "seed-pw", capacity: 3, password: "secret" });
+    expect(lobby.list()[0]!.hasPassword).toBe(true);
+
+    expect("error" in lobby.join(g.id, "uB", "Bob", "wrong")).toBe(true);
+    expect("error" in lobby.join(g.id, "uB", "Bob")).toBe(true);
+    expect(lobby.join(g.id, "uB", "Bob", "secret")).toHaveProperty("slotId");
+
+    // Host clears the password; now anyone can walk in.
+    expect(lobby.configure(g.id, "uA", { password: "" })).toEqual({ ok: true });
+    expect(lobby.join(g.id, "uC", "Carol")).toHaveProperty("slotId");
+
+    // Only the host may start.
+    expect("error" in lobby.start(g.id, "uB")).toBe(true);
+    expect(lobby.start(g.id, "uA")).toEqual({ ok: true });
   });
 
   it("honors the startingGold option and applies it to player treasuries", () => {

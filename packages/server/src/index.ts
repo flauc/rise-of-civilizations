@@ -116,7 +116,20 @@ function broadcastLobby(gameId: string): void {
 }
 
 function isHost(ws: ServerWebSocket<Conn>): boolean {
-  return ws.data.slot === 0;
+  const game = ws.data.gameId ? lobby.get(ws.data.gameId) : undefined;
+  return !!game && game.hostUserId === ws.data.userId;
+}
+
+/** Drop a kicked/removed user from a game: notify them and detach their conn. */
+function evict(gameId: string, userId: string): void {
+  for (const ws of [...(gameConns.get(gameId) ?? [])]) {
+    if (ws.data.userId !== userId) continue;
+    send(ws, { t: "kicked", gameId });
+    ws.data.gameId = undefined;
+    ws.data.playerId = undefined;
+    ws.data.slot = undefined;
+    gameConns.get(gameId)?.delete(ws);
+  }
 }
 
 function removeGameConns(gameId: string): void {
@@ -157,6 +170,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         seed: msg.seed,
         cols: msg.cols,
         rows: msg.rows,
+        mapSize: msg.mapSize,
         capacity: msg.capacity,
         aiCount: msg.aiCount,
         mapType: msg.mapType,
@@ -165,24 +179,23 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         startingGold: msg.startingGold,
         aiCivIds: msg.aiCivIds,
         colors: msg.colors,
+        password: msg.password,
       });
       ws.data.gameId = game.id;
-      ws.data.playerId = game.slots[0]!.playerId;
-      ws.data.slot = 0;
+      ws.data.slot = game.slots[0]!.id;
       addConn(game.id, ws);
-      send(ws, { t: "joined", gameId: game.id, slot: 0, playerId: ws.data.playerId });
+      send(ws, { t: "joined", gameId: game.id, slotId: game.slots[0]!.id });
       broadcastLobby(game.id);
       return;
     }
     case "joinGame": {
       if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
-      const r = lobby.join(msg.gameId, ws.data.userId, ws.data.handle ?? "Player");
+      const r = lobby.join(msg.gameId, ws.data.userId, ws.data.handle ?? "Player", msg.password);
       if ("error" in r) return send(ws, { t: "error", message: r.error });
       ws.data.gameId = msg.gameId;
-      ws.data.playerId = r.playerId;
-      ws.data.slot = r.slot;
+      ws.data.slot = r.slotId;
       addConn(msg.gameId, ws);
-      send(ws, { t: "joined", gameId: msg.gameId, slot: r.slot, playerId: r.playerId });
+      send(ws, { t: "joined", gameId: msg.gameId, slotId: r.slotId });
       broadcastLobby(msg.gameId);
       return;
     }
@@ -193,9 +206,68 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       broadcastLobby(msg.gameId);
       return;
     }
-    case "startGame": {
-      const r = lobby.start(msg.gameId);
+    case "configureGame": {
+      if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      const r = lobby.configure(msg.gameId, ws.data.userId, {
+        name: msg.name,
+        password: msg.password,
+        cols: msg.cols,
+        rows: msg.rows,
+        mapSize: msg.mapSize,
+        mapType: msg.mapType,
+        barbarians: msg.barbarians,
+        naturalWonders: msg.naturalWonders,
+        startingGold: msg.startingGold,
+      });
       if ("error" in r) return send(ws, { t: "error", message: r.error });
+      broadcastLobby(msg.gameId);
+      send(ws, { t: "games", games: lobby.list() });
+      return;
+    }
+    case "addSlot": {
+      if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      const r = lobby.addSlot(msg.gameId, ws.data.userId, msg.kind);
+      if ("error" in r) return send(ws, { t: "error", message: r.error });
+      broadcastLobby(msg.gameId);
+      return;
+    }
+    case "removeSlot": {
+      if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      const r = lobby.removeSlot(msg.gameId, ws.data.userId, msg.slotId);
+      if ("error" in r) return send(ws, { t: "error", message: r.error });
+      if (r.kicked) evict(msg.gameId, r.kicked);
+      broadcastLobby(msg.gameId);
+      return;
+    }
+    case "updateSlot": {
+      if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      const r = lobby.updateSlot(msg.gameId, ws.data.userId, msg.slotId, {
+        kind: msg.kind,
+        civId: msg.civId,
+        color: msg.color,
+      });
+      if ("error" in r) return send(ws, { t: "error", message: r.error });
+      if (r.kicked) evict(msg.gameId, r.kicked);
+      broadcastLobby(msg.gameId);
+      return;
+    }
+    case "kickSlot": {
+      if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      const r = lobby.kick(msg.gameId, ws.data.userId, msg.slotId);
+      if ("error" in r) return send(ws, { t: "error", message: r.error });
+      evict(msg.gameId, r.kicked);
+      broadcastLobby(msg.gameId);
+      return;
+    }
+    case "startGame": {
+      if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      const r = lobby.start(msg.gameId, ws.data.userId);
+      if ("error" in r) return send(ws, { t: "error", message: r.error });
+      // Bind each connection to its assigned sim player (humans first, then AI).
+      const game = lobby.get(msg.gameId);
+      for (const c of gameConns.get(msg.gameId) ?? []) {
+        c.data.playerId = game?.slots.find((s) => s.userId === c.data.userId)?.playerId;
+      }
       for (const c of gameConns.get(msg.gameId) ?? []) send(c, { t: "started", gameId: msg.gameId });
       broadcastState(msg.gameId);
       return;
@@ -204,7 +276,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
       const game = lobby.get(msg.gameId);
       if (!game) return send(ws, { t: "error", message: "no such game" });
-      if (game.slots[0]?.userId !== ws.data.userId) return send(ws, { t: "error", message: "only the host can delete this game" });
+      if (game.hostUserId !== ws.data.userId) return send(ws, { t: "error", message: "only the host can delete this game" });
       const r = lobby.delete(msg.gameId, ws.data.userId);
       if ("error" in r) return send(ws, { t: "error", message: r.error });
       removeGameConns(msg.gameId);

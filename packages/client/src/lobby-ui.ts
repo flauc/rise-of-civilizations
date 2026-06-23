@@ -467,7 +467,10 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .mp-auth-card{width:min(440px,100%)}
     .mp-auth-heading{font-family:'Cinzel',Georgia,serif;font-size:20px;font-weight:800;color:#e8dcc5;text-align:center;margin-bottom:4px}
     .mp-auth-actions{display:flex;justify-content:center;gap:12px;margin-top:20px}
-    .mp-auth-actions .menu-btn{width:auto;min-width:120px}
+    .mp-auth-actions .menu-btn{width:auto;min-width:140px}
+    .mp-auth-switch{text-align:center;margin-top:14px;color:#b8aa8d;font-size:13px}
+    .mp-link{background:none;border:none;color:#f0d878;font:inherit;font-weight:700;cursor:pointer;padding:0;text-decoration:underline}
+    .mp-link:hover{color:#fbe9a8}
     .mp-field{margin-top:14px}
     .mp-field>label{display:block;font-size:12px;color:#b8aa8d;margin-bottom:6px}
     .mp-advanced{margin-top:16px;border-top:1px solid var(--edge);padding-top:12px}
@@ -500,6 +503,19 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .mp-pcard-random{position:absolute;top:10px;right:10px}
     .mp-room-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:22px;flex-wrap:wrap}
     .mp-room-foot .grow{flex:1}
+    /* Host settings editor inside the lobby room */
+    .mp-settings{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;padding:14px 16px;margin-bottom:18px;background:rgba(0,0,0,.18);border:1px solid var(--edge);border-radius:12px}
+    .mp-settings .mp-opt.wide{grid-column:1/-1}
+    .mp-settings-readonly{display:flex;flex-wrap:wrap;gap:8px 18px;padding:12px 14px;margin-bottom:18px;background:rgba(0,0,0,.18);border:1px solid var(--edge);border-radius:12px;color:#b8aa8d;font-size:13px}
+    .mp-settings-readonly b{color:#e8dcc5}
+    .mp-roster-title{font-family:'Cinzel',Georgia,serif;font-size:13px;font-weight:700;color:#c9a227;text-transform:uppercase;letter-spacing:.08em;margin:4px 0 10px}
+    .mp-pcard-manage{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}
+    .mp-pcard-manage .cp-sel{width:88px}
+    .mp-kind{display:inline-flex;border:1px solid var(--edge);border-radius:8px;overflow:hidden}
+    .mp-kind-btn{font:inherit;font-size:12px;font-weight:700;color:#b8aa8d;background:#15120c;border:none;padding:6px 11px;cursor:pointer}
+    .mp-kind-btn.sel{background:linear-gradient(135deg,#c9a227,#a6821f);color:#15120c}
+    .mp-mini{padding:6px 10px;font-size:12px}
+    .mp-add-row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
     @media(max-width:820px){
       .mp-browse-grid{grid-template-columns:1fr}
       .mp-shell{padding:max(18px,env(safe-area-inset-top)) 18px 40px}
@@ -935,6 +951,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
   // Renders into #mp-screen (outside the sidebar layout) and walks three stages.
   function renderMultiplayer(): void {
     const screen = root.querySelector<HTMLDivElement>("#mp-screen")!;
+    // Which auth view is showing — login and signup are separate forms.
+    let authView: "login" | "signup" = "login";
 
     const authed = !!(mpSession && state.mp.userId);
     if (!authed) mpStage = "auth";
@@ -968,40 +986,36 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       </div>`;
     const whoChip = (): string => `<div class="mp-who">Signed in as <b>${escapeHtml(state.mp.handle || "Player")}</b></div>`;
 
-    // Keep human-slot and AI colors unique, sizing the human list to capacity.
-    const reconcileColors = (): void => {
-      const used = new Set<string>();
-      const humans: string[] = [];
-      for (let i = 0; i < state.mp.capacity; i++) {
-        let c = state.mp.humanColors[i];
-        if (!c || used.has(c)) c = firstFreeColor(used);
-        used.add(c);
-        humans.push(c);
-      }
-      state.mp.humanColors = humans;
-      for (const ai of state.mp.ais) {
-        if (!ai.color || used.has(ai.color)) ai.color = firstFreeColor(used);
-        used.add(ai.color);
-      }
-    };
-
-    // ===== Stage 1: authentication =====
+    // ===== Stage 1: authentication (login and signup are separate views) =====
     const renderAuth = (): void => {
+      const isSignup = authView === "signup";
+      const heading = isSignup ? "Create your account" : "Log in";
+      const blurb = isSignup
+        ? "Pick a handle and password to play online."
+        : "Welcome back, commander.";
+      const confirmField = isSignup
+        ? `<div class="mp-field"><label>Repeat password</label><input id="mp-pw2" class="menu-in" type="password" placeholder="Repeat password" autocomplete="new-password" /></div>`
+        : "";
+      const primary = isSignup
+        ? `<button class="menu-btn primary" id="mp-signup">Sign up</button>`
+        : `<button class="menu-btn primary" id="mp-login">Log in</button>`;
+      const switcher = isSignup
+        ? `Already have an account? <button class="mp-link" id="mp-go-login">Log in</button>`
+        : `Need an account? <button class="mp-link" id="mp-go-signup">Sign up</button>`;
       screen.innerHTML = `
         <div class="mp-shell">
           ${topbar("")}
           ${steps("auth")}
           <div class="mp-auth-wrap">
             <div class="mp-panel mp-auth-card">
-              <div class="mp-auth-heading">Play online</div>
-              <div class="menu-hint" style="text-align:center;margin-bottom:18px">Log in, or sign up to create a new account.</div>
+              <div class="mp-auth-heading">${heading}</div>
+              <div class="menu-hint" style="text-align:center;margin-bottom:18px">${blurb}</div>
               <div class="mp-field"><label>Handle</label><input id="mp-handle" class="menu-in" value="${escapeHtml(state.mp.handle)}" placeholder="Your name" autocomplete="username" /></div>
-              <div class="mp-field"><label>Password</label><input id="mp-pw" class="menu-in" type="password" value="${escapeHtml(state.mp.password)}" placeholder="Password" autocomplete="current-password" /></div>
-              <div class="mp-auth-actions">
-                <button class="menu-btn primary" id="mp-login">Log in</button>
-                <button class="menu-btn secondary" id="mp-signup">Sign up</button>
-              </div>
+              <div class="mp-field"><label>Password</label><input id="mp-pw" class="menu-in" type="password" value="${escapeHtml(state.mp.password)}" placeholder="Password" autocomplete="${isSignup ? "new-password" : "current-password"}" /></div>
+              ${confirmField}
+              <div class="mp-auth-actions">${primary}</div>
               <div id="mp-status" class="menu-status" style="text-align:center"></div>
+              <div class="mp-auth-switch">${switcher}</div>
               <details class="mp-advanced">
                 <summary>Advanced — server address</summary>
                 <div class="mp-field" style="margin-top:10px"><input id="mp-url" class="menu-in" value="${escapeHtml(state.mp.url)}" placeholder="ws://host:port/ws" /></div>
@@ -1016,79 +1030,34 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       handleEl.addEventListener("input", () => (state.mp.handle = handleEl.value));
       pwEl.addEventListener("input", () => (state.mp.password = pwEl.value));
       urlEl.addEventListener("change", () => (state.mp.url = urlEl.value));
-      screen.querySelector<HTMLButtonElement>("#mp-login")!.addEventListener("click", () => void connectAndAuth("login"));
-      screen.querySelector<HTMLButtonElement>("#mp-signup")!.addEventListener("click", () => void connectAndAuth("register"));
-      // Enter logs in by default — the most common case for a returning player.
-      pwEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") void connectAndAuth("login");
+
+      const switchTo = (v: "login" | "signup"): void => {
+        authView = v;
+        renderAuth();
+      };
+      screen.querySelector<HTMLButtonElement>("#mp-go-signup")?.addEventListener("click", () => switchTo("signup"));
+      screen.querySelector<HTMLButtonElement>("#mp-go-login")?.addEventListener("click", () => switchTo("login"));
+
+      const submit = (): void => {
+        if (isSignup) {
+          const pw2 = screen.querySelector<HTMLInputElement>("#mp-pw2")!.value;
+          if (state.mp.password !== pw2) return setStatus("Passwords don't match.");
+          void connectAndAuth("register");
+        } else {
+          void connectAndAuth("login");
+        }
+      };
+      screen.querySelector<HTMLButtonElement>(isSignup ? "#mp-signup" : "#mp-login")!.addEventListener("click", submit);
+      // Enter on the last field submits the current form.
+      screen.querySelector<HTMLInputElement>(isSignup ? "#mp-pw2" : "#mp-pw")!.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") submit();
       });
     };
 
     // ===== Stage 2: browse + create =====
-    const renderCreateRoster = (): void => {
-      reconcileColors();
-      const host = screen.querySelector<HTMLDivElement>("#mp-roster");
-      if (!host) return;
-      const used = new Set<string>([...state.mp.humanColors, ...state.mp.ais.map((a) => a.color)]);
-      const humans = state.mp.humanColors
-        .map(
-          (color, i) => `
-        <div class="roster-row" data-row="human-${i}">
-          <div class="roster-head">
-            <span class="roster-tag you">Player ${i + 1}</span>
-            <span class="roster-note">${i === 0 ? "Host" : "Open slot"} · picks civ in lobby</span>
-            ${colorSelect(color, used)}
-          </div>
-        </div>`,
-        )
-        .join("");
-      const takenCivs = new Set<string>(state.mp.ais.map((a) => a.civId).filter((c) => c !== RANDOM_CIV));
-      const ais = state.mp.ais
-        .map(
-          (ai, i) => `
-        <div class="roster-row" data-row="ai-${i}">
-          <div class="roster-head">
-            <span class="roster-tag">AI ${i + 1}</span>
-            <select class="menu-in roster-civ" data-civ="${i}">${civOptions(ai.civId, true, takenCivs)}</select>
-            ${colorSelect(ai.color, used)}
-            <button type="button" class="roster-remove" data-remove="${i}" title="Remove opponent">✕</button>
-          </div>
-        </div>`,
-        )
-        .join("");
-      const add =
-        state.mp.ais.length < MAX_AI
-          ? `<button type="button" class="menu-btn roster-add" id="mp-add-ai">+ Add AI opponent</button>`
-          : `<div class="menu-hint">Maximum of ${MAX_AI} AI opponents reached.</div>`;
-      host.innerHTML = humans + ais + add;
-
-      host.querySelectorAll<HTMLSelectElement>(".roster-civ").forEach((sel) =>
-        sel.addEventListener("change", () => {
-          state.mp.ais[Number(sel.dataset.civ)]!.civId = sel.value;
-          renderCreateRoster();
-        }),
-      );
-      host.querySelectorAll<HTMLSelectElement>(".cp-sel").forEach((sel) =>
-        sel.addEventListener("change", () => {
-          const rowKey = (sel.closest("[data-row]") as HTMLElement).dataset.row!;
-          if (rowKey.startsWith("human-")) state.mp.humanColors[Number(rowKey.slice(6))] = sel.value;
-          else state.mp.ais[Number(rowKey.slice(3))]!.color = sel.value;
-          renderCreateRoster();
-        }),
-      );
-      host.querySelectorAll<HTMLButtonElement>("[data-remove]").forEach((btn) =>
-        btn.addEventListener("click", () => {
-          state.mp.ais.splice(Number(btn.dataset.remove), 1);
-          renderCreateRoster();
-        }),
-      );
-      host.querySelector<HTMLButtonElement>("#mp-add-ai")?.addEventListener("click", () => {
-        const used2 = new Set<string>([...state.mp.humanColors, ...state.mp.ais.map((a) => a.color)]);
-        state.mp.ais.push({ civId: RANDOM_CIV, color: firstFreeColor(used2) });
-        renderCreateRoster();
-      });
-    };
-
+    // ===== Stage 2: find / create a game =====
+    // Game options now live on the host's lobby card — creating a game drops you
+    // straight into the lobby, where the host configures the map, players, etc.
     const renderGames = (): void => {
       const list = screen.querySelector<HTMLDivElement>("#mp-game-list");
       if (!list) return;
@@ -1098,13 +1067,21 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           : mpGames
               .map((g) => {
                 const isHost = g.hostUserId === state.mp.userId;
-                let buttons = `<button class="menu-btn" data-join="${g.id}" style="width:auto">Join</button>`;
+                const meta = `${g.players}/${g.capacity} players · ${g.status}${g.hasPassword ? " · private" : ""}`;
+                const pwField = g.hasPassword
+                  ? `<input type="password" class="menu-in mp-join-pw" data-pw="${g.id}" placeholder="Password" style="width:118px" />`
+                  : "";
+                let buttons = `${pwField}<button class="menu-btn" data-join="${g.id}" style="width:auto">Join</button>`;
                 if (isHost) buttons += ` <button class="menu-btn secondary" data-delete="${g.id}" style="width:auto">Delete</button>`;
-                return `<div class="save-row"><span class="info"><span class="name">${escapeHtml(g.name)}</span><span class="meta">${g.players}/${g.capacity} players · ${g.status}</span></span><span style="display:flex;gap:6px">${buttons}</span></div>`;
+                return `<div class="save-row"><span class="info"><span class="name">${escapeHtml(g.name)}</span><span class="meta">${meta}</span></span><span style="display:flex;gap:6px;align-items:center">${buttons}</span></div>`;
               })
               .join("");
       list.querySelectorAll<HTMLButtonElement>("[data-join]").forEach((el) =>
-        el.addEventListener("click", () => mpSession?.send({ t: "joinGame", gameId: el.dataset.join! })),
+        el.addEventListener("click", () => {
+          const id = el.dataset.join!;
+          const pw = list.querySelector<HTMLInputElement>(`.mp-join-pw[data-pw="${id}"]`)?.value;
+          mpSession?.send({ t: "joinGame", gameId: id, password: pw || undefined });
+        }),
       );
       list.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((el) =>
         el.addEventListener("click", () => {
@@ -1116,33 +1093,29 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     };
 
     const doCreate = (): void => {
-      const mpMapSize = (screen.querySelector<HTMLSelectElement>("#mp-map")!.value as MapSize) ?? "medium";
-      const dims = MAP_DIMENSIONS[mpMapSize];
-      const mpBarb = screen.querySelector<HTMLSelectElement>("#mp-barb")!.value as BarbLevel;
-      const mpWonders = screen.querySelector<HTMLSelectElement>("#mp-wonders")!.value === "on";
-      const mpAiCivIds = state.mp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId));
-      reconcileColors();
-      // Remember the host's setup so it can ride along with analytics on start.
+      const nameEl = screen.querySelector<HTMLInputElement>("#mp-name");
+      const name = (nameEl?.value.trim() || `${state.mp.handle || "Player"}'s game`).slice(0, 60);
+      const dims = MAP_DIMENSIONS["medium"];
+      // Sensible defaults; the host tweaks everything in the lobby afterward.
       mpSetup = {
-        mapType: state.mp.mapType,
-        mapSize: mpMapSize,
-        startingGold: state.mp.startingGold,
-        naturalWonders: mpWonders,
-        barbarianLevel: mpBarb,
-        aiCivIds: mpAiCivIds,
+        mapType: "continents",
+        mapSize: "medium",
+        startingGold: "balanced",
+        naturalWonders: false,
+        barbarianLevel: "normal",
+        aiCivIds: [],
       };
       mpSession?.send({
         t: "createGame",
-        name: `${state.mp.handle || "Player"}'s game`,
+        name,
         cols: dims.cols,
         rows: dims.rows,
-        mapType: state.mp.mapType,
-        capacity: state.mp.capacity,
-        aiCivIds: mpAiCivIds,
-        colors: [...state.mp.humanColors, ...state.mp.ais.map((a) => a.color)],
-        barbarians: mpBarb,
-        naturalWonders: mpWonders,
-        startingGold: state.mp.startingGold,
+        mapSize: "medium",
+        mapType: "continents",
+        capacity: 2,
+        barbarians: "normal",
+        naturalWonders: false,
+        startingGold: "balanced",
       });
     };
 
@@ -1153,63 +1126,33 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           ${steps("browse")}
           <div class="mp-browse-grid">
             <div class="mp-panel">
-              <div class="mp-panel-title">⚙️ Create a game</div>
-              <div class="mp-opt-grid">
-                <div class="mp-opt"><span>Map type</span>${mapTypeSelect("mp-maptype", state.mp.mapType)}</div>
-                <div class="mp-opt"><span>Map size</span>${mapSelect("mp-map", "medium")}</div>
-                <div class="mp-opt"><span>Human players</span>${capacitySelect("mp-capacity", state.mp.capacity)}</div>
-                <div class="mp-opt"><span>Barbarians</span>${barbarianSelect("mp-barb", "normal")}</div>
-                <div class="mp-opt"><span>Natural wonders</span>${onOffSelect("mp-wonders", state.mp.naturalWonders)}</div>
-                <div class="mp-opt"><span>Starting treasury</span>${goldChips("mp-gold", state.mp.startingGold)}</div>
-                <div class="mp-opt wide"><span class="menu-hint" id="mp-maptype-desc" style="margin:0"></span></div>
-              </div>
-              <div class="mp-panel-title" style="margin-top:22px">🛡️ Players & AI opponents</div>
-              <div class="menu-hint" style="margin-bottom:10px">Pick each slot's color here — players choose their own civilization once they're in the lobby. AI civs are set below.</div>
-              <div id="mp-roster"></div>
-              <div class="mp-create-foot"><button class="menu-btn primary" id="mp-create" style="width:auto">Create game →</button></div>
+              <div class="mp-panel-title">Create a game</div>
+              <div class="menu-hint" style="margin-bottom:14px">Name your game, then set the map, players and an optional password in the lobby.</div>
+              <div class="mp-field"><label>Game name</label><input id="mp-name" class="menu-in" placeholder="${escapeHtml((state.mp.handle || "Player") + "'s game")}" /></div>
+              <div class="mp-create-foot"><button class="menu-btn primary" id="mp-create" style="width:auto">Create game</button></div>
             </div>
             <div class="mp-panel">
-              <div class="mp-panel-title">🌐 Open games <button class="menu-btn secondary" id="mp-refresh" style="margin-left:auto;width:auto;padding:6px 12px;font-size:12px">Refresh</button></div>
+              <div class="mp-panel-title">Open games <button class="menu-btn secondary" id="mp-refresh" style="margin-left:auto;width:auto;padding:6px 12px;font-size:12px">Refresh</button></div>
               <div id="mp-game-list"></div>
               <div id="mp-status" class="menu-status"></div>
             </div>
           </div>
         </div>`;
       screen.querySelector<HTMLButtonElement>("#mp-back")!.addEventListener("click", () => showScreen("start"));
-
-      const capSel = screen.querySelector<HTMLSelectElement>("#mp-capacity")!;
-      capSel.addEventListener("change", () => {
-        state.mp.capacity = Math.max(1, Math.min(12, Number(capSel.value)));
-        renderCreateRoster();
-      });
-
-      const mapTypeSel = screen.querySelector<HTMLSelectElement>("#mp-maptype")!;
-      const updateMapTypeDesc = (): void => {
-        const d = screen.querySelector<HTMLElement>("#mp-maptype-desc");
-        if (d) d.textContent = MAP_TYPE_OPTIONS.find((o) => o.value === state.mp.mapType)?.desc ?? "";
-      };
-      mapTypeSel.addEventListener("change", () => {
-        state.mp.mapType = mapTypeSel.value as MapType;
-        updateMapTypeDesc();
-      });
-      updateMapTypeDesc();
-
-      screen.querySelectorAll<HTMLButtonElement>("#mp-gold .chip").forEach((chip) =>
-        chip.addEventListener("click", () => {
-          state.mp.startingGold = chip.dataset.gold as StartingGold;
-          screen.querySelectorAll("#mp-gold .chip").forEach((c) => c.classList.toggle("sel", c === chip));
-        }),
-      );
-
       screen.querySelector<HTMLButtonElement>("#mp-refresh")!.addEventListener("click", () => mpSession?.send({ t: "listGames" }));
       screen.querySelector<HTMLButtonElement>("#mp-create")!.addEventListener("click", doCreate);
-
-      renderCreateRoster();
+      screen.querySelector<HTMLInputElement>("#mp-name")!.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") doCreate();
+      });
       renderGames();
       mpSession?.send({ t: "listGames" });
     };
 
     // ===== Stage 3: lobby room =====
+    const configure = (patch: Record<string, unknown>): void => {
+      if (mpRoom) mpSession?.send({ t: "configureGame", gameId: mpRoom.gameId, ...patch });
+    };
+
     const renderRoomBody = (): void => {
       const body = screen.querySelector<HTMLDivElement>("#mp-room-body");
       if (!body) return;
@@ -1218,84 +1161,214 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         body.innerHTML = `<div class="mp-empty">Loading lobby…</div>`;
         return;
       }
-      const filled = room.slots.filter((s) => s.userId).length;
-      const titleEl = screen.querySelector<HTMLElement>("#mp-room-title");
-      if (titleEl) titleEl.innerHTML = `${escapeHtml(room.name)} <span class="count">${filled}/${room.capacity} players</span>`;
-
       const meHost = room.hostUserId === state.mp.userId;
       const mySlot = room.slots.find((s) => s.userId === state.mp.userId);
-      const takenAll = new Set<string>([
-        ...room.slots.map((s) => s.civId).filter((c): c is string => !!c),
-        ...room.aiCivIds.filter((c): c is string => !!c),
-      ]);
-      const swatch = (idx: number): string => room.colors?.[idx] ?? PLAYER_COLORS[idx % PLAYER_COLORS.length]!;
+      const humanSlots = room.slots.filter((s) => s.kind === "human");
+      const filled = humanSlots.filter((s) => s.userId).length;
+      const titleEl = screen.querySelector<HTMLElement>("#mp-room-title");
+      if (titleEl)
+        titleEl.innerHTML = `${escapeHtml(room.name)} <span class="count">${filled}/${humanSlots.length} players${room.hasPassword ? " · private" : ""}</span>`;
 
-      const humanCards = room.slots
-        .map((s) => {
-          const mine = s.userId === state.mp.userId;
-          const civ = s.civId ? CIVILIZATIONS.find((c) => c.id === s.civId) : undefined;
-          const occupied = !!s.userId;
-          const who = occupied ? escapeHtml(s.handle ?? "Player") : "Open slot";
-          const tag = mine ? "You" : s.slot === 0 ? "Host" : "Player";
-          const civCell = mine
-            ? `<div class="mp-pcard-pick">
-                 <button type="button" class="menu-in civ-pick-btn" data-room-pick>
-                   <span class="cpb-text">
-                     <span class="cpb-name">${civ ? escapeHtml(civ.name) : "Random civilization"}</span>
-                     <span class="cpb-leader">${civ ? escapeHtml(civ.leader) : "Tap to choose"}</span>
-                   </span>
-                   <span class="cpb-caret">&rsaquo;</span>
-                 </button>
-                 ${civ ? `<button type="button" class="roster-remove" data-room-random title="Use a random civ">🎲</button>` : ""}
+      // Concrete civs / colors already claimed, for disabling in pickers.
+      const takenCivs = new Set<string>(room.slots.map((s) => s.civId).filter((c): c is string => !!c));
+      const usedColors = new Set<string>(room.slots.map((s) => s.color).filter((c): c is string => !!c));
+
+      // Host-only game settings editor.
+      const settings = meHost
+        ? `
+          <div class="mp-settings">
+            <div class="mp-opt"><span>Game name</span><input id="rm-name" class="menu-in" value="${escapeHtml(room.name)}" maxlength="60" /></div>
+            <div class="mp-opt"><span>Password (optional)</span><input id="rm-pw" class="menu-in" type="text" placeholder="${room.hasPassword ? "Password set — type to change" : "No password"}" /></div>
+            <div class="mp-opt"><span>Map type</span>${mapTypeSelect("rm-maptype", room.mapType)}</div>
+            <div class="mp-opt"><span>Map size</span>${mapSelect("rm-map", (room.mapSize as MapSize) || "medium")}</div>
+            <div class="mp-opt"><span>Barbarians</span>${barbarianSelect("rm-barb", room.barbarians)}</div>
+            <div class="mp-opt"><span>Natural wonders</span>${onOffSelect("rm-wonders", room.naturalWonders)}</div>
+            <div class="mp-opt"><span>Starting treasury</span>${goldChips("rm-gold", room.startingGold)}</div>
+          </div>`
+        : `
+          <div class="mp-settings-readonly">
+            <span><b>Map:</b> ${escapeHtml(MAP_TYPE_OPTIONS.find((o) => o.value === room.mapType)?.label ?? room.mapType)} · ${escapeHtml(room.mapSize || "medium")}</span>
+            <span><b>Barbarians:</b> ${escapeHtml(room.barbarians)}</span>
+            <span><b>Natural wonders:</b> ${room.naturalWonders ? "On" : "Off"}</span>
+            <span><b>Treasury:</b> ${escapeHtml(room.startingGold)}</span>
+          </div>`;
+
+      const slotCard = (s: typeof room.slots[number]): string => {
+        const mine = s.userId === state.mp.userId;
+        const isHostSeat = s.userId === room.hostUserId;
+        const civ = s.civId ? CIVILIZATIONS.find((c) => c.id === s.civId) : undefined;
+        const occupied = !!s.userId;
+        const swatch = s.color ?? "#9aa0a6";
+        const who =
+          s.kind === "ai" ? "AI opponent" : occupied ? escapeHtml(s.handle ?? "Player") : "Open seat";
+        const tag = mine ? "You" : s.kind === "ai" ? "AI" : isHostSeat ? "Host" : occupied ? "Player" : "Open";
+        const tagCls = s.kind === "ai" ? " ai" : occupied ? "" : " open";
+
+        // Civ line: the seat owner (or host for AI) can choose; everyone else sees it.
+        const canPickCiv = mine || (meHost && s.kind === "ai");
+        let civLine: string;
+        if (canPickCiv) {
+          civLine = `<div class="mp-pcard-pick">
+              <button type="button" class="menu-in civ-pick-btn" data-pick-slot="${s.id}">
+                <span class="cpb-text">
+                  <span class="cpb-name">${civ ? escapeHtml(civ.name) : "Random civilization"}</span>
+                  <span class="cpb-leader">${civ ? escapeHtml(civ.leader) : "Tap to choose"}</span>
+                </span>
+                <span class="cpb-caret">&rsaquo;</span>
+              </button>
+              ${civ ? `<button type="button" class="roster-remove" data-random-slot="${s.id}" title="Use a random civ">↺</button>` : ""}
+            </div>`;
+        } else {
+          civLine = `<div class="mp-pcard-civ">${civ ? `<b>${escapeHtml(civ.name)}</b> · ${escapeHtml(civ.leader)}` : "Random civilization"}</div>`;
+        }
+
+        // Host controls: kind toggle, color, kick / remove.
+        const kindToggle =
+          meHost && !isHostSeat
+            ? `<div class="mp-kind" data-slot="${s.id}">
+                 <button type="button" class="mp-kind-btn${s.kind === "human" ? " sel" : ""}" data-kind="human">Human</button>
+                 <button type="button" class="mp-kind-btn${s.kind === "ai" ? " sel" : ""}" data-kind="ai">AI</button>
                </div>`
-            : `<div class="mp-pcard-civ">${civ ? `<b>${escapeHtml(civ.name)}</b> · ${escapeHtml(civ.leader)}` : "🎲 Random civilization"}</div>`;
-          return `
-            <div class="mp-pcard${mine ? " mine" : ""}${occupied ? "" : " empty"}">
-              <div class="mp-pcard-head">
-                <span class="mp-swatch" style="background:${swatch(s.playerId)}"></span>
-                <span class="mp-pcard-who">${who}</span>
-                <span class="mp-pcard-tag${occupied ? "" : " open"}">${tag}</span>
-              </div>
-              ${civCell}
-            </div>`;
-        })
-        .join("");
+            : "";
+        const colorCtl = meHost
+          ? colorSelect(swatch, new Set([...usedColors].filter((c) => c !== s.color)))
+          : "";
+        const manage =
+          meHost && !isHostSeat
+            ? `<div class="mp-pcard-manage">
+                 ${kindToggle}
+                 ${colorCtl}
+                 ${occupied && s.kind === "human" ? `<button type="button" class="menu-btn secondary mp-mini" data-kick="${s.id}">Kick</button>` : ""}
+                 <button type="button" class="roster-remove" data-remove-slot="${s.id}" title="Remove this slot">×</button>
+               </div>`
+            : meHost && isHostSeat
+              ? `<div class="mp-pcard-manage">${colorCtl}</div>`
+              : "";
 
-      const aiCards = room.aiCivIds
-        .map((cid, i) => {
-          const civ = cid ? CIVILIZATIONS.find((c) => c.id === cid) : undefined;
-          return `
-            <div class="mp-pcard">
-              <div class="mp-pcard-head">
-                <span class="mp-swatch" style="background:${swatch(room.capacity + i)}"></span>
-                <span class="mp-pcard-who">AI ${i + 1}</span>
-                <span class="mp-pcard-tag ai">AI</span>
-              </div>
-              <div class="mp-pcard-civ">${civ ? `<b>${escapeHtml(civ.name)}</b> · ${escapeHtml(civ.leader)}` : "🎲 Random civilization"}</div>
-            </div>`;
-        })
-        .join("");
+        return `
+          <div class="mp-pcard${mine ? " mine" : ""}${occupied || s.kind === "ai" ? "" : " empty"}">
+            <div class="mp-pcard-head">
+              <span class="mp-swatch" style="background:${swatch}"></span>
+              <span class="mp-pcard-who">${who}</span>
+              <span class="mp-pcard-tag${tagCls}">${tag}</span>
+            </div>
+            ${civLine}
+            ${manage}
+          </div>`;
+      };
+
+      const cards = room.slots.map(slotCard).join("");
+      const addRow = meHost
+        ? `<div class="mp-add-row">
+             <button type="button" class="menu-btn secondary" id="mp-add-human" style="width:auto">+ Add human seat</button>
+             <button type="button" class="menu-btn secondary" id="mp-add-ai" style="width:auto">+ Add AI</button>
+           </div>`
+        : "";
 
       const foot = meHost
         ? `<button class="menu-btn secondary" id="mp-room-delete" style="width:auto">Delete game</button><span class="grow"></span><button class="menu-btn primary" id="mp-room-start" style="width:auto">Start game</button>`
-        : `<button class="menu-btn secondary" id="mp-room-leave" style="width:auto">← Back to games</button><span class="grow"></span><span class="menu-hint" style="margin:0">Waiting for the host to start…</span>`;
+        : `<button class="menu-btn secondary" id="mp-room-leave" style="width:auto">Back to games</button><span class="grow"></span><span class="menu-hint" style="margin:0">Waiting for the host to start…</span>`;
 
       body.innerHTML = `
-        <div class="mp-player-grid">${humanCards}${aiCards}</div>
+        ${settings}
+        <div class="mp-roster-title">Players</div>
+        <div class="mp-player-grid">${cards}</div>
+        ${addRow}
         <div class="mp-room-foot">${foot}</div>`;
 
-      body.querySelector<HTMLButtonElement>("[data-room-pick]")?.addEventListener("click", () => {
-        const takenByOthers = new Set(takenAll);
-        if (mySlot?.civId) takenByOthers.delete(mySlot.civId);
-        const initial =
-          mySlot?.civId && CIVILIZATIONS.some((c) => c.id === mySlot.civId)
-            ? mySlot.civId
-            : (CIVS_BY_NAME.find((c) => !takenByOthers.has(c.id)) ?? CIVS_BY_NAME[0]!).id;
-        openCivPicker(initial, takenByOthers, (civId) => mpSession?.send({ t: "pickCiv", gameId: room.gameId, civId }));
-      });
-      body.querySelector<HTMLButtonElement>("[data-room-random]")?.addEventListener("click", () =>
-        mpSession?.send({ t: "pickCiv", gameId: room.gameId, civId: null }),
+      // --- wire host settings ---
+      if (meHost) {
+        body.querySelector<HTMLInputElement>("#rm-name")?.addEventListener("change", (e) =>
+          configure({ name: (e.target as HTMLInputElement).value }),
+        );
+        body.querySelector<HTMLInputElement>("#rm-pw")?.addEventListener("change", (e) =>
+          configure({ password: (e.target as HTMLInputElement).value }),
+        );
+        body.querySelector<HTMLSelectElement>("#rm-maptype")?.addEventListener("change", (e) =>
+          configure({ mapType: (e.target as HTMLSelectElement).value }),
+        );
+        body.querySelector<HTMLSelectElement>("#rm-map")?.addEventListener("change", (e) => {
+          const size = (e.target as HTMLSelectElement).value as MapSize;
+          const dims = MAP_DIMENSIONS[size];
+          configure({ mapSize: size, cols: dims.cols, rows: dims.rows });
+        });
+        body.querySelector<HTMLSelectElement>("#rm-barb")?.addEventListener("change", (e) =>
+          configure({ barbarians: (e.target as HTMLSelectElement).value }),
+        );
+        body.querySelector<HTMLSelectElement>("#rm-wonders")?.addEventListener("change", (e) =>
+          configure({ naturalWonders: (e.target as HTMLSelectElement).value === "on" }),
+        );
+        body.querySelectorAll<HTMLButtonElement>("#rm-gold .chip").forEach((chip) =>
+          chip.addEventListener("click", () => configure({ startingGold: chip.dataset.gold })),
+        );
+        body.querySelector<HTMLButtonElement>("#mp-add-human")?.addEventListener("click", () =>
+          mpSession?.send({ t: "addSlot", gameId: room.gameId, kind: "human" }),
+        );
+        body.querySelector<HTMLButtonElement>("#mp-add-ai")?.addEventListener("click", () =>
+          mpSession?.send({ t: "addSlot", gameId: room.gameId, kind: "ai" }),
+        );
+        body.querySelectorAll<HTMLButtonElement>(".mp-kind-btn").forEach((btn) =>
+          btn.addEventListener("click", () => {
+            const slotId = Number((btn.closest(".mp-kind") as HTMLElement).dataset.slot);
+            mpSession?.send({ t: "updateSlot", gameId: room.gameId, slotId, kind: btn.dataset.kind as "human" | "ai" });
+          }),
+        );
+        body.querySelectorAll<HTMLButtonElement>("[data-kick]").forEach((btn) =>
+          btn.addEventListener("click", () =>
+            mpSession?.send({ t: "kickSlot", gameId: room.gameId, slotId: Number(btn.dataset.kick) }),
+          ),
+        );
+        body.querySelectorAll<HTMLButtonElement>("[data-remove-slot]").forEach((btn) =>
+          btn.addEventListener("click", () =>
+            mpSession?.send({ t: "removeSlot", gameId: room.gameId, slotId: Number(btn.dataset.removeSlot) }),
+          ),
+        );
+      }
+
+      // --- color selects (host) — bound to their card's slot ---
+      if (meHost) {
+        body.querySelectorAll<HTMLElement>(".mp-pcard").forEach((card) => {
+          const sel = card.querySelector<HTMLSelectElement>(".cp-sel");
+          if (!sel) return;
+          const idAttr =
+            card.querySelector<HTMLElement>("[data-pick-slot]")?.getAttribute("data-pick-slot") ??
+            card.querySelector<HTMLElement>("[data-remove-slot]")?.getAttribute("data-remove-slot") ??
+            card.querySelector<HTMLElement>(".mp-kind")?.getAttribute("data-slot");
+          if (idAttr == null) return;
+          sel.addEventListener("change", () =>
+            mpSession?.send({ t: "updateSlot", gameId: room.gameId, slotId: Number(idAttr), color: sel.value }),
+          );
+        });
+      }
+
+      // --- civ pickers (own seat, or host picking an AI civ) ---
+      body.querySelectorAll<HTMLButtonElement>("[data-pick-slot]").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const slotId = Number(btn.dataset.pickSlot);
+          const slot = room.slots.find((s) => s.id === slotId);
+          if (!slot) return;
+          const takenByOthers = new Set(takenCivs);
+          if (slot.civId) takenByOthers.delete(slot.civId);
+          const initial =
+            slot.civId && CIVILIZATIONS.some((c) => c.id === slot.civId)
+              ? slot.civId
+              : (CIVS_BY_NAME.find((c) => !takenByOthers.has(c.id)) ?? CIVS_BY_NAME[0]!).id;
+          openCivPicker(initial, takenByOthers, (civId) => {
+            if (slot.userId === state.mp.userId) mpSession?.send({ t: "pickCiv", gameId: room.gameId, civId });
+            else mpSession?.send({ t: "updateSlot", gameId: room.gameId, slotId, civId });
+          });
+        }),
       );
+      body.querySelectorAll<HTMLButtonElement>("[data-random-slot]").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          const slotId = Number(btn.dataset.randomSlot);
+          const slot = room.slots.find((s) => s.id === slotId);
+          if (slot?.userId === state.mp.userId) mpSession?.send({ t: "pickCiv", gameId: room.gameId, civId: null });
+          else mpSession?.send({ t: "updateSlot", gameId: room.gameId, slotId, civId: null });
+        }),
+      );
+
+      // --- footer ---
       body.querySelector<HTMLButtonElement>("#mp-room-start")?.addEventListener("click", () =>
         mpSession?.send({ t: "startGame", gameId: room.gameId }),
       );
@@ -1314,7 +1387,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           ${steps("room")}
           <div class="mp-panel">
             <div class="mp-panel-title" id="mp-room-title">Lobby</div>
-            <div class="menu-hint" style="margin-bottom:16px">Choose your civilization below. Civs already taken by another player or an AI are disabled.</div>
+            <div class="menu-hint" style="margin-bottom:16px">Set up the game, then choose your civilization. Civs already taken are disabled.</div>
             <div id="mp-room-body"></div>
             <div id="mp-status" class="menu-status"></div>
           </div>
@@ -1360,6 +1433,14 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           mpRoom = null;
           goStage("browse");
           setStatus("Game deleted by host.");
+        }
+        mpSession!.send({ t: "listGames" });
+      } else if (m.t === "kicked") {
+        if (joinedGameId === m.gameId) {
+          joinedGameId = null;
+          mpRoom = null;
+          goStage("browse");
+          setStatus("The host removed you from the game.");
         }
         mpSession!.send({ t: "listGames" });
       } else if (m.t === "started") {

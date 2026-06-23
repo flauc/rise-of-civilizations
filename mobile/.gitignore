@@ -1,0 +1,23 @@
+# Capacitor / mobile build artifacts
+node_modules/
+www/
+
+# Android
+android/local.properties
+android/.gradle/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/.idea/
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+# iOS
+ios/App/Pods/
+ios/App/build/
+ios/App/output/
+ios/App/App/public/
+ios/DerivedData/
+*.xcuserstate
