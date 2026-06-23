@@ -465,9 +465,9 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     /* Auth */
     .mp-auth-wrap{display:flex;justify-content:center;padding-top:10px}
     .mp-auth-card{width:min(440px,100%)}
-    .mp-tabs{display:flex;gap:6px;background:#15120c;border:1px solid var(--edge);border-radius:999px;padding:4px;margin-bottom:20px}
-    .mp-tab{flex:1;padding:10px 12px;border:none;border-radius:999px;background:transparent;color:#b8aa8d;font:inherit;font-weight:700;cursor:pointer;transition:background .12s,color .12s}
-    .mp-tab.sel{background:linear-gradient(135deg,#c9a227,#a6821f);color:#15120c}
+    .mp-auth-heading{font-family:'Cinzel',Georgia,serif;font-size:20px;font-weight:800;color:#e8dcc5;text-align:center;margin-bottom:4px}
+    .mp-auth-actions{display:flex;justify-content:center;gap:12px;margin-top:20px}
+    .mp-auth-actions .menu-btn{width:auto;min-width:120px}
     .mp-field{margin-top:14px}
     .mp-field>label{display:block;font-size:12px;color:#b8aa8d;margin-bottom:6px}
     .mp-advanced{margin-top:16px;border-top:1px solid var(--edge);padding-top:12px}
@@ -935,7 +935,6 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
   // Renders into #mp-screen (outside the sidebar layout) and walks three stages.
   function renderMultiplayer(): void {
     const screen = root.querySelector<HTMLDivElement>("#mp-screen")!;
-    let authMode: "login" | "register" = "login";
 
     const authed = !!(mpSession && state.mp.userId);
     if (!authed) mpStage = "auth";
@@ -994,14 +993,15 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           ${steps("auth")}
           <div class="mp-auth-wrap">
             <div class="mp-panel mp-auth-card">
-              <div class="mp-tabs">
-                <button class="mp-tab${authMode === "login" ? " sel" : ""}" data-mode="login">Log in</button>
-                <button class="mp-tab${authMode === "register" ? " sel" : ""}" data-mode="register">Create account</button>
-              </div>
+              <div class="mp-auth-heading">Play online</div>
+              <div class="menu-hint" style="text-align:center;margin-bottom:18px">Log in, or sign up to create a new account.</div>
               <div class="mp-field"><label>Handle</label><input id="mp-handle" class="menu-in" value="${escapeHtml(state.mp.handle)}" placeholder="Your name" autocomplete="username" /></div>
               <div class="mp-field"><label>Password</label><input id="mp-pw" class="menu-in" type="password" value="${escapeHtml(state.mp.password)}" placeholder="Password" autocomplete="current-password" /></div>
-              <button class="menu-btn primary" id="mp-auth-go" style="margin-top:18px">${authMode === "login" ? "Log in" : "Create account & continue"}</button>
-              <div id="mp-status" class="menu-status"></div>
+              <div class="mp-auth-actions">
+                <button class="menu-btn primary" id="mp-login">Log in</button>
+                <button class="menu-btn secondary" id="mp-signup">Sign up</button>
+              </div>
+              <div id="mp-status" class="menu-status" style="text-align:center"></div>
               <details class="mp-advanced">
                 <summary>Advanced — server address</summary>
                 <div class="mp-field" style="margin-top:10px"><input id="mp-url" class="menu-in" value="${escapeHtml(state.mp.url)}" placeholder="ws://host:port/ws" /></div>
@@ -1016,16 +1016,11 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       handleEl.addEventListener("input", () => (state.mp.handle = handleEl.value));
       pwEl.addEventListener("input", () => (state.mp.password = pwEl.value));
       urlEl.addEventListener("change", () => (state.mp.url = urlEl.value));
-      screen.querySelectorAll<HTMLButtonElement>(".mp-tab").forEach((t) =>
-        t.addEventListener("click", () => {
-          authMode = t.dataset.mode as "login" | "register";
-          renderAuth();
-        }),
-      );
-      const go = (): void => void connectAndAuth(authMode);
-      screen.querySelector<HTMLButtonElement>("#mp-auth-go")!.addEventListener("click", go);
+      screen.querySelector<HTMLButtonElement>("#mp-login")!.addEventListener("click", () => void connectAndAuth("login"));
+      screen.querySelector<HTMLButtonElement>("#mp-signup")!.addEventListener("click", () => void connectAndAuth("register"));
+      // Enter logs in by default — the most common case for a returning player.
       pwEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") go();
+        if (e.key === "Enter") void connectAndAuth("login");
       });
     };
 
@@ -1338,7 +1333,14 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     // Latest-closure socket dispatch (the .on handler is attached once per session).
     mpDispatch = (m: ServerMessage): void => {
       if (m.t === "error") {
-        setStatus(m.message);
+        // Make the common auth failures actionable rather than cryptic.
+        const friendly =
+          m.message === "handle taken"
+            ? "That handle is already registered — try logging in instead."
+            : m.message === "invalid credentials"
+              ? "Wrong handle or password. New here? Sign up instead."
+              : m.message;
+        setStatus(friendly);
       } else if (m.t === "authOk") {
         state.mp.userId = m.userId;
         goStage("browse");
