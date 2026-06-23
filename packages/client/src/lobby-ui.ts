@@ -10,6 +10,7 @@ import {
   CIVILIZATIONS,
   PLAYER_COLORS,
   type GameSummary,
+  type LobbyRoom,
   type MapType,
   type SerializedState,
 } from "@roc/sim";
@@ -845,6 +846,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
 
   let mpSession: OnlineSession | null = null;
   let joinedGameId: string | null = null;
+  // The live lobby roster for the game we're seated in (null when not in one).
+  let mpRoom: LobbyRoom | null = null;
   // The host's chosen setup, captured at create time and attached to analytics
   // when the game starts. Stays undefined for a joiner (they didn't configure it).
   let mpSetup: GameSetup | undefined;
@@ -867,6 +870,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         <div id="status" class="menu-status"></div>
       </div>
       <div id="games" class="hidden menu-section">
+        <div id="mp-setup">
         <div class="menu-section-title">Lobby</div>
         <div class="menu-row"><span>Map type</span>${mapTypeSelect("mp-maptype", state.mp.mapType)}</div>
         <div class="menu-hint" id="mp-maptype-desc"></div>
@@ -889,6 +893,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           </span>
         </div>
         <div id="game-list" style="margin-top:8px"></div>
+        </div>
+        <div id="mp-room" class="hidden"></div>
       </div>`;
 
     const status = (t: string) => ($("#status").textContent = t);
@@ -926,7 +932,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         <div class="roster-row" data-row="human-${i}">
           <div class="roster-head">
             <span class="roster-tag you">Player ${i + 1}</span>
-            <span class="roster-note">${i === 0 ? "Host" : "Open slot"} · random civ</span>
+            <span class="roster-note">${i === 0 ? "Host" : "Open slot"} · picks civ in lobby</span>
             ${colorSelect(color, used)}
           </div>
         </div>`,
@@ -1026,9 +1032,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
               .map(
                 (g) => {
                   const isHost = g.hostUserId === state.mp.userId;
-                  let buttons = joinedGameId === g.id
-                    ? `<button class="menu-btn primary" data-start="${g.id}" style="width:auto">Start</button>`
-                    : `<button class="menu-btn" data-join="${g.id}" style="width:auto">Join</button>`;
+                  // Starting/leaving happens from the lobby room; the list only joins.
+                  let buttons = `<button class="menu-btn" data-join="${g.id}" style="width:auto">Join</button>`;
                   if (isHost) {
                     buttons += ` <button class="menu-btn" data-delete="${g.id}" style="width:auto">Delete</button>`;
                   }
@@ -1039,9 +1044,6 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       list.querySelectorAll<HTMLButtonElement>("[data-join]").forEach((el) =>
         el.addEventListener("click", () => mpSession?.send({ t: "joinGame", gameId: el.dataset.join! })),
       );
-      list.querySelectorAll<HTMLButtonElement>("[data-start]").forEach((el) =>
-        el.addEventListener("click", () => mpSession?.send({ t: "startGame", gameId: el.dataset.start! })),
-      );
       list.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((el) =>
         el.addEventListener("click", () => {
           if (confirm("Delete this game? This cannot be undone.")) {
@@ -1049,6 +1051,112 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           }
         }),
       );
+    };
+
+    // The pre-game room: a live roster of seated players, each able to pick a
+    // civilization. Replaces the create/join setup once you're seated in a game.
+    const renderRoom = (): void => {
+      const setupEl = left.querySelector<HTMLElement>("#mp-setup");
+      const roomEl = left.querySelector<HTMLElement>("#mp-room");
+      if (!setupEl || !roomEl) return; // not on the multiplayer screen right now
+      const room = mpRoom;
+      if (!room || joinedGameId !== room.gameId) {
+        setupEl.classList.remove("hidden");
+        roomEl.classList.add("hidden");
+        return;
+      }
+      setupEl.classList.add("hidden");
+      roomEl.classList.remove("hidden");
+
+      const meHost = room.hostUserId === state.mp.userId;
+      const mySlot = room.slots.find((s) => s.userId === state.mp.userId);
+      // Concrete civs already claimed by any human slot or AI — for disabling.
+      const takenAll = new Set<string>([
+        ...room.slots.map((s) => s.civId).filter((c): c is string => !!c),
+        ...room.aiCivIds.filter((c): c is string => !!c),
+      ]);
+
+      const humanRows = room.slots
+        .map((s) => {
+          const mine = s.userId === state.mp.userId;
+          const civ = s.civId ? CIVILIZATIONS.find((c) => c.id === s.civId) : undefined;
+          const tag = s.slot === 0 ? "Host" : `Player ${s.playerId + 1}`;
+          const who = s.userId ? escapeHtml(s.handle ?? "Player") : "<i>Open slot</i>";
+          const civCell = mine
+            ? `<button type="button" class="menu-in civ-pick-btn" data-room-pick>
+                 <span class="cpb-text">
+                   <span class="cpb-name">${civ ? escapeHtml(civ.name) : "Random civilization"}</span>
+                   <span class="cpb-leader">${civ ? escapeHtml(civ.leader) : "Tap to choose"}</span>
+                 </span>
+                 <span class="cpb-caret">&rsaquo;</span>
+               </button>`
+            : `<span class="roster-note" style="flex:1">${civ ? `${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)}` : "🎲 Random civ"}</span>`;
+          const randomBtn =
+            mine && civ
+              ? `<button type="button" class="roster-remove" data-room-random title="Use a random civ">🎲</button>`
+              : "";
+          return `
+            <div class="roster-row">
+              <div class="roster-head">
+                <span class="roster-tag${mine ? " you" : ""}">${tag}</span>
+                <span class="roster-note" style="flex:0 0 auto">${who}</span>
+                ${civCell}
+                ${randomBtn}
+              </div>
+            </div>`;
+        })
+        .join("");
+
+      const aiRows = room.aiCivIds
+        .map((cid, i) => {
+          const civ = cid ? CIVILIZATIONS.find((c) => c.id === cid) : undefined;
+          return `
+            <div class="roster-row">
+              <div class="roster-head">
+                <span class="roster-tag">AI ${i + 1}</span>
+                <span class="roster-note">${civ ? `${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)}` : "🎲 Random civ"}</span>
+              </div>
+            </div>`;
+        })
+        .join("");
+
+      const filled = room.slots.filter((s) => s.userId).length;
+      const actions = meHost
+        ? `<div class="menu-back-row">
+             <button class="menu-btn secondary" id="room-delete">Delete game</button>
+             <button class="menu-btn primary" id="room-start">Start Game</button>
+           </div>`
+        : `<div class="menu-hint" style="margin-top:14px">Waiting for the host to start the game…</div>`;
+
+      roomEl.innerHTML = `
+        <div class="menu-section-title">Lobby — ${filled}/${room.capacity} players</div>
+        <div class="menu-hint">Choose your civilization below. Civs already taken are disabled.</div>
+        ${humanRows}
+        ${aiRows ? `<div class="menu-section-title" style="margin-top:12px">AI opponents</div>${aiRows}` : ""}
+        ${actions}`;
+
+      roomEl.querySelector<HTMLButtonElement>("[data-room-pick]")?.addEventListener("click", () => {
+        const takenByOthers = new Set(takenAll);
+        if (mySlot?.civId) takenByOthers.delete(mySlot.civId);
+        const initial =
+          mySlot?.civId && CIVILIZATIONS.some((c) => c.id === mySlot.civId)
+            ? mySlot.civId
+            : (CIVS_BY_NAME.find((c) => !takenByOthers.has(c.id)) ?? CIVS_BY_NAME[0]!).id;
+        openCivPicker(initial, takenByOthers, (civId) =>
+          mpSession?.send({ t: "pickCiv", gameId: room.gameId, civId }),
+        );
+      });
+      roomEl.querySelector<HTMLButtonElement>("[data-room-random]")?.addEventListener("click", () =>
+        mpSession?.send({ t: "pickCiv", gameId: room.gameId, civId: null }),
+      );
+      roomEl.querySelector<HTMLButtonElement>("#room-start")?.addEventListener("click", () =>
+        mpSession?.send({ t: "startGame", gameId: room.gameId }),
+      );
+      roomEl.querySelector<HTMLButtonElement>("#room-delete")?.addEventListener("click", () => {
+        if (confirm("Delete this game? This cannot be undone.")) {
+          mpSession?.send({ t: "deleteGame", gameId: room.gameId });
+        }
+      });
     };
 
     const connectAndAuth = async (kind: "register" | "login") => {
@@ -1066,10 +1174,15 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
             $("#games").classList.remove("hidden");
             mpSession!.send({ t: "listGames" });
           } else if (m.t === "games") renderGames(m.games);
-          else if (m.t === "deleted") {
+          else if (m.t === "lobby") {
+            mpRoom = m.room;
+            renderRoom();
+          } else if (m.t === "deleted") {
             if (joinedGameId === m.gameId) {
               joinedGameId = null;
+              mpRoom = null;
               status("Game deleted by host.");
+              renderRoom();
             }
             mpSession!.send({ t: "listGames" });
           }

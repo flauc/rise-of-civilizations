@@ -1,6 +1,6 @@
 // In-memory lobby + match registry. Pure TS (no Bun) so it's unit-testable.
 
-import { createGame, type BarbarianActivity, type GameState, type GameSummary, type MapType } from "@roc/sim";
+import { createGame, type BarbarianActivity, type GameState, type GameSummary, type LobbyRoom, type MapType } from "@roc/sim";
 import { GameHost } from "./gamehost";
 
 export interface Slot {
@@ -8,6 +8,8 @@ export interface Slot {
   playerId: number;
   userId?: string;
   handle?: string;
+  /** Civ chosen by the player in this slot; undefined = a random unique civ. */
+  civId?: string;
 }
 
 export interface LobbyGame {
@@ -104,15 +106,57 @@ export class Lobby {
     return { slot: open.slot, playerId: open.playerId };
   }
 
+  /**
+   * Choose (or clear, with civId=null) the civ for the slot a user occupies.
+   * Rejects a civ already claimed by another human slot or an AI opponent so
+   * no two players share one.
+   */
+  pickCiv(gameId: string, userId: string, civId: string | null): { error: string } | { ok: true } {
+    const game = this.games.get(gameId);
+    if (!game) return { error: "no such game" };
+    if (game.status !== "lobby") return { error: "game already started" };
+    const slot = game.slots.find((s) => s.userId === userId);
+    if (!slot) return { error: "not in this game" };
+    if (civId === null) {
+      slot.civId = undefined;
+      return { ok: true };
+    }
+    const takenByHuman = game.slots.some((s) => s !== slot && s.civId === civId);
+    const takenByAi = game.aiCivIds.includes(civId);
+    if (takenByHuman || takenByAi) return { error: "civ already taken" };
+    slot.civId = civId;
+    return { ok: true };
+  }
+
+  /** A broadcastable snapshot of a game's pre-game roster. */
+  room(gameId: string): LobbyRoom | undefined {
+    const g = this.games.get(gameId);
+    if (!g) return undefined;
+    return {
+      gameId: g.id,
+      hostUserId: g.slots[0]?.userId ?? "",
+      capacity: g.capacity,
+      slots: g.slots.map((s) => ({
+        slot: s.slot,
+        playerId: s.playerId,
+        userId: s.userId,
+        handle: s.handle,
+        civId: s.civId,
+      })),
+      aiCivIds: g.aiCivIds,
+    };
+  }
+
   /** Start the match: build the sim state and a GameHost. */
   start(gameId: string): { error: string } | { ok: true } {
     const game = this.games.get(gameId);
     if (!game) return { error: "no such game" };
     if (game.status === "active") return { ok: true };
     const names = game.slots.map((s, i) => s.handle ?? `Player ${i + 1}`);
-    // Civ ids align to the player slots: humans (random unique) then the AI civs.
+    // Civ ids align to the player slots: each human's chosen civ (undefined =
+    // random unique) then the AI civs.
     const civIds = [
-      ...names.map(() => undefined),
+      ...game.slots.map((s) => s.civId ?? undefined),
       ...game.aiCivIds.map((c) => c ?? undefined),
     ];
     const state = createGame({

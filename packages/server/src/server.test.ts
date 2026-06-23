@@ -145,6 +145,48 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(lobby.get(g2.id)!.host!.state.players[0]!.gold).toBe(150);
   });
 
+  it("lets seated players pick distinct civs that survive into the game", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Civ Picks", "uA", "Alice", { seed: "seed-civ", capacity: 2 });
+    lobby.join(g.id, "uB", "Bob");
+
+    expect(lobby.pickCiv(g.id, "uA", "rome")).toEqual({ ok: true });
+    expect(lobby.pickCiv(g.id, "uB", "sumer")).toEqual({ ok: true });
+
+    // The room snapshot reflects the choices.
+    const room = lobby.room(g.id)!;
+    expect(room.slots[0]!.civId).toBe("rome");
+    expect(room.slots[1]!.civId).toBe("sumer");
+
+    expect(lobby.start(g.id)).toEqual({ ok: true });
+    const players = lobby.get(g.id)!.host!.state.players;
+    expect(players[0]!.civId).toBe("rome");
+    expect(players[1]!.civId).toBe("sumer");
+  });
+
+  it("rejects picking a civ already taken by a human or an AI", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Contested", "uA", "Alice", {
+      seed: "seed-contested",
+      capacity: 2,
+      aiCivIds: ["egypt"],
+    });
+    lobby.join(g.id, "uB", "Bob");
+
+    expect(lobby.pickCiv(g.id, "uA", "rome")).toEqual({ ok: true });
+    // Another human can't take the host's civ.
+    expect("error" in lobby.pickCiv(g.id, "uB", "rome")).toBe(true);
+    // Nobody can take an AI's civ.
+    expect("error" in lobby.pickCiv(g.id, "uB", "egypt")).toBe(true);
+    // A non-seated user is rejected.
+    expect("error" in lobby.pickCiv(g.id, "uZ", "sumer")).toBe(true);
+
+    // Clearing back to random frees the civ for someone else.
+    expect(lobby.pickCiv(g.id, "uA", null)).toEqual({ ok: true });
+    expect(lobby.pickCiv(g.id, "uB", "rome")).toEqual({ ok: true });
+    expect(lobby.room(g.id)!.slots[0]!.civId).toBeUndefined();
+  });
+
   it("lets the host delete a game and rejects deletions by others", () => {
     const lobby = new Lobby();
     const g = lobby.create("Deletable", "uA", "Alice", { seed: "seed-del" });

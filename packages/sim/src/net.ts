@@ -16,6 +16,27 @@ export interface GameSummary {
   hostUserId: string;
 }
 
+/** One human player slot in a pre-game lobby room. */
+export interface LobbySlot {
+  slot: number;
+  playerId: number;
+  /** Set once a user occupies the slot; absent = open. */
+  userId?: string;
+  handle?: string;
+  /** The civ this player chose; absent = a random unique civ at start. */
+  civId?: string;
+}
+
+/** Live, broadcast view of a single game's lobby (who's seated + their civ). */
+export interface LobbyRoom {
+  gameId: string;
+  hostUserId: string;
+  capacity: number;
+  slots: LobbySlot[];
+  /** Civ id per AI opponent; null = a random unique civ. */
+  aiCivIds: (string | null)[];
+}
+
 export type ClientMessage =
   | { t: "register"; handle: string; password: string }
   | { t: "login"; handle: string; password: string }
@@ -42,6 +63,7 @@ export type ClientMessage =
       colors?: (string | null)[];
     }
   | { t: "joinGame"; gameId: string }
+  | { t: "pickCiv"; gameId: string; civId: string | null } // choose your lobby civ; null = random
   | { t: "startGame"; gameId: string }
   | { t: "order"; cmd: Command }
   | { t: "ready" } // end-of-turn: ready for simultaneous resolution
@@ -54,6 +76,7 @@ export type ServerMessage =
   | { t: "error"; message: string }
   | { t: "games"; games: GameSummary[] }
   | { t: "joined"; gameId: string; slot: number; playerId: number }
+  | { t: "lobby"; room: LobbyRoom } // live pre-game roster (seats + chosen civs)
   | { t: "started"; gameId: string }
   | { t: "state"; view: PlayerView; awaiting: number[] }
   | { t: "orderRejected"; reason: string }

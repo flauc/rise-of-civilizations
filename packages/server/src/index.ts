@@ -108,6 +108,13 @@ function broadcastState(gameId: string): void {
   }
 }
 
+/** Push the live pre-game roster (seats + chosen civs) to everyone in a game. */
+function broadcastLobby(gameId: string): void {
+  const room = lobby.room(gameId);
+  if (!room) return;
+  for (const ws of gameConns.get(gameId) ?? []) send(ws, { t: "lobby", room });
+}
+
 function isHost(ws: ServerWebSocket<Conn>): boolean {
   return ws.data.slot === 0;
 }
@@ -164,6 +171,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       ws.data.slot = 0;
       addConn(game.id, ws);
       send(ws, { t: "joined", gameId: game.id, slot: 0, playerId: ws.data.playerId });
+      broadcastLobby(game.id);
       return;
     }
     case "joinGame": {
@@ -175,6 +183,14 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       ws.data.slot = r.slot;
       addConn(msg.gameId, ws);
       send(ws, { t: "joined", gameId: msg.gameId, slot: r.slot, playerId: r.playerId });
+      broadcastLobby(msg.gameId);
+      return;
+    }
+    case "pickCiv": {
+      if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      const r = lobby.pickCiv(msg.gameId, ws.data.userId, msg.civId);
+      if ("error" in r) return send(ws, { t: "error", message: r.error });
+      broadcastLobby(msg.gameId);
       return;
     }
     case "startGame": {
