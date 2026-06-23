@@ -146,6 +146,53 @@ describe("active abilities", () => {
     expect(targets.has("6,5")).toBe(true);
   });
 
+  it("Fire Lance shoots from 2 tiles, takes no retaliation, and goes on a 2-turn cooldown", () => {
+    const state = bareGame();
+    // The fire_lance override only applies to the Tang/Song unique pikeman.
+    playerById(state, 0)!.civId = "china_tang_song";
+    const lancer = place(state, 0, "pikeman", 5, 5);
+    const target = place(state, 1, "warrior", 7, 5); // distance 2
+    const hp = lancer.hp;
+    const res = useAbility(state, lancer, "fire_lance", target.col, target.row);
+    expect(res.ok).toBe(true);
+    expect(lancer.hp).toBe(hp); // ranged volley: no counter-attack
+    expect(target.hp).toBeLessThan(100);
+    expect(lancer.abilityCooldowns?.fire_lance).toBe(state.turn + 3); // cooldown 2 → wait two turns
+
+    // On cooldown even with movement/attack restored this turn.
+    lancer.movementLeft = 4;
+    lancer.attackedThisTurn = false;
+    expect(canUseAbility(state, lancer, "fire_lance").ok).toBe(false);
+  });
+
+  it("Fire Lance cannot reach a target 3 tiles away", () => {
+    const state = bareGame();
+    playerById(state, 0)!.civId = "china_tang_song";
+    const lancer = place(state, 0, "pikeman", 5, 5);
+    const far = place(state, 1, "warrior", 8, 5); // distance 3
+    expect(useAbility(state, lancer, "fire_lance", far.col, far.row).ok).toBe(false);
+  });
+
+  it("Fire Lance hits slightly harder than the lancer's melee thrust", () => {
+    // Ranged volley (tough defender so neither hit saturates the damage cap).
+    let state = bareGame();
+    playerById(state, 0)!.civId = "china_tang_song";
+    let lancer = place(state, 0, "pikeman", 5, 5);
+    let foe = place(state, 1, "longswordsman", 7, 5);
+    useAbility(state, lancer, "fire_lance", foe.col, foe.row);
+    const lanceDmg = 100 - foe.hp;
+
+    // Plain melee thrust from the same matchup.
+    state = bareGame();
+    playerById(state, 0)!.civId = "china_tang_song";
+    lancer = place(state, 0, "pikeman", 5, 5);
+    foe = place(state, 1, "longswordsman", 6, 5);
+    resolveAttack(state, lancer, foe.col, foe.row);
+    const meleeDmg = 100 - foe.hp;
+
+    expect(lanceDmg).toBeGreaterThan(meleeDmg);
+  });
+
   it("rejects abilities the unit does not have", () => {
     const state = bareGame();
     const warrior = place(state, 0, "warrior", 5, 5);

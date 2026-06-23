@@ -122,6 +122,7 @@ function abilityRange(unit: Unit, ability: ActiveAbilityId): number {
   if (ability === "feigned_retreat") return Math.max(1, def.range ?? 1); // kite at range or charge adjacent
   if (ability === "repeating_fire") return def.range ?? 1;
   if (ability === "arrow_storm") return (def.range ?? 1) + 1;
+  if (ability === "fire_lance") return (def.range ?? 1) + 1; // a lance reaches a tile beyond a melee thrust
   if (ability === "pierce") return Math.max(1, (def.range ?? 1) - 1);
   if (ability === "greek_fire" || ability === "coastal_bombardment") return def.range ?? 1;
   return 1; // melee/charge/trample/sunder/harry/ram/boarding_party strike adjacent
@@ -338,7 +339,8 @@ export function useAbility(
     case "sunder":
     case "pierce":
     case "harry":
-    case "siege_assault": {
+    case "siege_assault":
+    case "fire_lance": {
       const res = resolveAttack(state, unit, col, row, { ability });
       if (!res.ok) return res;
       setCd();

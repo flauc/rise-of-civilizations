@@ -390,8 +390,8 @@ with the civ's flat `unitClassCombat` bonus already doing the differentiating).
 > **Dependency:** unique units are currently *descriptive strings* in `@roc/data` (e.g.
 > `uniqueUnit: "Keshig"`), not yet real `UnitTypeId`s in `content.ts`. These bespoke abilities
 > land when unique units are implemented as actual unit types. **Naval** uniques (Bireme, Longship,
-> Nau, Turtle Ship, Jong…) are **deferred** with the rest of the naval layer. **Gunpowder** uniques
-> (Janissary, Fire Lancer, Conquistador, Sea Beggar…) wait for the Exploration-era firearms pass.
+> Nau, Turtle Ship, Jong…) are **deferred** with the rest of the naval layer. Remaining **gunpowder**
+> uniques (Conquistador, Sea Beggar…) wait for the Exploration-era firearms pass.
 
 ### 8.1 New bespoke abilities
 
@@ -408,6 +408,7 @@ with the civ's flat `unitClassCombat` bonus already doing the differentiating).
 | `arrow_storm` | Arrow Storm | Skirmish/(ranged) | Ranged attack with **+1 range** that also lightly damages a *second* enemy adjacent to the target (massed English longbow volley). |
 | `furor` | Furor | Charge/(melee) | Huge first-strike (**+6 attack**) but **−4 defense until next turn** — the naked Gaesatae fanatic charge. |
 | `siege_assault` | Assault Tower | (siege/melee) | A mobile **siege tower**: melee attack vs cities that **ignores wall defense** and shelters its crew (Assyrian/late-antique tower). |
+| `fire_lance` | Fire Lance | (melee → ranged) | A melee unit looses an early-gunpowder lance at a target **up to 2 tiles away**: fires off its melee strength **+3** and draws **no retaliation**, but has a **2-turn cooldown** (Tang/Song fire lancer). |
 
 ### 8.2 Curated civ → unique unit → ability
 
@@ -432,6 +433,7 @@ Land uniques only (naval/gunpowder noted above are out of scope for now).
 | **Poland-Lithuania** | Winged Hussar | cavalry | `hussar_charge` (ignores brace penalty) |
 | **Persia** | Immortal | melee | Set Spears (class) + heals at turn start in friendly territory ("endless ranks") |
 | **Han China** | Cho-Ko-Nu | ranged | `repeating_fire` (double shot) |
+| **China (Tang/Song)** | Fire Lancer | melee | `fire_lance` (ranged gunpowder volley, 2-turn cooldown) |
 | **Genoa** | Genoese Crossbowman | ranged | `pavise` (Pierce + shield stance) |
 | **Anglo-Saxon / England** | Longbowman | ranged | `arrow_storm` (long-range volley) |
 | **Elam** | Susian Archer | ranged | Skirmish (class) + the civ's hill ranged bonus |

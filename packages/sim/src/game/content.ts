@@ -70,7 +70,8 @@ export type ActiveAbilityId =
   | "pavise"
   | "arrow_storm"
   | "furor"
-  | "siege_assault";
+  | "siege_assault"
+  | "fire_lance";
 
 /** A persistent stance a unit enters by forfeiting its movement for the turn. */
 export type StanceId = "brace" | "shield_wall" | "testudo" | "emplace" | "othismos" | "last_stand" | "pavise";
@@ -126,6 +127,7 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
   arrow_storm: A({ id: "arrow_storm", name: "Arrow Storm", verb: "Arrow Storm", glyph: "🏹", kind: "targeted", cooldown: 0, desc: "A long volley (+1 range) that also lightly wounds a second enemy beside the target." }),
   furor: A({ id: "furor", name: "Furor", verb: "Furor", glyph: "⚔️", kind: "targeted", cooldown: 0, desc: "A fanatic charge: +6 attack this strike, but −4 defense until your next turn." }),
   siege_assault: A({ id: "siege_assault", name: "Assault Tower", verb: "Assault", glyph: "🪜", kind: "targeted", cooldown: 0, desc: "Storm a city wall: a melee assault that ignores wall defense and shelters its crew." }),
+  fire_lance: A({ id: "fire_lance", name: "Fire Lance", verb: "Fire Lance", glyph: "🔥", kind: "targeted", cooldown: 2, desc: "Loose a gunpowder lance at a target up to 2 tiles away — slightly stronger than a melee thrust and drawing no retaliation. Needs two turns to reload." }),
   // naval
   ram: A({ id: "ram", name: "Ram", verb: "Ram", glyph: "⚓", kind: "targeted", cooldown: 0, desc: "Drive the ship into an adjacent enemy vessel (+4 attack)." }),
   boarding_party: A({ id: "boarding_party", name: "Boarding Party", verb: "Board", glyph: "⚔️", kind: "targeted", cooldown: 1, desc: "Grapple and storm an adjacent ship (+5 attack, heal on kill)." }),
@@ -327,6 +329,9 @@ export const UNIQUE_ABILITY_OVERRIDES: Record<string, ActiveAbilityId[]> = {
   celts_gauls_gaesatae: ["furor", "hide"],
   poland_lithuania_winged_hussar: ["hussar_charge"],
   han_china_cho_ko_nu: ["repeating_fire", "hide"],
+  // Tang/Song fire lancers carried an early gunpowder lance — a ranged volley on
+  // top of the pikeman's brace (see combat.ts fire_lance handling).
+  china_tang_song_fire_lancer: ["fire_lance", "brace", "hide"],
   genoa_genoese_crossbowman: ["pierce", "pavise", "hide"],
   anglo_saxon_england_longbowman: ["arrow_storm", "hide"],
   assyria_siege_tower: ["siege_assault"],

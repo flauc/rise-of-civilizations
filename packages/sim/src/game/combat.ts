@@ -21,6 +21,10 @@ import { playerEffects } from "./civs";
 import { breakCover } from "./stealth";
 import { moraleAttackMultiplier, moraleDefenseMultiplier, onEnemyDefeated, onUnitLost, maybeRoute } from "./morale";
 
+/** Fire Lance fires off the unit's melee strength plus this, so the ranged shot
+ *  lands slightly harder than a regular thrust (and takes no retaliation). */
+const FIRE_LANCE_BONUS = 3;
+
 /** Maximum HP for a unit, increasing by 5% per level above 1 plus promotion bonuses. */
 export function unitMaxHp(unit: Unit): number {
   let bonus = 0;
@@ -87,6 +91,8 @@ function attackStrength(
   const def = UNIT_DEFS[unit.type];
   const defenderCls = UNIT_DEFS[defender.type].cls;
   let s = (ranged ? def.rangedStrength ?? 0 : def.strength) * levelMultiplier(unit);
+  // A melee unit's Fire Lance fires off its melee strength (it has no rangedStrength).
+  if (ranged && ability === "fire_lance") s = (def.strength + FIRE_LANCE_BONUS) * levelMultiplier(unit);
   s += civCombatBonus(state, unit);
   s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
 
@@ -428,7 +434,8 @@ export function resolveAttack(
 
   const attackerOwner = playerById(state, attacker.ownerId)!;
   const attackerNaval = isNavalUnit(attacker);
-  const ranged = isRanged(def);
+  // Fire Lance turns a melee unit's strike into a ranged volley for that shot.
+  const ranged = isRanged(def) || ability === "fire_lance";
 
   // Gunpowder weapons can only fire a charged shot — they reload (and cannot
   // fire) on the turn after firing. See healAndReset for the reload tick.
@@ -441,6 +448,7 @@ export function resolveAttack(
   if (ranged && attacker.stance === "emplace") range += 1; // emplaced engines reach further
   if (ability === "pierce") range = Math.max(1, range - 1); // careful aimed bolt, shorter
   if (ability === "arrow_storm") range += 1; // a long massed volley
+  if (ability === "fire_lance") range += 1; // the lance reaches a tile beyond a melee thrust
   const d = dist({ col: attacker.col, row: attacker.row }, { col, row });
   if (d > range) return { ok: false, error: "out of range" };
 
@@ -462,7 +470,8 @@ export function resolveAttack(
     enemyCity.lastAttackedTurn = state.turn;
 
     if (ranged) {
-      const base = (def.rangedStrength ?? 0) * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker));
+      const rs = ability === "fire_lance" ? def.strength + FIRE_LANCE_BONUS : def.rangedStrength ?? 0;
+      const base = rs * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker));
       let attEff = (base + cityAttackBonus(attacker)) * mult;
       if (def.cls === "siege" && eff.siegeVsCityDefenseMultiplier) {
         attEff *= 1 + eff.siegeVsCityDefenseMultiplier / 100;

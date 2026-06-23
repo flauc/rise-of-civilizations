@@ -339,6 +339,16 @@ function aiMilitary(state: GameState, unit: Unit, pid: number): void {
     }
   }
 
+  // Fire lancers loose a ranged volley (no retaliation) whenever one is in reach.
+  if (abilities.includes("fire_lance")) {
+    const t = [...abilityTargets(state, unit, "fire_lance")][0];
+    if (t) {
+      const [col, row] = t.split(",").map(Number) as [number, number];
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: "fire_lance", col, row }, pid);
+      return;
+    }
+  }
+
   const targets = computeAttackTargets(state, unit);
   if (targets.size > 0) {
     let chosen: { col: number; row: number } | null = null;
