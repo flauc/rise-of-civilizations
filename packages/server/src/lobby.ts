@@ -134,6 +134,7 @@ export class Lobby {
     if (!g) return undefined;
     return {
       gameId: g.id,
+      name: g.name,
       hostUserId: g.slots[0]?.userId ?? "",
       capacity: g.capacity,
       slots: g.slots.map((s) => ({
@@ -144,6 +145,7 @@ export class Lobby {
         civId: s.civId,
       })),
       aiCivIds: g.aiCivIds,
+      colors: g.colors,
     };
   }
 

@@ -30,11 +30,14 @@ export interface LobbySlot {
 /** Live, broadcast view of a single game's lobby (who's seated + their civ). */
 export interface LobbyRoom {
   gameId: string;
+  name: string;
   hostUserId: string;
   capacity: number;
   slots: LobbySlot[];
   /** Civ id per AI opponent; null = a random unique civ. */
   aiCivIds: (string | null)[];
+  /** Color per slot (humans first, then AI); null = auto-assigned at start. */
+  colors: (string | null)[];
 }
 
 export type ClientMessage =
