@@ -7,6 +7,7 @@
 import type {
   AdminOverview,
   CivCount,
+  ConfigBreakdown,
   LeaderboardEntry,
   OutcomeBreakdown,
   PlayerSessionStats,
@@ -20,6 +21,7 @@ interface AllData {
   overview: AdminOverview;
   sessions: PlayerSessionStats[];
   civs: CivCount[];
+  config: ConfigBreakdown;
   outcomes: OutcomeBreakdown;
   leaderboard: LeaderboardEntry[];
   votes: VoteTotal[];
@@ -120,6 +122,12 @@ function barList(items: { label: string; value: number }[]): string {
     .join("");
 }
 
+/** Bar list for a config distribution (title-cases the labels). */
+function cfgBars(items: { label: string; count: number }[]): string {
+  if (!items.length) return `<div class="muted" style="margin:4px 0 12px">—</div>`;
+  return barList(items.map((i) => ({ label: titleCase(i.label), value: i.count })));
+}
+
 function dashboardView(d: AllData): void {
   const o = d.overview;
   const outcomesTotal = d.outcomes.win + d.outcomes.loss + d.outcomes.abandoned;
@@ -167,6 +175,35 @@ function dashboardView(d: AllData): void {
         }
       </section>
     </div>
+
+    <section>
+      <h2>Game setup</h2>
+      ${
+        d.overview.totalSessions === 0
+          ? `<div class="muted">No sessions yet.</div>`
+          : `<div class="grid2">
+              <div>
+                <div class="sub-h">Map type</div>
+                ${cfgBars(d.config.mapTypes)}
+                <div class="sub-h">Map size</div>
+                ${cfgBars(d.config.mapSizes)}
+                <div class="sub-h">AI opponents</div>
+                ${cfgBars(d.config.aiCount)}
+              </div>
+              <div>
+                <div class="sub-h">Starting gold</div>
+                ${cfgBars(d.config.startingGold)}
+                <div class="sub-h">Barbarians</div>
+                ${cfgBars(d.config.barbarians)}
+                <div class="sub-h">Toggles</div>
+                ${cfgBars([
+                  { label: "Natural wonders", value: d.config.naturalWonders.on },
+                  { label: "Legends (heroes)", value: d.config.legends.on },
+                ].map((t) => ({ label: t.label, count: t.value })))}
+              </div>
+            </div>`
+      }
+    </section>
 
     <section>
       <h2>Feature votes</h2>

@@ -156,6 +156,17 @@ function persistActive(): void {
   }
 }
 
+/**
+ * The subset of a session's metadata that the player chooses in the lobby and
+ * that can't be recovered from the running game state (map type, treasury,
+ * natural wonders, barbarian level, AI civ picks). Threaded from the lobby into
+ * `startGame` so it can be attached to the session_start event.
+ */
+export type GameSetup = Pick<
+  SessionStartMeta,
+  "mapType" | "mapSize" | "startingGold" | "naturalWonders" | "barbarianLevel" | "aiCivIds" | "legends"
+>;
+
 export interface SessionStartMeta {
   mode: GameMode;
   civId?: string;
@@ -166,6 +177,10 @@ export interface SessionStartMeta {
   aiCount?: number;
   barbarians?: boolean;
   legends?: boolean;
+  barbarianLevel?: string;
+  naturalWonders?: boolean;
+  startingGold?: string;
+  aiCivIds?: (string | null)[];
 }
 
 /** Record the start of a game session and become the "active" session. */
@@ -186,6 +201,10 @@ export function trackSessionStart(meta: SessionStartMeta): string {
     aiCount: meta.aiCount,
     barbarians: meta.barbarians,
     legends: meta.legends,
+    barbarianLevel: meta.barbarianLevel,
+    naturalWonders: meta.naturalWonders,
+    startingGold: meta.startingGold,
+    aiCivIds: meta.aiCivIds,
     ts: Date.now(),
   });
   return sessionId;

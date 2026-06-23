@@ -53,7 +53,7 @@ import { loadAbilityAtlas } from "./ability-assets";
 import { MAP_DIMENSIONS, type Session } from "./session";
 import type { CheatAction } from "./god-mode";
 import { exportSave, listSaves, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
-import { initAnalytics, trackSessionStart, trackSessionEnd, noteTurns } from "./analytics";
+import { initAnalytics, trackSessionStart, trackSessionEnd, noteTurns, type GameSetup } from "./analytics";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -62,7 +62,7 @@ if (!ctx) throw new Error("2D canvas context unavailable");
 initAnalytics();
 createLobby(startGame);
 
-function startGame(session: Session): void {
+function startGame(session: Session, setup: GameSetup = {}): void {
   // Loading veil: the map paints progressively as sprite atlases stream in (and
   // larger maps like Real World take a moment), so cover the canvas with a themed
   // spinner until the world is fully rendered rather than showing a half-built map.
@@ -185,12 +185,19 @@ function startGame(session: Session): void {
       trackSessionStart({
         mode: session.isOnline ? "mp" : "sp",
         civId: players.find((p) => p.id === me)?.civId,
-        mapSize: sizeEntry?.[0],
+        // Prefer the chosen map type/size from setup; fall back to deriving size.
+        mapType: setup.mapType,
+        mapSize: setup.mapSize ?? sizeEntry?.[0],
         cols: dims.cols,
         rows: dims.rows,
         aiCount: players.filter((p) => !p.isHuman && !p.isBarbarian).length,
         barbarians: players.some((p) => p.isBarbarian),
-        legends: st().legendsEnabled,
+        legends: setup.legends ?? st().legendsEnabled,
+        // Config that only exists at setup time (not on the running state).
+        barbarianLevel: setup.barbarianLevel,
+        naturalWonders: setup.naturalWonders,
+        startingGold: setup.startingGold,
+        aiCivIds: setup.aiCivIds,
       });
     }
     noteTurns(st().turn);

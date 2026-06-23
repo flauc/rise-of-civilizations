@@ -64,6 +64,8 @@ async function adminQuery(name: string): Promise<unknown | undefined> {
       return analytics.sessionsPerPlayer();
     case "civs":
       return analytics.civDistribution();
+    case "config":
+      return analytics.configBreakdown();
     case "outcomes":
       return analytics.outcomeBreakdown();
     case "leaderboard":
@@ -71,15 +73,16 @@ async function adminQuery(name: string): Promise<unknown | undefined> {
     case "votes":
       return analytics.voteTotals();
     case "all": {
-      const [overview, sessions, civs, outcomes, leaderboard, votes] = await Promise.all([
+      const [overview, sessions, civs, config, outcomes, leaderboard, votes] = await Promise.all([
         analytics.overview(),
         analytics.sessionsPerPlayer(),
         analytics.civDistribution(),
+        analytics.configBreakdown(),
         analytics.outcomeBreakdown(),
         analytics.leaderboard(),
         analytics.voteTotals(),
       ]);
-      return { overview, sessions, civs, outcomes, leaderboard, votes };
+      return { overview, sessions, civs, config, outcomes, leaderboard, votes };
     }
     default:
       return undefined;

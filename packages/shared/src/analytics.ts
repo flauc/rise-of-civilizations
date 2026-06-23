@@ -28,8 +28,19 @@ export interface SessionStartEvent {
   cols?: number;
   rows?: number;
   aiCount?: number;
+  /** Whether barbarians are present (true unless the level is "none"). */
   barbarians?: boolean;
   legends?: boolean;
+  // --- the rest of the game-setup the player chose (only known at setup time,
+  // not derivable from the running state) ---
+  /** Barbarian activity level, e.g. "none"/"low"/"normal"/"high". */
+  barbarianLevel?: string;
+  /** Whether natural wonders were scattered on the map. */
+  naturalWonders?: boolean;
+  /** Starting treasury preset, e.g. "tight"/"balanced"/"generous". */
+  startingGold?: string;
+  /** Chosen civ per AI opponent (null = random). */
+  aiCivIds?: (string | null)[];
   /** Epoch millis on the client when the session started. */
   ts: number;
 }
@@ -115,4 +126,21 @@ export interface LeaderboardEntry {
 export interface VoteTotal {
   featureId: string;
   votes: number;
+}
+
+/** A label→count tally, used for the config distributions below. */
+export interface LabelCount {
+  label: string;
+  count: number;
+}
+
+/** Distribution of the game-setup choices players made. */
+export interface ConfigBreakdown {
+  mapTypes: LabelCount[];
+  mapSizes: LabelCount[];
+  startingGold: LabelCount[];
+  barbarians: LabelCount[];
+  aiCount: LabelCount[];
+  naturalWonders: { on: number; off: number };
+  legends: { on: number; off: number };
 }

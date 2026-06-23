@@ -16,6 +16,7 @@ import {
 import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, wireUuImages, wireUuDetail } from "./unique-unit";
 import { deleteSave, exportSave, importSave, listSaves, loadSave, type SaveRecord } from "./save-db";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
+import type { GameSetup } from "./analytics";
 
 const DEFAULT_WS_SCHEME = location.protocol === "https:" ? "wss" : "ws";
 const DEFAULT_WS =
@@ -187,7 +188,7 @@ function escapeHtml(text: string): string {
 // The unique-unit block + detail dialog live in ./unique-unit so the lobby and
 // the in-game wiki Civilizations page render the exact same thing.
 
-export function createLobby(onStart: (session: Session) => void): void {
+export function createLobby(onStart: (session: Session, setup?: GameSetup) => void): void {
   const state: MenuState = {
     screen: "start",
     sp: {
@@ -811,25 +812,42 @@ export function createLobby(onStart: (session: Session) => void): void {
     $("#back2").addEventListener("click", () => showScreen("start"));
     $("#sp-start").addEventListener("click", () => {
       close();
+      const spMapSize = $select("#sp-map").value as MapSize;
+      const spBarb = $select("#sp-barb").value as BarbLevel;
+      const spWonders = $select("#sp-wonders").value === "on";
+      const spLegends = $select("#sp-legends").value === "on";
+      const spAiCivIds = state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId));
       onStart(
         new LocalSession({
           civId: state.sp.civId,
-          mapSize: $select("#sp-map").value as MapSize,
+          mapSize: spMapSize,
           mapType: state.sp.mapType,
-          aiCivIds: state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
+          aiCivIds: spAiCivIds,
           colors: [state.sp.color, ...state.sp.ais.map((a) => a.color)],
-          barbarians: $select("#sp-barb").value as BarbLevel,
-          naturalWonders: $select("#sp-wonders").value === "on",
-          legends: $select("#sp-legends").value === "on",
+          barbarians: spBarb,
+          naturalWonders: spWonders,
+          legends: spLegends,
           startingGold: state.sp.startingGold,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
+        {
+          mapType: state.sp.mapType,
+          mapSize: spMapSize,
+          startingGold: state.sp.startingGold,
+          naturalWonders: spWonders,
+          barbarianLevel: spBarb,
+          aiCivIds: spAiCivIds,
+          legends: spLegends,
+        },
       );
     });
   }
 
   let mpSession: OnlineSession | null = null;
   let joinedGameId: string | null = null;
+  // The host's chosen setup, captured at create time and attached to analytics
+  // when the game starts. Stays undefined for a joiner (they didn't configure it).
+  let mpSetup: GameSetup | undefined;
 
   function renderMultiplayer(): void {
     left.innerHTML = `
@@ -1062,7 +1080,7 @@ export function createLobby(onStart: (session: Session) => void): void {
           } else if (m.t === "started") {
             close();
             mpSession!.gameId = joinedGameId ?? undefined;
-            onStart(mpSession!);
+            onStart(mpSession!, mpSetup);
           }
         });
         try {
@@ -1080,8 +1098,21 @@ export function createLobby(onStart: (session: Session) => void): void {
     $("#login").addEventListener("click", () => void connectAndAuth("login"));
     $("#refresh").addEventListener("click", () => mpSession?.send({ t: "listGames" }));
     $("#create").addEventListener("click", () => {
-      const dims = MAP_DIMENSIONS[($select("#mp-map").value as MapSize) ?? "medium"];
+      const mpMapSize = ($select("#mp-map").value as MapSize) ?? "medium";
+      const dims = MAP_DIMENSIONS[mpMapSize];
+      const mpBarb = $select("#mp-barb").value as BarbLevel;
+      const mpWonders = $select("#mp-wonders").value === "on";
+      const mpAiCivIds = state.mp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId));
       reconcileColors();
+      // Remember the host's setup so it can ride along with analytics on start.
+      mpSetup = {
+        mapType: state.mp.mapType,
+        mapSize: mpMapSize,
+        startingGold: state.mp.startingGold,
+        naturalWonders: mpWonders,
+        barbarianLevel: mpBarb,
+        aiCivIds: mpAiCivIds,
+      };
       mpSession?.send({
         t: "createGame",
         name: `${handleEl.value || "Player"}'s game`,
@@ -1089,10 +1120,10 @@ export function createLobby(onStart: (session: Session) => void): void {
         rows: dims.rows,
         mapType: state.mp.mapType,
         capacity: state.mp.capacity,
-        aiCivIds: state.mp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
+        aiCivIds: mpAiCivIds,
         colors: [...state.mp.humanColors, ...state.mp.ais.map((a) => a.color)],
-        barbarians: $select("#mp-barb").value as BarbLevel,
-        naturalWonders: $select("#mp-wonders").value === "on",
+        barbarians: mpBarb,
+        naturalWonders: mpWonders,
         startingGold: state.mp.startingGold,
       });
     });

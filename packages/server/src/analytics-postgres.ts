@@ -7,6 +7,8 @@ import type {
   AdminOverview,
   AnalyticsEvent,
   CivCount,
+  ConfigBreakdown,
+  LabelCount,
   LeaderboardEntry,
   OutcomeBreakdown,
   PlayerSessionStats,
@@ -50,6 +52,12 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
         score       INTEGER,
         score_rank  INTEGER
       )`;
+    // Game-setup columns (added later; ADD COLUMN IF NOT EXISTS makes init idempotent
+    // and migrates an already-created table).
+    await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS barbarian_level TEXT`;
+    await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS natural_wonders BOOLEAN`;
+    await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS starting_gold TEXT`;
+    await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ai_civ_ids TEXT`;
     await sql`CREATE INDEX IF NOT EXISTS sessions_client_id_idx ON sessions (client_id)`;
     await sql`CREATE INDEX IF NOT EXISTS sessions_outcome_idx ON sessions (outcome)`;
     await sql`CREATE INDEX IF NOT EXISTS sessions_civ_id_idx ON sessions (civ_id)`;
@@ -66,17 +74,23 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
     const sql = this.sql;
     for (const e of events) {
       if (e.t === "session_start") {
+        const aiCivIds = e.aiCivIds ? JSON.stringify(e.aiCivIds) : null;
         await sql`
           INSERT INTO sessions (session_id, client_id, mode, civ_id, map_type, map_size,
-            map_cols, map_rows, ai_count, barbarians, legends, started_at)
+            map_cols, map_rows, ai_count, barbarians, legends, barbarian_level,
+            natural_wonders, starting_gold, ai_civ_ids, started_at)
           VALUES (${e.sessionId}, ${e.clientId}, ${e.mode ?? null}, ${e.civId ?? null},
             ${e.mapType ?? null}, ${e.mapSize ?? null}, ${e.cols ?? null}, ${e.rows ?? null},
-            ${e.aiCount ?? null}, ${e.barbarians ?? null}, ${e.legends ?? null}, ${e.ts})
+            ${e.aiCount ?? null}, ${e.barbarians ?? null}, ${e.legends ?? null},
+            ${e.barbarianLevel ?? null}, ${e.naturalWonders ?? null}, ${e.startingGold ?? null},
+            ${aiCivIds}, ${e.ts})
           ON CONFLICT (session_id) DO UPDATE SET
             client_id = EXCLUDED.client_id, mode = EXCLUDED.mode, civ_id = EXCLUDED.civ_id,
             map_type = EXCLUDED.map_type, map_size = EXCLUDED.map_size, map_cols = EXCLUDED.map_cols,
             map_rows = EXCLUDED.map_rows, ai_count = EXCLUDED.ai_count, barbarians = EXCLUDED.barbarians,
-            legends = EXCLUDED.legends, started_at = EXCLUDED.started_at`;
+            legends = EXCLUDED.legends, barbarian_level = EXCLUDED.barbarian_level,
+            natural_wonders = EXCLUDED.natural_wonders, starting_gold = EXCLUDED.starting_gold,
+            ai_civ_ids = EXCLUDED.ai_civ_ids, started_at = EXCLUDED.started_at`;
       } else if (e.t === "session_end") {
         await sql`
           INSERT INTO sessions (session_id, client_id, outcome, condition, turns, score, score_rank, ended_at)
@@ -150,6 +164,34 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
       SELECT civ_id, COUNT(*) AS count FROM sessions
       WHERE civ_id IS NOT NULL GROUP BY civ_id ORDER BY count DESC`;
     return rows.map((r) => ({ civId: String(r.civ_id), count: num(r.count) }));
+  }
+
+  async configBreakdown(): Promise<ConfigBreakdown> {
+    const sql = this.sql;
+    // One labelled GROUP BY per dimension. Column names are hardcoded (never user
+    // input), so inlining them in the template is safe.
+    const tally = async (expr: "map_type" | "map_size" | "starting_gold" | "barbarian_level" | "ai_count"): Promise<LabelCount[]> => {
+      let rows: Record<string, unknown>[];
+      switch (expr) {
+        case "map_type": rows = await sql<Record<string, unknown>>`SELECT map_type::text AS label, COUNT(*) AS count FROM sessions WHERE map_type IS NOT NULL GROUP BY map_type ORDER BY count DESC`; break;
+        case "map_size": rows = await sql<Record<string, unknown>>`SELECT map_size::text AS label, COUNT(*) AS count FROM sessions WHERE map_size IS NOT NULL GROUP BY map_size ORDER BY count DESC`; break;
+        case "starting_gold": rows = await sql<Record<string, unknown>>`SELECT starting_gold::text AS label, COUNT(*) AS count FROM sessions WHERE starting_gold IS NOT NULL GROUP BY starting_gold ORDER BY count DESC`; break;
+        case "barbarian_level": rows = await sql<Record<string, unknown>>`SELECT barbarian_level::text AS label, COUNT(*) AS count FROM sessions WHERE barbarian_level IS NOT NULL GROUP BY barbarian_level ORDER BY count DESC`; break;
+        case "ai_count": rows = await sql<Record<string, unknown>>`SELECT ai_count::text AS label, COUNT(*) AS count FROM sessions WHERE ai_count IS NOT NULL GROUP BY ai_count ORDER BY count DESC`; break;
+      }
+      return rows.map((r) => ({ label: String(r.label), count: num(r.count) }));
+    };
+    const onOff = async (col: "natural_wonders" | "legends"): Promise<{ on: number; off: number }> => {
+      const [r] = col === "natural_wonders"
+        ? await sql<Record<string, unknown>>`SELECT COUNT(*) FILTER (WHERE natural_wonders) AS on, COUNT(*) FILTER (WHERE natural_wonders = false) AS off FROM sessions`
+        : await sql<Record<string, unknown>>`SELECT COUNT(*) FILTER (WHERE legends) AS on, COUNT(*) FILTER (WHERE legends = false) AS off FROM sessions`;
+      return { on: num(r?.on), off: num(r?.off) };
+    };
+    const [mapTypes, mapSizes, startingGold, barbarians, aiCount, naturalWonders, legends] = await Promise.all([
+      tally("map_type"), tally("map_size"), tally("starting_gold"), tally("barbarian_level"), tally("ai_count"),
+      onOff("natural_wonders"), onOff("legends"),
+    ]);
+    return { mapTypes, mapSizes, startingGold, barbarians, aiCount, naturalWonders, legends };
   }
 
   async outcomeBreakdown(): Promise<OutcomeBreakdown> {
