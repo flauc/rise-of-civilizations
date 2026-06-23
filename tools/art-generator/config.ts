@@ -699,7 +699,7 @@ export const VILLAGE_REWARD_SUBSET: AssetEntry[] = [
   {
     id: "village_reward_global_morale",
     name: "Village Reward: Global Morale",
-    description: "a joyous village celebration with banners, music, and dancing crowds, word of welcome spreading, a hopeful uplifting mood over the whole settlement",
+    description: "a small compact group of villagers and warriors celebrating around a single glowing bonfire, dancing and raising cups together, warm firelight on joyful faces, a hopeful communal mood — drawn as a free-floating vignette resting on a small grassy mound, NOT inside a hexagon and with no hex tile shape or hex border",
     aspectRatio: "1:1",
     size: { width: 160, height: 160 },
     category: "village_reward" as const,

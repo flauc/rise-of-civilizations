@@ -13,7 +13,7 @@
     "dev:admin": "bun run --filter @roc/admin dev",
     "build": "bun run --filter @roc/client build",
     "build:admin": "bun run --filter @roc/admin build",
-    "itch.io-version": "bun run tools/build-itchio.mjs --asset-base=https://game.rise-of-civilizations.com/",
+    "itch.io-version": "bun run tools/build-itchio.mjs --asset-base=https://game.rise-of-civilizations.com/ --ws-url=wss://server.rise-of-civilizations.com/ws",
     "preview": "bun run --filter @roc/client preview",
     "server": "bun run --filter @roc/server start",
     "typecheck": "tsc -p tsconfig.json --noEmit",

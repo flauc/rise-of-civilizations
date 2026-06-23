@@ -122,17 +122,19 @@ function enqueue(event: AnalyticsEvent): void {
   void flush();
 }
 
-/** Send the entire queue via sendBeacon (for page unload). */
-function flushBeacon(extra?: AnalyticsEvent): void {
+/** Best-effort send of the whole queue via sendBeacon (for page unload). */
+function flushBeacon(): void {
   try {
     const queue = readQueue();
-    if (extra) queue.push(extra);
     if (queue.length === 0) return;
     const batch: AnalyticsBatch = { v: ANALYTICS_SCHEMA_VERSION, events: queue };
-    const blob = new Blob([JSON.stringify(batch)], { type: "application/json" });
+    // Use text/plain: it's a CORS-safelisted content type, so the beacon is
+    // delivered cross-origin WITHOUT a preflight (which sendBeacon can't do).
+    // An application/json beacon to a different origin is silently dropped. The
+    // server reads the raw body as JSON regardless of the content type.
+    const blob = new Blob([JSON.stringify(batch)], { type: "text/plain" });
     const sent = typeof navigator !== "undefined" && navigator.sendBeacon?.(ENDPOINT, blob);
     if (sent) writeQueue([]);
-    else if (extra) writeQueue(queue); // persist the abandoned event for next online flush
   } catch {
     /* ignore */
   }
@@ -183,8 +185,26 @@ export interface SessionStartMeta {
   aiCivIds?: (string | null)[];
 }
 
+/**
+ * Record the active (unfinished) game as abandoned, if there is one. Safe to
+ * call repeatedly (no-ops once the session has ended). Call this when the player
+ * explicitly leaves a game (e.g. the in-game "Leave Game" menu) — the event is
+ * persisted to the queue synchronously, so it survives the page reload that
+ * follows and is delivered on the next load even if the immediate send is cut off.
+ */
+export function abandonActiveSession(): void {
+  if (!active) return;
+  const { sessionId, turns } = active;
+  active = null;
+  persistActive();
+  enqueue({ t: "session_end", sessionId, clientId, outcome: "abandoned", turns, ts: Date.now() });
+}
+
 /** Record the start of a game session and become the "active" session. */
 export function trackSessionStart(meta: SessionStartMeta): string {
+  // If a previous game is somehow still active (e.g. the player returned to the
+  // menu without a clean end), record it as abandoned before starting the new one.
+  abandonActiveSession();
   const sessionId = uuid();
   active = { sessionId, mode: meta.mode, turns: 0 };
   persistActive();
@@ -277,24 +297,10 @@ export function initAnalytics(): void {
   window.addEventListener("online", () => void flush());
 
   const onLeave = (): void => {
-    // Persist the live turn count, then beacon an abandoned end if a session is
-    // still active (covers reload-to-menu and tab close); otherwise flush queue.
-    if (active) {
-      persistActive();
-      const end: AnalyticsEvent = {
-        t: "session_end",
-        sessionId: active.sessionId,
-        clientId,
-        outcome: "abandoned",
-        turns: active.turns,
-        ts: Date.now(),
-      };
-      active = null;
-      persistActive();
-      flushBeacon(end);
-    } else {
-      flushBeacon();
-    }
+    // Tab close / reload while a game is live → abandoned. Enqueue it (persisted,
+    // so it survives), then beacon the queue for immediate best-effort delivery.
+    abandonActiveSession();
+    flushBeacon();
   };
   window.addEventListener("pagehide", onLeave);
   document.addEventListener("visibilitychange", () => {

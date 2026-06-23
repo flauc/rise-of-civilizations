@@ -120,6 +120,7 @@ import {
   type GreatPersonClass,
 } from "@roc/data";
 import { abilityIconHtml, type AbilityAtlas } from "./ability-assets";
+import { abandonActiveSession } from "./analytics";
 
 export interface CombatOdds {
   targetName: string;
@@ -1448,7 +1449,12 @@ export function createUI(handlers: UIHandlers): UI {
         if (lastView) renderGodMode(lastView);
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-leave")!.addEventListener("click", () => {
-        if (confirm("Leave this game and return to the main menu?")) location.reload();
+        if (confirm("Leave this game and return to the main menu?")) {
+          // Leaving an unfinished game counts as abandoned. Record it before the
+          // reload (persisted to the queue, so it survives and is delivered).
+          abandonActiveSession();
+          location.reload();
+        }
       });
       saveModal.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
         el.addEventListener("click", async () => {

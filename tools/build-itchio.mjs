@@ -47,6 +47,20 @@ const argBase = process.argv
   ?.slice("--asset-base=".length);
 const assetBase = (argBase || process.env.VITE_ASSET_BASE_URL || "").trim();
 
+// Multiplayer/analytics server. Inside the itch.io sandbox `location.hostname`
+// is an itch CDN host, so the client's default `wss://<host>:3001/ws` can't
+// reach our server — multiplayer silently fails. Bake an absolute URL instead.
+// (Analytics derives its endpoint from this too: ws→http, /ws→/analytics.)
+const argWs = process.argv
+  .slice(2)
+  .find((a) => a.startsWith("--ws-url="))
+  ?.slice("--ws-url=".length);
+const wsUrl = (argWs || process.env.VITE_WS_URL || "wss://server.rise-of-civilizations.com/ws").trim();
+if (!/^wss?:\/\//.test(wsUrl)) {
+  console.error(`! --ws-url must be an absolute ws(s):// URL, got: ${wsUrl}`);
+  process.exit(1);
+}
+
 // By default we assume the art is already served at the asset base (e.g. the
 // regular web build is deployed there, so /leaders/*.png etc. already exist).
 // Pass --stage-assets to also copy the art into dist-itchio/server-assets/ for
@@ -70,12 +84,12 @@ if (!/^https?:\/\//.test(assetBase)) {
 }
 
 // --- 1. Build the client (with images pointed at the asset server) -------
-console.log(`> building client (assets -> ${assetBase})…`);
+console.log(`> building client (assets -> ${assetBase}, multiplayer -> ${wsUrl})…`);
 const build = spawnSync("bun", ["run", "--filter", "@roc/client", "build"], {
   cwd: repoRoot,
   stdio: "inherit",
   shell: process.platform === "win32",
-  env: { ...process.env, VITE_ASSET_BASE_URL: assetBase },
+  env: { ...process.env, VITE_ASSET_BASE_URL: assetBase, VITE_WS_URL: wsUrl },
 });
 if (build.status !== 0) {
   console.error("! client build failed");

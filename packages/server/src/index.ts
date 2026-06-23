@@ -255,7 +255,10 @@ const server = Bun.serve<Conn>({
     // retry-storm). The game works whether or not this succeeds.
     if (url.pathname === "/analytics" && req.method === "POST") {
       try {
-        const batch = (await req.json()) as AnalyticsBatch;
+        // Read the raw body and parse as JSON ourselves: sendBeacon delivers a
+        // text/plain body (so it isn't blocked cross-origin), and req.json()
+        // would otherwise depend on the content-type.
+        const batch = JSON.parse(await req.text()) as AnalyticsBatch;
         const events = Array.isArray(batch?.events) ? batch.events.slice(0, 100) : [];
         if (events.length) await analytics.record(events);
       } catch (err) {
