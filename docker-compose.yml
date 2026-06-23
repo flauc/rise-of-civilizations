@@ -1,0 +1,27 @@
+# Local Postgres for analytics development. In production the database runs as
+# its own container in Coolify — point the server's DATABASE_URL at it instead.
+#
+#   docker compose up -d
+#   DATABASE_URL=postgres://roc:roc@localhost:5432/roc ADMIN_TOKEN=dev bun run server
+#
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: roc-analytics-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: roc
+      POSTGRES_PASSWORD: roc
+      POSTGRES_DB: roc
+    ports:
+      - "5432:5432"
+    volumes:
+      - roc-analytics-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U roc -d roc"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  roc-analytics-data:

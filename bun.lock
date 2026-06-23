@@ -11,6 +11,13 @@
         "vitest": "^2.1.4",
       },
     },
+    "packages/admin": {
+      "name": "@roc/admin",
+      "version": "0.0.0",
+      "dependencies": {
+        "@roc/shared": "*",
+      },
+    },
     "packages/ai": {
       "name": "@roc/ai",
       "version": "0.0.0",
@@ -101,6 +108,8 @@
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.21.5", "", { "os": "win32", "cpu": "x64" }, "sha512-tQd/1efJuzPC6rCFwEvLtci/xNFcTZknmXs98FYDfGE4wP9ClFV98nyKrzJKVPMhdDnjzLhdUyMX4PsQAPjwIw=="],
 
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
+
+    "@roc/admin": ["@roc/admin@workspace:packages/admin"],
 
     "@roc/ai": ["@roc/ai@workspace:packages/ai"],
 

@@ -23,7 +23,10 @@ interface BunServer {
 
 interface BunServeOptions<T> {
   port?: number;
-  fetch(req: Request, server: BunServer): Response | Promise<Response> | undefined;
+  fetch(
+    req: Request,
+    server: BunServer,
+  ): Response | undefined | Promise<Response | undefined>;
   websocket?: {
     open?(ws: ServerWebSocket<T>): void | Promise<void>;
     message?(ws: ServerWebSocket<T>, message: string | ArrayBuffer): void | Promise<void>;
@@ -38,3 +41,13 @@ declare const Bun: {
     verify(password: string, hash: string): Promise<boolean>;
   };
 };
+
+// Minimal typing for Bun's built-in SQL (Postgres) client. An instance is a
+// tagged-template function: `await sql`SELECT ...``. See analytics-postgres.ts.
+declare module "bun" {
+  type BunSQL = <T = unknown>(
+    strings: TemplateStringsArray,
+    ...values: unknown[]
+  ) => Promise<T[]>;
+  export const SQL: new (url: string) => BunSQL;
+}

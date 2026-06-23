@@ -2,6 +2,14 @@
 FROM oven/bun:1 AS build
 WORKDIR /app
 
+# Vite inlines import.meta.env.* at BUILD time. Point these at the public origin
+# of the @roc/server deployment (analytics ingestion + multiplayer WS). If unset,
+# the client falls back to <page-host>:3001.
+ARG VITE_ANALYTICS_URL
+ARG VITE_WS_URL
+ENV VITE_ANALYTICS_URL=$VITE_ANALYTICS_URL
+ENV VITE_WS_URL=$VITE_WS_URL
+
 COPY package.json bun.lock tsconfig.base.json tsconfig.json ./
 COPY packages/ai/package.json packages/ai/package.json
 COPY packages/data/package.json packages/data/package.json

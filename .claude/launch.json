@@ -15,6 +15,13 @@
       "cwd": "roc-landing-page",
       "port": 5174,
       "autoPort": true
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "C:/Users/filip/.bun/bin/bun.exe",
+      "runtimeArgs": ["run", "--filter", "@roc/admin", "dev"],
+      "port": 5175,
+      "autoPort": true
     }
   ]
 }

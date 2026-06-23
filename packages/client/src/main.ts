@@ -19,6 +19,7 @@ import {
   UNIT_DEFS,
   TERRAIN_NAMES,
   isRough,
+  playerScore,
   serializeState,
   uniqueUnitForCiv,
   type ActiveAbilityId,
@@ -49,14 +50,16 @@ import { loadNaturalWonderAtlas } from "./natural-wonder-assets";
 import { loadWonderAtlas } from "./wonder-assets";
 import { loadResourceAtlas } from "./resource-assets";
 import { loadAbilityAtlas } from "./ability-assets";
-import type { Session } from "./session";
+import { MAP_DIMENSIONS, type Session } from "./session";
 import type { CheatAction } from "./god-mode";
 import { exportSave, listSaves, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
+import { initAnalytics, trackSessionStart, trackSessionEnd, noteTurns } from "./analytics";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
 if (!ctx) throw new Error("2D canvas context unavailable");
 
+initAnalytics();
 createLobby(startGame);
 
 function startGame(session: Session): void {
@@ -107,6 +110,7 @@ function startGame(session: Session): void {
   let visible = new Set<string>();
   let liftFog = false; // God Mode: render the whole map with no fog
   let gameOverShown = false;
+  let sessionTracked = false;
   let hoverOdds: CombatOdds | null = null;
   let idleCycle = 0;
   let mpSaves: SaveRecord[] = [];
@@ -168,6 +172,28 @@ function startGame(session: Session): void {
 
   function update(): void {
     if (!session.hasState()) return;
+    // Analytics: record the session start once the game state is ready (for an
+    // online game the first state view arrives a moment after startGame).
+    if (!sessionTracked) {
+      sessionTracked = true;
+      const me = session.getViewerId();
+      const players = st().players;
+      const dims = st().map;
+      const sizeEntry = Object.entries(MAP_DIMENSIONS).find(
+        ([, d]) => d.cols === dims.cols && d.rows === dims.rows,
+      );
+      trackSessionStart({
+        mode: session.isOnline ? "mp" : "sp",
+        civId: players.find((p) => p.id === me)?.civId,
+        mapSize: sizeEntry?.[0],
+        cols: dims.cols,
+        rows: dims.rows,
+        aiCount: players.filter((p) => !p.isHuman && !p.isBarbarian).length,
+        barbarians: players.some((p) => p.isBarbarian),
+        legends: st().legendsEnabled,
+      });
+    }
+    noteTurns(st().turn);
     visible = session.getVisible();
     // Drop selection if the unit no longer exists (died/consumed/captured).
     if (selectedUnitId != null && !st().units.has(selectedUnitId)) selectedUnitId = null;
@@ -196,6 +222,19 @@ function startGame(session: Session): void {
       gameOverShown = true;
       const winner = st().players.find((p) => p.id === over.winnerId);
       ui.banner(`🏆 ${winner?.name ?? "Someone"} wins by ${over.condition}!`);
+      // Analytics: clean win/loss end. Rank the viewer among all players by score.
+      const me = session.getViewerId();
+      const ranked = st()
+        .players.map((p) => ({ id: p.id, score: playerScore(st(), p.id) }))
+        .sort((a, b) => b.score - a.score);
+      const myIndex = ranked.findIndex((r) => r.id === me);
+      trackSessionEnd({
+        outcome: over.winnerId === me ? "win" : "loss",
+        condition: over.condition,
+        turns: st().turn,
+        score: myIndex >= 0 ? ranked[myIndex]!.score : undefined,
+        scoreRank: myIndex >= 0 ? myIndex + 1 : undefined,
+      });
     }
     needsRedraw = true;
   }

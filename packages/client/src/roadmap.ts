@@ -4,6 +4,8 @@
 // work floats to the top. Votes (the seeded community tally plus the player's own
 // picks) persist in localStorage so the board feels alive across sessions.
 
+import { trackFeatureVote } from "./analytics";
+
 interface Milestone {
   id: string;
   title: string;
@@ -235,14 +237,16 @@ export function createRoadmap(): { open(): void; close(): void } {
 
   function toggleVote(id: string): void {
     const i = store.mine.indexOf(id);
-    if (i >= 0) {
-      store.mine.splice(i, 1);
-      store.votes[id] = Math.max(0, votesFor(id) - 1);
-    } else {
+    const added = i < 0;
+    if (added) {
       store.mine.push(id);
       store.votes[id] = votesFor(id) + 1;
+    } else {
+      store.mine.splice(i, 1);
+      store.votes[id] = Math.max(0, votesFor(id) - 1);
     }
     saveStore(store);
+    trackFeatureVote(id, added ? "add" : "remove");
     render();
   }
 

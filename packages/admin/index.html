@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Rise of Civilizations — Analytics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Lato:wght@300;400;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #14130f;
+        --panel: #1f1c14;
+        --edge: #3a3324;
+        --ink: #e8dcc5;
+        --muted: #b8aa8d;
+        --gold: #c9a227;
+        --gold-bright: #f0d878;
+        --win: #6fbf73;
+        --loss: #d07a6a;
+        --abandon: #9a8f74;
+        font-family: "Lato", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--ink); }
+      a { color: var(--gold-bright); }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 28px 22px 60px; }
+      h1 { font-family: "Cinzel", Georgia, serif; font-size: 26px; margin: 0; letter-spacing: .5px; }
+      .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+      .btn { font: inherit; font-weight: 700; color: var(--ink); background: rgba(201,162,39,.1); border: 1px solid var(--edge); border-radius: 10px; padding: 9px 14px; cursor: pointer; }
+      .btn:hover { border-color: var(--gold); color: var(--gold-bright); }
+      .in { font: inherit; color: var(--ink); background: #15130d; border: 1px solid var(--edge); border-radius: 10px; padding: 9px 12px; min-width: 260px; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 22px 0; }
+      .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 16px; }
+      .card .n { font-family: "Cinzel", Georgia, serif; font-size: 30px; font-weight: 800; color: var(--gold-bright); }
+      .card .l { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
+      section { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 18px; margin-top: 16px; }
+      section h2 { font-family: "Cinzel", Georgia, serif; font-size: 17px; margin: 0 0 14px; color: var(--ink); }
+      .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid rgba(58,51,36,.6); }
+      th { color: var(--muted); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+      td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+      .bar-row { display: grid; grid-template-columns: 130px 1fr 48px; align-items: center; gap: 10px; margin: 7px 0; font-size: 14px; }
+      .bar-track { background: #15130d; border-radius: 6px; height: 14px; overflow: hidden; }
+      .bar-fill { height: 100%; background: linear-gradient(90deg, #a6821f, var(--gold-bright)); }
+      .bar-row .v { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+      .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+      .pill.win { background: rgba(111,191,115,.16); color: var(--win); }
+      .pill.loss { background: rgba(208,122,106,.16); color: var(--loss); }
+      .pill.abandoned { background: rgba(154,143,116,.16); color: var(--abandon); }
+      .muted { color: var(--muted); }
+      .err { color: var(--loss); margin-top: 10px; }
+      .gate { max-width: 420px; margin: 60px auto; text-align: center; }
+      .gate .in { width: 100%; margin: 14px 0; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div id="app" class="wrap"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

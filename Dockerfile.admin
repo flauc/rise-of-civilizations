@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1
+FROM oven/bun:1 AS build
+WORKDIR /app
+
+# VITE_API_URL must be present at BUILD time (Vite inlines import.meta.env.*).
+# Point it at the public origin of the @roc/server deployment.
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
+COPY package.json bun.lock tsconfig.base.json tsconfig.json ./
+COPY packages/shared/package.json packages/shared/package.json
+COPY packages/admin/package.json packages/admin/package.json
+
+RUN bun install
+
+COPY packages/shared packages/shared
+COPY packages/admin packages/admin
+
+RUN bun run --filter @roc/admin build
+
+FROM oven/bun:1 AS runtime
+WORKDIR /app
+
+COPY --from=build /app/package.json /app/bun.lock ./
+COPY --from=build /app/packages/admin/package.json /app/packages/admin/package.json
+COPY --from=build /app/packages/admin/dist /app/packages/admin/dist
+
+RUN bun add --global serve@14
+
+EXPOSE 3000
+CMD ["serve", "-s", "packages/admin/dist", "-l", "3000"]

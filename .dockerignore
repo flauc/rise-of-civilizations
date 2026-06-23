@@ -1,0 +1,9 @@
+# Keep the build context lean; everything is rebuilt inside the image.
+.git
+**/node_modules
+**/dist
+.claude
+*.log
+assets/generated
+tools/geodata-poc/node_modules
+roc-landing-page/node_modules

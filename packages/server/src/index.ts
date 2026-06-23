@@ -7,9 +7,12 @@
 
 import type { ClientMessage, ServerMessage } from "@roc/sim";
 import { deserializeState, serializeState } from "@roc/sim";
+import type { AnalyticsBatch } from "@roc/shared";
 import { MemoryStorage } from "./storage";
 import { Lobby } from "./lobby";
 import { login, register, resume } from "./auth";
+import { MemoryAnalyticsStore, type AnalyticsStore } from "./analytics";
+import { PostgresAnalyticsStore } from "./analytics-postgres";
 
 interface Conn {
   userId?: string;
@@ -23,6 +26,65 @@ const PORT = Number(process.env.PORT ?? 3001);
 const storage = new MemoryStorage();
 const lobby = new Lobby();
 const gameConns = new Map<string, Set<ServerWebSocket<Conn>>>();
+
+// Analytics: durable Postgres when DATABASE_URL is set, else in-memory (dev).
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
+const analytics: AnalyticsStore = process.env.DATABASE_URL
+  ? new PostgresAnalyticsStore()
+  : new MemoryAnalyticsStore();
+await analytics.init?.().catch((err) => console.error("analytics init failed:", err));
+if (!ADMIN_TOKEN) console.warn("ADMIN_TOKEN not set — the /admin API will reject all requests.");
+
+const CORS_HEADERS: Record<string, string> = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "access-control-allow-headers": "content-type, authorization, x-admin-token",
+};
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json", ...CORS_HEADERS },
+  });
+}
+
+function adminAuthorized(req: Request): boolean {
+  if (!ADMIN_TOKEN) return false;
+  const auth = req.headers.get("authorization");
+  const bearer = auth?.startsWith("Bearer ") ? auth.slice(7) : undefined;
+  return bearer === ADMIN_TOKEN || req.headers.get("x-admin-token") === ADMIN_TOKEN;
+}
+
+/** Read-only admin aggregations, keyed by the URL path segment. */
+async function adminQuery(name: string): Promise<unknown | undefined> {
+  switch (name) {
+    case "overview":
+      return analytics.overview();
+    case "sessions":
+      return analytics.sessionsPerPlayer();
+    case "civs":
+      return analytics.civDistribution();
+    case "outcomes":
+      return analytics.outcomeBreakdown();
+    case "leaderboard":
+      return analytics.leaderboard();
+    case "votes":
+      return analytics.voteTotals();
+    case "all": {
+      const [overview, sessions, civs, outcomes, leaderboard, votes] = await Promise.all([
+        analytics.overview(),
+        analytics.sessionsPerPlayer(),
+        analytics.civDistribution(),
+        analytics.outcomeBreakdown(),
+        analytics.leaderboard(),
+        analytics.voteTotals(),
+      ]);
+      return { overview, sessions, civs, outcomes, leaderboard, votes };
+    }
+    default:
+      return undefined;
+  }
+}
 
 function send(ws: ServerWebSocket<Conn>, msg: ServerMessage): void {
   ws.send(JSON.stringify(msg));
@@ -173,13 +235,41 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
 
 const server = Bun.serve<Conn>({
   port: PORT,
-  fetch(req, server) {
+  async fetch(req, server) {
     const url = new URL(req.url);
     if (url.pathname === "/health") {
       return new Response(JSON.stringify({ ok: true, service: "roc-server" }), {
         headers: { "content-type": "application/json" },
       });
     }
+
+    // CORS preflight for the analytics + admin endpoints.
+    if (req.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    // Analytics ingestion: best-effort, fail-soft (always 204 so clients never
+    // retry-storm). The game works whether or not this succeeds.
+    if (url.pathname === "/analytics" && req.method === "POST") {
+      try {
+        const batch = (await req.json()) as AnalyticsBatch;
+        const events = Array.isArray(batch?.events) ? batch.events.slice(0, 100) : [];
+        if (events.length) await analytics.record(events);
+      } catch (err) {
+        console.error("analytics ingest error:", err);
+      }
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    // Admin read API (token-gated).
+    if (url.pathname.startsWith("/admin/api/")) {
+      if (!adminAuthorized(req)) return jsonResponse({ error: "unauthorized" }, 401);
+      const name = url.pathname.slice("/admin/api/".length);
+      const result = await adminQuery(name);
+      if (result === undefined) return jsonResponse({ error: "not found" }, 404);
+      return jsonResponse(result);
+    }
+
     if (url.pathname === "/ws") {
       if (server.upgrade<Conn>(req, { data: {} })) return undefined;
       return new Response("upgrade failed", { status: 400 });
