@@ -6,6 +6,9 @@ import { SQL } from "bun";
 import type {
   AdminOverview,
   AnalyticsEvent,
+  BugReportContext,
+  BugReportDetail,
+  BugReportSummary,
   CivCount,
   ConfigBreakdown,
   LabelCount,
@@ -68,6 +71,21 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
         created_at  BIGINT,
         PRIMARY KEY (client_id, feature_id)
       )`;
+    await sql`
+      CREATE TABLE IF NOT EXISTS bug_reports (
+        report_id   TEXT PRIMARY KEY,
+        client_id   TEXT NOT NULL,
+        session_id  TEXT,
+        message     TEXT NOT NULL,
+        mode        TEXT,
+        turn        INTEGER,
+        civ_id      TEXT,
+        context     TEXT,
+        errors      TEXT,
+        state       TEXT,
+        created_at  BIGINT
+      )`;
+    await sql`CREATE INDEX IF NOT EXISTS bug_reports_created_idx ON bug_reports (created_at DESC)`;
   }
 
   async record(events: AnalyticsEvent[]): Promise<void> {
@@ -109,6 +127,16 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
         } else {
           await sql`DELETE FROM feature_votes WHERE client_id = ${e.clientId} AND feature_id = ${e.featureId}`;
         }
+      } else if (e.t === "bug_report") {
+        const context = e.context ? JSON.stringify(e.context) : null;
+        const errors = e.errors && e.errors.length ? JSON.stringify(e.errors) : null;
+        await sql`
+          INSERT INTO bug_reports (report_id, client_id, session_id, message, mode, turn,
+            civ_id, context, errors, state, created_at)
+          VALUES (${e.reportId}, ${e.clientId}, ${e.sessionId ?? null}, ${e.message},
+            ${e.mode ?? null}, ${e.turn ?? null}, ${e.civId ?? null}, ${context}, ${errors},
+            ${e.state ?? null}, ${e.ts})
+          ON CONFLICT (report_id) DO NOTHING`;
       }
     }
   }
@@ -229,6 +257,53 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
       SELECT feature_id, COUNT(*) AS votes FROM feature_votes
       GROUP BY feature_id ORDER BY votes DESC`;
     return rows.map((r) => ({ featureId: String(r.feature_id), votes: num(r.votes) }));
+  }
+
+  async bugReports(limit = 200): Promise<BugReportSummary[]> {
+    // Omit the heavy `state`/`context`/`errors` columns from the list; surface
+    // only whether a snapshot exists. The detail endpoint fetches the full row.
+    const rows = await this.sql<Record<string, unknown>>`
+      SELECT report_id, client_id, session_id, message, mode, turn, civ_id, created_at,
+        (state IS NOT NULL) AS has_state
+      FROM bug_reports ORDER BY created_at DESC LIMIT ${limit}`;
+    return rows.map(summaryFromRow);
+  }
+
+  async bugReport(reportId: string): Promise<BugReportDetail | undefined> {
+    const [r] = await this.sql<Record<string, unknown>>`
+      SELECT report_id, client_id, session_id, message, mode, turn, civ_id, created_at,
+        (state IS NOT NULL) AS has_state, context, errors, state
+      FROM bug_reports WHERE report_id = ${reportId} LIMIT 1`;
+    if (!r) return undefined;
+    return {
+      ...summaryFromRow(r),
+      context: parseJson<BugReportContext>(r.context),
+      errors: parseJson<string[]>(r.errors),
+      state: r.state == null ? undefined : String(r.state),
+    };
+  }
+}
+
+function summaryFromRow(r: Record<string, unknown>): BugReportSummary {
+  return {
+    reportId: String(r.report_id),
+    clientId: String(r.client_id),
+    sessionId: r.session_id == null ? undefined : String(r.session_id),
+    message: String(r.message ?? ""),
+    mode: r.mode == null ? undefined : String(r.mode),
+    turn: r.turn == null ? undefined : num(r.turn),
+    civId: r.civ_id == null ? undefined : String(r.civ_id),
+    ts: num(r.created_at),
+    hasState: r.has_state === true || r.has_state === "t" || r.has_state === "true",
+  };
+}
+
+function parseJson<T>(v: unknown): T | undefined {
+  if (v == null) return undefined;
+  try {
+    return JSON.parse(String(v)) as T;
+  } catch {
+    return undefined;
   }
 }
 

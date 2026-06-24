@@ -134,4 +134,26 @@ describe("MemoryAnalyticsStore", () => {
       { featureId: "map-europe", votes: 1 },
     ]);
   });
+
+  it("stores bug reports, lists summaries newest-first, and fetches full detail", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      { t: "bug_report", reportId: "r1", clientId: "p1", sessionId: "s1", message: "older", mode: "sp", turn: 5, civId: "rome", state: '{"x":1}', errors: ["boom"], context: { url: "u" }, ts: now },
+      { t: "bug_report", reportId: "r2", clientId: "p2", message: "newer, no state", ts: now + 1000 },
+      // duplicate id is ignored (immutable)
+      { t: "bug_report", reportId: "r1", clientId: "px", message: "overwrite attempt", ts: now + 2000 },
+    ]);
+
+    const list = await a.bugReports();
+    expect(list.map((b) => b.reportId)).toEqual(["r2", "r1"]); // newest first
+    expect(list[0]).toMatchObject({ reportId: "r2", hasState: false });
+    expect(list[1]).toMatchObject({ reportId: "r1", clientId: "p1", turn: 5, hasState: true });
+    // summaries omit the heavy payload
+    expect((list[1] as Record<string, unknown>).state).toBeUndefined();
+    expect((list[1] as Record<string, unknown>).errors).toBeUndefined();
+
+    const detail = await a.bugReport("r1");
+    expect(detail).toMatchObject({ message: "older", state: '{"x":1}', errors: ["boom"], context: { url: "u" } });
+    expect(await a.bugReport("nope")).toBeUndefined();
+  });
 });

@@ -72,17 +72,21 @@ async function adminQuery(name: string): Promise<unknown | undefined> {
       return analytics.leaderboard();
     case "votes":
       return analytics.voteTotals();
+    case "bugReports":
+      return analytics.bugReports();
     case "all": {
-      const [overview, sessions, civs, config, outcomes, leaderboard, votes] = await Promise.all([
-        analytics.overview(),
-        analytics.sessionsPerPlayer(),
-        analytics.civDistribution(),
-        analytics.configBreakdown(),
-        analytics.outcomeBreakdown(),
-        analytics.leaderboard(),
-        analytics.voteTotals(),
-      ]);
-      return { overview, sessions, civs, config, outcomes, leaderboard, votes };
+      const [overview, sessions, civs, config, outcomes, leaderboard, votes, bugReports] =
+        await Promise.all([
+          analytics.overview(),
+          analytics.sessionsPerPlayer(),
+          analytics.civDistribution(),
+          analytics.configBreakdown(),
+          analytics.outcomeBreakdown(),
+          analytics.leaderboard(),
+          analytics.voteTotals(),
+          analytics.bugReports(),
+        ]);
+      return { overview, sessions, civs, config, outcomes, leaderboard, votes, bugReports };
     }
     default:
       return undefined;
@@ -359,6 +363,13 @@ const server = Bun.serve<Conn>({
     if (url.pathname.startsWith("/admin/api/")) {
       if (!adminAuthorized(req)) return jsonResponse({ error: "unauthorized" }, 401);
       const name = url.pathname.slice("/admin/api/".length);
+      // Single bug report detail (full captured payload): /admin/api/bug-report/<id>.
+      if (name.startsWith("bug-report/")) {
+        const id = decodeURIComponent(name.slice("bug-report/".length));
+        const report = await analytics.bugReport(id);
+        if (!report) return jsonResponse({ error: "not found" }, 404);
+        return jsonResponse(report);
+      }
       const result = await adminQuery(name);
       if (result === undefined) return jsonResponse({ error: "not found" }, 404);
       return jsonResponse(result);

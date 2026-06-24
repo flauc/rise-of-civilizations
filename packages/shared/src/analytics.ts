@@ -71,7 +71,49 @@ export interface FeatureVoteEvent {
   ts: number;
 }
 
-export type AnalyticsEvent = SessionStartEvent | SessionEndEvent | FeatureVoteEvent;
+/** Browser/environment context captured alongside a bug report. */
+export interface BugReportContext {
+  userAgent?: string;
+  url?: string;
+  language?: string;
+  /** Inner viewport, e.g. "1280x720". */
+  viewport?: string;
+  /** Physical screen size, e.g. "1920x1080". */
+  screen?: string;
+  devicePixelRatio?: number;
+  online?: boolean;
+  /** Vite build mode at send time ("production" / "development"). */
+  buildMode?: string;
+}
+
+/**
+ * The player filed a bug report from the in-game menu. Carries the free-text
+ * description plus a best-effort snapshot of the game so it can be reproduced:
+ * the full serialized state (`state`), recent client-side errors, and browser
+ * context. Reports are immutable and identified by `reportId`.
+ */
+export interface BugReportEvent {
+  t: "bug_report";
+  reportId: string;
+  clientId: string;
+  /** The active game session, when one is running. */
+  sessionId?: string;
+  /** What the player wrote. */
+  message: string;
+  mode?: GameMode;
+  /** Turn number at capture time. */
+  turn?: number;
+  /** The viewing player's civilization id. */
+  civId?: string;
+  /** Recent client error messages (window errors / console.error), newest last. */
+  errors?: string[];
+  context?: BugReportContext;
+  /** Full serialized game-state JSON (best-effort; absent if capture failed). */
+  state?: string;
+  ts: number;
+}
+
+export type AnalyticsEvent = SessionStartEvent | SessionEndEvent | FeatureVoteEvent | BugReportEvent;
 
 /** The POST body the client sends to the server's ingestion endpoint. */
 export interface AnalyticsBatch {
@@ -126,6 +168,27 @@ export interface LeaderboardEntry {
 export interface VoteTotal {
   featureId: string;
   votes: number;
+}
+
+/** A bug report as shown in the admin list (no heavy `state` payload). */
+export interface BugReportSummary {
+  reportId: string;
+  clientId: string;
+  sessionId?: string;
+  message: string;
+  mode?: string;
+  turn?: number;
+  civId?: string;
+  ts: number;
+  /** Whether a full state snapshot was captured (fetch the detail to get it). */
+  hasState: boolean;
+}
+
+/** A bug report with its full captured payload, for the admin detail view. */
+export interface BugReportDetail extends BugReportSummary {
+  context?: BugReportContext;
+  errors?: string[];
+  state?: string;
 }
 
 /** A label→count tally, used for the config distributions below. */

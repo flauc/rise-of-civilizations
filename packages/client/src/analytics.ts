@@ -10,6 +10,7 @@ import {
   ANALYTICS_SCHEMA_VERSION,
   type AnalyticsBatch,
   type AnalyticsEvent,
+  type BugReportContext,
   type GameMode,
   type SessionOutcome,
 } from "@roc/shared";
@@ -264,6 +265,102 @@ export function trackFeatureVote(featureId: string, action: "add" | "remove"): v
   enqueue({ t: "feature_vote", clientId, featureId, action, ts: Date.now() });
 }
 
+// ---- bug reports ---------------------------------------------------------
+
+/** Ring buffer of the most recent client-side errors, attached to bug reports. */
+const RECENT_ERRORS_CAP = 25;
+const recentErrors: string[] = [];
+
+function noteError(msg: string): void {
+  if (!msg) return;
+  recentErrors.push(`${new Date().toISOString()} ${msg}`.slice(0, 1000));
+  if (recentErrors.length > RECENT_ERRORS_CAP) recentErrors.shift();
+}
+
+function captureContext(): BugReportContext {
+  const ctx: BugReportContext = {};
+  try {
+    ctx.userAgent = navigator.userAgent;
+    ctx.language = navigator.language;
+    ctx.online = navigator.onLine;
+  } catch {
+    /* ignore */
+  }
+  try {
+    ctx.url = location.href;
+  } catch {
+    /* ignore */
+  }
+  try {
+    ctx.viewport = `${window.innerWidth}x${window.innerHeight}`;
+    ctx.screen = `${screen.width}x${screen.height}`;
+    ctx.devicePixelRatio = window.devicePixelRatio;
+  } catch {
+    /* ignore */
+  }
+  try {
+    ctx.buildMode = import.meta.env.MODE;
+  } catch {
+    /* ignore */
+  }
+  return ctx;
+}
+
+/** The active session id, if a game is running (for attaching to bug reports). */
+export function activeSessionId(): string | undefined {
+  return active?.sessionId;
+}
+
+export interface BugReportInput {
+  message: string;
+  /** Game mode, when a game is running. */
+  mode?: GameMode;
+  turn?: number;
+  civId?: string;
+  /** Full serialized game-state JSON (best-effort; omit if unavailable). */
+  state?: string;
+}
+
+/**
+ * Submit a bug report. Tries an immediate direct send (so a large state snapshot
+ * isn't persisted in localStorage); on failure, falls back to the offline queue.
+ * Resolves `true` if delivered now, `false` if it was queued for later. Never throws.
+ */
+export async function trackBugReport(input: BugReportInput): Promise<boolean> {
+  const event: AnalyticsEvent = {
+    t: "bug_report",
+    reportId: uuid(),
+    clientId,
+    sessionId: active?.sessionId,
+    message: input.message,
+    mode: input.mode,
+    turn: input.turn,
+    civId: input.civId,
+    errors: recentErrors.slice(),
+    context: captureContext(),
+    state: input.state,
+    ts: Date.now(),
+  };
+  // Immediate direct send.
+  try {
+    if (typeof navigator === "undefined" || navigator.onLine !== false) {
+      const batch: AnalyticsBatch = { v: ANALYTICS_SCHEMA_VERSION, events: [event] };
+      const res = await fetch(ENDPOINT, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(batch),
+        keepalive: true,
+      });
+      if (res.ok) return true;
+    }
+  } catch {
+    /* fall through to queueing */
+  }
+  // Offline / failed: queue it so it's delivered on the next successful flush.
+  enqueue(event);
+  return false;
+}
+
 // ---- lifecycle wiring ----------------------------------------------------
 
 let wired = false;
@@ -295,6 +392,28 @@ export function initAnalytics(): void {
 
   void flush();
   window.addEventListener("online", () => void flush());
+
+  // Capture recent errors so a later bug report carries them for context.
+  window.addEventListener("error", (e) => {
+    noteError(`error: ${e.message}${e.filename ? ` @ ${e.filename}:${e.lineno}:${e.colno}` : ""}`);
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    const reason = (e as PromiseRejectionEvent).reason;
+    noteError(`unhandledrejection: ${reason instanceof Error ? reason.stack || reason.message : String(reason)}`);
+  });
+  try {
+    const origError = console.error.bind(console);
+    console.error = (...args: unknown[]): void => {
+      try {
+        noteError("console.error: " + args.map((a) => (a instanceof Error ? a.message : String(a))).join(" "));
+      } catch {
+        /* ignore */
+      }
+      origError(...args);
+    };
+  } catch {
+    /* ignore */
+  }
 
   const onLeave = (): void => {
     // Tab close / reload while a game is live → abandoned. Enqueue it (persisted,

@@ -288,6 +288,11 @@ export interface UIHandlers {
   onSuggestion(): void;
   onSave(name: string): Promise<void>;
   onExportCurrentSave(): Promise<string>;
+  /**
+   * Submit a bug report with the player's description. The handler captures the
+   * game state/context. Resolves `true` if sent now, `false` if queued offline.
+   */
+  onReportBug(message: string): Promise<boolean>;
   onMenuOpen(): void;
   onLoadMpSave(blob: string): Promise<void>;
   onCheat(action: CheatAction): void;
@@ -678,8 +683,9 @@ export function createUI(handlers: UIHandlers): UI {
   const lastSeenTurnUpdateByViewer = new Map<number, number>();
   let menuOpen = false;
   let settingsOpen = false;
-  let menuView: "menu" | "save" = "menu";
+  let menuView: "menu" | "save" | "bug" = "menu";
   let isSaving = false;
+  let isReporting = false;
   let mpSaves: SaveRecord[] = [];
   let godModeEnabled = false;
   let godModeOpen = false;
@@ -1361,6 +1367,17 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
 
+    // Same anti-flicker guard for the bug-report form: don't rebuild it (and clear
+    // the textarea / steal focus) on every frame while the player is typing.
+    if (menuView === "bug" && saveModal.querySelector<HTMLTextAreaElement>("#bug-text")) {
+      const confirmBtn = saveModal.querySelector<HTMLButtonElement>("#bug-confirm");
+      if (confirmBtn) {
+        confirmBtn.disabled = isReporting;
+        confirmBtn.textContent = isReporting ? "Sending…" : "Submit report";
+      }
+      return;
+    }
+
     if (menuView === "menu") {
       const godMenuBtn =
         !lastView?.cheatsEnabled
@@ -1378,6 +1395,7 @@ export function createUI(handlers: UIHandlers): UI {
         `<button class="btn" id="menu-wiki">Open Wiki</button>` +
         `<button class="btn" id="menu-leaderboard">Leaderboard</button>` +
         `<button class="btn" id="menu-log">Game Log</button>` +
+        `<button class="btn" id="menu-bug">🐞 Report a Bug</button>` +
         godMenuBtn +
         `<button class="btn" id="menu-leave">Leave Game</button>` +
         `</div>`;
@@ -1428,6 +1446,10 @@ export function createUI(handlers: UIHandlers): UI {
         logOverlay.classList.add("show");
         logDialog.classList.add("show");
       });
+      saveModal.querySelector<HTMLButtonElement>("#menu-bug")!.addEventListener("click", () => {
+        menuView = "bug";
+        renderMenu(state);
+      });
       saveModal.querySelector<HTMLButtonElement>("#menu-enable-god")?.addEventListener("click", () => {
         godModeEnabled = true;
         godModeOpen = true;
@@ -1475,6 +1497,51 @@ export function createUI(handlers: UIHandlers): UI {
           }
         }),
       );
+      return;
+    }
+
+    // Bug-report form view
+    if (menuView === "bug") {
+      saveModal.innerHTML =
+        `<div class="row" style="justify-content:space-between"><b>🐞 Report a Bug</b>` +
+        `<button class="btn" id="bug-close">Cancel</button></div>` +
+        `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
+        `(turn ${state.turn}, full state &amp; recent errors) is attached automatically to help us reproduce it.</div>` +
+        `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
+        `style="width:100%;min-height:120px;resize:vertical;margin-bottom:8px"></textarea>` +
+        `<button class="btn primary" id="bug-confirm" style="width:100%" ${isReporting ? "disabled" : ""}>` +
+        (isReporting ? "Sending…" : "Submit report") +
+        `</button>` +
+        `<div id="bug-status" style="margin-top:8px"></div>`;
+      const ta = saveModal.querySelector<HTMLTextAreaElement>("#bug-text")!;
+      ta.focus();
+      const statusEl = saveModal.querySelector<HTMLDivElement>("#bug-status")!;
+      saveModal.querySelector<HTMLButtonElement>("#bug-close")!.addEventListener("click", () => {
+        menuView = "menu";
+        renderMenu(state);
+      });
+      saveModal.querySelector<HTMLButtonElement>("#bug-confirm")!.addEventListener("click", async () => {
+        const message = ta.value.trim();
+        if (!message) {
+          statusEl.innerHTML = `<span style="color:#ff8a8a">Please describe the problem first.</span>`;
+          return;
+        }
+        isReporting = true;
+        renderMenu(state);
+        try {
+          const sentNow = await handlers.onReportBug(message);
+          isReporting = false;
+          menuOpen = false;
+          menuView = "menu";
+          renderMenu(state);
+          showBanner(sentNow ? "Bug report sent — thank you!" : "Report saved — it'll send when you're back online.");
+        } catch (err) {
+          isReporting = false;
+          renderMenu(state);
+          const el = saveModal.querySelector<HTMLDivElement>("#bug-status");
+          if (el) el.innerHTML = `<span style="color:#ff8a8a">${escapeHtml(String(err))}</span>`;
+        }
+      });
       return;
     }
 

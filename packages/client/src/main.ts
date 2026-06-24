@@ -53,7 +53,7 @@ import { loadAbilityAtlas } from "./ability-assets";
 import { MAP_DIMENSIONS, type Session } from "./session";
 import type { CheatAction } from "./god-mode";
 import { exportSave, listSaves, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
-import { initAnalytics, trackSessionStart, trackSessionEnd, noteTurns, type GameSetup } from "./analytics";
+import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, type GameSetup } from "./analytics";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -415,6 +415,32 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         gameId: session.isOnline ? (session as import("./session").OnlineSession).gameId : undefined,
       });
       return exportSave(record);
+    },
+    onReportBug: async (message) => {
+      const state = session.getState();
+      // Capture the fullest snapshot we can: the same serialized state used for
+      // saves (host export for MP), plus the current turn/mode/civ. Best-effort —
+      // a capture failure must not block the report.
+      let stateJson: string | undefined;
+      try {
+        if (session.isOnline) {
+          const online = session as import("./session").OnlineSession;
+          stateJson = await online.requestExport();
+        } else {
+          stateJson = JSON.stringify(serializeState(state));
+        }
+      } catch {
+        stateJson = undefined;
+      }
+      const me = session.getViewerId();
+      const civId = state.players.find((p) => p.id === me)?.civId;
+      return trackBugReport({
+        message,
+        mode: session.isOnline ? "mp" : "sp",
+        turn: state.turn,
+        civId,
+        state: stateJson,
+      });
     },
     onMenuOpen: () => {
       if (!session.isOnline) return;
