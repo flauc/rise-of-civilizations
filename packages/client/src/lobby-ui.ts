@@ -6,6 +6,7 @@ import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session
 import { createWiki } from "./wiki";
 import { createRoadmap } from "./roadmap";
 import { createCredits } from "./credits";
+import { createChangelog, CURRENT_VERSION } from "./changelog";
 import {
   CIVILIZATIONS,
   PLAYER_COLORS,
@@ -223,6 +224,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
   const wiki = createWiki();
   const roadmap = createRoadmap();
   const credits = createCredits();
+  const changelog = createChangelog();
 
   const root = document.createElement("div");
   root.id = "lobby";
@@ -242,7 +244,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .lobby-right::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,14,11,0) 0%,rgba(15,14,11,.78) 100%);pointer-events:none}
     .lobby-title{font-family:'Cinzel',Georgia,serif;font-size:28px;font-weight:800;color:#e8dcc5;letter-spacing:.5px;margin-bottom:4px}
     .lobby-subtitle{color:#b8aa8d;font-size:13px;margin-bottom:24px}
-    .lobby-version{margin-top:auto;color:#b8aa8d;font-size:12px;text-align:center;padding-top:18px}
+    .lobby-version{margin-top:auto;color:#b8aa8d;font:inherit;font-size:12px;text-align:center;padding:18px 0 0;background:none;border:none;cursor:pointer;transition:color .12s}
+    .lobby-version:hover{color:#f0d878}
     .menu-actions{display:flex;flex-direction:column;gap:10px;margin-top:8px}
     .menu-btn{width:100%;padding:12px 14px;font:inherit;font-size:15px;font-weight:700;color:#e8dcc5;background:rgba(201,162,39,0.08);border:1px solid var(--edge);border-radius:999px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
     .menu-btn:hover{background:rgba(201,162,39,0.18);border-color:#c9a227;color:#f0d878;box-shadow:0 0 16px rgba(201,162,39,.2)}
@@ -733,14 +736,18 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         <button class="menu-btn" data-screen="load">Load Game</button>
         <button class="menu-btn" id="lobby-wiki">Wiki</button>
         <button class="menu-btn" id="lobby-roadmap">Roadmap</button>
+        <button class="menu-btn" id="lobby-changelog">Changelog</button>
         <button class="menu-btn" id="lobby-credits">Credits</button>
-      </div>`;
+      </div>
+      <button class="lobby-version" id="lobby-version" type="button">v${CURRENT_VERSION} · What's new</button>`;
     left.querySelectorAll<HTMLButtonElement>("[data-screen]").forEach((el) =>
       el.addEventListener("click", () => showScreen(el.dataset.screen as Screen)),
     );
     left.querySelector<HTMLButtonElement>("#lobby-wiki")?.addEventListener("click", () => wiki.open());
     left.querySelector<HTMLButtonElement>("#lobby-roadmap")?.addEventListener("click", () => roadmap.open());
+    left.querySelector<HTMLButtonElement>("#lobby-changelog")?.addEventListener("click", () => changelog.open());
     left.querySelector<HTMLButtonElement>("#lobby-credits")?.addEventListener("click", () => credits.open());
+    left.querySelector<HTMLButtonElement>("#lobby-version")?.addEventListener("click", () => changelog.open());
   }
 
   function renderSinglePlayer(): void {

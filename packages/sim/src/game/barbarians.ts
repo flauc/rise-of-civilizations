@@ -3,7 +3,7 @@ import type { GameState, Unit } from "./state";
 import { currentPlayer, playerById, unitsOf, unitAt, cityAt, areEnemies } from "./state";
 import { computeReachable } from "./movement";
 import { computeAttackTargets, resolveAttack } from "./combat";
-import { spawnFromCamps } from "./features";
+import { spawnFromCamps, maybeSpawnCamps } from "./features";
 import { isBarbarianPacified } from "./bribery";
 
 interface Target {
@@ -38,6 +38,7 @@ function nearestEnemy(state: GameState, unit: Unit): Target | null {
 export function barbarianTurn(state: GameState, playerId?: number): void {
   const player = playerId !== undefined ? playerById(state, playerId) : currentPlayer(state);
   if (!player) return;
+  maybeSpawnCamps(state, player.id); // new camps emerge from the fog over time
   spawnFromCamps(state, player.id); // camps reinforce the horde
   for (const unit of unitsOf(state, player.id)) {
     let safety = 0;

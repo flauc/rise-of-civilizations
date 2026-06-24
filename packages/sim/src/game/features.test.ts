@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn } from "./commands";
-import { triggerVillage, spawnFromCamps, clearBarbCamp } from "./features";
+import { triggerVillage, spawnFromCamps, maybeSpawnCamps, clearBarbCamp } from "./features";
+import { computeVisible } from "./visibility";
 import { unitsOf, type GameState, type Unit } from "./state";
 import {
   globalMoraleOf,
@@ -51,6 +52,55 @@ describe("map features", () => {
       if (unitsOf(state, barbId).length > before) spawnedMore = true;
     }
     expect(spawnedMore).toBe(true);
+  });
+
+  it("the horde grows past the old fixed cap — there is no global unit limit", () => {
+    const state = createGame({ seed: "feat-nocap", cols: 60, rows: 40, barbarians: true });
+    const barbId = state.players.find((p) => p.isBarbarian)!.id;
+    // March the barbarians' war-bands off their camps each turn so the camp tiles
+    // stay clear and keep producing — left in place they'd block their own spawns.
+    let parking = 0;
+    for (let t = 1; t <= 60; t++) {
+      state.turn = t;
+      spawnFromCamps(state, barbId);
+      for (const u of unitsOf(state, barbId)) {
+        u.col = 0;
+        u.row = parking++ % state.map.rows; // shove them into a corner column
+      }
+    }
+    expect(unitsOf(state, barbId).length).toBeGreaterThan(12); // old "normal" cap
+  });
+
+  it("new camps emerge only in the fog of war, up to the target density", () => {
+    const state = createGame({ seed: "feat-fog", cols: 60, rows: 40, barbarians: true });
+    const barbId = state.players.find((p) => p.isBarbarian)!.id;
+    // Wipe existing camps so we're below target and a fresh one must appear.
+    for (const tile of state.map.tiles) if (tile.feature === "barb_camp") tile.feature = undefined;
+    expect(state.map.tiles.some((t) => t.feature === "barb_camp")).toBe(false);
+
+    state.turn = 7; // a multiple of the "normal" camp-spawn cadence
+    maybeSpawnCamps(state, barbId);
+
+    const camps = state.map.tiles.filter((t) => t.feature === "barb_camp");
+    expect(camps.length).toBe(1); // one new camp per spawn tick (gradual)
+
+    // It must NOT sit on a tile any civilization can currently see.
+    const sighted = new Set<string>();
+    for (const p of state.players) {
+      if (p.isBarbarian) continue;
+      for (const k of computeVisible(state, p.id)) sighted.add(k);
+    }
+    for (const c of camps) expect(sighted.has(`${c.col},${c.row}`)).toBe(false);
+  });
+
+  it("does not spawn new camps once the target density is met", () => {
+    const state = createGame({ seed: "feat-fog-full", cols: 44, rows: 30, barbarians: true });
+    const barbId = state.players.find((p) => p.isBarbarian)!.id;
+    const before = state.map.tiles.filter((t) => t.feature === "barb_camp").length;
+    state.turn = 7;
+    maybeSpawnCamps(state, barbId); // already at target from placement → no-op
+    const after = state.map.tiles.filter((t) => t.feature === "barb_camp").length;
+    expect(after).toBe(before);
   });
 
   it("clearing a barbarian camp raises unit and global morale", () => {

@@ -11,7 +11,6 @@ import {
   makeUnit,
   playerById,
   unitAt,
-  unitsOf,
   type BarbarianActivity,
   type GameState,
   type Player,
@@ -24,18 +23,40 @@ import { availableTechs } from "./economy";
 import { expandTerritory } from "./territory";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
+import { computeVisible } from "./visibility";
 
-function barbarianUnitCap(state: GameState): number {
+/** Target number of barbarian camps for the map — scales with area and activity.
+ *  Used both at map generation and to replenish cleared camps out in the fog, so
+ *  camp density stays roughly constant for the chosen activity level. */
+function barbarianCampTarget(state: GameState): number {
+  const area = state.map.cols * state.map.rows;
   switch (state.barbarianActivity) {
+    case "none":
+      return 0;
     case "minimal":
-      return 3;
+      return Math.max(1, Math.floor(area / 800));
     case "low":
-      return 5;
+      return Math.max(1, Math.floor(area / 450));
     case "high":
-      return 20;
+      return Math.max(1, Math.floor(area / 140));
     case "normal":
     default:
-      return 12;
+      return Math.max(1, Math.floor(area / 220));
+  }
+}
+
+/** How often (in turns) the wilderness tries to birth a new camp in the fog. */
+function barbarianCampSpawnCadence(state: GameState): number {
+  switch (state.barbarianActivity) {
+    case "minimal":
+      return 14;
+    case "low":
+      return 10;
+    case "high":
+      return 4;
+    case "normal":
+    default:
+      return 7;
   }
 }
 
@@ -234,19 +255,61 @@ export function onUnitEnter(state: GameState, unit: Unit): void {
 
 // ---- barbarian camps spawning --------------------------------------------
 
-/** Camps periodically spawn raiders (called during the barbarians' turn). */
+/** Camps periodically spawn raiders (called during the barbarians' turn). There
+ *  is no global cap on the horde: each camp simply births a raider on its own
+ *  cadence (set by activity level), so bigger maps with more camps sustain
+ *  proportionally more barbarians. A camp only spawns when it has a free tile
+ *  beside it, which keeps any single camp from flooding one spot. */
 export function spawnFromCamps(state: GameState, barbId: number): void {
-  const cap = barbarianUnitCap(state);
-  if (unitsOf(state, barbId).length >= cap) return;
   for (const tile of state.map.tiles) {
     if (tile.feature !== "barb_camp") continue;
     const cadence = barbarianCampCadence(state, tile.col, tile.row);
     if (state.turn % cadence !== 0) continue;
-    if (unitsOf(state, barbId).length >= cap) return;
     const type: UnitTypeId = makeRng(hashSeed(`camp:${tile.col},${tile.row}:${state.turn}`)).next() < 0.5 ? "warrior" : "slinger";
     const spawned = spawnUnitNear(state, barbId, type, tile.col, tile.row);
     if (spawned) spawned.campKey = `${tile.col},${tile.row}`; // tag the war-band for bribery
   }
+}
+
+/** Tiles currently within sight of any (non-barbarian) civilization — i.e. NOT
+ *  under fog of war. New camps may only emerge on tiles outside this set. */
+function sightedTiles(state: GameState): Set<string> {
+  const seen = new Set<string>();
+  for (const p of state.players) {
+    if (p.isBarbarian) continue;
+    for (const k of computeVisible(state, p.id)) seen.add(k);
+  }
+  return seen;
+}
+
+/** New camps emerge from the wilderness over time, but only out in the fog —
+ *  never on a tile a civilization can currently see. Camps are replenished up to
+ *  a target density (map size × activity), so clearing one eventually invites a
+ *  new one to appear in some unexplored corner of the map. */
+export function maybeSpawnCamps(state: GameState, _barbId: number): void {
+  const target = barbarianCampTarget(state);
+  if (target <= 0) return;
+  if (state.turn % barbarianCampSpawnCadence(state) !== 0) return;
+  const camps = state.map.tiles.filter((t) => t.feature === "barb_camp");
+  if (camps.length >= target) return;
+
+  const sighted = sightedTiles(state);
+  const tooCloseToCamp = (c: number, r: number) =>
+    camps.some((p) => axialDistance(offsetToAxial(p), offsetToAxial({ col: c, row: r })) < 3);
+
+  const eligible: { col: number; row: number; key: number }[] = [];
+  for (const tile of state.map.tiles) {
+    if (!isPassableLand(tile.terrain) || tile.feature) continue;
+    if (sighted.has(`${tile.col},${tile.row}`)) continue; // must be hidden in fog
+    if (unitAt(state, tile.col, tile.row)) continue;
+    if (tooCloseToCamp(tile.col, tile.row)) continue;
+    eligible.push({ col: tile.col, row: tile.row, key: hashSeed(`campspawn:${state.turn}:${tile.col},${tile.row}`) });
+  }
+  if (eligible.length === 0) return;
+  eligible.sort((a, b) => a.key - b.key); // deterministic pick among fog tiles
+  const spot = eligible[0]!;
+  const t = getTile(state.map, spot.col, spot.row);
+  if (t) t.feature = "barb_camp";
 }
 
 // ---- placement at map generation -----------------------------------------
@@ -259,16 +322,7 @@ export function placeFeatures(
   const { map } = state;
   const area = map.cols * map.rows;
   const villageCount = Math.max(2, Math.floor(area / 70));
-  const campCount =
-    activity === "none"
-      ? 0
-      : activity === "minimal"
-        ? Math.max(1, Math.floor(area / 800))
-        : activity === "low"
-          ? Math.max(1, Math.floor(area / 450))
-          : activity === "high"
-            ? Math.max(1, Math.floor(area / 140))
-            : Math.max(1, Math.floor(area / 220));
+  const campCount = barbarianCampTarget(state);
 
   // Eligible land tiles, away from starts and not already featured/occupied.
   const eligible: { col: number; row: number; key: number }[] = [];
