@@ -155,6 +155,8 @@ export type TechId =
   | "mathematics" | "engineering" | "coinage" | "philosophy"
   | "cavalry_doctrine" | "horse_archery" | "crossbow"
   | "monumental_architecture" | "elephantry" | "bridge_building"
+  // Intellectual / cultural / religious institutions — unlock labour-conversion projects
+  | "scholasticism" | "aesthetics" | "theology"
   // Early gunpowder
   | "gunpowder" | "firearms";
 
@@ -473,12 +475,87 @@ export const TECH_DEFS: Record<TechId, TechDef> = {
   monumental_architecture: T("monumental_architecture", "Monumental Architecture", 70, ["masonry", "writing"]),
   elephantry: T("elephantry", "Elephantry", 64, ["animal_taming", "bronze_alloying"]),
 
+  // Intellectual / cultural / religious institutions. Each lets a city pour its
+  // labour into a corresponding empire output (see PROJECT_DEFS).
+  scholasticism: T("scholasticism", "Scholasticism", 68, ["philosophy"]),
+  aesthetics: T("aesthetics", "Aesthetics", 64, ["philosophy"]),
+  theology: T("theology", "Theology", 66, ["philosophy", "ritual_burial"]),
+
   // Early gunpowder — the close of the era (caps at hand cannons, matchlocks, bombards).
   gunpowder: T("gunpowder", "Gunpowder", 95, ["carburizing", "engineering"]),
   firearms: T("firearms", "Firearms", 110, ["gunpowder"]),
 };
 
 export const ALL_TECHS: TechId[] = Object.keys(TECH_DEFS) as TechId[];
+
+// ---- Conversion projects --------------------------------------------------
+// A city with nothing it wants to build can instead set its labourers to a
+// standing "project" that converts the city's production each turn into an
+// empire resource. Coinage (gold) is always available — historically the act of
+// minting surplus into coin; the others are unlocked by an institutional tech.
+
+export type ProjectId = "coinage" | "scholarship" | "patronage" | "tithe";
+
+/** Which empire pool a project's converted production flows into. */
+export type ProjectOutput = "gold" | "science" | "culture" | "faith";
+
+export interface ProjectDef {
+  id: ProjectId;
+  name: string;
+  glyph: string;
+  output: ProjectOutput;
+  /** Units of output produced per 1 production invested. */
+  ratio: number;
+  /** Tech that unlocks the project (Coinage is ungated). */
+  reqTech?: TechId;
+  desc: string;
+}
+
+const P = (d: ProjectDef): ProjectDef => d;
+
+export const PROJECT_DEFS: Record<ProjectId, ProjectDef> = {
+  coinage: P({
+    id: "coinage",
+    name: "Coinage",
+    glyph: "🪙",
+    output: "gold",
+    ratio: 1,
+    desc: "Set the city's artisans to minting: its production is converted into gold for the treasury each turn.",
+  }),
+  scholarship: P({
+    id: "scholarship",
+    name: "Scholarship",
+    glyph: "🔬",
+    output: "science",
+    ratio: 0.5,
+    reqTech: "scholasticism",
+    desc: "Direct the city's labour toward learning: half its production is converted into science each turn.",
+  }),
+  patronage: P({
+    id: "patronage",
+    name: "Patronage",
+    glyph: "🎭",
+    output: "culture",
+    ratio: 0.5,
+    reqTech: "aesthetics",
+    desc: "Patronise the arts: half the city's production is converted into culture each turn.",
+  }),
+  tithe: P({
+    id: "tithe",
+    name: "Tithe",
+    glyph: "☮️",
+    output: "faith",
+    ratio: 0.5,
+    reqTech: "theology",
+    desc: "Tithe the city's labour to the faithful: half its production is converted into faith each turn.",
+  }),
+};
+
+export const ALL_PROJECTS: ProjectId[] = Object.keys(PROJECT_DEFS) as ProjectId[];
+
+export function getProjectDef(id: string): ProjectDef | undefined {
+  return PROJECT_DEFS[id as ProjectId];
+}
 
 /** Techs every civ begins the game already knowing. */
 export const STARTING_TECHS: TechId[] = ["knapping", "foraging"];
@@ -647,6 +724,10 @@ export const TECH_SYSTEM_UNLOCKS: Partial<Record<TechId, string[]>> = {
   the_wheel: ["Agrimensor specialist"],
   masonry: ["Mason & Architect specialists"],
   engineering: ["Military Engineer specialist"],
+  // Labour-conversion projects (see PROJECT_DEFS).
+  scholasticism: ["Scholarship project (labour → science)"],
+  aesthetics: ["Patronage project (labour → culture)"],
+  theology: ["Tithe project (labour → faith)"],
 };
 
 /** Map/mechanic/system unlocks for a tech (not units or buildings). */

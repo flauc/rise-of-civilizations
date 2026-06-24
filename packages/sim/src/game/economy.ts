@@ -22,6 +22,7 @@ import {
 } from "./turn-updates";
 import {
   BUILDING_DEFS,
+  PROJECT_DEFS,
   TECH_DEFS,
   UNIT_DEFS,
   advanceResearchQueue,
@@ -445,7 +446,24 @@ export function processCity(state: GameState, city: City, owner: Player): void {
 
   // Production.
   city.productionStored += y.production;
-  if (city.production) {
+  if (city.production?.kind === "project") {
+    // A standing conversion project: cash the city's banked production into the
+    // chosen empire pool. Coinage credits gold directly; the science/culture/
+    // faith projects feed their progress pools, so the conversion can complete a
+    // tech/civic the same turn (see the empire-pool section below). The remainder
+    // that doesn't convert cleanly is carried over rather than wasted.
+    const def = PROJECT_DEFS[city.production.id];
+    const converted = Math.floor(city.productionStored * def.ratio);
+    if (converted > 0) {
+      city.productionStored -= Math.ceil(converted / def.ratio);
+      switch (def.output) {
+        case "gold": owner.gold += converted; break;
+        case "science": owner.scienceProgress += converted; break;
+        case "culture": owner.cultureProgress += converted; break;
+        case "faith": owner.faith += converted; break;
+      }
+    }
+  } else if (city.production) {
     const cost =
       city.production.kind === "unit"
         ? UNIT_DEFS[city.production.id].cost
@@ -624,6 +642,12 @@ export function availableProduction(state: GameState, player: Player, city: City
   const ub = uniqueBuildingForCiv(player.civId);
   if (ub && player.researched.has(ub.reqTech as TechId) && !city.buildings.includes(ub.id)) {
     out.push({ item: { kind: "building", id: ub.id }, name: ub.name, cost: ub.cost });
+  }
+  // Standing conversion projects (Coinage always; the rest gated by tech). These
+  // never "complete", so their cost is 0 — the UI shows them as ongoing.
+  for (const def of Object.values(PROJECT_DEFS)) {
+    if (def.reqTech && !player.researched.has(def.reqTech)) continue;
+    out.push({ item: { kind: "project", id: def.id }, name: def.name, cost: 0 });
   }
   return out;
 }

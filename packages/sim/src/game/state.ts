@@ -1,6 +1,6 @@
 import type { GameMap } from "@roc/shared";
 import type { CivEffects, GreatPersonClass } from "@roc/data";
-import { UNIT_DEFS, UNIT_MAX_HP, type ActiveAbilityId, type BuildingId, type PromotionId, type StanceId, type TechId, type UnitTypeId } from "./content";
+import { UNIT_DEFS, UNIT_MAX_HP, type ActiveAbilityId, type BuildingId, type ProjectId, type PromotionId, type StanceId, type TechId, type UnitTypeId } from "./content";
 
 export interface Unit {
   id: number;
@@ -65,7 +65,10 @@ export interface Unit {
 export type ProductionItem =
   | { kind: "unit"; id: UnitTypeId }
   // id is a BuildingId or a civ-unique building id (see UNIQUE_INFRA in @roc/data).
-  | { kind: "building"; id: string };
+  | { kind: "building"; id: string }
+  // A standing conversion project (see PROJECT_DEFS): never completes, converting
+  // the city's production into an empire resource each turn.
+  | { kind: "project"; id: ProjectId };
 
 /** A craft a specialist practises; Works require labour of specific disciplines. */
 export type Discipline = "carpentry" | "survey" | "masonry" | "architecture" | "engineering";

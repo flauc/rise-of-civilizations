@@ -5,6 +5,7 @@
 
 import {
   UNIT_DEFS,
+  getProjectDef,
   getCityYields,
   citiesOf,
   unitsOf,
@@ -121,7 +122,9 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         const prod = c.production
           ? c.production.kind === "unit"
             ? UNIT_DEFS[c.production.id].name
-            : c.production.id
+            : c.production.kind === "project"
+              ? getProjectDef(c.production.id)?.name ?? c.production.id
+              : c.production.id
           : "—";
         const works = worksOfCity(state, c.id).length;
         return (

@@ -57,6 +57,7 @@ import {
   territorySize,
   BUILDING_DEFS,
   getBuildingDef,
+  getProjectDef,
   uniqueImprovementForCiv,
   IMPROVEMENT_DEFS,
   PROMOTION_DEFS,
@@ -356,11 +357,15 @@ function downloadJson(filename: string, json: string): void {
 }
 
 function prodCost(item: ProductionItem): number {
-  return item.kind === "unit" ? UNIT_DEFS[item.id].cost : getBuildingDef(item.id)?.cost ?? 0;
+  if (item.kind === "unit") return UNIT_DEFS[item.id].cost;
+  if (item.kind === "project") return 0; // projects never complete
+  return getBuildingDef(item.id)?.cost ?? 0;
 }
 
 function prodName(item: ProductionItem): string {
-  return item.kind === "unit" ? UNIT_DEFS[item.id].name : getBuildingDef(item.id)?.name ?? item.id;
+  if (item.kind === "unit") return UNIT_DEFS[item.id].name;
+  if (item.kind === "project") return getProjectDef(item.id)?.name ?? item.id;
+  return getBuildingDef(item.id)?.name ?? item.id;
 }
 
 export function createUI(handlers: UIHandlers): UI {
@@ -1895,20 +1900,32 @@ export function createUI(handlers: UIHandlers): UI {
       .map((o) => {
         let glyph: string;
         let desc: string;
+        let meta: string;
+        let cost: string;
         if (o.item.kind === "unit") {
           glyph = UNIT_DEFS[o.item.id].glyph;
           const i = unitInfo(o.item.id);
           desc = `${i.role} — ${i.stats}${i.note ? ` · ${i.note}` : ""}`;
+          meta = `· ${turns(o.cost)} turns`;
+          cost = `${o.cost}⚒️`;
+        } else if (o.item.kind === "project") {
+          const def = getProjectDef(o.item.id);
+          glyph = def?.glyph ?? "♻️";
+          desc = def?.desc ?? "";
+          meta = "· ongoing";
+          cost = "∞";
         } else {
           glyph = "🏛";
           desc = buildingInfo(o.item.id);
+          meta = `· ${turns(o.cost)} turns`;
+          cost = `${o.cost}⚒️`;
         }
         return (
           `<div class="pcard" data-kind="${o.item.kind}" data-id="${o.item.id}">` +
           `<span class="pglyph">${glyph}</span>` +
-          `<div style="flex:1"><div><b>${o.name}</b> <span class="sub">· ${turns(o.cost)} turns</span></div>` +
+          `<div style="flex:1"><div><b>${o.name}</b> <span class="sub">${meta}</span></div>` +
           `<div class="sub">${desc}</div></div>` +
-          `<span class="cost">${o.cost}⚒️</span></div>`
+          `<span class="cost">${cost}</span></div>`
         );
       })
       .join("");
@@ -2725,7 +2742,13 @@ export function createUI(handlers: UIHandlers): UI {
       (buildingSettler ? "" : luxuryBadge) +
       `<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
       // production
-      `<div style="margin-top:6px">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>` +
+      (city.production?.kind === "project"
+        ? (() => {
+            const def = getProjectDef(city.production.id);
+            const perTurnOut = Math.floor(y.production * (def?.ratio ?? 1));
+            return `<div style="margin-top:6px">Project: <b>${curName}</b> <span style="color:#9fc0dc">(+${perTurnOut}${def?.glyph ?? ""}/turn)</span></div>`;
+          })()
+        : `<div style="margin-top:6px">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>`) +
       `<button class="btn primary" id="open-prod" style="width:100%;margin-top:6px">Choose Production ▸ <span style="color:#cfe3f7;font-weight:400">(${options.length})</span></button>` +
       (() => {
         const routes = tradeRoutesFrom(state, city.id);

@@ -164,7 +164,12 @@ function chooseProduction(state: GameState, player: Player, city: City): Product
     const o = opts.find((x) => x.item.kind === "building" && x.item.id === b);
     if (o) return o.item;
   }
-  // 5. Otherwise more military.
+  // 5. If the treasury is in the red and nothing economic is left to build, mint coin.
+  if (player.gold < 0) {
+    const coin = opts.find((o) => o.item.kind === "project" && o.item.id === "coinage");
+    if (coin) return coin.item;
+  }
+  // 6. Otherwise more military.
   return bestMilitary() ?? opts[0]?.item ?? null;
 }
 
