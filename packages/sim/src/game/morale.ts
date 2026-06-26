@@ -112,6 +112,12 @@ export function clampUnitMorale(v: number): number {
   return Math.max(UNIT_MORALE_MIN, Math.min(UNIT_MORALE_MAX, Math.round(v)));
 }
 
+/** Whether a unit participates in the morale system at all. Recon units (scouts)
+ *  are deliberately outside it: no personal morale, no combat swing, no routing. */
+export function hasMorale(unit: Unit): boolean {
+  return UNIT_DEFS[unit.type].cls !== "recon";
+}
+
 /** A unit's current morale; legacy units (no field) count as neutral. */
 export function unitMorale(unit: Unit): number {
   return unit.morale ?? MORALE_NEUTRAL;
@@ -127,13 +133,15 @@ export function startingUnitMorale(state: GameState, ownerId: number, bonus = 0)
   return clampUnitMorale(UNIT_MORALE_BASE + globalMoraleOf(playerById(state, ownerId)) / 2 + bonus);
 }
 
-/** Combat-attack multiplier from morale (1.0 at neutral). */
+/** Combat-attack multiplier from morale (1.0 at neutral; always 1.0 for scouts). */
 export function moraleAttackMultiplier(unit: Unit): number {
+  if (!hasMorale(unit)) return 1;
   return 1 + ((unitMorale(unit) - MORALE_NEUTRAL) / MORALE_NEUTRAL) * ATTACK_SWING_AT_ZERO;
 }
 
-/** Combat-defense multiplier from morale (1.0 at neutral). */
+/** Combat-defense multiplier from morale (1.0 at neutral; always 1.0 for scouts). */
 export function moraleDefenseMultiplier(unit: Unit): number {
+  if (!hasMorale(unit)) return 1;
   return 1 + ((unitMorale(unit) - MORALE_NEUTRAL) / MORALE_NEUTRAL) * DEFENSE_SWING_AT_ZERO;
 }
 
@@ -189,6 +197,7 @@ export function recordMoraleEvent(state: GameState, playerId: number, before: nu
 }
 
 export function changeUnitMorale(unit: Unit, delta: number): void {
+  if (!hasMorale(unit)) return; // scouts have no morale to move
   unit.morale = clampUnitMorale(unitMorale(unit) + delta);
 }
 
@@ -292,6 +301,14 @@ export function upkeepDecayMultiplier(pct: number): number {
 export function upkeepMoraleGain(pct: number): number {
   if (pct <= UPKEEP_GAIN_THRESHOLD) return 0;
   return ((pct - UPKEEP_GAIN_THRESHOLD) / (UPKEEP_MODIFIER_MAX - UPKEEP_GAIN_THRESHOLD)) * UPKEEP_MAX_MORALE_GAIN;
+}
+
+/** Minimum gold/turn the military-pay setting costs, regardless of army size — so a
+ *  morale boost is never free when upkeep is low or there are no units at all. Scales
+ *  with the pay level: +50% → 10, +100% → 20, +150% → 30, +200% → 40 (pct/5). Only
+ *  positive pay (a boost) carries a floor; cutting pay never costs more than upkeep. */
+export function minMilitaryPayCost(pct: number): number {
+  return pct > 0 ? Math.round(pct / 5) : 0;
 }
 
 /**
@@ -410,8 +427,9 @@ function canRetreatOnto(state: GameState, unit: Unit, col: number, row: number):
 }
 
 /** Flee one tile, choosing the open neighbour furthest from the nearest enemy.
- *  Returns false if the unit is hemmed in. */
-function retreatOneStep(state: GameState, unit: Unit): boolean {
+ *  Returns false if the unit is hemmed in. Exported for the recon Escape perk
+ *  (combat.ts), which reuses the same "slip back a tile" movement. */
+export function retreatOneStep(state: GameState, unit: Unit): boolean {
   let best: { col: number; row: number } | null = null;
   let bestScore = -Infinity;
   for (const n of neighborTiles(state, unit.col, unit.row)) {
@@ -448,6 +466,7 @@ function routeUnit(state: GameState, unit: Unit, steps: number): void {
  *  Returns true if it routed. Deterministic for a given unit/turn/state. */
 export function maybeRoute(state: GameState, unit: Unit): boolean {
   if (!state.units.has(unit.id)) return false;
+  if (!hasMorale(unit)) return false; // scouts never rout
   const chance = routeChance(unit);
   if (chance <= 0) return false;
   const rng = makeRng(`route:${unit.id}:${state.turn}:${unit.hp}:${unit.col},${unit.row}`);

@@ -822,6 +822,9 @@ export type PromotionId =
   | "ambush"
   | "ranger"
   | "eagle_eye_recon"
+  | "evasion"
+  | "slip_away"
+  | "vanish"
   // naval melee
   | "boarding"
   | "ramming"
@@ -932,6 +935,9 @@ export const PROMOTION_DEFS: Record<PromotionId, PromotionDef> = {
   ambush: { id: "ambush", name: "Ambush", desc: "+4 strength on the first attack each turn" , tier: 2 },
   ranger: { id: "ranger", name: "Ranger", desc: "+2 strength; +1 sight" , tier: 2 },
   eagle_eye_recon: { id: "eagle_eye_recon", name: "Eagle Eye", desc: "+2 sight" , tier: 3 },
+  evasion: { id: "evasion", name: "Evasion", desc: "50% chance to dodge an attack and slip back one tile — once per turn" , tier: 1 },
+  slip_away: { id: "slip_away", name: "Slip Away", desc: "75% chance to dodge an attack and slip back one tile — once per turn" , tier: 2 },
+  vanish: { id: "vanish", name: "Vanish", desc: "95% chance to dodge an attack and slip back one tile — once per turn" , tier: 3 },
 
   // naval melee
   boarding: { id: "boarding", name: "Boarding", desc: "+4 strength vs naval melee units" , tier: 2 },
@@ -1003,18 +1009,22 @@ export const PROMOTION_POOL: Record<UnitClass, PromotionId[]> = {
     "bloodlust",
     "intimidation",
   ],
+  // Scouts are reconnaissance units, not fighters: the only combat perks offered
+  // are defensive (cover/stalwart). The rest are vision, mobility, survival, and
+  // the tiered Escape line (evasion → slip_away → vanish).
   recon: [
-    "shock",
     "cover",
     "medic",
     "scouting",
     "tracking",
-    "guerrilla",
     "survivalist",
     "spy",
-    "ambush",
-    "ranger",
+    "pathfinder",
+    "stalwart",
     "eagle_eye_recon",
+    "evasion",
+    "slip_away",
+    "vanish",
   ],
   ranged: [
     "accuracy",

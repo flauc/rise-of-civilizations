@@ -1,4 +1,4 @@
-import { axialDistance, getTile, offsetToAxial, type TerrainType } from "@roc/shared";
+import { axialDistance, getTile, makeRng, offsetToAxial, type TerrainType } from "@roc/shared";
 import type { City, GameState, Player, Unit } from "./state";
 import { cityAt, log, playerById, unitAt, areEnemies } from "./state";
 import {
@@ -19,7 +19,7 @@ import { emitCityLost, emitUnitDied } from "./turn-updates";
 import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween } from "./movement";
 import { playerEffects } from "./civs";
 import { breakCover } from "./stealth";
-import { moraleAttackMultiplier, moraleDefenseMultiplier, onEnemyDefeated, onUnitLost, maybeRoute } from "./morale";
+import { moraleAttackMultiplier, moraleDefenseMultiplier, onEnemyDefeated, onUnitLost, maybeRoute, retreatOneStep } from "./morale";
 
 /** Fire Lance fires off the unit's melee strength plus this, so the ranged shot
  *  lands slightly harder than a regular thrust (and takes no retaliation). */
@@ -351,6 +351,45 @@ function awardXp(unit: Unit, amount: number): void {
   }
 }
 
+/** XP a scout earns per discovery (village / barb camp / natural wonder / new civ). */
+export const SCOUT_DISCOVERY_XP = 3;
+
+/** Grant XP to a unit from a non-combat source (e.g. scout reconnaissance
+ *  discoveries). Mirrors combat awards: settlers/traders get none, veterans more. */
+export function awardUnitXp(unit: Unit, amount: number): void {
+  awardXp(unit, amount);
+}
+
+/** Recon Escape: the unit's best dodge chance among its escape promotions (0 = none). */
+export function scoutEscapeChance(unit: Unit): number {
+  if (has(unit, "vanish")) return 0.95;
+  if (has(unit, "slip_away")) return 0.75;
+  if (has(unit, "evasion")) return 0.5;
+  return 0;
+}
+
+/**
+ * If `defender` is a scout that can still escape this turn, roll its Escape perk.
+ * On success it dodges the blow entirely (no damage) and slips back one tile, and
+ * spends its once-per-turn escape. Returns true if it escaped (the caller should
+ * then finish the attacker's strike without applying damage). Hemmed-in scouts with
+ * nowhere to retreat take the hit normally. Deterministic via the seeded RNG.
+ */
+function tryScoutEscape(state: GameState, attacker: Unit, defender: Unit): boolean {
+  const chance = scoutEscapeChance(defender);
+  if (chance <= 0 || defender.escapeUsedTurn === state.turn) return false;
+  const rng = makeRng(`escape:${defender.id}:${state.turn}:${attacker.id}`);
+  if (rng.next() >= chance) return false;
+  if (!retreatOneStep(state, defender)) return false; // nowhere to flee — the blow lands
+  defender.escapeUsedTurn = state.turn;
+  const owner = playerById(state, defender.ownerId);
+  log(state, `${UNIT_DEFS[defender.type].name} (${owner?.name ?? "?"}) evaded the attack and slipped away.`, {
+    targetIds: owner ? [owner.id] : undefined,
+    tile: { col: defender.col, row: defender.row },
+  });
+  return true;
+}
+
 /** Promotions this unit could still take, gated by level tier. */
 export function availablePromotions(unit: Unit): PromotionId[] {
   const pool = PROMOTION_POOL[UNIT_DEFS[unit.type].cls];
@@ -524,6 +563,12 @@ export function resolveAttack(
     } else if (isNavalUnit(enemyUnit)) {
       // Land units cannot attack native naval units (ships out of reach on open water).
       return { ok: false, error: "cannot attack naval units from land" };
+    }
+
+    // A scout may dodge the blow and slip away (once per turn) before it lands.
+    if (tryScoutEscape(state, attacker, enemyUnit)) {
+      finishAttack(state, attacker);
+      return { ok: true };
     }
 
     if (ranged) {

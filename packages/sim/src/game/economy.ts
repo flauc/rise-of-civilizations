@@ -11,7 +11,7 @@ import { civEffectsOf, cityEffects, getCivic, uniqueUnitForCiv } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
-import { startingUnitMorale, BARRACKS_MORALE_BONUS, upkeepGoldMultiplier, onBankruptcy } from "./morale";
+import { startingUnitMorale, BARRACKS_MORALE_BONUS, upkeepGoldMultiplier, upkeepModifierPct, minMilitaryPayCost, onBankruptcy } from "./morale";
 import { offsetNeighbors, isCoastalLand } from "./movement";
 import {
   emitCityGrew,
@@ -570,13 +570,19 @@ export function unitUpkeep(state: GameState, unit: Unit): number {
   return Math.round(base * mult * payMult);
 }
 
+/** Empire-wide military pay due this turn: the summed unit upkeep, but never less
+ *  than the military-pay floor (minMilitaryPayCost) so a morale boost always costs
+ *  something even with a tiny or empty army. */
+export function militaryUpkeepTotal(state: GameState, player: Player): number {
+  let total = 0;
+  for (const u of unitsOf(state, player.id)) total += unitUpkeep(state, u);
+  return Math.max(total, minMilitaryPayCost(upkeepModifierPct(player)));
+}
+
 /** Deduct empire-wide unit upkeep from a player's treasury after cities have produced yields. */
 export function applyUnitUpkeep(state: GameState, player: Player): void {
   if (player.isBarbarian) return;
-  let total = 0;
-  for (const u of unitsOf(state, player.id)) {
-    total += unitUpkeep(state, u);
-  }
+  const total = militaryUpkeepTotal(state, player);
   if (total <= 0) return;
   player.gold -= total;
   if (player.gold < 0) {

@@ -473,21 +473,9 @@ export function drawOverlay(
       ctx.lineWidth = Math.max(1.5, size * (worked ? 0.1 : 0.05));
       ctx.strokeStyle = worked ? "#ffd967" : "rgba(255,255,255,0.45)";
       ctx.stroke();
-      if (size > 17) {
-        const t = getTile(state.map, col, row);
-        if (t) {
-          const y = addYields(addYields(tileYields(t), resourceYields(t)), naturalWonderYields(t));
-          const parts: string[] = [];
-          if (y.food) parts.push(`${y.food}F`);
-          if (y.production) parts.push(`${y.production}P`);
-          if (y.gold) parts.push(`${y.gold}G`);
-          if (y.science) parts.push(`${y.science}S`);
-          ctx.font = `${Math.round(size * 0.32)}px system-ui, sans-serif`;
-          ctx.fillStyle = "#fff";
-          ctx.fillText(parts.join(" ") || "—", s.x, s.y + size * 0.5);
-        }
-      }
     }
+    // The yield labels themselves are drawn in a later pass (after the cities), so
+    // a city's name/art can never hide the yields of the tiles around it.
   }
 
   const showLabels = size > 14;
@@ -562,6 +550,54 @@ export function drawOverlay(
     }
     const maxHp = cityMaxHp(city);
     if (city.hp < maxHp) drawHpBar(ctx, s.x, s.y + imgSize / 2 + size * 0.12, imgSize, city.hp / maxHp);
+  }
+
+  // ---- worked-tile yield labels (citizen-assignment view) ----
+  // Drawn after the cities so the selected city's name/art never hides them, and
+  // centred in each tile as a colour-coded pill so they read at a glance. Worked
+  // tiles get a gold ring; merely-workable tiles are dimmer.
+  if (o.cityWorkable.size > 0 && size > 15) {
+    const fontSize = Math.max(9, Math.round(size * 0.3));
+    ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+    ctx.textBaseline = "middle";
+    const gap = fontSize * 0.45;
+    for (const key of o.cityWorkable) {
+      const [col, row] = key.split(",").map(Number) as [number, number];
+      const t = getTile(state.map, col, row);
+      if (!t) continue;
+      const y = addYields(addYields(tileYields(t), resourceYields(t)), naturalWonderYields(t));
+      const segs: { text: string; color: string }[] = [];
+      if (y.food) segs.push({ text: `${y.food}F`, color: "#8ef0a0" });
+      if (y.production) segs.push({ text: `${y.production}P`, color: "#ffb86b" });
+      if (y.gold) segs.push({ text: `${y.gold}G`, color: "#ffd967" });
+      if (y.science) segs.push({ text: `${y.science}S`, color: "#79c0ff" });
+      if (segs.length === 0) continue;
+
+      const s = screen(col, row);
+      const worked = o.cityWorked.has(key);
+      let totalW = 0;
+      for (const seg of segs) totalW += ctx.measureText(seg.text).width;
+      totalW += gap * (segs.length - 1);
+      const boxW = totalW + fontSize * 0.9;
+      const boxH = fontSize + fontSize * 0.6;
+
+      ctx.fillStyle = worked ? "rgba(40,30,5,0.9)" : "rgba(8,12,18,0.82)";
+      ctx.beginPath();
+      ctx.roundRect(s.x - boxW / 2, s.y - boxH / 2, boxW, boxH, boxH / 2);
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, size * 0.035);
+      ctx.strokeStyle = worked ? "#ffd967" : "rgba(255,255,255,0.3)";
+      ctx.stroke();
+
+      ctx.textAlign = "left";
+      let x = s.x - totalW / 2;
+      for (const seg of segs) {
+        ctx.fillStyle = seg.color;
+        ctx.fillText(seg.text, x, s.y);
+        x += ctx.measureText(seg.text).width + gap;
+      }
+    }
+    ctx.textAlign = "center";
   }
 
   // Units.

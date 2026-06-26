@@ -7,9 +7,13 @@ import {
   BUILDING_DEFS,
   TECH_DEFS,
   UNIT_DEFS,
+  UNIQUE_UNITS,
+  uniqueInfraForCiv,
+  getLeaderAbilityForCiv,
   techSystemUnlocks,
   type GameState,
   type TechId,
+  type UnitTypeId,
 } from "@roc/sim";
 
 const NODE_W = 184;
@@ -29,6 +33,45 @@ function unlocksOf(techId: TechId): { units: string[]; buildings: string[]; syst
   const buildings = Object.values(BUILDING_DEFS).filter((d) => d.reqTech === techId).map((d) => d.name);
   const systems = techSystemUnlocks(techId);
   return { units, buildings, systems };
+}
+
+/** One of the viewing civ's unique features that a tech unlocks. `replacesName`
+ *  is set for the unique unit, naming the generic unit it stands in for so the
+ *  node can show the unique name instead of the default. */
+interface CivUnlock {
+  icon: string;
+  name: string;
+  replacesName?: string;
+}
+
+/**
+ * The techs that unlock the viewing civilization's unique unit, unique
+ * building/improvement, and (tech-gated) leader ability — keyed by tech id so
+ * each node can be highlighted and relabelled. A civ has up to three such techs,
+ * though several features can share one tech. Leader abilities gated behind a
+ * civic (not a tech) are skipped, since they have no node in this tree.
+ */
+function civUnlocksByTech(civId: string | undefined): Map<TechId, CivUnlock[]> {
+  const byTech = new Map<TechId, CivUnlock[]>();
+  if (!civId) return byTech;
+  const add = (techId: TechId | undefined, entry: CivUnlock): void => {
+    if (!techId || !TECH_DEFS[techId]) return;
+    (byTech.get(techId) ?? byTech.set(techId, []).get(techId)!).push(entry);
+  };
+
+  const uu = UNIQUE_UNITS.find((u) => u.civId === civId);
+  if (uu) {
+    const base = UNIT_DEFS[uu.replaces as UnitTypeId];
+    add(base?.reqTech as TechId | undefined, { icon: "⚔", name: uu.name, replacesName: base?.name });
+  }
+
+  const inf = uniqueInfraForCiv(civId);
+  if (inf) add(inf.reqTech as TechId, { icon: inf.kind === "building" ? "🏛" : "⛏", name: inf.name });
+
+  const la = getLeaderAbilityForCiv(civId);
+  if (la && la.unlock.kind === "tech") add(la.unlock.id as TechId, { icon: "✦", name: la.name });
+
+  return byTech;
 }
 
 /** Transitive prerequisite closure (the tech plus everything it requires). */
@@ -94,6 +137,7 @@ export function renderTechTreeInto(
   onPickTarget?: (techId: TechId) => void,
 ): void {
   const player = state.players.find((p) => p.id === viewerId);
+  const civUnlocks = civUnlocksByTech(player?.civId);
   const researched = player?.researched ?? new Set<TechId>();
   const researching = player?.researching ?? null;
   const queued = new Set<TechId>(player?.researchQueue ?? []);
@@ -147,13 +191,19 @@ export function renderTechTreeInto(
     const def = TECH_DEFS[id];
     const st = statusOf(id);
     const u = unlocksOf(id);
+    const civ = civUnlocks.get(id) ?? [];
+    // Generic units the civ replaces with a unique are shown under the unique's
+    // name (appended below) rather than their default name.
+    const replaced = new Set(civ.map((c) => c.replacesName).filter(Boolean));
     const parts: string[] = [];
-    for (const n of u.units) parts.push(`⚔ ${n}`);
+    for (const n of u.units) if (!replaced.has(n)) parts.push(`⚔ ${n}`);
     for (const n of u.buildings) parts.push(`🏛 ${n}`);
     for (const n of u.systems) parts.push(`★ ${n}`);
+    for (const c of civ) parts.push(`<span class="tt-civ-unlock">${c.icon} ${c.name}</span>`);
     const unlockLine = parts.length ? `<div class="tt-unlocks">${parts.join(" · ")}</div>` : "";
     nodes +=
-      `<div class="tt-node tt-${st}" data-tech="${id}" style="left:${p.x}px;top:${p.y}px;width:${NODE_W}px;height:${NODE_H}px">` +
+      `<div class="tt-node tt-${st}${civ.length ? " tt-civ" : ""}" data-tech="${id}" style="left:${p.x}px;top:${p.y}px;width:${NODE_W}px;height:${NODE_H}px">` +
+      (civ.length ? `<div class="tt-civ-badge" title="Unlocks one of your civilization's unique features">👑</div>` : "") +
       `<div class="tt-name">${def.name}</div>` +
       `<div class="tt-cost">${def.cost > 0 ? `🔬 ${def.cost}` : "start"}</div>` +
       unlockLine +

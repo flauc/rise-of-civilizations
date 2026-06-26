@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.02";
+export const CURRENT_VERSION = "0.03";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,48 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.03",
+    date: "June 2026",
+    changes: [
+      {
+        tag: "Gameplay",
+        title: "Scouts reworked into true explorers",
+        desc:
+          "Scouts no longer carry morale. They now grow by surviving attacks and by discovery — being the one to find villages, barbarian camps, natural wonders and new civilizations earns them experience. Their promotions are all reconnaissance now (sight, mobility, survival, defence), capped by a new Escape line: a rising chance — 50%, 75%, then 95% — to dodge an attack and slip back a tile unharmed, once per turn.",
+      },
+      {
+        tag: "New",
+        title: "Tech tree highlights your civilization's unique unlocks",
+        desc:
+          "The full tech tree now marks the technologies that unlock your civ's unique unit, unique building and leader ability — sometimes three different techs — and labels them with your unique's proper name instead of the generic one, so you can beeline what makes your civ special.",
+      },
+      {
+        tag: "UI",
+        title: "Cleaner unit info on mobile",
+        desc:
+          "On phones the unit panel now opens as a compact bar showing just the unit's name, strength and health, tucked in just above the toolbar so it no longer swallows the screen. Tap it to expand the full details, tap again to collapse.",
+      },
+      {
+        tag: "UI",
+        title: "Clearer tile yields when managing a city",
+        desc:
+          "Selecting a city now shows each workable tile's yields centred on the tile as a colour-coded label (food, production, gold, science), drawn on top so the city's name can no longer hide the tiles around it. Worked tiles are marked with a gold ring.",
+      },
+      {
+        tag: "Fix",
+        title: "Unit strength and movement now reflect civ bonuses",
+        desc:
+          "The unit info window showed only base stats. Combat strength now includes your civilization's class bonuses and unique-unit bonuses, and movement reflects civ movement perks — so a +2-melee civ's Warrior reads 10, not 8, matching what actually happens in battle.",
+      },
+      {
+        tag: "Fix",
+        title: "Military pay boosts are no longer free",
+        desc:
+          "Paying your army extra to lift morale now costs a minimum each turn — 10, 20, 30 or 40 gold at +50%, +100%, +150% and +200% — even when you have few or no units. Previously a large army-pay morale boost could cost nothing at all.",
+      },
+    ],
+  },
   {
     version: "0.02",
     date: "June 2026",

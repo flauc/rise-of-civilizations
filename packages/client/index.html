@@ -255,6 +255,54 @@
         overflow: auto;
         z-index: 10;
       }
+      /* Compact unit summary bar — only used on mobile (hidden on desktop, where
+         the full panel always shows). Doubles as the expand/collapse control. */
+      .up-summary {
+        display: none;
+        width: 100%;
+        align-items: center;
+        gap: 8px;
+        background: none;
+        border: 0;
+        padding: 0;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+        text-align: left;
+      }
+      .up-sum-token {
+        width: 32px;
+        height: 32px;
+        flex: 0 0 32px;
+        object-fit: contain;
+      }
+      .up-sum-name {
+        flex: 1;
+        min-width: 0;
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .up-sum-name b {
+        color: var(--parchment);
+      }
+      .up-sum-stats {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        white-space: nowrap;
+        font-size: 13px;
+        color: #9fc0dc;
+      }
+      .up-chevron {
+        flex: 0 0 auto;
+        color: var(--parchment-dim);
+        transition: transform 0.15s ease;
+      }
+      #unit-panel:not(.collapsed) .up-chevron {
+        transform: rotate(180deg);
+      }
       /* Selected-tile panel (shares the bottom-left slot with the unit panel) */
       #tile-panel {
         left: max(12px, env(safe-area-inset-left));
@@ -614,6 +662,29 @@
       }
       .tt-node.tt-dim {
         opacity: 0.16 !important;
+      }
+      /* Your civilization's unique unlocks (unit / building / leader ability).
+         A violet outline + crown badge mark the tech, and the unlock entry
+         itself is tinted so it reads as civ-specific. Uses outline (not border)
+         so the node's status colour still shows through. */
+      .tt-node.tt-civ {
+        outline: 2px solid rgba(199, 146, 234, 0.85);
+        outline-offset: 1px;
+      }
+      .tt-civ .tt-name {
+        padding-right: 18px;
+      }
+      .tt-civ-badge {
+        position: absolute;
+        top: 5px;
+        right: 7px;
+        font-size: 12px;
+        line-height: 1;
+        pointer-events: none;
+      }
+      .tt-unlocks .tt-civ-unlock {
+        color: #dcbcff;
+        font-weight: 600;
       }
       .csub {
         margin-top: 10px;
@@ -1598,6 +1669,24 @@
           max-height: min(46vh, 320px);
           overflow: auto;
           z-index: 10;
+        }
+        /* Mobile: show the compact summary bar and only reveal the full detail
+           when expanded, so a selected unit no longer eats half the screen. */
+        #unit-panel {
+          bottom: calc(54px + env(safe-area-inset-bottom));
+        }
+        #unit-panel .up-summary {
+          display: flex;
+        }
+        #unit-panel.collapsed {
+          max-height: none;
+          overflow: visible;
+        }
+        #unit-panel.collapsed .up-detail {
+          display: none;
+        }
+        #unit-panel:not(.collapsed) .up-detail {
+          margin-top: 10px;
         }
         #city-panel {
           left: max(6px, env(safe-area-inset-left));

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { foodToGrow, applyUnitUpkeep, unitUpkeep, processCity } from "./economy";
+import { foodToGrow, applyUnitUpkeep, unitUpkeep, militaryUpkeepTotal, processCity } from "./economy";
 import { createGame } from "./setup";
 import { applyCommand } from "./commands";
 import { citiesOf, makeUnit, unitsOf, type Player } from "./state";
@@ -80,6 +80,39 @@ describe("unit upkeep", () => {
     applyUnitUpkeep(state, player);
     expect(unitUpkeep(state, warrior)).toBe(2); // round(1 * 1.5)
     expect(player.gold).toBe(98);
+  });
+
+  it("military pay carries a minimum cost even with no units", () => {
+    const state = createGame({ playerCount: 1, barbarians: false });
+    const player = state.players[0]!;
+    state.units.clear();
+
+    // +50/100/150/200% → floor of 10/20/30/40 gold even though upkeep is 0.
+    for (const [pct, floor] of [[50, 10], [100, 20], [150, 30], [200, 40]] as const) {
+      player.upkeepModifierPct = pct;
+      expect(militaryUpkeepTotal(state, player)).toBe(floor);
+      player.gold = 100;
+      applyUnitUpkeep(state, player);
+      expect(player.gold).toBe(100 - floor);
+    }
+
+    // No boost (0 or negative pay) costs nothing when there are no units.
+    player.upkeepModifierPct = 0;
+    expect(militaryUpkeepTotal(state, player)).toBe(0);
+    player.upkeepModifierPct = -100;
+    expect(militaryUpkeepTotal(state, player)).toBe(0);
+  });
+
+  it("the pay floor binds only when it exceeds actual unit upkeep", () => {
+    const state = createGame({ playerCount: 1, barbarians: false });
+    const player = state.players[0]!;
+    state.units.clear();
+    player.upkeepModifierPct = 200;
+    // One warrior at +200% pay: unit upkeep round(1 * 3) = 3, well under the 40 floor.
+    const warrior = makeUnit(state.nextEntityId++, player.id, "warrior", 0, 0);
+    state.units.set(warrior.id, warrior);
+    expect(unitUpkeep(state, warrior)).toBe(3);
+    expect(militaryUpkeepTotal(state, player)).toBe(40); // floor wins
   });
 
   it("bankruptcy disbands units and craters army morale", () => {

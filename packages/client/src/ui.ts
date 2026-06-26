@@ -52,6 +52,10 @@ import {
   cityUnhappiness,
   unitMaxHp,
   unitUpkeep,
+  militaryUpkeepTotal,
+  scoutEscapeChance,
+  civCombatBonus,
+  unitMovement,
   getCiv,
   getCityYields,
   territorySize,
@@ -695,6 +699,10 @@ export function createUI(handlers: UIHandlers): UI {
   let godModeEnabled = false;
   let godModeOpen = false;
   let lastView: UIView | null = null;
+  // Unit panel collapse state (mobile). Starts minimized and resets whenever a
+  // different unit is selected, so each new selection opens compact.
+  let unitPanelExpanded = false;
+  let unitPanelUnitId: number | null = null;
 
   const closePickers = (state: GameState): void => {
     researchOpen = false;
@@ -1098,7 +1106,7 @@ export function createUI(handlers: UIHandlers): UI {
       0,
     );
     const gld = citiesOf(state, player.id).reduce((n, c) => n + getCityYields(state, c).gold, 0);
-    const upkeep = unitsOf(state, player.id).reduce((n, u) => n + unitUpkeep(state, u), 0);
+    const upkeep = militaryUpkeepTotal(state, player); // includes the military-pay minimum
     const netGold = gld - upkeep;
     const goldSign = netGold >= 0 ? "+" : "−";
     const goldClass = netGold >= 0 ? "color:#ffd700" : "color:#ff8a8a";
@@ -1630,7 +1638,10 @@ export function createUI(handlers: UIHandlers): UI {
       })
       .filter(Boolean)
       .join("");
-    const totalUpkeep = myUnits.reduce((n, u) => n + unitUpkeep(state, u), 0);
+    const rawUpkeep = myUnits.reduce((n, u) => n + unitUpkeep(state, u), 0);
+    const totalUpkeep = militaryUpkeepTotal(state, player); // floored by the military-pay minimum
+    const payFloorExtra = totalUpkeep - rawUpkeep; // surcharge to meet the pay floor (0 if upkeep already covers it)
+    const pay = Math.round(player.upkeepModifierPct ?? 0);
 
     const net = totalCityGold - totalUpkeep;
     const netClass = net >= 0 ? "gold-positive" : "gold-negative";
@@ -1651,9 +1662,12 @@ export function createUI(handlers: UIHandlers): UI {
     html += `</div>`;
 
     html += `<div class="gold-section"><div class="gold-section-title">Expenses</div>`;
-    if (unitRows) {
-      html += unitRows;
-    } else {
+    if (unitRows) html += unitRows;
+    // The military-pay setting carries a minimum cost (10/20/30/40 at +50/100/150/200%)
+    // even when unit upkeep is below it — so a morale boost is never free.
+    if (payFloorExtra > 0) {
+      html += `<div class="gold-row"><span>Military pay <span class="sub">minimum at +${pay}%</span></span><span class="gold-amount gold-negative">−${payFloorExtra}</span></div>`;
+    } else if (!unitRows) {
       html += `<div class="gold-row"><span class="sub">No unit upkeep.</span><span class="gold-amount">0</span></div>`;
     }
     html += `<div class="gold-total"><span>Total upkeep</span><span class="gold-amount gold-negative">−${totalUpkeep}</span></div>`;
@@ -1697,6 +1711,10 @@ export function createUI(handlers: UIHandlers): UI {
     html += `<div class="gold-row"><span>Upkeep <span class="sub">×${payMult.toFixed(2)} gold</span></span>` +
       `<span class="gold-amount">${pay > 0 ? "+" : ""}${pay}%</span></div>`;
     html += `<div class="gold-row"><span class="sub">Effect: ${payEffect}</span></div>`;
+    // Actual gold/turn — reflects the pay floor (min 10/20/30/40 at +50/100/150/200%)
+    // so a boost shows a real cost even with no units.
+    const payCost = militaryUpkeepTotal(state, player);
+    html += `<div class="gold-row"><span class="sub">Cost</span><span class="gold-amount ${payCost > 0 ? "gold-negative" : ""}">${payCost > 0 ? `−${payCost}` : "0"}/turn</span></div>`;
     html += `<div class="morale-pay-row">` +
       presets
         .map(
@@ -2163,6 +2181,11 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
     unitPanel.classList.remove("hidden");
+    // Reset to the minimized state each time a different unit is selected.
+    if (unit.id !== unitPanelUnitId) {
+      unitPanelUnitId = unit.id;
+      unitPanelExpanded = false;
+    }
     const def = UNIT_DEFS[unit.type];
     const combatant = def.strength > 0 || (def.rangedStrength ?? 0) > 0;
     const own = unit.ownerId === viewerId;
@@ -2185,23 +2208,35 @@ export function createUI(handlers: UIHandlers): UI {
         ? `<div class="sub"><span class="dot" style="background:${owner.color};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px"></span>${owner.name}</div>`
         : "") +
       `<div class="sub">${info.role}${info.note ? ` · ${info.note}` : ""}</div>` +
-      `<div style="margin-top:2px">Moves <b>${unit.movementLeft}/${def.movement}</b>` +
+      `<div style="margin-top:2px">Moves <b>${unit.movementLeft}/${unitMovement(state, unit)}</b>` +
       (combatant ? ` · HP <b>${unit.hp}/${unitMaxHp(unit)}</b>` : "") +
       `</div>`;
     if (combatant) {
       const levelMult = 1 + 0.05 * (unit.level - 1);
+      // Civ/unique-unit flat combat bonus is added on top of the level-scaled base
+      // in combat (see civCombatBonus), so include it here or the panel under-reports.
+      const civStr = civCombatBonus(state, unit);
       headInfo +=
-        `<div style="color:#9fc0dc">⚔️ ${Math.floor(def.strength * levelMult)}` +
-        ((def.rangedStrength ?? 0) > 0 ? ` · 🏹 ${Math.floor((def.rangedStrength ?? 0) * levelMult)} (rng ${def.range})` : "") +
+        `<div style="color:#9fc0dc">⚔️ ${Math.floor(def.strength * levelMult) + civStr}` +
+        ((def.rangedStrength ?? 0) > 0 ? ` · 🏹 ${Math.floor((def.rangedStrength ?? 0) * levelMult) + civStr} (rng ${def.range})` : "") +
         ` · XP ${unit.xp}</div>`;
-      const m = Math.round(unit.morale ?? 100);
-      const mColor = m >= 100 ? "#7ee787" : m >= 50 ? "#ffd700" : "#ff8a8a";
-      const mEffect = m === 100 ? "" : ` (${m > 100 ? "+" : ""}${Math.round((m - 100) * 0.2)}% atk)`;
-      const routed =
-        unit.routedUntilTurn !== undefined && state.turn <= unit.routedUntilTurn
-          ? ` · <span style="color:#ff8a8a">⚑ Routed</span>`
-          : "";
-      headInfo += `<div style="margin-top:2px">🎌 Morale <b style="color:${mColor}">${m}</b><span style="color:#9fc0dc">${mEffect}</span>${routed}</div>`;
+      // Scouts (recon) sit outside the morale system — show their Escape chance
+      // instead, when they have one.
+      if (def.cls === "recon") {
+        const esc = scoutEscapeChance(unit);
+        if (esc > 0) {
+          headInfo += `<div style="margin-top:2px;color:#9fc0dc">🏃 Evade <b style="color:#7ee787">${Math.round(esc * 100)}%</b> <span class="sub">(dodge once/turn)</span></div>`;
+        }
+      } else {
+        const m = Math.round(unit.morale ?? 100);
+        const mColor = m >= 100 ? "#7ee787" : m >= 50 ? "#ffd700" : "#ff8a8a";
+        const mEffect = m === 100 ? "" : ` (${m > 100 ? "+" : ""}${Math.round((m - 100) * 0.2)}% atk)`;
+        const routed =
+          unit.routedUntilTurn !== undefined && state.turn <= unit.routedUntilTurn
+            ? ` · <span style="color:#ff8a8a">⚑ Routed</span>`
+            : "";
+        headInfo += `<div style="margin-top:2px">🎌 Morale <b style="color:${mColor}">${m}</b><span style="color:#9fc0dc">${mEffect}</span>${routed}</div>`;
+      }
       if (def.gunpowder) {
         const loaded = unit.loaded && !unit.reloading;
         headInfo += loaded
@@ -2357,7 +2392,28 @@ export function createUI(handlers: UIHandlers): UI {
       }
     }
 
-    unitPanel.innerHTML = html;
+    // Compact summary bar — name + key stats, always shown on mobile and acts
+    // as the tap target to expand/collapse the full detail below it. Hidden on
+    // desktop, where the panel is small enough to always show in full.
+    const levelMult = 1 + 0.05 * (unit.level - 1);
+    const summaryStats = combatant
+      ? `<span class="up-sum-stat">⚔️ ${Math.floor(def.strength * levelMult) + civCombatBonus(state, unit)}</span>` +
+        `<span class="up-sum-stat">❤️ ${unit.hp}/${unitMaxHp(unit)}</span>`
+      : `<span class="up-sum-stat sub">${info.role}</span>`;
+    const summary =
+      `<button class="up-summary" id="up-toggle" aria-expanded="${unitPanelExpanded}">` +
+      `<img class="up-sum-token" src="${tokenSrc}" alt="" onerror="this.style.display='none'">` +
+      `<span class="up-sum-name"><b>${escapeHtml(displayName)}</b><span style="color:#ffd967">${stars}</span></span>` +
+      `<span class="up-sum-stats">${summaryStats}</span>` +
+      `<span class="up-chevron">▾</span>` +
+      `</button>`;
+
+    unitPanel.classList.toggle("collapsed", !unitPanelExpanded);
+    unitPanel.innerHTML = summary + `<div class="up-detail">${html}</div>`;
+    unitPanel.querySelector<HTMLButtonElement>("#up-toggle")?.addEventListener("click", () => {
+      unitPanelExpanded = !unitPanelExpanded;
+      renderUnitPanel(state, unit, viewerId, odds);
+    });
     unitPanel.querySelector<HTMLButtonElement>("#found")?.addEventListener("click", () => handlers.onFoundCity());
     unitPanel.querySelector<HTMLButtonElement>("#sleep")?.addEventListener("click", () => handlers.onSleep());
     unitPanel.querySelector<HTMLButtonElement>("#wake")?.addEventListener("click", () => handlers.onWake());

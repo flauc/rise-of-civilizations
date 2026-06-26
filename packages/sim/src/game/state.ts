@@ -50,6 +50,9 @@ export interface Unit {
   /** When set, the unit has routed and forfeits all actions while
    *  state.turn <= this (enforced at its turn start, see tickAbilities). */
   routedUntilTurn?: number;
+  /** Recon Escape: the game-turn on which this unit last dodged an attack and
+   *  slipped away. Gates the once-per-turn escape (see scoutEscapeChance). */
+  escapeUsedTurn?: number;
   /** Legend (hero) id this unit embodies, if it is a Legend (see legends.ts). */
   legendId?: string;
   /** Turn after which the legend retires ("passes into legend"). */
