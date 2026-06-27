@@ -657,53 +657,61 @@ async function postProcessEncapsulatedTile(rawPath: string, outPath: string, ent
   const W = entry.size.width;
   const H = entry.size.height;
   const squarePath = `${rawPath}.square.png`;
-  const canvasPath = `${rawPath}.canvas.png`;
   const keyedPath = `${rawPath}.keyed.png`;
+  const fittedPath = `${rawPath}.fitted.png`;
+  const canvasPath = `${rawPath}.canvas.png`;
   const magMaskPath = `${rawPath}.magmask.png`;
   const despilledPath = `${rawPath}.despill.png`;
   const cleanRgbPath = `${rawPath}.clean.png`;
   const shadowPath = `${rawPath}.shadow.png`;
   const shadedPath = `${rawPath}.shaded.png`;
   const maskPath = `${rawPath}.mask.png`;
-  const keyedAlphaPath = `${rawPath}.kalpha.png`;
+  const canvasAlphaPath = `${rawPath}.calpha.png`;
   const finalAlphaPath = `${rawPath}.falpha.png`;
 
-  // 1. Scale the generated hexagon to the footprint and anchor it at the bottom of the
-  //    tall canvas (top region stays transparent — no overhang).
+  // 1. Scale the generated hexagon to the footprint square.
   await runCmd("magick", [rawPath, "-resize", `${footprint}x${footprint}!`, squarePath]);
-  await runCmd("magick", [squarePath, "-background", "none", "-gravity", "south", "-extent", `${W}x${H}`, canvasPath]);
 
-  // 2. Chroma-key the flat magenta corners to transparent.
-  await runCmd("magick", [canvasPath, "-fuzz", "22%", "-transparent", "#FF00FF", "-define", "png:color-type=6", keyedPath]);
+  // 2. Chroma-key the flat magenta corners (and any magenta margin) to transparent.
+  await runCmd("magick", [squarePath, "-fuzz", "22%", "-transparent", "#FF00FF", "-define", "png:color-type=6", keyedPath]);
 
-  // 3. Despill the magenta tint on the anti-aliased hexagon edge (only true-magenta
+  // 3. Trim the transparent margin and rescale the drawn hexagon to fill the whole
+  //    footprint — the model sometimes paints the hexagon slightly inset, which would
+  //    otherwise leave the tile smaller than the hex. This makes it always fill.
+  await runCmd("magick", [keyedPath, "-trim", "+repage", "-resize", `${footprint}x${footprint}!`, fittedPath]);
+
+  // 4. Anchor it at the bottom of the tall canvas (top region stays transparent — no overhang).
+  await runCmd("magick", [fittedPath, "-background", "none", "-gravity", "south", "-extent", `${W}x${H}`, canvasPath]);
+
+  // 5. Despill the magenta tint on the anti-aliased hexagon edge (only true-magenta
   //    pixels, R>G AND B>G, are pulled toward green — natural colors are untouched).
-  await runCmd("magick", [keyedPath, "-alpha", "off", "-fx", "(r>g && b>g) ? 1 : 0", magMaskPath]);
-  await runCmd("magick", [keyedPath, "-channel", "RB", "-fx", "min(u,g)", "+channel", despilledPath]);
-  await runCmd("magick", [keyedPath, despilledPath, magMaskPath, "-compose", "over", "-composite", cleanRgbPath]);
+  await runCmd("magick", [canvasPath, "-alpha", "off", "-fx", "(r>g && b>g) ? 1 : 0", magMaskPath]);
+  await runCmd("magick", [canvasPath, "-channel", "RB", "-fx", "min(u,g)", "+channel", despilledPath]);
+  await runCmd("magick", [canvasPath, despilledPath, magMaskPath, "-compose", "over", "-composite", cleanRgbPath]);
 
-  // 4. Soft grounding shadow along the lower hex edges (same as terrain tiles).
+  // 6. Soft grounding shadow along the lower hex edges (same as terrain tiles).
   await lowerEdgeShadowAmountPath(W, H, shadowPath);
   await runCmd("magick", [cleanRgbPath, "(", shadowPath, "-negate", ")", "-compose", "Multiply", "-composite", shadedPath]);
 
-  // 5. Intersect the keyed alpha with the exact hex mask for perfect geometry.
-  //    final alpha = keyedAlpha × hexMask.
+  // 7. Intersect the (now full-bleed) keyed alpha with the exact hex mask for perfect
+  //    geometry. final alpha = canvasAlpha × hexMask.
   await hexMaskPath(W, H, maskPath);
-  await runCmd("magick", [keyedPath, "-alpha", "extract", keyedAlphaPath]);
-  await runCmd("magick", [keyedAlphaPath, maskPath, "-compose", "Multiply", "-composite", finalAlphaPath]);
+  await runCmd("magick", [canvasPath, "-alpha", "extract", canvasAlphaPath]);
+  await runCmd("magick", [canvasAlphaPath, maskPath, "-compose", "Multiply", "-composite", finalAlphaPath]);
   await runCmd("magick", [shadedPath, finalAlphaPath, "-compose", "CopyOpacity", "-composite", "-define", "png:color-type=6", outPath]);
 
   await Promise.all([
     unlink(squarePath).catch(() => {}),
-    unlink(canvasPath).catch(() => {}),
     unlink(keyedPath).catch(() => {}),
+    unlink(fittedPath).catch(() => {}),
+    unlink(canvasPath).catch(() => {}),
     unlink(magMaskPath).catch(() => {}),
     unlink(despilledPath).catch(() => {}),
     unlink(cleanRgbPath).catch(() => {}),
     unlink(shadowPath).catch(() => {}),
     unlink(shadedPath).catch(() => {}),
     unlink(maskPath).catch(() => {}),
-    unlink(keyedAlphaPath).catch(() => {}),
+    unlink(canvasAlphaPath).catch(() => {}),
     unlink(finalAlphaPath).catch(() => {}),
   ]);
 }

@@ -160,7 +160,7 @@ export class Lobby {
       mapSize: opts.mapSize,
       mapType: opts.mapType ?? "continents",
       barbarians: opts.barbarians ?? "normal",
-      naturalWonders: opts.naturalWonders ?? false,
+      naturalWonders: opts.naturalWonders ?? true,
       startingGold: opts.startingGold ?? "balanced",
       turnLimit: opts.turnLimit ?? 120,
       password: opts.password || undefined,

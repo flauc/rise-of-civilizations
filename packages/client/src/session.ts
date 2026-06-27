@@ -100,7 +100,7 @@ export class LocalSession implements Session {
         playerCount: 1 + aiCount,
         barbarians: opts.barbarians ?? true,
         legends: opts.legends ?? true,
-        naturalWonders: opts.naturalWonders ?? false,
+        naturalWonders: opts.naturalWonders ?? true,
         startingGold: opts.startingGold ?? "balanced",
         turnLimit: opts.turnLimit ?? 120,
         civIds,
