@@ -1,6 +1,6 @@
 import type { GameMap } from "@roc/shared";
 import type { CivEffects, GreatPersonClass } from "@roc/data";
-import { UNIT_DEFS, UNIT_MAX_HP, type ActiveAbilityId, type BuildingId, type ProjectId, type PromotionId, type StanceId, type TechId, type UnitTypeId } from "./content";
+import { UNIT_DEFS, UNIT_MAX_HP, type ActiveAbilityId, type BuildingId, type ProjectId, type PromotionId, type StanceId, type TechId, type TrainingClass, type UnitTypeId } from "./content";
 
 export interface Unit {
   id: number;
@@ -66,12 +66,25 @@ export interface Unit {
 }
 
 export type ProductionItem =
-  | { kind: "unit"; id: UnitTypeId }
   // id is a BuildingId or a civ-unique building id (see UNIQUE_INFRA in @roc/data).
   | { kind: "building"; id: string }
+  // Raise a unit-training building family to a given tier (see TRAINING_BUILDING_DEFS).
+  | { kind: "trainingBuilding"; family: TrainingClass; tier: number }
   // A standing conversion project (see PROJECT_DEFS): never completes, converting
   // the city's production into an empire resource each turn.
   | { kind: "project"; id: ProjectId };
+
+/** A unit being trained in a city. Costs one population (debited when the order
+ *  starts), occupies a training slot, and completes when turnsLeft reaches 0. */
+export interface TrainingOrder {
+  id: number;
+  /** Unit type being trained. */
+  unit: UnitTypeId;
+  /** Turns remaining until the unit is mustered. */
+  turnsLeft: number;
+  /** Turn the order was placed (for UI/ordering). */
+  startTurn: number;
+}
 
 /** A craft a specialist practises; Works require labour of specific disciplines. */
 export type Discipline = "carpentry" | "survey" | "masonry" | "architecture" | "engineering";
@@ -99,6 +112,12 @@ export interface City {
   production: ProductionItem | null;
   /** Built building ids — BuildingId values plus any civ-unique building id. */
   buildings: string[];
+  /** Tier (1–5) of each built unit-training building family; absent = not built.
+   *  Raised via construction (ProductionItem `trainingBuilding`); see content.ts
+   *  TRAINING_BUILDING_DEFS and training.ts. */
+  training: Partial<Record<TrainingClass, number>>;
+  /** Units currently being trained here (each occupies a slot + a population point). */
+  trainingQueue: TrainingOrder[];
   /** Craftsmen trained from this city's population. */
   specialists: Specialist[];
   /** Wonder ids completed and hosted in this city. */
@@ -413,6 +432,7 @@ export type FeatureRewardType =
 export type TurnUpdateType =
   | "unitDied"
   | "productionComplete"
+  | "unitTrained"
   | "researchComplete"
   | "civicComplete"
   | "improvementComplete"

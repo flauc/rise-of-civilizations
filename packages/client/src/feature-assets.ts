@@ -5,10 +5,12 @@ import { hashSeed } from "@roc/shared";
 
 const VILLAGE_FRAMES = 5; // village.png, village_1.png .. village_4.png
 const BARB_CAMP_FRAMES = 5; // barb_camp.png, barb_camp_1.png .. barb_camp_4.png
+const RUIN_FRAMES = 4; // ruin.png, ruin_1.png .. ruin_3.png
 
 export interface FeatureAtlas {
   readonly village: ReadonlyArray<HTMLImageElement | undefined>;
   readonly barbCamp: ReadonlyArray<HTMLImageElement | undefined>;
+  readonly ruin: ReadonlyArray<HTMLImageElement | undefined>;
   loaded: boolean;
 }
 
@@ -26,7 +28,8 @@ export function isImageReady(img: HTMLImageElement): boolean {
 export function loadFeatureAtlas(onLoad?: () => void): FeatureAtlas {
   const village: (HTMLImageElement | undefined)[] = [];
   const barbCamp: (HTMLImageElement | undefined)[] = [];
-  let remaining = VILLAGE_FRAMES + BARB_CAMP_FRAMES;
+  const ruin: (HTMLImageElement | undefined)[] = [];
+  let remaining = VILLAGE_FRAMES + BARB_CAMP_FRAMES + RUIN_FRAMES;
 
   function finishSlot(
     array: (HTMLImageElement | undefined)[],
@@ -59,7 +62,15 @@ export function loadFeatureAtlas(onLoad?: () => void): FeatureAtlas {
     img.onerror = () => finishSlot(barbCamp, frame, img);
   }
 
-  const atlas: FeatureAtlas = { village, barbCamp, loaded: remaining === 0 };
+  for (let frame = 0; frame < RUIN_FRAMES; frame++) {
+    const img = new Image();
+    img.src = frameUrl("ruin", frame);
+    ruin.push(img);
+    img.onload = () => finishSlot(ruin, frame, img);
+    img.onerror = () => finishSlot(ruin, frame, img);
+  }
+
+  const atlas: FeatureAtlas = { village, barbCamp, ruin, loaded: remaining === 0 };
   return atlas;
 }
 
@@ -88,4 +99,13 @@ export function barbCampFrameFor(
   row: number,
 ): HTMLImageElement | undefined {
   return pickFrame(atlas?.barbCamp ?? [], `${col},${row},barb_camp`);
+}
+
+/** Pick a deterministic ruin frame for a given tile coordinate. */
+export function ruinFrameFor(
+  atlas: FeatureAtlas | undefined,
+  col: number,
+  row: number,
+): HTMLImageElement | undefined {
+  return pickFrame(atlas?.ruin ?? [], `${col},${row},ruin`);
 }

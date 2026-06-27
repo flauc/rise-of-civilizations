@@ -17,36 +17,38 @@ function foundCapital(state: ReturnType<typeof createGame>) {
   return citiesOf(state, 0)[0]!;
 }
 
-describe("settler production pauses growth", () => {
-  it("a city building a settler does not grow even with stored food at the cap", () => {
+describe("settler training pauses growth", () => {
+  it("a city training a settler does not grow even with stored food at the cap", () => {
     const state = createGame({ seed: "grow-settler", cols: 30, rows: 20, barbarians: false });
     const player = state.players[0]!;
     const city = foundCapital(state);
+    city.population = 2;
     city.foodStored = foodToGrow(city.population); // already at the growth threshold
-    city.production = { kind: "unit", id: "settler" };
+    city.trainingQueue = [{ id: 1, unit: "settler", turnsLeft: 5, startTurn: 0 }];
 
     processCity(state, city, player);
-    expect(city.population).toBe(1); // settler held growth back
+    expect(city.population).toBe(2); // settler held growth back (no new citizen)
   });
 
-  it("the same city grows once it is no longer building a settler", () => {
+  it("the same city grows once it is not training a settler", () => {
     const state = createGame({ seed: "grow-settler", cols: 30, rows: 20, barbarians: false });
     const player = state.players[0]!;
     const city = foundCapital(state);
+    city.population = 2;
     city.foodStored = foodToGrow(city.population);
-    city.production = { kind: "unit", id: "warrior" };
+    city.trainingQueue = [];
 
     processCity(state, city, player);
-    expect(city.population).toBe(2); // non-settler production lets it grow
+    expect(city.population).toBe(3); // no settler in training lets it grow
   });
 });
 
 describe("foodToGrow", () => {
   it("uses a flatter curve so small cities grow faster", () => {
-    expect(foodToGrow(1)).toBe(8);
-    expect(foodToGrow(2)).toBe(11);
-    expect(foodToGrow(3)).toBe(14);
-    expect(foodToGrow(5)).toBe(20);
+    expect(foodToGrow(1)).toBe(7);
+    expect(foodToGrow(2)).toBe(9);
+    expect(foodToGrow(3)).toBe(11);
+    expect(foodToGrow(5)).toBe(15);
   });
 });
 

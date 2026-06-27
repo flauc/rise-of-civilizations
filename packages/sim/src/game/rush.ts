@@ -5,10 +5,10 @@
 // "Instant" means the item/work is topped up to completion and finishes on the
 // next turn-processing via the normal economy.ts / works.ts completion paths.
 
-import type { City, Discipline, GameState, Player, Work } from "./state";
+import type { City, Discipline, GameState, Player, TrainingOrder, Work } from "./state";
 import { playerById } from "./state";
 import { playerEffects } from "./civs";
-import { UNIT_DEFS, getBuildingDef } from "./content";
+import { getBuildingDef, trainingTier } from "./content";
 
 export type RushCurrency = "gold" | "faith" | "culture";
 
@@ -23,6 +23,8 @@ export interface RushResult {
 // culture rush a little cheaper than gold so the unlocking perks feel worthwhile.
 const PER_PROD: Record<RushCurrency, number> = { gold: 4, faith: 3, culture: 3 };
 const PER_LABOUR: Record<RushCurrency, number> = { gold: 4, faith: 3, culture: 3 };
+// Cost per remaining training turn (a unit's per-turn cost to rush its muster).
+const PER_TRAIN_TURN: Record<RushCurrency, number> = { gold: 8, faith: 6, culture: 6 };
 
 const CURRENCY_LABEL: Record<RushCurrency, string> = {
   gold: "gold",
@@ -64,7 +66,7 @@ function currencyAllowed(state: GameState, playerId: number, currency: RushCurre
 function cityItemCost(city: City): number | null {
   const item = city.production;
   if (!item || item.kind === "project") return null; // projects never "complete"
-  if (item.kind === "unit") return UNIT_DEFS[item.id].cost;
+  if (item.kind === "trainingBuilding") return trainingTier(item.family, item.tier).cost;
   return getBuildingDef(item.id)?.cost ?? null;
 }
 
@@ -150,6 +152,58 @@ export function canRushWork(
   if (cost === null) return { ok: false, error: "nothing to rush here" };
   if (poolOf(player, currency) < cost) return { ok: false, error: `not enough ${CURRENCY_LABEL[currency]}` };
   return { ok: true, cost };
+}
+
+/** Resource cost to rush a training order with `currency`, or null if it is about to
+ *  finish anyway (≤1 turn left). */
+export function trainingRushCost(order: TrainingOrder, currency: RushCurrency): number | null {
+  if (order.turnsLeft <= 1) return null;
+  return Math.ceil((order.turnsLeft - 1) * PER_TRAIN_TURN[currency]);
+}
+
+function findTrainingOrder(state: GameState, cityId: number, orderId: number): { city: City; order: TrainingOrder } | null {
+  const city = state.cities.get(cityId);
+  if (!city) return null;
+  const order = city.trainingQueue.find((o) => o.id === orderId);
+  return order ? { city, order } : null;
+}
+
+/** Validate rushing a training order without mutating. */
+export function canRushTraining(
+  state: GameState,
+  playerId: number,
+  cityId: number,
+  orderId: number,
+  currency: RushCurrency,
+): RushResult {
+  const player = playerById(state, playerId);
+  if (!player) return { ok: false, error: "no such player" };
+  const found = findTrainingOrder(state, cityId, orderId);
+  if (!found || found.city.ownerId !== playerId) return { ok: false, error: "no such training order" };
+  if (!currencyAllowed(state, playerId, currency)) {
+    return { ok: false, error: `${CURRENCY_LABEL[currency]} rushing is not unlocked` };
+  }
+  const cost = trainingRushCost(found.order, currency);
+  if (cost === null) return { ok: false, error: "nothing to rush here" };
+  if (poolOf(player, currency) < cost) return { ok: false, error: `not enough ${CURRENCY_LABEL[currency]}` };
+  return { ok: true, cost };
+}
+
+/** Spend the resource and finish a training order on the next turn-processing. */
+export function rushTraining(
+  state: GameState,
+  playerId: number,
+  cityId: number,
+  orderId: number,
+  currency: RushCurrency,
+): RushResult {
+  const can = canRushTraining(state, playerId, cityId, orderId, currency);
+  if (!can.ok) return can;
+  const player = playerById(state, playerId)!;
+  const { order } = findTrainingOrder(state, cityId, orderId)!;
+  spendFromPool(player, currency, can.cost!);
+  order.turnsLeft = 1; // completes on this turn's advanceTraining
+  return { ok: true, cost: can.cost };
 }
 
 /** Spend the resource and fill the work's progress to its requirement. It

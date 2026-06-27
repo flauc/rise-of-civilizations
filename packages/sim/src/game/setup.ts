@@ -1,5 +1,5 @@
 import { axialDistance, getTile, hashSeed, makeRng, offsetToAxial } from "@roc/shared";
-import { CIV_IDS } from "@roc/data";
+import { CIV_IDS, startingUnitsFor } from "@roc/data";
 import { generateMap, type MapType } from "../worldgen";
 import type { GameState, Player } from "./state";
 import { makeUnit } from "./state";
@@ -114,14 +114,35 @@ function spawn(state: GameState, ownerId: number, type: UnitTypeId, col: number,
   state.units.set(id, makeUnit(id, ownerId, type, col, row, 0, startingUnitMorale(state, ownerId)));
 }
 
-function openNeighbor(state: GameState, col: number, row: number): { col: number; row: number } | null {
-  for (const n of offsetNeighbors(state.map, col, row)) {
-    const tile = getTile(state.map, n.col, n.row);
-    if (tile && isPassableLand(tile.terrain) && ![...state.units.values()].some((u) => u.col === n.col && u.row === n.row)) {
-      return { col: n.col, row: n.row };
+/** Up to `count` distinct open (passable, unoccupied) tiles, spiralling out from a
+ *  start tile via expanding rings — enough room for a civ's whole starting loadout. */
+function openTilesAround(
+  state: GameState,
+  col: number,
+  row: number,
+  count: number,
+): { col: number; row: number }[] {
+  const out: { col: number; row: number }[] = [];
+  const seen = new Set<string>([`${col},${row}`]);
+  let frontier: { col: number; row: number }[] = [{ col, row }];
+  while (out.length < count && frontier.length > 0) {
+    const next: { col: number; row: number }[] = [];
+    for (const f of frontier) {
+      for (const n of offsetNeighbors(state.map, f.col, f.row)) {
+        const key = `${n.col},${n.row}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push(n);
+        const tile = getTile(state.map, n.col, n.row);
+        if (tile && isPassableLand(tile.terrain) && ![...state.units.values()].some((u) => u.col === n.col && u.row === n.row)) {
+          out.push({ col: n.col, row: n.row });
+          if (out.length >= count) return out;
+        }
+      }
     }
+    frontier = next;
   }
-  return null;
+  return out;
 }
 
 function spawnBarbarians(
@@ -318,8 +339,14 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   const starts = findStarts(state, count);
   starts.forEach((start, i) => {
     spawn(state, i, "settler", start.col, start.row);
-    const adj = openNeighbor(state, start.col, start.row);
-    if (adj) spawn(state, i, "warrior", adj.col, adj.row);
+    // Each civ begins with its starting loadout (default: 2 Warriors + a Scout),
+    // placed on open tiles spiralling out from the start.
+    const loadout = startingUnitsFor(state.players[i]?.civId) as UnitTypeId[];
+    const tiles = openTilesAround(state, start.col, start.row, loadout.length);
+    loadout.forEach((type, k) => {
+      const t = tiles[k];
+      if (t) spawn(state, i, type, t.col, t.row);
+    });
   });
 
   if (activity !== "none") spawnBarbarians(state, barbId, starts, activity);

@@ -6,7 +6,7 @@ import { applyCommand } from "./commands";
 import { computeReachable, isCoastalLand } from "./movement";
 import { resolveAttack, computeAttackTargets } from "./combat";
 import { establishTradeRoute } from "./trade";
-import { availableProduction } from "./economy";
+import { availableTraining } from "./training";
 import { UNIT_DEFS } from "./content";
 import type { TerrainType } from "./terrain";
 
@@ -64,6 +64,8 @@ const makeCity = (id: number, ownerId: number, name: string, col: number, row: n
   productionStored: 0,
   production: null,
   buildings: [],
+  training: {},
+  trainingQueue: [],
   specialists: [],
   wonders: [],
   workedTiles: [],
@@ -255,17 +257,21 @@ describe("naval combat", () => {
 });
 
 describe("naval production", () => {
-  it("only offers naval units in coastal cities", () => {
+  it("only allows training naval units in coastal cities", () => {
     const state = baseState(coastalMap);
     const coastal = makeCity(1, 0, "Roma", 2, 1);
     const inland = makeCity(2, 0, "Arretium", 0, 1);
     state.players[0]!.researched.add("sailing");
+    coastal.population = 3;
+    inland.population = 3;
+    coastal.training.shipyard = 1; // a Shipyard so it can train ships
+    inland.training.shipyard = 1;
     state.cities.set(1, coastal);
     state.cities.set(2, inland);
-    const coastalOpts = availableProduction(state, state.players[0]!, coastal);
-    const inlandOpts = availableProduction(state, state.players[0]!, inland);
-    expect(coastalOpts.some((o) => o.item.id === "galley")).toBe(true);
-    expect(inlandOpts.some((o) => o.item.id === "galley")).toBe(false);
+    const coastalOpts = availableTraining(state, state.players[0]!, coastal);
+    const inlandOpts = availableTraining(state, state.players[0]!, inland);
+    expect(coastalOpts.includes("galley")).toBe(true);
+    expect(inlandOpts.includes("galley")).toBe(false);
   });
 });
 

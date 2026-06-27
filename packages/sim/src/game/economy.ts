@@ -7,11 +7,12 @@ import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources
 import { naturalWonderYields, naturalWonderCulture } from "./natural-wonders";
 import { expandTerritory } from "./territory";
 import { getWonder, uniqueBuildingForCiv, type CivEffects } from "@roc/data";
-import { civEffectsOf, cityEffects, getCivic, uniqueUnitForCiv } from "./civs";
+import { civEffectsOf, cityEffects, getCivic } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
-import { startingUnitMorale, BARRACKS_MORALE_BONUS, upkeepGoldMultiplier, upkeepModifierPct, minMilitaryPayCost, onBankruptcy } from "./morale";
+import { startingUnitMorale, upkeepGoldMultiplier, upkeepModifierPct, minMilitaryPayCost, onBankruptcy } from "./morale";
+import { advanceTraining } from "./training";
 import { offsetNeighbors, isCoastalLand } from "./movement";
 import {
   emitCityGrew,
@@ -24,10 +25,14 @@ import {
   BUILDING_DEFS,
   PROJECT_DEFS,
   TECH_DEFS,
+  TRAINING_BUILDING_DEFS,
+  TRAINING_CLASSES,
   UNIT_DEFS,
   advanceResearchQueue,
   getBuildingDef,
+  trainingTier,
   type TechId,
+  type TrainingClass,
 } from "./content";
 
 export interface CityYields {
@@ -300,7 +305,9 @@ function mergeCivEffects(a: CivEffects, b: CivEffects): CivEffects {
 }
 
 export function foodToGrow(population: number): number {
-  return 8 + 3 * (population - 1);
+  // Softened growth curve: with population now spent on training units, cities must
+  // rebuild citizens faster than the old 8 + 3·(pop−1) would allow.
+  return 7 + 2 * (population - 1);
 }
 
 /** Raw food surplus a city banks each turn before the growth multiplier:
@@ -387,12 +394,17 @@ export function toggleCitizen(state: GameState, city: City, col: number, row: nu
   return true;
 }
 
-/** Spawn a finished unit at the city, or the nearest open adjacent valid tile. */
-function placeUnit(state: GameState, city: City, type: keyof typeof UNIT_DEFS): void {
-  const hasBarracks = city.buildings.includes("barracks");
-  const xpBonus = hasBarracks ? 15 : 0;
-  // Units mustered in a Barracks start with steadier morale.
-  const morale = startingUnitMorale(state, city.ownerId, hasBarracks ? BARRACKS_MORALE_BONUS : 0);
+/** Spawn a finished unit at the city, or the nearest open adjacent valid tile. The
+ *  caller supplies the starting XP and a morale bonus (from the training building's
+ *  tier and any civ effects — see training.ts). */
+export function placeUnit(
+  state: GameState,
+  city: City,
+  type: keyof typeof UNIT_DEFS,
+  xpBonus = 0,
+  moraleBonus = 0,
+): void {
+  const morale = startingUnitMorale(state, city.ownerId, moraleBonus);
   const udef = UNIT_DEFS[type];
   const spawn = (col: number, row: number) => {
     const id = state.nextEntityId++;
@@ -429,10 +441,9 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   // below baseline. cityFoodGrowth is the shared sim/UI source of truth.
   const surplus = y.food - city.population;
   const foodDelta = cityFoodGrowth(state, city, surplus);
-  // A city readying a settler pauses growth: the food a settler would consume
+  // A city training a settler pauses growth: the food a settler would consume
   // isn't banked toward a new citizen (a deficit can still starve the city).
-  const buildingSettler =
-    city.production?.kind === "unit" && UNIT_DEFS[city.production.id].founder === true;
+  const buildingSettler = city.trainingQueue.some((o) => UNIT_DEFS[o.unit].founder === true);
   city.foodStored += buildingSettler && foodDelta > 0 ? 0 : foodDelta;
   if (city.foodStored < 0) {
     if (city.population > 1) {
@@ -488,67 +499,57 @@ export function processCity(state: GameState, city: City, owner: Player): void {
         case "faith": owner.faith += converted; break;
       }
     }
-  } else if (city.production) {
-    const cost =
-      city.production.kind === "unit"
-        ? UNIT_DEFS[city.production.id].cost
-        : getBuildingDef(city.production.id)?.cost ?? Infinity;
+  } else if (city.production?.kind === "trainingBuilding") {
+    // Raising a unit-training building family to the next tier.
+    const { family, tier } = city.production;
+    const cost = trainingTier(family, tier).cost;
     if (city.productionStored >= cost) {
       city.productionStored -= cost;
-      if (city.production.kind === "unit") {
-        const udef = UNIT_DEFS[city.production.id];
-        placeUnit(state, city, city.production.id);
-        if (udef.reqResource) {
-          owner.resources[udef.reqResource.resource] = Math.max(
-            0,
-            (owner.resources[udef.reqResource.resource] ?? 0) - udef.reqResource.count,
-          );
-        }
-        log(state, `${city.name} trained a ${udef.name}.`, {
-          actorId: city.ownerId,
-          targetIds: [city.ownerId],
-          tile: { col: city.col, row: city.row },
-        });
-        emitProductionComplete(
-          state,
-          city.ownerId,
-          city.id,
-          city.name,
-          city.production,
-          udef.name,
-          city.col,
-          city.row,
-        );
-      } else {
-        const bdef = getBuildingDef(city.production.id);
-        if (!city.buildings.includes(city.production.id)) {
-          city.buildings.push(city.production.id);
-        }
-        if (bdef?.reqResource) {
-          owner.resources[bdef.reqResource.resource] = Math.max(
-            0,
-            (owner.resources[bdef.reqResource.resource] ?? 0) - bdef.reqResource.count,
-          );
-        }
-        log(state, `${city.name} built a ${bdef?.name ?? city.production.id}.`, {
-          actorId: city.ownerId,
-          targetIds: [city.ownerId],
-          tile: { col: city.col, row: city.row },
-        });
-        emitProductionComplete(
-          state,
-          city.ownerId,
-          city.id,
-          city.name,
-          city.production,
-          bdef?.name ?? city.production.id,
-          city.col,
-          city.row,
+      city.training[family] = tier;
+      const name = `${TRAINING_BUILDING_DEFS[family].name} (Tier ${tier})`;
+      log(state, `${city.name} built a ${name}.`, {
+        actorId: city.ownerId,
+        targetIds: [city.ownerId],
+        tile: { col: city.col, row: city.row },
+      });
+      emitProductionComplete(state, city.ownerId, city.id, city.name, city.production, name, city.col, city.row);
+      city.production = null;
+    }
+  } else if (city.production) {
+    const bdef = getBuildingDef(city.production.id);
+    const cost = bdef?.cost ?? Infinity;
+    if (city.productionStored >= cost) {
+      city.productionStored -= cost;
+      if (!city.buildings.includes(city.production.id)) {
+        city.buildings.push(city.production.id);
+      }
+      if (bdef?.reqResource) {
+        owner.resources[bdef.reqResource.resource] = Math.max(
+          0,
+          (owner.resources[bdef.reqResource.resource] ?? 0) - bdef.reqResource.count,
         );
       }
+      log(state, `${city.name} built a ${bdef?.name ?? city.production.id}.`, {
+        actorId: city.ownerId,
+        targetIds: [city.ownerId],
+        tile: { col: city.col, row: city.row },
+      });
+      emitProductionComplete(
+        state,
+        city.ownerId,
+        city.id,
+        city.name,
+        city.production,
+        bdef?.name ?? city.production.id,
+        city.col,
+        city.row,
+      );
       city.production = null;
     }
   }
+
+  // Advance any units this city is training (population was spent when each started).
+  advanceTraining(state, city, owner);
 
   // Gold + science + culture (empire pools).
   owner.gold += y.gold;
@@ -646,17 +647,21 @@ export interface ProductionOption {
   cost: number;
 }
 
-/** Everything a city can currently build, gated by the owner's tech. */
+/** Everything a city can currently CONSTRUCT, gated by the owner's tech. Units are no
+ *  longer here — they are trained via training.ts (availableTraining). Construction now
+ *  covers buildings, training-building tier upgrades, the civ-unique building, and
+ *  standing projects. */
 export function availableProduction(state: GameState, player: Player, city: City): ProductionOption[] {
   const out: ProductionOption[] = [];
-  const coastal = isCoastalLand(state, city.col, city.row);
-  for (const def of Object.values(UNIT_DEFS)) {
-    if (def.reqTech && !player.researched.has(def.reqTech)) continue;
-    if (def.reqResource && resourceStock(player, def.reqResource.resource) < def.reqResource.count) continue;
-    // Naval units can only be built in coastal cities.
-    if ((def.cls === "naval_melee" || def.cls === "naval_ranged") && !coastal) continue;
-    const uu = uniqueUnitForCiv(player.civId, def.id);
-    out.push({ item: { kind: "unit", id: def.id }, name: uu?.name ?? def.name, cost: def.cost });
+  // Training-building families: offer the next tier if its tech gate is met.
+  for (const family of TRAINING_CLASSES) {
+    const current = city.training[family] ?? 0;
+    if (current >= TRAINING_BUILDING_DEFS[family].tiers.length) continue;
+    const next = current + 1;
+    const tierDef = trainingTier(family, next);
+    if (tierDef.reqTech && !player.researched.has(tierDef.reqTech)) continue;
+    const label = current === 0 ? TRAINING_BUILDING_DEFS[family].name : `${TRAINING_BUILDING_DEFS[family].name} (Tier ${next})`;
+    out.push({ item: { kind: "trainingBuilding", family, tier: next }, name: label, cost: tierDef.cost });
   }
   for (const def of Object.values(BUILDING_DEFS)) {
     if (def.reqTech && !player.researched.has(def.reqTech)) continue;

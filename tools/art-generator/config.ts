@@ -410,6 +410,15 @@ export const TURN_UPDATE_SUBSET: AssetEntry[] = [
     referenceTile: DEFAULT_REFERENCE_TILE,
   },
   {
+    id: "unitTrained",
+    name: "Unit Trained",
+    description: "a stylized hand-painted portrait of a newly trained ancient soldier standing proudly at the gate of a barracks, fresh armor and a spear, a veteran instructor nodding in approval, warm morning light. Evoke readiness and recruitment, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
     id: "researchComplete",
     name: "Research Complete",
     description: "a stylized hand-painted portrait of an ancient scholar unrolling a scroll covered in star charts and geometric diagrams, soft library background. Evoke discovery and knowledge, no text, no UI.",
@@ -798,8 +807,14 @@ export const UI_SUBSET: AssetEntry[] = [
 export const BUILDING_SUBSET: AssetEntry[] = [
   { id: "barb_camp", name: "Barbarian Camp", description: "a primitive barbarian encampment with crude tents, a bonfire, and wooden spikes, no walls, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "village", name: "Village", description: "a small tribal village with a few thatched-roof huts, no walls, no fortifications, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "ruin", name: "City Ruins", description: "the desolate ruins of a destroyed ancient city: a few crumbling broken mud-brick and stone walls, a toppled column, scorched rubble, and charred timbers overgrown with weeds, abandoned and lifeless, no people, no walls intact, no fortifications, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "granary", name: "Granary", description: "a small grain store with earthen walls", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
-  { id: "barracks", name: "Barracks", description: "a simple military training hall", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // Unit-training building families (each trains one unit class; see content.ts TRAINING_BUILDING_DEFS).
+  { id: "barracks", name: "Barracks", description: "a military training hall with weapon racks, shields, and a sparring yard, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "archery_range", name: "Archery Range", description: "an archery range with straw targets, racks of bows and quivers of arrows, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "stable", name: "Stable", description: "a horse stable with wooden stalls, a fenced paddock and hay bales, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "siege_workshop", name: "Siege Workshop", description: "a siege workshop with a half-built catapult, timber frames, ropes and woodworking tools, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "shipyard", name: "Shipyard", description: "a coastal shipyard with a wooden warship hull on slipways beside the water, scaffolding and timber, no background terrain", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "market", name: "Market", description: "a covered marketplace with stalls", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "library", name: "Library", description: "a classical archive with scroll shelves", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "monument", name: "Monument", description: "a standing stone or small obelisk", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },

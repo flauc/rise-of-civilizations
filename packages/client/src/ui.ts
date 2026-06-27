@@ -71,6 +71,15 @@ import {
   getCityYields,
   territorySize,
   BUILDING_DEFS,
+  TRAINING_BUILDING_DEFS,
+  trainingTier,
+  trainingClassFor,
+  availableTraining,
+  canStartTraining,
+  trainingTimeInCity,
+  trainSlots,
+  freeCitizens,
+  trainingRushCost,
   getBuildingDef,
   getProjectDef,
   uniqueImprovementForCiv,
@@ -127,6 +136,7 @@ import {
   type TechId,
   type Unit,
   type UnitTypeId,
+  type TrainingClass,
   type TurnUpdateEvent,
 } from "@roc/sim";
 import type { Tile } from "@roc/shared";
@@ -184,6 +194,7 @@ function tileReport(state: GameState, tile: Tile): TileReport {
   if (wonder) name = `${wonder.name} ✦`;
   else if (tile.feature === "village") name = `${TERRAIN_NAMES[t]} · Village`;
   else if (tile.feature === "barb_camp") name = `${TERRAIN_NAMES[t]} · Barbarian Camp`;
+  else if (tile.feature === "ruin") name = `${TERRAIN_NAMES[t]} · Ruins`;
   else if (tile.riverLake) name = `${TERRAIN_NAMES[t]} · River Lake`;
   else if (tile.river) name = `${TERRAIN_NAMES[t]} · River`;
 
@@ -231,6 +242,7 @@ function tileReport(state: GameState, tile: Tile): TileReport {
     lines.push({ kind: "good", text: "Worked by a citizen, this tile yields bonus output" });
   }
   if (tile.feature === "village") lines.push({ kind: "good", text: "Village — a reward when one of your units enters" });
+  if (tile.feature === "ruin") lines.push({ kind: "neutral", text: "Ruins of a fallen city — fades over time, or build a new city here" });
 
   if (!y.food && !water) lines.push({ kind: "bad", text: "No food — cannot feed a growing city" });
   if (rough) lines.push({ kind: "bad", text: "Rough ground — slow for units to cross" });
@@ -301,6 +313,9 @@ export interface UIHandlers {
   onFinalizeDeal(proposalId: number, confirm: boolean): void;
   onAcknowledgeContact(otherId: number): void;
   onSetProduction(item: ProductionItem): void;
+  onStartTraining(cityId: number, unit: UnitTypeId): void;
+  onCancelTraining(cityId: number, orderId: number): void;
+  onRushTraining(cityId: number, orderId: number, currency: RushCurrency): void;
   onSetResearch(techId: TechId): void;
   onSetResearchTarget(techId: TechId): void;
   onSetCivic(civicId: string): void;
@@ -385,19 +400,28 @@ function downloadJson(filename: string, json: string): void {
 }
 
 function prodCost(item: ProductionItem): number {
-  if (item.kind === "unit") return UNIT_DEFS[item.id].cost;
   if (item.kind === "project") return 0; // projects never complete
+  if (item.kind === "trainingBuilding") return trainingTier(item.family, item.tier).cost;
   return getBuildingDef(item.id)?.cost ?? 0;
 }
 
-function prodName(item: ProductionItem, civId?: string): string {
-  if (item.kind === "unit") {
-    // Show the civ's unique unit name when it fields one in this slot
-    // (e.g. a Maori city builds a "Toa", not a "Warrior").
-    return uniqueUnitForCiv(civId, item.id)?.name ?? UNIT_DEFS[item.id].name;
-  }
+function prodName(item: ProductionItem, _civId?: string): string {
   if (item.kind === "project") return getProjectDef(item.id)?.name ?? item.id;
+  if (item.kind === "trainingBuilding") {
+    const name = TRAINING_BUILDING_DEFS[item.family].name;
+    return item.tier <= 1 ? name : `${name} (Tier ${item.tier})`;
+  }
   return getBuildingDef(item.id)?.name ?? item.id;
+}
+
+/** Inline icon for a unit-training building family, falling back to its emoji glyph
+ *  if the art is missing (onerror swaps the <img> for the glyph text). */
+function trainingIconImg(family: TrainingClass, glyph: string, px = 28): string {
+  return (
+    `<img src="${ASSET_BASE_URL}buildings/${family}.png" alt="" ` +
+    `style="width:${px}px;height:${px}px;object-fit:contain;vertical-align:middle" ` +
+    `onerror="this.replaceWith(document.createTextNode('${glyph}'))" />`
+  );
 }
 
 const RUSH_GLYPH: Record<RushCurrency, string> = { gold: "🪙", faith: "☮️", culture: "🎭" };
@@ -449,6 +473,7 @@ export function createUI(handlers: UIHandlers): UI {
   const legendsPanel = div("legends", "panel hidden");
   const production = div("production", "panel hidden");
   const specialists = div("specialists", "panel hidden");
+  const training = div("training", "panel hidden");
   const log = div("log", "");
   const bannerEl = div("banner", "");
   const gameover = div("gameover", "hidden");
@@ -790,9 +815,12 @@ export function createUI(handlers: UIHandlers): UI {
   let tileExpanded = false;
   let prodCityId: number | null = null;
   // Construction dialog tab and the specialists sub-dialog (mirrors production).
-  let prodTab: "unit" | "building" | "project" = "unit";
+  // Units are no longer built here — they are trained (see the Training dialog).
+  let prodTab: "building" | "trainingBuilding" | "project" = "building";
   let specialistsOpen = false;
   let specCityId: number | null = null;
+  let trainingOpen = false;
+  let trainCityId: number | null = null;
   let chosenBeliefs: string[] = [];
   let bannerTimer = 0;
   let lastState: GameState | null = null;
@@ -872,6 +900,7 @@ export function createUI(handlers: UIHandlers): UI {
     legendsOpen = false;
     productionOpen = false;
     specialistsOpen = false;
+    trainingOpen = false;
     techtreeOpen = false;
     renderResearch(state);
     renderCivics(state);
@@ -880,6 +909,7 @@ export function createUI(handlers: UIHandlers): UI {
     renderLegends(state);
     renderProduction(state);
     renderSpecialists(state);
+    renderTraining(state);
     renderTechTree(state);
   };
   const closeSideSheets = (): void => {
@@ -998,7 +1028,9 @@ export function createUI(handlers: UIHandlers): UI {
       case "unitDied":
         return "Unit Lost";
       case "productionComplete":
-        return "Production Complete";
+        return "Construction Complete";
+      case "unitTrained":
+        return "Unit Trained";
       case "researchComplete":
         return "Research Complete";
       case "civicComplete":
@@ -2089,8 +2121,8 @@ export function createUI(handlers: UIHandlers): UI {
     // units, city buildings, and standing conversion works (gold /
     // science / culture / faith). Keep the active tab on a kind with options.
     const tabs: { id: typeof prodTab; label: string }[] = [
-      { id: "unit", label: "Units" },
       { id: "building", label: "Buildings" },
+      { id: "trainingBuilding", label: "Military" },
       { id: "project", label: "Works" },
     ];
     const countFor = (kind: typeof prodTab) => options.filter((o) => o.item.kind === kind).length;
@@ -2116,26 +2148,31 @@ export function createUI(handlers: UIHandlers): UI {
         let desc: string;
         let meta: string;
         let cost: string;
-        if (o.item.kind === "unit") {
-          glyph = UNIT_DEFS[o.item.id].glyph;
-          const i = unitInfo(o.item.id);
-          desc = `${i.role} — ${i.stats}${i.note ? ` · ${i.note}` : ""}`;
-          meta = `· ${turns(o.cost)} turns`;
-          cost = `${o.cost}⚒️`;
-        } else if (o.item.kind === "project") {
+        let dataAttrs: string;
+        if (o.item.kind === "project") {
           const def = getProjectDef(o.item.id);
           glyph = def?.glyph ?? "♻️";
           desc = def?.desc ?? "";
           meta = "· ongoing";
           cost = "∞";
+          dataAttrs = `data-kind="project" data-id="${o.item.id}"`;
+        } else if (o.item.kind === "trainingBuilding") {
+          const fam = TRAINING_BUILDING_DEFS[o.item.family];
+          const t = trainingTier(o.item.family, o.item.tier);
+          glyph = trainingIconImg(o.item.family, fam.glyph, 30);
+          desc = `Trains ${fam.classes.join("/")} units · ${t.slots} slot${t.slots === 1 ? "" : "s"} · +${t.moraleBonus} morale · +${t.xp} XP`;
+          meta = `· ${turns(o.cost)} turns`;
+          cost = `${o.cost}⚒️`;
+          dataAttrs = `data-kind="trainingBuilding" data-family="${o.item.family}" data-tier="${o.item.tier}"`;
         } else {
           glyph = "🏛";
           desc = buildingInfo(o.item.id);
           meta = `· ${turns(o.cost)} turns`;
           cost = `${o.cost}⚒️`;
+          dataAttrs = `data-kind="building" data-id="${o.item.id}"`;
         }
         return (
-          `<div class="pcard" data-kind="${o.item.kind}" data-id="${o.item.id}">` +
+          `<div class="pcard" ${dataAttrs}>` +
           `<span class="pglyph">${glyph}</span>` +
           `<div style="flex:1"><div><b>${o.name}</b> <span class="sub">${meta}</span></div>` +
           `<div class="sub">${desc}</div></div>` +
@@ -2158,7 +2195,12 @@ export function createUI(handlers: UIHandlers): UI {
     );
     production.querySelectorAll<HTMLDivElement>(".pcard").forEach((el) =>
       el.addEventListener("click", () => {
-        handlers.onSetProduction({ kind: el.dataset.kind, id: el.dataset.id } as ProductionItem);
+        const kind = el.dataset.kind;
+        const item: ProductionItem =
+          kind === "trainingBuilding"
+            ? { kind: "trainingBuilding", family: el.dataset.family as TrainingClass, tier: Number(el.dataset.tier) }
+            : ({ kind, id: el.dataset.id } as ProductionItem);
+        handlers.onSetProduction(item);
         productionOpen = false;
         production.classList.add("hidden");
       }),
@@ -2232,6 +2274,102 @@ export function createUI(handlers: UIHandlers): UI {
     );
     specialists.querySelectorAll<HTMLButtonElement>("[data-spec-minus]").forEach((el) =>
       el.addEventListener("click", () => handlers.onConvertCitizen(city.id, el.dataset.specMinus!, -1)),
+    );
+  };
+
+  // Training sub-dialog (opened from the city panel, mirrors the construction dialog).
+  // Each unit trained costs a citizen; the building family's tier sets speed/morale/XP
+  // and how many can train at once.
+  const renderTraining = (state: GameState): void => {
+    training.classList.toggle("hidden", !trainingOpen);
+    if (!trainingOpen) return;
+    const city = trainCityId != null ? state.cities.get(trainCityId) : null;
+    if (!city) {
+      trainingOpen = false;
+      training.classList.add("hidden");
+      return;
+    }
+    const player = state.players.find((p) => p.id === city.ownerId)!;
+    const trainable = availableTraining(state, player, city);
+    const free = freeCitizens(city);
+
+    const unitButton = (type: UnitTypeId): string => {
+      const can = canStartTraining(state, city, type);
+      const t = trainingTimeInCity(state, city, type);
+      const name = uniqueUnitForCiv(player.civId, type)?.name ?? UNIT_DEFS[type].name;
+      const title = can.ok ? `Train ${name} — ${t} turns, costs 1 citizen` : can.error ?? "";
+      return (
+        `<button class="btn" data-train="${type}" title="${escapeHtml(title)}"${can.ok ? "" : " disabled"}>` +
+        `${UNIT_DEFS[type].glyph} ${escapeHtml(name)} <span class="sub">${t}t</span></button>`
+      );
+    };
+
+    const families: TrainingClass[] = ["barracks", "archery_range", "stable", "siege_workshop", "shipyard"];
+    const sections: string[] = [];
+    for (const fam of families) {
+      const tier = city.training[fam] ?? 0;
+      const def = TRAINING_BUILDING_DEFS[fam];
+      if (tier <= 0) {
+        sections.push(
+          `<div class="csub" style="margin-top:10px">${trainingIconImg(fam, def.glyph, 20)} ${def.name} <span class="sub">— not built (raise it in Construction)</span></div>`,
+        );
+        continue;
+      }
+      const slots = trainSlots(state, city, fam);
+      const inUse = city.trainingQueue.filter((o) => trainingClassFor(o.unit) === fam).length;
+      const units = trainable.filter((u) => trainingClassFor(u) === fam);
+      sections.push(
+        `<div class="csub" style="margin-top:10px">${trainingIconImg(fam, def.glyph, 20)} ${def.name} (Tier ${tier}) <span class="sub">— ${inUse}/${slots} slots in use</span></div>` +
+        `<div class="row" style="flex-wrap:wrap;gap:4px">${units.map(unitButton).join("") || `<span class="sub">No units available yet.</span>`}</div>`,
+      );
+    }
+
+    const civ = trainable.filter((u) => trainingClassFor(u) === null);
+    if (civ.length) {
+      sections.push(
+        `<div class="csub" style="margin-top:10px">🏙️ City Center <span class="sub">— civilians & scouts</span></div>` +
+        `<div class="row" style="flex-wrap:wrap;gap:4px">${civ.map(unitButton).join("")}</div>`,
+      );
+    }
+
+    const orders = city.trainingQueue.length
+      ? `<div class="csub" style="margin-top:12px">Training now</div>` +
+        city.trainingQueue
+          .map((o) => {
+            const name = uniqueUnitForCiv(player.civId, o.unit)?.name ?? UNIT_DEFS[o.unit].name;
+            const rushCost = trainingRushCost(o, "gold");
+            const canRush = rushCost != null && player.gold >= rushCost;
+            const rushBtn =
+              rushCost != null
+                ? `<button class="btn" data-rush-train="${o.id}" title="Rush with gold"${canRush ? "" : " disabled"}>⚡${rushCost}🪙</button>`
+                : "";
+            return (
+              `<div class="row" style="justify-content:space-between;gap:6px;margin-top:4px">` +
+              `<span>${UNIT_DEFS[o.unit].glyph} ${escapeHtml(name)} <span class="sub">${o.turnsLeft}t left</span></span>` +
+              `<span style="display:flex;gap:4px">${rushBtn}<button class="btn" data-cancel-train="${o.id}" title="Cancel — returns the citizen">✕</button></span></div>`
+            );
+          })
+          .join("")
+      : "";
+
+    training.innerHTML =
+      `<div class="row" style="justify-content:space-between"><b>${escapeHtml(city.name)} — Train Units</b><button class="btn" id="trclose">✕</button></div>` +
+      `<div class="sub" style="margin-top:4px">👥 ${city.population} pop · ${free} free citizen${free === 1 ? "" : "s"} · each unit costs 1 citizen</div>` +
+      sections.join("") +
+      orders;
+
+    training.querySelector<HTMLButtonElement>("#trclose")!.addEventListener("click", () => {
+      trainingOpen = false;
+      training.classList.add("hidden");
+    });
+    training.querySelectorAll<HTMLButtonElement>("[data-train]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onStartTraining(city.id, el.dataset.train as UnitTypeId)),
+    );
+    training.querySelectorAll<HTMLButtonElement>("[data-cancel-train]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onCancelTraining(city.id, Number(el.dataset.cancelTrain))),
+    );
+    training.querySelectorAll<HTMLButtonElement>("[data-rush-train]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onRushTraining(city.id, Number(el.dataset.rushTrain), "gold")),
     );
   };
 
@@ -3092,11 +3230,9 @@ export function createUI(handlers: UIHandlers): UI {
     // we read both from the sim's shared helpers to stay in lock-step with it.
     const surplus = y.food - city.population;
     const perTurn = cityFoodGrowth(state, city, surplus);
-    const surplusStr = surplus >= 0 ? `+${surplus}` : `${surplus}`;
     const growthMult = cityGrowthMultiplier(state, city);
-    // Readying a settler pauses growth — mirror the sim's processCity rule.
-    const buildingSettler =
-      city.production?.kind === "unit" && UNIT_DEFS[city.production.id].founder === true;
+    // Training a settler pauses growth — mirror the sim's processCity rule.
+    const buildingSettler = city.trainingQueue.some((o) => UNIT_DEFS[o.unit].founder === true);
     const turnsToGrow = perTurn > 0 ? Math.ceil((need - city.foodStored) / perTurn) : Infinity;
     // Amenity standing: surplus luxuries speed growth, a shortfall slows it.
     const amenities = cityAmenities(state, city);
@@ -3116,11 +3252,6 @@ export function createUI(handlers: UIHandlers): UI {
       `<div class="cline">` +
       `🛡️ ${cityDefenseStrength(state, city)} · ❤️ ${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)} · ⬣ ${territorySize(state, city)}` +
       (city.religion ? ` · ☮️ ${religionById(state, city.religion)?.name ?? ""}` : "") +
-      `</div>` +
-      // yields grid
-      `<div class="ygrid">` +
-      `<span title="Food (growth)">🍞 <b>${y.food}</b> <span style="color:#9fc0dc">(${surplusStr})</span></span>` +
-      `<span title="Production">⚒️ <b>${y.production}</b></span>` +
       `</div>` +
       // growth
       `<div class="cline" style="color:var(--parchment)">Growth ${Math.floor(city.foodStored)}/${need} ` +
@@ -3143,6 +3274,7 @@ export function createUI(handlers: UIHandlers): UI {
         ? rushButtonsHtml(state, cityViewer, "rush-prod", city.id, (cur) => cityRushCost(city, cur))
         : "") +
       `<button class="btn primary csheet-btn" id="open-prod">🔨 Construction <span class="sub">${options.length} ▸</span></button>` +
+      `<button class="btn csheet-btn" id="open-train">⚔️ Train Units <span class="sub">${freeCitizens(city)} free${city.trainingQueue.length ? ` · ${city.trainingQueue.length} training` : ""} ▸</span></button>` +
       `<button class="btn csheet-btn" id="open-spec">🛠️ Specialists <span class="sub">${specCount} trained · ${free} free${worksCount ? ` · ${worksCount} works` : ""} ▸</span></button>` +
       (() => {
         const routes = tradeRoutesFrom(state, city.id);
@@ -3159,8 +3291,8 @@ export function createUI(handlers: UIHandlers): UI {
     cityPanel.innerHTML =
       summaryBar({
         icon: city.isCapital ? "★" : "🏙️",
-        name: `<b>${escapeHtml(city.name)}</b>`,
-        stats: `👥 ${city.population} · ⚒️ ${y.production} · 🪙 ${y.gold} · 🔬 ${y.science}`,
+        name: "",
+        stats: `👥 ${city.population} · 🍞 ${y.food} · ⚒️ ${y.production} · 🪙 ${y.gold} · 🔬 ${y.science}`,
         closeId: "cclose",
       }) +
       `<div class="ip-detail">${detail}</div>`;
@@ -3176,10 +3308,12 @@ export function createUI(handlers: UIHandlers): UI {
       prodCityId = city.id;
       productionOpen = true;
       specialistsOpen = false;
+      trainingOpen = false;
       closeSideSheets();
       menuOpen = false;
       renderMenu(state);
       renderSpecialists(state);
+      renderTraining(state);
       renderProduction(state);
     });
     cityPanel.querySelectorAll<HTMLButtonElement>("[data-rush-prod]").forEach((el) =>
@@ -3187,14 +3321,28 @@ export function createUI(handlers: UIHandlers): UI {
         handlers.onRushProduction(Number(el.dataset.rushProd), el.dataset.rushCur as RushCurrency),
       ),
     );
-    cityPanel.querySelector<HTMLButtonElement>("#open-spec")!.addEventListener("click", () => {
-      specCityId = city.id;
-      specialistsOpen = true;
+    cityPanel.querySelector<HTMLButtonElement>("#open-train")!.addEventListener("click", () => {
+      trainCityId = city.id;
+      trainingOpen = true;
       productionOpen = false;
+      specialistsOpen = false;
       closeSideSheets();
       menuOpen = false;
       renderMenu(state);
       renderProduction(state);
+      renderSpecialists(state);
+      renderTraining(state);
+    });
+    cityPanel.querySelector<HTMLButtonElement>("#open-spec")!.addEventListener("click", () => {
+      specCityId = city.id;
+      specialistsOpen = true;
+      productionOpen = false;
+      trainingOpen = false;
+      closeSideSheets();
+      menuOpen = false;
+      renderMenu(state);
+      renderProduction(state);
+      renderTraining(state);
       renderSpecialists(state);
     });
   };
@@ -3272,6 +3420,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderLegends(view.state);
       renderProduction(view.state);
       renderSpecialists(view.state);
+      renderTraining(view.state);
       renderUnitPanel(view.state, view.selectedUnit, view.viewerId, view.odds);
       renderTilePanel(view.state, view.selectedTile ?? null, view.viewerId, view.cheatsEnabled ?? false);
       renderGodMode(view);
@@ -3296,6 +3445,7 @@ export function createUI(handlers: UIHandlers): UI {
         legendsOpen ||
         productionOpen ||
         specialistsOpen ||
+        trainingOpen ||
         techtreeOpen ||
         menuOpen ||
         godModeOpen ||
@@ -3409,10 +3559,12 @@ export function createUI(handlers: UIHandlers): UI {
       prodCityId = cityId;
       productionOpen = true;
       specialistsOpen = false;
+      trainingOpen = false;
       closeSideSheets();
       menuOpen = false;
       renderMenu(lastState);
       renderSpecialists(lastState);
+      renderTraining(lastState);
       renderProduction(lastState);
     },
     setAbilityAtlas(atlas) {

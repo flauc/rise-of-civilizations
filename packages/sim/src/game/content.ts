@@ -136,9 +136,18 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
 };
 
 export type BuildingId =
-  | "granary" | "workshop" | "forge" | "walls" | "barracks" | "stable"
+  | "granary" | "workshop" | "forge" | "walls"
   | "market" | "library" | "academy" | "aqueduct" | "harbor" | "lighthouse" | "monument" | "amphitheater"
   | "shrine" | "temple";
+
+/**
+ * Dedicated unit-training building families. Each trains units of one or more unit
+ * classes (see TRAINING_CLASS_OF) and has 5 tiers that improve training speed,
+ * starting morale/XP, and the number of units trainable at once. Tiers are raised
+ * through normal city construction (see ProductionItem `trainingBuilding`); they are
+ * NOT stored in `city.buildings` but in `city.training` (see state.ts).
+ */
+export type TrainingClass = "barracks" | "archery_range" | "stable" | "siege_workshop" | "shipyard";
 
 export type TechId =
   // Dawn
@@ -396,12 +405,10 @@ export interface BuildingDef {
 const B = (d: BuildingDef): BuildingDef => d;
 
 export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
-  granary: B({ id: "granary", name: "Granary", cost: 20, reqTech: "pottery_kiln", yields: { food: 2 } }),
+  granary: B({ id: "granary", name: "Granary", cost: 20, reqTech: "pottery_kiln", yields: { food: 3 } }),
   workshop: B({ id: "workshop", name: "Workshop", cost: 18, reqTech: "native_copper", yields: { production: 1 } }),
   forge: B({ id: "forge", name: "Forge", cost: 26, reqTech: "smelting", yields: { production: 2 } }),
   walls: B({ id: "walls", name: "Walls", cost: 24, reqTech: "masonry", yields: {}, effect: "walls" }),
-  barracks: B({ id: "barracks", name: "Barracks", cost: 22, reqTech: "bronze_alloying", yields: {}, effect: "barracks" }),
-  stable: B({ id: "stable", name: "Stable", cost: 20, reqTech: "equestrian", yields: { production: 1 } }),
   market: B({ id: "market", name: "Market", cost: 24, reqTech: "coinage", yields: { gold: 3 } }),
   library: B({ id: "library", name: "Archive", cost: 26, reqTech: "writing", yields: { science: 2 } }),
   academy: B({ id: "academy", name: "Academy", cost: 34, reqTech: "philosophy", yields: { science: 3 } }),
@@ -413,6 +420,129 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   shrine: B({ id: "shrine", name: "Shrine", cost: 18, reqTech: "ritual_burial", yields: { faith: 2 } }),
   temple: B({ id: "temple", name: "Temple", cost: 28, reqTech: "writing", yields: { faith: 2, culture: 1 } }),
 };
+
+// ---- Training buildings (unit-class production families) ------------------
+// A city trains units of a given class only if it owns the matching training
+// building, and each unit costs a citizen (population). Tiers (1–5), raised via
+// construction and gated by tech, improve training speed, starting morale/XP, and
+// the number of units trainable at once. See training.ts for the runtime logic.
+
+export interface TrainingTierDef {
+  /** Tier number (1–5). */
+  tier: number;
+  /** Construction cost to raise the building TO this tier (from the previous one). */
+  cost: number;
+  /** Tech required to build/upgrade to this tier (tier 1 may be ungated). */
+  reqTech?: TechId;
+  /** Units of this family trainable simultaneously at this tier. */
+  slots: number;
+  /** Bonus added to a trained unit's starting morale. */
+  moraleBonus: number;
+  /** A trained unit's starting XP. */
+  xp: number;
+  /** Train-time multiplier (lower = faster); 1.0 at tier 1 down to ~0.4 at tier 5. */
+  speedPct: number;
+  /** Flat per-turn yields the building grants its city (e.g. Stable +production). */
+  yields?: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
+  /** City-defense contribution (Barracks), folded into combat.cityDefenseStrength. */
+  defense?: number;
+}
+
+export interface TrainingBuildingDef {
+  id: TrainingClass;
+  name: string;
+  glyph: string;
+  /** Unit classes trained at this building. */
+  classes: UnitClass[];
+  /** Exactly 5 tier definitions, tier 1 first. */
+  tiers: TrainingTierDef[];
+}
+
+/** Standard 5-step tier curve for slots / morale / xp / speed, shared by all families. */
+const TIER_CURVE: Omit<TrainingTierDef, "tier" | "cost" | "reqTech">[] = [
+  { slots: 1, moraleBonus: 0, xp: 0, speedPct: 1.0 },
+  { slots: 1, moraleBonus: 10, xp: 10, speedPct: 0.85 },
+  { slots: 2, moraleBonus: 20, xp: 20, speedPct: 0.7 },
+  { slots: 2, moraleBonus: 30, xp: 30, speedPct: 0.55 },
+  { slots: 3, moraleBonus: 40, xp: 40, speedPct: 0.4 },
+];
+
+const TIER_COSTS = [22, 30, 40, 52, 66];
+
+/** Build a family's 5 tiers from the shared curve + per-family tech gates and extras. */
+function makeTiers(
+  gates: (TechId | undefined)[],
+  extra?: (i: number) => Partial<TrainingTierDef>,
+): TrainingTierDef[] {
+  return TIER_CURVE.map((c, i) => ({
+    tier: i + 1,
+    cost: TIER_COSTS[i]!,
+    reqTech: gates[i],
+    ...c,
+    ...(extra ? extra(i) : {}),
+  }));
+}
+
+export const TRAINING_BUILDING_DEFS: Record<TrainingClass, TrainingBuildingDef> = {
+  barracks: {
+    id: "barracks", name: "Barracks", glyph: "🛡️", classes: ["melee"],
+    // Melee discipline scales with metallurgy; also fortifies the city.
+    tiers: makeTiers(
+      [undefined, "bronze_alloying", "iron_bloomery", "carburizing", "gunpowder"],
+      (i) => ({ defense: 2 + i }),
+    ),
+  },
+  archery_range: {
+    id: "archery_range", name: "Archery Range", glyph: "🏹", classes: ["ranged"],
+    tiers: makeTiers([undefined, "composite_bow", "crossbow", "carburizing", "firearms"]),
+  },
+  stable: {
+    id: "stable", name: "Stable", glyph: "🐎", classes: ["cavalry"],
+    // Stables also lend the city a little production (as the old Stable building did).
+    tiers: makeTiers(
+      ["the_wheel", "equestrian", "cavalry_doctrine", "carburizing", "gunpowder"],
+      () => ({ yields: { production: 1 } }),
+    ),
+  },
+  siege_workshop: {
+    id: "siege_workshop", name: "Siege Workshop", glyph: "⚙️", classes: ["siege"],
+    tiers: makeTiers(["siegecraft", "mathematics", "torsion_engines", "engineering", "gunpowder"]),
+  },
+  shipyard: {
+    id: "shipyard", name: "Shipyard", glyph: "⚓", classes: ["naval_melee", "naval_ranged"],
+    tiers: makeTiers(["sailing", "shipbuilding", "naval_architecture", "optics", "cartography"]),
+  },
+};
+
+export const TRAINING_CLASSES = Object.keys(TRAINING_BUILDING_DEFS) as TrainingClass[];
+
+/** Which training family (if any) a unit type is trained at. Civilians (settler/
+ *  trader) and recon (scout) return null — they are trained from the city center. */
+export function trainingClassFor(type: UnitTypeId): TrainingClass | null {
+  const cls = UNIT_DEFS[type].cls;
+  for (const fam of TRAINING_CLASSES) {
+    if (TRAINING_BUILDING_DEFS[fam].classes.includes(cls)) return fam;
+  }
+  return null;
+}
+
+/** Resolve a single tier def for a family (tier clamped to 1–5). */
+export function trainingTier(family: TrainingClass, tier: number): TrainingTierDef {
+  const tiers = TRAINING_BUILDING_DEFS[family].tiers;
+  return tiers[Math.max(1, Math.min(tiers.length, tier)) - 1]!;
+}
+
+/** Base training time (turns) for a unit before any building-tier speed-up, derived
+ *  from its legacy production cost. */
+export function baseTrainTime(type: UnitTypeId): number {
+  return Math.max(2, Math.round(UNIT_DEFS[type].cost / 6));
+}
+
+/** Training time (turns) for a unit given a building-tier speed multiplier. Civilians
+ *  trained from the city center pass speedPct = 1. Always at least 1 turn. */
+export function trainTimeFor(type: UnitTypeId, speedPct = 1): number {
+  return Math.max(1, Math.round(baseTrainTime(type) * speedPct));
+}
 
 export interface TechDef {
   id: TechId;
@@ -740,6 +870,12 @@ export function techUnlocks(techId: TechId): string[] {
   const out: string[] = [];
   for (const d of Object.values(UNIT_DEFS)) if (d.reqTech === techId) out.push(d.name);
   for (const d of Object.values(BUILDING_DEFS)) if (d.reqTech === techId) out.push(d.name);
+  // Training-building tiers gated by this tech.
+  for (const fam of TRAINING_CLASSES) {
+    for (const t of TRAINING_BUILDING_DEFS[fam].tiers) {
+      if (t.reqTech === techId) out.push(`${TRAINING_BUILDING_DEFS[fam].name} Tier ${t.tier}`);
+    }
+  }
   out.push(...techSystemUnlocks(techId));
   return out;
 }

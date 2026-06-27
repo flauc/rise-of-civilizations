@@ -265,6 +265,40 @@ export function clearBarbCamp(state: GameState, unit: Unit, player: Player): voi
   });
 }
 
+// ---- ruins ---------------------------------------------------------------
+
+/** How many turns a ruin lingers before the wilderness reclaims it. */
+export const RUIN_LIFESPAN = 10;
+
+/** Leave a ruin where a city once stood. The ruin lingers for RUIN_LIFESPAN turns
+ *  (or until a new city is founded on the spot), then fades on its own. Any leftover
+ *  defensive structure or village/camp on the tile is cleared — the city is gone. */
+export function leaveRuin(state: GameState, col: number, row: number): void {
+  const tile = getTile(state.map, col, row);
+  if (!tile) return;
+  tile.structure = undefined;
+  tile.feature = "ruin";
+  tile.featureExpiresTurn = state.turn + RUIN_LIFESPAN;
+}
+
+/** Clear an expired ruin from a tile (no-op if it is not a ruin). Founding a city
+ *  on the spot also clears it — see the foundCity command. */
+export function clearRuin(tile: { feature?: string; featureExpiresTurn?: number }): void {
+  if (tile.feature !== "ruin") return;
+  tile.feature = undefined;
+  tile.featureExpiresTurn = undefined;
+}
+
+/** Fade ruins whose lifespan has elapsed. Called once per round in beginTurn. */
+export function tickRuins(state: GameState): void {
+  for (const tile of state.map.tiles) {
+    if (tile.feature !== "ruin") continue;
+    if (tile.featureExpiresTurn !== undefined && state.turn >= tile.featureExpiresTurn) {
+      clearRuin(tile);
+    }
+  }
+}
+
 /** Called when a unit finishes a move — resolves any feature on its tile. */
 export function onUnitEnter(state: GameState, unit: Unit): void {
   const tile = getTile(state.map, unit.col, unit.row);

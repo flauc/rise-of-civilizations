@@ -18,7 +18,7 @@ import {
 import type { City, GameState, Player } from "./state";
 import { citiesOf, log, playerById, unitsOf } from "./state";
 import { civicsUnlocked } from "./civs";
-import { BUILDING_DEFS, UNIT_DEFS, isMilitary, isNaval, type BuildingId } from "./content";
+import { BUILDING_DEFS, UNIT_DEFS, isMilitary, isNaval, type BuildingId, type TrainingClass } from "./content";
 import { unitMaxHp } from "./combat";
 import { GLOBAL_MORALE_MAX, globalMoraleOf, recordMoraleEvent, recordMoraleGain } from "./morale";
 import { emitGreatPersonRecruited } from "./turn-updates";
@@ -32,14 +32,21 @@ const BUILDING_GP_POINTS: Partial<Record<BuildingId, Partial<Record<GreatPersonC
   market: { merchant: 2 },
   harbor: { admiral: 2, merchant: 1 },
   lighthouse: { admiral: 2 },
-  barracks: { general: 2 },
-  stable: { general: 1 },
   workshop: { engineer: 1 },
   forge: { engineer: 2 },
   shrine: { prophet: 2 },
   temple: { prophet: 2 },
   monument: { artist: 1 },
   amphitheater: { artist: 3 },
+};
+
+/** Great-person class each training building family contributes points toward. */
+const TRAINING_GP_CLASS: Record<TrainingClass, GreatPersonClass> = {
+  barracks: "general",
+  archery_range: "general",
+  stable: "general",
+  siege_workshop: "engineer",
+  shipyard: "admiral",
 };
 
 /** The capital is the seat of government — it earns Great Statesman points. */
@@ -73,6 +80,11 @@ export function cityGreatPersonPoints(city: City): Partial<Record<GreatPersonCla
     const src = BUILDING_GP_POINTS[b as keyof typeof BUILDING_GP_POINTS];
     if (!src) continue;
     for (const cls of Object.keys(src) as GreatPersonClass[]) add(cls, src[cls]!);
+  }
+  // Training buildings earn points for their craft, scaled by tier.
+  for (const fam of Object.keys(city.training) as TrainingClass[]) {
+    const tier = city.training[fam] ?? 0;
+    if (tier > 0) add(TRAINING_GP_CLASS[fam], Math.max(1, Math.round(tier / 2)));
   }
   if (city.isCapital) add("statesman", CAPITAL_STATESMAN_POINTS);
   return out;

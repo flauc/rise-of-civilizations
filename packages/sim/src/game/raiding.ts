@@ -13,6 +13,7 @@ import { cityHasWalls } from "./combat";
 import { applyVictoryCheck } from "./victory";
 import { offsetNeighbors } from "./movement";
 import { emitTradeRoutePillaged, emitImprovementPillaged } from "./turn-updates";
+import { leaveRuin } from "./features";
 
 export interface RaidResult {
   ok: boolean;
@@ -199,6 +200,7 @@ export function sackCity(state: GameState, city: City, attacker: Unit): RaidResu
     if (t.ownerCityId === city.id) t.ownerCityId = undefined;
   }
   state.cities.delete(city.id);
+  leaveRuin(state, city.col, city.row); // sacked cities leave a ruin behind
 
   player.gold += gold;
   player.scienceProgress += science;

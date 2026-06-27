@@ -10,12 +10,15 @@ import { createChangelog, CURRENT_VERSION } from "./changelog";
 import {
   CIVILIZATIONS,
   PLAYER_COLORS,
+  UNIT_DEFS,
   type GameSummary,
   type LobbyRoom,
   type MapType,
   type SerializedState,
   type ServerMessage,
+  type UnitTypeId,
 } from "@roc/sim";
+import { startingUnitsFor, capitalPopulationBonusFor } from "@roc/data";
 import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, wireUuImages, wireUuDetail } from "./unique-unit";
 import { deleteSave, exportSave, importSave, listSaves, loadSave, type SaveRecord } from "./save-db";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
@@ -27,6 +30,28 @@ const DEFAULT_WS =
 
 /** Civilizations sorted alphabetically by display name for the setup UI. */
 const CIVS_BY_NAME = [...CIVILIZATIONS].sort((a, b) => a.name.localeCompare(b.name));
+
+/** Base population every city is founded with (the capital may start larger). */
+const BASE_FOUNDING_POP = 2;
+
+/** Human-readable summary of a civ's starting army (e.g. "2× Warrior, 1× Scout"). */
+function startingUnitsSummary(civId: string): string {
+  const counts = new Map<string, number>();
+  for (const u of startingUnitsFor(civId)) counts.set(u, (counts.get(u) ?? 0) + 1);
+  return [...counts]
+    .map(([id, n]) => `${n}× ${UNIT_DEFS[id as UnitTypeId]?.name ?? id}`)
+    .join(", ");
+}
+
+/** Population the civ's capital is founded at (base + capital bonus). */
+function capitalStartPop(civId: string): number {
+  return BASE_FOUNDING_POP + capitalPopulationBonusFor(civId);
+}
+
+/** One-line starting conditions for a civ: capital population + free starting units. */
+function startingConditionsLine(civId: string): string {
+  return `🏙️ Capital starts at population ${capitalStartPop(civId)} · ⚔️ ${startingUnitsSummary(civId)}`;
+}
 
 type Screen = "start" | "sp" | "mp" | "load";
 
@@ -592,6 +617,10 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           ${uniqueUnitBlockHtml(civ.id)}
           ${uniqueInfraBlockHtml(civ.id)}
         </div>
+        <div class="showcase-ability">
+          <div class="showcase-ability-name">Starting Conditions</div>
+          <div class="showcase-ability-desc">${escapeHtml(startingConditionsLine(civ.id))}</div>
+        </div>
       </div>`;
     const img = right.querySelector<HTMLImageElement>("#showcase-art");
     const placeholder = right.querySelector<HTMLDivElement>("#showcase-art-placeholder");
@@ -683,6 +712,10 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         <div class="cp-ability">
           <div class="cp-ability-name">${escapeHtml(civ.abilityName)}</div>
           <div class="cp-ability-desc">${escapeHtml(civ.abilityDesc)}</div>
+        </div>
+        <div class="cp-ability">
+          <div class="cp-ability-name">Starting Conditions</div>
+          <div class="cp-ability-desc">${escapeHtml(startingConditionsLine(civ.id))}</div>
         </div>
         ${leaderAbilityBlockHtml(civ.id)}
         ${uniqueUnitBlockHtml(civ.id)}
@@ -808,7 +841,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     const updateCivDesc = () => {
       const c = CIVILIZATIONS.find((x) => x.id === state.sp.civId);
       $("#sp-civ-desc").innerHTML = c
-        ? `<b>${c.abilityName}:</b> ${c.abilityDesc}<br/>UU: ${c.uniqueUnit} · ${c.uniqueInfra}`
+        ? `<b>${c.abilityName}:</b> ${c.abilityDesc}<br/>UU: ${c.uniqueUnit} · ${c.uniqueInfra}<br/>${escapeHtml(startingConditionsLine(c.id))}`
         : "";
     };
 

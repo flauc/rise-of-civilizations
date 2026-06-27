@@ -11,6 +11,7 @@ export * from "./improvements";
 export * from "./barbarians";
 export * from "./bribery";
 export * from "./economy";
+export * from "./training";
 export * from "./setup";
 export * from "./commands";
 export * from "./simturn";

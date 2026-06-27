@@ -101,6 +101,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   let selectedUnitId: number | null = null;
   let selectedCityId: number | null = null;
   let selectedTile: { col: number; row: number } | null = null;
+  // After ordering a settler to found a city, remember where so we can auto-select the
+  // new city once it exists (immediately for local play, next view update for online).
+  let pendingFoundAt: { col: number; row: number } | null = null;
   let reachable = new Set<string>();
   let attackTargets = new Set<string>();
   let pendingAbility: ActiveAbilityId | null = null; // targeted ability awaiting a tile
@@ -205,6 +208,19 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     visible = session.getVisible();
     // Drop selection if the unit no longer exists (died/consumed/captured).
     if (selectedUnitId != null && !st().units.has(selectedUnitId)) selectedUnitId = null;
+    // A just-founded city: select it so its panel (Construction / Train Units /
+    // Specialists) opens automatically once the settler has become the city.
+    if (pendingFoundAt) {
+      const me = session.getViewerId();
+      const city = [...st().cities.values()].find(
+        (c) => c.col === pendingFoundAt!.col && c.row === pendingFoundAt!.row && c.ownerId === me,
+      );
+      if (city) {
+        selectedCityId = city.id;
+        selectedUnitId = null;
+        pendingFoundAt = null;
+      }
+    }
     if (selectedCityId != null) {
       const city = st().cities.get(selectedCityId);
       cityWorkable = city ? new Set(workableTiles(st(), city).map((t) => `${t.col},${t.row}`)) : new Set();
@@ -302,7 +318,11 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       else ui.banner(`${st().players[st().currentPlayerIndex]!.name} — Turn ${st().turn}`);
     },
     onFoundCity: () => {
-      if (selectedUnitId != null) session.order({ type: "foundCity", unitId: selectedUnitId });
+      if (selectedUnitId == null) return;
+      const u = st().units.get(selectedUnitId);
+      session.order({ type: "foundCity", unitId: selectedUnitId });
+      // Remember the tile so the new city is auto-selected once it appears.
+      if (u) pendingFoundAt = { col: u.col, row: u.row };
       clearSelection();
     },
     onPromote: (promotion) => {
@@ -369,6 +389,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onSetProduction: (item) => {
       if (selectedCityId != null) session.order({ type: "setProduction", cityId: selectedCityId, item });
     },
+    onStartTraining: (cityId, unit) => session.order({ type: "startTraining", cityId, unit }),
+    onCancelTraining: (cityId, orderId) => session.order({ type: "cancelTraining", cityId, orderId }),
+    onRushTraining: (cityId, orderId, currency) => session.order({ type: "rushTraining", cityId, orderId, currency }),
     onSetResearch: (techId) => session.order({ type: "setResearch", techId }),
     onSetResearchTarget: (techId) => session.order({ type: "setResearchTarget", techId }),
     onSetCivic: (civicId) => session.order({ type: "setCivic", civicId }),
@@ -639,6 +662,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     let name = TERRAIN_NAMES[tile.terrain];
     if (tile.feature === "village") name = "Village";
     else if (tile.feature === "barb_camp") name = "Barbarian Camp";
+    else if (tile.feature === "ruin") name = "Ruins";
     return { name, rough: isRough(tile.terrain) };
   }
 

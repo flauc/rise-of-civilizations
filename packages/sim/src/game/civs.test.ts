@@ -23,7 +23,7 @@ describe("civilizations", () => {
   it("resolves a player's civ effects from its civId", () => {
     const s = game();
     s.players[0]!.civId = "egypt";
-    expect(civEffectsOf(s, 0).yieldPercent?.production).toBe(20);
+    expect(civEffectsOf(s, 0).yieldPercent?.production).toBe(10);
   });
 
   it("Mongols give cavalry +1 movement", () => {

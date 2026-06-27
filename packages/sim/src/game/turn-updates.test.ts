@@ -14,20 +14,23 @@ function newGame() {
 }
 
 describe("turn update events", () => {
-  it("emits productionComplete when a city finishes a unit", () => {
+  it("emits unitTrained when a city finishes training a unit", () => {
     const state = newGame();
     const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
     applyCommand(state, { type: "foundCity", unitId: settler.id });
     const city = citiesOf(state, 0)[0]!;
+    city.training.barracks = 1; // a Barracks so it can train melee
+    city.population = 3; // room to spare a citizen
 
-    applyCommand(state, { type: "setProduction", cityId: city.id, item: { kind: "unit", id: "warrior" } });
-    // Force production to complete when this city's turn comes around again.
-    city.productionStored = 999;
+    const r = applyCommand(state, { type: "startTraining", cityId: city.id, unit: "warrior" });
+    expect(r.ok).toBe(true);
+    // Force the order to complete on the next time this city is processed.
+    city.trainingQueue[0]!.turnsLeft = 1;
 
     // In a 2-player game we need to advance past player 1 and back to player 0.
     applyCommand(state, { type: "endTurn" });
     applyCommand(state, { type: "endTurn" });
-    const events = state.turnUpdates.filter((e) => e.playerId === 0 && e.type === "productionComplete");
+    const events = state.turnUpdates.filter((e) => e.playerId === 0 && e.type === "unitTrained");
     expect(events.length).toBeGreaterThan(0);
     expect(events[0]!.cityId).toBe(city.id);
     expect(events[0]!.message).toContain("Warrior");
@@ -48,13 +51,13 @@ describe("turn update events", () => {
 
   it("emits unitDied when an owned unit is killed", () => {
     const state = newGame();
-    const warrior = unitsOf(state, 0).find((u) => u.type === "warrior")!;
+    const warrior = unitsOf(state, 0).find((u) => u.type === "warrior" || u.type === "javelineer")!;
     warrior.hp = 1;
 
     // Declare war and let player 1 attack.
     state.players[0]!.atWar.push(1);
     state.players[1]!.atWar.push(0);
-    const enemy = unitsOf(state, 1).find((u) => u.type === "warrior")!;
+    const enemy = unitsOf(state, 1).find((u) => u.type === "warrior" || u.type === "javelineer")!;
     enemy.col = warrior.col + 1;
     enemy.row = warrior.row;
     enemy.movementLeft = 2;
@@ -68,12 +71,12 @@ describe("turn update events", () => {
 
   it("scopes events to the affected player", () => {
     const state = newGame();
-    const warrior = unitsOf(state, 0).find((u) => u.type === "warrior")!;
+    const warrior = unitsOf(state, 0).find((u) => u.type === "warrior" || u.type === "javelineer")!;
     warrior.hp = 1;
 
     state.players[0]!.atWar.push(1);
     state.players[1]!.atWar.push(0);
-    const enemy = unitsOf(state, 1).find((u) => u.type === "warrior")!;
+    const enemy = unitsOf(state, 1).find((u) => u.type === "warrior" || u.type === "javelineer")!;
     enemy.col = warrior.col + 1;
     enemy.row = warrior.row;
     enemy.movementLeft = 2;
@@ -209,6 +212,8 @@ describe("turn update events", () => {
       productionStored: 0,
       production: null,
       buildings: [],
+      training: {},
+      trainingQueue: [],
       specialists: [],
       wonders: [],
       workedTiles: [],
@@ -246,6 +251,8 @@ describe("turn update events", () => {
       productionStored: 0,
       production: null,
       buildings: [],
+      training: {},
+      trainingQueue: [],
       specialists: [],
       wonders: [],
       workedTiles: [],

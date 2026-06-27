@@ -133,7 +133,7 @@ describe("natural wonders", () => {
   it("discovery flows through a unit move + updateExplored", () => {
     const state = createGame({ seed: "nw-move", cols: 30, rows: 20, barbarians: false });
     // Plant a wonder right next to a unit, then refresh vision.
-    const warrior = unitsOf(state, 0).find((u) => u.type === "warrior")!;
+    const warrior = unitsOf(state, 0).find((u) => u.type === "scout")!;
     const here = getTile(state.map, warrior.col, warrior.row)!;
     here.naturalWonder = "uluru";
     state.naturalWonderIds = ["uluru"];

@@ -20,7 +20,8 @@ import { canUseLeaderAbility } from "./leader-abilities";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
 import { aiConsiderDiplomacy, atWar, personalityOf } from "./diplomacy";
 import { availablePromotions } from "./combat";
-import { rushCurrencies, canRushCity, canRushWork, type RushCurrency } from "./rush";
+import { rushCurrencies, canRushWork, canRushTraining, type RushCurrency } from "./rush";
+import { availableTraining } from "./training";
 import { BELIEFS, WONDER_DEFS, getPolicy, type DiploPersonality } from "@roc/data";
 import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
 import {
@@ -35,7 +36,7 @@ import {
 import { offsetNeighbors } from "./movement";
 import { RESOURCE_DEFS, resourceActive } from "./resources";
 import { isPassableLand, isWaterTerrain, tileYields } from "./terrain";
-import { UNIT_DEFS, isMilitary, isRanged, type TechId } from "./content";
+import { UNIT_DEFS, isMilitary, isRanged, type TechId, type TrainingClass, type UnitTypeId } from "./content";
 import {
   citiesOf,
   cityAt,
@@ -306,70 +307,94 @@ function targetCityCount(p: DiploPersonality): number {
   return 5;
 }
 
-function chooseProduction(state: GameState, player: Player, city: City, p: DiploPersonality): ProductionItem | null {
+/**
+ * Construction chooser: what a city should BUILD (units are trained separately, see
+ * aiTrainUnits). Covers training-building tiers, infrastructure, projects.
+ */
+function chooseConstruction(state: GameState, player: Player, city: City, p: DiploPersonality): ProductionItem | null {
   const opts = availableProduction(state, player, city);
+  const atWar = player.atWar.length > 0;
+  const warMinded = atWar || p.aggression > 0.6;
+  const coastal = isCoastalCity(state, city);
+
+  const findBuilding = (id: string): ProductionItem | null =>
+    opts.find((o) => o.item.kind === "building" && o.item.id === id)?.item ?? null;
+  const findTraining = (fam: TrainingClass): ProductionItem | null =>
+    opts.find((o) => o.item.kind === "trainingBuilding" && o.item.family === fam)?.item ?? null;
+
+  // 1. A Barracks first so the city can train melee defenders at all.
+  if (!city.training.barracks) { const b = findTraining("barracks"); if (b) return b; }
+  // 1b. War-minded civs raise more training families early; coastal cities a shipyard.
+  if (warMinded && !city.training.archery_range) { const a = findTraining("archery_range"); if (a) return a; }
+  if (coastal && !city.training.shipyard) { const s = findTraining("shipyard"); if (s) return s; }
+  if (warMinded && !city.training.stable) { const s = findTraining("stable"); if (s) return s; }
+
+  // 2. Economy / infrastructure buildings (skips any already built / not unlocked).
+  const order: string[] = ["granary", "workshop", "library", "market"];
+  if (coastal) order.unshift("harbor");
+  if (player.gold <= 0) order.unshift("market"); // prioritise income when broke
+  order.push("walls", "forge", "shrine", "temple", "monument", "aqueduct", "academy", "amphitheater", "harbor", "lighthouse");
+  const seen = new Set<string>();
+  for (const id of order) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const b = findBuilding(id);
+    if (b) return b;
+  }
+
+  // 3. Upgrade training buildings to improve army quality (war-minded first).
+  const famOrder: TrainingClass[] = warMinded
+    ? ["barracks", "archery_range", "stable", "siege_workshop", "shipyard"]
+    : ["barracks", "stable", "archery_range", "siege_workshop", "shipyard"];
+  for (const fam of famOrder) { const up = findTraining(fam); if (up) return up; }
+
+  // 4. Broke and nothing economic left → mint coin.
+  if (player.gold < 0) {
+    const coin = opts.find((o) => o.item.kind === "project" && o.item.id === "coinage")?.item;
+    if (coin) return coin;
+  }
+  // 5. Any remaining building, else any project.
+  return opts.find((o) => o.item.kind === "building")?.item
+    ?? opts.find((o) => o.item.kind === "project")?.item
+    ?? null;
+}
+
+/** Highest-strength military unit the city can currently train, or null. */
+function bestTrainableMilitary(trainable: UnitTypeId[]): UnitTypeId | null {
+  return trainable
+    .filter((t) => isMilitary(t))
+    .sort((a, b) => UNIT_DEFS[b].strength - UNIT_DEFS[a].strength)[0] ?? null;
+}
+
+/**
+ * Training chooser: spend spare citizens on units. Civilians (scout/settler/trader)
+ * and military are all trained here now (each costs a population point). Paces itself
+ * by keeping some citizens working unless under threat.
+ */
+function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPersonality, threatened: boolean): void {
+  // Don't drain a city below this many citizens just to make units (relaxed in war).
+  const keepPop = threatened ? 1 : 2;
+  if (city.population <= keepPop) return;
+  const trainable = availableTraining(state, player, city);
   const units = unitsOf(state, player.id);
   const has = (t: string) => units.some((u) => u.type === t);
   const cityCount = citiesOf(state, player.id).length;
-  const milCount = units.filter((u) => isMilitary(u.type)).length;
-  const atWar = player.atWar.length > 0;
-  const threatened = atWar || hostileNearCities(state, player.id);
-  const warMinded = atWar || p.aggression > 0.6;
-  const bestMilitary = () =>
-    opts
-      .filter((o) => o.item.kind === "unit" && isMilitary(o.item.id))
-      .sort((a, b) => UNIT_DEFS[b.item.id as keyof typeof UNIT_DEFS].strength - UNIT_DEFS[a.item.id as keyof typeof UNIT_DEFS].strength)[0]?.item ?? null;
+  const tryTrain = (type: UnitTypeId): boolean =>
+    trainable.includes(type) &&
+    applyCommand(state, { type: "startTraining", cityId: city.id, unit: type }, player.id).ok;
 
-  // 1. Always keep at least one defender.
-  if (milCount === 0) {
-    const m = bestMilitary();
-    if (m) return m;
+  // Civilians: a scout early, a settler to expand at peace, a trader to link cities.
+  if (!threatened && exploredFraction(state, player.id) < 0.45 && !has("scout") && tryTrain("scout")) return;
+  if (!threatened && cityCount < targetCityCount(p) && city.population >= 3 && !has("settler") && tryTrain("settler")) return;
+  if (cityCount >= 2 && !has("trader") && tryTrain("trader")) return;
+
+  // Military: train toward a target army size (one unit per city per turn).
+  const milCount = units.filter((u) => isMilitary(u.type)).length;
+  const desired = threatened ? cityCount * 2 + 1 : Math.max(cityCount + 1, 2);
+  if (milCount < desired) {
+    const type = bestTrainableMilitary(trainable);
+    if (type) tryTrain(type);
   }
-  // 1b. Under threat, raise an army before anything else — roughly two units per
-  //     city — so the AI can actually defend itself and follow through on a war.
-  if (threatened && milCount < cityCount * 2 + 1) {
-    const m = bestMilitary();
-    if (m) return m;
-  }
-  // 1c. Early on, a cheap scout to reveal the map (and find settle sites / rivals).
-  if (!threatened && exploredFraction(state, player.id) < 0.45 && !has("scout")) {
-    const sc = opts.find((o) => o.item.kind === "unit" && o.item.id === "scout");
-    if (sc) return sc.item;
-  }
-  // 2. Keep expanding toward good land while at peace (settlers are fragile in war).
-  if (!threatened && cityCount < targetCityCount(p) && city.population >= 2 && !has("settler")) {
-    const s = opts.find((o) => o.item.id === "settler");
-    if (s) return s.item;
-  }
-  // 3. A trader once we have somewhere to trade with.
-  if (cityCount >= 2 && !has("trader")) {
-    const t = opts.find((o) => o.item.id === "trader");
-    if (t) return t.item;
-  }
-  // 4. Buildings — a broad priority order, reshaped by situation (skips any already
-  //    built / not unlocked). Coastal cities want a harbor; war footing wants
-  //    military buildings sooner; an empty treasury leans on economy first.
-  const coastal = isCoastalCity(state, city);
-  const order: string[] = ["granary", "workshop", "library", "market"];
-  if (coastal) order.unshift("harbor");
-  if (warMinded) order.push("walls", "barracks", "stable", "forge");
-  if (player.gold <= 0) order.unshift("market"); // prioritise income when broke
-  order.push("walls", "barracks", "forge", "shrine", "temple", "monument",
-    "stable", "aqueduct", "academy", "amphitheater", "harbor");
-  const seen = new Set<string>();
-  for (const b of order) {
-    if (seen.has(b)) continue;
-    seen.add(b);
-    const o = opts.find((x) => x.item.kind === "building" && x.item.id === b);
-    if (o) return o.item;
-  }
-  // 5. If the treasury is in the red and nothing economic is left to build, mint coin.
-  if (player.gold < 0) {
-    const coin = opts.find((o) => o.item.kind === "project" && o.item.id === "coinage");
-    if (coin) return coin.item;
-  }
-  // 6. Otherwise more military.
-  return bestMilitary() ?? opts[0]?.item ?? null;
 }
 
 // ---- per-unit behaviour --------------------------------------------------
@@ -771,13 +796,14 @@ function aiRush(state: GameState, player: Player, threatened: boolean): void {
     const c = choose((cur) => canRushWork(state, pid, w.id, cur));
     if (c) applyCommand(state, { type: "rushWork", workId: w.id, currency: c }, pid);
   }
-  // 2) Under threat, hurry out the troops we're building to meet the danger.
+  // 2) Under threat, hurry out the troops we're training to meet the danger.
   if (threatened) {
     for (const city of citiesOf(state, pid)) {
-      const item = city.production;
-      if (!item || item.kind !== "unit" || !isMilitary(item.id)) continue;
-      const c = choose((cur) => canRushCity(state, pid, city.id, cur));
-      if (c) applyCommand(state, { type: "rushProduction", cityId: city.id, currency: c }, pid);
+      for (const order of city.trainingQueue) {
+        if (!isMilitary(order.unit)) continue;
+        const c = choose((cur) => canRushTraining(state, pid, city.id, order.id, cur));
+        if (c) applyCommand(state, { type: "rushTraining", cityId: city.id, orderId: order.id, currency: c }, pid);
+      }
     }
   }
 }
@@ -852,9 +878,10 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
 
   for (const city of citiesOf(state, playerId)) {
     if (!city.production) {
-      const item = chooseProduction(state, player, city, p);
+      const item = chooseConstruction(state, player, city, p);
       if (item) applyCommand(state, { type: "setProduction", cityId: city.id, item }, playerId);
     }
+    aiTrainUnits(state, player, city, p, threatened);
     aiManageCity(state, city, player, playerId);
   }
   aiWonders(state, playerId, p);

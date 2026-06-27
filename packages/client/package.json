@@ -1,6 +1,6 @@
 {
   "name": "@roc/client",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Canvas + TypeScript game client. Renders the hex map; talks to the server (M3).",

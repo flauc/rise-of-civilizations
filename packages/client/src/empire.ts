@@ -5,6 +5,7 @@
 
 import {
   UNIT_DEFS,
+  TRAINING_BUILDING_DEFS,
   getProjectDef,
   getCityYields,
   citiesOf,
@@ -19,10 +20,12 @@ import {
   currentWorkFor,
   tradeRoutesOf,
   tradeRouteYield,
+  uniqueUnitForCiv,
   type GameState,
   type City,
 } from "@roc/sim";
-import { WONDER_DEFS, getWonder, uniqueUnitForCiv } from "@roc/data";
+import { WONDER_DEFS, getWonder } from "@roc/data";
+import { ASSET_BASE_URL } from "./asset-base";
 
 export interface EmpireHandlers {
   onSelectUnit(id: number): void;
@@ -50,6 +53,8 @@ const STYLE = `
 .emp-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--edge);border-radius:9px;margin-top:7px;cursor:pointer;background:#11202e}
 .emp-row:hover{background:#17304470;border-color:#3a5d7c}
 .emp-row .grow{flex:1;min-width:0}
+.emp-unit-icon{position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex:0 0 auto;font-size:18px}
+.emp-unit-icon img{position:absolute;inset:0;width:28px;height:28px;object-fit:contain;image-rendering:auto}
 .emp-name{font-weight:700;color:#fff}
 .emp-sub{color:#9fc0dc;font-size:12px}
 .emp-pill{background:#16293c;border-radius:6px;padding:2px 7px;font-size:12px;white-space:nowrap}
@@ -122,16 +127,16 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
   function renderCities(state: GameState, viewerId: number): string {
     const cities = citiesOf(state, viewerId);
     if (cities.length === 0) return `<div class="emp-empty">No cities yet.</div>`;
-    const viewerCivId = state.players.find((p) => p.id === viewerId)?.civId;
     return cities
       .map((c) => {
         const prod = c.production
-          ? c.production.kind === "unit"
-            ? uniqueUnitForCiv(viewerCivId, c.production.id)?.name ?? UNIT_DEFS[c.production.id].name
-            : c.production.kind === "project"
-              ? getProjectDef(c.production.id)?.name ?? c.production.id
+          ? c.production.kind === "project"
+            ? getProjectDef(c.production.id)?.name ?? c.production.id
+            : c.production.kind === "trainingBuilding"
+              ? `${TRAINING_BUILDING_DEFS[c.production.family].name} T${c.production.tier}`
               : c.production.id
           : "—";
+        const training = c.trainingQueue.length;
         const works = worksOfCity(state, c.id).length;
         return (
           `<div class="emp-row" data-city="${c.id}">` +
@@ -140,6 +145,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
           `<span class="emp-pill">Pop ${c.population}</span>` +
           `<span class="emp-pill">🛠️ ${c.specialists.length}</span>` +
           `<span class="emp-pill">⚒️ ${prod}</span>` +
+          (training ? `<span class="emp-pill">⚔️ ${training} training</span>` : "") +
           (works ? `<span class="emp-pill">${works} works</span>` : "") +
           `</div>`
         );
@@ -150,15 +156,20 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
   function renderUnits(state: GameState, viewerId: number): string {
     const units = unitsOf(state, viewerId).sort((a, b) => a.type.localeCompare(b.type));
     if (units.length === 0) return `<div class="emp-empty">No units.</div>`;
+    const civId = state.players.find((p) => p.id === viewerId)?.civId;
     return units
       .map((u) => {
         const d = UNIT_DEFS[u.type];
         const idle = u.movementLeft > 0 && !u.sleeping;
         const status = u.sleeping ? "💤 Sleeping" : idle ? "Ready" : "Done";
         const color = u.sleeping ? "#7e93a6" : idle ? "#ffd967" : "#7e93a6";
+        // Match the map overlay's sprite: legend id, else unique-unit id, else base
+        // type. The glyph stays underneath as a fallback if the image fails to load.
+        const imgId = u.legendId ?? uniqueUnitForCiv(civId, u.type)?.id ?? u.type;
+        const tokenSrc = `${ASSET_BASE_URL}units/${imgId}.png`;
         return (
           `<div class="emp-row" data-unit="${u.id}">` +
-          `<span style="font-size:18px;width:22px;text-align:center">${d.glyph}</span>` +
+          `<span class="emp-unit-icon">${d.glyph}<img src="${tokenSrc}" alt="" onerror="this.remove()"></span>` +
           `<div class="grow"><div class="emp-name">${d.name}${u.level > 1 ? ` <span style="color:#ffd967">Lv${u.level}</span>` : ""}</div>` +
           `<div class="emp-sub">(${u.col}, ${u.row}) · moves ${u.movementLeft}/${d.movement}${d.strength > 0 ? ` · HP ${u.hp}/${unitMaxHp(u)}` : ""}</div></div>` +
           `<span class="emp-pill" style="color:${color}">${status}</span>` +

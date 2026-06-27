@@ -47,7 +47,7 @@ export const IMPROVEMENT_DEFS: Record<ImprovementKind, ImprovementDef> = {
   farm: {
     kind: "farm",
     name: "Farm",
-    tiers: [{ food: 1 }, { food: 2 }, { food: 3 }],
+    tiers: [{ food: 2 }, { food: 3 }, { food: 4 }],
   },
   lumber_camp: {
     kind: "lumber_camp",

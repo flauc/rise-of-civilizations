@@ -28,6 +28,8 @@ function addCity(state: ReturnType<typeof newGame>, ownerId: number, buildings: 
     productionStored: 0,
     production: null,
     buildings: buildings as City["buildings"],
+    training: {},
+    trainingQueue: [],
     specialists: [],
     wonders: [],
     workedTiles: [],
@@ -44,10 +46,11 @@ function addCity(state: ReturnType<typeof newGame>, ownerId: number, buildings: 
 
 describe("great people: point sources", () => {
   it("buildings and the capital seat grant class points", () => {
-    const city = addCity(newGame(), 0, ["library", "barracks"], true);
+    const city = addCity(newGame(), 0, ["library"], true);
+    city.training.barracks = 3; // a tier-3 Barracks earns Great General points
     const pts = cityGreatPersonPoints(city);
     expect(pts.scientist).toBe(2); // library
-    expect(pts.general).toBe(2); // barracks
+    expect(pts.general).toBe(2); // barracks tier 3 -> round(3/2) = 2
     expect(pts.statesman).toBe(2); // capital seat of government
   });
 
@@ -153,7 +156,7 @@ describe("great people: activation", () => {
   it("a general drills land military units with a free promotion", () => {
     const state = newGame();
     const player = playerById(state, 0)!;
-    const land = unitsOf(state, 0).filter((u) => u.type === "warrior");
+    const land = unitsOf(state, 0).filter((u) => u.type === "warrior" || u.type === "javelineer");
     expect(land.length).toBeGreaterThan(0);
     const before = land[0]!.unspentPromotions;
     player.greatPeople = ["sun_tzu"];

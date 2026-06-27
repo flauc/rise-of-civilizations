@@ -27,10 +27,10 @@ export const ZERO_YIELDS: Yields = { food: 0, production: 0, gold: 0, science: 0
  *  four yields, giving citizen-assignment real trade-offs. */
 export const TERRAIN_YIELDS: Record<TerrainType, Yields> = {
   ocean: { food: 1, production: 0, gold: 1, science: 0, faith: 0 },
-  coast: { food: 1, production: 0, gold: 2, science: 0, faith: 0 },
-  lake: { food: 2, production: 0, gold: 1, science: 0, faith: 0 },
+  coast: { food: 2, production: 0, gold: 2, science: 0, faith: 0 },
+  lake: { food: 3, production: 0, gold: 1, science: 0, faith: 0 },
   plains: { food: 1, production: 1, gold: 0, science: 0, faith: 0 },
-  grassland: { food: 2, production: 0, gold: 0, science: 0, faith: 0 },
+  grassland: { food: 3, production: 0, gold: 0, science: 0, faith: 0 },
   desert: { food: 0, production: 0, gold: 0, science: 0, faith: 0 },
   tundra: { food: 1, production: 0, gold: 0, science: 1, faith: 0 },
   // Snowy boreal pine forest: cold but a strong source of production (like woods).
@@ -41,7 +41,7 @@ export const TERRAIN_YIELDS: Record<TerrainType, Yields> = {
   woods: { food: 1, production: 2, gold: 0, science: 0, faith: 0 },
   jungle: { food: 1, production: 1, gold: 0, science: 1, faith: 0 },
   // Fertile flooded marsh: a food powerhouse, but yields nothing else.
-  wetlands: { food: 2, production: 0, gold: 0, science: 0, faith: 0 },
+  wetlands: { food: 3, production: 0, gold: 0, science: 0, faith: 0 },
   // Murky peat bog: poor land, but its eerie stillness draws a trickle of faith.
   bog: { food: 1, production: 0, gold: 0, science: 0, faith: 1 },
   hills: { food: 0, production: 2, gold: 0, science: 0, faith: 0 },

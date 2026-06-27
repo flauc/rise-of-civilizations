@@ -12,8 +12,8 @@ import {
 } from "./resources";
 import { getTile } from "@roc/shared";
 import { citiesOf, unitsOf } from "./state";
-import { availableProduction, processCity } from "./economy";
-import { UNIT_DEFS } from "./content";
+import { processCity } from "./economy";
+import { availableTraining, startTraining } from "./training";
 
 function foundCapital(state: ReturnType<typeof createGame>): ReturnType<typeof citiesOf>[number] {
   const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
@@ -61,27 +61,31 @@ describe("resources & amenities", () => {
     expect(player.resources.iron).toBe(2);
   });
 
-  it("only lists units in production when the required strategic resource is available", () => {
+  it("only lists units for training when the required strategic resource is available", () => {
     const state = createGame({ seed: "res-prod", cols: 30, rows: 20, barbarians: false });
     const city = foundCapital(state);
     const player = state.players[0]!;
+    city.training.barracks = 1;
 
     player.researched.add("iron_bloomery");
-    expect(availableProduction(state, player, city).some((o) => o.item.id === "swordsman")).toBe(false);
+    expect(availableTraining(state, player, city).includes("swordsman")).toBe(false);
 
     player.resources.iron = 1;
-    expect(availableProduction(state, player, city).some((o) => o.item.id === "swordsman")).toBe(true);
+    expect(availableTraining(state, player, city).includes("swordsman")).toBe(true);
   });
 
-  it("consumes the strategic resource when a unit finishes", () => {
+  it("consumes the strategic resource when a unit finishes training", () => {
     const state = createGame({ seed: "res-consume", cols: 30, rows: 20, barbarians: false });
     const city = foundCapital(state);
     const player = state.players[0]!;
 
     player.researched.add("iron_bloomery");
     player.resources.iron = 1;
-    city.production = { kind: "unit", id: "swordsman" };
-    city.productionStored = UNIT_DEFS.swordsman.cost;
+    city.training.barracks = 1;
+    city.population = 3;
+    const r = startTraining(state, city, "swordsman");
+    expect(r.ok).toBe(true);
+    city.trainingQueue[0]!.turnsLeft = 1; // finish on the next processing
 
     processCity(state, city, player);
     expect(player.resources.iron).toBe(0);

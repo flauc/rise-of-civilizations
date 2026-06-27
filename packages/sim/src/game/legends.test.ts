@@ -22,7 +22,7 @@ function addCity(state: ReturnType<typeof newGame>, ownerId: number, col: number
     id, ownerId, name: `City${id}`, col, row, population: 1,
     foodStored: 0, productionStored: 0, production: null, buildings: [],
     specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true,
-    hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [],
+    hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
   };
   state.cities.set(id, city);
   return city;

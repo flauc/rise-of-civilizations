@@ -8,6 +8,7 @@ import { worksOf } from "./works";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
 import { ensureContact, declareWar } from "./diplomacy";
+import { startTraining } from "./training";
 import { UNIT_DEFS } from "./content";
 import { citiesOf, makeUnit, unitAt, unitsOf, type GameState } from "./state";
 
@@ -243,16 +244,19 @@ describe("AI opponent", () => {
     expect(enemy.hp).toBe(hp0); // the scout slipped away instead of attacking
   });
 
-  it("rushes wartime production with surplus gold", () => {
+  it("rushes wartime troop training with surplus gold", () => {
     const s = aiWithCity("ai-rush");
     const city = citiesOf(s, 1)[0]!;
-    city.production = { kind: "unit", id: "swordsman" } as never;
-    city.productionStored = 0;
+    city.training.barracks = 1;
+    city.population = 5;
+    const r = startTraining(s, city, "warrior");
+    expect(r.ok).toBe(true);
+    city.trainingQueue[0]!.turnsLeft = 5; // plenty left to be worth rushing
     s.players[1]!.gold = 1000;
     ensureContact(s, 0, 1);
     declareWar(s, 1, 0); // AI at war → threatened → hurries troops
     aiTakeTurn(s, 1);
     expect(s.players[1]!.gold).toBeLessThan(1000); // spent gold to hurry it
-    expect(city.productionStored).toBeGreaterThan(0); // production was hurried
+    expect(city.trainingQueue.some((o) => o.turnsLeft === 1)).toBe(true); // a unit was hurried
   });
 });

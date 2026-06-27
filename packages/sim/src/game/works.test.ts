@@ -28,12 +28,13 @@ function gameWithCity(): { s: ReturnType<typeof createGame>; city: City } {
   return { s, city };
 }
 
-/** Make tile (col,row) a grassland tile owned by `city`. */
+/** Make tile (col,row) a plain (non-river) grassland tile owned by `city`. */
 function grasslandTile(s: ReturnType<typeof createGame>, city: City, col: number, row: number) {
   const t = getTile(s.map, col, row)!;
   t.terrain = "grassland";
   t.improvement = undefined;
   t.improvementLevel = undefined;
+  t.river = undefined; // a plain field — farmable without Irrigation
   t.ownerCityId = city.id;
   return t;
 }
@@ -148,6 +149,7 @@ describe("specialists & works", () => {
     // Use a distant tile so the requirement is several turns of labour.
     const tile = grasslandTile(s, city, city.col + 4, city.row);
     const work = startWork(s, 0, "farm", tile.col, tile.row);
+    expect(work.ok, work.error).toBe(true);
     const w = s.works[0]!;
 
     assign(s, work.workId!, a!.id);

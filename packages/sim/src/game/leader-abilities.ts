@@ -277,12 +277,12 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   elam: {
     id: "elam",
     name: "Chogha Zanbil Devotion",
-    desc: "Capital +50% Wonder production and +10% faith for 10 turns; other cities −20% production.",
+    desc: "Capital +25% faith and +10% culture for 10 turns; other cities −20% production.",
     unlock: { kind: "tech", id: "masonry" },
     cooldown: 25,
     use: (state, player) => {
       const capital = capitalOf(state, player);
-      if (capital) addCityModifier(state, capital, "chogha_zanbil", { wonderProductionBonus: 50, yieldPercent: { faith: 10 } }, 10);
+      if (capital) addCityModifier(state, capital, "chogha_zanbil", { yieldPercent: { faith: 25, culture: 10 } }, 10);
       citiesExceptWhere(state, player, (c) => c.isCapital, "chogha_zanbil_cost", { yieldPercent: { production: -20 } }, 10);
       log(state, `${player.name} devoted labor to Chogha Zanbil.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -380,11 +380,11 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   egypt: {
     id: "egypt",
     name: "Monumental Building Spree",
-    desc: "All cities +25% Wonder production for 10 turns. Costs up to 4 population.",
+    desc: "All cities +25% culture for 10 turns. Costs up to 4 population.",
     unlock: { kind: "tech", id: "masonry" },
     cooldown: 25,
     use: (state, player) => {
-      allCitiesModifier(state, player, "monumental_spree", { wonderProductionBonus: 25 }, 10);
+      allCitiesModifier(state, player, "monumental_spree", { yieldPercent: { culture: 25 } }, 10);
       removePopulation(state, player, Math.min(cityCount(state, player), 4));
       log(state, `${player.name} began a Monumental Building Spree.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -858,11 +858,11 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   han_china: {
     id: "han_china",
     name: "Great Wall Mobilization",
-    desc: "All cities +50% defensive-building production and ranged +2 strength for 10 turns. Costs up to 4 population.",
+    desc: "All cities +25% production and ranged +2 strength for 10 turns. Costs up to 4 population.",
     unlock: { kind: "tech", id: "masonry" },
     cooldown: 25,
     use: (state, player) => {
-      allCitiesModifier(state, player, "great_wall", { defensiveBuildingProductionBonus: 50 }, 10);
+      allCitiesModifier(state, player, "great_wall", { yieldPercent: { production: 25 } }, 10);
       addPlayerModifier(state, player, "great_wall_combat", { unitClassCombat: { ranged: 2 } }, 10);
       removePopulation(state, player, Math.min(cityCount(state, player), 4));
       log(state, `${player.name} mobilized the Great Wall.`, { actorId: player.id, targetIds: [player.id] });
@@ -1046,11 +1046,11 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   pagan_burma: {
     id: "pagan_burma",
     name: "Pagoda Building Spree",
-    desc: "All cities +50% Holy Site and Temple production for 10 turns; −15% gold.",
+    desc: "All cities +30% faith for 10 turns; −15% gold.",
     unlock: { kind: "civic", id: "mysticism" },
     cooldown: 25,
     use: (state, player) => {
-      allCitiesModifier(state, player, "pagoda_spree", { holySiteTempleProductionBonus: 50 }, 10);
+      allCitiesModifier(state, player, "pagoda_spree", { yieldPercent: { faith: 30 } }, 10);
       allCitiesModifier(state, player, "pagoda_spree_cost", { yieldPercent: { gold: -15 } }, 10);
       log(state, `${player.name} began a Pagoda Building Spree.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -1443,9 +1443,9 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   },
   urartu: {
     id: "urartu", name: "Citadel of Van",
-    desc: "All cities +50% defensive-building production and melee +2 strength for 10 turns; −15% gold.", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
+    desc: "All cities +25% production and melee +2 strength for 10 turns; −15% gold.", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
     use: (state, player) => {
-      allCitiesModifier(state, player, "citadel_of_van", { defensiveBuildingProductionBonus: 50 }, 10);
+      allCitiesModifier(state, player, "citadel_of_van", { yieldPercent: { production: 25 } }, 10);
       addPlayerModifier(state, player, "citadel_of_van_combat", { unitClassCombat: { melee: 2 } }, 10);
       allCitiesModifier(state, player, "citadel_of_van_cost", { yieldPercent: { gold: -15 } }, 10);
       log(state, `${player.name} raised the Citadel of Van.`, { actorId: player.id, targetIds: [player.id] });
@@ -1553,10 +1553,10 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   },
   benin: {
     id: "benin", name: "Edo Bronze Casting",
-    desc: "Gain 150 culture and all cities +50% defensive-building production for 10 turns; −15% gold.", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
+    desc: "Gain 150 culture and all cities +25% culture for 10 turns; −15% gold.", unlock: { kind: "tech", id: "masonry" }, cooldown: 25,
     use: (state, player) => {
       player.cultureProgress += 150;
-      allCitiesModifier(state, player, "edo_bronze", { defensiveBuildingProductionBonus: 50 }, 10);
+      allCitiesModifier(state, player, "edo_bronze", { yieldPercent: { culture: 25 } }, 10);
       allCitiesModifier(state, player, "edo_bronze_cost", { yieldPercent: { gold: -15 } }, 10);
       log(state, `${player.name} began Edo Bronze Casting.`, { actorId: player.id, targetIds: [player.id] });
       return ok();
@@ -1705,9 +1705,9 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   },
   arevaci: {
     id: "arevaci", name: "Siege of Numantia",
-    desc: "All cities +50% defensive-building production and melee +4 strength for 10 turns; −10% production.", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
+    desc: "All cities +25% production and melee +4 strength for 10 turns; −10% production.", unlock: { kind: "tech", id: "iron_bloomery" }, cooldown: 25,
     use: (state, player) => {
-      allCitiesModifier(state, player, "siege_numantia", { defensiveBuildingProductionBonus: 50 }, 10);
+      allCitiesModifier(state, player, "siege_numantia", { yieldPercent: { production: 25 } }, 10);
       addPlayerModifier(state, player, "siege_numantia_combat", { unitClassCombat: { melee: 4 } }, 10);
       allCitiesModifier(state, player, "siege_numantia_cost", { yieldPercent: { production: -10 } }, 10);
       log(state, `${player.name} endured the Siege of Numantia.`, { actorId: player.id, targetIds: [player.id] });

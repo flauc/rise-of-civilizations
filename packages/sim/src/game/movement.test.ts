@@ -10,7 +10,7 @@ function ownedCity(s: ReturnType<typeof flatGame>, col: number, row: number): nu
   const city: City = {
     id, ownerId: 0, name: "Bridgeton", col, row, population: 1,
     foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
-    isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [],
+    isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
   };
   s.cities.set(id, city);
   return id;

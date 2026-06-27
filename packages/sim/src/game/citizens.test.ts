@@ -11,7 +11,12 @@ function foundedGame() {
   beginTurn(s);
   const settler = unitsOf(s, 0).find((u) => u.type === "settler")!;
   applyCommand(s, { type: "foundCity", unitId: settler.id });
-  return { s, city: citiesOf(s, 0)[0]! };
+  const city = citiesOf(s, 0)[0]!;
+  // These tests reason about a single citizen; normalise to pop 1 (cities now found
+  // at pop 2) and re-optimise so exactly one tile is worked.
+  city.population = 1;
+  autoAssignCitizens(s, city);
+  return { s, city };
 }
 
 describe("citizen assignment", () => {

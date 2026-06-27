@@ -50,6 +50,26 @@ export function emitProductionComplete(
   });
 }
 
+export function emitUnitTrained(
+  state: GameState,
+  playerId: number,
+  cityId: number,
+  cityName: string,
+  unitType: string,
+  unitName: string,
+  col: number,
+  row: number,
+): void {
+  emitTurnUpdate(state, {
+    type: "unitTrained",
+    playerId,
+    message: `${cityName} trained a ${unitName}.`,
+    cityId,
+    tile: { col, row },
+    payload: { unitType, unitName },
+  });
+}
+
 export function emitResearchComplete(state: GameState, playerId: number, techName: string): void {
   emitTurnUpdate(state, {
     type: "researchComplete",

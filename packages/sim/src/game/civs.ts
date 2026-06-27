@@ -106,9 +106,6 @@ function mergeInto(acc: CivEffects, e: CivEffects | undefined): void {
   if (e.tradeRouteCapacityBonus) acc.tradeRouteCapacityBonus = (acc.tradeRouteCapacityBonus ?? 0) + e.tradeRouteCapacityBonus;
   if (e.rushWithFaith) acc.rushWithFaith = true;
   if (e.rushWithCulture) acc.rushWithCulture = true;
-  if (e.wonderProductionBonus) acc.wonderProductionBonus = (acc.wonderProductionBonus ?? 0) + e.wonderProductionBonus;
-  if (e.defensiveBuildingProductionBonus) acc.defensiveBuildingProductionBonus = (acc.defensiveBuildingProductionBonus ?? 0) + e.defensiveBuildingProductionBonus;
-  if (e.holySiteTempleProductionBonus) acc.holySiteTempleProductionBonus = (acc.holySiteTempleProductionBonus ?? 0) + e.holySiteTempleProductionBonus;
   if (e.coastalCityYield) { acc.coastalCityYield ??= {}; mergeCityYield(acc.coastalCityYield, e.coastalCityYield); }
   if (e.desertCityYield) { acc.desertCityYield ??= {}; mergeCityYield(acc.desertCityYield, e.desertCityYield); }
   if (e.islandCityYield) { acc.islandCityYield ??= {}; mergeCityYield(acc.islandCityYield, e.islandCityYield); }

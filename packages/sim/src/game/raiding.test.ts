@@ -36,7 +36,7 @@ function placeCity(state: GameState, owner: number, name: string, col: number, r
   const city: City = {
     id, ownerId: owner, name, col, row, population: 1,
     foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
-    isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [],
+    isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
   };
   state.cities.set(id, city);
   // Claim the city tile so pillaging/sacking can check enemy ownership.

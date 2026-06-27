@@ -4,13 +4,17 @@ import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { advanceWorks, startWork } from "./works";
 import { processCity } from "./economy";
-import { UNIT_DEFS } from "./content";
+import { getBuildingDef } from "./content";
+import { startTraining } from "./training";
 import {
   rushCurrencies,
   cityRushCost,
   workRushCost,
   canRushCity,
   rushCity,
+  trainingRushCost,
+  canRushTraining,
+  rushTraining,
 } from "./rush";
 import { citiesOf, unitsOf, playerById, type City } from "./state";
 
@@ -53,13 +57,13 @@ describe("rush production", () => {
     const { s, city } = gameWithCity();
     const p = playerById(s, 0)!;
     p.gold = 10000;
-    city.production = { kind: "unit", id: "warrior" };
+    p.researched.add("pottery_kiln"); // unlocks the Granary
+    city.production = { kind: "building", id: "granary" };
     city.productionStored = 0;
 
-    const cost = UNIT_DEFS["warrior"].cost;
+    const cost = getBuildingDef("granary")!.cost;
     expect(cityRushCost(city, "gold")).toBe(Math.ceil(cost * 4));
 
-    const before = unitsOf(s, 0).length;
     const goldBefore = p.gold;
     const res = rushCity(s, 0, city.id, "gold");
     expect(res.ok).toBe(true);
@@ -67,8 +71,31 @@ describe("rush production", () => {
     expect(city.productionStored).toBeGreaterThanOrEqual(cost);
 
     processCity(s, city, p);
-    expect(unitsOf(s, 0).length).toBe(before + 1);
+    expect(city.buildings).toContain("granary");
     expect(city.production).toBeNull();
+  });
+
+  it("prices and completes a training order via rushTraining", () => {
+    const { s, city } = gameWithCity();
+    const p = playerById(s, 0)!;
+    p.gold = 10000;
+    city.training.barracks = 1;
+    city.population = 5;
+    const r = startTraining(s, city, "warrior");
+    expect(r.ok).toBe(true);
+    const order = city.trainingQueue[0]!;
+    const expected = trainingRushCost(order, "gold");
+    expect(expected).not.toBeNull();
+    expect(canRushTraining(s, 0, city.id, order.id, "gold").ok).toBe(true);
+
+    const before = unitsOf(s, 0).length;
+    const res = rushTraining(s, 0, city.id, order.id, "gold");
+    expect(res.ok).toBe(true);
+    expect(order.turnsLeft).toBe(1);
+
+    processCity(s, city, p);
+    expect(unitsOf(s, 0).length).toBe(before + 1);
+    expect(city.trainingQueue.length).toBe(0);
   });
 
   it("rejects rushing a project, an empty queue, or with too little gold", () => {
@@ -82,7 +109,8 @@ describe("rush production", () => {
     city.production = { kind: "project", id: "coinage" };
     expect(cityRushCost(city, "gold")).toBeNull();
 
-    city.production = { kind: "unit", id: "warrior" };
+    p.researched.add("pottery_kiln");
+    city.production = { kind: "building", id: "granary" };
     city.productionStored = 0;
     p.gold = 1;
     expect(canRushCity(s, 0, city.id, "gold").ok).toBe(false);
@@ -90,8 +118,10 @@ describe("rush production", () => {
 
   it("blocks faith/culture rushing without the perk", () => {
     const { s, city } = gameWithCity();
-    playerById(s, 0)!.faith = 10000;
-    city.production = { kind: "unit", id: "warrior" };
+    const p = playerById(s, 0)!;
+    p.faith = 10000;
+    p.researched.add("pottery_kiln");
+    city.production = { kind: "building", id: "granary" };
     city.productionStored = 0;
     expect(canRushCity(s, 0, city.id, "faith").ok).toBe(false);
     expect(rushCity(s, 0, city.id, "faith").ok).toBe(false);

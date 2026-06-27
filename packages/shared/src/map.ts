@@ -64,8 +64,12 @@ export interface Tile {
   structure?: { kind: "wall" | "tower"; tier: number; hp: number; maxHp: number };
   /** Id of the city whose territory this tile belongs to; undefined if neutral. */
   ownerCityId?: number;
-  /** A map feature on this tile: "village" (perk when entered) or "barb_camp". */
+  /** A map feature on this tile: "village" (perk when entered), "barb_camp", or
+   *  "ruin" (left behind when a city is destroyed; fades on its own or when a new
+   *  city is founded on the spot). */
   feature?: string;
+  /** Turn on/after which a transient feature (e.g. a "ruin") clears itself. */
+  featureExpiresTurn?: number;
   /** A natural resource on this tile (e.g. "iron", "bananas", "silk"). */
   resource?: string;
   /** A natural wonder occupying this tile (e.g. "grand_canyon"); multi-tile

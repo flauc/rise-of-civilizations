@@ -7,6 +7,7 @@ import {
   isRanged,
   PROMOTION_DEFS,
   PROMOTION_POOL,
+  trainingTier,
   type ActiveAbilityId,
   type PromotionId,
 } from "./content";
@@ -20,7 +21,7 @@ import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween }
 import { playerEffects } from "./civs";
 import { breakCover } from "./stealth";
 import { moraleAttackMultiplier, moraleDefenseMultiplier, onEnemyDefeated, onUnitLost, maybeRoute, retreatOneStep } from "./morale";
-import { onUnitEnter } from "./features";
+import { onUnitEnter, leaveRuin } from "./features";
 
 /** Fire Lance fires off the unit's melee strength plus this, so the ranged shot
  *  lands slightly harder than a regular thrust (and takes no retaliation). */
@@ -305,7 +306,9 @@ export function cityDefenseStrength(state: GameState, city: City): number {
   const tile = getTile(state.map, city.col, city.row);
   let s = 6 + 1.5 * city.population;
   if (cityHasWalls(city)) s += 6;
-  if (city.buildings.includes("barracks")) s += 3;
+  // A Barracks fortifies its city — defense scales with the building's tier.
+  const barracksTier = city.training.barracks ?? 0;
+  if (barracksTier > 0) s += trainingTier("barracks", barracksTier).defense ?? 0;
   if (tile) s += terrainDefense(tile.terrain);
   // Strongest garrison lends some strength.
   const garrison = unitAt(state, city.col, city.row);
@@ -425,6 +428,7 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
   if (taker0?.isBarbarian) {
     for (const t of state.map.tiles) if (t.ownerCityId === city.id) t.ownerCityId = undefined;
     state.cities.delete(city.id);
+    leaveRuin(state, city.col, city.row); // razed cities leave a ruin behind
     log(state, `Barbarians razed ${city.name}!`, {
       actorId: taker0?.id,
       targetIds: oldOwner ? [oldOwner.id] : undefined,

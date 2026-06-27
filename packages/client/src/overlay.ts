@@ -4,7 +4,7 @@ import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
-import { barbCampFrameFor, villageFrameFor, type FeatureAtlas } from "./feature-assets";
+import { barbCampFrameFor, villageFrameFor, ruinFrameFor, type FeatureAtlas } from "./feature-assets";
 import {
   constructionCategoryForKind,
   constructionFrameFor,
@@ -306,11 +306,25 @@ export function drawOverlay(
         ctx.font = `bold ${Math.round(size * 0.34)}px system-ui, sans-serif`;
         ctx.fillText("!", s.x, s.y + size * 0.06);
       }
+    } else if (t.feature === "ruin") {
+      const ruinImg = ruinFrameFor(o.featureAtlas, t.col, t.row);
+      if (ruinImg) {
+        const rSize = size * 0.85;
+        ctx.drawImage(ruinImg, s.x - rSize / 2, s.y - rSize / 2, rSize, rSize);
+      } else {
+        // Fallback: a couple of broken grey columns.
+        ctx.fillStyle = "#8c857a";
+        const cw = size * 0.12;
+        ctx.fillRect(s.x - size * 0.22, s.y - size * 0.1, cw, size * 0.34);
+        ctx.fillRect(s.x + size * 0.1, s.y - size * 0.18, cw, size * 0.42);
+        ctx.fillStyle = "#6b655c";
+        ctx.fillRect(s.x - size * 0.3, s.y + size * 0.24, size * 0.6, size * 0.06);
+      }
     }
 
-    // Small label at the bottom of the tile for villages / camps.
+    // Small label at the bottom of the tile for villages / camps / ruins.
     if (size > 14) {
-      const label = t.feature === "village" ? "Village" : "Camp";
+      const label = t.feature === "village" ? "Village" : t.feature === "barb_camp" ? "Camp" : "Ruins";
       const fontSize = Math.max(7, Math.round(size * 0.22));
       ctx.font = `${fontSize}px system-ui, sans-serif`;
       const textW = ctx.measureText(label).width;
@@ -325,7 +339,7 @@ export function drawOverlay(
       ctx.roundRect(labelX, labelY, labelW, labelH, labelH / 2);
       ctx.fill();
 
-      ctx.fillStyle = t.feature === "village" ? "#cfa867" : "#e07060";
+      ctx.fillStyle = t.feature === "village" ? "#cfa867" : t.feature === "barb_camp" ? "#e07060" : "#b8b0a2";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(label, s.x, labelY + labelH / 2);

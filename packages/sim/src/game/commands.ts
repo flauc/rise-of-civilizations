@@ -27,9 +27,10 @@ import {
   startWork,
   unassignSpecialistEverywhere,
 } from "./works";
-import { rushCity, rushWork, type RushCurrency } from "./rush";
+import { rushCity, rushWork, rushTraining, type RushCurrency } from "./rush";
+import { capitalPopulationBonusFor } from "@roc/data";
 import { foundTerritory, expandTerritory } from "./territory";
-import { onUnitEnter } from "./features";
+import { onUnitEnter, tickRuins, clearRuin } from "./features";
 import { foundReligion, spreadReligion } from "./religion";
 import { establishTradeRoute, cancelTradeRoute, pruneTradeRoutes } from "./trade";
 import { pillageTile, plunderTradeRoute, sackCityCommand } from "./raiding";
@@ -63,7 +64,8 @@ import {
 } from "./civs";
 import { aiTakeTurn } from "./ai";
 import { onUnitPromoted, decayGlobalMorale, UPKEEP_MODIFIER_MIN, UPKEEP_MODIFIER_MAX } from "./morale";
-import { UNIT_DEFS, TECH_DEFS, techUnlocked, computeResearchPath, advanceResearchQueue, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId } from "./content";
+import { UNIT_DEFS, TECH_DEFS, techUnlocked, computeResearchPath, advanceResearchQueue, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId, type UnitTypeId } from "./content";
+import { startTraining, cancelTraining } from "./training";
 
 export type Command =
   | { type: "move"; unitId: number; col: number; row: number }
@@ -79,6 +81,9 @@ export type Command =
   | { type: "assignSpecialist"; workId: number; specialistId: number; on: boolean }
   | { type: "cancelWork"; workId: number }
   | { type: "setProduction"; cityId: number; item: ProductionItem }
+  | { type: "startTraining"; cityId: number; unit: UnitTypeId }
+  | { type: "cancelTraining"; cityId: number; orderId: number }
+  | { type: "rushTraining"; cityId: number; orderId: number; currency: RushCurrency }
   | { type: "rushProduction"; cityId: number; currency: RushCurrency }
   | { type: "rushWork"; workId: number; currency: RushCurrency }
   | { type: "assignCitizen"; cityId: number; col: number; row: number }
@@ -126,6 +131,7 @@ const MIN_CITY_DISTANCE = 3;
 export function beginTurn(state: GameState): void {
   const player = currentPlayer(state);
   pruneTradeRoutes(state); // drop routes whose cities were lost/captured
+  if (state.currentPlayerIndex === 0) tickRuins(state); // ruins fade once per round
   for (const u of unitsOf(state, player.id)) {
     if (u.sleeping) continue;
     u.movementLeft = unitMovement(state, u);
@@ -270,17 +276,22 @@ export function applyCommand(
       const foundedCount = citiesOf(state, player.id).length;
       const name = nextCityNameForCiv(player.civId, foundedCount);
       const id = state.nextEntityId++;
+      // Cities found at population 2 (so they have yields to grow on and can train
+      // one unit immediately); a civ's capital may start larger (capitalPopulationBonus).
+      const startPop = 2 + (isCapital ? capitalPopulationBonusFor(player.civId) : 0);
       const city: City = {
         id,
         ownerId: player.id,
         name,
         col: unit.col,
         row: unit.row,
-        population: 1,
+        population: startPop,
         foodStored: 0,
         productionStored: 0,
-        production: { kind: "unit", id: "warrior" } as ProductionItem,
+        production: null,
         buildings: [],
+        training: {},
+        trainingQueue: [],
         specialists: [],
         wonders: [],
         workedTiles: [],
@@ -292,6 +303,7 @@ export function applyCommand(
         modifiers: [],
       };
       state.cities.set(id, city);
+      clearRuin(tile); // a new city rises over any ruin on the spot
       foundTerritory(state, city);
       // Civ founding bonuses (e.g. Rome's free Monument).
       const eff = civEffectsOf(state, player.id);
@@ -394,12 +406,37 @@ export function applyCommand(
       const city = state.cities.get(cmd.cityId);
       if (!city) return fail("no such city");
       if (city.ownerId !== player.id) return fail("not your city");
-      const allowed = availableProduction(state, player, city).some(
-        (o) => o.item.kind === cmd.item.kind && o.item.id === cmd.item.id,
-      );
+      const want = cmd.item;
+      const allowed = availableProduction(state, player, city).some((o) => {
+        if (o.item.kind !== want.kind) return false;
+        if (o.item.kind === "trainingBuilding" && want.kind === "trainingBuilding") {
+          return o.item.family === want.family && o.item.tier === want.tier;
+        }
+        if (o.item.kind === "building" && want.kind === "building") return o.item.id === want.id;
+        if (o.item.kind === "project" && want.kind === "project") return o.item.id === want.id;
+        return false;
+      });
       if (!allowed) return fail("cannot build that");
       city.production = cmd.item;
       return ok;
+    }
+
+    case "startTraining": {
+      const city = state.cities.get(cmd.cityId);
+      if (!city) return fail("no such city");
+      if (city.ownerId !== player.id) return fail("not your city");
+      return startTraining(state, city, cmd.unit);
+    }
+
+    case "cancelTraining": {
+      const city = state.cities.get(cmd.cityId);
+      if (!city) return fail("no such city");
+      if (city.ownerId !== player.id) return fail("not your city");
+      return cancelTraining(state, city, cmd.orderId);
+    }
+
+    case "rushTraining": {
+      return rushTraining(state, player.id, cmd.cityId, cmd.orderId, cmd.currency);
     }
 
     case "rushProduction": {

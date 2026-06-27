@@ -18,7 +18,7 @@ function setup(): { state: GameState; barb: Player; civ: Player; city: City } {
     id, ownerId: civ.id, name: "Target", col: 25, row: 17, population: 1,
     foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [],
     workedTiles: [], isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0,
-    rangedAttackUsed: false, modifiers: [],
+    rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
   };
   state.cities.set(id, city);
   const cityTile = getTile(state.map, 25, 17);

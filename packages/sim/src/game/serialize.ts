@@ -417,6 +417,6 @@ export function deserializeState(s: SerializedState): GameState {
       explored: new Set(Array.isArray(p.explored) ? p.explored : []),
     })),
     units: new Map(s.units.map((u) => [u.id, u])),
-    cities: new Map(s.cities.map((c) => [c.id, { ...c, modifiers: c.modifiers ?? [] }])),
+    cities: new Map(s.cities.map((c) => [c.id, { ...c, modifiers: c.modifiers ?? [], training: c.training ?? {}, trainingQueue: c.trainingQueue ?? [] }])),
   };
 }
