@@ -27,6 +27,11 @@ export interface AssetEntry {
    *  hex-terrain/mountains.png. Generated on a flat magenta chroma-key backdrop
    *  and post-processed so only the base is clipped to the hex (see generate.ts). */
   readonly overhang?: boolean;
+  /** Flat natural wonders (lakes, reefs, deserts, salt flats, wetlands, falls)
+   *  that fully FILL a single hex tile with no overhang. Generated 1:1 with the
+   *  content encapsulated and resolving at every edge, then placed into the bottom
+   *  256×256 hex footprint of the 256×384 tile (see postProcessEncapsulatedTile). */
+  readonly encapsulated?: boolean;
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -813,22 +818,131 @@ export const OVERHANG_NATURAL_WONDER_IDS = new Set<string>([
   "mount_vesuvius",
   "mount_roraima",
   "zhangjiajie",
+  "uluru",
+  "table_mountain",
+  "cappadocia",
+  "giants_causeway",
+  "iguazu_falls",
+  "zhangye_danxia",
+  "grand_canyon",
+  "victoria_falls",
+  "yosemite",
 ]);
+
+// Visual identity for overhang wonders. These replace the short gameplay flavour
+// text with a vivid, instantly-recognizable description so each peak reads as a
+// unique landmark — NOT a generic grey mountain like the plain terrain tile.
+export const OVERHANG_NATURAL_WONDER_ART: Record<string, string> = {
+  mount_everest:
+    "the colossal Himalayan pyramid of MOUNT EVEREST, the tallest mountain on Earth: a vast, imposing dark rock-and-ice massif with a sharp, instantly recognizable three-faceted summit pyramid, sheer black rock faces streaked with deep snow couloirs, hanging glaciers and a heavy mantle of ice, and the famous wind-blown banner of snow streaming sideways from the very summit. It is far taller, grander and more dramatic than an ordinary mountain — a legendary giant that dwarfs everything around it",
+  matterhorn:
+    "the iconic MATTERHORN: a single dramatic, near-vertical pyramidal Alpine horn with a distinctive hooked, slightly bent summit, four steep ridges and sheer rock faces dusted with snow and ice, unmistakable and far more striking than an ordinary mountain",
+  mount_fuji:
+    "the sacred MOUNT FUJI: a lone, perfectly symmetrical volcanic cone with smooth, gently curving flanks and a broad snow-capped summit, serene and majestic, instantly recognizable and far grander than an ordinary mountain",
+  mount_kilimanjaro:
+    "MOUNT KILIMANJARO: a huge, broad-shouldered free-standing volcano rising in isolation, with a wide flattened glacier-capped summit plateau and a brilliant white ice cap above dark volcanic rock flanks, towering and grand, far more imposing than an ordinary mountain",
+  mount_vesuvius:
+    "MOUNT VESUVIUS: a brooding twin-peaked volcano with a broken, cratered summit, dark ashen volcanic slopes, faint wisps of smoke or steam rising from the crater, ominous and grand, far more dramatic than an ordinary mountain",
+  mount_roraima:
+    "MOUNT RORAIMA: a colossal sheer-walled tabletop tepui mountain with a perfectly flat summit plateau, vertical cliff faces streaked with waterfalls, wreathed in drifting cloud, utterly unlike an ordinary peaked mountain",
+  zhangjiajie:
+    "the ZHANGJIAJIE pillars: a dense cluster of towering, slender quartzite sandstone spires and columns rising vertically side by side, their flat tops crowned with green pines, veiled in mist — a forest of stone towers, utterly unlike an ordinary mountain",
+  uluru:
+    "ULURU (Ayers Rock): a single colossal, isolated rust-red sandstone monolith with a long rounded whaleback dome profile, smooth steeply-curving flanks ribbed with weathering grooves and shallow caves, and a broad gently-rounded flat top. Deep ochre orange-red stone glowing warm, rising abruptly and alone from flat red desert sand and sparse spinifex scrub at its base. It is NOT a pointed snowy peak and has NO snow or ice — a smooth red rock dome, utterly unlike an ordinary mountain",
+  table_mountain:
+    "TABLE MOUNTAIN: a vast flat-topped sandstone massif with a perfectly LEVEL, broad horizontal summit plateau like a tabletop, framed by sheer vertical cliff faces and fluted rock buttresses, with a thin white 'tablecloth' of cloud spilling gently over the flat front edge. Tan-grey weathered rock with green fynbos scrub on the lower slopes, rising above a coastal plain. It is NOT a pointed peak — its defining feature is the long, dead-flat, horizontal tabletop summit, utterly unlike an ordinary mountain",
+  cappadocia:
+    "CAPPADOCIA: a clustered grove of tall, slender FAIRY CHIMNEYS (hoodoos) — pale cream and soft-ochre tufa rock cones rising side by side, each tapering spire crowned with a darker, harder mushroom-like boulder cap, and many pierced with small carved cave openings, windows, and doorways of ancient cave dwellings. They rise together from a soft warm valley floor in golden desert light. The defining feature is the forest of cone-capped rock spires, utterly unlike an ordinary mountain",
+  giants_causeway:
+    "the GIANT'S CAUSEWAY: a dense cluster of interlocking dark basalt columns — thousands of tightly-packed vertical HEXAGONAL stone pillars of stepped, varying heights forming a honeycomb staircase that rises into a low rocky headland in the middle and marches down into the foaming sea on either side. Grey-black volcanic basalt with mossy green tops, white waves breaking against the lowest columns. The defining feature is the geometric hexagonal columnar rock, utterly unlike an ordinary mountain",
+  iguazu_falls:
+    "IGUAZÚ FALLS: a vast horseshoe-shaped curtain of thundering white waterfalls plunging over a curved cliff edge that is crowned with dense emerald jungle canopy rising highest in the middle, billowing white mist boiling up from the churning pools below, lush tropical rainforest framing the gorge. The defining feature is the wide horseshoe of cascading jungle waterfalls, utterly unlike an ordinary mountain",
+  zhangye_danxia:
+    "the ZHANGYE DANXIA rainbow mountains: smooth, rolling sandstone ridges rising to a crest in the middle, painted in vivid horizontal STRIPED BANDS of rust-red, orange, yellow, cream, and ochre, the colorful striations following the wave-like contours of the hills. Dry, smooth, banded rock glowing under bright sun. The defining feature is the multicolored rainbow-striped layered rock, utterly unlike an ordinary mountain",
+  niagara_falls:
+    "NIAGARA FALLS: a colossal wide curving CURTAIN of falling water — a broad horseshoe cataract where a vast sheet of turquoise-green river water pours over a long cliff edge in a thundering white wall, with billowing white mist and spray rising from the churning pool below, framed by low green forested banks. The defining feature is the immense wide curtain of falling water, utterly unlike an ordinary mountain",
+  grand_canyon:
+    "the GRAND CANYON: an immense, mile-deep gorge of layered red, orange and ochre sandstone, with vast stepped canyon walls and towering flat-topped buttes and mesas rising within it, and the blue-green Colorado River winding far below through the bottom of the chasm. Dramatic horizontal rock strata and sheer cliffs in warm desert light. The defining feature is the colossal layered red-rock canyon, utterly unlike an ordinary mountain",
+  victoria_falls:
+    "VICTORIA FALLS ('the Smoke That Thunders'): a vast, mile-wide sheet of river water plunging straight down over a long sheer cliff into a narrow gorge, sending an enormous towering column of white mist and spray ('smoke') billowing high into the air above the falls, framed by lush green rainforest. The defining feature is the immense wide waterfall crowned by a giant rising plume of mist, utterly unlike an ordinary mountain",
+  yosemite:
+    "YOSEMITE VALLEY: a towering massif of sheer, pale-grey GRANITE cliffs and domes — a great rounded half-dome of bare granite sheared off into a vertical cliff face rising highest in the middle, flanked by monumental sheer granite walls, with a thin ribbon waterfall plunging down the rock, and dark green pine forest and giant sequoias clustered at the wooded valley floor below. The defining feature is the colossal bare grey granite cliffs and domes, utterly unlike an ordinary mountain",
+};
+
+// Flat natural wonders that fill a single hex tile with NO overhang. Generated 1:1
+// with the whole scene resolving at every edge, then placed into the hex footprint
+// (see postProcessEncapsulatedTile). Niagara uses this instead of the overhang path.
+export const FLAT_NATURAL_WONDER_IDS = new Set<string>([
+  "niagara_falls",
+  "amazon_rainforest",
+  "cliffs_of_dover",
+  "dead_sea",
+  "eye_of_the_sahara",
+  "galapagos_islands",
+  "great_barrier_reef",
+  "lake_baikal",
+  "moraine_lake",
+  "pamukkale",
+  "pantanal",
+  "plitvice_lakes",
+  "sahara_dunes",
+  "salar_de_uyuni",
+]);
+
+// Vivid full-tile descriptions for the flat wonders. Each is framed top-down /
+// slightly elevated and ENDS at the tile edges so the scene reads as one complete,
+// self-contained tile.
+export const FLAT_NATURAL_WONDER_ART: Record<string, string> = {
+  niagara_falls:
+    "NIAGARA FALLS seen straight down from directly overhead: the curving horseshoe brink where turquoise-green river water pours over the cliff edge into a ring of churning white foam and mist, the wide calm blue river above and the frothing plunge pool below — an aerial map view of the falls, NO horizon, NO sky",
+  amazon_rainforest:
+    "the AMAZON RAINFOREST seen straight down from directly overhead: an unbroken aerial carpet of lush emerald treetops with subtle tonal variation, a muddy-brown river winding across, a few clustered taller emergent crowns — dense canopy seen from directly above",
+  cliffs_of_dover:
+    "the WHITE CLIFFS OF DOVER seen straight down from directly overhead: a bright white chalk coastline edge where green grassy clifftops meet deep blue-green sea, white surf tracing the shore and pale chalk shallows — an aerial map of the coastline",
+  dead_sea:
+    "the DEAD SEA seen straight down from directly overhead: turquoise mineral-rich hypersaline water with swirling white salt patterns, a pale salt-crusted shoreline and arid tan banks — a flat aerial view of the still salt water",
+  eye_of_the_sahara:
+    "the EYE OF THE SAHARA (Richat Structure) seen straight down from directly overhead: a giant concentric bullseye of circular rock rings in tan, ochre and pale blue-grey forming a vast target pattern in the desert",
+  galapagos_islands:
+    "the GALÁPAGOS ISLANDS seen straight down from directly overhead: rugged dark volcanic islands of black lava rock and green scrub ringed by white surf in bright turquoise tropical sea, with a few small islets — an aerial map of the isles",
+  great_barrier_reef:
+    "the GREAT BARRIER REEF seen straight down from directly overhead through clear water: vivid coral formations in turquoise and deep blue, intricate orange, pink and tan coral patterns, pale sandy shallows and darker channels",
+  lake_baikal:
+    "LAKE BAIKAL seen straight down from directly overhead: deep clear blue water partly covered by cracked turquoise ice sheets and snow, dark forested and snow-dusted shores framing the water — a flat aerial view, NO mountains on a horizon, NO sky",
+  moraine_lake:
+    "MORAINE LAKE seen straight down from directly overhead: a vivid glacier-fed turquoise-blue lake ringed by dark green pine forest with patches of pale grey rocky shore — an aerial map of the brilliant blue lake, NO mountains on a horizon, NO sky",
+  pamukkale:
+    "PAMUKKALE seen straight down from directly overhead: terraced pure-white travertine basins of pale turquoise thermal water forming stepped scalloped pools of glistening calcium-white mineral — an aerial view of the white terraces",
+  pantanal:
+    "the PANTANAL wetland seen straight down from directly overhead: a patchwork of winding waterways, reedy green islands, lily-covered lagoons and grassy flooded plains with scattered tree clusters",
+  plitvice_lakes:
+    "the PLITVICE LAKES seen straight down from directly overhead: a chain of terraced turquoise and emerald pools linked by white waterfalls, surrounded by dense green forest — an aerial view of the lakes",
+  sahara_dunes:
+    "the SAHARA seen straight down from directly overhead: endless golden-orange sand dunes with smooth sinuous curving crest lines and rippled sand, soft shadows tracing the dune ridges — an aerial sea of dunes",
+  salar_de_uyuni:
+    "the SALAR DE UYUNI salt flat seen straight down from directly overhead: a blinding-white salt plain patterned with the famous hexagonal salt-crust polygons and a thin mirror sheen of water in places — a flat aerial view",
+};
 
 // Each natural wonder is ONE full hex map TILE (256×384, same format as terrain),
 // generated and post-processed exactly like a terrain tile so it tessellates and
 // the renderer can draw it in place of the underlying terrain. Overhang wonders
 // (see above) instead let their peak rise above the hex footprint.
-export const NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.map((w) => ({
-  id: w.id,
-  name: w.name,
-  description: w.desc,
-  aspectRatio: "2:3",
-  size: { width: 256, height: 384 },
-  category: "natural_wonder" as const,
-  referenceTile: DEFAULT_REFERENCE_TILE,
-  overhang: OVERHANG_NATURAL_WONDER_IDS.has(w.id),
-}));
+export const NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.map((w) => {
+  const encapsulated = FLAT_NATURAL_WONDER_IDS.has(w.id);
+  return {
+    id: w.id,
+    name: w.name,
+    description: w.desc,
+    // Flat wonders are generated as a self-contained square tile (1:1); overhang
+    // and default wonders use the taller 2:3 frame.
+    aspectRatio: encapsulated ? "1:1" : "2:3",
+    size: { width: 256, height: 384 },
+    category: "natural_wonder" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+    overhang: OVERHANG_NATURAL_WONDER_IDS.has(w.id),
+    encapsulated,
+  };
+});
 
 // Built world-wonders that lack hand-authored decor art. Each is ONE decor prop
 // (the monument itself) on a clean background, rendered as a transparent overlay
@@ -975,7 +1089,12 @@ export function promptFor(entry: AssetEntry): string {
     return `Create a small standalone map improvement icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated improvement on a clean solid white background. Keep it compact so it reads as a tile overlay. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The improvement should float cleanly on the white background with nothing else in the frame.`;
   }
   if (entry.category === "natural_wonder" && entry.overhang) {
-    return `Create a single tall hand-painted mountain sprite for an ancient turn-based strategy hex map, depicting the natural wonder "${entry.name}". ${entry.description}. Paint ONE mountain massif that fills the frame: a broad rocky base spanning the FULL WIDTH at the bottom of the image, rising to a dramatic snow-capped summit near the TOP of the image, so the peak is tall and towering rather than flat. View it straight-on from a slightly elevated angle as a flat 2D illustration with no 3D camera perspective; slightly stylized, saturated but natural colors, readable at small sizes, matching the painted look of the attached reference tile. The mountain's rock and snow must reach the LEFT, RIGHT, and BOTTOM edges of the frame so the base is solid and full-width. CRITICAL BACKGROUND RULE: every part of the image that is NOT the mountain — all of the sky around and above the peak and to either side — must be filled with a single FLAT, SOLID, UNIFORM pure magenta color (hex #FF00FF, RGB 255,0,255). The magenta must be perfectly flat with NO gradient, NO sky, NO clouds, NO haze, NO glow, NO atmosphere, and NO shading — a plain chroma-key backdrop so it can be removed cleanly. Do NOT use any magenta, pink, or purple anywhere on the mountain itself. No roads, no buildings, no people, no text, no labels, and no border.`;
+    const subject = OVERHANG_NATURAL_WONDER_ART[entry.id] ?? entry.description;
+    return `Create a single tall hand-painted sprite of a UNIQUE, legendary NATURAL WONDER for an ancient turn-based strategy hex map: ${subject}. This is a famous one-of-a-kind landmark, so it must be instantly recognizable and clearly GRANDER and more dramatic than ordinary terrain — exaggerate its distinctive silhouette, scale, color, and character so a player can tell at a glance it is "${entry.name}". Paint ONE formation that is HORIZONTALLY CENTERED and roughly bilaterally SYMMETRIC, with its highest point directly above the horizontal center of the image and its greatest mass in the middle. Its base must settle evenly into the lower half on BOTH sides so the left and right are balanced and matching, and every edge, ridge, slope, and rock face must clearly RESOLVE and END within the frame — never abruptly cropped, sliced, or jammed flat against the left or right edge. The lower half is completely FILLED with the landmark's own solid mass — rock, and whatever snow, ice, sand, vegetation, or water naturally belongs to it — reaching the LEFT, RIGHT, and BOTTOM edges so there are no transparent gaps. View it straight-on from a slightly elevated angle as a flat 2D illustration with no 3D camera perspective; slightly stylized, saturated but natural colors, readable at small sizes, matching the painted look of the attached reference tile. Do NOT draw any hexagon outline, tile border, frame, dark outline, or hard shadow line — the landmark should simply fill to the edges naturally (the hex tile footprint is applied afterwards). CRITICAL BACKGROUND RULE: ONLY the sky — the area around and ABOVE the top of the landmark and to either side of its upper portion — must be filled with a single FLAT, SOLID, UNIFORM pure magenta color (hex #FF00FF, RGB 255,0,255); the bottom and lower sides are entirely filled by the landmark, NOT magenta. The magenta sky must be perfectly flat with NO gradient, NO clouds, NO haze, NO glow, NO atmosphere, and NO shading — a plain chroma-key backdrop so it can be removed cleanly. Do NOT use any magenta, pink, or purple anywhere on the landmark itself. No roads, no buildings, no people, no text, no labels.`;
+  }
+  if (entry.category === "natural_wonder" && entry.encapsulated) {
+    const subject = FLAT_NATURAL_WONDER_ART[entry.id] ?? `the natural wonder ${entry.name}: ${entry.description}`;
+    return `Create a flat 2D hand-painted POINTY-TOP HEXAGON map tile, entirely filled by one natural wonder as its terrain: ${subject}. The artwork is shaped as a single pointy-top hexagon — a vertical hexagon with a point at the very top and very bottom and two vertical side edges — exactly the hexagonal shape of the attached reference tile, and the hexagon fills the whole frame, its top point, bottom point and two side edges touching the frame edges. Compose the wonder so it COMPLETELY FILLS the hexagon and its content is arranged to FIT the hexagon: every element resolves and ENDS naturally along the six straight hexagon edges, so nothing important is sliced or cut off. PERSPECTIVE (very important): render it from a STRICT, DIRECTLY-OVERHEAD BIRD'S-EYE / AERIAL TOP-DOWN view — looking straight down from above like a satellite or map view. There must be NO horizon, NO sky, NO distant background, NO mountains or scenery receding into the distance, NO vanishing point and NO 3D perspective — every part of the scene is seen flat from directly above at the same scale, like a hand-painted map terrain tile. CRITICAL BACKGROUND RULE: the FOUR triangular corner areas OUTSIDE the hexagon (top-left, top-right, bottom-left, bottom-right corners of the frame) must be filled with flat, solid, uniform pure magenta (hex #FF00FF, RGB 255,0,255) with no gradient or shading, so they can be removed cleanly — do NOT paint any wonder content, border, outline, or frame in those corners or along the hexagon edge. Match the painted, slightly stylized look of the reference tile: saturated but natural colors, readable at small sizes. Do NOT include roads, paths, houses, huts, fences, farms, units, boats, ships, text, labels, or any man-made structures.`;
   }
   if (entry.category === "natural_wonder") {
     return `Create a flat 2D hand-painted hexagonal strategy game map tile depicting the natural wonder "${entry.name}". ${entry.description}. The ENTIRE hex tile is filled by this one natural wonder as its terrain — the canyon, lake, reef, dunes, falls, forest or peak fills the whole hex, painted top-down/slightly-angled and readable at small sizes. Match the visual style of the attached reference tile: slightly stylized, saturated but natural colors, framed inside a vertical 2:3 pointy-top hex. IMPORTANT: do not include roads, paths, houses, huts, fences, farms, units, text, labels, or any man-made structures. Render as a flat 2D illustration with no 3D perspective, no realistic depth, and no camera angle shifts. Keep the same overall composition, camera angle, and hex footprint as the reference; the artwork must be fully self-contained and look correct in isolation, with nothing continuing off the tile edges. Preserve the soft shadow along the bottom edges of the hex, similar to the reference tile.`;

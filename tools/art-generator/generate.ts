@@ -565,6 +565,29 @@ async function openTopHexMaskPath(width: number, height: number, outPath: string
   ]);
 }
 
+async function lowerEdgeShadowAmountPath(width: number, height: number, outPath: string): Promise<void> {
+  // Build a soft grayscale "shadow amount" map (≈0 in the interior, rising toward
+  // the hex's LOWER edges) used to gently darken the base so the landmark reads as
+  // resting in the tile — the soft grounding shadow seen in hex-terrain/mountains.png,
+  // not a hard black outline. The top stays open (overhang), so no shadow there.
+  const cx = width / 2;
+  const topY = height - width;
+  const quarter = width / 4;
+  const threeQuarter = (3 * width) / 4;
+  const upperVertexY = topY + quarter;
+  const polygon = `${cx},${topY} ${width},${topY + quarter} ${width},${topY + threeQuarter} ${cx},${height} 0,${topY + threeQuarter} 0,${topY + quarter}`;
+  await runCmd("magick", [
+    "-size", `${width}x${height}`, "xc:black", "-fill", "white", "-draw", `polygon ${polygon}`,
+    "(", "+clone", "-morphology", "Erode", "Disk:20", ")",
+    "-compose", "Minus", "-composite", // perimeter band = hex − eroded hex
+    "(", "-size", `${width}x${height}`, "xc:black", "-fill", "white", "-draw", `rectangle 0,${upperVertexY} ${width - 1},${height - 1}`, ")",
+    "-compose", "Multiply", "-composite", // keep only the LOWER edges
+    "-blur", "0x12", // soften into a gentle gradient
+    "-evaluate", "Multiply", "0.4", // max darkening ≈ 40%
+    outPath,
+  ]);
+}
+
 async function postProcessOverhangTile(rawPath: string, outPath: string, entry: AssetEntry): Promise<void> {
   // Tall peak wonder: the model paints the mountain on a flat magenta backdrop.
   // We chroma-key the magenta away (sky around/above the peak becomes transparent)
@@ -572,6 +595,11 @@ async function postProcessOverhangTile(rawPath: string, outPath: string, entry: 
   // above just like hex-terrain/mountains.png.
   const resizedPath = `${rawPath}.resized.png`;
   const keyedPath = `${rawPath}.keyed.png`;
+  const magMaskPath = `${rawPath}.magmask.png`;
+  const despilledPath = `${rawPath}.despill.png`;
+  const cleanRgbPath = `${rawPath}.clean.png`;
+  const shadowPath = `${rawPath}.shadow.png`;
+  const shadedRgbPath = `${rawPath}.shaded.png`;
   const maskPath = `${rawPath}.mask.png`;
   const keyedAlphaPath = `${rawPath}.kalpha.png`;
   const finalAlphaPath = `${rawPath}.falpha.png`;
@@ -583,18 +611,97 @@ async function postProcessOverhangTile(rawPath: string, outPath: string, entry: 
   //    up the anti-aliased fringe; magenta is far from any natural rock/snow/sky.
   await runCmd("magick", [resizedPath, "-fuzz", "22%", "-transparent", "#FF00FF", "-define", "png:color-type=6", keyedPath]);
 
-  // 3. Intersect the keyed alpha with an open-top hex mask so the base is clipped
-  //    to the hex (and any magenta the key missed in the bottom corners is removed)
-  //    while the peak above the hex is preserved. final alpha = keyedAlpha × hexMask.
+  // 3. Despill the magenta tint left on the anti-aliased silhouette edge. Only
+  //    true-magenta pixels (R>G AND B>G) are pulled toward green; this leaves warm
+  //    rock and bluish snow shadows untouched, so the painted look is preserved.
+  await runCmd("magick", [keyedPath, "-alpha", "off", "-fx", "(r>g && b>g) ? 1 : 0", magMaskPath]);
+  await runCmd("magick", [keyedPath, "-channel", "RB", "-fx", "min(u,g)", "+channel", despilledPath]);
+  await runCmd("magick", [keyedPath, despilledPath, magMaskPath, "-compose", "over", "-composite", cleanRgbPath]);
+
+  // 4. Paint a soft grounding shadow along the lower hex edges so the base reads as
+  //    resting in the tile (like mountains.png) rather than being sliced. shaded =
+  //    cleanRgb × (1 − shadowAmount); the top is left untouched so the peak overhangs.
+  await lowerEdgeShadowAmountPath(entry.size.width, entry.size.height, shadowPath);
+  await runCmd("magick", [cleanRgbPath, "(", shadowPath, "-negate", ")", "-compose", "Multiply", "-composite", shadedRgbPath]);
+
+  // 5. Intersect the keyed alpha with an open-top hex mask so the base is clipped
+  //    symmetrically to the hex while the peak above the hex is preserved.
+  //    final alpha = keyedAlpha × hexMask.
   await openTopHexMaskPath(entry.size.width, entry.size.height, maskPath);
   await runCmd("magick", [keyedPath, "-alpha", "extract", keyedAlphaPath]);
   await runCmd("magick", [keyedAlphaPath, maskPath, "-compose", "Multiply", "-composite", finalAlphaPath]);
-  await runCmd("magick", [keyedPath, finalAlphaPath, "-compose", "CopyOpacity", "-composite", "-define", "png:color-type=6", outPath]);
+  await runCmd("magick", [shadedRgbPath, finalAlphaPath, "-compose", "CopyOpacity", "-composite", "-define", "png:color-type=6", outPath]);
 
   // Best-effort cleanup of temp files.
   await Promise.all([
     unlink(resizedPath).catch(() => {}),
     unlink(keyedPath).catch(() => {}),
+    unlink(magMaskPath).catch(() => {}),
+    unlink(despilledPath).catch(() => {}),
+    unlink(cleanRgbPath).catch(() => {}),
+    unlink(shadowPath).catch(() => {}),
+    unlink(shadedRgbPath).catch(() => {}),
+    unlink(maskPath).catch(() => {}),
+    unlink(keyedAlphaPath).catch(() => {}),
+    unlink(finalAlphaPath).catch(() => {}),
+  ]);
+}
+
+async function postProcessEncapsulatedTile(rawPath: string, outPath: string, entry: AssetEntry): Promise<void> {
+  // Flat wonder: the model paints a pointy-top HEXAGON filled by the wonder, with the
+  // four frame corners outside the hexagon flat magenta. We anchor that square into the
+  // bottom width×width hex footprint of the taller canvas (no overhang), chroma-key the
+  // magenta corners away, despill the fringe, then intersect with the exact hex mask so
+  // the geometry is perfect. A soft lower-edge shadow grounds it like a terrain tile.
+  const footprint = entry.size.width; // bottom square = hex footprint
+  const W = entry.size.width;
+  const H = entry.size.height;
+  const squarePath = `${rawPath}.square.png`;
+  const canvasPath = `${rawPath}.canvas.png`;
+  const keyedPath = `${rawPath}.keyed.png`;
+  const magMaskPath = `${rawPath}.magmask.png`;
+  const despilledPath = `${rawPath}.despill.png`;
+  const cleanRgbPath = `${rawPath}.clean.png`;
+  const shadowPath = `${rawPath}.shadow.png`;
+  const shadedPath = `${rawPath}.shaded.png`;
+  const maskPath = `${rawPath}.mask.png`;
+  const keyedAlphaPath = `${rawPath}.kalpha.png`;
+  const finalAlphaPath = `${rawPath}.falpha.png`;
+
+  // 1. Scale the generated hexagon to the footprint and anchor it at the bottom of the
+  //    tall canvas (top region stays transparent — no overhang).
+  await runCmd("magick", [rawPath, "-resize", `${footprint}x${footprint}!`, squarePath]);
+  await runCmd("magick", [squarePath, "-background", "none", "-gravity", "south", "-extent", `${W}x${H}`, canvasPath]);
+
+  // 2. Chroma-key the flat magenta corners to transparent.
+  await runCmd("magick", [canvasPath, "-fuzz", "22%", "-transparent", "#FF00FF", "-define", "png:color-type=6", keyedPath]);
+
+  // 3. Despill the magenta tint on the anti-aliased hexagon edge (only true-magenta
+  //    pixels, R>G AND B>G, are pulled toward green — natural colors are untouched).
+  await runCmd("magick", [keyedPath, "-alpha", "off", "-fx", "(r>g && b>g) ? 1 : 0", magMaskPath]);
+  await runCmd("magick", [keyedPath, "-channel", "RB", "-fx", "min(u,g)", "+channel", despilledPath]);
+  await runCmd("magick", [keyedPath, despilledPath, magMaskPath, "-compose", "over", "-composite", cleanRgbPath]);
+
+  // 4. Soft grounding shadow along the lower hex edges (same as terrain tiles).
+  await lowerEdgeShadowAmountPath(W, H, shadowPath);
+  await runCmd("magick", [cleanRgbPath, "(", shadowPath, "-negate", ")", "-compose", "Multiply", "-composite", shadedPath]);
+
+  // 5. Intersect the keyed alpha with the exact hex mask for perfect geometry.
+  //    final alpha = keyedAlpha × hexMask.
+  await hexMaskPath(W, H, maskPath);
+  await runCmd("magick", [keyedPath, "-alpha", "extract", keyedAlphaPath]);
+  await runCmd("magick", [keyedAlphaPath, maskPath, "-compose", "Multiply", "-composite", finalAlphaPath]);
+  await runCmd("magick", [shadedPath, finalAlphaPath, "-compose", "CopyOpacity", "-composite", "-define", "png:color-type=6", outPath]);
+
+  await Promise.all([
+    unlink(squarePath).catch(() => {}),
+    unlink(canvasPath).catch(() => {}),
+    unlink(keyedPath).catch(() => {}),
+    unlink(magMaskPath).catch(() => {}),
+    unlink(despilledPath).catch(() => {}),
+    unlink(cleanRgbPath).catch(() => {}),
+    unlink(shadowPath).catch(() => {}),
+    unlink(shadedPath).catch(() => {}),
     unlink(maskPath).catch(() => {}),
     unlink(keyedAlphaPath).catch(() => {}),
     unlink(finalAlphaPath).catch(() => {}),
@@ -860,6 +967,9 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
       if (entry.category === "natural_wonder" && entry.overhang) {
         // Tall peak wonders overhang the hex — chroma-key + base-only hex clip.
         await postProcessOverhangTile(rawPath, finalPath, entry);
+      } else if (entry.category === "natural_wonder" && entry.encapsulated) {
+        // Flat wonders: a self-contained 1:1 tile placed into the hex footprint.
+        await postProcessEncapsulatedTile(rawPath, finalPath, entry);
       } else if (entry.category === "tile" || entry.category === "road" || entry.category === "river" || entry.category === "natural_wonder") {
         // Natural wonders are full hex tiles — same hex-masked tile pipeline.
         await postProcessTile(rawPath, finalPath, entry);
