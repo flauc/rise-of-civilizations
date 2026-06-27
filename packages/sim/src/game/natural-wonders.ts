@@ -155,6 +155,23 @@ export function placeNaturalWonders(
   const placedIds: string[] = [];
   const placed: { col: number; row: number }[] = [];
 
+  // Scale the number of wonders to the map size (the old generator placed one of
+  // every wonder regardless of size). ~1 wonder per WONDER_TILES_PER tiles, floored
+  // so small maps still get a few and capped at the unique wonders we have.
+  // e.g. small≈4, medium≈7, large≈12, huge≈20, giant≈28.
+  const WONDER_TILES_PER = 240;
+  const targetCount = Math.max(
+    3,
+    Math.min(NATURAL_WONDER_DEFS.length, Math.round((map.cols * map.rows) / WONDER_TILES_PER)),
+  );
+
+  // Deterministically shuffle the wonder defs so each game places a varied subset
+  // rather than always the first N in declaration order.
+  const order = NATURAL_WONDER_DEFS
+    .map((def) => ({ def, key: hashSeed(`nw-order:${def.id}:${seed}`) }))
+    .sort((a, b) => a.key - b.key)
+    .map((o) => o.def);
+
   const occupied = (t: Tile): boolean =>
     !!t.naturalWonder || !!t.feature || !!t.resource || t.ownerCityId !== undefined;
   const farFromStarts = (col: number, row: number): boolean =>
@@ -162,7 +179,8 @@ export function placeNaturalWonders(
   const tooClose = (col: number, row: number): boolean =>
     placed.some((p) => axialDistance(offsetToAxial(p), offsetToAxial({ col, row })) < 4);
 
-  for (const def of NATURAL_WONDER_DEFS) {
+  for (const def of order) {
+    if (placedIds.length >= targetCount) break;
     const candidates: { col: number; row: number; key: number }[] = [];
     for (const t of map.tiles) {
       // Never place a wonder on a river tile or an occupied/invalid tile.

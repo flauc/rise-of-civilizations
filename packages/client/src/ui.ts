@@ -2086,11 +2086,11 @@ export function createUI(handlers: UIHandlers): UI {
     const turns = (cost: number) => Math.max(1, Math.ceil((cost - city.productionStored) / perTurn));
 
     // Construction is split into three tabs by what is being built: trainable
-    // units, city buildings ("tiles"), and standing conversion works (gold /
+    // units, city buildings, and standing conversion works (gold /
     // science / culture / faith). Keep the active tab on a kind with options.
     const tabs: { id: typeof prodTab; label: string }[] = [
       { id: "unit", label: "Units" },
-      { id: "building", label: "Tiles" },
+      { id: "building", label: "Buildings" },
       { id: "project", label: "Works" },
     ];
     const countFor = (kind: typeof prodTab) => options.filter((o) => o.item.kind === kind).length;
@@ -3121,8 +3121,6 @@ export function createUI(handlers: UIHandlers): UI {
       `<div class="ygrid">` +
       `<span title="Food (growth)">🍞 <b>${y.food}</b> <span style="color:#9fc0dc">(${surplusStr})</span></span>` +
       `<span title="Production">⚒️ <b>${y.production}</b></span>` +
-      `<span title="Gold">🪙 <b>${y.gold}</b></span>` +
-      `<span title="Science">🔬 <b>${y.science}</b></span>` +
       `</div>` +
       // growth
       `<div class="cline" style="color:var(--parchment)">Growth ${Math.floor(city.foodStored)}/${need} ` +
@@ -3162,7 +3160,7 @@ export function createUI(handlers: UIHandlers): UI {
       summaryBar({
         icon: city.isCapital ? "★" : "🏙️",
         name: `<b>${escapeHtml(city.name)}</b>`,
-        stats: `👥 ${city.population} · ⚒️ ${y.production}`,
+        stats: `👥 ${city.population} · ⚒️ ${y.production} · 🪙 ${y.gold} · 🔬 ${y.science}`,
         closeId: "cclose",
       }) +
       `<div class="ip-detail">${detail}</div>`;
