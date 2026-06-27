@@ -3,7 +3,7 @@ import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { workableTiles, toggleCitizen, getCityYields, autoAssignCitizens } from "./economy";
 import { convertCitizen, workerSlots } from "./specialists";
-import { citiesOf, unitsOf } from "./state";
+import { citiesOf, makeUnit, unitsOf } from "./state";
 import { getTile } from "@roc/shared";
 
 function foundedGame() {
@@ -97,6 +97,35 @@ describe("citizen assignment", () => {
     // Re-optimising must keep the manual pick despite the stronger rival.
     autoAssignCitizens(s, city);
     expect(city.workedTiles).toEqual([`${locked.col},${locked.row}`]);
+  });
+
+  it("an enemy/barbarian unit on a tile makes it unworkable and yields nothing", () => {
+    const s = createGame({ seed: "citz-enemy", cols: 40, rows: 28, barbarians: true });
+    beginTurn(s);
+    const settler = unitsOf(s, 0).find((u) => u.type === "settler")!;
+    applyCommand(s, { type: "foundCity", unitId: settler.id });
+    const city = citiesOf(s, 0)[0]!;
+    const barb = s.players.find((p) => p.isBarbarian)!; // hostile to everyone
+
+    // An empty workable tile (avoid one already holding a friendly unit).
+    const target = workableTiles(s, city).find((t) => !unitsOf(s, 0).some((u) => u.col === t.col && u.row === t.row))!;
+    const key = `${target.col},${target.row}`;
+    // Pin a citizen onto that exact tile.
+    city.lockedTiles = [key];
+    autoAssignCitizens(s, city);
+    expect(city.workedTiles).toContain(key);
+    const before = getCityYields(s, city);
+
+    // Park a barbarian on the tile.
+    const uid = s.nextEntityId++;
+    s.units.set(uid, makeUnit(uid, barb.id, "warrior", target.col, target.row));
+
+    // The tile drops out of the workable set…
+    expect(workableTiles(s, city).some((t) => t.col === target.col && t.row === target.row)).toBe(false);
+    // …and contributes no yields even while still listed as worked.
+    const occupied = getCityYields(s, city);
+    expect(occupied.food + occupied.production + occupied.gold + occupied.science)
+      .toBeLessThan(before.food + before.production + before.gold + before.science);
   });
 
   it("worked tiles contribute their yields (incl. science)", () => {

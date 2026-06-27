@@ -53,11 +53,24 @@ describe("great people: point sources", () => {
 
   it("sums per-turn points across all of a player's cities", () => {
     const state = newGame();
+    playerById(state, 0)!.researched.add("writing"); // unlocks civics -> statesman counts
     addCity(state, 0, ["library"], true);
     addCity(state, 0, ["academy"], false);
     const perTurn = playerGreatPersonPerTurn(state, 0);
     expect(perTurn.scientist).toBe(5); // 2 + 3
     expect(perTurn.statesman).toBe(2); // only the capital
+  });
+
+  it("withholds capital statesman points until civics are unlocked", () => {
+    const state = newGame();
+    const player = playerById(state, 0)!;
+    addCity(state, 0, ["library"], true);
+    expect(player.researched.has("writing")).toBe(false);
+    // Civics locked: the seat-of-government statesman points are withheld.
+    expect(playerGreatPersonPerTurn(state, 0).statesman).toBeUndefined();
+    // Researching writing unlocks civics and starts the statesman pool.
+    player.researched.add("writing");
+    expect(playerGreatPersonPerTurn(state, 0).statesman).toBe(2);
   });
 });
 

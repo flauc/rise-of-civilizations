@@ -7,13 +7,14 @@
 
 import { axialDistance, getTile, offsetToAxial, type Tile } from "@roc/shared";
 import { getWonder, WONDER_DEFS, UNIQUE_IMPROVEMENTS, type UniqueInfraDef } from "@roc/data";
-import type { City, Discipline, GameState, Specialist, Work } from "./state";
+import type { City, Discipline, GameState, Player, Specialist, Work } from "./state";
 import { citiesOf, cityAt, log, playerById } from "./state";
 import { isPassableLand } from "./terrain";
 import { availableTechs } from "./economy";
 import { TECH_DEFS, type TechId } from "./content";
 import {
   SPECIALIST_DEFS,
+  availableSpecialists,
   grantSpecialistXp,
   specialistLabour,
   type SpecialistId,
@@ -250,6 +251,50 @@ export function cityDisciplines(city: City): Set<Discipline> {
   return set;
 }
 
+/** Locate one of a player's specialists by id, with the city it lives on. */
+export function findSpecialist(
+  state: GameState,
+  playerId: number,
+  specialistId: number,
+): { city: City; specialist: Specialist } | null {
+  for (const c of citiesOf(state, playerId)) {
+    const s = c.specialists.find((x) => x.id === specialistId);
+    if (s) return { city: c, specialist: s };
+  }
+  return null;
+}
+
+/** The discipline a specialist practises, or undefined for an unknown type. */
+function specialistDiscipline(s: Specialist): Discipline | undefined {
+  return SPECIALIST_DEFS[s.type as SpecialistId]?.discipline;
+}
+
+/** True if the player has researched the tech that lets them train a `d`-craftsman. */
+function disciplineUnlocked(player: Player, d: Discipline): boolean {
+  return availableSpecialists(player).some((id) => SPECIALIST_DEFS[id].discipline === d);
+}
+
+/** True if any of the player's cities already has a trained `d`-craftsman. */
+function playerHasDiscipline(state: GameState, playerId: number, d: Discipline): boolean {
+  return citiesOf(state, playerId).some((c) => cityDisciplines(c).has(d));
+}
+
+/** Disciplines the player can neither train (tech-locked) nor already fields — so a
+ *  work needing them could never be completed. */
+function lockedDisciplines(state: GameState, playerId: number, player: Player, disciplines: Discipline[]): Discipline[] {
+  return disciplines.filter((d) => !disciplineUnlocked(player, d) && !playerHasDiscipline(state, playerId, d));
+}
+
+/** Recompute a work's contributing cities from its assigned specialists. */
+function recomputeCityIds(state: GameState, w: Work): void {
+  const ids = new Set<number>();
+  for (const sid of w.assignedSpecialistIds) {
+    const found = findSpecialist(state, w.ownerId, sid);
+    if (found) ids.add(found.city.id);
+  }
+  w.cityIds = [...ids];
+}
+
 /** The display name of the specialist that practises a discipline (e.g. "Mason"). */
 export function specialistNameForDiscipline(d: Discipline): string {
   for (const id of Object.keys(SPECIALIST_DEFS) as SpecialistId[]) {
@@ -258,31 +303,9 @@ export function specialistNameForDiscipline(d: Discipline): string {
   return d;
 }
 
-function disciplinesError(missing: Discipline[]): string {
-  return `No ${missing.map(specialistNameForDiscipline).join(" or ")} to do the work — train one first`;
-}
-
-/** Nearest of the player's cities that has every discipline in `disciplines`. */
-function nearestCapableCity(
-  state: GameState,
-  playerId: number,
-  col: number,
-  row: number,
-  disciplines: Discipline[],
-): City | null {
-  const tileAx = offsetToAxial({ col, row });
-  let best: City | null = null;
-  let bestD = Infinity;
-  for (const c of citiesOf(state, playerId)) {
-    const have = cityDisciplines(c);
-    if (!disciplines.every((d) => have.has(d))) continue;
-    const d = axialDistance(tileAx, offsetToAxial({ col: c.col, row: c.row }));
-    if (d < bestD) {
-      bestD = d;
-      best = c;
-    }
-  }
-  return best;
+/** Error shown when a needed discipline's craftsman isn't researched yet. */
+function lockedDisciplinesError(missing: Discipline[]): string {
+  return `Research is needed before a ${missing.map(specialistNameForDiscipline).join(" or ")} can do this work`;
 }
 
 /** Validate a tile/defensive work without mutating (drives the build UI). */
@@ -316,12 +339,14 @@ export function canStartWork(state: GameState, playerId: number, kind: string, c
   if (kind === "farm" && tile.river && !playerById(state, playerId)?.researched.has("irrigation")) {
     return { ok: false, error: "Research Irrigation to farm river tiles" };
   }
-  const needs = workDisciplines(kind);
-  const host = nearestCapableCity(state, playerId, col, row, needs);
-  if (!host) {
-    // Distinguish "no city at all" from "no city with the right craftsmen".
-    if (!nearestOwningCity(state, playerId, col, row)) return { ok: false, error: "no city to build from" };
-    return { ok: false, error: disciplinesError(needs) };
+  const host = nearestOwningCity(state, playerId, col, row);
+  if (!host) return { ok: false, error: "no city to build from" };
+  // The craftsmen needn't be trained yet (the player assigns them after starting),
+  // but the work isn't completable unless the disciplines are at least researched.
+  const player = playerById(state, playerId);
+  if (player) {
+    const locked = lockedDisciplines(state, playerId, player, workDisciplines(kind));
+    if (locked.length) return { ok: false, error: lockedDisciplinesError(locked) };
   }
   return { ok: true };
 }
@@ -332,7 +357,7 @@ export function startWork(state: GameState, playerId: number, kind: string, col:
   if (!can.ok) return can;
   const tile = getTile(state.map, col, row)!;
   const tier = nextTierAt(tile, kind)!;
-  const host = nearestCapableCity(state, playerId, col, row, workDisciplines(kind))!;
+  const host = nearestOwningCity(state, playerId, col, row)!;
   const id = state.nextEntityId++;
   state.works.push({
     id,
@@ -341,7 +366,8 @@ export function startWork(state: GameState, playerId: number, kind: string, col:
     tier,
     target: { col, row },
     hostCityId: host.id,
-    cityIds: [host.id],
+    cityIds: [],
+    assignedSpecialistIds: [],
     requirement: workLabourFor(state, kind, tier, host, col, row),
     progress: {},
   });
@@ -375,11 +401,12 @@ export function canStartWonder(state: GameState, playerId: number, wonderId: str
   if (state.works.some((w) => w.ownerId === playerId && w.target && w.target.col === col && w.target.row === row)) {
     return { ok: false, error: "this tile is already being worked" };
   }
-  const needs = Object.keys(def.requirement) as Discipline[];
-  const host = nearestCapableCity(state, playerId, col, row, needs);
-  if (!host) {
-    if (!nearestOwningCity(state, playerId, col, row)) return { ok: false, error: "no city to build from" };
-    return { ok: false, error: disciplinesError(needs) };
+  const host = nearestOwningCity(state, playerId, col, row);
+  if (!host) return { ok: false, error: "no city to build from" };
+  const player = playerById(state, playerId);
+  if (player) {
+    const locked = lockedDisciplines(state, playerId, player, Object.keys(def.requirement) as Discipline[]);
+    if (locked.length) return { ok: false, error: lockedDisciplinesError(locked) };
   }
   return { ok: true };
 }
@@ -389,7 +416,7 @@ export function startWonder(state: GameState, playerId: number, wonderId: string
   const can = canStartWonder(state, playerId, wonderId, col, row);
   if (!can.ok) return can;
   const def = getWonder(wonderId)!;
-  const host = nearestCapableCity(state, playerId, col, row, Object.keys(def.requirement) as Discipline[])!;
+  const host = nearestOwningCity(state, playerId, col, row)!;
   const id = state.nextEntityId++;
   state.works.push({
     id,
@@ -398,26 +425,69 @@ export function startWonder(state: GameState, playerId: number, wonderId: string
     wonderId,
     target: { col, row },
     hostCityId: host.id,
-    cityIds: [host.id],
+    cityIds: [],
+    assignedSpecialistIds: [],
     requirement: { ...(def.requirement as Partial<Record<Discipline, number>>) },
     progress: {},
   });
   return { ok: true, workId: id };
 }
 
-/** Add/remove a contributing city from a wonder work. */
-export function assignCityToWonder(state: GameState, workId: number, cityId: number, on: boolean, playerId: number): WorkResult {
-  const w = state.works.find((x) => x.id === workId);
-  if (!w || w.ownerId !== playerId) return { ok: false, error: "no such work" };
-  if (w.kind !== "wonder") return { ok: false, error: "not a wonder" };
-  const city = state.cities.get(cityId);
-  if (!city || city.ownerId !== playerId) return { ok: false, error: "not your city" };
-  if (on) {
-    if (!w.cityIds.includes(cityId)) w.cityIds.push(cityId);
-  } else if (cityId !== w.hostCityId) {
-    w.cityIds = w.cityIds.filter((id) => id !== cityId);
+/**
+ * Assign (on) or unassign (off) one of the player's specialists to/from a work.
+ * A specialist may labour on at most one work at a time, so assigning first
+ * detaches it from any other work. Only specialists whose discipline the work
+ * still needs may be assigned.
+ */
+export function assignSpecialist(
+  state: GameState,
+  playerId: number,
+  workId: number,
+  specialistId: number,
+  on: boolean,
+): WorkResult {
+  const w = state.works.find((x) => x.id === workId && x.ownerId === playerId);
+  if (!w) return { ok: false, error: "no such work" };
+  const found = findSpecialist(state, playerId, specialistId);
+  if (!found) return { ok: false, error: "no such specialist" };
+  if (!on) {
+    if (!w.assignedSpecialistIds.includes(specialistId)) return { ok: false, error: "not assigned here" };
+    w.assignedSpecialistIds = w.assignedSpecialistIds.filter((id) => id !== specialistId);
+    recomputeCityIds(state, w);
+    return { ok: true, workId };
   }
-  return { ok: true };
+  const disc = specialistDiscipline(found.specialist);
+  // A work's needed crafts are its requirement keys (covers wonders, which list
+  // several disciplines, as well as econ/defensive works).
+  if (!disc || !(disc in w.requirement)) {
+    return { ok: false, error: "this work needs no labour of that craft" };
+  }
+  if (w.assignedSpecialistIds.includes(specialistId)) return { ok: true, workId };
+  // Enforce one-work-per-specialist: detach from any other work first.
+  unassignSpecialistEverywhere(state, playerId, specialistId);
+  w.assignedSpecialistIds.push(specialistId);
+  recomputeCityIds(state, w);
+  return { ok: true, workId };
+}
+
+/** Remove a specialist from every work it might be assigned to (keeps cityIds fresh). */
+export function unassignSpecialistEverywhere(state: GameState, playerId: number, specialistId: number): void {
+  for (const w of state.works) {
+    if (w.ownerId !== playerId) continue;
+    if (!w.assignedSpecialistIds.includes(specialistId)) continue;
+    w.assignedSpecialistIds = w.assignedSpecialistIds.filter((id) => id !== specialistId);
+    recomputeCityIds(state, w);
+  }
+}
+
+/** Specialist ids of the player already committed to some work (so the UI can hide them). */
+export function assignedSpecialistIds(state: GameState, playerId: number): Set<number> {
+  const set = new Set<number>();
+  for (const w of state.works) {
+    if (w.ownerId !== playerId) continue;
+    for (const id of w.assignedSpecialistIds) set.add(id);
+  }
+  return set;
 }
 
 export function cancelWork(state: GameState, workId: number, playerId: number): WorkResult {
@@ -434,16 +504,9 @@ export function worksOfCity(state: GameState, cityId: number): Work[] {
   return state.works.filter((w) => w.cityIds.includes(cityId));
 }
 
-/** The work a specialist labours on this turn (first incomplete city work that
- *  still needs its discipline), or null if it is idle. */
-export function currentWorkFor(state: GameState, city: City, specialist: Specialist): Work | null {
-  const disc = SPECIALIST_DEFS[specialist.type as SpecialistId]?.discipline;
-  if (!disc) return null;
-  for (const w of state.works) {
-    if (!w.cityIds.includes(city.id)) continue;
-    if ((w.requirement[disc] ?? 0) > (w.progress[disc] ?? 0)) return w;
-  }
-  return null;
+/** The work a specialist is currently assigned to, or null if it is idle. */
+export function currentWorkFor(state: GameState, _city: City, specialist: Specialist): Work | null {
+  return state.works.find((w) => w.assignedSpecialistIds.includes(specialist.id)) ?? null;
 }
 
 function needs(w: Work, d: Discipline): boolean {
@@ -453,16 +516,44 @@ function isComplete(w: Work): boolean {
   return (Object.keys(w.requirement) as Discipline[]).every((d) => (w.progress[d] ?? 0) >= (w.requirement[d] ?? 0));
 }
 
-/** Drop works whose host city is gone/changed owner or whose tile left our territory. */
+/** Labour-per-turn an assigned crew contributes to a work, by discipline. */
+export function workLabourPerTurn(state: GameState, w: Work): Partial<Record<Discipline, number>> {
+  const out: Partial<Record<Discipline, number>> = {};
+  for (const sid of w.assignedSpecialistIds) {
+    const found = findSpecialist(state, w.ownerId, sid);
+    if (!found) continue;
+    const disc = specialistDiscipline(found.specialist);
+    if (!disc) continue;
+    out[disc] = (out[disc] ?? 0) + specialistLabour(found.specialist);
+  }
+  return out;
+}
+
+/** Turns until a work completes at its current crew rate, or Infinity if a needed
+ *  discipline has no assignee (so the work would never finish). 0 = already done. */
+export function workEtaTurns(state: GameState, w: Work): number {
+  const rate = workLabourPerTurn(state, w);
+  let eta = 0;
+  for (const d of Object.keys(w.requirement) as Discipline[]) {
+    const remaining = (w.requirement[d] ?? 0) - (w.progress[d] ?? 0);
+    if (remaining <= 0) continue;
+    const r = rate[d] ?? 0;
+    if (r <= 0) return Infinity;
+    eta = Math.max(eta, Math.ceil(remaining / r));
+  }
+  return eta;
+}
+
+/** Drop works whose host city is gone/changed owner or whose tile left our territory.
+ *  Works with no assigned specialists are kept (they sit idle until the player staffs
+ *  them) — only the host-city/target/wonder anchors can retire a work. */
 function pruneWorks(state: GameState): void {
   state.works = state.works.filter((w) => {
     const host = state.cities.get(w.hostCityId);
     if (!host || host.ownerId !== w.ownerId) return false;
-    w.cityIds = w.cityIds.filter((id) => {
-      const c = state.cities.get(id);
-      return c && c.ownerId === w.ownerId;
-    });
-    if (w.cityIds.length === 0) return false;
+    // Drop assignments whose specialist no longer exists / left the empire.
+    w.assignedSpecialistIds = w.assignedSpecialistIds.filter((sid) => !!findSpecialist(state, w.ownerId, sid));
+    recomputeCityIds(state, w);
     if (w.target) {
       const t = getTile(state.map, w.target.col, w.target.row);
       if (!t || !tileOwnedBy(state, t, w.ownerId)) return false;
@@ -548,37 +639,34 @@ function completeWork(state: GameState, w: Work): void {
 }
 
 /**
- * Apply one turn of specialist labour to a player's works, in queue order per
- * city, granting XP. Completed works apply their effect and are removed.
+ * Apply one turn of specialist labour to a player's works. Labour is entirely
+ * assignment-driven: only specialists explicitly assigned to a work contribute,
+ * each adding its level-scaled labour to its discipline and earning XP. Completed
+ * works apply their effect (and a shared completion XP bonus) and are removed.
  */
 export function advanceWorks(state: GameState, playerId: number): void {
   pruneWorks(state);
   const works = state.works.filter((w) => w.ownerId === playerId);
   if (works.length === 0) return;
 
-  for (const city of citiesOf(state, playerId)) {
-    const cityWorks = works.filter((w) => w.cityIds.includes(city.id) && !isComplete(w));
-    for (const s of city.specialists) {
-      const disc = SPECIALIST_DEFS[s.type as SpecialistId]?.discipline;
-      if (!disc) continue;
-      const w = cityWorks.find((x) => needs(x, disc));
-      if (!w) continue; // idle this turn
-      const add = specialistLabour(s);
+  for (const w of works) {
+    for (const sid of w.assignedSpecialistIds) {
+      const found = findSpecialist(state, playerId, sid);
+      if (!found) continue;
+      const disc = specialistDiscipline(found.specialist);
+      if (!disc || !needs(w, disc)) continue; // wrong craft or that discipline is done
+      const add = specialistLabour(found.specialist);
       w.progress[disc] = Math.min(w.requirement[disc] ?? 0, (w.progress[disc] ?? 0) + add);
-      grantSpecialistXp(s, 2);
+      grantSpecialistXp(found.specialist, 2);
     }
   }
 
-  // Complete and remove finished works; award a completion XP bonus.
+  // Complete and remove finished works; award a completion XP bonus to the crew.
   for (const w of works) {
     if (!isComplete(w)) continue;
-    for (const cid of w.cityIds) {
-      const c = state.cities.get(cid);
-      if (!c) continue;
-      for (const s of c.specialists) {
-        const disc = SPECIALIST_DEFS[s.type as SpecialistId]?.discipline;
-        if (disc && w.requirement[disc]) grantSpecialistXp(s, 6);
-      }
+    for (const sid of w.assignedSpecialistIds) {
+      const found = findSpecialist(state, playerId, sid);
+      if (found) grantSpecialistXp(found.specialist, 6);
     }
     completeWork(state, w);
   }

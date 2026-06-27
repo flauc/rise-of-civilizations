@@ -21,7 +21,12 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder" | "wonder_tile" | "great_person" | "legend";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "construction" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder" | "wonder_tile" | "great_person" | "legend";
+  /** Tall natural wonders (peaks, spires, tepuis) whose summit should rise ABOVE
+   *  the hex footprint and overhang the tiles above — like the hand-painted
+   *  hex-terrain/mountains.png. Generated on a flat magenta chroma-key backdrop
+   *  and post-processed so only the base is clipped to the hex (see generate.ts). */
+  readonly overhang?: boolean;
 }
 
 export const DEFAULT_MODEL = "gemini-3.1-flash-image";
@@ -173,6 +178,8 @@ export const LEGEND_UNIT_SUBSET: AssetEntry[] = LEGENDS.map((l) => {
  *  their base unit (e.g. a "crossbowman" that is actually a war wagon). Keyed by
  *  unique-unit id; falls back to the generated base-unit description otherwise. */
 const UNIQUE_UNIT_DESCRIPTION_OVERRIDES: Record<string, string> = {
+  anglo_saxon_england_longbowman:
+    "an English Longbowman of the medieval Hundred Years' War era: a single foot archer standing at ease in a relaxed ready pose, holding a tall unstrung-tension wooden English longbow (as tall as the man himself) upright and vertical at his side in one hand, the bowstring slack and NOT drawn, an arrow held loosely in the other hand, NOT a crossbow — there must be NO crossbow, NO stock, NO trigger, NO horizontal bow; the bow is NOT being aimed, drawn, or fired; wearing a simple iron kettle helmet or bascinet, a padded gambeson or quilted jacket, with a quiver of arrows at his hip; historically accurate English medieval archer, calm standing posture, facing to the right",
   ottomans_janissary:
     "an elite Ottoman Janissary musketeer of the 15th–16th century: a single foot soldier shouldering a long matchlock musket (tüfek) with a smoldering match cord, NOT a crossbow; wearing the distinctive tall white felt börk cap with a long flowing rear flap, a long ornate kaftan robe in deep red and blue with a sash belt, and a yatağan short sabre at the waist; historically accurate elite Ottoman gunpowder infantry, facing to the right",
   bohemia_hussite_war_wagon:
@@ -321,6 +328,41 @@ export const IMPROVEMENT_SUBSET: AssetEntry[] = IMPROVEMENT_KINDS.flatMap((kind)
     referenceTile: water ? "hexOcean00.png" : DEFAULT_REFERENCE_TILE,
   }));
 });
+
+/** Per-category "under construction" build-site tokens, drawn on tiles with a Work
+ *  in progress. Output: construction/<id>.png (econ / defense / wonder). */
+export const CONSTRUCTION_SUBSET: AssetEntry[] = [
+  {
+    id: "econ",
+    name: "Economic Construction Site",
+    description:
+      "an in-progress economic build site on a single tile: timber scaffolding, dug foundation pits, stacked cut stone and raw timber, baskets of earth, simple wooden tools, and a half-finished low structure. Work underway, NOT finished. No walls, no background terrain",
+    aspectRatio: "1:1",
+    size: { width: 128, height: 128 },
+    category: "construction" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "defense",
+    name: "Defensive Construction Site",
+    description:
+      "an in-progress defensive build site on a single tile: a half-raised palisade and stone rampart under construction with wooden scaffolding, ropes and pulleys, partly-laid stone courses, and piled timber and rubble. Work underway, NOT finished. No background terrain",
+    aspectRatio: "1:1",
+    size: { width: 128, height: 128 },
+    category: "construction" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "wonder",
+    name: "Wonder Construction Site",
+    description:
+      "an in-progress monumental wonder build site on a single tile: tall timber scaffolding and earthen ramps around a half-raised stone monument, wooden cranes and lifting frames, dressed marble blocks, and bustling construction. Grand scale, work underway, NOT finished. No background terrain",
+    aspectRatio: "1:1",
+    size: { width: 128, height: 128 },
+    category: "construction" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+];
 
 export const ICON_SUBSET: AssetEntry[] = [
   {
@@ -706,6 +748,24 @@ export const VILLAGE_REWARD_SUBSET: AssetEntry[] = [
     referenceTile: DEFAULT_REFERENCE_TILE,
   },
   {
+    id: "village_reward_faith",
+    name: "Village Reward: Faith",
+    description: "a humble village shrine at dawn — a small carved stone idol wreathed in incense smoke, votive offerings of flowers and grain, soft golden light and motes glowing in the air, a serene and sacred mood",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "village_reward_civic",
+    name: "Village Reward: Civic",
+    description: "wise village elders seated in a circle teaching customs and laws to a visitor, clay tablets and woven banners marked with symbols, a communal gathering beneath a great tree, warm daylight and an air of shared tradition",
+    aspectRatio: "1:1",
+    size: { width: 160, height: 160 },
+    category: "village_reward" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
     id: "village_reward_ambush",
     name: "Village Reward: Ambush",
     description: "a barbarian ambush at night, fierce warriors with crude weapons leaping from behind village huts, flames and smoke",
@@ -741,9 +801,24 @@ export const BUILDING_SUBSET: AssetEntry[] = [
   { id: "temple", name: "Temple", description: "an ancient temple with columns", category: "building", aspectRatio: "1:1", size: { width: 128, height: 128 } },
 ];
 
+// Tall natural wonders whose summit rises above the hex and overhangs the tiles
+// above (like the hand-painted hex-terrain/mountains.png). These use the magenta
+// chroma-key prompt + overhang post-process; flat wonders (lakes, reefs, dunes,
+// flats) keep the standard hex-masked tile pipeline.
+export const OVERHANG_NATURAL_WONDER_IDS = new Set<string>([
+  "mount_everest",
+  "mount_kilimanjaro",
+  "mount_fuji",
+  "matterhorn",
+  "mount_vesuvius",
+  "mount_roraima",
+  "zhangjiajie",
+]);
+
 // Each natural wonder is ONE full hex map TILE (256×384, same format as terrain),
 // generated and post-processed exactly like a terrain tile so it tessellates and
-// the renderer can draw it in place of the underlying terrain.
+// the renderer can draw it in place of the underlying terrain. Overhang wonders
+// (see above) instead let their peak rise above the hex footprint.
 export const NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.map((w) => ({
   id: w.id,
   name: w.name,
@@ -752,6 +827,7 @@ export const NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.map((w) =
   size: { width: 256, height: 384 },
   category: "natural_wonder" as const,
   referenceTile: DEFAULT_REFERENCE_TILE,
+  overhang: OVERHANG_NATURAL_WONDER_IDS.has(w.id),
 }));
 
 // Built world-wonders that lack hand-authored decor art. Each is ONE decor prop
@@ -791,7 +867,7 @@ export const WONDER_TILE_SUBSET: AssetEntry[] = GENERATED_WONDER_TILES.map((w) =
 }));
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...UNIQUE_INFRA_SUBSET, ...IMPROVEMENT_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...UNIQUE_INFRA_SUBSET, ...IMPROVEMENT_SUBSET, ...CONSTRUCTION_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -897,6 +973,9 @@ export function promptFor(entry: AssetEntry): string {
       return `Create a small standalone map improvement icon for an ancient turn-based strategy game. IMPORTANT: this improvement is built ON WATER and must read clearly as a structure standing in the open sea — NOT a house, hut, cabin, or building on dry land, and NOT sitting on grass, sand, or soil. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render it from a three-quarter or near-top-down view, centered, as an isolated improvement on a clean solid white background, with gentle blue-green water ripples ONLY right at its waterline/base as part of the sprite. Keep it compact so it reads as a tile overlay. Absolutely NO dry ground, NO grass, NO sand, NO dirt, NO field, NO enclosing hut or house walls, NO thatched roof, NO fence, NO text, NO UI, NO border, and NO cast shadow. Everything except the improvement and the small ripples at its waterline must be clean solid white so the background can be removed cleanly.`;
     }
     return `Create a small standalone map improvement icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated improvement on a clean solid white background. Keep it compact so it reads as a tile overlay. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The improvement should float cleanly on the white background with nothing else in the frame.`;
+  }
+  if (entry.category === "natural_wonder" && entry.overhang) {
+    return `Create a single tall hand-painted mountain sprite for an ancient turn-based strategy hex map, depicting the natural wonder "${entry.name}". ${entry.description}. Paint ONE mountain massif that fills the frame: a broad rocky base spanning the FULL WIDTH at the bottom of the image, rising to a dramatic snow-capped summit near the TOP of the image, so the peak is tall and towering rather than flat. View it straight-on from a slightly elevated angle as a flat 2D illustration with no 3D camera perspective; slightly stylized, saturated but natural colors, readable at small sizes, matching the painted look of the attached reference tile. The mountain's rock and snow must reach the LEFT, RIGHT, and BOTTOM edges of the frame so the base is solid and full-width. CRITICAL BACKGROUND RULE: every part of the image that is NOT the mountain — all of the sky around and above the peak and to either side — must be filled with a single FLAT, SOLID, UNIFORM pure magenta color (hex #FF00FF, RGB 255,0,255). The magenta must be perfectly flat with NO gradient, NO sky, NO clouds, NO haze, NO glow, NO atmosphere, and NO shading — a plain chroma-key backdrop so it can be removed cleanly. Do NOT use any magenta, pink, or purple anywhere on the mountain itself. No roads, no buildings, no people, no text, no labels, and no border.`;
   }
   if (entry.category === "natural_wonder") {
     return `Create a flat 2D hand-painted hexagonal strategy game map tile depicting the natural wonder "${entry.name}". ${entry.description}. The ENTIRE hex tile is filled by this one natural wonder as its terrain — the canyon, lake, reef, dunes, falls, forest or peak fills the whole hex, painted top-down/slightly-angled and readable at small sizes. Match the visual style of the attached reference tile: slightly stylized, saturated but natural colors, framed inside a vertical 2:3 pointy-top hex. IMPORTANT: do not include roads, paths, houses, huts, fences, farms, units, text, labels, or any man-made structures. Render as a flat 2D illustration with no 3D perspective, no realistic depth, and no camera angle shifts. Keep the same overall composition, camera angle, and hex footprint as the reference; the artwork must be fully self-contained and look correct in isolation, with nothing continuing off the tile edges. Preserve the soft shadow along the bottom edges of the hex, similar to the reference tile.`;

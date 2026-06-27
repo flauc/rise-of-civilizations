@@ -17,6 +17,7 @@ import {
 } from "@roc/data";
 import type { City, GameState, Player } from "./state";
 import { citiesOf, log, playerById, unitsOf } from "./state";
+import { civicsUnlocked } from "./civs";
 import { BUILDING_DEFS, UNIT_DEFS, isMilitary, isNaval, type BuildingId } from "./content";
 import { unitMaxHp } from "./combat";
 import { GLOBAL_MORALE_MAX, globalMoraleOf, recordMoraleEvent, recordMoraleGain } from "./morale";
@@ -84,6 +85,11 @@ export function playerGreatPersonPerTurn(state: GameState, playerId: number): Pa
     const c = cityGreatPersonPoints(city);
     for (const cls of Object.keys(c) as GreatPersonClass[]) out[cls] = (out[cls] ?? 0) + c[cls]!;
   }
+  // The Great Statesman belongs to the civics tree (its effect speeds civic
+  // reforms), so the capital's seat-of-government points only count once civics
+  // are unlocked — otherwise you'd bank statesman points with nowhere to spend.
+  const player = playerById(state, playerId);
+  if (player && !civicsUnlocked(player)) delete out.statesman;
   return out;
 }
 
@@ -212,6 +218,101 @@ function applyGreatPersonEffect(state: GameState, player: Player, def: GreatPers
       }
       liftGlobalMorale(state, player, GP_MORALE_LIFT);
       return n > 0 ? `healed ${n} unit${n === 1 ? "" : "s"}` : "your fleet is heartened";
+    }
+  }
+}
+
+export interface GreatPersonEffectPreview {
+  /** Short headline of the effect, e.g. "+160 science". */
+  summary: string;
+  /** A full sentence the UI can show before the player commits. */
+  detail: string;
+}
+
+/** Count of land military units that would gain a free promotion (drill). */
+function landMilitaryCount(state: GameState, playerId: number): number {
+  let n = 0;
+  for (const u of unitsOf(state, playerId)) {
+    const def2 = UNIT_DEFS[u.type];
+    if (isMilitary(u.type) && !isNaval(def2)) n += 1;
+  }
+  return n;
+}
+
+/** Count of units currently below full health (flagship heal). */
+function woundedCount(state: GameState, playerId: number): number {
+  let n = 0;
+  for (const u of unitsOf(state, playerId)) {
+    if (u.hp < unitMaxHp(u)) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Describe exactly what activating a figure will do, computed against the
+ * current state WITHOUT mutating it. Mirrors `applyGreatPersonEffect` so the
+ * confirmation dialog can never drift from the real effect — keep them in sync.
+ */
+export function previewGreatPersonEffect(
+  state: GameState,
+  player: Player,
+  def: GreatPersonDef,
+): GreatPersonEffectPreview {
+  switch (def.effect) {
+    case "eureka":
+      return {
+        summary: `+${EUREKA_SCIENCE} science`,
+        detail: `Grants a flash of insight worth +${EUREKA_SCIENCE} science, speeding your current research.`,
+      };
+    case "windfall":
+      return {
+        summary: `+${WINDFALL_GOLD} gold`,
+        detail: `Pours +${WINDFALL_GOLD} gold straight into your treasury.`,
+      };
+    case "masterwork": {
+      const city = bestProductionCity(state, player.id);
+      const where = city?.name ?? "your capital";
+      return {
+        summary: `+${MASTERWORK_PRODUCTION} production in ${where}`,
+        detail: `Directs a masterwork effort: +${MASTERWORK_PRODUCTION} production in ${where}, hurrying its current build.`,
+      };
+    }
+    case "inspiration":
+      return {
+        summary: `+${INSPIRATION_CULTURE} culture`,
+        detail: `Inspires your people with +${INSPIRATION_CULTURE} culture.`,
+      };
+    case "revelation":
+      return {
+        summary: `+${REVELATION_FAITH} faith`,
+        detail: `Sparks a revelation worth +${REVELATION_FAITH} faith, toward founding or spreading a religion.`,
+      };
+    case "reform":
+      return {
+        summary: `+${REFORM_CULTURE} culture`,
+        detail: `Enacts a reform worth +${REFORM_CULTURE} culture, speeding your civic progress.`,
+      };
+    case "drill": {
+      const n = landMilitaryCount(state, player.id);
+      return {
+        summary: n > 0 ? `a free promotion to ${n} land unit${n === 1 ? "" : "s"}` : "your army is heartened",
+        detail:
+          (n > 0
+            ? `Drills your army: a free promotion for each of your ${n} land military unit${n === 1 ? "" : "s"}.`
+            : `Heartens your army (you have no land military units to promote right now).`) +
+          ` Also lifts empire morale by +${GP_MORALE_LIFT}.`,
+      };
+    }
+    case "flagship": {
+      const n = woundedCount(state, player.id);
+      return {
+        summary: n > 0 ? `healed ${n} unit${n === 1 ? "" : "s"}` : "your fleet is heartened",
+        detail:
+          (n > 0
+            ? `Heals ${n} wounded unit${n === 1 ? "" : "s"} back to full health.`
+            : `Heartens your fleet (none of your units are wounded right now).`) +
+          ` Also lifts empire morale by +${GP_MORALE_LIFT}.`,
+      };
     }
   }
 }

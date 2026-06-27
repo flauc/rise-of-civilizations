@@ -255,28 +255,28 @@
         overflow: auto;
         z-index: 10;
       }
-      /* Compact unit summary bar — only used on mobile (hidden on desktop, where
-         the full panel always shows). Doubles as the expand/collapse control. */
-      .up-summary {
-        display: none;
+      /* Shared collapsible summary bar for the docked info panels (unit / tile /
+         city). The bar is always the tap target that expands/collapses the panel;
+         the detail body hides when the panel carries the .collapsed class. */
+      .ip-summary {
+        display: flex;
         width: 100%;
         align-items: center;
         gap: 8px;
-        background: none;
-        border: 0;
-        padding: 0;
-        color: inherit;
-        font: inherit;
         cursor: pointer;
         text-align: left;
       }
-      .up-sum-token {
-        width: 32px;
-        height: 32px;
-        flex: 0 0 32px;
+      .ip-icon {
+        width: 30px;
+        height: 30px;
+        flex: 0 0 30px;
         object-fit: contain;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 19px;
       }
-      .up-sum-name {
+      .ip-name {
         flex: 1;
         min-width: 0;
         font-size: 14px;
@@ -284,24 +284,39 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .up-sum-name b {
+      .ip-name b {
         color: var(--parchment);
       }
-      .up-sum-stats {
+      .ip-stats {
         display: flex;
-        gap: 10px;
+        gap: 8px;
         align-items: center;
         white-space: nowrap;
-        font-size: 13px;
+        font-size: 12px;
         color: #9fc0dc;
       }
-      .up-chevron {
+      .ip-close {
+        flex: 0 0 auto;
+        padding: 2px 7px;
+        font-size: 13px;
+      }
+      .ip-chevron {
         flex: 0 0 auto;
         color: var(--parchment-dim);
         transition: transform 0.15s ease;
       }
-      #unit-panel:not(.collapsed) .up-chevron {
+      .panel:not(.collapsed) .ip-chevron {
         transform: rotate(180deg);
+      }
+      .panel.collapsed .ip-detail {
+        display: none;
+      }
+      .panel:not(.collapsed) .ip-detail {
+        margin-top: 10px;
+      }
+      .panel.collapsed {
+        max-height: none !important;
+        overflow: visible !important;
       }
       /* Selected-tile panel (shares the bottom-left slot with the unit panel) */
       #tile-panel {
@@ -374,17 +389,65 @@
       #city-panel {
         right: max(12px, env(safe-area-inset-right));
         top: calc(132px + env(safe-area-inset-top));
-        width: 264px;
+        width: 256px;
+        max-height: min(76vh, 640px);
+        overflow: auto;
         z-index: 10;
       }
       .ygrid {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 3px 10px;
+        gap: 2px 10px;
         margin-top: 6px;
-        padding: 6px 8px;
+        padding: 5px 8px;
         background: rgba(201, 162, 39, 0.08);
         border-radius: 8px;
+      }
+      /* Compact rows inside the docked panels */
+      .cline {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #9fc0dc;
+      }
+      .cline b {
+        color: var(--parchment);
+      }
+      /* Secondary button that opens a sub-dialog (Choose Production / Specialists) */
+      .csheet-btn {
+        width: 100%;
+        margin-top: 6px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        text-align: left;
+      }
+      .csheet-btn .sub {
+        font-weight: 400;
+        color: #cfe3f7;
+      }
+      /* Tab bar for the construction dialog */
+      .ptabs {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .ptab {
+        flex: 1;
+        padding: 7px 4px;
+        border: 1px solid var(--edge);
+        border-radius: 8px;
+        background: rgba(201, 162, 39, 0.06);
+        color: var(--parchment-dim);
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+        text-align: center;
+      }
+      .ptab.active {
+        background: rgba(201, 162, 39, 0.16);
+        border-color: var(--accent);
+        color: var(--parchment);
       }
       #endturn2 {
         position: fixed;
@@ -481,6 +544,7 @@
       #great-people,
       #legends,
       #production,
+      #specialists,
       #save-modal {
         left: 50%;
         top: 50%;
@@ -797,6 +861,86 @@
         margin-bottom: 18px;
       }
       #village-dialog .btn {
+        padding: 8px 20px;
+      }
+      /* great-person activation confirmation */
+      #gp-activate-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 14, 11, 0.72);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 62;
+      }
+      #gp-activate-overlay.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #gp-activate-dialog {
+        position: fixed;
+        left: 50%;
+        top: 42%;
+        transform: translate(-50%, -50%);
+        width: min(400px, calc(100vw - 32px));
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 16px;
+        padding: 18px 20px;
+        text-align: center;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 63;
+      }
+      #gp-activate-dialog.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #gp-activate-dialog .gp-activate-art {
+        width: 132px;
+        height: 132px;
+        object-fit: contain;
+        margin: 0 auto 10px;
+        display: block;
+        border-radius: 12px;
+      }
+      #gp-activate-dialog .gp-activate-title {
+        font-family: 'Cinzel', Georgia, serif;
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--accent-bright);
+      }
+      #gp-activate-dialog .gp-activate-sub {
+        font-size: 13px;
+        color: var(--muted, #9a8c78);
+        margin-bottom: 12px;
+      }
+      #gp-activate-dialog .gp-activate-effect {
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--parchment);
+      }
+      #gp-activate-dialog .gp-activate-note {
+        font-size: 13px;
+        line-height: 1.45;
+        color: var(--muted, #9a8c78);
+        font-style: italic;
+        margin-top: 8px;
+      }
+      #gp-activate-dialog .gp-activate-warn {
+        font-size: 12px;
+        line-height: 1.4;
+        color: #d9b44a;
+        margin-top: 12px;
+      }
+      #gp-activate-dialog .gp-activate-actions {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        margin-top: 16px;
+      }
+      #gp-activate-dialog .btn {
         padding: 8px 20px;
       }
       /* log — hidden on the HUD; shown via the Game Log dialog */
@@ -1658,45 +1802,20 @@
           color: var(--parchment-dim);
           font-size: 10px;
         }
+        /* Mobile: all three docked info panels share the bottom slot, stretch
+           full-width, and collapse to just their summary bar (the .panel.collapsed
+           rule above) so a selection no longer eats half the screen. */
         #unit-panel,
-        #tile-panel {
-          left: max(6px, env(safe-area-inset-left));
-          right: max(6px, env(safe-area-inset-right));
-          width: auto;
-          min-width: 0;
-          top: auto;
-          bottom: calc(74px + env(safe-area-inset-bottom));
-          max-height: min(46vh, 320px);
-          overflow: auto;
-          z-index: 10;
-        }
-        /* Mobile: show the compact summary bar and only reveal the full detail
-           when expanded, so a selected unit no longer eats half the screen. */
-        #unit-panel {
-          bottom: calc(54px + env(safe-area-inset-bottom));
-        }
-        #unit-panel .up-summary {
-          display: flex;
-        }
-        #unit-panel.collapsed {
-          max-height: none;
-          overflow: visible;
-        }
-        #unit-panel.collapsed .up-detail {
-          display: none;
-        }
-        #unit-panel:not(.collapsed) .up-detail {
-          margin-top: 10px;
-        }
+        #tile-panel,
         #city-panel {
           left: max(6px, env(safe-area-inset-left));
           right: max(6px, env(safe-area-inset-right));
           width: auto;
           min-width: 0;
           top: auto;
-          bottom: calc(74px + env(safe-area-inset-bottom));
-          max-height: none;
-          overflow: visible;
+          bottom: calc(54px + env(safe-area-inset-bottom));
+          max-height: min(52vh, 360px);
+          overflow: auto;
           z-index: 10;
         }
         #endturn {
@@ -1721,6 +1840,7 @@
         #great-people,
         #legends,
         #production,
+        #specialists,
         #save-modal {
           width: calc(100vw - 20px);
           max-width: calc(100vw - 20px);

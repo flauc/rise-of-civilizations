@@ -1,6 +1,7 @@
 // Diplomacy UI: the first-contact dialog (two leaders side by side), a Contacts
-// screen listing met civs, and a per-civ negotiation view with a deal builder,
-// proposal inbox/outbox, active agreements, and a full trade history.
+// screen listing met civs, and a per-civ negotiation view with a relationship
+// summary, a consolidated proposal area, a collapsible deal builder, active
+// agreements, and a trade history.
 // Self-contained like empire.ts; ui.ts only toggles it and re-renders per frame.
 // Re-renders are signature-gated so the deal builder's inputs survive frames.
 
@@ -88,11 +89,30 @@ const STYLE = `
 .dp-badge{background:#5a3d6e;color:#f0e0ff;border-radius:10px;padding:0 7px;font-size:11px;font-weight:700;margin-left:6px}
 .dp-sec{margin-top:14px}
 .dp-sec h4{margin:0 0 6px;font-size:11px;color:#9fc0dc;text-transform:uppercase;letter-spacing:.05em}
-.dp-actbtns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+/* relationship header card */
+.dp-card{display:flex;gap:12px;padding:12px;border:1px solid var(--edge);border-radius:12px;background:linear-gradient(180deg,#13283b,#0f1f2d)}
+.dp-card .dp-pic{width:54px;height:64px;border-radius:8px}
+.dp-card-info{flex:1;min-width:0}
+.dp-card-name{font-weight:800;color:#fff;font-size:16px;display:flex;align-items:center;gap:6px}
+.dp-meter{position:relative;height:8px;border-radius:6px;margin:8px 0 5px;background:linear-gradient(90deg,#c0392b 0%,#d8a23a 50%,#3fae66 100%);box-shadow:inset 0 0 0 1px rgba(0,0,0,.35)}
+.dp-meter-mark{position:absolute;top:-3px;width:4px;height:14px;border-radius:3px;background:#fff;box-shadow:0 0 4px rgba(0,0,0,.6);transform:translateX(-2px)}
+.dp-meter-val{font-size:12px;color:#dceaf5;display:flex;justify-content:space-between}
+.dp-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.dp-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;border-radius:20px;padding:2px 9px;border:1px solid var(--edge);background:#16293c;color:#cfe3f7;white-space:nowrap}
+.dp-chip.war{background:#3a1716;border-color:#6b3030;color:#f0b3a8}
+.dp-chip.peace{background:#152a1f;border-color:#2f6b46;color:#a8e0bd}
+.dp-chip.warn{background:#3a2a12;border-color:#7a5a1f;color:#f0d49a}
+.dp-chip.treaty{background:#13243a;border-color:#34507a;color:#bcd6f5}
+/* compact action bar */
+.dp-actbar{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.dp-actbar .btn{padding:5px 9px;font-size:12.5px}
+.dp-actbtns{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
 .dp-actbtns input[type=number]{width:64px;background:#14283b;color:#eaf3fb;border:1px solid var(--edge);border-radius:6px;padding:3px 6px}
 .dp-mod{display:flex;justify-content:space-between;font-size:12px;padding:2px 0;border-bottom:1px dashed #1c3144}
 .dp-mod .v.pos{color:#7ad08a}
 .dp-mod .v.neg{color:#e0907d}
+/* deal builder */
+.dp-builder-toggle{width:100%;text-align:left;display:flex;justify-content:space-between;align-items:center}
 .dp-deal{margin-top:8px;border:1px solid var(--edge);border-radius:10px;padding:10px;background:#0f1d2a}
 .dp-cols{display:flex;gap:10px}
 .dp-col{flex:1;border:1px solid var(--edge);border-radius:8px;padding:8px;background:#11202e}
@@ -100,13 +120,19 @@ const STYLE = `
 .dp-col label{display:flex;align-items:center;gap:6px;font-size:12px;margin-top:4px;color:#cfe3f7}
 .dp-col input[type=number]{width:70px;background:#14283b;color:#eaf3fb;border:1px solid var(--edge);border-radius:6px;padding:3px 6px}
 .dp-col select{background:#14283b;color:#eaf3fb;border:1px solid var(--edge);border-radius:6px;max-width:100%}
+.dp-hint{font-size:11.5px;color:#e0c98a;margin-top:6px}
 .dp-summary{margin-top:8px;padding:8px 10px;border-radius:8px;background:#10283a;border:1px solid #234763;font-size:12.5px;color:#eaf3fb;line-height:1.5}
 .dp-summary b{color:#ffd967}
+/* offer cards */
 .dp-prop{border:1px solid #4a5a6e;background:#14222f;border-radius:9px;padding:10px;margin-top:8px}
-.dp-prop.in{border-color:#5a4a66;background:#251c30}
+.dp-prop.in{border-color:#7c5a8e;background:#251c30;box-shadow:0 0 0 1px #7c5a8e44}
 .dp-prop.ok{border-color:#2f6b46;background:#142a1f}
-.dp-prop.no{border-color:#6b3030;background:#2a1717}
 .dp-prop .exch{font-size:12.5px;color:#eaf3fb;margin:4px 0;line-height:1.5}
+.dp-prop b{color:#fff}
+.dp-resolved{display:flex;align-items:center;gap:8px;font-size:12px;color:#cba9a9;background:#221718;border:1px solid #4a2f2f;border-radius:8px;padding:6px 9px;margin-top:8px}
+.dp-resolved.ok-tone{color:#a9cbb3;background:#152017;border-color:#2f4a36}
+.dp-resolved .x{margin-left:auto;cursor:pointer;color:#9fc0dc;border:1px solid var(--edge);border-radius:6px;padding:1px 7px}
+.dp-resolved .x:hover{background:#2a1d1d}
 .dp-reason{font-size:12px;color:#cfe3f7;font-style:italic;margin-top:4px}
 .dp-agree{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;padding:5px 0;border-bottom:1px dashed #1c3144;color:#dceaf5}
 .dp-agree .end{color:#9fc0dc;font-size:11px;white-space:nowrap}
@@ -164,6 +190,8 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   document.body.appendChild(panel);
   let open = false;
   let selected: number | null = null; // civ id in the negotiation view
+  let builderOpen = false; // deal builder expanded?
+  let detailsOpen = false; // opinion + history expanded?
   let resultMsg = "";
   let lastSig = ""; // re-render only when meaningful state changes
 
@@ -268,12 +296,13 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       handlers.onRespondProposal(p.id, false); dismiss();
     });
     // Counter: drop into the negotiation view for that civ, where the offer is
-    // listed under "Pending business" alongside the full deal builder.
+    // listed alongside the (auto-opened) deal builder.
     propModal.querySelector<HTMLButtonElement>("#dpm-counter")?.addEventListener("click", () => {
       dismiss();
       open = true;
       panel.classList.remove("hidden");
       selected = p.fromId;
+      builderOpen = true;
       resultMsg = "";
       forceRender(state, viewerId);
     });
@@ -291,6 +320,15 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     }
   }
 
+  /** Proposals between the viewer and a civ that still need someone's attention. */
+  function actionableProposals(state: GameState, viewerId: number, cid: number): Proposal[] {
+    return state.diploProposals.filter(
+      (p) =>
+        (p.toId === viewerId && p.fromId === cid && p.status === "pending") || // they await us
+        (p.fromId === viewerId && p.toId === cid && p.status === "accepted"), // we must finalize
+    );
+  }
+
   // ---- signature: forces a re-render only when content actually changes ----
   function signature(state: GameState, viewerId: number): string {
     const me = state.players.find((p) => p.id === viewerId);
@@ -301,7 +339,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       .map((r) => `${r.a}-${r.b}:${r.status}:${r.openBorders ? 1 : 0}:${r.pact}:${r.deals.length}`)
       .join(",");
     const att = (me?.met ?? []).map((c) => `${c}=${attitudeScore(state, c, viewerId)}`).join(",");
-    return [open ? 1 : 0, selected ?? -1, state.turn, state.tradeHistory.length, props, rels, att, resultMsg].join("|");
+    return [open ? 1 : 0, selected ?? -1, builderOpen ? 1 : 0, detailsOpen ? 1 : 0, state.turn, state.tradeHistory.length, props, rels, att, resultMsg].join("|");
   }
 
   // ---- contacts panel ----
@@ -321,11 +359,9 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       for (const cid of met) {
         const rel = relationBetween(state, viewerId, cid);
         const war = rel?.status === "war";
-        const att = attitudeLabel(attitudeScore(state, cid, viewerId));
-        const pending = state.diploProposals.filter(
-          (p) => (p.fromId === cid || p.toId === cid) &&
-            ((p.toId === viewerId && p.status === "pending") || (p.fromId === viewerId && p.status === "accepted")),
-        ).length;
+        const score = attitudeScore(state, cid, viewerId);
+        const att = attitudeLabel(score);
+        const pending = actionableProposals(state, viewerId, cid).length;
         const treaties: string[] = [];
         if (rel?.openBorders) treaties.push("Open borders");
         if (rel && rel.pact !== "none") treaties.push(rel.pact.replace("_", " "));
@@ -350,42 +386,57 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     wire(state, viewerId);
   }
 
-  function renderProposals(state: GameState, viewerId: number, cid: number): string {
-    const involved = state.diploProposals.filter(
+  /**
+   * The consolidated proposal area. With the sim allowing only one standing offer
+   * per direction, this shows at most: an incoming offer to answer, an accepted
+   * offer to finalize, our pending offer awaiting a reply — plus a single compact
+   * line for the latest resolved (declined/accepted-elsewhere) outcome.
+   */
+  function renderOffers(state: GameState, viewerId: number, cid: number): string {
+    const mine = state.diploProposals.filter(
       (p) => (p.fromId === viewerId && p.toId === cid) || (p.fromId === cid && p.toId === viewerId),
     );
-    if (involved.length === 0) return "";
-    const cards = involved.map((p) => proposalCard(state, viewerId, p)).join("");
-    return `<div class="dp-sec"><h4>Pending business</h4>${cards}</div>`;
-  }
+    if (mine.length === 0) return "";
+    const live: string[] = [];
+    const resolved: string[] = [];
+    for (const p of mine) {
+      const incoming = p.toId === viewerId;
+      const exch = incoming
+        ? `<div class="exch">They give: <b>${describeItems(p.give)}</b><br/>You give: <b>${describeItems(p.want)}</b></div>`
+        : `<div class="exch">You give: <b>${describeItems(p.give)}</b><br/>They give: <b>${describeItems(p.want)}</b></div>`;
+      const reason = p.reason ? `<div class="dp-reason">“${p.reason}”</div>` : "";
 
-  function proposalCard(state: GameState, viewerId: number, p: Proposal): string {
-    const incoming = p.toId === viewerId; // they proposed to us
-    const exch = incoming
-      // From our perspective: they give p.give, we give p.want.
-      ? `<div class="exch">They give: <b>${describeItems(p.give)}</b><br/>You give: <b>${describeItems(p.want)}</b></div>`
-      : `<div class="exch">You give: <b>${describeItems(p.give)}</b><br/>They give: <b>${describeItems(p.want)}</b></div>`;
-    const reason = p.reason ? `<div class="dp-reason">“${p.reason}”</div>` : "";
-
-    if (incoming && p.status === "pending") {
-      const title = p.coercive ? "⚠ They demand tribute" : "📨 They propose a deal";
-      return `<div class="dp-prop in"><b>${title}</b>${exch}` +
-        `<div class="dp-actbtns"><button class="btn primary" data-accept="${p.id}">Accept</button>` +
-        `<button class="btn" data-reject="${p.id}">Decline</button></div></div>`;
+      if (incoming && p.status === "pending") {
+        const title = p.coercive ? "⚠ They demand tribute" : "📨 They propose a deal";
+        live.push(
+          `<div class="dp-prop in"><b>${title}</b>${exch}${reason}` +
+          `<div class="dp-actbtns"><button class="btn primary" data-accept="${p.id}">Accept</button>` +
+          (p.coercive ? "" : `<button class="btn" data-counter="${cid}">Counter</button>`) +
+          `<button class="btn" data-reject="${p.id}">${p.coercive ? "Refuse" : "Decline"}</button></div></div>`,
+        );
+      } else if (!incoming && p.status === "accepted") {
+        live.push(
+          `<div class="dp-prop ok"><b>✓ They accepted${p.coercive ? " your demand" : ""}</b>${exch}${reason}` +
+          `<div class="dp-actbtns"><button class="btn primary" data-finalize="${p.id}">Finalize deal</button>` +
+          `<button class="btn" data-cancel="${p.id}">Cancel</button></div></div>`,
+        );
+      } else if (!incoming && p.status === "pending") {
+        live.push(
+          `<div class="dp-prop"><b>⏳ Awaiting their response</b>${exch}` +
+          `<div class="dp-actbtns"><button class="btn" data-withdraw="${p.id}">Withdraw</button></div></div>`,
+        );
+      } else if (p.status === "declined") {
+        const who = incoming ? "You declined" : "They declined";
+        resolved.push(
+          `<div class="dp-resolved"><span>✗ ${who}${p.coercive ? " the demand" : " the offer"}` +
+          `${p.reason ? ` — “${p.reason}”` : ""}</span>` +
+          `<span class="x" data-cancel="${p.id}">Dismiss</span></div>`,
+        );
+      }
     }
-    // Outgoing (we proposed).
-    if (p.status === "pending") {
-      return `<div class="dp-prop"><b>⏳ Awaiting their response</b>${exch}` +
-        `<div class="dp-actbtns"><button class="btn" data-withdraw="${p.id}">Withdraw</button></div></div>`;
-    }
-    if (p.status === "accepted") {
-      return `<div class="dp-prop ok"><b>✓ They accepted${p.coercive ? " your demand" : ""}</b>${exch}${reason}` +
-        `<div class="dp-actbtns"><button class="btn primary" data-finalize="${p.id}">Finalize deal</button>` +
-        `<button class="btn" data-cancel="${p.id}">Cancel</button></div></div>`;
-    }
-    // declined
-    return `<div class="dp-prop no"><b>✗ They declined${p.coercive ? " your demand" : ""}</b>${exch}${reason}` +
-      `<div class="dp-actbtns"><button class="btn" data-cancel="${p.id}">Dismiss</button></div></div>`;
+    const inner = [...live, ...resolved].join("");
+    if (!inner) return "";
+    return `<div class="dp-sec"><h4>Active negotiation</h4>${inner}</div>`;
   }
 
   function renderAgreements(state: GameState, rel: Relation | undefined): string {
@@ -393,8 +444,8 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     const rows: string[] = [];
     const ends = (until?: number) =>
       until === undefined ? "" : `<span class="end">ends turn ${until} (${Math.max(0, until - state.turn)} left)</span>`;
-    if (rel.openBorders) rows.push(`<div class="dp-agree"><span>🚪 Open borders</span><span class="end">indefinite</span></div>`);
-    if (rel.pact !== "none") rows.push(`<div class="dp-agree"><span>🤝 ${rel.pact.replace("_", " ")}</span>${ends(rel.pactUntilTurn)}</div>`);
+    // Open borders / pacts surface as chips in the header; here we list the timed
+    // resource/gold/specialist obligations that actually have an end turn.
     for (const d of rel.deals) {
       const dir = d.fromId === rel.a ? `#${rel.a}→#${rel.b}` : `#${rel.b}→#${rel.a}`;
       rows.push(`<div class="dp-agree"><span>${describeItem(d.item)} <span class="dp-sub">(${dir})</span></span>${ends(d.untilTurn)}</div>`);
@@ -408,66 +459,99 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       .filter((t) => (t.fromId === viewerId && t.toId === cid) || (t.fromId === cid && t.toId === viewerId))
       .slice(-12)
       .reverse();
-    if (recs.length === 0) return `<div class="dp-sec"><h4>History</h4><div class="dp-empty">No dealings yet.</div></div>`;
-    const rows = recs.map((r: TradeRecord) => `<div class="dp-hist"><span class="t">T${r.turn}</span><span>${r.note}</span></div>`).join("");
-    return `<div class="dp-sec"><h4>History</h4>${rows}</div>`;
+    if (recs.length === 0) return `<div class="dp-empty">No dealings yet.</div>`;
+    return recs.map((r: TradeRecord) => `<div class="dp-hist"><span class="t">T${r.turn}</span><span>${r.note}</span></div>`).join("");
   }
 
-  function renderAttitude(state: GameState, viewerId: number, cid: number): string {
+  function renderOpinion(state: GameState, viewerId: number, cid: number): string {
     const at = state.attitudes.find((x) => x.from === cid && x.to === viewerId);
     const mods = (at?.modifiers ?? []).filter((m) => m.value !== 0);
-    if (mods.length === 0) return `<div class="dp-sec"><h4>Their opinion of you</h4><div class="dp-empty">No strong feelings either way.</div></div>`;
-    const rows = mods
+    if (mods.length === 0) return `<div class="dp-empty">No strong feelings either way.</div>`;
+    return mods
       .sort((a, b) => b.value - a.value)
       .map((m) => `<div class="dp-mod"><span>${m.reason}</span><span class="v ${m.value >= 0 ? "pos" : "neg"}">${m.value >= 0 ? "+" : ""}${m.value}</span></div>`)
       .join("");
-    return `<div class="dp-sec"><h4>Their opinion of you</h4>${rows}</div>`;
+  }
+
+  /** The relationship summary card: portrait, attitude meter, status chips. */
+  function relationshipCard(state: GameState, viewerId: number, cid: number, rel: Relation | undefined): string {
+    const war = rel?.status === "war";
+    const score = attitudeScore(state, cid, viewerId);
+    const rep = reputationOf(state, cid);
+    const pers = personalityLabel(personalityOf(cid, state));
+    const markPct = Math.max(0, Math.min(100, (score + 100) / 2));
+
+    const chips: string[] = [];
+    chips.push(`<span class="dp-chip ${war ? "war" : "peace"}">${war ? "⚔ War" : "🕊 Peace"}</span>`);
+    if (rel?.openBorders) chips.push(`<span class="dp-chip treaty">🚪 Open borders</span>`);
+    if (rel && rel.pact !== "none") {
+      const left = rel.pactUntilTurn !== undefined ? ` · ${Math.max(0, rel.pactUntilTurn - state.turn)}t left` : "";
+      chips.push(`<span class="dp-chip treaty">🤝 ${rel.pact.replace("_", " ")}${left}</span>`);
+    }
+    if (rep > 0) chips.push(`<span class="dp-chip warn">⚠ Warmonger ${rep}</span>`);
+
+    return (
+      `<div class="dp-card">` +
+      `<img class="dp-pic" src="${portrait(civOf(cid, state)?.id)}" onerror="this.style.visibility='hidden'"/>` +
+      `<div class="dp-card-info">` +
+      `<div class="dp-card-name">${civName(cid, state)}</div>` +
+      `<div class="dp-sub">${leaderName(cid, state)} · ${pers}</div>` +
+      `<div class="dp-meter"><div class="dp-meter-mark" style="left:${markPct}%"></div></div>` +
+      `<div class="dp-meter-val"><span>${attitudeLabel(score)} (${score >= 0 ? "+" : ""}${score})</span><span class="dp-sub">their view of you</span></div>` +
+      `<div class="dp-chips">${chips.join("")}</div>` +
+      `</div></div>`
+    );
   }
 
   function renderNegotiation(state: GameState, viewerId: number, cid: number): string {
     const rel = relationBetween(state, viewerId, cid);
     const war = rel?.status === "war";
-    const att = attitudeScore(state, cid, viewerId);
-    const rep = reputationOf(state, cid);
-    const pers = personalityLabel(personalityOf(cid, state));
     const yourGold = Math.floor(state.players.find((p) => p.id === viewerId)?.gold ?? 0);
+    const pendingOut = state.diploProposals.some(
+      (p) => p.fromId === viewerId && p.toId === cid && p.status === "pending",
+    );
 
-    const header =
-      `<div class="dp-row" style="cursor:default">` +
-      `<img class="dp-pic" src="${portrait(civOf(cid, state)?.id)}" onerror="this.style.visibility='hidden'"/>` +
-      `<div style="flex:1"><div class="dp-rname">${civName(cid, state)}</div>` +
-      `<div class="dp-sub">${leaderName(cid, state)} · ${pers}</div>` +
-      `<div class="dp-sub">${attitudeLabel(att)} (${att >= 0 ? "+" : ""}${att})${rep > 0 ? ` · ⚠ warmonger ${rep}` : ""}</div></div>` +
-      `<span class="${war ? "dp-war" : "dp-peace"}">${war ? "⚔ War" : "🕊 Peace"}</span></div>`;
-
-    const quickActions =
-      `<div class="dp-actbtns">` +
+    const actionBar =
+      `<div class="dp-sec"><h4>Actions</h4>` +
+      `<div class="dp-actbar">` +
       (war
-        ? `<button class="btn primary" data-act="peace">🕊 Make Peace</button>`
-        : `<button class="btn" data-act="war" style="color:#e0907d">⚔ Declare War</button>`) +
+        ? `<button class="btn primary" data-act="peace">🕊 Make peace</button>`
+        : `<button class="btn" data-act="war" style="color:#e0907d">⚔ Declare war</button>`) +
       `<button class="btn" data-act="denounce">📢 Denounce</button>` +
       `</div>` +
       `<div class="dp-actbtns">` +
       `<label class="dp-sub">🎁 Gift <input type="number" id="gift-amt" min="0" max="${yourGold}" value="50"/>🪙</label>` +
-      `<button class="btn" data-act="gift">Send gift</button>` +
-      `</div>` +
-      `<div class="dp-actbtns">` +
+      `<button class="btn" data-act="gift">Send</button>` +
       `<label class="dp-sub">⚔ Demand <input type="number" id="demand-amt" min="0" value="50"/>🪙</label>` +
-      `<button class="btn" data-act="demand">Demand tribute</button>` +
+      `<button class="btn" data-act="demand">Demand</button>` +
+      `</div></div>`;
+
+    const builderToggle =
+      `<div class="dp-sec">` +
+      `<button class="btn dp-builder-toggle" id="dp-builder-toggle"><span>➕ Propose a deal</span><span>${builderOpen ? "▾" : "▸"}</span></button>` +
+      (builderOpen ? dealBuilder(state, viewerId, cid, war, yourGold, rel, pendingOut) : "") +
+      `</div>`;
+
+    const detailsToggle =
+      `<div class="dp-sec">` +
+      `<button class="btn dp-builder-toggle" id="dp-details-toggle"><span>📜 Opinion & history</span><span>${detailsOpen ? "▾" : "▸"}</span></button>` +
+      (detailsOpen
+        ? `<div class="dp-sec"><h4>Their opinion of you</h4>${renderOpinion(state, viewerId, cid)}</div>` +
+          `<div class="dp-sec"><h4>History</h4>${renderHistory(state, viewerId, cid)}</div>`
+        : "") +
       `</div>`;
 
     return (
-      header +
-      renderProposals(state, viewerId, cid) +
-      `<div class="dp-sec"><h4>Actions</h4>${quickActions}</div>` +
-      dealBuilder(state, viewerId, cid, war, yourGold, rel) +
+      relationshipCard(state, viewerId, cid, rel) +
+      renderOffers(state, viewerId, cid) +
+      actionBar +
+      builderToggle +
       renderAgreements(state, rel) +
-      renderAttitude(state, viewerId, cid) +
-      renderHistory(state, viewerId, cid)
+      detailsToggle
     );
   }
 
-  function dealBuilder(state: GameState, viewerId: number, cid: number, war: boolean, yourGold: number, rel: Relation | undefined): string {
+  function dealBuilder(state: GameState, viewerId: number, cid: number, war: boolean, yourGold: number, rel: Relation | undefined, pendingOut: boolean): string {
     const myLux = tradeableLuxuries(state, viewerId);
     const theirLux = tradeableLuxuries(state, cid);
     const mySpec = specialistTypesOf(state, viewerId);
@@ -483,7 +567,8 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     const pactOpts: [string, string][] = [["non_aggression", "non-aggression"], ["defensive", "defensive pact"], ["alliance", "alliance"]];
     const availPacts = pactOpts.filter(([v]) => (rank[v] ?? 0) > curPact);
     return (
-      `<div class="dp-sec"><h4>Propose a deal</h4><div class="dp-deal">` +
+      `<div class="dp-deal">` +
+      (pendingOut ? `<div class="dp-hint">You already have an offer awaiting their reply — proposing again replaces it.</div>` : "") +
       `<div class="dp-cols">` +
       `<div class="dp-col"><h5>You give</h5>` +
       `<label>🪙 <input type="number" id="give-gold" min="0" max="${yourGold}" value="0"/></label>` +
@@ -503,8 +588,8 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
         ? `<label class="dp-sub" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">🤝 Pact <select id="deal-pact"><option value="">none</option>${availPacts.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select> for <input type="number" id="deal-pact-turns" min="5" max="60" value="20" style="width:54px"/> turns</label>`
         : "") +
       `<div class="dp-summary" id="deal-summary">Add items to build an offer.</div>` +
-      `<button class="btn primary" id="deal-propose" style="margin-top:8px;width:100%">Propose deal</button>` +
-      `</div></div>`
+      `<button class="btn primary" id="deal-propose" style="margin-top:8px;width:100%">${pendingOut ? "Revise offer" : "Propose deal"}</button>` +
+      `</div>`
     );
   }
 
@@ -541,7 +626,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     panel.querySelector<HTMLButtonElement>("#dp-close")?.addEventListener("click", close);
     panel.querySelector<HTMLButtonElement>("#dp-back")?.addEventListener("click", () => { selected = null; resultMsg = ""; forceRender(state, viewerId); });
     panel.querySelectorAll<HTMLDivElement>("[data-civ]").forEach((el) =>
-      el.addEventListener("click", () => { selected = Number(el.dataset.civ); resultMsg = ""; forceRender(state, viewerId); }),
+      el.addEventListener("click", () => { selected = Number(el.dataset.civ); builderOpen = false; detailsOpen = false; resultMsg = ""; forceRender(state, viewerId); }),
     );
     // Proposal inbox/outbox actions.
     panel.querySelectorAll<HTMLButtonElement>("[data-accept]").forEach((el) =>
@@ -550,13 +635,18 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       el.addEventListener("click", () => handlers.onRespondProposal(Number(el.dataset.reject), false)));
     panel.querySelectorAll<HTMLButtonElement>("[data-finalize]").forEach((el) =>
       el.addEventListener("click", () => handlers.onFinalizeDeal(Number(el.dataset.finalize), true)));
-    panel.querySelectorAll<HTMLButtonElement>("[data-cancel]").forEach((el) =>
+    panel.querySelectorAll<HTMLElement>("[data-cancel]").forEach((el) =>
       el.addEventListener("click", () => handlers.onFinalizeDeal(Number(el.dataset.cancel), false)));
     panel.querySelectorAll<HTMLButtonElement>("[data-withdraw]").forEach((el) =>
       el.addEventListener("click", () => handlers.onFinalizeDeal(Number(el.dataset.withdraw), false)));
+    // Counter an incoming offer → open the deal builder for that civ.
+    panel.querySelectorAll<HTMLButtonElement>("[data-counter]").forEach((el) =>
+      el.addEventListener("click", () => { builderOpen = true; resultMsg = ""; forceRender(state, viewerId); }));
 
     const cid = selected;
     if (cid !== null) {
+      panel.querySelector<HTMLButtonElement>("#dp-builder-toggle")?.addEventListener("click", () => { builderOpen = !builderOpen; forceRender(state, viewerId); });
+      panel.querySelector<HTMLButtonElement>("#dp-details-toggle")?.addEventListener("click", () => { detailsOpen = !detailsOpen; forceRender(state, viewerId); });
       panel.querySelectorAll<HTMLButtonElement>("[data-act]").forEach((el) =>
         el.addEventListener("click", () => {
           switch (el.dataset.act) {
@@ -568,15 +658,17 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
           }
         }),
       );
-      // Live exchange summary as the builder changes.
-      panel.querySelectorAll<HTMLElement>(".dp-deal input, .dp-deal select").forEach((el) =>
-        el.addEventListener("input", updateSummary));
-      updateSummary();
-      panel.querySelector<HTMLButtonElement>("#deal-propose")?.addEventListener("click", () => {
-        const { give, want } = readDeal();
-        if (give.length === 0 && want.length === 0) { resultMsg = "Add something to the deal first."; forceRender(state, viewerId); return; }
-        handlers.onProposeDeal(cid, give, want);
-      });
+      if (builderOpen) {
+        // Live exchange summary as the builder changes.
+        panel.querySelectorAll<HTMLElement>(".dp-deal input, .dp-deal select").forEach((el) =>
+          el.addEventListener("input", updateSummary));
+        updateSummary();
+        panel.querySelector<HTMLButtonElement>("#deal-propose")?.addEventListener("click", () => {
+          const { give, want } = readDeal();
+          if (give.length === 0 && want.length === 0) { resultMsg = "Add something to the deal first."; forceRender(state, viewerId); return; }
+          handlers.onProposeDeal(cid, give, want);
+        });
+      }
     }
   }
 
@@ -599,7 +691,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     toggleContacts(state, viewerId) {
       open = !open;
       panel.classList.toggle("hidden", !open);
-      if (open) { selected = null; resultMsg = ""; forceRender(state, viewerId); }
+      if (open) { selected = null; builderOpen = false; detailsOpen = false; resultMsg = ""; forceRender(state, viewerId); }
     },
     close,
     isOpen: () => open,

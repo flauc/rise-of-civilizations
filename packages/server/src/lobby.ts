@@ -47,6 +47,8 @@ export interface LobbyGame {
   barbarians: BarbarianActivity;
   naturalWonders: boolean;
   startingGold: StartingGold;
+  /** Turn at which the score victory triggers; 0 = unlimited. */
+  turnLimit: number;
   /** Optional join password; empty/undefined means the game is open. */
   password?: string;
   hostUserId: string;
@@ -70,6 +72,8 @@ export interface CreateOptions {
   barbarians?: BarbarianActivity;
   naturalWonders?: boolean;
   startingGold?: StartingGold;
+  /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
+  turnLimit?: number;
   password?: string;
   /** Civ id per AI opponent; null = a random unique civ. */
   aiCivIds?: (string | null)[];
@@ -89,6 +93,8 @@ export interface ConfigurePatch {
   barbarians?: BarbarianActivity;
   naturalWonders?: boolean;
   startingGold?: StartingGold;
+  /** Turn at which the score victory triggers; 0 = unlimited. */
+  turnLimit?: number;
 }
 
 export interface SlotPatch {
@@ -156,6 +162,7 @@ export class Lobby {
       barbarians: opts.barbarians ?? "normal",
       naturalWonders: opts.naturalWonders ?? false,
       startingGold: opts.startingGold ?? "balanced",
+      turnLimit: opts.turnLimit ?? 120,
       password: opts.password || undefined,
       hostUserId: ownerUserId,
       slots,
@@ -204,6 +211,7 @@ export class Lobby {
     if (patch.barbarians !== undefined) game.barbarians = patch.barbarians;
     if (patch.naturalWonders !== undefined) game.naturalWonders = patch.naturalWonders;
     if (patch.startingGold !== undefined) game.startingGold = patch.startingGold;
+    if (patch.turnLimit !== undefined) game.turnLimit = Math.max(0, Math.floor(patch.turnLimit));
     return { ok: true };
   }
 
@@ -313,6 +321,7 @@ export class Lobby {
       barbarians: g.barbarians,
       naturalWonders: g.naturalWonders,
       startingGold: g.startingGold,
+      turnLimit: g.turnLimit,
       hasPassword: !!g.password,
       slots: g.slots.map((s) => ({
         id: s.id,
@@ -349,6 +358,7 @@ export class Lobby {
       barbarians: game.barbarians,
       naturalWonders: game.naturalWonders,
       startingGold: game.startingGold,
+      turnLimit: game.turnLimit,
       civIds,
       colors,
     });

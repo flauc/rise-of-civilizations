@@ -1,6 +1,6 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City, Player, Unit } from "./state";
-import { cityAt, log, makeUnit, playerById, unitAt, unitsOf } from "./state";
+import { areEnemies, cityAt, log, makeUnit, playerById, unitAt, unitsOf } from "./state";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, isForestTerrain, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
@@ -41,6 +41,16 @@ export interface CityYields {
 
 const CITY_RADIUS = 2;
 
+/** True if an enemy or barbarian unit is standing on the tile, blocking the city
+ *  from working it (citizens won't venture out under a hostile occupation). */
+export function tileBlockedByEnemy(state: GameState, city: City, col: number, row: number): boolean {
+  const unit = unitAt(state, col, row);
+  if (!unit) return false;
+  const cityOwner = playerById(state, city.ownerId);
+  const unitOwner = playerById(state, unit.ownerId);
+  return !!cityOwner && !!unitOwner && areEnemies(cityOwner, unitOwner);
+}
+
 /** Tiles within the city's work radius (owned by it) that a citizen may work. */
 export function workableTiles(state: GameState, city: City): { col: number; row: number }[] {
   const { map } = state;
@@ -58,15 +68,26 @@ export function workableTiles(state: GameState, city: City): { col: number; row:
       if (!tile || tile.ownerCityId !== city.id) continue;
       const other = cityAt(state, c, r);
       if (other && other.id !== city.id) continue;
+      // An enemy/barbarian unit sitting on the tile blocks it from being worked.
+      if (tileBlockedByEnemy(state, city, c, r)) continue;
       tiles.push({ col: c, row: r });
     }
   }
   return tiles;
 }
 
-/** Citizen-assignment desirability of a tile's yields (food-leaning early). */
-export function citizenScore(y: Yields): number {
-  return y.food * 1.0 + y.production * 0.8 + y.gold * 0.5 + y.science * 0.6;
+/** Citizen-assignment desirability of a tile's yields (food-leaning early).
+ *  Every yield a tile can produce is weighted so that faith/culture tiles
+ *  (forest faith bonuses, natural wonders, etc.) aren't treated as worthless. */
+export function citizenScore(y: Yields & { culture?: number }): number {
+  return (
+    y.food * 1.0 +
+    y.production * 0.8 +
+    y.gold * 0.5 +
+    y.science * 0.6 +
+    y.faith * 0.5 +
+    (y.culture ?? 0) * 0.5
+  );
 }
 
 /** True if the tile has fresh water (lake or adjacent lake). Rivers/marsh are not separate terrains in this map model. */
@@ -168,6 +189,7 @@ export function getCityYields(state: GameState, city: City): CityYields {
     const [col, row] = key.split(",").map(Number) as [number, number];
     const tile = getTile(map, col, row);
     if (!tile || tile.ownerCityId !== city.id) continue; // ignore lost tiles
+    if (tileBlockedByEnemy(state, city, col, row)) continue; // hostile occupation yields nothing
     const y = tileWorkYields(state, col, row, eff);
     food += y.food;
     production += y.production;
@@ -308,7 +330,10 @@ function tileScorer(state: GameState, city: City): (key: string) => number {
   return (key: string): number => {
     const [c, r] = key.split(",").map(Number) as [number, number];
     const tile = getTile(state.map, c, r);
-    return tile ? citizenScore(tileWorkYields(state, c, r, eff)) : -Infinity;
+    if (!tile) return -Infinity;
+    // Culture from natural wonders is summed separately in getCityYields (not part
+    // of tileWorkYields), so fold it in here or scenic tiles look worthless.
+    return citizenScore({ ...tileWorkYields(state, c, r, eff), culture: naturalWonderCulture(tile) });
   };
 }
 

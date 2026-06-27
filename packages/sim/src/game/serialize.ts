@@ -57,6 +57,8 @@ export interface PlayerPublic {
 
 export interface PlayerView {
   turn: number;
+  /** Turn at which the score victory triggers; 0 = unlimited (no turn cap). */
+  turnLimit: number;
   yourId: number;
   you: {
     gold: number;
@@ -214,6 +216,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
 
   return {
     turn: state.turn,
+    turnLimit: state.turnLimit,
     yourId: playerId,
     you: {
       gold: me?.gold ?? 0,
@@ -244,7 +247,9 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     },
     religions: state.religions.map((r) => ({ ...r, beliefs: [...r.beliefs] })),
     tradeRoutes: state.tradeRoutes.filter((r) => r.ownerId === playerId).map((r) => ({ ...r })),
-    works: state.works.filter((w) => w.ownerId === playerId).map((w) => ({ ...w, cityIds: [...w.cityIds] })),
+    works: state.works
+      .filter((w) => w.ownerId === playerId)
+      .map((w) => ({ ...w, cityIds: [...w.cityIds], assignedSpecialistIds: [...w.assignedSpecialistIds] })),
     completedWonders: [...state.completedWonders],
     recruitedGreatPeople: [...(state.recruitedGreatPeople ?? [])],
     legendsEnabled: state.legendsEnabled ?? true,
@@ -368,7 +373,11 @@ export function deserializeState(s: SerializedState): GameState {
     turnLimit: s.turnLimit,
     religions: s.religions,
     tradeRoutes: s.tradeRoutes ?? [],
-    works: s.works ?? [],
+    works: (s.works ?? []).map((w) => ({
+      ...w,
+      cityIds: w.cityIds ?? [],
+      assignedSpecialistIds: w.assignedSpecialistIds ?? [],
+    })),
     completedWonders: s.completedWonders ?? [],
     recruitedGreatPeople: s.recruitedGreatPeople ?? [],
     legendsEnabled: s.legendsEnabled ?? true,

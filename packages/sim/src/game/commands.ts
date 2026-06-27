@@ -21,15 +21,17 @@ import { applyVictoryCheck } from "./victory";
 import { convertCitizen, type SpecialistId } from "./specialists";
 import {
   advanceWorks,
-  assignCityToWonder,
+  assignSpecialist,
   cancelWork,
   startWonder,
   startWork,
+  unassignSpecialistEverywhere,
 } from "./works";
+import { rushCity, rushWork, type RushCurrency } from "./rush";
 import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter } from "./features";
 import { foundReligion, spreadReligion } from "./religion";
-import { establishTradeRoute, pruneTradeRoutes } from "./trade";
+import { establishTradeRoute, cancelTradeRoute, pruneTradeRoutes } from "./trade";
 import { pillageTile, plunderTradeRoute, sackCityCommand } from "./raiding";
 import { bribeBarbarian, recruitBarbarian, pruneBarbarianBribes } from "./bribery";
 import { useLeaderAbility } from "./leader-abilities";
@@ -74,9 +76,11 @@ export type Command =
   | { type: "convertCitizen"; cityId: number; specialistId: string; delta: number }
   | { type: "startWork"; kind: string; col: number; row: number }
   | { type: "startWonder"; wonderId: string; col: number; row: number }
-  | { type: "assignCityToWonder"; workId: number; cityId: number; on: boolean }
+  | { type: "assignSpecialist"; workId: number; specialistId: number; on: boolean }
   | { type: "cancelWork"; workId: number }
   | { type: "setProduction"; cityId: number; item: ProductionItem }
+  | { type: "rushProduction"; cityId: number; currency: RushCurrency }
+  | { type: "rushWork"; workId: number; currency: RushCurrency }
   | { type: "assignCitizen"; cityId: number; col: number; row: number }
   | { type: "setResearch"; techId: TechId }
   | { type: "setResearchTarget"; techId: TechId }
@@ -85,6 +89,7 @@ export type Command =
   | { type: "togglePolicy"; policyId: string }
   | { type: "foundReligion"; cityId: number; name: string; beliefs: string[] }
   | { type: "establishTradeRoute"; unitId: number; destCityId: number }
+  | { type: "cancelTradeRoute"; routeId: number }
   | { type: "bribeBarbarian"; unitId: number }
   | { type: "recruitBarbarian"; unitId: number }
   | { type: "pillage"; unitId: number }
@@ -310,7 +315,11 @@ export function applyCommand(
       if (!city) return fail("no such city");
       if (city.ownerId !== player.id) return fail("not your city");
       const res = convertCitizen(state, city, cmd.specialistId as SpecialistId, cmd.delta);
-      if (res.ok) autoAssignCitizens(state, city); // re-staff tiles around the new specialist count
+      if (res.ok) {
+        // A released craftsman must drop off any Work it was labouring on.
+        if (res.releasedId !== undefined) unassignSpecialistEverywhere(state, player.id, res.releasedId);
+        autoAssignCitizens(state, city); // re-staff tiles around the new specialist count
+      }
       return res;
     }
 
@@ -322,8 +331,8 @@ export function applyCommand(
       return startWonder(state, player.id, cmd.wonderId, cmd.col, cmd.row);
     }
 
-    case "assignCityToWonder": {
-      return assignCityToWonder(state, cmd.workId, cmd.cityId, cmd.on, player.id);
+    case "assignSpecialist": {
+      return assignSpecialist(state, player.id, cmd.workId, cmd.specialistId, cmd.on);
     }
 
     case "cancelWork": {
@@ -338,8 +347,7 @@ export function applyCommand(
       if (!availablePromotions(unit).includes(cmd.promotion)) return fail("invalid promotion");
       unit.promotions.push(cmd.promotion);
       unit.unspentPromotions -= 1;
-      if (cmd.promotion === "engineer") unit.charges += 1;
-      if (cmd.promotion === "colonist" || cmd.promotion === "survival_training") {
+      if (cmd.promotion === "colonist") {
         // HP-boosting promotions also heal the unit by the same amount.
         unit.hp = Math.min(unitMaxHp(unit), unit.hp + 15);
       }
@@ -392,6 +400,14 @@ export function applyCommand(
       if (!allowed) return fail("cannot build that");
       city.production = cmd.item;
       return ok;
+    }
+
+    case "rushProduction": {
+      return rushCity(state, player.id, cmd.cityId, cmd.currency);
+    }
+
+    case "rushWork": {
+      return rushWork(state, player.id, cmd.workId, cmd.currency);
     }
 
     case "assignCitizen": {
@@ -461,6 +477,10 @@ export function applyCommand(
 
     case "establishTradeRoute": {
       return establishTradeRoute(state, cmd.unitId, cmd.destCityId, player.id);
+    }
+
+    case "cancelTradeRoute": {
+      return cancelTradeRoute(state, cmd.routeId, player.id);
     }
 
     case "bribeBarbarian":

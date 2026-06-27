@@ -22,6 +22,7 @@ export * from "./trade";
 export * from "./diplomacy";
 export * from "./specialists";
 export * from "./works";
+export * from "./rush";
 export * from "./features";
 export * from "./resources";
 export * from "./natural-wonders";

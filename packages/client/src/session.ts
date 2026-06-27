@@ -64,6 +64,8 @@ export interface LocalGameOptions {
   naturalWonders?: boolean;
   /** Starting gold treasury preset. */
   startingGold?: "tight" | "balanced" | "generous";
+  /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
+  turnLimit?: number;
   /** The human player's civilization. */
   civId?: string;
   /** Civ id per AI opponent; null/undefined = a random unique civ. */
@@ -100,6 +102,7 @@ export class LocalSession implements Session {
         legends: opts.legends ?? true,
         naturalWonders: opts.naturalWonders ?? false,
         startingGold: opts.startingGold ?? "balanced",
+        turnLimit: opts.turnLimit ?? 120,
         civIds,
         colors: opts.colors ?? undefined,
       });
@@ -223,7 +226,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     nextEntityId: 1,
     log: view.log,
     gameOver: view.gameOver,
-    turnLimit: 0,
+    turnLimit: view.turnLimit ?? 0,
     religions: view.religions,
     tradeRoutes: view.tradeRoutes ?? [],
     works: view.works ?? [],

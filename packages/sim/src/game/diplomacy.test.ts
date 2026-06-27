@@ -7,7 +7,7 @@ import {
   relationBetween, haveMet, atWar, attitudeScore,
   declareWar, makePeace, gift, proposeDeal, demandTribute, finalizeDeal,
   respondProposal, militaryPower, aiInitiateTrade, aiConsiderDiplomacy,
-  ensureContact, foreignTerritoryOwner,
+  ensureContact, foreignTerritoryOwner, denounce,
 } from "./diplomacy";
 import { makeUnit } from "./state";
 import { areEnemies, unitsOf, type GameState } from "./state";
@@ -117,6 +117,18 @@ describe("diplomacy", () => {
     expect(s.players[1]!.gold).toBe(aiGold + 30);
   });
 
+  it("re-proposing supersedes the prior pending offer to the same civ", () => {
+    // 2 humans so offers stay pending (an AI would resolve them at once).
+    const s = createGame({ seed: "dip3", cols: 40, rows: 28, barbarians: false, humanSlots: 2, playerCount: 2 });
+    ensureContact(s, 0, 1);
+    s.players[0]!.gold = 100;
+    expect(proposeDeal(s, 0, 1, [{ kind: "gold", amount: 10 }], []).ok).toBe(true);
+    expect(proposeDeal(s, 0, 1, [{ kind: "gold", amount: 25 }], []).ok).toBe(true);
+    const pending = s.diploProposals.filter((p) => p.fromId === 0 && p.toId === 1 && p.status === "pending");
+    expect(pending).toHaveLength(1); // not two stacked offers
+    expect(pending[0]!.give).toEqual([{ kind: "gold", amount: 25 }]); // the latest one
+  });
+
   it("the AI won't pay exorbitant sums for soft concessions (open borders)", () => {
     const s = twoCivGame();
     ensureContact(s, 0, 1);
@@ -224,6 +236,75 @@ describe("diplomacy", () => {
     expect(respondProposal(s, 0, demand!.id, false).ok).toBe(true);
     aiConsiderDiplomacy(s, 1);
     expect(atWar(s, 0, 1)).toBe(true);
+  });
+
+  it("does not re-pitch an offer a human has just rejected", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    // Give the AI a worked incense plantation (a spare luxury) and the human wine,
+    // so the AI has a clear, repeatable reason to keep proposing a wine-for-X deal.
+    const human = s.nextEntityId++;
+    s.cities.set(human, { id: human, ownerId: 0, name: "Mine", col: 6, row: 6, population: 2, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
+    const tw = getTile(s.map, 7, 6)!; tw.terrain = "grassland"; tw.resource = "wine"; tw.improvement = "plantation"; tw.ownerCityId = human;
+    const aiCity = s.nextEntityId++;
+    s.cities.set(aiCity, { id: aiCity, ownerId: 1, name: "Theirs", col: 20, row: 12, population: 2, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
+    const ti = getTile(s.map, 21, 12)!; ti.terrain = "desert"; ti.resource = "incense"; ti.improvement = "plantation"; ti.ownerCityId = aiCity;
+    s.players[1]!.gold = 200;
+
+    expect(aiInitiateTrade(s, 1, 0)).toBe(true);
+    const prop = s.diploProposals.find((p) => p.fromId === 1 && p.toId === 0)!;
+    expect(respondProposal(s, 0, prop.id, false).ok).toBe(true); // human rejects
+    // It must NOT immediately fire off the same deal again.
+    expect(aiInitiateTrade(s, 1, 0)).toBe(false);
+    expect(s.diploProposals.some((p) => p.fromId === 1 && p.toId === 0 && p.status === "pending")).toBe(false);
+  });
+
+  it("counters an underpriced offer instead of flatly refusing", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    // The AI owns a worked wine plantation → a luxury it can put up for trade.
+    const aiCity = s.nextEntityId++;
+    s.cities.set(aiCity, { id: aiCity, ownerId: 1, name: "Theirs", col: 20, row: 12, population: 2, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
+    const tw = getTile(s.map, 21, 12)!; tw.terrain = "grassland"; tw.resource = "wine"; tw.improvement = "plantation"; tw.ownerCityId = aiCity;
+    s.players[0]!.gold = 50;
+    // Human lowballs: 5 gold for the AI's wine. The AI should counter, not just decline.
+    expect(proposeDeal(s, 0, 1, [{ kind: "gold", amount: 5 }], [{ kind: "resource", id: "wine", turns: 20 }]).ok).toBe(true);
+    const orig = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(orig.status).toBe("declined");
+    const counter = s.diploProposals.find((p) => p.fromId === 1 && p.toId === 0 && p.status === "pending");
+    expect(counter).toBeDefined();
+    expect(counter!.give.some((it) => it.kind === "resource" && it.id === "wine")).toBe(true); // AI offers the wine
+    const askGold = counter!.want.find((it) => it.kind === "gold") as { kind: "gold"; amount: number } | undefined;
+    expect(askGold && askGold.amount > 5).toBe(true); // …but at a fairer price
+  });
+
+  it("won't act militarily with no army — but turns aggressive once it raises one", () => {
+    const s = twoCivGame(); // human 0, AI 1
+    ensureContact(s, 0, 1);
+    s.players[1]!.civId = "mongols"; // maximally warlike
+    // Clear the field, then set up: AI loathes the human and outmatches them, but
+    // has only a single soldier — not enough to actually wage a war.
+    for (const u of [...s.units.values()]) s.units.delete(u.id);
+    const aiCity = s.nextEntityId++;
+    s.cities.set(aiCity, { id: aiCity, ownerId: 1, name: "Theirs", col: 20, row: 12, population: 6, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
+    const addUnit = (owner: number, col: number, row: number) => {
+      const id = s.nextEntityId++;
+      s.units.set(id, makeUnit(id, owner, "swordsman", col, row));
+    };
+    addUnit(1, 19, 12);
+    const humanCity = s.nextEntityId++;
+    s.cities.set(humanCity, { id: humanCity, ownerId: 0, name: "Mine", col: 22, row: 12, population: 1, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
+    denounce(s, 0, 1); // human denounces → AI's opinion sours below the war threshold
+
+    aiConsiderDiplomacy(s, 1);
+    const hostileAction = () =>
+      atWar(s, 0, 1) || s.diploProposals.some((p) => p.fromId === 1 && p.toId === 0 && p.coercive);
+    expect(hostileAction()).toBe(false); // one soldier is not an army → no war, no demand
+
+    // Give the AI a real stack right next to the enemy city; now it acts on its enmity.
+    for (let i = 0; i < 4; i++) addUnit(1, 21, 11 + (i % 2));
+    aiConsiderDiplomacy(s, 1);
+    expect(hostileAction()).toBe(true);
   });
 
   it("restricts entering a peaceful civ's territory unless at war / open borders", () => {

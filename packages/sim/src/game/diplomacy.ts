@@ -33,6 +33,8 @@ const WARMONGER_SURPRISE = 20;
 const WARMONGER_DENOUNCED = 8;
 const PROPOSAL_PENDING_TTL = 12; // turns a pending proposal survives before lapsing
 const PROPOSAL_RESOLVED_TTL = 6; // turns a resolved (accepted/declined) proposal lingers
+const AI_OFFER_COOLDOWN = 12; // turns an AI waits before pitching the same civ another deal
+const AI_REBUFF_COOLDOWN = 28; // longer backoff after an offer is explicitly rejected
 
 // ---- personality ---------------------------------------------------------
 
@@ -410,6 +412,14 @@ export function createProposal(
   const redundant = redundantItem(rel, [...give, ...want]);
   if (redundant) return fail(redundant);
 
+  // Re-proposing supersedes your previous standing offer to this civ rather than
+  // stacking a second one — at most one pending offer per direction at a time.
+  // (Direction-scoped, so it leaves an AI counter-offer and any just-declined
+  // original from a counter exchange untouched.)
+  state.diploProposals = state.diploProposals.filter(
+    (p) => !(p.fromId === fromId && p.toId === toId && p.status === "pending"),
+  );
+
   const prop: Proposal = {
     id: state.nextEntityId++,
     fromId,
@@ -421,6 +431,13 @@ export function createProposal(
     coercive: coercive || undefined,
   };
   state.diploProposals.push(prop);
+
+  // An AI that initiates a (non-coercive) deal won't re-pitch the same civ for a
+  // while — this is what stops it offering an identical deal turn after turn.
+  const proposer = playerById(state, fromId);
+  if (proposer && !proposer.isHuman && !proposer.isBarbarian && !coercive) {
+    addModifier(state, fromId, toId, "__offerCd", 0, AI_OFFER_COOLDOWN);
+  }
 
   // A coercive demand is an affront in itself: it sours the target's opinion of
   // the demander whether or not it is ultimately met.
@@ -441,6 +458,10 @@ export function createProposal(
       const proposerIsAI = !playerById(state, fromId)?.isHuman;
       // Coercive demands and AI-initiated deals conclude without a finalize step.
       if (coercive || proposerIsAI) settleProposal(state, prop);
+    } else if (!coercive && !decision.accept && decision.counter && playerById(state, fromId)?.isHuman) {
+      // Rather than a flat "no", the AI volleys back a fair counter for the human
+      // to weigh. (Recipient is human → this stays pending until they respond.)
+      createProposal(state, toId, fromId, decision.counter.give, decision.counter.want, false);
     }
   }
   return ok;
@@ -462,9 +483,13 @@ export function respondProposal(state: GameState, playerId: number, proposalId: 
   if (!accept) {
     prop.status = "declined";
     prop.reason = "You rejected the offer.";
+    const proposerIsAI = !playerById(state, prop.fromId)?.isHuman && !playerById(state, prop.fromId)?.isBarbarian;
     // A refused coercive demand lets an AI demander escalate to war later.
-    if (prop.coercive && !playerById(state, prop.fromId)?.isHuman) {
+    if (prop.coercive && proposerIsAI) {
       addModifier(state, prop.fromId, playerId, "__demandRefused", 0, 8);
+    } else if (proposerIsAI) {
+      // The AI remembers a rebuffed deal and backs off, rather than re-pitching it.
+      addModifier(state, prop.fromId, playerId, "__offerRebuffed", 0, AI_REBUFF_COOLDOWN);
     }
     // Nothing for an AI proposer to see → drop it outright.
     if (!playerById(state, prop.fromId)?.isHuman) {
@@ -709,6 +734,48 @@ export function powerRatio(state: GameState, aId: number, bId: number): number {
   return militaryPower(state, aId) / Math.max(1, militaryPower(state, bId));
 }
 
+/** Battle-ready offensive units (civilians and badly wounded units don't count). */
+function offensiveUnitCount(state: GameState, playerId: number): number {
+  let n = 0;
+  for (const u of unitsOf(state, playerId)) if (isMilitary(u.type) && u.hp >= 40) n++;
+  return n;
+}
+
+/** Closest hop between either side's forces/cities — how far an army must march. */
+function strikeDistance(state: GameState, aId: number, bId: number): number {
+  const anchors = (id: number, militaryOnly: boolean) => [
+    ...unitsOf(state, id).filter((u) => !militaryOnly || isMilitary(u.type)).map((u) => ({ col: u.col, row: u.row })),
+    ...citiesOf(state, id).map((c) => ({ col: c.col, row: c.row })),
+  ];
+  const mine = anchors(aId, true);
+  const theirs = anchors(bId, false);
+  let best = Infinity;
+  for (const m of mine) {
+    for (const t of theirs) {
+      const d = axialDistance(offsetToAxial(m), offsetToAxial(t));
+      if (d < best) best = d;
+    }
+  }
+  return best;
+}
+
+/**
+ * Whether the AI can — and would actually bother to — prosecute a war on `otherId`:
+ * it must field a real offensive army, and the enemy must be within striking
+ * range (or the AI must be an overwhelming juggernaut willing to march any
+ * distance). This is what stops the AI declaring wars it has no means to fight.
+ */
+function canWageWarOn(state: GameState, aiId: number, otherId: number): boolean {
+  if (offensiveUnitCount(state, aiId) < 2) return false;
+  if (powerRatio(state, aiId, otherId) >= 2.0) return true; // a juggernaut marches anywhere
+  return strikeDistance(state, aiId, otherId) <= 18;
+}
+
+/** Has the AI recently pitched (or been rebuffed by) this civ? Then hold off. */
+function offerOnCooldown(state: GameState, aiId: number, otherId: number): boolean {
+  return hasModifier(state, aiId, otherId, "__offerCd") || hasModifier(state, aiId, otherId, "__offerRebuffed");
+}
+
 /**
  * Whether the AI is willing to make peace, shaped by its temperament. Forgiving
  * civs sue sooner and at a higher attitude floor; bold/aggressive ones hold out
@@ -769,6 +836,39 @@ function goldOutlay(items: DealItem[]): number {
     s + (it.kind === "gold" ? it.amount : it.kind === "goldPerTurn" ? it.amount * it.turns : 0), 0);
 }
 
+/**
+ * Build a fair counter to a rejected offer: keep the same structural items but
+ * rebalance the gold so the trade is worth the AI's while — it pays less, and/or
+ * asks the other side to cover the shortfall. Returned from the AI's perspective
+ * as the proposer, or null when there's no concrete trade on the table or the two
+ * sides are simply too far apart to bridge.
+ */
+function buildCounterOffer(give: DealItem[], want: DealItem[], deficit: number): { give: DealItem[]; want: DealItem[] } | null {
+  if (deficit <= 5 || deficit > 400) return null;
+  const tradeable = [...give, ...want].some((it) => it.kind === "resource" || it.kind === "specialist");
+  if (!tradeable) return null;
+  // As proposer the AI gives what it was asked for (`want`) and seeks `give`.
+  const cGive = want.map((it) => ({ ...it }));
+  const cWant = give.map((it) => ({ ...it }));
+  let remaining = deficit;
+  // 1) Shave the gold the AI itself would pay.
+  const myGold = cGive.find((it) => it.kind === "gold") as Extract<DealItem, { kind: "gold" }> | undefined;
+  if (myGold) {
+    const cut = Math.min(myGold.amount, remaining);
+    myGold.amount -= cut;
+    remaining -= cut;
+  }
+  const trimmedGive = cGive.filter((it) => !(it.kind === "gold" && it.amount <= 0));
+  // 2) Ask the other side to make up the rest in coin.
+  if (remaining > 0) {
+    const theirGold = cWant.find((it) => it.kind === "gold") as Extract<DealItem, { kind: "gold" }> | undefined;
+    if (theirGold) theirGold.amount += Math.ceil(remaining);
+    else cWant.push({ kind: "gold", amount: Math.ceil(remaining) });
+  }
+  if (trimmedGive.length === 0 && cWant.length === 0) return null;
+  return { give: trimmedGive, want: cWant };
+}
+
 /** Evaluate a (non-coercive) offer from the AI's perspective. */
 function aiDecideOffer(
   state: GameState,
@@ -776,7 +876,7 @@ function aiDecideOffer(
   fromId: number,
   give: DealItem[], // what the proposer gives the AI
   want: DealItem[], // what the AI must give up
-): { accept: boolean; reason: string } {
+): { accept: boolean; reason: string; counter?: { give: DealItem[]; want: DealItem[] } } {
   // A relationship-defining item the AI flatly refuses (e.g. ally a non-friend).
   if (give.some((it) => it.kind === "pact" && itemValue(state, aiId, fromId, it) < -900)) {
     return { accept: false, reason: "We will not enter such a pact with you." };
@@ -803,6 +903,12 @@ function aiDecideOffer(
   if (gain >= cost) {
     return { accept: true, reason: gain > cost * 1.3 ? "A most generous offer — agreed." : "These terms are acceptable." };
   }
+  // Declined on value: if a concrete trade is on the table and the gap is
+  // bridgeable, volley back a fair counter rather than a flat refusal.
+  const counter = buildCounterOffer(give, want, cost - gain);
+  if (counter) {
+    return { accept: false, reason: "Your offer is not worth what you ask — but we would accept this.", counter };
+  }
   return { accept: false, reason: "Your offer is not worth what you ask." };
 }
 
@@ -817,7 +923,7 @@ function aiDecideDemand(
   aiId: number,
   fromId: number,
   want: DealItem[],
-): { accept: boolean; reason: string } {
+): { accept: boolean; reason: string; counter?: { give: DealItem[]; want: DealItem[] } } {
   const p = personalityOf(state, aiId);
   const ratio = powerRatio(state, fromId, aiId); // how much stronger the demander is
   const required = 2.0 + p.boldness * 1.5; // 2.0 (timid) … 3.5 (proud) times our strength
@@ -833,7 +939,7 @@ function aiDecideDemand(
   if (!canPay) return { accept: false, reason: "We have nothing to give even if we wished to." };
   const r = relationBetween(state, aiId, fromId);
   const canWar = r && r.status === "peace" && (r.warAllowedTurn === undefined || state.turn >= r.warAllowedTurn) && r.pact === "none";
-  if (canWar && ratio < 1.0 && p.aggression > 0.7) {
+  if (canWar && ratio < 1.0 && p.aggression > 0.7 && canWageWarOn(state, aiId, fromId)) {
     declareWar(state, aiId, fromId);
     return { accept: false, reason: "You dare make demands of us? This means war!" };
   }
@@ -866,8 +972,10 @@ export function aiInitiateTrade(state: GameState, aiId: number, otherId: number)
   const ai = playerById(state, aiId);
   const other = playerById(state, otherId);
   if (!ai || !other || other.isBarbarian) return false;
-  // Don't pile offers onto an existing pending proposal between the two.
+  // Don't pile offers onto an existing pending proposal between the two, and don't
+  // re-pitch a civ we've offered (or been rebuffed by) recently.
   if (state.diploProposals.some((p) => p.fromId === aiId && p.toId === otherId && p.status === "pending")) return false;
+  if (offerOnCooldown(state, aiId, otherId)) return false;
 
   const poor = ai.gold < 80; // short on gold → values coin highly, prefers barter
   // A spare luxury the AI owns that the other side does NOT — appealing barter.
@@ -904,65 +1012,100 @@ export function aiInitiateTrade(state: GameState, aiId: number, otherId: number)
   return false;
 }
 
+/** A planned act of aggression against one civ, with a priority for comparison. */
+type WarIntent =
+  | { action: "demand"; demand: number; priority: number }
+  | { action: "war"; priority: number };
+
+/**
+ * Whether — and how — the AI would move against `otherId` this turn, given its
+ * temperament, the balance of power, and whether it can actually reach them. The
+ * `priority` ranks rival targets so the AI commits to the single juiciest mark
+ * rather than declaring war on everyone it dislikes at once.
+ */
+function aggressiveIntent(state: GameState, aiId: number, otherId: number): WarIntent | null {
+  const r = relationBetween(state, aiId, otherId);
+  if (!r || r.status !== "peace") return null;
+  const other = playerById(state, otherId);
+  if (!other || other.isBarbarian) return null;
+  const p = personalityOf(state, aiId);
+  const canWar = r.pact === "none" && (r.warAllowedTurn === undefined || state.turn >= r.warAllowedTurn);
+  if (!canWar || !canWageWarOn(state, aiId, otherId)) return null;
+  // Awaiting an answer to a standing demand → hold and see if they pay.
+  if (state.diploProposals.some((pr) => pr.fromId === aiId && pr.toId === otherId && pr.coercive && pr.status === "pending")) {
+    return null;
+  }
+
+  const ratio = powerRatio(state, aiId, otherId);
+  const score = attitudeScore(state, aiId, otherId);
+  // An enemy already mired in another war is a tempting, cheaper target.
+  const opportunistic = other.atWar.some((id) => id !== aiId && !playerById(state, id)?.isBarbarian);
+  const requiredRatio = (1.6 - p.aggression * 0.7) - (opportunistic ? 0.3 : 0);
+  const scoreThreshold = -55 + p.aggression * 45;
+  const despises = ratio >= requiredRatio && score <= scoreThreshold;
+  const overwhelming = ratio >= 2.0;
+  const refused = hasModifier(state, aiId, otherId, "__demandRefused");
+
+  // Attractiveness as a mark: weaker, more-hated, beleaguered and nearer rank higher.
+  const reach = nearestCityDistance(state, aiId, otherId);
+  const priority = (ratio - 1) * 25 + Math.max(0, -score) * 0.5 + (opportunistic ? 25 : 0) - Math.min(reach, 25);
+
+  // The overwhelmingly strong would rather extort than spend blood — demand
+  // tribute first (the credible threat of war is the lever), unless already rebuffed.
+  if (overwhelming && !refused && score < 25 && (p.greed > 0.4 || p.aggression > 0.5)) {
+    const demand = 20 + Math.round((p.greed * 0.5 + p.aggression * 0.5) * 50);
+    return { action: "demand", demand, priority };
+  }
+  // War: when it despises a civ it can beat, OR to make good on a refused demand.
+  const enforceRefusal = refused && ratio >= requiredRatio && p.aggression > 0.45;
+  if (despises || enforceRefusal) return { action: "war", priority: priority + (enforceRefusal ? 10 : 0) };
+  return null;
+}
+
 /** An AI civ's diplomatic decisions for its turn, driven by its personality. */
 export function aiConsiderDiplomacy(state: GameState, aiId: number): void {
   const me = playerById(state, aiId);
   if (!me || me.isHuman || me.isBarbarian) return;
   const p = personalityOf(state, aiId);
+
+  // Pick a single best aggression target this turn — the AI shouldn't make war on
+  // (or shake down) the whole world at once; it commits to the juiciest mark.
+  let pick: { id: number; intent: WarIntent } | null = null;
+  for (const otherId of me.met) {
+    const intent = aggressiveIntent(state, aiId, otherId);
+    if (intent && (!pick || intent.priority > pick.intent.priority)) pick = { id: otherId, intent };
+  }
+  if (pick) {
+    if (pick.intent.action === "demand") demandTribute(state, aiId, pick.id, pick.intent.demand);
+    else declareWar(state, aiId, pick.id);
+  }
+
   for (const otherId of [...me.met]) {
+    if (pick && otherId === pick.id) continue; // already acted on this civ
     const r = relationBetween(state, aiId, otherId);
     if (!r) continue;
     const other = playerById(state, otherId);
     if (!other || other.isBarbarian) continue;
     const score = attitudeScore(state, aiId, otherId);
-    const ratio = powerRatio(state, aiId, otherId);
 
     if (r.status === "war") {
-      // Sue for peace when willing (war-weary, losing, or no longer hostile).
-      if (aiAcceptsPeace(state, aiId, otherId)) makePeace(state, aiId, otherId);
+      // Sue for peace when willing (war-weary, losing, or no longer hostile) — but
+      // don't badger a human with the same peace offer every turn.
+      if (aiAcceptsPeace(state, aiId, otherId)) {
+        const pendingPeace = state.diploProposals.some(
+          (pr) => pr.fromId === aiId && pr.toId === otherId && pr.status === "pending",
+        );
+        if (!other.isHuman || (!pendingPeace && !offerOnCooldown(state, aiId, otherId))) {
+          makePeace(state, aiId, otherId);
+        }
+      }
       continue;
     }
 
-    // ---- at peace ----
-    const canWar = r.pact === "none" && (r.warAllowedTurn === undefined || state.turn >= r.warAllowedTurn);
-    // Aggressive civs need only a slim edge and tolerate a higher attitude; the
-    // peaceful only strike a civ they despise and clearly outmatch. An enemy
-    // already mired in another war is a tempting, cheaper target.
-    const opportunistic = other.atWar.some((id) => id !== aiId && !playerById(state, id)?.isBarbarian);
-    const requiredRatio = (1.6 - p.aggression * 0.7) - (opportunistic ? 0.3 : 0);
-    const scoreThreshold = -55 + p.aggression * 45;
-    const despises = ratio >= requiredRatio && score <= scoreThreshold;
-
-    // Don't act militarily while a demand is still on the table — await the answer.
-    const demandPending = state.diploProposals.some(
-      (pr) => pr.fromId === aiId && pr.toId === otherId && pr.coercive && pr.status === "pending",
-    );
-    if (demandPending) continue;
-
-    const overwhelming = ratio >= 2.0; // can take what it wants by force
-    const refused = hasModifier(state, aiId, otherId, "__demandRefused");
-
-    if (canWar) {
-      // The overwhelmingly strong would rather extort than spend blood — demand
-      // tribute FIRST (the credible threat of war is the lever), provided they
-      // haven't already been rebuffed. Greedy or aggressive civs especially.
-      if (overwhelming && !refused && score < 25 && (p.greed > 0.4 || p.aggression > 0.5)) {
-        const demand = 20 + Math.round((p.greed * 0.5 + p.aggression * 0.5) * 50);
-        demandTribute(state, aiId, otherId, demand);
-        continue;
-      }
-      // War: when it despises a civ it can beat, OR to make good on a refused
-      // demand (an aggressive civ follows through on the threat). The truly
-      // warlike are far more willing to actually invade after a snub.
-      const enforceRefusal = refused && ratio >= requiredRatio && p.aggression > 0.45;
-      if (despises || enforceRefusal) {
-        declareWar(state, aiId, otherId);
-        continue;
-      }
-    }
-
+    // ---- at peace (and not our war target): cultivate ties or seek a trade ----
     // Friendly, loyal civs cultivate ties: open borders, then non-aggression.
-    if (score >= 40 && r.pact === "none" && (state.turn + aiId) % 13 === 0) {
+    // Skip if we've recently pitched (or been turned down by) this civ.
+    if (score >= 40 && r.pact === "none" && (state.turn + aiId) % 13 === 0 && !offerOnCooldown(state, aiId, otherId)) {
       if (!r.openBorders) {
         proposeDeal(state, aiId, otherId, [{ kind: "openBorders" }], [{ kind: "openBorders" }]);
         continue;

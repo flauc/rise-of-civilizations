@@ -75,6 +75,29 @@ describe("serialize round-trip", () => {
     }
   });
 
+  it("round-trips a work's assigned specialists and defaults the field on legacy saves", () => {
+    const state = createGame({ seed: "work-serialize", cols: 30, rows: 20, playerCount: 1, humanSlots: 1 });
+    state.works.push({
+      id: state.nextEntityId++,
+      ownerId: 0,
+      kind: "farm",
+      tier: 1,
+      target: { col: 5, row: 5 },
+      hostCityId: 1,
+      cityIds: [1],
+      assignedSpecialistIds: [42, 43],
+      requirement: { carpentry: 6 },
+      progress: { carpentry: 2 },
+    });
+    const restored = deserializeState(serializeState(state));
+    expect(restored.works[0]!.assignedSpecialistIds).toEqual([42, 43]);
+
+    // Legacy save with no assignedSpecialistIds field → defaults to [].
+    const legacy = JSON.parse(JSON.stringify(serializeState(state))) as SerializedState;
+    delete (legacy.works[0] as { assignedSpecialistIds?: number[] }).assignedSpecialistIds;
+    expect(deserializeState(legacy).works[0]!.assignedSpecialistIds).toEqual([]);
+  });
+
   it("tolerates legacy saves where Set fields were serialized as empty objects", () => {
     const state = createGame({ seed: "legacy", cols: 30, rows: 20, playerCount: 2, humanSlots: 1 });
     const serialized = serializeState(state);

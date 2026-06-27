@@ -79,6 +79,23 @@ describe("M2 combat", () => {
     expect(atk.row).toBe(8); // advanced into the city
   });
 
+  it("clears a barbarian camp when advancing onto it after killing its defender", () => {
+    const state = bareGame();
+    const tile = state.map.tiles.find((t) => t.col === 6 && t.row === 5)!;
+    tile.feature = "barb_camp";
+    const atk = place(state, 0, "swordsman", 5, 5);
+    const def = place(state, 1, "scout", 6, 5); // weak defender standing on the camp
+    def.hp = 1; // ensure the swordsman kills and advances in
+    const p0 = state.players[0]!;
+    const goldBefore = p0.gold;
+    const res = resolveAttack(state, atk, 6, 5);
+    expect(res.ok).toBe(true);
+    expect(atk.col).toBe(6);
+    expect(atk.row).toBe(5); // advanced onto the camp tile
+    expect(tile.feature).toBeUndefined(); // camp cleared on entry
+    expect(p0.gold).toBeGreaterThan(goldBefore); // reward paid
+  });
+
   it("cities have more HP with walls", () => {
     const base = { population: 3, buildings: [] as string[] } as never;
     const walled = { population: 3, buildings: ["walls"] } as never;
@@ -214,6 +231,28 @@ describe("M2 combat", () => {
     const options = availablePromotions(archer);
     expect(options.some((p) => PROMOTION_DEFS[p].tier === 2)).toBe(true);
     expect(options.some((p) => PROMOTION_DEFS[p].tier === 3)).toBe(false);
+  });
+
+  it("a chained promotion stays locked until its prerequisite is held", () => {
+    const state = bareGame();
+    const scout = place(state, 0, "scout", 5, 5);
+    scout.level = 3; // tier 2 unlocked by level
+
+    // slip_away (tier 2) requires evasion (tier 1) first.
+    let options = availablePromotions(scout);
+    expect(options).toContain("evasion");
+    expect(options).not.toContain("slip_away");
+
+    scout.promotions.push("evasion");
+    options = availablePromotions(scout);
+    expect(options).toContain("slip_away");
+    expect(options).not.toContain("evasion"); // already held
+
+    // vanish (tier 3) still requires slip_away and a high enough level.
+    scout.promotions.push("slip_away");
+    scout.level = 4;
+    options = availablePromotions(scout);
+    expect(options).toContain("vanish");
   });
 
   it("extended_range lets archers attack one tile farther", () => {

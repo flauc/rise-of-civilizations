@@ -105,11 +105,17 @@ at the requirement) and earns XP. When **every** discipline requirement is met,
 the Work **completes**: the tile gains its improvement/road, or the Wonder is
 raised, and the contributing crew earns a completion XP bonus.
 
-A city's specialists are **shared across that city's Works**: labour is applied
-to the city's Works in queue order (oldest first), so the first project finishes
-before the next starts — this is what "when an expert completes a project the
-city can start building the next" means in practice. The player can reorder /
-cancel the queue.
+**Specialist assignment is fully manual** (as of the assignment overhaul): a Work
+only accrues labour from specialists the player has **explicitly assigned** to it,
+and a specialist may labour on **at most one Work at a time**. Specialists can be
+pulled from **any** of the player's cities (not just the host city), and several
+can be stacked on one Work to finish it faster — the per-Work panel shows the
+crew's combined labour/turn and the resulting ETA, so the speed impact of picking a
+veteran (Lv5 = 3× labour) over an apprentice is visible. Releasing a specialist (or
+losing its city) detaches it automatically. The AI assigns its idle craftsmen to its
+oldest unfinished Works each turn (`aiAssignSpecialists`). Commands: `assignSpecialist
+{ workId, specialistId, on }`. *(This supersedes the original auto-assignment, where
+a city's specialists were pooled onto its Works in queue order.)*
 
 ### 2.3 Distance-based cost
 
@@ -146,11 +152,11 @@ Launch wonder set (ancient era, illustrative — extensible in `@roc/data`):
 
 | Wonder | Requires | Effect |
 |---|---|---|
-| **Great Pyramid** | masonry ×18, architecture ×10 | +1 production in every city |
-| **Hanging Gardens** | carpentry ×10, architecture ×10, engineering ×6 | +1 food in every city |
-| **Great Library** | architecture ×12, engineering ×8 | +3 science in the host city; free tech on completion |
-| **Colossus** | masonry ×10, engineering ×10 | +3 gold in the host city; +1 trade-route gold |
-| **Great Lighthouse** | masonry ×8, architecture ×8, engineering ×8 | +1 sight & +1 movement to your units near the host city |
+| **Great Pyramid** | masonry ×11, architecture ×6 | +1 production in every city |
+| **Hanging Gardens** | carpentry ×6, architecture ×6, engineering ×4 | +1 food in every city |
+| **Great Library** | architecture ×7, engineering ×5 | +3 science in the host city; free tech on completion |
+| **Colossus** | masonry ×6, engineering ×6 | +3 gold in the host city; +1 trade-route gold |
+| **Great Lighthouse** | masonry ×5, architecture ×5, engineering ×5 | +1 sight & +1 movement to your units near the host city |
 
 Wonders live in `@roc/data` as `WONDER_DEFS` (dependency-free) with `id, name,
 requirement: Partial<Record<Discipline, number>>, effect`. Effects reuse the
@@ -310,7 +316,9 @@ Remove `build` (worker). Add:
 - `startWork { kind, col, row }` (tier inferred from the tile's current tier;
   covers economic ladders, defensive walls/towers, and tier upgrades)
 - `startWonder { wonderId, hostCityId }`
-- `assignCityToWonder { workId, cityId, on }`
+- `assignSpecialist { workId, specialistId, on }` *(pin/release a craftsman to/from a
+  Work; replaced the old `assignCityToWonder` — wonders are now staffed the same way as
+  every other Work)*
 - `reorderWork { cityId, workId, dir }` *(optional polish)*
 - `cancelWork { workId }`
 

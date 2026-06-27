@@ -1,10 +1,16 @@
-import { cityAt, cityMaxHp, tileYields, resourceYields, naturalWonderYields, addYields, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, type GameState, type TradeRoute } from "@roc/sim";
+import { cityAt, cityMaxHp, tileYields, resourceYields, naturalWonderYields, addYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
 import { barbCampFrameFor, villageFrameFor, type FeatureAtlas } from "./feature-assets";
+import {
+  constructionCategoryForKind,
+  constructionFrameFor,
+  type ConstructionAtlas,
+  type ConstructionCategory,
+} from "./construction-assets";
 import { getNaturalWonder, getLegend } from "@roc/data";
 
 export interface OverlayState {
@@ -21,9 +27,46 @@ export interface OverlayState {
   cityWorked: Set<string>;
   /** The viewer's trade routes, drawn as dashed lines between cities. */
   tradeRoutes?: TradeRoute[];
+  /** The viewer's in-progress works, drawn as construction sites on their tiles. */
+  works?: { col: number; row: number; kind: string }[];
   unitAtlas?: UnitAtlas;
   cityAtlas?: CityAtlas;
   featureAtlas?: FeatureAtlas;
+  constructionAtlas?: ConstructionAtlas;
+}
+
+/** Vector fallback for a construction site when the sprite atlas hasn't loaded
+ *  (or art hasn't been generated): a dashed work-ring plus a category glyph. */
+function drawConstructionStandin(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  size: number,
+  cat: ConstructionCategory,
+): void {
+  if (size < 8) return;
+  const r = size * 0.3;
+  ctx.save();
+  ctx.strokeStyle = "rgba(201,162,74,0.85)";
+  ctx.lineWidth = Math.max(1.2, size * 0.06);
+  ctx.setLineDash([size * 0.18, size * 0.12]);
+  ctx.beginPath();
+  ctx.arc(x, y, r * 1.35, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(26,24,22,0.85)";
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fill();
+  if (size > 12) {
+    const glyph = cat === "wonder" ? "🏛️" : cat === "defense" ? "🧱" : "🛠️";
+    ctx.fillStyle = "#f0d77a";
+    ctx.font = `${Math.round(size * 0.34)}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(glyph, x, y + 1);
+  }
+  ctx.restore();
 }
 
 /** "#rrggbb" -> "rgba(r,g,b,a)". */
@@ -362,6 +405,25 @@ export function drawOverlay(
 
     if (t.structure.hp < t.structure.maxHp) {
       drawHpBar(ctx, s.x, s.y + size * 0.55, size * 0.9, t.structure.hp / t.structure.maxHp);
+    }
+  }
+
+  // ---- works in progress (construction sites) ----
+  // Every tile the viewer is developing shows a category build-site sprite (or a
+  // vector stand-in until the art atlas streams in), so in-progress tiles read at
+  // a glance and invite a click to staff them.
+  if (o.works && o.works.length > 0) {
+    for (const w of o.works) {
+      if (!o.explored.has(`${w.col},${w.row}`)) continue;
+      const s = screen(w.col, w.row);
+      const cat = constructionCategoryForKind(w.kind, isEconKind, isDefenseKind);
+      const img = constructionFrameFor(o.constructionAtlas, cat);
+      if (img) {
+        const imgSize = size * 1.15;
+        ctx.drawImage(img, s.x - imgSize / 2, s.y - imgSize * 0.62, imgSize, imgSize);
+      } else {
+        drawConstructionStandin(ctx, s.x, s.y, size, cat);
+      }
     }
   }
 

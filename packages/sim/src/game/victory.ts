@@ -143,8 +143,9 @@ export function checkVictory(state: GameState): GameOver | null {
     if (dominantEverywhere) return { winnerId: religion.founderId, condition: "religious" };
   }
 
-  // Score — decided at the turn limit.
-  if (state.turn >= state.turnLimit && humans.length > 0) {
+  // Score — decided at the turn limit. A turn limit of 0 means "unlimited", so
+  // the game never ends by score (only by a decisive condition above).
+  if (state.turnLimit > 0 && state.turn >= state.turnLimit && humans.length > 0) {
     let best = humans[0]!;
     let bestScore = playerScore(state, best.id);
     for (const p of humans) {

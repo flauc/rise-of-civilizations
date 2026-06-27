@@ -44,6 +44,8 @@ export interface LobbyRoom {
   barbarians: BarbarianActivity;
   naturalWonders: boolean;
   startingGold: "tight" | "balanced" | "generous";
+  /** Turn at which the score victory triggers; 0 = unlimited. */
+  turnLimit: number;
   hasPassword: boolean;
   slots: LobbySlot[];
 }
@@ -68,6 +70,8 @@ export type ClientMessage =
       mapType?: MapType;
       /** Starting gold treasury preset for major civ players. */
       startingGold?: "tight" | "balanced" | "generous";
+      /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
+      turnLimit?: number;
       /** Civ id per AI opponent; null/undefined = a random unique civ. */
       aiCivIds?: (string | null)[];
       /** Color per player slot (humans first, then AI); null/undefined = auto. */
@@ -93,6 +97,8 @@ export type ClientMessage =
       barbarians?: BarbarianActivity;
       naturalWonders?: boolean;
       startingGold?: "tight" | "balanced" | "generous";
+      /** Turn at which the score victory triggers; 0 = unlimited. */
+      turnLimit?: number;
     }
   | { t: "addSlot"; gameId: string; kind: "human" | "ai" }
   | { t: "removeSlot"; gameId: string; slotId: number }

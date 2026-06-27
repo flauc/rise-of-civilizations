@@ -181,6 +181,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         barbarians: msg.barbarians,
         naturalWonders: msg.naturalWonders,
         startingGold: msg.startingGold,
+        turnLimit: msg.turnLimit,
         aiCivIds: msg.aiCivIds,
         colors: msg.colors,
         password: msg.password,
@@ -222,6 +223,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         barbarians: msg.barbarians,
         naturalWonders: msg.naturalWonders,
         startingGold: msg.startingGold,
+        turnLimit: msg.turnLimit,
       });
       if ("error" in r) return send(ws, { t: "error", message: r.error });
       broadcastLobby(msg.gameId);

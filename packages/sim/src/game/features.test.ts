@@ -3,7 +3,7 @@ import { createGame } from "./setup";
 import { beginTurn } from "./commands";
 import { triggerVillage, spawnFromCamps, maybeSpawnCamps, clearBarbCamp } from "./features";
 import { computeVisible } from "./visibility";
-import { unitsOf, type GameState, type Unit } from "./state";
+import { unitsOf, type GameState, type Player, type Unit } from "./state";
 import {
   globalMoraleOf,
   onVillageGlobalMorale,
@@ -134,6 +134,52 @@ describe("map features", () => {
     // a global lift is recorded for the morale dialog and resets the decay grace
     expect(player.moraleLog?.some((e) => e.reason.includes("village"))).toBe(true);
     expect(player.lastMoraleGainTurn).toBe(state.turn);
+  });
+
+  // Sample the reward category triggerVillage hands out across many seeds by
+  // walking the unit over a range of tiles (the RNG keys off turn + position).
+  function sampleVillageRewards(state: GameState, unit: Unit, player: Player): Set<string> {
+    const seen = new Set<string>();
+    for (let t = 1; t <= 40; t++) {
+      state.turn = t;
+      for (let d = 0; d < 6; d++) {
+        unit.col = 5 + d;
+        unit.row = 5 + (t % 7);
+        triggerVillage(state, unit, player);
+        const last = state.log[state.log.length - 1];
+        if (last?.reward) seen.add(last.reward);
+      }
+    }
+    return seen;
+  }
+
+  it("a village can bless a civ with faith", () => {
+    const state = createGame({ seed: "feat-vill-faith", cols: 44, rows: 30, barbarians: true });
+    beginTurn(state);
+    const unit = firstUnit(state, 0);
+    const player = state.players[0]!;
+    const faithBefore = player.faith;
+    const rewards = sampleVillageRewards(state, unit, player);
+    expect(rewards.has("faith")).toBe(true);
+    expect(player.faith).toBeGreaterThan(faithBefore);
+  });
+
+  it("a village only grants a civic boost once the civ has engaged the culture tree", () => {
+    const state = createGame({ seed: "feat-vill-civic", cols: 44, rows: 30, barbarians: true });
+    beginTurn(state);
+    const unit = firstUnit(state, 0);
+    const player = state.players[0]!;
+
+    // No civic in progress: the civic band must never be handed out.
+    player.researchingCivic = null;
+    expect(sampleVillageRewards(state, unit, player).has("civic")).toBe(false);
+
+    // Now researching a civic: the boost becomes possible and adds culture progress.
+    player.researchingCivic = "code_of_laws";
+    const cultureBefore = player.cultureProgress;
+    const rewards = sampleVillageRewards(state, unit, player);
+    expect(rewards.has("civic")).toBe(true);
+    expect(player.cultureProgress).toBeGreaterThan(cultureBefore);
   });
 
   it("disabling barbarians removes barbarian players, units, and camps", () => {

@@ -68,6 +68,13 @@ describe("victory", () => {
     expect(typeof playerScore(state, 0)).toBe("number");
   });
 
+  it("never ends by score when the turn limit is unlimited (0)", () => {
+    const state = createGame({ seed: "vic-unlimited", cols: 36, rows: 24, barbarians: false });
+    state.turnLimit = 0;
+    state.turn = 100000;
+    expect(checkVictory(state)).toBeNull();
+  });
+
   it("scores battles won and cities conquered as permanent achievements", () => {
     const state = createGame({ seed: "vic-score", cols: 36, rows: 24, barbarians: false });
     const before = scoreBreakdown(state, 0);

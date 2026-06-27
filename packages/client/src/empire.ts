@@ -17,19 +17,23 @@ import {
   worksOfCity,
   workName,
   currentWorkFor,
+  tradeRoutesOf,
+  tradeRouteYield,
   type GameState,
   type City,
 } from "@roc/sim";
-import { WONDER_DEFS, getWonder } from "@roc/data";
+import { WONDER_DEFS, getWonder, uniqueUnitForCiv } from "@roc/data";
 
 export interface EmpireHandlers {
   onSelectUnit(id: number): void;
   onSelectCity(id: number): void;
   onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
   onCancelWork(workId: number): void;
+  /** Close a trade route — the trader that established it is lost. */
+  onCancelTradeRoute(routeId: number): void;
 }
 
-export type Tab = "units" | "cities" | "specialists";
+export type Tab = "units" | "cities" | "specialists" | "trade";
 
 const STYLE = `
 #empire{position:fixed;top:0;right:0;bottom:0;left:auto;width:min(460px,92vw);z-index:55;background:#0d1b27;border-left:1px solid var(--edge);box-shadow:-8px 0 24px rgba(0,0,0,.35);display:flex;flex-direction:column;transform:translateX(0);transition:transform .2s ease,pointer-events 0s}
@@ -88,6 +92,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     `<button class="emp-tab" data-tab="cities">Cities</button>` +
     `<button class="emp-tab" data-tab="units">Units</button>` +
     `<button class="emp-tab" data-tab="specialists">Specialists</button>` +
+    `<button class="emp-tab" data-tab="trade">Trade</button>` +
     `<button class="emp-x" id="emp-close" title="Close" aria-label="Close">✕</button></div>` +
     `<div class="emp-body" id="emp-body"></div></div>`;
   document.body.appendChild(root);
@@ -117,11 +122,12 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
   function renderCities(state: GameState, viewerId: number): string {
     const cities = citiesOf(state, viewerId);
     if (cities.length === 0) return `<div class="emp-empty">No cities yet.</div>`;
+    const viewerCivId = state.players.find((p) => p.id === viewerId)?.civId;
     return cities
       .map((c) => {
         const prod = c.production
           ? c.production.kind === "unit"
-            ? UNIT_DEFS[c.production.id].name
+            ? uniqueUnitForCiv(viewerCivId, c.production.id)?.name ?? UNIT_DEFS[c.production.id].name
             : c.production.kind === "project"
               ? getProjectDef(c.production.id)?.name ?? c.production.id
               : c.production.id
@@ -248,6 +254,39 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     return html;
   }
 
+  function renderTrade(state: GameState, viewerId: number): string {
+    const routes = tradeRoutesOf(state, viewerId);
+    if (routes.length === 0) {
+      return (
+        `<div class="emp-empty">No trade routes yet.<br>` +
+        `Move a Trader into one of your cities and use “Establish trade route” to open one.</div>`
+      );
+    }
+    return routes
+      .map((r) => {
+        const from = state.cities.get(r.fromCityId);
+        const to = state.cities.get(r.toCityId);
+        const y = tradeRouteYield(state, r);
+        const yieldBits = [
+          y.gold ? `🪙${y.gold}` : "",
+          y.food ? `🍞${y.food}` : "",
+          y.production ? `⚒️${y.production}` : "",
+          y.science ? `🔬${y.science}` : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return (
+          `<div class="emp-card">` +
+          `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">` +
+          `<div class="grow"><div class="emp-name">🐫 ${from?.name ?? "?"} → ${to?.name ?? "?"}</div>` +
+          `<div class="emp-sub">${yieldBits || "no yield"} / turn · ${r.path.length} tiles</div></div>` +
+          `<button class="btn" data-cancel-route="${r.id}" title="Disband this route — the trader is lost">Cancel</button>` +
+          `</div></div>`
+        );
+      })
+      .join("");
+  }
+
   function render(state: GameState, viewerId: number): void {
     last = { state, viewerId };
     if (!open) return;
@@ -255,7 +294,13 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
       el.classList.toggle("active", el.dataset.tab === tab),
     );
     body.innerHTML =
-      tab === "cities" ? renderCities(state, viewerId) : tab === "units" ? renderUnits(state, viewerId) : renderSpecialists(state, viewerId);
+      tab === "cities"
+        ? renderCities(state, viewerId)
+        : tab === "units"
+          ? renderUnits(state, viewerId)
+          : tab === "trade"
+            ? renderTrade(state, viewerId)
+            : renderSpecialists(state, viewerId);
 
     body.querySelectorAll<HTMLDivElement>("[data-city]").forEach((el) => {
       if (el.classList.contains("emp-row")) {
@@ -287,6 +332,13 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
       el.addEventListener("click", (e) => {
         e.preventDefault();
         handlers.onCancelWork(Number(el.dataset.cancel));
+        render(state, viewerId);
+      }),
+    );
+    body.querySelectorAll<HTMLButtonElement>("[data-cancel-route]").forEach((el) =>
+      el.addEventListener("click", () => {
+        if (!confirm("Cancel this trade route? The trader that opened it is lost.")) return;
+        handlers.onCancelTradeRoute(Number(el.dataset.cancelRoute));
         render(state, viewerId);
       }),
     );

@@ -20,6 +20,7 @@ import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween }
 import { playerEffects } from "./civs";
 import { breakCover } from "./stealth";
 import { moraleAttackMultiplier, moraleDefenseMultiplier, onEnemyDefeated, onUnitLost, maybeRoute, retreatOneStep } from "./morale";
+import { onUnitEnter } from "./features";
 
 /** Fire Lance fires off the unit's melee strength plus this, so the ranged shot
  *  lands slightly harder than a regular thrust (and takes no retaliation). */
@@ -30,7 +31,6 @@ export function unitMaxHp(unit: Unit): number {
   let bonus = 0;
   if (has(unit, "toughness")) bonus += 15;
   if (has(unit, "colonist")) bonus += 20;
-  if (has(unit, "survival_training")) bonus += 15;
   return Math.floor(UNIT_MAX_HP * (1 + 0.05 * (unit.level - 1))) + bonus;
 }
 
@@ -332,7 +332,8 @@ function cityAttackBonus(unit: Unit): number {
 
 // ---- XP & promotions -----------------------------------------------------
 
-function xpForNextLevel(level: number): number {
+/** XP required for a unit to advance from `level` to the next one. */
+export function unitXpForNextLevel(level: number): number {
   return 10 * level;
 }
 
@@ -342,8 +343,8 @@ function awardXp(unit: Unit, amount: number): void {
   let mult = 1;
   if (has(unit, "veteran") || has(unit, "veteran_marksman")) mult += 0.25;
   unit.xp += Math.ceil(amount * mult);
-  while (unit.xp >= xpForNextLevel(unit.level)) {
-    unit.xp -= xpForNextLevel(unit.level);
+  while (unit.xp >= unitXpForNextLevel(unit.level)) {
+    unit.xp -= unitXpForNextLevel(unit.level);
     unit.level += 1;
     const newMax = unitMaxHp(unit);
     unit.hp = Math.min(newMax, unit.hp + Math.round(newMax * 0.2));
@@ -390,11 +391,16 @@ function tryScoutEscape(state: GameState, attacker: Unit, defender: Unit): boole
   return true;
 }
 
-/** Promotions this unit could still take, gated by level tier. */
+/** Promotions this unit could still take, gated by level tier and any chain prerequisite. */
 export function availablePromotions(unit: Unit): PromotionId[] {
   const pool = PROMOTION_POOL[UNIT_DEFS[unit.type].cls];
   const maxTier = Math.max(1, unit.level - 1);
-  return pool.filter((p) => !unit.promotions.includes(p) && PROMOTION_DEFS[p].tier <= maxTier);
+  return pool.filter((p) => {
+    const def = PROMOTION_DEFS[p];
+    if (unit.promotions.includes(p) || def.tier > maxTier) return false;
+    if (def.prereq && !unit.promotions.includes(def.prereq)) return false;
+    return true;
+  });
 }
 
 // ---- attack resolution ---------------------------------------------------
@@ -623,6 +629,7 @@ export function resolveAttack(
         if (!attackerNaval || isWaterTerrain(targetTile.terrain)) {
           attacker.col = col; // advance into vacated tile
           attacker.row = row;
+          onUnitEnter(state, attacker); // resolve any feature (barb camp / village) on the captured tile
         }
       }
     }

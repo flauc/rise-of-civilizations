@@ -48,6 +48,10 @@ export interface CivEffects {
   tradeRouteFaithBonus?: number;
   /** Extra trade route capacity. Not yet consumed. */
   tradeRouteCapacityBonus?: number;
+  /** Faith may be spent to rush production (city items and tile works). */
+  rushWithFaith?: boolean;
+  /** Culture may be spent to rush production (city items and tile works). */
+  rushWithCulture?: boolean;
   /** Percentage bonus to production toward Wonders. */
   wonderProductionBonus?: number;
   /** Percentage bonus to production toward defensive buildings/walls. */
@@ -2256,6 +2260,7 @@ export const POLICIES: PolicyDef[] = [
   { id: "literary_tradition", name: "Literary Tradition", desc: "+10% science.", effects: { yieldPercent: { science: 10 } } },
   { id: "natural_philosophy", name: "Natural Philosophy", desc: "+20% science.", effects: { yieldPercent: { science: 20 } } },
   { id: "caravans", name: "Caravans", desc: "+20% gold.", effects: { yieldPercent: { gold: 20 } } },
+  { id: "corvee", name: "Corvée", desc: "Culture can rush production (units, buildings, and tile works).", effects: { rushWithCulture: true } },
 ];
 
 const CIVIC_BY_ID = new Map(CIVICS.map((c) => [c.id, c]));
@@ -2285,6 +2290,7 @@ export const BELIEFS: BeliefDef[] = [
   { id: "warrior_code", name: "Warrior Code", desc: "Melee units +2 combat.", effects: { unitClassCombat: { melee: 2 } } },
   { id: "holy_warriors", name: "Holy Warriors", desc: "Cavalry units +2 combat.", effects: { unitClassCombat: { cavalry: 2 } } },
   { id: "sacred_paths", name: "Sacred Paths", desc: "Cavalry +1 movement.", effects: { cavalryMovementBonus: 1 } },
+  { id: "labor_of_devotion", name: "Labor of Devotion", desc: "Faith can rush production (units, buildings, and tile works).", effects: { rushWithFaith: true } },
 ];
 
 export const RELIGION_NAMES: string[] = [
@@ -2323,63 +2329,63 @@ export const WONDER_DEFS: WonderDef[] = [
     id: "great_pyramid",
     name: "Great Pyramid",
     desc: "A monumental tomb whose construction organises a whole society. +1 production in every city.",
-    requirement: { masonry: 18, architecture: 10 },
+    requirement: { masonry: 11, architecture: 6 },
     effect: { yieldPerCity: { production: 1 } },
   },
   {
     id: "hanging_gardens",
     name: "Hanging Gardens",
     desc: "Terraced gardens fed by ingenious irrigation. +1 food in every city.",
-    requirement: { carpentry: 10, architecture: 10, engineering: 6 },
+    requirement: { carpentry: 6, architecture: 6, engineering: 4 },
     effect: { yieldPerCity: { food: 1 } },
   },
   {
     id: "great_library",
     name: "Great Library",
     desc: "A vast repository of the world's knowledge. +3 science in the host city, and a free technology on completion.",
-    requirement: { architecture: 12, engineering: 8 },
+    requirement: { architecture: 7, engineering: 5 },
     effect: { yieldHostCity: { science: 3 }, freeTech: true },
   },
   {
     id: "colossus",
     name: "Colossus",
     desc: "A towering bronze statue guarding a great harbour. +3 gold in the host city.",
-    requirement: { masonry: 10, engineering: 10 },
+    requirement: { masonry: 6, engineering: 6 },
     effect: { yieldHostCity: { gold: 3 } },
   },
   {
     id: "great_lighthouse",
     name: "Great Lighthouse",
     desc: "A beacon that draws trade from across the sea. +1 gold in every city.",
-    requirement: { masonry: 8, architecture: 8, engineering: 8 },
+    requirement: { masonry: 5, architecture: 5, engineering: 5 },
     effect: { yieldPerCity: { gold: 1 } },
   },
   {
     id: "sphinx",
     name: "Great Sphinx",
     desc: "An enigmatic guardian carved from living rock. +2 culture and +2 gold in the host city.",
-    requirement: { masonry: 14, architecture: 8 },
+    requirement: { masonry: 9, architecture: 5 },
     effect: { yieldHostCity: { culture: 2, gold: 2 } },
   },
   {
     id: "stonehenge",
     name: "Stonehenge",
     desc: "An ancient ring of standing stones aligned to the heavens. +1 faith in every city.",
-    requirement: { masonry: 14, survey: 6 },
+    requirement: { masonry: 9, survey: 4 },
     effect: { yieldPerCity: { faith: 1 } },
   },
   {
     id: "oracle",
     name: "The Oracle",
     desc: "A sacred temple whose prophecies guide the people. +3 faith and +2 science in the host city.",
-    requirement: { architecture: 10, masonry: 8 },
+    requirement: { architecture: 6, masonry: 5 },
     effect: { yieldHostCity: { faith: 3, science: 2 } },
   },
   {
     id: "tenochtitlan",
     name: "Tenochtitlán",
     desc: "A magnificent island capital of canals and causeways. +1 food and +1 production in every city.",
-    requirement: { engineering: 12, architecture: 10, masonry: 8 },
+    requirement: { engineering: 7, architecture: 6, masonry: 5 },
     effect: { yieldPerCity: { food: 1, production: 1 } },
   },
 ];

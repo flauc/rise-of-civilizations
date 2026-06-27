@@ -36,6 +36,7 @@ import {
   BUILDING_SUBSET,
   CITY_SUBSET,
   IMPROVEMENT_SUBSET,
+  CONSTRUCTION_SUBSET,
   LEADER_SUBSET,
   GREAT_PERSON_SUBSET,
   LEGEND_SUBSET,
@@ -112,6 +113,7 @@ Options:
   --tile <id>            Generate a specific terrain tile
   --building <id>        Generate a specific building icon
   --improvement <id>     Generate a specific map improvement icon (e.g. farm_t1)
+  --construction <id>    Generate a construction-site token (econ, defense, wonder)
   --leader <id>          Generate a specific civilization leader portrait
   --road <id>            Generate a specific road segment
   --river <id>           Generate a specific river segment
@@ -219,6 +221,13 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--construction": {
+        const id = next();
+        const e = findEntry(id);
+        if (!e || e.category !== "construction") fail(`Unknown construction site: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--leader": {
         const id = next();
         const e = findEntry(id);
@@ -318,6 +327,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "unique-infra") entries.push(...UNIQUE_INFRA_SUBSET);
         else if (name === "buildings") entries.push(...BUILDING_SUBSET);
         else if (name === "improvements") entries.push(...IMPROVEMENT_SUBSET);
+        else if (name === "construction") entries.push(...CONSTRUCTION_SUBSET);
         else if (name === "cities") entries.push(...CITY_SUBSET);
         else if (name === "leaders") entries.push(...LEADER_SUBSET);
         else if (name === "great-people") entries.push(...GREAT_PERSON_SUBSET);
@@ -535,6 +545,62 @@ async function hexMaskPath(width: number, height: number, outPath: string): Prom
   await runCmd("magick", ["-size", `${width}x${height}`, "xc:black", "-fill", "white", "-draw", `polygon ${polygon}`, outPath]);
 }
 
+async function openTopHexMaskPath(width: number, height: number, outPath: string): Promise<void> {
+  // Like hexMaskPath, but the region ABOVE the hex's two upper vertices is left
+  // fully open (white) instead of slanting back to the top vertex. This keeps the
+  // clean hex base (sides + bottom V) while letting a tall peak overhang upward,
+  // matching the hand-painted hex-terrain/mountains.png silhouette.
+  const cx = width / 2;
+  const topY = height - width;
+  const quarter = width / 4;
+  const threeQuarter = (3 * width) / 4;
+  const upperVertexY = topY + quarter; // y of the upper-left / upper-right hex vertices
+  const polygon = `${cx},${topY} ${width},${topY + quarter} ${width},${topY + threeQuarter} ${cx},${height} 0,${topY + threeQuarter} 0,${topY + quarter}`;
+  await runCmd("magick", [
+    "-size", `${width}x${height}`, "xc:black",
+    "-fill", "white",
+    "-draw", `polygon ${polygon}`,
+    "-draw", `rectangle 0,0 ${width - 1},${upperVertexY}`,
+    outPath,
+  ]);
+}
+
+async function postProcessOverhangTile(rawPath: string, outPath: string, entry: AssetEntry): Promise<void> {
+  // Tall peak wonder: the model paints the mountain on a flat magenta backdrop.
+  // We chroma-key the magenta away (sky around/above the peak becomes transparent)
+  // and clip ONLY the base to the hex footprint, so the summit overhangs the tiles
+  // above just like hex-terrain/mountains.png.
+  const resizedPath = `${rawPath}.resized.png`;
+  const keyedPath = `${rawPath}.keyed.png`;
+  const maskPath = `${rawPath}.mask.png`;
+  const keyedAlphaPath = `${rawPath}.kalpha.png`;
+  const finalAlphaPath = `${rawPath}.falpha.png`;
+
+  // 1. Scale the generated image to the target tile canvas.
+  await runCmd("magick", [rawPath, "-resize", `${entry.size.width}x${entry.size.height}!`, resizedPath]);
+
+  // 2. Chroma-key the flat magenta backdrop to transparent. A generous fuzz cleans
+  //    up the anti-aliased fringe; magenta is far from any natural rock/snow/sky.
+  await runCmd("magick", [resizedPath, "-fuzz", "22%", "-transparent", "#FF00FF", "-define", "png:color-type=6", keyedPath]);
+
+  // 3. Intersect the keyed alpha with an open-top hex mask so the base is clipped
+  //    to the hex (and any magenta the key missed in the bottom corners is removed)
+  //    while the peak above the hex is preserved. final alpha = keyedAlpha × hexMask.
+  await openTopHexMaskPath(entry.size.width, entry.size.height, maskPath);
+  await runCmd("magick", [keyedPath, "-alpha", "extract", keyedAlphaPath]);
+  await runCmd("magick", [keyedAlphaPath, maskPath, "-compose", "Multiply", "-composite", finalAlphaPath]);
+  await runCmd("magick", [keyedPath, finalAlphaPath, "-compose", "CopyOpacity", "-composite", "-define", "png:color-type=6", outPath]);
+
+  // Best-effort cleanup of temp files.
+  await Promise.all([
+    unlink(resizedPath).catch(() => {}),
+    unlink(keyedPath).catch(() => {}),
+    unlink(maskPath).catch(() => {}),
+    unlink(keyedAlphaPath).catch(() => {}),
+    unlink(finalAlphaPath).catch(() => {}),
+  ]);
+}
+
 async function postProcessTile(rawPath: string, outPath: string, entry: AssetEntry): Promise<void> {
   const resizedPath = `${rawPath}.resized.png`;
   const maskPath = `${rawPath}.mask.png`;
@@ -742,6 +808,7 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
   const categoryDir =
     entry.category === "building" ? "buildings" :
     entry.category === "improvement" ? "improvements" :
+    entry.category === "construction" ? "construction" :
     entry.category === "natural_wonder" ? "natural-wonders" :
     entry.category === "wonder_tile" ? "wonders" :
     entry.category === "great_person" ? "great-people" :
@@ -790,7 +857,10 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
         continue;
       }
 
-      if (entry.category === "tile" || entry.category === "road" || entry.category === "river" || entry.category === "natural_wonder") {
+      if (entry.category === "natural_wonder" && entry.overhang) {
+        // Tall peak wonders overhang the hex — chroma-key + base-only hex clip.
+        await postProcessOverhangTile(rawPath, finalPath, entry);
+      } else if (entry.category === "tile" || entry.category === "road" || entry.category === "river" || entry.category === "natural_wonder") {
         // Natural wonders are full hex tiles — same hex-masked tile pipeline.
         await postProcessTile(rawPath, finalPath, entry);
       } else if (entry.category === "leader" || entry.category === "great_person" || entry.category === "legend" || entry.category === "age" || entry.category === "pillar" || entry.category === "hero" || entry.category === "turn_update") {

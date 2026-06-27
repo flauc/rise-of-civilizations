@@ -9,7 +9,15 @@ import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
 import { ensureContact, declareWar } from "./diplomacy";
 import { UNIT_DEFS } from "./content";
-import { citiesOf, unitAt, unitsOf, type GameState } from "./state";
+import { citiesOf, makeUnit, unitAt, unitsOf, type GameState } from "./state";
+
+/** First passable, unoccupied land neighbour of (col,row). */
+function freeNeighbor(s: GameState, col: number, row: number) {
+  return offsetNeighbors(s.map, col, row).find((n) => {
+    const t = getTile(s.map, n.col, n.row);
+    return t && isPassableLand(t.terrain) && !unitAt(s, n.col, n.row);
+  });
+}
 
 const dist = (a: { col: number; row: number }, b: { col: number; row: number }) =>
   axialDistance(offsetToAxial(a), offsetToAxial(b));
@@ -190,5 +198,61 @@ describe("AI opponent", () => {
     applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "engineer", delta: 1 }, 1);
     aiTakeTurn(s, 1);
     expect(worksOf(s, 1).some((w) => w.kind === "wonder")).toBe(true);
+  });
+
+  it("falls back to its city to heal when a unit is badly wounded", () => {
+    const s = aiWithCity("ai-retreat");
+    for (const u of unitsOf(s, 1)) s.units.delete(u.id); // isolate one wounded unit
+    const city = citiesOf(s, 1)[0]!;
+    const spot = landTileAtDepth(s, city, 3)!;
+    const woundedId = s.nextEntityId++;
+    const wounded = makeUnit(woundedId, 1, "swordsman", spot.col, spot.row);
+    wounded.hp = 20;
+    s.units.set(woundedId, wounded);
+    // War with the human, whose soldier stands adjacent to the wounded unit.
+    ensureContact(s, 0, 1);
+    declareWar(s, 0, 1);
+    const adj = freeNeighbor(s, spot.col, spot.row)!;
+    const enemyId = s.nextEntityId++;
+    const enemy = makeUnit(enemyId, 0, "swordsman", adj.col, adj.row);
+    s.units.set(enemyId, enemy);
+    const hp0 = enemy.hp;
+    wounded.movementLeft = UNIT_DEFS["swordsman"].movement;
+    aiTakeTurn(s, 1);
+    // An even matchup it would otherwise attack — but wounded, it disengages instead.
+    expect(enemy.hp).toBe(hp0);
+    expect(s.units.has(woundedId)).toBe(true); // and it survived to heal
+  });
+
+  it("uses scouts to explore, not to fight (won't attack an adjacent enemy)", () => {
+    const s = aiWithCity("ai-scout-role");
+    for (const u of unitsOf(s, 1)) s.units.delete(u.id); // only the scout acts
+    const city = citiesOf(s, 1)[0]!;
+    const spot = landTileAtDepth(s, city, 2)!;
+    const scoutId = s.nextEntityId++;
+    s.units.set(scoutId, makeUnit(scoutId, 1, "scout", spot.col, spot.row));
+    ensureContact(s, 0, 1);
+    declareWar(s, 0, 1);
+    const adj = freeNeighbor(s, spot.col, spot.row)!;
+    const enemyId = s.nextEntityId++;
+    const enemy = makeUnit(enemyId, 0, "swordsman", adj.col, adj.row);
+    s.units.set(enemyId, enemy);
+    const hp0 = enemy.hp;
+    s.units.get(scoutId)!.movementLeft = UNIT_DEFS["scout"].movement;
+    aiTakeTurn(s, 1);
+    expect(enemy.hp).toBe(hp0); // the scout slipped away instead of attacking
+  });
+
+  it("rushes wartime production with surplus gold", () => {
+    const s = aiWithCity("ai-rush");
+    const city = citiesOf(s, 1)[0]!;
+    city.production = { kind: "unit", id: "swordsman" } as never;
+    city.productionStored = 0;
+    s.players[1]!.gold = 1000;
+    ensureContact(s, 0, 1);
+    declareWar(s, 1, 0); // AI at war → threatened → hurries troops
+    aiTakeTurn(s, 1);
+    expect(s.players[1]!.gold).toBeLessThan(1000); // spent gold to hurry it
+    expect(city.productionStored).toBeGreaterThan(0); // production was hurried
   });
 });

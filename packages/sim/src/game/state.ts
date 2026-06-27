@@ -253,10 +253,15 @@ export interface Work {
   target?: { col: number; row: number };
   /** Wonder id (for wonder works). */
   wonderId?: string;
-  /** City whose population/queue owns this work. */
+  /** City whose population/queue owns this work (distance basis + prune anchor). */
   hostCityId: number;
-  /** Cities contributing specialist labour (>=1). */
+  /** Cities contributing specialist labour — the union of assigned specialists' home
+   *  cities (>=0; recomputed from assignedSpecialistIds). */
   cityIds: number[];
+  /** Specialist ids (from any of the owner's cities) explicitly assigned to this work.
+   *  Labour is now entirely assignment-driven: a work only progresses while specialists
+   *  of its needed disciplines are assigned here. A specialist is on at most one work. */
+  assignedSpecialistIds: number[];
   /** Labour required, by discipline. */
   requirement: Partial<Record<Discipline, number>>;
   /** Labour accumulated so far, by discipline. */
@@ -397,6 +402,8 @@ export type FeatureRewardType =
   | "unit"
   | "unit_morale"
   | "global_morale"
+  | "faith"
+  | "civic"
   | "promotion"
   | "ambush"
   | "cache"

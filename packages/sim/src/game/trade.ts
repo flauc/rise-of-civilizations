@@ -254,6 +254,24 @@ export function establishTradeRoute(
   return { ok: true };
 }
 
+/** Cancel an existing route, e.g. to stop it being raided. The trader that
+ *  established it is gone for good — there is no refund. */
+export function cancelTradeRoute(state: GameState, routeId: number, actingPlayerId: number): TradeResult {
+  const route = state.tradeRoutes.find((r) => r.id === routeId);
+  if (!route) return { ok: false, error: "no such route" };
+  if (route.ownerId !== actingPlayerId) return { ok: false, error: "not your route" };
+  state.tradeRoutes = state.tradeRoutes.filter((r) => r.id !== routeId);
+  const from = state.cities.get(route.fromCityId);
+  const to = state.cities.get(route.toCityId);
+  const owner = playerById(state, actingPlayerId);
+  log(state, `${owner?.name ?? "A trader"} closed the trade route ${from?.name ?? "?"} → ${to?.name ?? "?"}.`, {
+    actorId: actingPlayerId,
+    targetIds: [actingPlayerId],
+    tile: from ? { col: from.col, row: from.row } : undefined,
+  });
+  return { ok: true };
+}
+
 /** Drop routes whose endpoints no longer exist or have changed owner. */
 export function pruneTradeRoutes(state: GameState): void {
   state.tradeRoutes = state.tradeRoutes.filter((r) => {

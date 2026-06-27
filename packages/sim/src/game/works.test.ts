@@ -2,9 +2,21 @@ import { describe, it, expect } from "vitest";
 import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
-import { advanceWorks, startWork, nextTierAt, workLabourFor } from "./works";
+import {
+  advanceWorks,
+  startWork,
+  nextTierAt,
+  workLabourFor,
+  workLabourPerTurn,
+  workEtaTurns,
+} from "./works";
 import { workerSlots, specialistLabour } from "./specialists";
 import { citiesOf, unitsOf, type City } from "./state";
+
+/** Pin a city's specialist to a work via the command path. */
+function assign(s: ReturnType<typeof createGame>, workId: number, specialistId: number, on = true): boolean {
+  return applyCommand(s, { type: "assignSpecialist", workId, specialistId, on }).ok;
+}
 
 function gameWithCity(): { s: ReturnType<typeof createGame>; city: City } {
   const s = createGame({ seed: "works-test", cols: 40, rows: 28, barbarians: false, humanSlots: 1, playerCount: 1 });
@@ -36,7 +48,10 @@ describe("specialists & works", () => {
 
     const tile = grasslandTile(s, city, city.col + 1, city.row);
     expect(nextTierAt(tile, "farm")).toBe(1);
-    expect(startWork(s, 0, "farm", tile.col, tile.row).ok).toBe(true);
+    const work = startWork(s, 0, "farm", tile.col, tile.row);
+    expect(work.ok).toBe(true);
+    // Manual assignment: pin the carpenter to the new work.
+    expect(assign(s, work.workId!, city.specialists[0]!.id)).toBe(true);
 
     // Run turns of labour until the farm is built (guard against runaway loops).
     let guard = 0;
@@ -57,15 +72,19 @@ describe("specialists & works", () => {
   it("upgrades an improvement through its tiers (each a separate work)", () => {
     const { s, city } = gameWithCity();
     applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const carpenterId = city.specialists[0]!.id;
     const tile = grasslandTile(s, city, city.col + 1, city.row);
     // build tier 1
-    startWork(s, 0, "farm", tile.col, tile.row);
+    const t1 = startWork(s, 0, "farm", tile.col, tile.row);
+    assign(s, t1.workId!, carpenterId);
     let guard = 0;
     while (s.works.length > 0 && guard++ < 40) advanceWorks(s, 0);
     expect(tile.improvementLevel).toBe(1);
-    // now an upgrade to tier 2 is available
+    // now an upgrade to tier 2 is available; the carpenter is free again — reassign it
     expect(nextTierAt(tile, "farm")).toBe(2);
-    expect(startWork(s, 0, "farm", tile.col, tile.row).ok).toBe(true);
+    const t2 = startWork(s, 0, "farm", tile.col, tile.row);
+    expect(t2.ok).toBe(true);
+    assign(s, t2.workId!, carpenterId);
     guard = 0;
     while (s.works.length > 0 && guard++ < 40) advanceWorks(s, 0);
     expect(tile.improvementLevel).toBe(2);
@@ -82,16 +101,91 @@ describe("specialists & works", () => {
     void city;
   });
 
-  it("refuses to start a work when no suitable craftsman is trained", () => {
+  it("allows starting a work before any craftsman is trained (assignment is manual)", () => {
     const { s, city } = gameWithCity();
     const tile = grasslandTile(s, city, city.col + 1, city.row);
-    // No carpenter trained yet → starting a farm must be rejected.
-    const res = applyCommand(s, { type: "startWork", kind: "farm", col: tile.col, row: tile.row });
-    expect(res.ok).toBe(false);
-    expect(s.works.length).toBe(0);
-    // Train a carpenter and it becomes allowed.
-    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    // Carpentry is unlocked from the start, so a farm may be queued even with no
+    // carpenter yet — the player trains and assigns one afterwards.
+    expect(city.specialists).toHaveLength(0);
     expect(applyCommand(s, { type: "startWork", kind: "farm", col: tile.col, row: tile.row }).ok).toBe(true);
+    expect(s.works).toHaveLength(1);
+    // But it makes no progress while unstaffed.
+    advanceWorks(s, 0);
+    expect(s.works[0]!.progress.carpentry ?? 0).toBe(0);
+  });
+
+  it("refuses to start a work whose craft is not yet researched", () => {
+    const { s, city } = gameWithCity();
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    tile.terrain = "hills"; // mine terrain (needs the Mason craft → Masonry tech)
+    expect(applyCommand(s, { type: "startWork", kind: "mine", col: tile.col, row: tile.row }).ok).toBe(false);
+    expect(s.works).toHaveLength(0);
+    // Once Masonry is researched the Mason craft is unlockable and the work is allowed.
+    s.players[0]!.researched.add("masonry");
+    expect(applyCommand(s, { type: "startWork", kind: "mine", col: tile.col, row: tile.row }).ok).toBe(true);
+  });
+
+  it("a work makes no progress until a specialist is assigned, then progresses", () => {
+    const { s, city } = gameWithCity();
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    const work = startWork(s, 0, "farm", tile.col, tile.row);
+    // Unassigned: a turn passes with zero progress.
+    advanceWorks(s, 0);
+    expect(s.works[0]!.progress.carpentry ?? 0).toBe(0);
+    // Assign the carpenter: now labour accrues.
+    assign(s, work.workId!, city.specialists[0]!.id);
+    advanceWorks(s, 0);
+    expect(s.works.length === 0 || (s.works[0]!.progress.carpentry ?? 0) > 0).toBe(true);
+  });
+
+  it("stacking specialists adds their labour and shortens the ETA", () => {
+    const { s, city } = gameWithCity();
+    city.population = 8;
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const [a, b] = city.specialists;
+    // Use a distant tile so the requirement is several turns of labour.
+    const tile = grasslandTile(s, city, city.col + 4, city.row);
+    const work = startWork(s, 0, "farm", tile.col, tile.row);
+    const w = s.works[0]!;
+
+    assign(s, work.workId!, a!.id);
+    const oneRate = workLabourPerTurn(s, w).carpentry!;
+    const etaOne = workEtaTurns(s, w);
+
+    assign(s, work.workId!, b!.id);
+    const twoRate = workLabourPerTurn(s, w).carpentry!;
+    expect(twoRate).toBeCloseTo(oneRate * 2);
+    expect(workEtaTurns(s, w)).toBeLessThanOrEqual(etaOne);
+  });
+
+  it("releasing a specialist detaches it from its work", () => {
+    const { s, city } = gameWithCity();
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    const work = startWork(s, 0, "farm", tile.col, tile.row);
+    assign(s, work.workId!, city.specialists[0]!.id);
+    expect(s.works[0]!.assignedSpecialistIds).toHaveLength(1);
+    // Release the carpenter — it must drop off the work.
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: -1 });
+    expect(s.works[0]!.assignedSpecialistIds).toHaveLength(0);
+  });
+
+  it("a specialist can only be on one work at a time", () => {
+    const { s, city } = gameWithCity();
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const id = city.specialists[0]!.id;
+    const t1 = grasslandTile(s, city, city.col + 1, city.row);
+    const t2 = grasslandTile(s, city, city.col - 1, city.row);
+    const w1 = startWork(s, 0, "farm", t1.col, t1.row);
+    const w2 = startWork(s, 0, "farm", t2.col, t2.row);
+    assign(s, w1.workId!, id);
+    assign(s, w2.workId!, id); // moving to w2 detaches from w1
+    const work1 = s.works.find((w) => w.id === w1.workId);
+    const work2 = s.works.find((w) => w.id === w2.workId);
+    expect(work1!.assignedSpecialistIds).toHaveLength(0);
+    expect(work2!.assignedSpecialistIds).toEqual([id]);
   });
 
   it("blocks farming a river tile until Irrigation is researched", () => {

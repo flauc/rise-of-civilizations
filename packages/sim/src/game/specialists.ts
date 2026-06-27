@@ -99,6 +99,9 @@ export function workerSlots(city: City): number {
 export interface SpecialistResult {
   ok: boolean;
   error?: string;
+  /** Set on a successful release (-1) to the id of the specialist that was let go,
+   *  so callers can detach it from any Work it was assigned to. */
+  releasedId?: number;
 }
 
 /** Choose a historic, civ-flavored name for a new craftsman, avoiding names the
@@ -159,7 +162,7 @@ export function convertCitizen(
     pool.sort((a, b) => a.level - b.level || a.xp - b.xp);
     const drop = pool[0]!;
     city.specialists = city.specialists.filter((s) => s.id !== drop.id);
-    return { ok: true };
+    return { ok: true, releasedId: drop.id };
   }
   return { ok: false, error: "no-op" };
 }

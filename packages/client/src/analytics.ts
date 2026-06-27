@@ -167,7 +167,7 @@ function persistActive(): void {
  */
 export type GameSetup = Pick<
   SessionStartMeta,
-  "mapType" | "mapSize" | "startingGold" | "naturalWonders" | "barbarianLevel" | "aiCivIds" | "legends"
+  "mapType" | "mapSize" | "startingGold" | "naturalWonders" | "barbarianLevel" | "aiCivIds" | "legends" | "turnLimit"
 >;
 
 export interface SessionStartMeta {
@@ -183,6 +183,8 @@ export interface SessionStartMeta {
   barbarianLevel?: string;
   naturalWonders?: boolean;
   startingGold?: string;
+  /** Turn at which the score victory triggers; 0 = unlimited. */
+  turnLimit?: number;
   aiCivIds?: (string | null)[];
 }
 
@@ -225,6 +227,7 @@ export function trackSessionStart(meta: SessionStartMeta): string {
     barbarianLevel: meta.barbarianLevel,
     naturalWonders: meta.naturalWonders,
     startingGold: meta.startingGold,
+    turnLimit: meta.turnLimit,
     aiCivIds: meta.aiCivIds,
     ts: Date.now(),
   });

@@ -52,6 +52,18 @@ const GOLD_OPTIONS: { value: StartingGold; label: string; desc: string }[] = [
   { value: "generous", label: "Generous", desc: "A comfortable cushion for several units or early barbarian bribes." },
 ];
 
+/** Turn-limit presets for the score victory. `0` = unlimited (no turn cap). */
+const TURN_LIMIT_OPTIONS: { value: number; label: string }[] = [
+  { value: 120, label: "120 turns" },
+  { value: 150, label: "150 turns" },
+  { value: 200, label: "200 turns" },
+  { value: 250, label: "250 turns" },
+  { value: 300, label: "300 turns" },
+  { value: 0, label: "Unlimited" },
+];
+
+const DEFAULT_TURN_LIMIT = 120;
+
 /** "random" = let the sim assign a random unique civ when the game starts. */
 const RANDOM_CIV = "random";
 
@@ -75,6 +87,7 @@ interface MenuState {
     naturalWonders: boolean;
     legends: boolean;
     startingGold: StartingGold;
+    turnLimit: number;
   };
   mp: {
     url: string;
@@ -150,6 +163,18 @@ function barbarianSelect(id: string, value: string): string {
     .join("")}</select>`;
 }
 
+/** Turn-limit dropdown for the score victory (Unlimited = no cap). */
+function turnLimitSelect(id: string, value: number): string {
+  return `<select id="${id}" class="menu-in">${TURN_LIMIT_OPTIONS.map(
+    (o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`,
+  ).join("")}</select>`;
+}
+
+/** Human-readable turn-limit label for read-only displays. */
+function turnLimitLabel(value: number): string {
+  return TURN_LIMIT_OPTIONS.find((o) => o.value === value)?.label ?? `${value} turns`;
+}
+
 /** A simple On/Off dropdown for a boolean game option. */
 function onOffSelect(id: string, value: boolean): string {
   const opts = [
@@ -204,6 +229,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       naturalWonders: false,
       legends: true,
       startingGold: "balanced",
+      turnLimit: DEFAULT_TURN_LIMIT,
     },
     mp: {
       url: DEFAULT_WS,
@@ -763,6 +789,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         <div class="menu-row"><span>Map type</span>${mapTypeSelect("sp-maptype", state.sp.mapType)}</div>
         <div class="menu-hint" id="sp-maptype-desc"></div>
         <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
+        <div class="menu-row"><span>Turn limit</span>${turnLimitSelect("sp-turnlimit", state.sp.turnLimit)}</div>
+        <div class="menu-hint">Highest score wins when the turn limit is reached. "Unlimited" plays until a decisive victory.</div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
         <div class="menu-row"><span>Natural wonders</span>${onOffSelect("sp-wonders", state.sp.naturalWonders)}</div>
         <div class="menu-row"><span>Legends (heroes)</span>${onOffSelect("sp-legends", state.sp.legends)}</div>
@@ -911,6 +939,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       const spBarb = $select("#sp-barb").value as BarbLevel;
       const spWonders = $select("#sp-wonders").value === "on";
       const spLegends = $select("#sp-legends").value === "on";
+      const spTurnLimit = Number($select("#sp-turnlimit").value);
       const spAiCivIds = state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId));
       onStart(
         new LocalSession({
@@ -923,6 +952,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           naturalWonders: spWonders,
           legends: spLegends,
           startingGold: state.sp.startingGold,
+          turnLimit: spTurnLimit,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
         {
@@ -933,6 +963,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           barbarianLevel: spBarb,
           aiCivIds: spAiCivIds,
           legends: spLegends,
+          turnLimit: spTurnLimit,
         },
       );
     });
@@ -1111,6 +1142,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         naturalWonders: false,
         barbarianLevel: "normal",
         aiCivIds: [],
+        turnLimit: DEFAULT_TURN_LIMIT,
       };
       mpSession?.send({
         t: "createGame",
@@ -1123,6 +1155,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         barbarians: "normal",
         naturalWonders: false,
         startingGold: "balanced",
+        turnLimit: DEFAULT_TURN_LIMIT,
       });
     };
 
@@ -1188,6 +1221,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
             <div class="mp-opt"><span>Password (optional)</span><input id="rm-pw" class="menu-in" type="text" placeholder="${room.hasPassword ? "Password set — type to change" : "No password"}" /></div>
             <div class="mp-opt"><span>Map type</span>${mapTypeSelect("rm-maptype", room.mapType)}</div>
             <div class="mp-opt"><span>Map size</span>${mapSelect("rm-map", (room.mapSize as MapSize) || "medium")}</div>
+            <div class="mp-opt"><span>Turn limit</span>${turnLimitSelect("rm-turnlimit", room.turnLimit ?? DEFAULT_TURN_LIMIT)}</div>
             <div class="mp-opt"><span>Barbarians</span>${barbarianSelect("rm-barb", room.barbarians)}</div>
             <div class="mp-opt"><span>Natural wonders</span>${onOffSelect("rm-wonders", room.naturalWonders)}</div>
             <div class="mp-opt"><span>Starting treasury</span>${goldChips("rm-gold", room.startingGold)}</div>
@@ -1195,6 +1229,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         : `
           <div class="mp-settings-readonly">
             <span><b>Map:</b> ${escapeHtml(MAP_TYPE_OPTIONS.find((o) => o.value === room.mapType)?.label ?? room.mapType)} · ${escapeHtml(room.mapSize || "medium")}</span>
+            <span><b>Turn limit:</b> ${escapeHtml(turnLimitLabel(room.turnLimit ?? DEFAULT_TURN_LIMIT))}</span>
             <span><b>Barbarians:</b> ${escapeHtml(room.barbarians)}</span>
             <span><b>Natural wonders:</b> ${room.naturalWonders ? "On" : "Off"}</span>
             <span><b>Treasury:</b> ${escapeHtml(room.startingGold)}</span>
@@ -1299,6 +1334,9 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           const dims = MAP_DIMENSIONS[size];
           configure({ mapSize: size, cols: dims.cols, rows: dims.rows });
         });
+        body.querySelector<HTMLSelectElement>("#rm-turnlimit")?.addEventListener("change", (e) =>
+          configure({ turnLimit: Number((e.target as HTMLSelectElement).value) }),
+        );
         body.querySelector<HTMLSelectElement>("#rm-barb")?.addEventListener("change", (e) =>
           configure({ barbarians: (e.target as HTMLSelectElement).value }),
         );

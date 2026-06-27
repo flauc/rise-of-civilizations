@@ -45,6 +45,7 @@ import { loadRoadAtlas } from "./road-assets";
 import { loadUnitAtlas } from "./unit-assets";
 import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
+import { loadConstructionAtlas } from "./construction-assets";
 import { loadFeatureAtlas } from "./feature-assets";
 import { loadNaturalWonderAtlas } from "./natural-wonder-assets";
 import { loadWonderAtlas } from "./wonder-assets";
@@ -338,6 +339,10 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onStartWork: (kind, col, row) => session.order({ type: "startWork", kind, col, row }),
     onStartWonder: (wonderId, col, row) => session.order({ type: "startWonder", wonderId, col, row }),
     onCancelWork: (workId) => session.order({ type: "cancelWork", workId }),
+    onRushProduction: (cityId, currency) => session.order({ type: "rushProduction", cityId, currency }),
+    onRushWork: (workId, currency) => session.order({ type: "rushWork", workId, currency }),
+    onAssignSpecialist: (workId, specialistId, on) =>
+      session.order({ type: "assignSpecialist", workId, specialistId, on }),
     onSelectUnit: (id) => {
       const u = st().units.get(id);
       if (u) {
@@ -376,6 +381,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       if (selectedUnitId != null) session.order({ type: "establishTradeRoute", unitId: selectedUnitId, destCityId });
       clearSelection();
     },
+    onCancelTradeRoute: (routeId) => session.order({ type: "cancelTradeRoute", routeId }),
     onBribeBarbarian: (unitId) => session.order({ type: "bribeBarbarian", unitId }),
     onRecruitBarbarian: (unitId) => session.order({ type: "recruitBarbarian", unitId }),
     onCloseCity: () => {
@@ -708,6 +714,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   const improvementAtlas = loadImprovementAtlas(() => {
     needsRedraw = true;
   });
+  const constructionAtlas = loadConstructionAtlas(() => {
+    needsRedraw = true;
+  });
   const featureAtlas = loadFeatureAtlas(() => {
     needsRedraw = true;
   });
@@ -781,9 +790,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         cityWorkable,
         cityWorked: selCity ? new Set(selCity.workedTiles) : new Set(),
         tradeRoutes: st().tradeRoutes,
+        works: st()
+          .works.filter((w) => w.ownerId === me && w.target)
+          .map((w) => ({ col: w.target!.col, row: w.target!.row, kind: w.kind })),
         unitAtlas,
         cityAtlas,
         featureAtlas,
+        constructionAtlas,
       });
       ui.render({
         state: st(),

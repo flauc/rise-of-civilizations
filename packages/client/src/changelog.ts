@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.03";
+export const CURRENT_VERSION = "0.04";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,84 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.04",
+    date: "June 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Rush production with gold — or faith and culture",
+        desc:
+          "Impatient? You can now spend your treasury to finish a city's current build or a tile/wonder work immediately, paying per unit of work remaining. Gold always works; the new Corvée policy lets you rush with culture, and the Labor of Devotion belief lets you rush with faith — both a little cheaper than coin.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Staff public works with individual craftsmen",
+        desc:
+          "Wonders and tile works are no longer powered by whole cities — you now assign specific craftsmen to them, and each works one project at a time. Start a work as soon as you've researched the right craft (you can staff it later), watch a turns-to-complete estimate, and pull crews onto whatever matters most right now.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Wonders are within reach",
+        desc:
+          "Every ancient wonder costs roughly 40% less labour to raise, so a focused city can realistically complete one in the Ancient Era instead of toiling for an age.",
+      },
+      {
+        tag: "Gameplay",
+        title: "A far sharper opponent",
+        desc:
+          "Rival civilizations now play to win: they march armies onto your cities instead of skirmishing, cross the sea to reach island foes, garrison cities under threat, pull wounded units back to heal, beeline military tech when at war, settle genuinely good land, pick wonders and policies that suit their character, and splurge gold or faith to rush a wonder they're racing you for.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Smarter, less repetitive diplomacy",
+        desc:
+          "AI civs now answer a lopsided trade with a fair counter-offer instead of a flat refusal, and they stop pestering you with the same deal — or the same peace plea — turn after turn. They also only declare wars they can actually prosecute, and commit to a single best target rather than picking a fight with the whole world at once.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Barbarians burn your economy",
+        desc:
+          "Raiders no longer only hunt your units and cities — they now pillage farms, mines and roads and plunder trade routes running through their reach, so an unguarded frontier bleeds yields fast.",
+      },
+      {
+        tag: "New",
+        title: "Disband a trade route",
+        desc:
+          "You can now close one of your own trade routes — handy when raiders keep plundering it. The trader that opened the route is lost and there's no refund, so choose your moment.",
+      },
+      {
+        tag: "New",
+        title: "Richer village rewards",
+        desc:
+          "Goody huts can now bless you with a stockpile of faith or teach your people progress toward the civic you're studying. A gifted citizen now goes straight to work the best free tile, and scouts (who carry no morale) reroll a morale gift into something they can actually use.",
+      },
+      {
+        tag: "UI",
+        title: "Construction sites on the map",
+        desc:
+          "Tiles with a work under way now show an under-construction sprite — distinct for economic improvements, defences and wonders — so you can see at a glance where your craftsmen are busy.",
+      },
+      {
+        tag: "UI",
+        title: "See exactly what a Great Person will do",
+        desc:
+          "Activating a Great Person now previews the precise effect first — how much science, gold or production you'll gain, which city it lands in, or how many units get promoted or healed — so there are no surprises.",
+      },
+      {
+        tag: "Fix",
+        title: "Occupied tiles stop paying out",
+        desc:
+          "An enemy or barbarian standing on one of your worked tiles now blocks it — your citizens won't venture out under a hostile occupation, so a besieging army actually chokes the city it surrounds.",
+      },
+      {
+        tag: "Fix",
+        title: "Truly unlimited games",
+        desc:
+          "Setting no turn limit now means the game never ends on a score countdown — it runs until someone wins by a decisive condition (conquest, religion, and so on).",
+      },
+    ],
+  },
   {
     version: "0.03",
     date: "June 2026",

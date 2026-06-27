@@ -12,21 +12,30 @@ import { applyCommand } from "./commands";
 import { computeReachable } from "./movement";
 import { computeAttackTargets } from "./combat";
 import { abilityTargets, canUseAbility, unitAbilities } from "./abilities";
-import { availableProduction, availableTechs } from "./economy";
+import { availableProduction, availableTechs, workableTiles } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
 import { canFoundReligion, availableReligionNames } from "./religion";
 import { availableLegends, canRecruitLegend } from "./legends";
 import { canUseLeaderAbility } from "./leader-abilities";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
-import { aiConsiderDiplomacy, atWar } from "./diplomacy";
+import { aiConsiderDiplomacy, atWar, personalityOf } from "./diplomacy";
 import { availablePromotions } from "./combat";
-import { BELIEFS, WONDER_DEFS } from "@roc/data";
+import { rushCurrencies, canRushCity, canRushWork, type RushCurrency } from "./rush";
+import { BELIEFS, WONDER_DEFS, getPolicy, type DiploPersonality } from "@roc/data";
 import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
-import { nextTierAt, worksOf, worksOfCity, workDiscipline, canStartWonder } from "./works";
+import {
+  nextTierAt,
+  worksOf,
+  worksOfCity,
+  workDiscipline,
+  canStartWonder,
+  assignSpecialist,
+  assignedSpecialistIds,
+} from "./works";
 import { offsetNeighbors } from "./movement";
 import { RESOURCE_DEFS, resourceActive } from "./resources";
-import { isPassableLand } from "./terrain";
-import { UNIT_DEFS, isMilitary, type TechId } from "./content";
+import { isPassableLand, isWaterTerrain, tileYields } from "./terrain";
+import { UNIT_DEFS, isMilitary, isRanged, type TechId } from "./content";
 import {
   citiesOf,
   cityAt,
@@ -48,6 +57,67 @@ const TECH_PREFERENCE: TechId[] = [
   "gunpowder", "firearms",
 ];
 
+/** Techs that unlock or strengthen the military — beelined by warlike civs / in war. */
+const MILITARY_TECHS = new Set<TechId>([
+  "native_copper", "smelting", "bronze_alloying", "equestrian", "composite_bow",
+  "phalanx", "iron_bloomery", "carburizing", "siegecraft", "cavalry_doctrine",
+  "crossbow", "gunpowder", "firearms",
+]);
+
+/** Pick the next tech: a warlike civ (or one at war) rushes military tech first. */
+function pickTech(techs: TechId[], p: DiploPersonality, atWarNow: boolean): TechId {
+  if (atWarNow || p.aggression > 0.65) {
+    const m = TECH_PREFERENCE.find((t) => techs.includes(t) && MILITARY_TECHS.has(t));
+    if (m) return m;
+  }
+  return TECH_PREFERENCE.find((t) => techs.includes(t)) ?? techs[0]!;
+}
+
+/** Crude classification of a policy/belief effect bag for personality weighting. */
+function effectScore(effects: Record<string, unknown> | undefined, p: DiploPersonality, atWarNow: boolean): number {
+  if (!effects) return 1;
+  const e = effects as Record<string, unknown>;
+  const s = JSON.stringify(e);
+  const martial = e.unitClassCombat !== undefined || e.cavalryMovementBonus !== undefined;
+  const rushPerk = e.rushWithFaith === true || e.rushWithCulture === true;
+  const warMinded = atWarNow || p.aggression > 0.6;
+  let v = 1;
+  if (rushPerk) v += 2; // rushing is broadly powerful
+  if (martial) v += warMinded ? 3 : 0.5;
+  if (/yieldPercent/.test(s)) {
+    if (/science/.test(s)) v += warMinded ? 1 : 2.5;
+    if (/gold/.test(s)) v += p.greed > 0.6 ? 2.5 : 1;
+    if (/food|production/.test(s)) v += 2;
+  }
+  return v;
+}
+
+/** Order unlocked policies so the most useful fill the government's limited slots. */
+function rankPolicies(ids: string[], p: DiploPersonality, atWarNow: boolean): string[] {
+  return [...ids].sort((a, b) =>
+    effectScore(getPolicy(b)?.effects as Record<string, unknown>, p, atWarNow) -
+    effectScore(getPolicy(a)?.effects as Record<string, unknown>, p, atWarNow));
+}
+
+/** Choose two religion beliefs that suit the civ's temperament. */
+function pickBeliefs(p: DiploPersonality): string[] {
+  return [...BELIEFS]
+    .sort((a, b) => effectScore(b.effects as Record<string, unknown>, p, false) - effectScore(a.effects as Record<string, unknown>, p, false))
+    .slice(0, 2)
+    .map((b) => b.id);
+}
+
+/** Personality-weighted desirability of a wonder's effect (varies the AI's picks). */
+function wonderScore(effect: unknown, p: DiploPersonality): number {
+  const s = JSON.stringify(effect ?? {});
+  let v = 1;
+  if (/production|food/.test(s)) v += 2;
+  if (/science|culture/.test(s)) v += p.aggression < 0.55 ? 2 : 1;
+  if (/combat|strength|unit|military|defense/.test(s)) v += p.aggression > 0.6 ? 3 : 0;
+  if (/gold/.test(s)) v += p.greed > 0.6 ? 2 : 0;
+  return v;
+}
+
 function ax(o: { col: number; row: number }) {
   return offsetToAxial(o);
 }
@@ -67,9 +137,57 @@ function stepToward(state: GameState, unit: Unit, goalCol: number, goalRow: numb
       bestKey = key;
     }
   }
-  if (!bestKey) return false;
+  if (!bestKey) return tryNavalStep(state, unit, goalCol, goalRow, pid); // blocked on land → try the sea
   const [c, r] = bestKey.split(",").map(Number) as [number, number];
   return applyCommand(state, { type: "move", unitId: unit.id, col: c, row: r }, pid).ok;
+}
+
+/**
+ * When a land march stalls, cross water: embark from coastal land onto the sea, or
+ * disembark back to land — but only when the hop actually gets us closer to the
+ * goal. (Open-water movement itself is handled by the normal `move` path, since an
+ * embarked unit is already water-domain.) Lets the AI reach islands and over-sea foes.
+ */
+function tryNavalStep(state: GameState, unit: Unit, goalCol: number, goalRow: number, pid: number): boolean {
+  const goal = ax({ col: goalCol, row: goalRow });
+  const curD = axialDistance(ax(unit), goal);
+  const here = getTile(state.map, unit.col, unit.row);
+  if (!here) return false;
+  const occupied = (col: number, row: number) =>
+    [...state.units.values()].some((u) => u.id !== unit.id && u.col === col && u.row === row);
+
+  if (unit.embarked) {
+    // Step ashore where it brings us nearest the goal.
+    let best: { col: number; row: number } | null = null;
+    let bestD = curD;
+    for (const n of offsetNeighbors(state.map, unit.col, unit.row)) {
+      const t = getTile(state.map, n.col, n.row);
+      if (!t || isWaterTerrain(t.terrain) || !isPassableLand(t.terrain) || occupied(n.col, n.row)) continue;
+      const d = axialDistance(ax(n), goal);
+      if (d < bestD) {
+        bestD = d;
+        best = n;
+      }
+    }
+    if (best) return applyCommand(state, { type: "disembark", unitId: unit.id, col: best.col, row: best.row }, pid).ok;
+    return false;
+  }
+
+  // On land: put to sea toward the goal (embark validates that we're coastal).
+  if (isWaterTerrain(here.terrain)) return false;
+  let best: { col: number; row: number } | null = null;
+  let bestD = curD;
+  for (const n of offsetNeighbors(state.map, unit.col, unit.row)) {
+    const t = getTile(state.map, n.col, n.row);
+    if (!t || !isWaterTerrain(t.terrain) || occupied(n.col, n.row)) continue;
+    const d = axialDistance(ax(n), goal);
+    if (d < bestD) {
+      bestD = d;
+      best = n;
+    }
+  }
+  if (best) return applyCommand(state, { type: "embark", unitId: unit.id, col: best.col, row: best.row }, pid).ok;
+  return false;
 }
 
 /** Barbarians are always fair game; civs only when we're actually at war. */
@@ -95,6 +213,33 @@ function nearestHostile(state: GameState, unit: Unit, pid: number): { col: numbe
   };
   for (const u of state.units.values()) consider(u.col, u.row, u.ownerId);
   for (const c of state.cities.values()) consider(c.col, c.row, c.ownerId);
+  return best;
+}
+
+/** Friendly battle-ready military units within `radius` of (col,row), including self. */
+function friendlyMilitaryNear(state: GameState, pid: number, col: number, row: number, radius: number): number {
+  const at = ax({ col, row });
+  let n = 0;
+  for (const u of state.units.values()) {
+    if (u.ownerId !== pid || !isMilitary(u.type)) continue;
+    if (axialDistance(at, ax(u)) <= radius) n++;
+  }
+  return n;
+}
+
+/** Nearest hostile city — the objective an army at war should converge on. */
+function nearestHostileCity(state: GameState, unit: Unit, pid: number): { col: number; row: number } | null {
+  let best: { col: number; row: number } | null = null;
+  let bestD = Infinity;
+  const from = ax(unit);
+  for (const c of state.cities.values()) {
+    if (!isHostile(state, pid, c.ownerId)) continue;
+    const d = axialDistance(from, ax(c));
+    if (d < bestD) {
+      bestD = d;
+      best = { col: c.col, row: c.row };
+    }
+  }
   return best;
 }
 
@@ -128,23 +273,71 @@ function aiExplore(state: GameState, unit: Unit, pid: number): void {
 
 // ---- production choice ---------------------------------------------------
 
-function chooseProduction(state: GameState, player: Player, city: City): ProductionItem | null {
+/** Is a hostile (war enemy or barbarian) lurking near any of the player's cities? */
+function hostileNearCities(state: GameState, pid: number): boolean {
+  for (const c of citiesOf(state, pid)) {
+    for (const u of state.units.values()) {
+      if (isHostile(state, pid, u.ownerId) && axialDistance(ax(c), ax(u)) <= 4) return true;
+    }
+  }
+  return false;
+}
+
+/** A city with open water in its inner ring — values a harbor and seafaring. */
+function isCoastalCity(state: GameState, city: City): boolean {
+  for (const n of offsetNeighbors(state.map, city.col, city.row)) {
+    const t = getTile(state.map, n.col, n.row);
+    if (t && isWaterTerrain(t.terrain)) return true;
+  }
+  return false;
+}
+
+/** Fraction of the land map this player has explored (drives early scouting). */
+function exploredFraction(state: GameState, pid: number): number {
+  const me = playerById(state, pid);
+  if (!me) return 1;
+  return me.explored.size / Math.max(1, state.map.cols * state.map.rows);
+}
+
+/** How many cities this civ aims to settle before consolidating — builders sprawl. */
+function targetCityCount(p: DiploPersonality): number {
+  if (p.aggression > 0.7) return 4; // warmongers take cities rather than plant them
+  if (p.aggression < 0.45) return 7; // peaceful builders expand wide
+  return 5;
+}
+
+function chooseProduction(state: GameState, player: Player, city: City, p: DiploPersonality): ProductionItem | null {
   const opts = availableProduction(state, player, city);
   const units = unitsOf(state, player.id);
   const has = (t: string) => units.some((u) => u.type === t);
   const cityCount = citiesOf(state, player.id).length;
+  const milCount = units.filter((u) => isMilitary(u.type)).length;
+  const atWar = player.atWar.length > 0;
+  const threatened = atWar || hostileNearCities(state, player.id);
+  const warMinded = atWar || p.aggression > 0.6;
   const bestMilitary = () =>
     opts
       .filter((o) => o.item.kind === "unit" && isMilitary(o.item.id))
       .sort((a, b) => UNIT_DEFS[b.item.id as keyof typeof UNIT_DEFS].strength - UNIT_DEFS[a.item.id as keyof typeof UNIT_DEFS].strength)[0]?.item ?? null;
 
   // 1. Always keep at least one defender.
-  if (!units.some((u) => isMilitary(u.type))) {
+  if (milCount === 0) {
     const m = bestMilitary();
     if (m) return m;
   }
-  // 2. Expand while small.
-  if (cityCount < 3 && city.population >= 2 && !has("settler")) {
+  // 1b. Under threat, raise an army before anything else — roughly two units per
+  //     city — so the AI can actually defend itself and follow through on a war.
+  if (threatened && milCount < cityCount * 2 + 1) {
+    const m = bestMilitary();
+    if (m) return m;
+  }
+  // 1c. Early on, a cheap scout to reveal the map (and find settle sites / rivals).
+  if (!threatened && exploredFraction(state, player.id) < 0.45 && !has("scout")) {
+    const sc = opts.find((o) => o.item.kind === "unit" && o.item.id === "scout");
+    if (sc) return sc.item;
+  }
+  // 2. Keep expanding toward good land while at peace (settlers are fragile in war).
+  if (!threatened && cityCount < targetCityCount(p) && city.population >= 2 && !has("settler")) {
     const s = opts.find((o) => o.item.id === "settler");
     if (s) return s.item;
   }
@@ -153,14 +346,20 @@ function chooseProduction(state: GameState, player: Player, city: City): Product
     const t = opts.find((o) => o.item.id === "trader");
     if (t) return t.item;
   }
-  // 4. Buildings — broad priority order (skips any already built / not unlocked).
-  // If the treasury is empty, lean harder on economic buildings before adding more upkeep.
-  const BUILD_ORDER = player.gold <= 0
-    ? (["market", "harbor", "granary", "workshop", "library", "walls", "barracks", "forge",
-        "shrine", "temple", "monument", "stable", "aqueduct", "academy", "amphitheater"] as const)
-    : (["granary", "workshop", "library", "market", "walls", "barracks", "forge",
-        "shrine", "temple", "monument", "stable", "aqueduct", "academy", "amphitheater", "harbor"] as const);
-  for (const b of BUILD_ORDER) {
+  // 4. Buildings — a broad priority order, reshaped by situation (skips any already
+  //    built / not unlocked). Coastal cities want a harbor; war footing wants
+  //    military buildings sooner; an empty treasury leans on economy first.
+  const coastal = isCoastalCity(state, city);
+  const order: string[] = ["granary", "workshop", "library", "market"];
+  if (coastal) order.unshift("harbor");
+  if (warMinded) order.push("walls", "barracks", "stable", "forge");
+  if (player.gold <= 0) order.unshift("market"); // prioritise income when broke
+  order.push("walls", "barracks", "forge", "shrine", "temple", "monument",
+    "stable", "aqueduct", "academy", "amphitheater", "harbor");
+  const seen = new Set<string>();
+  for (const b of order) {
+    if (seen.has(b)) continue;
+    seen.add(b);
     const o = opts.find((x) => x.item.kind === "building" && x.item.id === b);
     if (o) return o.item;
   }
@@ -175,10 +374,35 @@ function chooseProduction(state: GameState, player: Player, city: City): Product
 
 // ---- per-unit behaviour --------------------------------------------------
 
+/** Quality of a tile as a city site: food/production, fresh water, coast, nearby resources. */
+function settleScore(state: GameState, col: number, row: number): number {
+  const tile = getTile(state.map, col, row);
+  if (!tile || !isPassableLand(tile.terrain)) return -Infinity;
+  const y = tileYields(tile);
+  let s = y.food * 2 + y.production;
+  if (tile.river || tile.riverLake) s += 5; // fresh water is prime real estate
+  let coastal = false;
+  for (const n of offsetNeighbors(state.map, col, row)) {
+    const t = getTile(state.map, n.col, n.row);
+    if (!t) continue;
+    if (isWaterTerrain(t.terrain)) coastal = true;
+    if (t.resource) s += 3; // a resource in the first ring
+  }
+  if (coastal) s += 3;
+  // A second-ring sweep for more resources to work later.
+  for (let dr = -2; dr <= 2; dr++) {
+    for (let dc = -2; dc <= 2; dc++) {
+      const t = getTile(state.map, col + dc, row + dr);
+      if (t?.resource) s += 1;
+    }
+  }
+  return s;
+}
+
 function findSettleSpot(state: GameState, unit: Unit, pid: number): { col: number; row: number } | null {
   const cities = [...state.cities.values()];
   let best: { col: number; row: number } | null = null;
-  let bestD = Infinity;
+  let bestValue = -Infinity;
   for (let dr = -6; dr <= 6; dr++) {
     for (let dc = -6; dc <= 6; dc++) {
       const col = unit.col + dc;
@@ -189,8 +413,10 @@ function findSettleSpot(state: GameState, unit: Unit, pid: number): { col: numbe
       if (cities.some((c) => axialDistance(here, ax(c)) < 3)) continue;
       if (unitAt(state, col, row) && !(col === unit.col && row === unit.row)) continue;
       const d = axialDistance(ax(unit), here);
-      if (d < bestD) {
-        bestD = d;
+      // Reward good land, but discount the trek to reach it so settlers don't roam forever.
+      const value = settleScore(state, col, row) - d * 1.5;
+      if (value > bestValue) {
+        bestValue = value;
         best = { col, row };
       }
     }
@@ -214,18 +440,21 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
   const haveDiscipline = (d: string) =>
     city.specialists.some((s) => SPECIALIST_DEFS[s.type as SpecialistId]?.discipline === d);
 
-  // Train a balanced crew, scaling with size and always leaving free workers.
+  // Train a balanced crew, scaling with size and always leaving free workers. Bigger
+  // cities support deeper benches so their public works actually keep pace.
   const wants: SpecialistId[] = [];
-  if (city.population >= 2 && unlocked.includes("carpenter") && countOf("carpenter") < 1) wants.push("carpenter");
-  if (city.population >= 3 && unlocked.includes("mason") && countOf("mason") < 1) wants.push("mason");
-  if (city.population >= 5 && unlocked.includes("carpenter") && countOf("carpenter") < 2) wants.push("carpenter");
+  const wantCarpenter = Math.min(3, Math.floor(city.population / 3));
+  const wantMason = Math.min(2, Math.floor(city.population / 4));
+  if (unlocked.includes("carpenter") && countOf("carpenter") < wantCarpenter) wants.push("carpenter");
+  if (unlocked.includes("mason") && countOf("mason") < wantMason) wants.push("mason");
   if (city.population >= 6 && unlocked.includes("engineer") && countOf("engineer") < 1) wants.push("engineer");
   if (city.population >= 7 && unlocked.includes("architect") && countOf("architect") < 1) wants.push("architect");
+  if (city.population >= 9 && unlocked.includes("engineer") && countOf("engineer") < 2) wants.push("engineer");
   for (const id of wants) {
     if (workerSlots(city) > 1) applyCommand(state, { type: "convertCitizen", cityId: city.id, specialistId: id, delta: 1 }, pid);
   }
 
-  if (worksOfCity(state, city.id).length >= 2) return; // don't over-queue
+  if (worksOfCity(state, city.id).length >= 3) return; // don't over-queue
 
   // Defensive structure: a capital/large city with both crafts fortifies a
   // border tile (towers bombard; walls just block).
@@ -242,52 +471,78 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
     }
   }
 
-  // Economic works: improve resources first, then food/production tiles.
-  for (let dr = -2; dr <= 2; dr++) {
-    for (let dc = -2; dc <= 2; dc++) {
-      const col = city.col + dc;
-      const row = city.row + dr;
-      const tile = getTile(state.map, col, row);
-      if (!tile || tile.ownerCityId === undefined) continue;
-      const owner = state.cities.get(tile.ownerCityId);
-      if (!owner || owner.ownerId !== pid) continue;
-      let kind: string | null = null;
-      // Prioritize improving a resource with the correct improvement.
-      if (tile.resource && !resourceActive(tile)) {
-        const rdef = RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS];
-        if (rdef) {
-          const needed = rdef.improvement;
-          if (haveDiscipline(workDiscipline(needed)) && nextTierAt(tile, needed)) {
-            kind = needed;
-          }
+  // Economic works: walk the city's actual workable tiles, best yields first, and
+  // queue the most valuable improvement (resources before plain terrain).
+  const tiles = workableTiles(state, city)
+    .map((t) => ({ ...t, tile: getTile(state.map, t.col, t.row)! }))
+    .filter((t) => t.tile && t.tile.ownerCityId !== undefined && state.cities.get(t.tile.ownerCityId)?.ownerId === pid)
+    .sort((a, b) => {
+      const ra = a.tile.resource ? 1 : 0;
+      const rb = b.tile.resource ? 1 : 0;
+      if (ra !== rb) return rb - ra; // resources first
+      const ya = tileYields(a.tile);
+      const yb = tileYields(b.tile);
+      return yb.food + yb.production - (ya.food + ya.production);
+    });
+  for (const { col, row, tile } of tiles) {
+    let kind: string | null = null;
+    // Prioritize improving a resource with the correct improvement.
+    if (tile.resource && !resourceActive(tile)) {
+      const rdef = RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS];
+      if (rdef) {
+        const needed = rdef.improvement;
+        if (haveDiscipline(workDiscipline(needed)) && nextTierAt(tile, needed)) {
+          kind = needed;
         }
       }
-      if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "farm")) kind = "farm";
-      else if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "lumber_camp")) kind = "lumber_camp";
-      else if (!kind && haveDiscipline("masonry") && nextTierAt(tile, "mine")) kind = "mine";
-      else if (!kind && haveDiscipline("survey") && player.researched.has("maritime_foraging") && nextTierAt(tile, "fishery"))
-        kind = "fishery";
-      else if (!kind && haveDiscipline("survey") && nextTierAt(tile, "road")) kind = "road";
-      if (kind && applyCommand(state, { type: "startWork", kind, col, row }, pid).ok) return;
+    }
+    if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "farm")) kind = "farm";
+    else if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "lumber_camp")) kind = "lumber_camp";
+    else if (!kind && haveDiscipline("masonry") && nextTierAt(tile, "mine")) kind = "mine";
+    else if (!kind && haveDiscipline("survey") && player.researched.has("maritime_foraging") && nextTierAt(tile, "fishery"))
+      kind = "fishery";
+    else if (!kind && haveDiscipline("survey") && nextTierAt(tile, "road")) kind = "road";
+    if (kind && applyCommand(state, { type: "startWork", kind, col, row }, pid).ok) return;
+  }
+}
+
+/** Start the wonder that best fits the civ, on an owned tile a capable city can reach. */
+function aiWonders(state: GameState, pid: number, p: DiploPersonality): void {
+  if (worksOf(state, pid).some((w) => w.kind === "wonder")) return; // one at a time
+  // Rank still-available wonders by how well their effect suits this civ, then take
+  // the first we can actually start (canStartWonder checks craftsmen + an empty tile).
+  const candidates = WONDER_DEFS.filter(
+    (w) => !state.completedWonders.includes(w.id) && !worksOf(state, pid).some((x) => x.wonderId === w.id),
+  ).sort((a, b) => wonderScore(b.effect, p) - wonderScore(a.effect, p));
+  for (const wonder of candidates) {
+    for (const t of state.map.tiles) {
+      const owner = t.ownerCityId !== undefined ? state.cities.get(t.ownerCityId) : undefined;
+      if (!owner || owner.ownerId !== pid) continue;
+      if (canStartWonder(state, pid, wonder.id, t.col, t.row).ok) {
+        applyCommand(state, { type: "startWonder", wonderId: wonder.id, col: t.col, row: t.row }, pid);
+        return;
+      }
     }
   }
 }
 
-/** Start a wonder once per empire, on an empty owned tile a capable city can reach. */
-function aiWonders(state: GameState, pid: number): void {
-  if (worksOf(state, pid).some((w) => w.kind === "wonder")) return; // one at a time
-  const wonder = WONDER_DEFS.find(
-    (w) => !state.completedWonders.includes(w.id) && !worksOf(state, pid).some((x) => x.wonderId === w.id),
-  );
-  if (!wonder) return;
-  // canStartWonder enforces ownership, an empty tile, and a nearby city with the
-  // required craftsmen — scan owned tiles for the first spot that qualifies.
-  for (const t of state.map.tiles) {
-    const owner = t.ownerCityId !== undefined ? state.cities.get(t.ownerCityId) : undefined;
-    if (!owner || owner.ownerId !== pid) continue;
-    if (canStartWonder(state, pid, wonder.id, t.col, t.row).ok) {
-      applyCommand(state, { type: "startWonder", wonderId: wonder.id, col: t.col, row: t.row }, pid);
-      return;
+/**
+ * Staff the empire's works. With manual assignment, nothing labours unless it is
+ * explicitly assigned, so the AI pins every idle craftsman to the oldest work that
+ * still needs its discipline (mirroring the old auto-assignment as explicit orders).
+ */
+function aiAssignSpecialists(state: GameState, pid: number): void {
+  const works = worksOf(state, pid);
+  if (works.length === 0) return;
+  const assigned = assignedSpecialistIds(state, pid);
+  for (const city of citiesOf(state, pid)) {
+    for (const s of city.specialists) {
+      if (assigned.has(s.id)) continue;
+      const disc = SPECIALIST_DEFS[s.type as SpecialistId]?.discipline;
+      if (!disc) continue;
+      const w = works.find((x) => (x.requirement[disc] ?? 0) > (x.progress[disc] ?? 0));
+      if (!w) continue;
+      if (assignSpecialist(state, pid, w.id, s.id, true).ok) assigned.add(s.id);
     }
   }
 }
@@ -332,6 +587,25 @@ function aiTrader(state: GameState, unit: Unit, pid: number): void {
 
 function aiMilitary(state: GameState, unit: Unit, pid: number): void {
   const abilities = unitAbilities(state, unit);
+  const def = UNIT_DEFS[unit.type];
+
+  // Badly wounded and in danger? Fall back to the nearest city to heal (cities mend
+  // a unit far faster) rather than feeding it to the enemy.
+  if (unit.hp <= 30) {
+    const inDanger = [...state.units.values()].some(
+      (e) => isHostile(state, pid, e.ownerId) && axialDistance(ax(unit), ax(e)) <= 2,
+    );
+    if (inDanger) {
+      const home = citiesOf(state, pid)
+        .map((c) => ({ col: c.col, row: c.row, d: axialDistance(ax(unit), ax(c)) }))
+        .sort((a, b) => a.d - b.d)[0];
+      if (home) {
+        if (home.d === 0) return; // already safe in the city — hold and heal
+        stepToward(state, unit, home.col, home.row, pid);
+        return;
+      }
+    }
+  }
 
   // Horse archers prefer Fire & Retreat: same damage, no counter, and they reposition.
   const kite = abilities.find((a) => a === "fire_and_retreat" || a === "parthian_shot" || a === "feigned_retreat");
@@ -357,18 +631,26 @@ function aiMilitary(state: GameState, unit: Unit, pid: number): void {
   const targets = computeAttackTargets(state, unit);
   if (targets.size > 0) {
     let chosen: { col: number; row: number } | null = null;
+    let cityChoice: { col: number; row: number } | null = null;
     for (const key of targets) {
       const [col, row] = key.split(",").map(Number) as [number, number];
       const city = cityAt(state, col, row);
       const enemy = unitAt(state, col, row);
-      const favorable =
-        !!city ||
-        (enemy ? enemy.hp <= unit.hp + 10 || UNIT_DEFS[unit.type].strength >= UNIT_DEFS[enemy.type].strength : false);
-      if (favorable) {
-        chosen = { col, row };
-        break;
+      if (city) {
+        // Storm a city only when it's already weakened or we've massed a couple of
+        // attackers around it — never throw a lone melee unit at a healthy city.
+        // Ranged units bombard freely (no retaliation) to soften it for the assault.
+        const supported = friendlyMilitaryNear(state, pid, col, row, 1) >= 2;
+        if ((city.hp <= 55 || supported || isRanged(def)) && !cityChoice) cityChoice = { col, row };
+        continue;
       }
+      const favorable = enemy
+        ? enemy.hp <= unit.hp + 10 || UNIT_DEFS[unit.type].strength >= UNIT_DEFS[enemy.type].strength
+        : false;
+      if (favorable && !chosen) chosen = { col, row };
     }
+    // Prefer storming a city when it's a sound move; else hit a favourable unit.
+    chosen = cityChoice ?? chosen;
     if (chosen) {
       // Cavalry strike with a charge (extra punch + breakthrough) when hitting a unit.
       const enemy = unitAt(state, chosen.col, chosen.row);
@@ -405,28 +687,117 @@ function aiMilitary(state: GameState, unit: Unit, pid: number): void {
     }
   }
 
-  // Defend a threatened city against hostiles (barbarians or war enemies). We
-  // ignore peaceful neighbours so AI armies don't shadow units they can't fight.
+  // Defend a threatened city: fall back to garrison it (rather than chasing the
+  // raider into the open). If already standing in the threatened city, hold the
+  // walls. We ignore peaceful neighbours so armies don't shadow units they can't fight.
   for (const city of citiesOf(state, unit.ownerId)) {
-    for (const e of state.units.values()) {
-      if (isHostile(state, pid, e.ownerId) && axialDistance(ax(city), ax(e)) <= 3) {
-        stepToward(state, unit, e.col, e.row, pid);
-        return;
-      }
+    const threat = [...state.units.values()].some(
+      (e) => isHostile(state, pid, e.ownerId) && axialDistance(ax(city), ax(e)) <= 3,
+    );
+    if (!threat) continue;
+    if (unit.col === city.col && unit.row === city.row) return; // hold the walls
+    stepToward(state, unit, city.col, city.row, pid);
+    return;
+  }
+
+  // Economic warfare: raze an enemy improvement we're standing on (isHostile means
+  // we're at war with — or raiding — its owner, so this is never an unprovoked act).
+  {
+    const here = getTile(state.map, unit.col, unit.row);
+    const owner = here?.ownerCityId !== undefined ? state.cities.get(here.ownerCityId) : undefined;
+    if (here?.improvement && owner && isHostile(state, pid, owner.ownerId)) {
+      if (applyCommand(state, { type: "pillage", unitId: unit.id }, pid).ok) return;
     }
   }
-  // Pressure the nearest hostile if there is one; otherwise scout the map.
+
+  // Converge on the enemy's nearest city to actually take it — this turns a
+  // declared war into a real campaign rather than aimless skirmishing.
+  const objective = nearestHostileCity(state, unit, pid);
+  if (objective) {
+    stepToward(state, unit, objective.col, objective.row, pid);
+    return;
+  }
+  // No city to march on: pressure the nearest hostile unit, or scout if all is quiet.
   const enemy = nearestHostile(state, unit, pid);
   if (enemy) stepToward(state, unit, enemy.col, enemy.row, pid);
   else aiExplore(state, unit, pid);
+}
+
+/** Recon units reveal the map and avoid combat — they're fragile and level by scouting. */
+function aiScout(state: GameState, unit: Unit, pid: number): void {
+  const threat = nearestHostile(state, unit, pid);
+  if (threat && axialDistance(ax(unit), ax(threat)) <= 2) {
+    // Slip away toward the nearest city rather than trade blows.
+    const home = citiesOf(state, pid)
+      .map((c) => ({ col: c.col, row: c.row, d: axialDistance(ax(unit), ax(c)) }))
+      .sort((a, b) => a.d - b.d)[0];
+    if (home && home.d > 0) {
+      stepToward(state, unit, home.col, home.row, pid);
+      return;
+    }
+  }
+  aiExplore(state, unit, pid);
+}
+
+/**
+ * Spend stockpiled gold/faith/culture to hurry production when it counts — finishing
+ * a wonder we're racing for, or rushing out troops under threat. Faith and culture
+ * (cheaper, and only via perks) are spent before precious gold, and each pool keeps a
+ * reserve so rushing never bankrupts religion, civics, or the treasury.
+ */
+function aiRush(state: GameState, player: Player, threatened: boolean): void {
+  const pid = player.id;
+  const avail = rushCurrencies(state, pid);
+  if (avail.length === 0) return;
+  const atWar = player.atWar.length > 0;
+  const reserve: Record<RushCurrency, number> = { gold: atWar ? 20 : 80, faith: 40, culture: 40 };
+  const poolOf = (c: RushCurrency) => (c === "gold" ? player.gold : c === "faith" ? player.faith : player.cultureProgress);
+  // Choose the cheapest affordable currency (culture → faith → gold) that still
+  // leaves its reserve intact after paying.
+  const choose = (cost: (c: RushCurrency) => { ok: boolean; cost?: number }): RushCurrency | null => {
+    for (const c of ["culture", "faith", "gold"] as RushCurrency[]) {
+      if (!avail.includes(c)) continue;
+      const r = cost(c);
+      if (!r.ok || r.cost == null) continue;
+      if (poolOf(c) - r.cost < reserve[c]) continue;
+      return c;
+    }
+    return null;
+  };
+
+  // 1) Race to finish wonders — being first to a wonder is worth the splurge.
+  for (const w of worksOf(state, pid)) {
+    if (w.kind !== "wonder") continue;
+    const c = choose((cur) => canRushWork(state, pid, w.id, cur));
+    if (c) applyCommand(state, { type: "rushWork", workId: w.id, currency: c }, pid);
+  }
+  // 2) Under threat, hurry out the troops we're building to meet the danger.
+  if (threatened) {
+    for (const city of citiesOf(state, pid)) {
+      const item = city.production;
+      if (!item || item.kind !== "unit" || !isMilitary(item.id)) continue;
+      const c = choose((cur) => canRushCity(state, pid, city.id, cur));
+      if (c) applyCommand(state, { type: "rushProduction", cityId: city.id, currency: c }, pid);
+    }
+  }
 }
 
 /** Play a full turn for an AI-controlled civ. */
 export function aiTakeTurn(state: GameState, playerId: number): void {
   const player = playerById(state, playerId);
   if (!player) return;
+  const p = personalityOf(state, playerId);
+  const atWarNow = player.atWar.length > 0;
+  const threatened = atWarNow || hostileNearCities(state, playerId);
 
   aiConsiderDiplomacy(state, playerId); // declare/sue for war, court friends
+
+  // Military pay (upkeep modifier): pay more in war to steady morale when affordable;
+  // economise in peacetime, especially when the treasury is thin.
+  const targetUpkeep = atWarNow ? (player.gold > 100 ? 50 : 0) : (player.gold < 0 ? -50 : 0);
+  if (targetUpkeep !== player.upkeepModifierPct) {
+    applyCommand(state, { type: "setUpkeepModifier", pct: targetUpkeep }, playerId);
+  }
 
   // Use the civilization's active leader ability if it is off cooldown and affordable.
   if (canUseLeaderAbility(state, player).ok) {
@@ -441,8 +812,7 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   if (!player.researching) {
     const techs = availableTechs(player);
     if (techs.length > 0) {
-      const pick = TECH_PREFERENCE.find((t) => techs.includes(t)) ?? techs[0]!;
-      applyCommand(state, { type: "setResearch", techId: pick }, playerId);
+      applyCommand(state, { type: "setResearch", techId: pickTech(techs, p, atWarNow) }, playerId);
     }
   }
 
@@ -457,7 +827,8 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   if (bestGov && bestGov.id !== player.government) {
     applyCommand(state, { type: "setGovernment", governmentId: bestGov.id }, playerId);
   }
-  for (const pol of unlockedPolicies(player)) {
+  // Slot policies best-first so the most useful fill the government's limited slots.
+  for (const pol of rankPolicies(unlockedPolicies(player), p, atWarNow)) {
     if (!player.policies.includes(pol)) applyCommand(state, { type: "togglePolicy", policyId: pol }, playerId);
   }
 
@@ -475,19 +846,20 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     const city = citiesOf(state, playerId)[0];
     if (city) {
       const name = availableReligionNames(state)[0] ?? "";
-      const beliefs = BELIEFS.slice(0, 2).map((b) => b.id);
-      applyCommand(state, { type: "foundReligion", cityId: city.id, name, beliefs }, playerId);
+      applyCommand(state, { type: "foundReligion", cityId: city.id, name, beliefs: pickBeliefs(p) }, playerId);
     }
   }
 
   for (const city of citiesOf(state, playerId)) {
     if (!city.production) {
-      const item = chooseProduction(state, player, city);
+      const item = chooseProduction(state, player, city, p);
       if (item) applyCommand(state, { type: "setProduction", cityId: city.id, item }, playerId);
     }
     aiManageCity(state, city, player, playerId);
   }
-  aiWonders(state, playerId);
+  aiWonders(state, playerId, p);
+  aiAssignSpecialists(state, playerId); // staff the works just queued (manual assignment)
+  aiRush(state, player, threatened); // hurry wonders / wartime troops with gold/faith/culture
 
   for (const unit of unitsOf(state, playerId)) {
     if (!state.units.has(unit.id)) continue;
@@ -495,6 +867,7 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     if (unit.unspentPromotions > 0) aiPromote(state, unit, playerId);
     if (def.founder) aiSettler(state, unit, playerId);
     else if (def.trader) aiTrader(state, unit, playerId);
+    else if (def.cls === "recon") aiScout(state, unit, playerId);
     else aiMilitary(state, unit, playerId);
   }
 }

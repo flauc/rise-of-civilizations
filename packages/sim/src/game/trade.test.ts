@@ -5,6 +5,7 @@ import { beginTurn, applyCommand } from "./commands";
 import { getCityYields } from "./economy";
 import {
   establishTradeRoute,
+  cancelTradeRoute,
   tradeRouteYield,
   cityTradeYields,
   pruneTradeRoutes,
@@ -77,6 +78,25 @@ describe("trade routes", () => {
     const tid3 = s.nextEntityId++;
     s.units.set(tid3, makeUnit(tid3, 0, "trader", from.col + 2, from.row + 2));
     expect(establishTradeRoute(s, tid3, to.id, 0).ok).toBe(false);
+  });
+
+  it("cancels a route without refunding the trader; rejects bad ids and other owners", () => {
+    const { s, from, to } = gameWithTwoCities();
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
+    expect(establishTradeRoute(s, tid, to.id, 0).ok).toBe(true);
+    const route = s.tradeRoutes[0]!;
+
+    // A different player can't cancel someone else's route.
+    expect(cancelTradeRoute(s, route.id, 1).ok).toBe(false);
+    // A non-existent route id is rejected.
+    expect(cancelTradeRoute(s, 999999, 0).ok).toBe(false);
+
+    const unitsBefore = unitsOf(s, 0).length;
+    expect(cancelTradeRoute(s, route.id, 0).ok).toBe(true);
+    expect(s.tradeRoutes).toHaveLength(0);
+    // The trader stays gone — cancelling never returns a unit.
+    expect(unitsOf(s, 0).length).toBe(unitsBefore);
   });
 
   it("prunes routes whose endpoint city is lost", () => {

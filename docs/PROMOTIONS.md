@@ -169,9 +169,6 @@ Naval units draw from one of two class pools depending on whether they fight in 
 | pioneer | Pioneer | settler | 👁️ +1 sight; 🥾 +1 movement |
 | colonist | Colonist | settler | ❤️ +20 HP |
 | explorer | Explorer | settler | 👁️ +2 sight |
-| engineer | Engineer | worker | 🥾 +1 movement; +1 build charge |
-| foreman | Foreman | worker | 🥾 +1 movement |
-| survival_training | Survival Training | worker | ❤️ +15 HP; +1 sight |
 
 ---
 
@@ -183,12 +180,12 @@ Naval units draw from one of two class pools depending on whether they fight in 
 - **Siege** promotions specialize in breaking cities and static defenses.
 - **Recon** promotions maximize mobility, vision, and ambush potential.
 - **Naval** promotions split into ram/board (naval melee) and bombard (naval ranged) lines.
-- **Civilian** promotions are rare (earned from villages or special effects) and help settlers/workers survive and move faster.
+- **Civilian** promotions are rare (earned from villages or special effects) and help settlers survive and move faster.
 
 ## Implementation Status
 
-*Audited 2026-06-19.* The Melee/Cavalry/Ranged/Siege/Recon pools listed here are defined in `packages/sim/src/game/content.ts` (`PROMOTION_DEFS` / `PROMOTION_POOL`) and applied in `combat.ts` / `movement.ts`. Two caveats:
+*Audited 2026-06-19; revised 2026-06-27.* The Melee/Cavalry/Ranged/Siege/Recon pools listed here are defined in `packages/sim/src/game/content.ts` (`PROMOTION_DEFS` / `PROMOTION_POOL`) and applied in `combat.ts` / `movement.ts`.
 
-- ✅ **Naval promotions are now documented** (Naval Melee + Naval Ranged sections above), matching the `naval_melee` / `naval_ranged` pools in `PROMOTION_POOL`.
-- ⚠️ **Civilian "worker" promotions are vestigial.** `engineer`, `foreman`, and `survival_training` target the **Worker** unit, which was **removed** when Public Works replaced it (see [SPECIALISTS-AND-WORKS.md](SPECIALISTS-AND-WORKS.md)). The settler promotions (`pioneer`, `colonist`, `explorer`) are still valid; the worker ones are effectively dead unless a worker-class unit returns.
+- ✅ **Naval promotions are documented** (Naval Melee + Naval Ranged sections above), matching the `naval_melee` / `naval_ranged` pools in `PROMOTION_POOL`.
+- ✅ **Dead "worker" promotions removed** (2026-06-27). `engineer`, `foreman`, and `survival_training` targeted the Worker unit, which was removed when Public Works replaced it (see [SPECIALISTS-AND-WORKS.md](SPECIALISTS-AND-WORKS.md)); they belonged to no `PROMOTION_POOL` and were unselectable, so they have been deleted from `PROMOTION_DEFS`/`PromotionId`. Only the settler promotions (`pioneer`, `colonist`, `explorer`) remain.
 - ✅ All effect descriptions in this doc were reconciled against `PROMOTION_DEFS` (2026-06-19); earlier drifts (e.g. `amphibious`, `breakthrough`, `nomad`, `rapid_reload`, `spy`, `night_owl`'s removed "at night" clause) now match the code.

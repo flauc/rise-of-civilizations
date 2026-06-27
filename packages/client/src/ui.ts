@@ -33,13 +33,23 @@ import {
   tradeRouteDestinations,
   tradeRouteYield,
   tradeRoutesFrom,
+  tradeRoutesOf,
   SPECIALIST_DEFS,
   availableSpecialists,
+  specialistLabour,
   workerSlots,
   nextTierAt,
   workName,
+  workLabourPerTurn,
+  workEtaTurns,
+  assignedSpecialistIds,
+  specialistNameForDiscipline,
   canStartWork,
   canStartWonder,
+  rushCurrencies,
+  cityRushCost,
+  workRushCost,
+  type RushCurrency,
   worksOfCity,
   citiesOf,
   unitsOf,
@@ -54,6 +64,7 @@ import {
   unitUpkeep,
   militaryUpkeepTotal,
   scoutEscapeChance,
+  unitXpForNextLevel,
   civCombatBonus,
   unitMovement,
   getCiv,
@@ -95,11 +106,16 @@ import {
   greatPersonThreshold,
   nextAvailableFigure,
   playerGreatPersonPerTurn,
+  previewGreatPersonEffect,
   scoreBreakdown,
   availableLegends,
   legendCost,
   legendBaseName,
+  findSpecialist,
   type City,
+  type Discipline,
+  type Work,
+  type SpecialistId,
   type GameState,
   type ImprovementKind,
   type LogEntry,
@@ -265,6 +281,14 @@ export interface UIHandlers {
   onStartWork(kind: string, col: number, row: number): void;
   onStartWonder(wonderId: string, col: number, row: number): void;
   onCancelWork(workId: number): void;
+  /** Close an existing trade route — the trader that opened it is lost. */
+  onCancelTradeRoute(routeId: number): void;
+  /** Spend a stockpiled resource to instantly finish a city's production. */
+  onRushProduction(cityId: number, currency: RushCurrency): void;
+  /** Spend a stockpiled resource to instantly finish a tile/defensive work. */
+  onRushWork(workId: number, currency: RushCurrency): void;
+  /** Pin (on) or release (off) one of the player's specialists to/from a work. */
+  onAssignSpecialist(workId: number, specialistId: number, on: boolean): void;
   onSelectUnit(unitId: number): void;
   onSelectCity(cityId: number): void;
   onDeclareWar(targetId: number): void;
@@ -366,10 +390,46 @@ function prodCost(item: ProductionItem): number {
   return getBuildingDef(item.id)?.cost ?? 0;
 }
 
-function prodName(item: ProductionItem): string {
-  if (item.kind === "unit") return UNIT_DEFS[item.id].name;
+function prodName(item: ProductionItem, civId?: string): string {
+  if (item.kind === "unit") {
+    // Show the civ's unique unit name when it fields one in this slot
+    // (e.g. a Maori city builds a "Toa", not a "Warrior").
+    return uniqueUnitForCiv(civId, item.id)?.name ?? UNIT_DEFS[item.id].name;
+  }
   if (item.kind === "project") return getProjectDef(item.id)?.name ?? item.id;
   return getBuildingDef(item.id)?.name ?? item.id;
+}
+
+const RUSH_GLYPH: Record<RushCurrency, string> = { gold: "🪙", faith: "☮️", culture: "🎭" };
+
+/** The viewer's stockpile for a rush currency. */
+function rushPool(player: { gold: number; faith: number; cultureProgress: number }, c: RushCurrency): number {
+  return c === "gold" ? player.gold : c === "faith" ? player.faith : player.cultureProgress;
+}
+
+/** Build the "Rush" button row for a city build or a work. `dataKey`/`id` identify
+ *  the target; `costFor` returns the resource cost per currency (null = not rushable).
+ *  Each currency the viewer can use shows a ⚡ button, disabled when the pool is short. */
+function rushButtonsHtml(
+  state: GameState,
+  viewerId: number,
+  dataKey: "rush-prod" | "rush-work",
+  id: number,
+  costFor: (currency: RushCurrency) => number | null,
+): string {
+  const player = state.players.find((p) => p.id === viewerId);
+  if (!player) return "";
+  const btns = rushCurrencies(state, viewerId)
+    .map((cur) => {
+      const cost = costFor(cur);
+      if (cost === null) return "";
+      const can = rushPool(player, cur) >= cost;
+      const dis = can ? "" : ` disabled style="opacity:.5;cursor:not-allowed" title="Need ${cost} ${cur}"`;
+      return `<button class="btn" data-${dataKey}="${id}" data-rush-cur="${cur}"${dis}>⚡ ${RUSH_GLYPH[cur]} ${cost}</button>`;
+    })
+    .filter(Boolean);
+  if (!btns.length) return "";
+  return `<div class="csub">Rush</div><div class="row" style="flex-wrap:wrap;gap:6px">${btns.join("")}</div>`;
 }
 
 export function createUI(handlers: UIHandlers): UI {
@@ -388,6 +448,7 @@ export function createUI(handlers: UIHandlers): UI {
   const greatPeoplePanel = div("great-people", "panel hidden");
   const legendsPanel = div("legends", "panel hidden");
   const production = div("production", "panel hidden");
+  const specialists = div("specialists", "panel hidden");
   const log = div("log", "");
   const bannerEl = div("banner", "");
   const gameover = div("gameover", "hidden");
@@ -407,6 +468,59 @@ export function createUI(handlers: UIHandlers): UI {
   const villageTitle = villageDialog.querySelector<HTMLDivElement>("#village-title")!;
   const villageMsg = villageDialog.querySelector<HTMLDivElement>("#village-msg")!;
   const villageOk = villageDialog.querySelector<HTMLButtonElement>("#village-ok")!;
+
+  // Great-person activation confirmation: explains exactly what activating a
+  // recruited figure will do before the (one-shot, irreversible) commitment.
+  const gpActivateOverlay = div("gp-activate-overlay", "");
+  const gpActivateDialog = div("gp-activate-dialog", "");
+  gpActivateDialog.innerHTML =
+    `<img class="gp-activate-art" id="gp-activate-art" src="" alt="" />` +
+    `<div class="gp-activate-title" id="gp-activate-title"></div>` +
+    `<div class="gp-activate-sub" id="gp-activate-sub"></div>` +
+    `<div class="gp-activate-msg" id="gp-activate-msg"></div>` +
+    `<div class="gp-activate-actions">` +
+    `<button class="btn" id="gp-activate-cancel">Cancel</button>` +
+    `<button class="btn primary" id="gp-activate-confirm">Activate</button></div>`;
+  const gpActivateArt = gpActivateDialog.querySelector<HTMLImageElement>("#gp-activate-art")!;
+  const gpActivateTitle = gpActivateDialog.querySelector<HTMLDivElement>("#gp-activate-title")!;
+  const gpActivateSub = gpActivateDialog.querySelector<HTMLDivElement>("#gp-activate-sub")!;
+  const gpActivateMsg = gpActivateDialog.querySelector<HTMLDivElement>("#gp-activate-msg")!;
+  const gpActivateCancel = gpActivateDialog.querySelector<HTMLButtonElement>("#gp-activate-cancel")!;
+  const gpActivateConfirm = gpActivateDialog.querySelector<HTMLButtonElement>("#gp-activate-confirm")!;
+  gpActivateArt.onerror = () => {
+    gpActivateArt.style.display = "none";
+  };
+  let pendingGreatPersonId: string | null = null;
+  const hideGreatPersonActivate = (): void => {
+    pendingGreatPersonId = null;
+    gpActivateOverlay.classList.remove("show");
+    gpActivateDialog.classList.remove("show");
+  };
+  const showGreatPersonActivate = (state: GameState, id: string): void => {
+    const def = getGreatPerson(id);
+    if (!def) return;
+    const player = state.players[state.currentPlayerIndex]!;
+    const preview = previewGreatPersonEffect(state, player, def);
+    const info = GREAT_PERSON_CLASS_INFO[def.cls];
+    pendingGreatPersonId = id;
+    gpActivateArt.style.display = "";
+    gpActivateArt.src = `${ASSET_BASE_URL}great-people/${def.id}.png`;
+    gpActivateTitle.textContent = `${info.glyph} ${def.name}`;
+    gpActivateSub.textContent = `${info.name} · ${def.era} era`;
+    gpActivateMsg.innerHTML =
+      `<div class="gp-activate-effect">${escapeHtml(preview.detail)}</div>` +
+      `<div class="gp-activate-note">${escapeHtml(def.desc)}</div>` +
+      `<div class="gp-activate-warn">⚠️ A Great Person can be activated only once — they are spent for good.</div>`;
+    gpActivateOverlay.classList.add("show");
+    gpActivateDialog.classList.add("show");
+  };
+  gpActivateCancel.addEventListener("click", hideGreatPersonActivate);
+  gpActivateOverlay.addEventListener("click", hideGreatPersonActivate);
+  gpActivateConfirm.addEventListener("click", () => {
+    const id = pendingGreatPersonId;
+    hideGreatPersonActivate();
+    if (id) handlers.onActivateGreatPerson(id);
+  });
 
   const logOverlay = div("log-overlay", "");
   const logDialog = div("log-dialog", "");
@@ -477,8 +591,12 @@ export function createUI(handlers: UIHandlers): UI {
       })
       .join("");
 
+    const turnCaption =
+      state.turnLimit > 0
+        ? `Turn ${state.turn} of ${state.turnLimit} · highest score wins if the turn limit is reached`
+        : `Turn ${state.turn} · no turn limit — play until a decisive victory`;
     leaderboardContent.innerHTML =
-      `<div class="lb-caption">Turn ${state.turn} of ${state.turnLimit} · highest score wins if the turn limit is reached</div>` +
+      `<div class="lb-caption">${turnCaption}</div>` +
       `<div class="lb-list">${body}</div>` +
       `<div class="lb-legend">🏛️ Cities · 👥 Population · 🔬 Technology · 📜 Civics · 🛡️ Units · 🪙 Gold · ⚔️ Battles won · 🔥 Cities conquered</div>`;
     leaderboardOverlay.classList.add("show");
@@ -593,6 +711,10 @@ export function createUI(handlers: UIHandlers): UI {
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
+      if (gpActivateDialog.classList.contains("show")) {
+        hideGreatPersonActivate();
+        return;
+      }
       if (villageDialog.classList.contains("show")) {
         closeVillageDialog();
         return;
@@ -645,6 +767,7 @@ export function createUI(handlers: UIHandlers): UI {
         confirmModal.querySelector<HTMLButtonElement>("#cf-yes")?.click();
         return;
       }
+      if (gpActivateDialog.classList.contains("show")) { gpActivateConfirm.click(); return; }
       if (villageDialog.classList.contains("show")) { villageOk.click(); return; }
       if (turnUpdateDialog.classList.contains("show")) { turnUpdateClose.click(); return; }
       if (goldDialog.classList.contains("show")) { goldClose.click(); return; }
@@ -666,6 +789,10 @@ export function createUI(handlers: UIHandlers): UI {
   let productionOpen = false;
   let tileExpanded = false;
   let prodCityId: number | null = null;
+  // Construction dialog tab and the specialists sub-dialog (mirrors production).
+  let prodTab: "unit" | "building" | "project" = "unit";
+  let specialistsOpen = false;
+  let specCityId: number | null = null;
   let chosenBeliefs: string[] = [];
   let bannerTimer = 0;
   let lastState: GameState | null = null;
@@ -699,10 +826,43 @@ export function createUI(handlers: UIHandlers): UI {
   let godModeEnabled = false;
   let godModeOpen = false;
   let lastView: UIView | null = null;
-  // Unit panel collapse state (mobile). Starts minimized and resets whenever a
-  // different unit is selected, so each new selection opens compact.
+  // Docked info-panel collapse state. Each panel starts minimized on mobile and
+  // expanded on desktop, and resets whenever the selection changes so each new
+  // selection opens at its default size.
   let unitPanelExpanded = false;
   let unitPanelUnitId: number | null = null;
+  let cityPanelExpanded = false;
+  let cityPanelCityId: number | null = null;
+  let tilePanelExpanded = false;
+  let tilePanelKey: string | null = null;
+  const isMobile = (): boolean => window.matchMedia("(max-width: 640px)").matches;
+
+  // Shared summary bar for the collapsible docked panels (unit / tile / city).
+  // The whole bar toggles the panel's `.collapsed` class; an optional ✕ closes it.
+  const summaryBar = (opts: {
+    icon: string;
+    isImg?: boolean;
+    name: string;
+    stats?: string;
+    closeId?: string;
+  }): string =>
+    `<div class="ip-summary">` +
+    (opts.isImg
+      ? `<img class="ip-icon" src="${opts.icon}" alt="" onerror="this.style.display='none'">`
+      : `<span class="ip-icon">${opts.icon}</span>`) +
+    `<span class="ip-name">${opts.name}</span>` +
+    (opts.stats ? `<span class="ip-stats">${opts.stats}</span>` : "") +
+    (opts.closeId ? `<button class="btn ip-close" id="${opts.closeId}">✕</button>` : "") +
+    `<span class="ip-chevron">▾</span>` +
+    `</div>`;
+
+  // Wire the summary bar so tapping it (but not the ✕) toggles the panel.
+  const wireCollapse = (panel: HTMLElement, onToggle: () => void): void => {
+    panel.querySelector<HTMLElement>(".ip-summary")?.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).closest(".ip-close")) return;
+      onToggle();
+    });
+  };
 
   const closePickers = (state: GameState): void => {
     researchOpen = false;
@@ -711,6 +871,7 @@ export function createUI(handlers: UIHandlers): UI {
     greatPeopleOpen = false;
     legendsOpen = false;
     productionOpen = false;
+    specialistsOpen = false;
     techtreeOpen = false;
     renderResearch(state);
     renderCivics(state);
@@ -718,6 +879,7 @@ export function createUI(handlers: UIHandlers): UI {
     renderGreatPeople(state);
     renderLegends(state);
     renderProduction(state);
+    renderSpecialists(state);
     renderTechTree(state);
   };
   const closeSideSheets = (): void => {
@@ -1132,6 +1294,7 @@ export function createUI(handlers: UIHandlers): UI {
     const myCities = citiesOf(state, viewerId);
     const cityCount = myCities.length;
     const specCount = myCities.reduce((n, c) => n + c.specialists.length, 0);
+    const routeCount = tradeRoutesOf(state, viewerId).length;
     const unitCount = unitsOf(state, viewerId).length;
     const gpReady = (player.greatPeople ?? []).length;
     const legendsOn = state.legendsEnabled !== false;
@@ -1169,6 +1332,7 @@ export function createUI(handlers: UIHandlers): UI {
         <button class="tb-pill empire" id="cities-btn" title="Cities"><span class="tb-pl">🏙️</span><b>${cityCount}</b></button>
         <button class="tb-pill empire" id="units-btn" title="Units"><span class="tb-pl">⚔️</span><b>${unitCount}</b></button>
         <button class="tb-pill empire" id="specialists-btn" title="Specialists"><span class="tb-pl">👷</span><b>${specCount}</b></button>
+        <button class="tb-pill empire" id="trade-btn" title="Trade Routes"><span class="tb-pl">🐫</span><b>${routeCount}</b></button>
         <button class="tb-pill empire ${gpReady ? "has-badge" : ""}" id="great-people-btn" title="Great People"><span class="tb-pl">🎖️</span><b>${gpReady}</b>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>
         ${legendsOn ? `<button class="tb-pill empire ${canRecruitLegendNow ? "has-badge" : ""}" id="legends-btn" title="Legends"><span class="tb-pl">⭐</span><b>${myLegends}</b>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : ""}
         <button class="tb-pill ${diploActionable ? "has-badge" : ""}" id="diplo-pill" title="${diploActionable ? `Diplomacy — ${diploActionable} proposal${diploActionable > 1 ? "s" : ""} need your attention` : "Diplomacy"}">
@@ -1282,6 +1446,7 @@ export function createUI(handlers: UIHandlers): UI {
     topbar.querySelector<HTMLButtonElement>("#cities-btn")!.addEventListener("click", () => openEmpire("cities"));
     topbar.querySelector<HTMLButtonElement>("#units-btn")!.addEventListener("click", () => openEmpire("units"));
     topbar.querySelector<HTMLButtonElement>("#specialists-btn")!.addEventListener("click", () => openEmpire("specialists"));
+    topbar.querySelector<HTMLButtonElement>("#trade-btn")!.addEventListener("click", () => openEmpire("trade"));
     topbar.querySelector<HTMLButtonElement>("#diplo-pill")!.addEventListener("click", () => {
       const opening = !diplomacy.isOpen();
       if (opening) {
@@ -1338,6 +1503,7 @@ export function createUI(handlers: UIHandlers): UI {
       `<button class="bb-btn" data-bb="empire" title="Cities"><span>🏙️</span><i>${cityCount}</i></button>` +
       `<button class="bb-btn" data-bb="units" title="Units"><span>⚔️</span><i>${unitCount}</i></button>` +
       `<button class="bb-btn" data-bb="specialists" title="Specialists"><span>👷</span><i>${specCount}</i></button>` +
+      `<button class="bb-btn" data-bb="trade" title="Trade Routes"><span>🐫</span><i>${routeCount}</i></button>` +
       `<button class="bb-btn ${gpReady ? "has-badge" : ""}" data-bb="great-people" title="Great People"><span>🎖️</span><i>${gpReady}</i>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>` +
       (legendsOn ? `<button class="bb-btn ${canRecruitLegendNow ? "has-badge" : ""}" data-bb="legends" title="Legends"><span>⭐</span><i>${myLegends}</i>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : "") +
       `<button class="bb-btn ${turnUpdateHasNew ? "has-badge" : ""}" data-bb="turn-update" title="Turn Updates"><span>📜</span>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>` +
@@ -1348,6 +1514,7 @@ export function createUI(handlers: UIHandlers): UI {
       empire: "#cities-btn",
       units: "#units-btn",
       specialists: "#specialists-btn",
+      trade: "#trade-btn",
       "great-people": "#great-people-btn",
       legends: "#legends-btn",
       diplo: "#diplo-pill",
@@ -1859,23 +2026,29 @@ export function createUI(handlers: UIHandlers): UI {
       : `<div style="color:#9fc0dc;font-size:12px">No new civics available yet.</div>`;
 
     html += `<div class="csub">Government — <b style="color:#fff">${gov?.name ?? "—"}</b></div>`;
-    html += `<div class="row" style="flex-wrap:wrap">${govList
+    html += govList
       .map((id) => {
         const g = getGovernment(id)!;
         const active = id === player.government;
-        return `<button class="btn ${active ? "primary" : ""}" data-gov="${id}" title="${g.desc}">${g.name}</button>`;
+        return (
+          `<div class="tech" data-gov="${id}" style="${active ? "border-color:#ffd967;background:#27331d" : ""}">` +
+          `<div style="flex:1"><b>${g.name}</b><div class="sub">${g.desc}</div></div>${active ? "✓" : ""}</div>`
+        );
       })
-      .join("")}</div>`;
+      .join("");
 
     html += `<div class="csub">Policies <span style="color:#9fc0dc">(${player.policies.length}/${slots} slots)</span></div>`;
     html += policyList.length
-      ? `<div class="row" style="flex-wrap:wrap">${policyList
+      ? policyList
           .map((id) => {
             const p = getPolicy(id)!;
             const active = player.policies.includes(id);
-            return `<button class="btn ${active ? "primary" : ""}" data-policy="${id}" title="${p.desc}">${p.name}</button>`;
+            return (
+              `<div class="tech" data-policy="${id}" style="${active ? "border-color:#ffd967;background:#27331d" : ""}">` +
+              `<div style="flex:1"><b>${p.name}</b><div class="sub">${p.desc}</div></div>${active ? "✓" : ""}</div>`
+            );
           })
-          .join("")}</div>`
+          .join("")
       : `<div style="color:#9fc0dc;font-size:12px">Unlock policies by developing civics.</div>`;
 
     civics.innerHTML = html;
@@ -1890,10 +2063,10 @@ export function createUI(handlers: UIHandlers): UI {
         civics.classList.add("hidden");
       }),
     );
-    civics.querySelectorAll<HTMLButtonElement>("[data-gov]").forEach((el) =>
+    civics.querySelectorAll<HTMLDivElement>("[data-gov]").forEach((el) =>
       el.addEventListener("click", () => handlers.onSetGovernment(el.dataset.gov!)),
     );
-    civics.querySelectorAll<HTMLButtonElement>("[data-policy]").forEach((el) =>
+    civics.querySelectorAll<HTMLDivElement>("[data-policy]").forEach((el) =>
       el.addEventListener("click", () => handlers.onTogglePolicy(el.dataset.policy!)),
     );
   };
@@ -1912,9 +2085,32 @@ export function createUI(handlers: UIHandlers): UI {
     const perTurn = Math.max(1, getCityYields(state, city).production);
     const turns = (cost: number) => Math.max(1, Math.ceil((cost - city.productionStored) / perTurn));
 
-    let html = `<div class="production-header"><div class="row" style="justify-content:space-between"><b>${city.name} — Choose Production</b><button class="btn" id="pclose">✕</button></div></div>`;
+    // Construction is split into three tabs by what is being built: trainable
+    // units, city buildings ("tiles"), and standing conversion works (gold /
+    // science / culture / faith). Keep the active tab on a kind with options.
+    const tabs: { id: typeof prodTab; label: string }[] = [
+      { id: "unit", label: "Units" },
+      { id: "building", label: "Tiles" },
+      { id: "project", label: "Works" },
+    ];
+    const countFor = (kind: typeof prodTab) => options.filter((o) => o.item.kind === kind).length;
+    if (countFor(prodTab) === 0) {
+      prodTab = tabs.find((t) => countFor(t.id) > 0)?.id ?? prodTab;
+    }
+    const shown = options.filter((o) => o.item.kind === prodTab);
+
+    let html = `<div class="production-header"><div class="row" style="justify-content:space-between"><b>${escapeHtml(city.name)} — Construction</b><button class="btn" id="pclose">✕</button></div>`;
+    html +=
+      `<div class="ptabs">` +
+      tabs
+        .map(
+          (t) =>
+            `<button class="ptab${t.id === prodTab ? " active" : ""}" data-ptab="${t.id}">${t.label} <span style="opacity:.7">${countFor(t.id)}</span></button>`,
+        )
+        .join("") +
+      `</div></div>`;
     html += `<div class="production-list">`;
-    html += options
+    html += shown
       .map((o) => {
         let glyph: string;
         let desc: string;
@@ -1947,18 +2143,95 @@ export function createUI(handlers: UIHandlers): UI {
         );
       })
       .join("");
+    if (!shown.length) html += `<div class="sub" style="margin-top:10px">Nothing available here yet.</div>`;
     html += `</div>`;
     production.innerHTML = html;
     production.querySelector<HTMLButtonElement>("#pclose")!.addEventListener("click", () => {
       productionOpen = false;
       production.classList.add("hidden");
     });
+    production.querySelectorAll<HTMLButtonElement>("[data-ptab]").forEach((el) =>
+      el.addEventListener("click", () => {
+        prodTab = el.dataset.ptab as typeof prodTab;
+        renderProduction(state);
+      }),
+    );
     production.querySelectorAll<HTMLDivElement>(".pcard").forEach((el) =>
       el.addEventListener("click", () => {
         handlers.onSetProduction({ kind: el.dataset.kind, id: el.dataset.id } as ProductionItem);
         productionOpen = false;
         production.classList.add("hidden");
       }),
+    );
+  };
+
+  // Specialists sub-dialog (opened from the city panel, mirrors the construction
+  // dialog). Train/release craftsmen and watch the public works they labour on.
+  const renderSpecialists = (state: GameState): void => {
+    specialists.classList.toggle("hidden", !specialistsOpen);
+    if (!specialistsOpen) return;
+    const city = specCityId != null ? state.cities.get(specCityId) : null;
+    if (!city) {
+      specialistsOpen = false;
+      specialists.classList.add("hidden");
+      return;
+    }
+    const player = state.players.find((p) => p.id === city.ownerId)!;
+    const free = workerSlots(city);
+    const avail = availableSpecialists(player);
+
+    const specRows = avail
+      .map((id) => {
+        const def = SPECIALIST_DEFS[id];
+        const mine = city.specialists.filter((s) => s.type === id);
+        return (
+          `<div class="row" style="justify-content:space-between;gap:6px;margin-top:6px">` +
+          `<span title="${def.latin} — ${def.desc}">${def.name} <b style="color:#fff">×${mine.length}</b></span>` +
+          `<span style="display:flex;gap:4px">` +
+          `<button class="btn" data-spec-minus="${id}"${mine.length ? "" : " disabled"}>−</button>` +
+          `<button class="btn" data-spec-plus="${id}"${free > 0 ? "" : " disabled"}>＋</button>` +
+          `</span></div>`
+        );
+      })
+      .join("");
+
+    // Works this city hosts or contributes craftsmen to. With manual assignment a
+    // work only progresses while staffed, so surface the crew size, labour/turn and
+    // ETA here (read-only — staffing is done from the tile's panel).
+    const cityWorks = state.works.filter(
+      (w) => w.ownerId === player.id && (w.hostCityId === city.id || w.cityIds.includes(city.id)),
+    );
+    const worksHtml = cityWorks.length
+      ? `<div class="csub" style="margin-top:12px">Public works</div>` +
+        cityWorks
+          .map((w) => {
+            const req = Object.values(w.requirement).reduce((a, b) => a + (b ?? 0), 0);
+            const done = Object.values(w.progress).reduce((a: number, b) => a + Math.min(req, b ?? 0), 0);
+            const pct = req > 0 ? Math.floor((done / req) * 100) : 0;
+            const label = w.kind === "wonder" ? getWonder(w.wonderId ?? "")?.name ?? "Wonder" : workName(w.kind, w.tier ?? 1);
+            const rate = Object.values(workLabourPerTurn(state, w)).reduce((a, b) => a + (b ?? 0), 0);
+            const eta = workEtaTurns(state, w);
+            const status = rate <= 0 ? "⏸ idle" : eta === Infinity ? "⏸ understaffed" : `+${rate.toFixed(1)}/t · ~${eta}t`;
+            return `<div class="sub" style="margin-top:4px">${escapeHtml(label)} — ${pct}% · 👷${w.assignedSpecialistIds.length} · ${status}<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div></div>`;
+          })
+          .join("")
+      : `<div class="sub" style="margin-top:12px">No public works under way. Train craftsmen, then develop a tile from its panel.</div>`;
+
+    specialists.innerHTML =
+      `<div class="row" style="justify-content:space-between"><b>${escapeHtml(city.name)} — Specialists</b><button class="btn" id="spclose">✕</button></div>` +
+      `<div class="sub" style="margin-top:4px">${city.specialists.length} trained · ${free} free slots</div>` +
+      specRows +
+      worksHtml;
+
+    specialists.querySelector<HTMLButtonElement>("#spclose")!.addEventListener("click", () => {
+      specialistsOpen = false;
+      specialists.classList.add("hidden");
+    });
+    specialists.querySelectorAll<HTMLButtonElement>("[data-spec-plus]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onConvertCitizen(city.id, el.dataset.specPlus!, 1)),
+    );
+    specialists.querySelectorAll<HTMLButtonElement>("[data-spec-minus]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onConvertCitizen(city.id, el.dataset.specMinus!, -1)),
     );
   };
 
@@ -2099,7 +2372,7 @@ export function createUI(handlers: UIHandlers): UI {
     });
     greatPeoplePanel.querySelectorAll<HTMLButtonElement>("[data-gp-use]").forEach((el) =>
       el.addEventListener("click", () => {
-        handlers.onActivateGreatPerson(el.dataset.gpUse!);
+        showGreatPersonActivate(state, el.dataset.gpUse!);
       }),
     );
   };
@@ -2181,10 +2454,11 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
     unitPanel.classList.remove("hidden");
-    // Reset to the minimized state each time a different unit is selected.
+    // Open at the default size for the viewport each time a different unit is
+    // selected (collapsed on mobile, full on desktop).
     if (unit.id !== unitPanelUnitId) {
       unitPanelUnitId = unit.id;
-      unitPanelExpanded = false;
+      unitPanelExpanded = !isMobile();
     }
     const def = UNIT_DEFS[unit.type];
     const combatant = def.strength > 0 || (def.rangedStrength ?? 0) > 0;
@@ -2219,7 +2493,7 @@ export function createUI(handlers: UIHandlers): UI {
       headInfo +=
         `<div style="color:#9fc0dc">⚔️ ${Math.floor(def.strength * levelMult) + civStr}` +
         ((def.rangedStrength ?? 0) > 0 ? ` · 🏹 ${Math.floor((def.rangedStrength ?? 0) * levelMult) + civStr} (rng ${def.range})` : "") +
-        ` · XP ${unit.xp}</div>`;
+        ` · XP ${unit.xp}/${unitXpForNextLevel(unit.level)}</div>`;
       // Scouts (recon) sit outside the morale system — show their Escape chance
       // instead, when they have one.
       if (def.cls === "recon") {
@@ -2392,25 +2666,24 @@ export function createUI(handlers: UIHandlers): UI {
       }
     }
 
-    // Compact summary bar — name + key stats, always shown on mobile and acts
-    // as the tap target to expand/collapse the full detail below it. Hidden on
-    // desktop, where the panel is small enough to always show in full.
+    // Compact summary bar — name + key stats — doubles as the expand/collapse
+    // tap target (see summaryBar / the shared .ip-* panel styling).
     const levelMult = 1 + 0.05 * (unit.level - 1);
     const summaryStats = combatant
-      ? `<span class="up-sum-stat">⚔️ ${Math.floor(def.strength * levelMult) + civCombatBonus(state, unit)}</span>` +
-        `<span class="up-sum-stat">❤️ ${unit.hp}/${unitMaxHp(unit)}</span>`
-      : `<span class="up-sum-stat sub">${info.role}</span>`;
-    const summary =
-      `<button class="up-summary" id="up-toggle" aria-expanded="${unitPanelExpanded}">` +
-      `<img class="up-sum-token" src="${tokenSrc}" alt="" onerror="this.style.display='none'">` +
-      `<span class="up-sum-name"><b>${escapeHtml(displayName)}</b><span style="color:#ffd967">${stars}</span></span>` +
-      `<span class="up-sum-stats">${summaryStats}</span>` +
-      `<span class="up-chevron">▾</span>` +
-      `</button>`;
+      ? `<span>⚔️ ${Math.floor(def.strength * levelMult) + civCombatBonus(state, unit)}</span>` +
+        `<span>❤️ ${unit.hp}/${unitMaxHp(unit)}</span>`
+      : `<span class="sub">${info.role}</span>`;
 
     unitPanel.classList.toggle("collapsed", !unitPanelExpanded);
-    unitPanel.innerHTML = summary + `<div class="up-detail">${html}</div>`;
-    unitPanel.querySelector<HTMLButtonElement>("#up-toggle")?.addEventListener("click", () => {
+    unitPanel.innerHTML =
+      summaryBar({
+        icon: tokenSrc,
+        isImg: true,
+        name: `<b>${escapeHtml(displayName)}</b><span style="color:#ffd967">${stars}</span>`,
+        stats: summaryStats,
+      }) +
+      `<div class="ip-detail">${html}</div>`;
+    wireCollapse(unitPanel, () => {
       unitPanelExpanded = !unitPanelExpanded;
       renderUnitPanel(state, unit, viewerId, odds);
     });
@@ -2446,22 +2719,101 @@ export function createUI(handlers: UIHandlers): UI {
     "tower",
   ];
 
+  /** Rich construction detail for an in-progress Work on the selected tile: per-craft
+   *  progress, the crew's labour/turn + ETA, the assigned specialists (with Remove),
+   *  and a picker to add free specialists from any of the player's cities — so the
+   *  speed impact of who you choose is visible. */
+  const constructionSection = (state: GameState, work: Work, viewerId: number): string => {
+    const buildLabel =
+      work.kind === "wonder" ? getWonder(work.wonderId ?? "")?.name ?? "Wonder" : workName(work.kind, work.tier ?? 1);
+    const reqDisc = Object.keys(work.requirement) as Discipline[];
+    const rate = workLabourPerTurn(state, work);
+    const totalReq = reqDisc.reduce((a, d) => a + (work.requirement[d] ?? 0), 0);
+    const totalDone = reqDisc.reduce((a, d) => a + Math.min(work.requirement[d] ?? 0, work.progress[d] ?? 0), 0);
+    const overall = totalReq > 0 ? Math.floor((totalDone / totalReq) * 100) : 0;
+    const eta = workEtaTurns(state, work);
+    const etaText =
+      eta === 0 ? "Ready" : eta === Infinity ? "Idle — assign a specialist to begin" : `~${eta} turn${eta === 1 ? "" : "s"} left`;
+
+    const bars = reqDisc
+      .map((d) => {
+        const req = work.requirement[d] ?? 0;
+        const done = Math.min(req, work.progress[d] ?? 0);
+        const pct = req > 0 ? Math.floor((done / req) * 100) : 0;
+        const r = rate[d] ?? 0;
+        return (
+          `<div class="sub" style="margin-top:6px">${escapeHtml(specialistNameForDiscipline(d))} — ${Math.floor(done)}/${req} ${
+            r > 0 ? `(+${r.toFixed(1)}/turn)` : "(no one assigned)"
+          }</div>` + `<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div>`
+        );
+      })
+      .join("");
+
+    const crewRows = work.assignedSpecialistIds
+      .map((id) => {
+        const found = findSpecialist(state, viewerId, id);
+        if (!found) return "";
+        const spec = found.specialist;
+        const def = SPECIALIST_DEFS[spec.type as SpecialistId];
+        return (
+          `<div class="row" style="justify-content:space-between;gap:6px;margin-top:4px">` +
+          `<span class="sub">👷 ${escapeHtml(spec.name ?? def?.name ?? spec.type)} · ${escapeHtml(def?.name ?? "")} Lv${spec.level} (+${specialistLabour(spec).toFixed(1)}/t) · ${escapeHtml(found.city.name)}</span>` +
+          `<button class="btn" data-assign-off="${id}">Remove</button></div>`
+        );
+      })
+      .join("");
+
+    const committed = assignedSpecialistIds(state, viewerId);
+    const avail: string[] = [];
+    for (const c of citiesOf(state, viewerId)) {
+      for (const spec of c.specialists) {
+        if (committed.has(spec.id)) continue;
+        const disc = SPECIALIST_DEFS[spec.type as SpecialistId]?.discipline;
+        if (!disc || !reqDisc.includes(disc)) continue;
+        const def = SPECIALIST_DEFS[spec.type as SpecialistId];
+        avail.push(
+          `<button class="btn" data-assign-on="${spec.id}">+ ${escapeHtml(spec.name ?? def?.name ?? spec.type)} · ${escapeHtml(def?.name ?? "")} Lv${spec.level} (+${specialistLabour(spec).toFixed(1)}/t) · ${escapeHtml(c.name)}</button>`,
+        );
+      }
+    }
+    const crafts = reqDisc.map(specialistNameForDiscipline).join(" / ");
+    const picker = avail.length
+      ? `<div class="csub">Assign a specialist</div><div class="row" style="flex-wrap:wrap;gap:6px">${avail.join("")}</div>`
+      : `<div class="sub" style="margin-top:6px;color:#e0b07d">No free ${escapeHtml(crafts)} available — train one in a city to staff this.</div>`;
+
+    return (
+      `<div class="csub">🛠️ ${escapeHtml(buildLabel)} — ${overall}%</div>` +
+      `<div class="sub">⏱️ ${etaText}</div>` +
+      bars +
+      (crewRows
+        ? `<div class="csub">Crew (${work.assignedSpecialistIds.length})</div>${crewRows}`
+        : `<div class="sub" style="margin-top:6px">No crew assigned yet — pick specialists below.</div>`) +
+      picker +
+      (work.ownerId === viewerId
+        ? rushButtonsHtml(state, viewerId, "rush-work", work.id, (cur) => workRushCost(work, cur))
+        : "") +
+      `<button class="btn" id="work-cancel" data-work-id="${work.id}" style="margin-top:8px">Cancel work</button>`
+    );
+  };
+
   const renderTilePanel = (state: GameState, tile: Tile | null, viewerId = -1, cheatsEnabled = false): void => {
     if (!tile) {
       tilePanel.classList.add("hidden");
       return;
     }
     tilePanel.classList.remove("hidden");
+    const tileKey = `${tile.col},${tile.row}`;
+    if (tileKey !== tilePanelKey) {
+      tilePanelKey = tileKey;
+      tilePanelExpanded = !isMobile();
+    }
     const r = tileReport(state, tile);
     const y = r.yields;
     const chip = (icon: string, n: number) =>
       `<span style="${n ? "" : "opacity:.35"}" title="${icon}">${icon} <b>${n}</b></span>`;
 
     let html =
-      `<div class="row" style="justify-content:space-between">` +
-      `<b style="font-size:15px">${r.name}</b>` +
-      `<button class="btn" id="tile-close">✕</button></div>` +
-      `<div class="sub" style="margin-top:2px">${r.subtitle}</div>` +
+      `<div class="sub">${r.subtitle}</div>` +
       `<div class="tinfo-yields">` +
       chip("🍞", y.food) +
       chip("⚒️", y.production) +
@@ -2484,20 +2836,11 @@ export function createUI(handlers: UIHandlers): UI {
 
     // Develop (start a public work) — only for tiles in the viewer's territory.
     const ownsTile = tile.ownerCityId !== undefined && state.cities.get(tile.ownerCityId)?.ownerId === viewerId;
-    const existing = state.works.find((w) => w.target && w.target.col === tile.col && w.target.row === tile.row);
+    const existing = state.works.find(
+      (w) => w.ownerId === viewerId && w.target && w.target.col === tile.col && w.target.row === tile.row,
+    );
     if (existing) {
-      const req = Object.values(existing.requirement).reduce((a, b) => a + (b ?? 0), 0);
-      const done = Object.values(existing.progress).reduce((a, b) => a + (b ?? 0), 0);
-      const pct = req > 0 ? Math.floor((done / req) * 100) : 0;
-      const buildLabel =
-        existing.kind === "wonder"
-          ? getWonder(existing.wonderId)?.name ?? "Wonder"
-          : workName(existing.kind, existing.tier ?? 1);
-      html +=
-        `<div class="csub">🛠️ Under construction</div>` +
-        `<div class="sub">${buildLabel} — ${pct}%</div>` +
-        `<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div>` +
-        `<button class="btn" id="work-cancel" data-work-id="${existing.id}" style="margin-top:6px">Cancel</button>`;
+      html += constructionSection(state, existing, viewerId);
     } else if (ownsTile) {
       let needHint = "";
       // Offer the viewer civ's unique tile improvement alongside the base works.
@@ -2541,13 +2884,25 @@ export function createUI(handlers: UIHandlers): UI {
       html += `<div class="row" style="flex-wrap:wrap;gap:6px"><button class="btn" id="tile-god">⚡ Cheats…</button></div>`;
     }
 
-    tilePanel.innerHTML = html;
+    tilePanel.classList.toggle("collapsed", !tilePanelExpanded);
+    tilePanel.innerHTML =
+      summaryBar({
+        icon: "⬡",
+        name: `<b>${r.name}</b>`,
+        stats: `${chip("🍞", y.food)}${chip("⚒️", y.production)}`,
+        closeId: "tile-close",
+      }) +
+      `<div class="ip-detail">${html}</div>`;
+    wireCollapse(tilePanel, () => {
+      tilePanelExpanded = !tilePanelExpanded;
+      renderTilePanel(state, tile, viewerId, cheatsEnabled);
+    });
     tilePanel
       .querySelector<HTMLButtonElement>("#tile-close")!
       .addEventListener("click", () => handlers.onCloseTile());
     tilePanel.querySelector<HTMLButtonElement>("#tile-toggle")!.addEventListener("click", () => {
       tileExpanded = !tileExpanded;
-      renderTilePanel(state, tile, viewerId);
+      renderTilePanel(state, tile, viewerId, cheatsEnabled);
     });
     tilePanel.querySelectorAll<HTMLButtonElement>("[data-work]").forEach((el) =>
       el.addEventListener("click", () => handlers.onStartWork(el.dataset.work!, tile.col, tile.row)),
@@ -2557,6 +2912,17 @@ export function createUI(handlers: UIHandlers): UI {
     );
     tilePanel.querySelector<HTMLButtonElement>("#work-cancel")?.addEventListener("click", () =>
       handlers.onCancelWork(Number(existing!.id)),
+    );
+    tilePanel.querySelectorAll<HTMLButtonElement>("[data-rush-work]").forEach((el) =>
+      el.addEventListener("click", () =>
+        handlers.onRushWork(Number(el.dataset.rushWork), el.dataset.rushCur as RushCurrency),
+      ),
+    );
+    tilePanel.querySelectorAll<HTMLButtonElement>("[data-assign-on]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onAssignSpecialist(existing!.id, Number(el.dataset.assignOn), true)),
+    );
+    tilePanel.querySelectorAll<HTMLButtonElement>("[data-assign-off]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onAssignSpecialist(existing!.id, Number(el.dataset.assignOff), false)),
     );
     tilePanel.querySelector<HTMLButtonElement>("#tile-god")?.addEventListener("click", () => {
       godModeOpen = true;
@@ -2704,11 +3070,17 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
     cityPanel.classList.remove("hidden");
+    // Open at the default size for the viewport whenever a different city is picked.
+    if (city.id !== cityPanelCityId) {
+      cityPanelCityId = city.id;
+      cityPanelExpanded = !isMobile();
+    }
     const player = state.players.find((p) => p.id === city.ownerId)!;
+    const cityViewer = lastViewerId >= 0 ? lastViewerId : city.ownerId;
     const y = getCityYields(state, city);
     const need = foodToGrow(city.population);
     const options = availableProduction(state, player, city);
-    const curName = city.production ? prodName(city.production) : "— nothing —";
+    const curName = city.production ? prodName(city.production, player.civId) : "— nothing —";
     const curCost = city.production ? prodCost(city.production) : 0;
     const prodPct = curCost
       ? Math.min(100, (city.productionStored / curCost) * 100)
@@ -2731,49 +3103,17 @@ export function createUI(handlers: UIHandlers): UI {
     const unhappiness = cityUnhappiness(city);
     const luxuryBadge =
       growthMult > 1
-        ? ` <span title="Surplus luxuries (${amenities} amenities vs ${unhappiness} unhappiness) speed growth" style="color:#7fd17f">🍷 +${Math.round((growthMult - 1) * 100)}% growth</span>`
+        ? ` <span title="Surplus luxuries (${amenities} amenities vs ${unhappiness} unhappiness) speed growth" style="color:#7fd17f">🍷 +${Math.round((growthMult - 1) * 100)}%</span>`
         : growthMult < 1
-          ? ` <span title="Too few amenities (${amenities} vs ${unhappiness} unhappiness) — ${unhappiness - amenities} more would reach full speed" style="color:#d9a86a">😟 −${Math.round((1 - growthMult) * 100)}% growth</span>`
+          ? ` <span title="Too few amenities (${amenities} vs ${unhappiness} unhappiness) — ${unhappiness - amenities} more would reach full speed" style="color:#d9a86a">😟 −${Math.round((1 - growthMult) * 100)}%</span>`
           : "";
 
-    // Specialists: train/release craftsmen from this city's population.
     const free = workerSlots(city);
-    const avail = availableSpecialists(player);
-    const specHtml =
-      `<div class="csub">🛠️ Specialists <span style="color:#9fc0dc">(${city.specialists.length} trained · ${free} free)</span></div>` +
-      avail
-        .map((id) => {
-          const def = SPECIALIST_DEFS[id];
-          const mine = city.specialists.filter((s) => s.type === id);
-          return (
-            `<div class="row" style="justify-content:space-between;gap:6px;margin-top:4px">` +
-            `<span title="${def.latin} — ${def.desc}">${def.name} <b style="color:#fff">×${mine.length}</b></span>` +
-            `<span style="display:flex;gap:4px">` +
-            `<button class="btn" data-spec-minus="${id}"${mine.length ? "" : " disabled"}>−</button>` +
-            `<button class="btn" data-spec-plus="${id}"${free > 0 ? "" : " disabled"}>＋</button>` +
-            `</span></div>`
-          );
-        })
-        .join("");
-    const cityWorks = worksOfCity(state, city.id);
-    const worksHtml = cityWorks.length
-      ? `<div class="csub">Public works</div>` +
-        cityWorks
-          .map((w) => {
-            const req = Object.values(w.requirement).reduce((a, b) => a + (b ?? 0), 0);
-            const done = Object.values(w.progress).reduce((a, b) => a + (b ?? 0), 0);
-            const pct = req > 0 ? Math.floor((done / req) * 100) : 0;
-            const label = w.kind === "wonder" ? "Wonder" : workName(w.kind, w.tier ?? 1);
-            return `<div class="sub" style="margin-top:3px">${label} — ${pct}%<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div></div>`;
-          })
-          .join("")
-      : "";
+    const specCount = city.specialists.length;
+    const worksCount = worksOfCity(state, city.id).length;
 
-    cityPanel.innerHTML =
-      `<div class="row" style="justify-content:space-between">` +
-      `<b style="font-size:15px">${city.isCapital ? "★ " : ""}${city.name}</b>` +
-      `<button class="btn" id="cclose">✕</button></div>` +
-      `<div style="color:#9fc0dc;margin-top:2px">Pop <b style="color:#fff">${city.population}</b> · ` +
+    const detail =
+      `<div class="cline">` +
       `🛡️ ${cityDefenseStrength(state, city)} · ❤️ ${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)} · ⬣ ${territorySize(state, city)}` +
       (city.religion ? ` · ☮️ ${religionById(state, city.religion)?.name ?? ""}` : "") +
       `</div>` +
@@ -2784,16 +3124,12 @@ export function createUI(handlers: UIHandlers): UI {
       `<span title="Gold">🪙 <b>${y.gold}</b></span>` +
       `<span title="Science">🔬 <b>${y.science}</b></span>` +
       `</div>` +
-      // citizens
-      `<div style="margin-top:6px">👥 Citizens <b>${Math.min(city.workedTiles.length, free)}/${free}</b> working tiles</div>` +
-      specHtml +
-      worksHtml +
       // growth
-      `<div style="margin-top:6px">Growth ${Math.floor(city.foodStored)}/${need} ` +
+      `<div class="cline" style="color:var(--parchment)">Growth ${Math.floor(city.foodStored)}/${need} ` +
       (buildingSettler
-        ? `<span title="A city pauses growth while it readies a settler" style="color:#d9a86a">(paused — building settler)</span>`
+        ? `<span title="A city pauses growth while it readies a settler" style="color:#d9a86a">(paused — settler)</span>`
         : perTurn > 0
-          ? `<span style="color:#9fc0dc">(+${perTurn}/turn · ${turnsToGrow} ${turnsToGrow === 1 ? "turn" : "turns"})</span>`
+          ? `<span style="color:#9fc0dc">(+${perTurn}/turn · ${turnsToGrow}t)</span>`
           : `<span style="color:#d98a8a">(stalled)</span>`) +
       (buildingSettler ? "" : luxuryBadge) +
       `<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
@@ -2802,37 +3138,66 @@ export function createUI(handlers: UIHandlers): UI {
         ? (() => {
             const def = getProjectDef(city.production.id);
             const perTurnOut = Math.floor(y.production * (def?.ratio ?? 1));
-            return `<div style="margin-top:6px">Project: <b>${curName}</b> <span style="color:#9fc0dc">(+${perTurnOut}${def?.glyph ?? ""}/turn)</span></div>`;
+            return `<div class="cline" style="color:var(--parchment)">Project: <b>${curName}</b> <span style="color:#9fc0dc">(+${perTurnOut}${def?.glyph ?? ""}/turn)</span></div>`;
           })()
-        : `<div style="margin-top:6px">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>`) +
-      `<button class="btn primary" id="open-prod" style="width:100%;margin-top:6px">Choose Production ▸ <span style="color:#cfe3f7;font-weight:400">(${options.length})</span></button>` +
+        : `<div class="cline" style="color:var(--parchment)">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>`) +
+      (city.ownerId === cityViewer
+        ? rushButtonsHtml(state, cityViewer, "rush-prod", city.id, (cur) => cityRushCost(city, cur))
+        : "") +
+      `<button class="btn primary csheet-btn" id="open-prod">🔨 Construction <span class="sub">${options.length} ▸</span></button>` +
+      `<button class="btn csheet-btn" id="open-spec">🛠️ Specialists <span class="sub">${specCount} trained · ${free} free${worksCount ? ` · ${worksCount} works` : ""} ▸</span></button>` +
       (() => {
         const routes = tradeRoutesFrom(state, city.id);
         if (!routes.length) return "";
         const totalGold = routes.reduce((s, r) => s + tradeRouteYield(state, r).gold, 0);
         const names = routes.map((r) => state.cities.get(r.toCityId)?.name ?? "?").join(", ");
-        return `<div style="margin-top:6px;color:#9fc0dc;font-size:12px">🐪 Trade routes (${routes.length}): ${names} — +${totalGold}🪙</div>`;
+        return `<div class="cline" style="font-size:11px">🐪 Trade (${routes.length}): ${names} — +${totalGold}🪙</div>`;
       })() +
       (city.buildings.length
-        ? `<div style="margin-top:6px;color:#9fc0dc;font-size:12px">Built: ${city.buildings.map((b) => getBuildingDef(b)?.name ?? b).join(", ")}</div>`
+        ? `<div class="cline" style="font-size:11px">Built: ${city.buildings.map((b) => getBuildingDef(b)?.name ?? b).join(", ")}</div>`
         : "");
 
+    cityPanel.classList.toggle("collapsed", !cityPanelExpanded);
+    cityPanel.innerHTML =
+      summaryBar({
+        icon: city.isCapital ? "★" : "🏙️",
+        name: `<b>${escapeHtml(city.name)}</b>`,
+        stats: `👥 ${city.population} · ⚒️ ${y.production}`,
+        closeId: "cclose",
+      }) +
+      `<div class="ip-detail">${detail}</div>`;
+
+    wireCollapse(cityPanel, () => {
+      cityPanelExpanded = !cityPanelExpanded;
+      renderCityPanel(state, city);
+    });
     cityPanel
       .querySelector<HTMLButtonElement>("#cclose")!
       .addEventListener("click", () => handlers.onCloseCity());
-    cityPanel.querySelectorAll<HTMLButtonElement>("[data-spec-plus]").forEach((el) =>
-      el.addEventListener("click", () => handlers.onConvertCitizen(city.id, el.dataset.specPlus!, 1)),
-    );
-    cityPanel.querySelectorAll<HTMLButtonElement>("[data-spec-minus]").forEach((el) =>
-      el.addEventListener("click", () => handlers.onConvertCitizen(city.id, el.dataset.specMinus!, -1)),
-    );
     cityPanel.querySelector<HTMLButtonElement>("#open-prod")!.addEventListener("click", () => {
       prodCityId = city.id;
       productionOpen = true;
+      specialistsOpen = false;
+      closeSideSheets();
+      menuOpen = false;
+      renderMenu(state);
+      renderSpecialists(state);
+      renderProduction(state);
+    });
+    cityPanel.querySelectorAll<HTMLButtonElement>("[data-rush-prod]").forEach((el) =>
+      el.addEventListener("click", () =>
+        handlers.onRushProduction(Number(el.dataset.rushProd), el.dataset.rushCur as RushCurrency),
+      ),
+    );
+    cityPanel.querySelector<HTMLButtonElement>("#open-spec")!.addEventListener("click", () => {
+      specCityId = city.id;
+      specialistsOpen = true;
+      productionOpen = false;
       closeSideSheets();
       menuOpen = false;
       renderMenu(state);
       renderProduction(state);
+      renderSpecialists(state);
     });
   };
 
@@ -2878,6 +3243,7 @@ export function createUI(handlers: UIHandlers): UI {
     onSelectCity: (id) => handlers.onSelectCity(id),
     onConvertCitizen: (cityId, sid, delta) => handlers.onConvertCitizen(cityId, sid, delta),
     onCancelWork: (wid) => handlers.onCancelWork(wid),
+    onCancelTradeRoute: (rid) => handlers.onCancelTradeRoute(rid),
   });
 
   // Diplomacy: first-contact dialog + Contacts/negotiation screen + toggle button.
@@ -2907,6 +3273,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderGreatPeople(view.state);
       renderLegends(view.state);
       renderProduction(view.state);
+      renderSpecialists(view.state);
       renderUnitPanel(view.state, view.selectedUnit, view.viewerId, view.odds);
       renderTilePanel(view.state, view.selectedTile ?? null, view.viewerId, view.cheatsEnabled ?? false);
       renderGodMode(view);
@@ -2930,6 +3297,7 @@ export function createUI(handlers: UIHandlers): UI {
         greatPeopleOpen ||
         legendsOpen ||
         productionOpen ||
+        specialistsOpen ||
         techtreeOpen ||
         menuOpen ||
         godModeOpen ||
@@ -3042,9 +3410,11 @@ export function createUI(handlers: UIHandlers): UI {
       if (!lastState) return;
       prodCityId = cityId;
       productionOpen = true;
+      specialistsOpen = false;
       closeSideSheets();
       menuOpen = false;
       renderMenu(lastState);
+      renderSpecialists(lastState);
       renderProduction(lastState);
     },
     setAbilityAtlas(atlas) {

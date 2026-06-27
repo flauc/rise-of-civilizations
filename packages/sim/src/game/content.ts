@@ -842,16 +842,20 @@ export type PromotionId =
   // civilian
   | "pioneer"
   | "colonist"
-  | "explorer"
-  | "engineer"
-  | "foreman"
-  | "survival_training";
+  | "explorer";
 
 export interface PromotionDef {
   id: PromotionId;
   name: string;
   desc: string;
   tier: 1 | 2 | 3;
+  /**
+   * Another promotion that must already be held before this one can be taken.
+   * Used for tiered chains where a higher tier is a strict upgrade of a lower
+   * one (e.g. the Escape line evasion → slip_away → vanish). Independent
+   * promotions leave this undefined.
+   */
+  prereq?: PromotionId;
 }
 
 export const PROMOTION_DEFS: Record<PromotionId, PromotionDef> = {
@@ -936,8 +940,8 @@ export const PROMOTION_DEFS: Record<PromotionId, PromotionDef> = {
   ranger: { id: "ranger", name: "Ranger", desc: "+2 strength; +1 sight" , tier: 2 },
   eagle_eye_recon: { id: "eagle_eye_recon", name: "Eagle Eye", desc: "+2 sight" , tier: 3 },
   evasion: { id: "evasion", name: "Evasion", desc: "50% chance to dodge an attack and slip back one tile — once per turn" , tier: 1 },
-  slip_away: { id: "slip_away", name: "Slip Away", desc: "75% chance to dodge an attack and slip back one tile — once per turn" , tier: 2 },
-  vanish: { id: "vanish", name: "Vanish", desc: "95% chance to dodge an attack and slip back one tile — once per turn" , tier: 3 },
+  slip_away: { id: "slip_away", name: "Slip Away", desc: "75% chance to dodge an attack and slip back one tile — once per turn" , tier: 2, prereq: "evasion" },
+  vanish: { id: "vanish", name: "Vanish", desc: "95% chance to dodge an attack and slip back one tile — once per turn" , tier: 3, prereq: "slip_away" },
 
   // naval melee
   boarding: { id: "boarding", name: "Boarding", desc: "+4 strength vs naval melee units" , tier: 2 },
@@ -959,9 +963,6 @@ export const PROMOTION_DEFS: Record<PromotionId, PromotionDef> = {
   pioneer: { id: "pioneer", name: "Pioneer", desc: "+1 sight; +1 movement" , tier: 1 },
   colonist: { id: "colonist", name: "Colonist", desc: "+20 HP" , tier: 1 },
   explorer: { id: "explorer", name: "Explorer", desc: "+2 sight" , tier: 1 },
-  engineer: { id: "engineer", name: "Engineer", desc: "+1 movement; +1 build charge" , tier: 1 },
-  foreman: { id: "foreman", name: "Foreman", desc: "+1 movement" , tier: 1 },
-  survival_training: { id: "survival_training", name: "Survival Training", desc: "+15 HP; +1 sight" , tier: 1 },
 };
 
 export const PROMOTION_POOL: Record<UnitClass, PromotionId[]> = {

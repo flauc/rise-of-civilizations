@@ -16,10 +16,11 @@ import {
   type Player,
   type Unit,
 } from "./state";
-import { UNIT_DEFS, isMilitary, type UnitTypeId } from "./content";
+import { isMilitary, type UnitTypeId } from "./content";
 import { unitMaxHp } from "./combat";
-import { onBarbCampCleared, onUnitPromoted, onVillageGlobalMorale, onVillageUnitMorale, startingUnitMorale } from "./morale";
-import { availableTechs } from "./economy";
+import { hasMorale, onBarbCampCleared, onUnitPromoted, onVillageGlobalMorale, onVillageUnitMorale, startingUnitMorale } from "./morale";
+import { availableTechs, autoAssignCitizens } from "./economy";
+import { getCivic, unitDisplayName } from "./civs";
 import { expandTerritory } from "./territory";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
@@ -117,9 +118,11 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
   const techs = availableTechs(player);
   const barbId = barbarianId(state);
 
-  // Weighted reward table (negative outcome is rare).
+  // Weighted reward table (negative outcome is rare). A civic boost is only
+  // offered to civs that have engaged the culture tree (researchingCivic set);
+  // when they have not, that band falls through to the next eligible reward.
   const roll = rng.next();
-  if (roll < 0.2 && techs.length > 0) {
+  if (roll < 0.18 && techs.length > 0) {
     const tech = techs[Math.floor(rng.next() * techs.length)]!;
     player.researched.add(tech);
     if (player.researching === tech) player.researching = null;
@@ -129,7 +132,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       tile: { col: unit.col, row: unit.row },
       reward: "tech",
     });
-  } else if (roll < 0.34) {
+  } else if (roll < 0.30) {
     const gold = 30 + Math.floor(rng.next() * 40);
     player.gold += gold;
     log(state, `${player.name} found ${gold} gold in a village.`, {
@@ -138,7 +141,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       tile: { col: unit.col, row: unit.row },
       reward: "gold",
     });
-  } else if (roll < 0.47 && city) {
+  } else if (roll < 0.42 && city) {
     const prod = 20 + Math.floor(rng.next() * 25);
     city.productionStored += prod;
     log(state, `A village sped up production in ${city.name}.`, {
@@ -147,25 +150,27 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       tile: { col: unit.col, row: unit.row },
       reward: "production",
     });
-  } else if (roll < 0.58 && city) {
+  } else if (roll < 0.52 && city) {
     city.population += 1;
-    expandTerritory(state, city);
+    expandTerritory(state, city); // borders grow with the city
+    autoAssignCitizens(state, city); // gifted citizen works the best free tile
     log(state, `A village added a citizen to ${city.name}.`, {
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },
       reward: "population",
     });
-  } else if (roll < 0.68) {
+  } else if (roll < 0.61 && hasMorale(unit)) {
     // A village rouses this unit to great heart — a large personal morale boost.
+    // Scouts have no morale, so they fall through to another reward instead.
     onVillageUnitMorale(state, unit);
-    log(state, `Villagers feasted the ${UNIT_DEFS[unit.type].name}, raising its spirits.`, {
+    log(state, `Villagers feasted the ${unitDisplayName(state, unit)}, raising its spirits.`, {
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },
       reward: "unit_morale",
     });
-  } else if (roll < 0.76) {
+  } else if (roll < 0.68) {
     // Word of the village's welcome spreads — a smaller empire-wide morale lift.
     onVillageGlobalMorale(state, player);
     log(state, `A village's hospitality heartened ${player.name}'s people.`, {
@@ -174,20 +179,42 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       tile: { col: unit.col, row: unit.row },
       reward: "global_morale",
     });
-  } else if (roll < 0.85) {
+  } else if (roll < 0.75) {
+    // The village's shrine-keepers share their blessings — a stockpile of faith.
+    const faith = 30 + Math.floor(rng.next() * 30);
+    player.faith += faith;
+    log(state, `A village's shrine blessed ${player.name} with ${faith} faith.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+      reward: "faith",
+    });
+  } else if (roll < 0.82 && player.researchingCivic) {
+    // Village elders share their customs — progress toward the current civic.
+    const culture = 30 + Math.floor(rng.next() * 30);
+    player.cultureProgress += culture;
+    const civicName = getCivic(player.researchingCivic)?.name ?? "their customs";
+    log(state, `Village elders taught ${player.name} the ways of ${civicName}.`, {
+      actorId: player.id,
+      targetIds: [player.id],
+      tile: { col: unit.col, row: unit.row },
+      reward: "civic",
+    });
+  } else if (roll < 0.89) {
     const type: UnitTypeId = rng.next() < 0.5 ? "scout" : "warrior";
-    if (spawnUnitNear(state, player.id, type, unit.col, unit.row)) {
-      log(state, `A village provided a free ${UNIT_DEFS[type].name}.`, {
+    const spawned = spawnUnitNear(state, player.id, type, unit.col, unit.row);
+    if (spawned) {
+      log(state, `A village provided a free ${unitDisplayName(state, spawned)}.`, {
         actorId: player.id,
         targetIds: [player.id],
         tile: { col: unit.col, row: unit.row },
         reward: "unit",
       });
     }
-  } else if (roll < 0.93 && isMilitary(unit.type)) {
+  } else if (roll < 0.95 && isMilitary(unit.type)) {
     unit.unspentPromotions += 1;
     onUnitPromoted(state, unit); // battle wisdom also heartens the unit (scales with level)
-    log(state, `${UNIT_DEFS[unit.type].name} gained battle wisdom (free promotion) at a village.`, {
+    log(state, `${unitDisplayName(state, unit)} gained battle wisdom (free promotion) at a village.`, {
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },

@@ -104,6 +104,8 @@ function mergeInto(acc: CivEffects, e: CivEffects | undefined): void {
   if (e.tradeRouteGoldBonus) acc.tradeRouteGoldBonus = (acc.tradeRouteGoldBonus ?? 0) + e.tradeRouteGoldBonus;
   if (e.tradeRouteFaithBonus) acc.tradeRouteFaithBonus = (acc.tradeRouteFaithBonus ?? 0) + e.tradeRouteFaithBonus;
   if (e.tradeRouteCapacityBonus) acc.tradeRouteCapacityBonus = (acc.tradeRouteCapacityBonus ?? 0) + e.tradeRouteCapacityBonus;
+  if (e.rushWithFaith) acc.rushWithFaith = true;
+  if (e.rushWithCulture) acc.rushWithCulture = true;
   if (e.wonderProductionBonus) acc.wonderProductionBonus = (acc.wonderProductionBonus ?? 0) + e.wonderProductionBonus;
   if (e.defensiveBuildingProductionBonus) acc.defensiveBuildingProductionBonus = (acc.defensiveBuildingProductionBonus ?? 0) + e.defensiveBuildingProductionBonus;
   if (e.holySiteTempleProductionBonus) acc.holySiteTempleProductionBonus = (acc.holySiteTempleProductionBonus ?? 0) + e.holySiteTempleProductionBonus;
@@ -196,8 +198,6 @@ export function unitMovement(state: GameState, unit: Unit): number {
   if (promotions.includes("rapid_deployment")) base += 1;
   if (promotions.includes("tracking")) base += 1;
   if (promotions.includes("pioneer")) base += 1;
-  if (promotions.includes("engineer")) base += 1;
-  if (promotions.includes("foreman")) base += 1;
   if (promotions.includes("mounted_archer")) base += 1;
   if (promotions.includes("breakthrough")) base += 1;
   if (promotions.includes("rapid_reload")) base += 1;

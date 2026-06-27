@@ -39,6 +39,8 @@ export interface SessionStartEvent {
   naturalWonders?: boolean;
   /** Starting treasury preset, e.g. "tight"/"balanced"/"generous". */
   startingGold?: string;
+  /** Turn at which the score victory triggers; 0 = unlimited. */
+  turnLimit?: number;
   /** Chosen civ per AI opponent (null = random). */
   aiCivIds?: (string | null)[];
   /** Epoch millis on the client when the session started. */
