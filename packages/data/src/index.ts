@@ -2,6 +2,9 @@
 // and building ids) so the sim can import it without a dependency cycle. The sim
 // applies these effects at the relevant points (see packages/sim/src/game/civs.ts).
 
+// Encyclopedia historical/lore content (back stories, ability/perk origins, etc.).
+export * from "./history";
+
 export interface CityYieldBonus {
   food?: number;
   production?: number;
@@ -135,6 +138,12 @@ export interface CivDef {
   /** Extra population on the civ's FIRST (capital) city only (0 or 1). */
   capitalPopulationBonus?: number;
 }
+
+/** Population a civ's CAPITAL (its first city) is founded with; a civ may add
+ *  capitalPopulationBonus on top. Later cities are founded at 1 and must grow.
+ *  Single source of truth: consumed by the sim's foundCity AND the UI's starting-profile
+ *  display, so the two can never drift. */
+export const BASE_CITY_POPULATION = 2;
 
 /** Default starting loadout (in addition to the Settler) when a civ has no unique unit. */
 export const DEFAULT_STARTING_UNITS: string[] = ["warrior", "warrior", "scout"];
@@ -2213,16 +2222,16 @@ const INFRA_OVERRIDES: Record<string, InfraOverride> = {
   huns: { kind: "improvement", reqTech: "equestrian", terrain: ["plains", "grassland", "tundra"], discipline: "carpentry", yields: { production: 1, gold: 1 }, art: "a Hunnic ordu encampment of hide tents and horse corrals on the plains" },
   xiongnu: { kind: "improvement", reqTech: "equestrian", terrain: ["plains", "grassland", "tundra"], discipline: "carpentry", yields: { food: 1, production: 1 }, art: "a Xiongnu felt-tent steppe camp with grazing horses" },
 
-  // ---- flagship buildings with rich empire-wide effects -------------------
-  babylon: { reqTech: "masonry", yields: { science: 1 }, effects: { yieldPercent: { science: 5 } }, desc: "Unique building — +1 science here and +5% science empire-wide." },
-  han_china: { reqTech: "masonry", yields: { culture: 1 }, effects: { yieldPercent: { production: 5 } }, desc: "Unique building — +1 culture here and +5% production empire-wide." },
-  carthage: { reqTech: "sailcloth", yields: { gold: 2 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +2 gold and naval units +1 movement empire-wide." },
-  phoenicia: { reqTech: "sailcloth", yields: { gold: 2 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +2 gold and naval units +1 movement empire-wide." },
-  portugal: { reqTech: "astronomy", yields: { gold: 3 }, effects: { tradeRouteGoldBonus: 2 }, desc: "Unique building — +3 gold and +2 gold per trade route empire-wide." },
-  sparta: { reqTech: "bronze_alloying", yields: { production: 2 }, desc: "Unique building — +2 production." },
-  rome: { reqTech: "engineering", yields: { culture: 1, food: 1 }, effects: { yieldPercent: { culture: 10 } }, desc: "Unique building — +1 culture, +1 food, and +10% culture empire-wide." },
-  greece: { reqTech: "masonry", yields: { culture: 2, science: 1 }, desc: "Unique building — +2 culture and +1 science." },
-  norse: { reqTech: "sailcloth", yields: { faith: 2, culture: 1 }, desc: "Unique building — +2 faith and +1 culture." },
+  // ---- flagship buildings with rich empire-wide effects (reqTech: INFRA_REQ_TECH) --
+  babylon: { yields: { science: 1 }, effects: { yieldPercent: { science: 5 } }, desc: "Unique building — +1 science here and +5% science empire-wide." },
+  han_china: { yields: { culture: 1 }, effects: { yieldPercent: { production: 5 } }, desc: "Unique building — +1 culture here and +5% production empire-wide." },
+  carthage: { yields: { gold: 2 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +2 gold and naval units +1 movement empire-wide." },
+  phoenicia: { yields: { gold: 2 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +2 gold and naval units +1 movement empire-wide." },
+  portugal: { yields: { gold: 3 }, effects: { tradeRouteGoldBonus: 2 }, desc: "Unique building — +3 gold and +2 gold per trade route empire-wide." },
+  sparta: { yields: { production: 2 }, desc: "Unique building — +2 production." },
+  rome: { yields: { culture: 1, food: 1 }, effects: { yieldPercent: { culture: 10 } }, desc: "Unique building — +1 culture, +1 food, and +10% culture empire-wide." },
+  greece: { yields: { culture: 2, science: 1 }, desc: "Unique building — +2 culture and +1 science." },
+  norse: { yields: { faith: 2, culture: 1 }, desc: "Unique building — +2 faith and +1 culture." },
 };
 
 /** Slugify a name into a stable art/lookup id (matches the unique-unit scheme). */
@@ -2270,6 +2279,150 @@ function describeInfra(def: UniqueInfraDef): string {
   return s + ".";
 }
 
+/**
+ * Tech that unlocks each civ's unique BUILDING, chosen by what the structure is and
+ * its historical context — so the research path to a civ's signature building is
+ * diverse rather than uniformly Masonry. Single source of truth for building tech
+ * gates (tile improvements keep their reqTech in INFRA_OVERRIDES). Comment = building.
+ */
+const INFRA_REQ_TECH: Record<string, string> = {
+  // Mesopotamia & the Near East
+  sumer: "monumental_architecture", // Ziggurat
+  akkad: "writing", // Palace Archive
+  babylon: "masonry", // Walls of Babylon
+  assyria: "writing", // Royal Library
+  hittites: "ritual_burial", // Storm Temple
+  elam: "monumental_architecture", // Chogha Zanbil
+  phoenicia: "sailing", // Cothon (war harbor)
+  lydia: "coinage", // Mint (Lydia struck the first coins)
+  // Persia & Iran
+  median_empire: "equestrian", // Royal Stable
+  persia: "irrigation", // Pairidaeza (paradise garden)
+  parthia: "the_wheel", // Caravanserai
+  sassanid_persia: "ritual_burial", // Fire Temple
+  // Egypt & Africa
+  carthage: "sailing", // Cothon (war harbor)
+  ethiopia_zagwe: "masonry", // Rock-Hewn Church (carved from living rock)
+  mali: "coinage", // Suguba (great market)
+  ghana_empire: "coinage", // Gold Market
+  songhai: "sailing", // River Port
+  great_zimbabwe: "masonry", // Great Enclosure (dry-stone walls)
+  kanem_bornu: "the_wheel", // Sahel Caravan Post
+  // Mediterranean & Europe
+  minoans: "masonry", // Labyrinth Palace
+  mycenaean_greece: "masonry", // Megaron
+  greece: "monumental_architecture", // Acropolis
+  sparta: "bronze_alloying", // Syssitia (warrior mess)
+  macedon: "philosophy", // Basilikoi Paides (royal school of pages)
+  etruscans: "ritual_burial", // Tumulus (burial mound)
+  rome: "engineering", // Roman Bath
+  byzantium: "the_wheel", // Hippodrome (chariot racing)
+  norse: "ritual_burial", // Stave Church
+  franks: "ritual_burial", // Palatine Chapel
+  goths: "the_wheel", // Wagon Fort
+  anglo_saxon_england: "masonry", // Manor House
+  castile_spain: "ritual_burial", // Mission
+  portugal: "astronomy", // Feitoria (age-of-exploration trade post)
+  venice: "shipbuilding", // Arsenale (great shipyard)
+  genoa: "coinage", // Banco (bank)
+  holy_roman_empire: "coinage", // Hansa (trade league)
+  kievan_rus: "ritual_burial", // Lavra (monastery)
+  poland_lithuania: "coinage", // Sukiennice (cloth hall)
+  hungary: "engineering", // Thermal Bath
+  // Central, South & East Asia
+  han_china: "masonry", // Great Wall
+  china_tang_song: "philosophy", // Imperial Examination Hall
+  china_ming: "monumental_architecture", // Porcelain Tower
+  gupta_india: "philosophy", // University-Temple (Nalanda)
+  chola: "monumental_architecture", // Brihadeeswara Temple
+  japan: "masonry", // Tenshu Castle
+  korea: "philosophy", // Seowon (Confucian academy)
+  tibet: "monumental_architecture", // Potala
+  dai_viet_vietnam: "masonry", // Thành (citadel)
+  khmer: "ritual_burial", // Prasat (temple tower)
+  srivijaya: "ritual_burial", // Candi
+  majapahit: "sailing", // Harbor-Temple
+  pagan_burma: "ritual_burial", // Pagoda
+  ayutthaya_siam: "ritual_burial", // Wat
+  // Steppe & Turkic
+  seljuks: "philosophy", // Madrasa
+  timurids: "monumental_architecture", // Registan
+  ottomans: "coinage", // Grand Bazaar
+  // The Americas
+  maya: "astronomy", // Observatory
+  zapotec: "ritual_burial", // Danzante Temple
+  teotihuacan: "monumental_architecture", // Avenue of the Dead
+  toltec: "masonry", // Atlantean Hall
+  aztec: "ritual_burial", // Tlachtli (ritual ball court)
+  muisca: "ritual_burial", // Salt Temple
+  haudenosaunee: "cultivation", // Longhouse
+  pueblo: "masonry", // Cliff Palace
+  // Oceania
+  polynesia: "ritual_burial", // Marae (sacred ground)
+  maori: "masonry", // Pā (fortified village)
+  hawaii: "ritual_burial", // Heiau (temple)
+  // Near East & Arabia (expansion)
+  arabia: "philosophy", // House of Wisdom
+  israelites: "ritual_burial", // First Temple
+  mitanni: "equestrian", // Kikkuli Stables (horse-training manual)
+  urartu: "masonry", // Fortress of Van
+  // Persia & Central Asia (expansion)
+  greco_bactria: "philosophy", // Gymnasion
+  sogdia: "the_wheel", // Caravanserai (Silk Road)
+  khwarazm: "coinage", // Gurganj Bazaar
+  // North Africa & Islamic Mediterranean (expansion)
+  numidia: "equestrian", // Royal Horse Market
+  fatimids: "philosophy", // Al-Azhar (great teaching mosque)
+  ayyubids: "engineering", // Citadel of Cairo
+  mamluks: "equestrian", // Maydan (cavalry parade ground)
+  almoravids: "masonry", // Ribat (fortified monastery)
+  // Sub-Saharan Africa (expansion)
+  swahili: "coinage", // Husuni Kubwa (great trade palace)
+  kongo: "masonry", // Mbanza (royal capital)
+  // Mediterranean & Europe (expansion)
+  bulgaria: "masonry", // Preslav Court
+  serbia: "masonry", // Despot's Hall
+  bohemia: "coinage", // Kutná Hora Mint
+  swiss: "parley", // Rütli Meadow (the founding oath)
+  aragon: "coinage", // Llotja (commodities exchange)
+  scotland: "masonry", // Tower House
+  gaelic_ireland: "ritual_burial", // Round Tower (monastic)
+  normans: "ritual_burial", // Palatine Chapel
+  visigoths: "writing", // Hall of Toledo (church councils & law)
+  novgorod: "coinage", // Veche Bell (merchant republic)
+  // European tribal peoples (expansion)
+  illyrians: "masonry", // Gradina (hillfort)
+  lusitani: "masonry", // Castro (hillfort)
+  arevaci: "masonry", // Murallas de Numancia (walls)
+  thracians: "ritual_burial", // Thracian Tomb
+  dacians: "masonry", // Murus Dacicus (fortification)
+  sami: "animal_taming", // Siida Camp (reindeer herding)
+  // Greek city-states (expansion)
+  corinth: "the_wheel", // Diolkos (paved ship-portage trackway)
+  thebes: "masonry", // Cadmea (citadel)
+  eretria: "coinage", // Emporion (trading port)
+  crete: "writing", // Gortyn Code (great law inscription)
+  // South & East Asia (expansion)
+  indus_valley: "masonry", // Great Bath
+  zhou_china: "ritual_burial", // Ancestral Temple
+  delhi_sultanate: "irrigation", // Hauz (reservoir)
+  mughals: "masonry", // Red Fort
+  champa: "ritual_burial", // My Son Tower (temple towers)
+  khitan: "equestrian", // Ordo Camp
+  jurchen: "equestrian", // Meng'an Garrison
+  // Steppe & Turkic (expansion)
+  khazars: "masonry", // Sarkel Fortress
+  avars: "masonry", // Hring (ring fortress)
+  golden_horde: "equestrian", // Yam Relay (horse-post network)
+  // Americas (expansion)
+  chimu: "masonry", // Chan Chan Citadel
+  moche: "ritual_burial", // Huaca (adobe temple)
+  tiwanaku: "monumental_architecture", // Akapana Pyramid
+  tarascans: "ritual_burial", // Yácata (stepped pyramid)
+  taino: "ritual_burial", // Batey (ceremonial ball court)
+  tonga: "ritual_burial", // Langi (royal tombs)
+};
+
 export const UNIQUE_INFRA: UniqueInfraDef[] = CIVILIZATIONS.map((civ) => {
   const o = INFRA_OVERRIDES[civ.id] ?? {};
   const kind: UniqueInfraKind = o.kind ?? "building";
@@ -2279,7 +2432,9 @@ export const UNIQUE_INFRA: UniqueInfraDef[] = CIVILIZATIONS.map((civ) => {
     civId: civ.id,
     name,
     kind,
-    reqTech: o.reqTech ?? (kind === "improvement" ? "irrigation" : "masonry"),
+    reqTech: kind === "improvement"
+      ? (o.reqTech ?? "irrigation")
+      : (INFRA_REQ_TECH[civ.id] ?? o.reqTech ?? "masonry"),
     cost: o.cost ?? 30,
     yields: o.yields ?? (kind === "building" ? themeBuildingYields(civ) : { food: 1 }),
     effects: o.effects,

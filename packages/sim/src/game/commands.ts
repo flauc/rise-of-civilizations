@@ -28,7 +28,7 @@ import {
   unassignSpecialistEverywhere,
 } from "./works";
 import { rushCity, rushWork, rushTraining, type RushCurrency } from "./rush";
-import { capitalPopulationBonusFor } from "@roc/data";
+import { capitalPopulationBonusFor, BASE_CITY_POPULATION } from "@roc/data";
 import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter, tickRuins, clearRuin } from "./features";
 import { foundReligion, spreadReligion } from "./religion";
@@ -276,9 +276,10 @@ export function applyCommand(
       const foundedCount = citiesOf(state, player.id).length;
       const name = nextCityNameForCiv(player.civId, foundedCount);
       const id = state.nextEntityId++;
-      // Cities found at population 2 (so they have yields to grow on and can train
-      // one unit immediately); a civ's capital may start larger (capitalPopulationBonus).
-      const startPop = 2 + (isCapital ? capitalPopulationBonusFor(player.civId) : 0);
+      // The capital (a civ's first city) is founded larger so it can grow and train
+      // straight away — at BASE_CITY_POPULATION, plus its capitalPopulationBonus. Later
+      // cities are founded small (pop 1) and must grow into their potential.
+      const startPop = isCapital ? BASE_CITY_POPULATION + capitalPopulationBonusFor(player.civId) : 1;
       const city: City = {
         id,
         ownerId: player.id,

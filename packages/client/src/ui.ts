@@ -482,6 +482,21 @@ export function createUI(handlers: UIHandlers): UI {
   godPanel.style.cssText =
     "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(320px,calc(100vw - 32px));max-height:min(520px,80vh);overflow:auto;z-index:40"; 
   const wiki = createWiki();
+  /** Markup for a compact "view in Encyclopedia" button, encoding its target. */
+  const wikiBtn = (nav: string, label = "📖"): string =>
+    `<button class="btn wiki-jump" data-wiki-open="${nav}" title="View in Encyclopedia" ` +
+    `style="padding:3px 7px;font-size:12px;flex:0 0 auto;line-height:1.2">${label}</button>`;
+  /** Wire every [data-wiki-open] button inside `root` to deep-link into the wiki. */
+  const wireWikiButtons = (root: HTMLElement): void => {
+    root.querySelectorAll<HTMLButtonElement>("[data-wiki-open]").forEach((el) =>
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const raw = el.dataset.wikiOpen!;
+        const i = raw.indexOf(":");
+        wiki.openDetail(raw.slice(0, i) as Parameters<typeof wiki.openDetail>[0], raw.slice(i + 1));
+      }),
+    );
+  };
   const villageOverlay = div("village-overlay", "");
   const villageDialog = div("village-dialog", "");
   villageDialog.innerHTML =
@@ -608,7 +623,7 @@ export function createUI(handlers: UIHandlers): UI {
           `<div class="lb-row${r.player.id === viewerId ? " lb-self" : ""}${r.alive ? "" : " lb-dead"}">` +
           `<div class="lb-rank">${i + 1}</div>` +
           `<div class="lb-swatch" style="background:${r.player.color}"></div>` +
-          `<div class="lb-name"><b>${label}${you}${fallen}</b><span class="lb-sub">${sub}</span></div>` +
+          `<div class="lb-name"><b>${label}${you}${fallen}</b>${civ ? " " + wikiBtn(`civ:${r.player.civId}`) : ""}<span class="lb-sub">${sub}</span></div>` +
           `<div class="lb-detail">${detail}</div>` +
           `<div class="lb-total">${b.total}</div>` +
           `</div>`
@@ -624,6 +639,11 @@ export function createUI(handlers: UIHandlers): UI {
       `<div class="lb-caption">${turnCaption}</div>` +
       `<div class="lb-list">${body}</div>` +
       `<div class="lb-legend">🏛️ Cities · 👥 Population · 🔬 Technology · 📜 Civics · 🛡️ Units · 🪙 Gold · ⚔️ Battles won · 🔥 Cities conquered</div>`;
+    // The civ Encyclopedia buttons close the leaderboard so the wiki opens cleanly on top.
+    leaderboardContent.querySelectorAll<HTMLButtonElement>("[data-wiki-open]").forEach((el) =>
+      el.addEventListener("click", hideLeaderboard),
+    );
+    wireWikiButtons(leaderboardContent);
     leaderboardOverlay.classList.add("show");
     leaderboardDialog.classList.add("show");
   };
@@ -2476,7 +2496,10 @@ export function createUI(handlers: UIHandlers): UI {
             `<div style="flex:1">` +
             `<b>${info.glyph} ${g!.name}</b> <span class="sub">· ${info.name} · ${g!.era}</span>` +
             `<div class="sub">${g!.desc}</div></div>` +
-            `<button class="btn primary" data-gp-use="${g!.id}">Activate</button></div>`
+            `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">` +
+            `<button class="btn primary" data-gp-use="${g!.id}">Activate</button>` +
+            wikiBtn(`greatPerson:${g!.id}`) +
+            `</div></div>`
           );
         })
         .join("");
@@ -2497,7 +2520,8 @@ export function createUI(handlers: UIHandlers): UI {
       const pct = Math.min(100, (pts / cost) * 100);
       return (
         `<div style="margin-top:4px">${info.glyph} <b>${next.name}</b> ` +
-        `<span class="sub">· ${info.name}${per ? ` · +${per}/turn` : ""}</span>` +
+        `<span class="sub">· ${info.name}${per ? ` · +${per}/turn` : ""}</span> ` +
+        wikiBtn(`greatPerson:${next.id}`) +
         `<div class="bar"><i style="width:${pct}%;background:#d9b44a"></i></div>` +
         `<span class="sub">${pts}/${cost}</span></div>`
       );
@@ -2513,6 +2537,7 @@ export function createUI(handlers: UIHandlers): UI {
         showGreatPersonActivate(state, el.dataset.gpUse!);
       }),
     );
+    wireWikiButtons(greatPeoplePanel);
   };
 
   const renderLegends = (state: GameState): void => {
@@ -2546,7 +2571,7 @@ export function createUI(handlers: UIHandlers): UI {
         .map((u) => {
           const def = getLegend(u.legendId);
           const left = (u.legendExpiresOnTurn ?? state.turn) - state.turn;
-          return `<div class="sub">${typeGlyph[def?.type ?? "land"]} <b style="color:#fff">${def?.name ?? "Hero"}</b> — ${left} turn${left === 1 ? "" : "s"} remain</div>`;
+          return `<div class="sub" style="display:flex;align-items:center;gap:6px">${typeGlyph[def?.type ?? "land"]} <b style="color:#fff">${def?.name ?? "Hero"}</b> — ${left} turn${left === 1 ? "" : "s"} remain${u.legendId ? " " + wikiBtn(`legend:${u.legendId}`) : ""}</div>`;
         })
         .join("");
     }
@@ -2567,7 +2592,10 @@ export function createUI(handlers: UIHandlers): UI {
             `<b>${typeGlyph[l.type]} ${l.name}</b> <span class="sub">· ${l.era} · ${legendBaseName(l)}</span>` +
             `<div class="sub">${l.abilityDesc}</div>` +
             `<div class="sub">Aura: ${l.auraDesc} (+${l.auraBonus} adjacent) · lifespan ${l.lifespan}t${l.rechargeable ? " · recharges" : ""}</div></div>` +
-            `<button class="btn primary" data-legend-recruit="${l.id}"${dis ? " disabled" : ""}>Recruit</button></div>`
+            `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">` +
+            `<button class="btn primary" data-legend-recruit="${l.id}"${dis ? " disabled" : ""}>Recruit</button>` +
+            wikiBtn(`legend:${l.id}`) +
+            `</div></div>`
           );
         })
         .join("");
@@ -2584,6 +2612,7 @@ export function createUI(handlers: UIHandlers): UI {
         handlers.onRecruitLegend(el.dataset.legendRecruit!);
       }),
     );
+    wireWikiButtons(legendsPanel);
   };
 
   const renderUnitPanel = (state: GameState, unit: Unit | null, viewerId: number, odds?: CombatOdds | null): void => {
@@ -2613,8 +2642,11 @@ export function createUI(handlers: UIHandlers): UI {
     const imgId = unit.legendId ?? uu?.id ?? unit.type;
     const bigSrc = `${ASSET_BASE_URL}units-big/${imgId}.png`;
     const tokenSrc = `${ASSET_BASE_URL}units/${imgId}.png`;
+    // Encyclopedia target: the hero legend, else the civ's unique unit, else the base unit.
+    const unitWikiNav = unit.legendId ? `legend:${unit.legendId}` : uu ? `uniqueUnit:${uu.id}` : `unit:${unit.type}`;
     let headInfo =
-      `<div class="row" style="justify-content:space-between"><b style="font-size:15px">${displayName}<span style="color:#ffd967">${stars}</span></b>` +
+      `<div class="row" style="justify-content:space-between;align-items:flex-start"><b style="font-size:15px">${displayName}<span style="color:#ffd967">${stars}</span></b>` +
+      wikiBtn(unitWikiNav) +
       `</div>` +
       (owner && !own
         ? `<div class="sub"><span class="dot" style="background:${owner.color};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px"></span>${owner.name}</div>`
@@ -2825,6 +2857,7 @@ export function createUI(handlers: UIHandlers): UI {
       unitPanelExpanded = !unitPanelExpanded;
       renderUnitPanel(state, unit, viewerId, odds);
     });
+    wireWikiButtons(unitPanel);
     unitPanel.querySelector<HTMLButtonElement>("#found")?.addEventListener("click", () => handlers.onFoundCity());
     unitPanel.querySelector<HTMLButtonElement>("#sleep")?.addEventListener("click", () => handlers.onSleep());
     unitPanel.querySelector<HTMLButtonElement>("#wake")?.addEventListener("click", () => handlers.onWake());

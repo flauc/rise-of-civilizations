@@ -1,6 +1,6 @@
 {
   "name": "@roc/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "Canvas + TypeScript game client. Renders the hex map; talks to the server (M3).",
@@ -11,8 +11,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@roc/data": "*",
     "@roc/shared": "*",
     "@roc/sim": "*",
-    "@roc/data": "*"
+    "d3-geo": "^3.1.1",
+    "topojson-client": "^3.1.0",
+    "world-atlas": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/d3-geo": "^3.1.0",
+    "@types/topojson-client": "^3.1.5"
   }
 }

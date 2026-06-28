@@ -7,6 +7,7 @@ import {
   CIVILIZATIONS,
   UNIT_DEFS,
   UNIQUE_UNITS,
+  baseTrainTime,
   TERRAIN_NAMES,
   TERRAIN_YIELDS,
   isWaterTerrain,
@@ -24,20 +25,40 @@ import {
   legendCost,
   legendBaseName,
   SCORE_WEIGHTS,
+  ACTIVE_ABILITY_DEFS,
+  uniqueInfraForCiv,
+  TECH_DEFS,
+  type ActiveAbilityId,
+  type UnitTypeId,
 } from "@roc/sim";
 import {
   WONDER_DEFS,
   MASTER_CRAFTSMEN,
   getCiv,
+  getUniqueUnit,
+  getGreatPerson,
+  getLegend,
   GREAT_PEOPLE,
   GREAT_PERSON_CLASSES,
   GREAT_PERSON_CLASS_INFO,
   LEGENDS,
+  civHistory,
+  uniqueUnitHistoryByCiv,
+  uniqueInfraHistoryByCiv,
+  unitHistory,
+  greatPersonHistory,
+  legendHistory,
+  civLocation,
+  CIV_REGIONS,
+  type CivLocation,
   type GreatPersonClass,
   type LegendType,
 } from "@roc/data";
 import type { TerrainType, Unit } from "@roc/sim";
-import { uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, wireUuDetail, wireUuImages } from "./unique-unit";
+import { geoNaturalEarth1, geoPath } from "d3-geo";
+import { feature } from "topojson-client";
+import landTopo from "world-atlas/land-110m.json";
+import { uniqueUnitBlockHtml, uniqueUnitDetailHtml, uniqueUnitFor, leaderAbilityBlockHtml, startingConditionsLine, wireUuImages } from "./unique-unit";
 
 export type WikiCategory =
   | "civilizations"
@@ -92,24 +113,41 @@ const WIKI_CIV_STYLE = `<style>
 .wiki-civ-body .la-block{margin-top:10px}
 </style>`;
 
+function civCardHtml(c: typeof CIVILIZATIONS[number]): string {
+  const portrait = `${ASSET_BASE_URL}leaders/${c.id}.png`;
+  return (
+    `<div class="wiki-card wiki-civ-card wiki-clickable" data-wiki-nav="civ:${c.id}">` +
+    `<div class="wiki-civ-portrait"><img src="${portrait}" loading="lazy" alt="${escapeHtml(c.leader)}" onerror="this.closest('.wiki-civ-portrait').style.display='none'"></div>` +
+    `<div class="wiki-civ-body">` +
+    `<div class="wiki-card-title">${escapeHtml(c.name)}</div>` +
+    `<div class="wiki-card-sub">Leader: <b>${escapeHtml(c.leader)}</b></div>` +
+    `<div class="wiki-card-body"><b>${escapeHtml(c.abilityName)}</b> — ${escapeHtml(c.abilityDesc)}</div>` +
+    `<div class="uu-hint">View details &amp; history &rsaquo;</div>` +
+    `</div></div>`
+  );
+}
+
 function renderCivilizations(): string {
-  const list = CIVILIZATIONS.map((c) => {
-    const portrait = `${ASSET_BASE_URL}leaders/${c.id}.png`;
-    return (
-      `<div class="wiki-card wiki-civ-card" id="wiki-civ-${c.id}">` +
-      `<div class="wiki-civ-portrait"><img src="${portrait}" loading="lazy" alt="${escapeHtml(c.leader)}" onerror="this.closest('.wiki-civ-portrait').style.display='none'"></div>` +
-      `<div class="wiki-civ-body">` +
-      `<div class="wiki-card-title">${escapeHtml(c.name)}</div>` +
-      `<div class="wiki-card-sub">Leader: <b>${escapeHtml(c.leader)}</b></div>` +
-      `<div class="wiki-card-quote">${escapeHtml(c.leaderQuote || "")}</div>` +
-      `<div class="wiki-card-body"><b>${escapeHtml(c.abilityName)}</b> — ${escapeHtml(c.abilityDesc)}</div>` +
-      leaderAbilityBlockHtml(c.id) +
-      uniqueUnitBlockHtml(c.id) +
-      uniqueInfraBlockHtml(c.id) +
-      `</div></div>`
-    );
-  }).join("");
-  return WIKI_CIV_STYLE + section("Civilizations", `<div class="wiki-grid">${list}</div>`);
+  const byId = new Map(CIVILIZATIONS.map((c) => [c.id, c]));
+  const grouped = new Set<string>();
+  let body = "";
+  for (const region of CIV_REGIONS) {
+    const cards = region.civIds
+      .map((id) => byId.get(id))
+      .filter((c): c is typeof CIVILIZATIONS[number] => Boolean(c))
+      .map((c) => {
+        grouped.add(c.id);
+        return civCardHtml(c);
+      })
+      .join("");
+    if (cards) body += `<div class="wiki-region-title">${escapeHtml(region.name)}</div><div class="wiki-grid">${cards}</div>`;
+  }
+  // Safety net: any civ not assigned to a region still appears.
+  const leftover = CIVILIZATIONS.filter((c) => !grouped.has(c.id));
+  if (leftover.length) {
+    body += `<div class="wiki-region-title">Other</div><div class="wiki-grid">${leftover.map(civCardHtml).join("")}</div>`;
+  }
+  return WIKI_CIV_STYLE + section("Civilizations", body);
 }
 
 const CLASS_ORDER = ["melee", "ranged", "cavalry", "siege", "naval_melee", "naval_ranged", "recon", "settler", "trader"] as const;
@@ -146,11 +184,11 @@ const WIKI_UNIT_STYLE = `<style>
 
 /** A big-image unit card. Uses a crisp ~320px image (units-big), falling back to the token.
  *  The untouched full-resolution art lives in units-full for hi-res use. */
-function unitCard(id: string, title: string, statsLine: string, metaLine: string): string {
+function unitCard(id: string, title: string, statsLine: string, metaLine: string, nav?: string): string {
   const big = `${ASSET_BASE_URL}units-big/${id}.png`;
   const token = `${ASSET_BASE_URL}units/${id}.png`;
   return (
-    `<figure class="wiki-unit-card">` +
+    `<figure class="wiki-unit-card${nav ? " wiki-clickable" : ""}"${nav ? ` data-wiki-nav="${nav}"` : ""}>` +
     `<div class="wiki-unit-img"><img src="${big}" loading="lazy" alt="${escapeHtml(title)}" ` +
     `onerror="this.onerror=null;this.src='${token}'"></div>` +
     `<figcaption><div class="wiki-unit-name">${escapeHtml(title)}</div>` +
@@ -174,7 +212,7 @@ function renderUnits(): string {
     if (!units || units.length === 0) continue;
     const cards = units
       .map((u) => {
-        const stats = [`${u.cost}⚙`, `Move ${u.movement}`];
+        const stats = [`${baseTrainTime(u.id)}t to train`, `Move ${u.movement}`];
         if (MILITARY_CLASSES.has(u.cls)) {
           stats.push(`Str ${u.strength}`);
           if (u.rangedStrength) stats.push(`Rng ${u.rangedStrength}`);
@@ -183,7 +221,7 @@ function renderUnits(): string {
         if (u.reqTech) tags.push(escapeHtml(u.reqTech));
         if (u.founder) tags.push("founds cities");
         if (u.trader) tags.push("trade routes");
-        return unitCard(u.id, u.name, stats.join(" · "), tags.join(" · "));
+        return unitCard(u.id, u.name, stats.join(" · "), tags.join(" · "), `unit:${u.id}`);
       })
       .join("");
     html +=
@@ -201,7 +239,7 @@ function renderUnits(): string {
     const meta = u.name.toLowerCase() === baseName.toLowerCase()
       ? civName
       : `${civName} · replaces ${escapeHtml(baseName)}`;
-    return unitCard(u.id, u.name, `+${u.bonus} strength`, meta);
+    return unitCard(u.id, u.name, `+${u.bonus} strength`, meta, `uniqueUnit:${u.id}`);
   }).join("");
   html +=
     `<div class="wiki-unit-classtitle">Unique Units (${UNIQUE_UNITS.length})</div>` +
@@ -220,13 +258,19 @@ function renderGameplay(): string {
       "Yields",
       `<p>Civilization runs on six yields:</p>` +
         `<ul>` +
-        `<li><b>Food</b> — grows city populations.</li>` +
-        `<li><b>Production</b> — builds units, buildings and wonders.</li>` +
-        `<li><b>Gold</b> — purchases units/buildings and maintains armies.</li>` +
+        `<li><b>Food</b> — grows city population, which is also the price of every unit you train.</li>` +
+        `<li><b>Production</b> — constructs buildings, wonders and projects (units are trained, not built).</li>` +
+        `<li><b>Gold</b> — maintains armies, and can rush builds and training.</li>` +
         `<li><b>Science</b> — researches technologies.</li>` +
         `<li><b>Culture</b> — develops civics and expands borders.</li>` +
         `<li><b>Faith</b> — founds and spreads religions.</li>` +
         `</ul>`,
+    ) +
+    section(
+      "Construction & Training",
+      `<p>Cities do two separate things. <b>Construction</b> spends production to raise <b>buildings, wonders and conversion projects</b> — one item at a time.</p>` +
+        `<p>Units are no longer built; they are <b>trained</b>. To field an army a city must first construct the <b>training building</b> for that unit's class — a <b>Barracks</b> (melee), <b>Archery Range</b> (ranged), <b>Stable</b> (cavalry), <b>Siege Workshop</b> (siege) or <b>Shipyard</b> (naval) — then train units there. Each building has <b>five tiers</b> that train faster, raise a recruit's starting morale and experience, and let more units train at once.</p>` +
+        `<p>Every trained unit <b>costs one population</b> — a citizen leaves the city to take up arms — so the real limit on your army is <b>food and growth</b>, not production. Settlers, Traders and Scouts also cost a citizen but are trained from the city centre with no building required. You can cancel a unit in training to recover the citizen, or spend gold (or faith/culture, with the right perk) to rush it out.</p>`,
     ) +
     section(
       "Exploration",
@@ -431,10 +475,10 @@ const WIKI_PORTRAIT_STYLE = `<style>
 </style>`;
 
 /** A portrait card: image on the left, name + meta + body on the right. */
-function portraitCard(imgBase: string, id: string, title: string, sub: string, body: string): string {
+function portraitCard(imgBase: string, id: string, title: string, sub: string, body: string, nav?: string): string {
   const src = `${ASSET_BASE_URL}${imgBase}/${id}.png`;
   return (
-    `<figure class="wiki-portrait-card">` +
+    `<figure class="wiki-portrait-card${nav ? " wiki-clickable" : ""}"${nav ? ` data-wiki-nav="${nav}"` : ""}>` +
     `<div class="wiki-portrait-img"><img src="${src}" loading="lazy" alt="${escapeHtml(title)}" onerror="this.style.visibility='hidden'"></div>` +
     `<figcaption><div class="wiki-portrait-name">${escapeHtml(title)}</div>` +
     `<div class="wiki-portrait-sub">${sub}</div>` +
@@ -473,7 +517,7 @@ function renderGreatPeople(): string {
     const figures = GREAT_PEOPLE.filter((g) => g.cls === cls);
     if (figures.length === 0) continue;
     const cards = figures
-      .map((g) => portraitCard("great-people", g.id, g.name, `${g.era} era`, g.desc))
+      .map((g) => portraitCard("great-people", g.id, g.name, `${g.era} era`, g.desc, `greatPerson:${g.id}`))
       .join("");
     gallery +=
       `<div class="wiki-portrait-cat">${info.glyph} ${escapeHtml(info.name)}s — earned from ${escapeHtml(GP_SOURCE_TEXT[cls])}</div>` +
@@ -535,6 +579,7 @@ function renderLegends(): string {
           l.name,
           `${l.era} · ${legendBaseName(l)} · via ${l.recruitVia}`,
           `${l.abilityDesc} Aura: ${l.auraDesc} (+${l.auraBonus} to adjacent allies). Lifespan ${l.lifespan} turns${l.rechargeable ? ", recharges" : ""}.`,
+          `legend:${l.id}`,
         ),
       )
       .join("");
@@ -579,15 +624,15 @@ function renderCities(): string {
     ) +
     section(
       "Growth",
-      `<p>Excess food fills the growth bucket. When it fills, the city gains a Citizen, who can be assigned to work a tile for its yields.</p>`,
+      `<p>Excess food fills the growth bucket. When it fills, the city gains a Citizen, who can work a tile for its yields, be apprenticed as a craftsman, or be trained into a unit. Because every unit you train spends a citizen, food is what ultimately limits the size of your army.</p>`,
     ) +
     section(
       "Production",
-      `<p>Production is spent on units, buildings and infrastructure. Each city can build one item at a time; gold can rush some purchases.</p>`,
+      `<p>Production is spent on <b>buildings, wonders and projects</b> — one item at a time; gold can rush it. Units are no longer built here: they are trained from dedicated military buildings and cost population (see the <b>Gameplay → Construction &amp; Training</b> section).</p>`,
     ) +
     section(
       "Buildings",
-      `<p>Buildings provide permanent bonuses: Granaries boost food, Monuments boost culture, Barracks train stronger troops, and Markets generate gold.</p>`,
+      `<p>Buildings provide permanent bonuses: Granaries boost food, Monuments boost culture, and Markets generate gold. A separate family of <b>training buildings</b> — Barracks, Archery Range, Stable, Siege Workshop and Shipyard — lets a city train units of each class; upgrading them through five tiers trains faster and fields steadier, more experienced troops.</p>`,
     ) +
     section(
       "Territory",
@@ -730,6 +775,270 @@ function renderVictory(): string {
   );
 }
 
+// ===========================================================================
+// Detail pages — clickable in-wiki pages for a single civilization, unit,
+// unique unit, unique building/improvement, great person or legend. Reached via
+// `data-wiki-nav="<kind>:<id>"` attributes wired by a delegated click handler;
+// a Back bar pops the navigation stack.
+// ===========================================================================
+
+export type WikiNav =
+  | { kind: "civ"; id: string }
+  | { kind: "unit"; id: string }
+  | { kind: "uniqueUnit"; id: string }
+  | { kind: "uniqueInfra"; id: string }
+  | { kind: "greatPerson"; id: string }
+  | { kind: "legend"; id: string };
+
+/** Plain-English label for a few base-unit passive abilities (matches unique-unit.ts). */
+const PASSIVE_LABEL: Record<string, string> = {
+  bonus_vs_cavalry: "Anti-Cavalry — bonus strength against mounted units.",
+  bonus_vs_city: "City Assault — bonus strength when attacking cities.",
+};
+
+function detailHead(imgSrc: string, title: string, sub: string, statsHtml = ""): string {
+  return (
+    `<div class="wiki-detail-head">` +
+    `<div class="wiki-detail-img"><img class="js-uu-img" src="${imgSrc}" loading="lazy" alt="${escapeHtml(title)}"></div>` +
+    `<div class="wiki-detail-headinfo">` +
+    `<div class="wiki-detail-title">${escapeHtml(title)}</div>` +
+    `<div class="wiki-detail-sub">${sub}</div>` +
+    (statsHtml ? `<div class="wiki-detail-stats">${statsHtml}</div>` : "") +
+    `</div></div>`
+  );
+}
+
+function detailStat(label: string, val: string): string {
+  return `<span class="wiki-detail-stat">${label} <b>${escapeHtml(val)}</b></span>`;
+}
+
+/** A highlighted historical-note block. Renders nothing when no note exists. */
+function historyBlock(title: string, text: string | undefined): string {
+  if (!text) return "";
+  return (
+    `<div class="wiki-history"><div class="wiki-history-title">${escapeHtml(title)}</div>` +
+    `<p>${escapeHtml(text)}</p></div>`
+  );
+}
+
+/** An inline text link that navigates to another detail page. */
+function navLink(nav: string, label: string): string {
+  return `<button type="button" class="wiki-link" data-wiki-nav="${nav}">${escapeHtml(label)} &rsaquo;</button>`;
+}
+
+function detailNotFound(): string {
+  return section("Not found", `<p>No encyclopedia entry for that item.</p>`);
+}
+
+// ---- World map (real coastlines via d3-geo + world-atlas) -------------------
+// A Natural Earth projection of the world-atlas 1:50m land outline, rendered once
+// at module load into a reusable SVG path. A civilization's homeland is marked by
+// projecting its lon/lat with the same projection, so the dot always lands on the
+// correct coast.
+const WORLD_W = 640;
+const WORLD_H = 320;
+// world-atlas TopoJSON doesn't match topojson-client's strict Topology type;
+// cast through `any` at this single boundary.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const landAny = landTopo as any;
+const LAND_FEATURE = feature(landAny, landAny.objects.land) as never;
+const WORLD_PROJECTION = geoNaturalEarth1().fitSize([WORLD_W, WORLD_H], LAND_FEATURE);
+const LAND_PATH = geoPath(WORLD_PROJECTION)(LAND_FEATURE) ?? "";
+
+/** A world map highlighting a civilization's historical homeland. */
+function worldMapSvg(loc: CivLocation | undefined): string {
+  let marker = "";
+  if (loc) {
+    const p = WORLD_PROJECTION([loc.lon, loc.lat]);
+    if (p) {
+      const x = p[0].toFixed(1);
+      const y = p[1].toFixed(1);
+      marker =
+        `<circle class="wiki-map-halo" cx="${x}" cy="${y}" r="8"/>` +
+        `<circle class="wiki-map-dot" cx="${x}" cy="${y}" r="3.2"/>`;
+    }
+  }
+  return (
+    `<div class="wiki-map">` +
+    `<svg viewBox="0 0 ${WORLD_W} ${WORLD_H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Historical homeland map">` +
+    `<rect class="wiki-map-sea" x="0" y="0" width="${WORLD_W}" height="${WORLD_H}"/>` +
+    `<path class="wiki-map-land" d="${LAND_PATH}"/>${marker}</svg>` +
+    (loc?.place ? `<div class="wiki-map-cap">📍 ${escapeHtml(loc.place)}</div>` : "") +
+    `</div>`
+  );
+}
+
+function renderCivDetail(id: string): string {
+  const c = getCiv(id);
+  if (!c) return detailNotFound();
+  const h = civHistory(id);
+  const portrait = `${ASSET_BASE_URL}leaders/${c.id}.png`;
+  const uu = uniqueUnitFor(c.id);
+  const inf = uniqueInfraForCiv(c.id);
+
+  const abilityHtml =
+    `<p><b>${escapeHtml(c.abilityName)}</b> — ${escapeHtml(c.abilityDesc)}</p>` +
+    historyBlock("Origin of the ability", h?.ability);
+
+  const perksHtml =
+    `<p>${escapeHtml(startingConditionsLine(c.id))}</p>` +
+    leaderAbilityBlockHtml(c.id) +
+    historyBlock("Origin of the perks", h?.perks);
+
+  let uniques = "";
+  if (uu) uniques += uniqueUnitBlockHtml(c.id); // emits data-uu-detail (delegated → uniqueUnit)
+  if (inf) {
+    // Mirror uniqueUnitBlockHtml's markup (.uu-block / .uu-top / .uu-caret /
+    // .uu-hint) so the building card matches the unit card's style exactly.
+    const dir = inf.kind === "building" ? "buildings" : "improvements";
+    const src = `${ASSET_BASE_URL}${dir}/${inf.id}.png`;
+    const tech = TECH_DEFS[inf.reqTech as keyof typeof TECH_DEFS]?.name ?? inf.reqTech;
+    const kindLabel = inf.kind === "building" ? "Unique building" : "Unique tile improvement";
+    uniques +=
+      `<button type="button" class="uu-block uu-clickable" data-wiki-nav="uniqueInfra:${c.id}">` +
+      `<div class="uu-top">` +
+      `<div class="uu-icon"><img class="js-uu-img" src="${src}" alt="" /></div>` +
+      `<div class="uu-info"><div class="uu-name">${escapeHtml(inf.name)}</div>` +
+      `<div class="uu-meta">${kindLabel} · unlocks with ${escapeHtml(String(tech))}</div></div>` +
+      `<span class="uu-caret" aria-hidden="true">&rsaquo;</span>` +
+      `</div>` +
+      `<div class="uu-hint">View history</div>` +
+      `</button>`;
+  }
+
+  const loc = civLocation(id);
+  const originInner = (h?.origin ? `<p>${escapeHtml(h.origin)}</p>` : "") + worldMapSvg(loc);
+  // Origin gets extra top padding to separate it from the leader header/quote.
+  const originSection =
+    h?.origin || loc
+      ? `<div class="wiki-section wiki-civ-origin"><div class="wiki-section-title">Origin</div>${originInner}</div>`
+      : "";
+
+  return (
+    detailHead(portrait, c.name, `Leader: <b>${escapeHtml(c.leader)}</b>`) +
+    (c.leaderQuote ? `<div class="wiki-card-quote">${escapeHtml(c.leaderQuote)}</div>` : "") +
+    originSection +
+    section("Civilization Ability", abilityHtml) +
+    section("Bonuses & Perks", perksHtml) +
+    (uniques ? section("Unique Unit & Building", `<div class="wiki-civ-uniques">${uniques}</div>`) : "")
+  );
+}
+
+function renderUniqueUnitDetail(uuId: string): string {
+  const uu = getUniqueUnit(uuId);
+  if (!uu) return detailNotFound();
+  const civ = getCiv(uu.civId);
+  return (
+    uniqueUnitDetailHtml(uu) +
+    historyBlock("History", uniqueUnitHistoryByCiv(uu.civId)) +
+    (civ ? `<p>${navLink(`civ:${uu.civId}`, `Fielded by ${civ.name}`)}</p>` : "")
+  );
+}
+
+function renderUniqueInfraDetail(civId: string): string {
+  const inf = uniqueInfraForCiv(civId);
+  if (!inf) return detailNotFound();
+  const civ = getCiv(civId);
+  const dir = inf.kind === "building" ? "buildings" : "improvements";
+  const src = `${ASSET_BASE_URL}${dir}/${inf.id}.png`;
+  const tech = TECH_DEFS[inf.reqTech as keyof typeof TECH_DEFS]?.name ?? inf.reqTech;
+  const kindLabel = inf.kind === "building" ? "Unique building" : "Unique tile improvement";
+  const stats = [detailStat("Type", kindLabel), detailStat("Unlocks with", String(tech))];
+  if (inf.kind === "building" && inf.cost) stats.push(detailStat("⚙ Cost", String(inf.cost)));
+  return (
+    detailHead(src, inf.name, kindLabel + (civ ? ` of ${escapeHtml(civ.name)}` : ""), stats.join("")) +
+    section("Effect", `<p>${escapeHtml(inf.desc)}</p>`) +
+    historyBlock("History", uniqueInfraHistoryByCiv(civId)) +
+    (civ ? `<p>${navLink(`civ:${civId}`, `Built by ${civ.name}`)}</p>` : "")
+  );
+}
+
+function renderUnitDetail(id: string): string {
+  const d = UNIT_DEFS[id as UnitTypeId];
+  if (!d) return detailNotFound();
+  const src = `${ASSET_BASE_URL}units-big/${id}.png`;
+  const stats = [
+    detailStat("⏱ Train", `${baseTrainTime(id as UnitTypeId)}t`),
+    detailStat("🥾 Movement", String(d.movement)),
+    detailStat("👁 Sight", String(d.sight)),
+  ];
+  if (MILITARY_CLASSES.has(d.cls)) {
+    if (d.strength) stats.push(detailStat("⚔ Strength", String(d.strength)));
+    if (d.rangedStrength) stats.push(detailStat("🏹 Ranged", `${d.rangedStrength} · range ${d.range}`));
+  }
+  stats.push(detailStat("⚙ Cost", String(d.cost)));
+  if (d.upkeep > 0) stats.push(detailStat("🪙 Upkeep", `${d.upkeep}/turn`));
+  if (d.reqTech) stats.push(detailStat("Unlocks with", String(d.reqTech)));
+  if (d.reqResource) stats.push(detailStat("Resource", `${d.reqResource.count} ${d.reqResource.resource}`));
+
+  const abilityRow = (glyph: string, name: string, desc: string): string =>
+    `<div class="uud-ability"><div class="uud-ability-head"><span class="uud-ability-glyph">${glyph}</span>` +
+    `<b>${escapeHtml(name)}</b></div><div class="uud-ability-desc">${escapeHtml(desc)}</div></div>`;
+  const active = (d.activeAbilities ?? [])
+    .map((a) => {
+      const ad = ACTIVE_ABILITY_DEFS[a as ActiveAbilityId];
+      return abilityRow(ad.glyph, ad.name, ad.desc);
+    })
+    .join("");
+  const passive = (d.abilities ?? [])
+    .map((p) => {
+      const text = PASSIVE_LABEL[p] ?? p;
+      const dash = text.indexOf(" — ");
+      const name = dash >= 0 ? text.slice(0, dash) : text;
+      const desc = dash >= 0 ? text.slice(dash + 3) : text;
+      return abilityRow("●", name, desc);
+    })
+    .join("");
+
+  const sub = escapeHtml(CLASS_TITLES[d.cls] ?? d.cls);
+  return (
+    detailHead(src, d.name, sub, stats.join("")) +
+    (active || passive ? section("Abilities", active + passive) : "") +
+    historyBlock("History", unitHistory(id))
+  );
+}
+
+function renderGreatPersonDetail(id: string): string {
+  const g = getGreatPerson(id);
+  if (!g) return detailNotFound();
+  const info = GREAT_PERSON_CLASS_INFO[g.cls];
+  const src = `${ASSET_BASE_URL}great-people/${g.id}.png`;
+  return (
+    detailHead(src, g.name, `${info.glyph} ${escapeHtml(info.name)} · ${escapeHtml(g.era)} era`) +
+    section("Signature", `<p>${escapeHtml(g.desc)}</p>`) +
+    section("When activated", `<p>${escapeHtml(GP_EFFECT_TEXT[g.cls])}</p>`) +
+    historyBlock("History", greatPersonHistory(id))
+  );
+}
+
+function renderLegendDetail(id: string): string {
+  const l = getLegend(id);
+  if (!l) return detailNotFound();
+  const src = `${ASSET_BASE_URL}legends/${l.id}.png`;
+  const base = UNIT_DEFS[l.baseType as UnitTypeId];
+  const stats = [
+    detailStat("⚔ Hero bonus", `+${l.combatBonus}`),
+    detailStat("✦ Aura", `+${l.auraBonus} adjacent`),
+    detailStat("⏳ Lifespan", `${l.lifespan}t${l.rechargeable ? " · recharges" : ""}`),
+  ];
+  const sub = `${escapeHtml(LEGEND_TYPE_TITLE[l.type])} · ${escapeHtml(l.era)} era · via ${escapeHtml(l.recruitVia)}`;
+  return (
+    detailHead(src, l.name, sub, stats.join("")) +
+    section("Ability", `<p>${escapeHtml(l.abilityDesc)}</p><p><b>Aura:</b> ${escapeHtml(l.auraDesc)}</p>`) +
+    (base ? `<p>${navLink(`unit:${l.baseType}`, `Built on the ${base.name}`)}</p>` : "") +
+    historyBlock("History", legendHistory(id))
+  );
+}
+
+const DETAIL_RENDERERS: Record<WikiNav["kind"], (id: string) => string> = {
+  civ: renderCivDetail,
+  unit: renderUnitDetail,
+  uniqueUnit: renderUniqueUnitDetail,
+  uniqueInfra: renderUniqueInfraDetail,
+  greatPerson: renderGreatPersonDetail,
+  legend: renderLegendDetail,
+};
+
 const RENDERERS: Record<WikiCategory, () => string> = {
   civilizations: renderCivilizations,
   units: renderUnits,
@@ -745,7 +1054,13 @@ const RENDERERS: Record<WikiCategory, () => string> = {
   victory: renderVictory,
 };
 
-export function createWiki(): { open(): void; close(): void; toggle(): void; isOpen(): boolean } {
+export function createWiki(): {
+  open(): void;
+  close(): void;
+  toggle(): void;
+  isOpen(): boolean;
+  openDetail(kind: WikiNav["kind"], id: string): void;
+} {
   let open = false;
   let category: WikiCategory = "gameplay";
 
@@ -799,6 +1114,37 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
     .wiki-card-quote{font-style:italic;color:#e8dcc5;margin-top:8px;padding-left:12px;border-left:3px solid #c9a227}
     .wiki-card-body{color:#e8dcc5;font-size:13px;line-height:1.45;margin-top:10px}
     .wiki-card-meta{color:#b8aa8d;font-size:12px;margin-top:8px}
+    .wiki-clickable{cursor:pointer;transition:border-color .12s,transform .06s}
+    .wiki-clickable:hover{border-color:#c9a227}
+    .wiki-clickable:active{transform:translateY(1px)}
+    .wiki-back{display:inline-flex;align-items:center;gap:6px;margin-bottom:18px;padding:8px 14px;border-radius:8px;cursor:pointer;color:#f0d878;background:rgba(201,162,39,.1);border:1px solid var(--edge);font:inherit;font-size:14px}
+    .wiki-back:hover{background:rgba(201,162,39,.18)}
+    .wiki-link{color:#f0d878;cursor:pointer;text-decoration:underline;background:none;border:none;font:inherit;font-size:14px;padding:0}
+    .wiki-link:hover{color:#ffe79a}
+    .wiki-history{margin:12px 0;max-width:900px;padding:12px 14px;border-left:3px solid #c9a227;background:rgba(201,162,39,.06);border-radius:0 8px 8px 0}
+    .wiki-history-title{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#c9a227;font-weight:700;margin-bottom:4px}
+    .wiki-history p{margin:0;color:#e8dcc5;line-height:1.55}
+    .wiki-detail-head{display:flex;gap:18px;align-items:flex-start;margin-bottom:18px;max-width:900px;flex-wrap:wrap}
+    .wiki-detail-img{flex:0 0 auto;width:200px;max-width:40vw;border-radius:12px;overflow:hidden;background:var(--bg-card);border:1px solid var(--edge)}
+    .wiki-detail-img img{width:100%;height:auto;display:block}
+    .wiki-detail-headinfo{flex:1;min-width:220px}
+    .wiki-detail-title{font-family:'Cinzel',Georgia,serif;font-size:26px;font-weight:800;color:#e8dcc5}
+    .wiki-detail-sub{color:#b8aa8d;font-size:14px;margin-top:3px}
+    .wiki-detail-stats{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px}
+    .wiki-detail-stat{font-size:13px;color:#9fb0c0}
+    .wiki-detail-stat b{color:#e6d2b8}
+    .wiki-civ-uniques{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+    .wiki-civ-origin{margin-top:22px}
+    .wiki-region-title{font-family:'Cinzel',Georgia,serif;font-size:18px;font-weight:700;color:#ffd967;margin:26px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--edge)}
+    .wiki-region-title:first-child{margin-top:6px}
+    .wiki-map{max-width:560px;margin:12px 0 4px;border:1px solid var(--edge);border-radius:12px;overflow:hidden;background:#0e1626}
+    .wiki-map svg{display:block;width:100%;height:auto}
+    .wiki-map-sea{fill:#0e1626}
+    .wiki-map-land{fill:#2c3a4f;stroke:#46586f;stroke-width:.5;stroke-linejoin:round}
+    .wiki-map-halo{fill:#f0d878;opacity:.28;animation:wikiMapPulse 2.2s ease-in-out infinite}
+    @keyframes wikiMapPulse{0%,100%{opacity:.18}50%{opacity:.42}}
+    .wiki-map-dot{fill:#ffd967;stroke:#1a1206;stroke-width:.5}
+    .wiki-map-cap{font-size:12px;color:#b8aa8d;padding:7px 10px;background:rgba(0,0,0,.25);border-top:1px solid var(--edge)}
     .wiki-table-wrap{margin-bottom:18px;max-width:900px}
     .wiki-table-title{font-family:'Cinzel',Georgia,serif;font-size:15px;font-weight:700;color:#e8dcc5;margin-bottom:6px;text-transform:capitalize}
     .wiki-table{width:100%;border-collapse:collapse;font-size:13px;color:#e8dcc5;background:#1f1c14;border:1px solid var(--edge);border-radius:10px;overflow:hidden}
@@ -841,6 +1187,10 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
   const titleEl = root.querySelector<HTMLSpanElement>("#wiki-header-title")!;
   const contentEl = root.querySelector<HTMLDivElement>("#wiki-content")!;
 
+  // Detail-page navigation stack: empty = showing the current category, otherwise
+  // the top entry is the detail page being viewed (civ → unique unit → … drill-down).
+  let navStack: WikiNav[] = [];
+
   function renderCategories(): void {
     categoriesEl.innerHTML = CATEGORIES.map(
       (c) => `<button class="wiki-cat ${c.id === category ? "active" : ""}" data-cat="${c.id}">${escapeHtml(c.name)}</button>`,
@@ -848,6 +1198,7 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
     categoriesEl.querySelectorAll<HTMLButtonElement>("[data-cat]").forEach((el) =>
       el.addEventListener("click", () => {
         category = el.dataset.cat as WikiCategory;
+        navStack = []; // leaving any detail page when switching category
         render();
       }),
     );
@@ -855,19 +1206,48 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
 
   function render(): void {
     titleEl.textContent = CATEGORIES.find((c) => c.id === category)?.name ?? "";
-    contentEl.innerHTML = RENDERERS[category]();
-    // The Civilizations page reuses the lobby's clickable unique-unit blocks +
-    // detail dialog; wire them up on the freshly-rendered content.
-    if (category === "civilizations") {
-      wireUuDetail(contentEl);
-      wireUuImages(contentEl);
+    const nav = navStack[navStack.length - 1];
+    if (nav) {
+      contentEl.innerHTML =
+        `<button type="button" class="wiki-back" data-wiki-back>&lsaquo; Back</button>` +
+        DETAIL_RENDERERS[nav.kind](nav.id);
+    } else {
+      contentEl.innerHTML = RENDERERS[category]();
     }
+    // Hide any unique-unit / detail sprites that failed to load.
+    wireUuImages(contentEl);
     renderCategories();
     // Jump back to the top when switching pages. The scroll container is the
     // content pane on desktop and the whole overlay on mobile, so reset both.
     contentEl.scrollTop = 0;
     root.scrollTop = 0;
   }
+
+  // Delegated navigation: list cards and detail-page cards/links carry
+  // `data-wiki-nav="<kind>:<id>"` (and the lobby's unique-unit blocks carry
+  // `data-uu-detail`); the Back bar carries `data-wiki-back`. contentEl persists
+  // across renders, so a single listener handles every page.
+  contentEl.addEventListener("click", (e) => {
+    const t = e.target as HTMLElement;
+    if (t.closest("[data-wiki-back]")) {
+      navStack.pop();
+      render();
+      return;
+    }
+    const navEl = t.closest<HTMLElement>("[data-wiki-nav]");
+    if (navEl) {
+      const raw = navEl.dataset.wikiNav!;
+      const idx = raw.indexOf(":");
+      navStack.push({ kind: raw.slice(0, idx), id: raw.slice(idx + 1) } as WikiNav);
+      render();
+      return;
+    }
+    const uuEl = t.closest<HTMLElement>("[data-uu-detail]");
+    if (uuEl) {
+      navStack.push({ kind: "uniqueUnit", id: uuEl.dataset.uuDetail! });
+      render();
+    }
+  });
 
   const doClose = (): void => {
     open = false;
@@ -892,5 +1272,21 @@ export function createWiki(): { open(): void; close(): void; toggle(): void; isO
       if (open) render();
     },
     isOpen: () => open,
+    /** Open the wiki straight to a specific detail page (deep link from the game UI). */
+    openDetail(kind, id) {
+      const catFor: Record<WikiNav["kind"], WikiCategory> = {
+        civ: "civilizations",
+        uniqueInfra: "civilizations",
+        unit: "units",
+        uniqueUnit: "units",
+        greatPerson: "great_people",
+        legend: "legends",
+      };
+      category = catFor[kind];
+      navStack = [{ kind, id } as WikiNav];
+      open = true;
+      root.classList.remove("hidden");
+      render();
+    },
   };
 }

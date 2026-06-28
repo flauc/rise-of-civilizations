@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.1.0";
+export const CURRENT_VERSION = "0.1.1";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,42 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.1.1",
+    date: "June 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "A living Encyclopedia",
+        desc:
+          "Click into any civilization, unit, great person or legend to open a dedicated page that repeats all its stats and adds a historical note on its origin and back story. Civilization pages also explain the real history behind their ability and bonuses, and show clickable cards for their unique unit and unique building that you can drill into for more — with a Back button to step out again.",
+      },
+      {
+        tag: "New",
+        title: "Hundreds of historical write-ups",
+        desc:
+          "Every one of the 137 civilizations, their unique units and buildings, every base unit, great person and legend now carries an extensive, hand-written historical note — the story of who they were, where their powers came from, and why they mattered.",
+      },
+      {
+        tag: "New",
+        title: "See where history happened",
+        desc:
+          "Each civilization's Encyclopedia page now includes a world map marking the historical homeland where that people arose, from Lower Mesopotamia to the Andes to the islands of the Pacific.",
+      },
+      {
+        tag: "UI",
+        title: "Jump to the Encyclopedia from anywhere",
+        desc:
+          "A new 📖 button on the selected-unit panel, the Great People and Legends panels, and the Leaderboard takes you straight to that unit, hero, figure or civilization's Encyclopedia page.",
+      },
+      {
+        tag: "UI",
+        title: "Civilizations grouped by region",
+        desc:
+          "The Encyclopedia's Civilizations page is now organised into regional sections — the Near East, Europe, Africa, Asia, the steppe, the Americas and Oceania — so it is far easier to browse all 137 peoples.",
+      },
+    ],
+  },
   {
     version: "0.1.0",
     date: "June 2026",

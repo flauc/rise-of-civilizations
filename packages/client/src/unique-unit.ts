@@ -20,6 +20,7 @@ import {
   type UnitAbility,
   type ActiveAbilityId,
 } from "@roc/sim";
+import { startingUnitsFor, capitalPopulationBonusFor, BASE_CITY_POPULATION } from "@roc/data";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -30,6 +31,29 @@ function escapeHtml(text: string): string {
 /** The unique unit a civilization fields, if any (one per civ). */
 export function uniqueUnitFor(civId: string): typeof UNIQUE_UNITS[number] | undefined {
   return UNIQUE_UNITS.find((u) => u.civId === civId);
+}
+
+// ---- Starting profile (loadout + capital population) ----------------------
+// Pulled straight from the data layer that the sim itself uses, so the lobby and
+// wiki always display exactly what a civ starts with.
+
+/** "2× Warrior, 1× Scout" — a civ's starting army, from its single-source loadout. */
+export function startingUnitsSummary(civId: string): string {
+  const counts = new Map<string, number>();
+  for (const u of startingUnitsFor(civId)) counts.set(u, (counts.get(u) ?? 0) + 1);
+  return [...counts]
+    .map(([id, n]) => `${n}× ${UNIT_DEFS[id as UnitTypeId]?.name ?? id}`)
+    .join(", ");
+}
+
+/** Population a civ's capital is founded at (base + capital bonus). */
+export function capitalStartPop(civId: string): number {
+  return BASE_CITY_POPULATION + capitalPopulationBonusFor(civId);
+}
+
+/** One-line starting conditions: capital population + free starting units. */
+export function startingConditionsLine(civId: string): string {
+  return `🏙️ Capital starts at population ${capitalStartPop(civId)} · ⚔️ ${startingUnitsSummary(civId)}`;
 }
 
 /** Passive always-on combat modifiers, with player-facing names + tooltips. */

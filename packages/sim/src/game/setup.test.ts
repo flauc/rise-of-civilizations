@@ -100,7 +100,7 @@ describe("starting profiles", () => {
     expect(mine.filter((u) => u.type === "warrior").length).toBe(0);
   });
 
-  it("a fertile river civ founds its capital at pop 3; later cities at 2", () => {
+  it("a fertile river civ founds its capital at pop 3; later cities at 1", () => {
     const s = createGame({ seed: "profile-river", playerCount: 1, humanSlots: 1, civIds: ["egypt"], barbarians: false });
     beginTurn(s);
     const settler = unitsOf(s, 0).find((u) => u.type === "settler")!;
@@ -108,7 +108,7 @@ describe("starting profiles", () => {
     const capital = citiesOf(s, 0)[0]!;
     expect(capital.population).toBe(3);
 
-    // A second city — founded with a fresh settler far from the capital — starts at base 2.
+    // A second city — founded with a fresh settler far from the capital — starts small (pop 1).
     const spot = s.map.tiles.find(
       (t) =>
         isPassableLand(t.terrain) &&
@@ -120,7 +120,7 @@ describe("starting profiles", () => {
     s.units.set(sid, makeUnit(sid, 0, "settler", spot.col, spot.row));
     expect(applyCommand(s, { type: "foundCity", unitId: sid }).ok).toBe(true);
     const second = citiesOf(s, 0).find((c) => c.id !== capital.id)!;
-    expect(second.population).toBe(2);
+    expect(second.population).toBe(1);
   });
 
   it("a default civ founds its capital at pop 2", () => {
