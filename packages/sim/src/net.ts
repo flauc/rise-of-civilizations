@@ -3,7 +3,7 @@
 // and the Bun server import these.
 
 import type { Command } from "./game/commands";
-import type { BarbarianActivity } from "./game/state";
+import type { BarbarianActivity, VictoryKind } from "./game/state";
 import type { PlayerView } from "./game/serialize";
 import type { MapType } from "./worldgen";
 
@@ -46,6 +46,8 @@ export interface LobbyRoom {
   startingGold: "tight" | "balanced" | "generous";
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit: number;
+  /** Decisive win conditions enabled this game (score/extinction always apply). */
+  enabledVictories: VictoryKind[];
   hasPassword: boolean;
   slots: LobbySlot[];
 }
@@ -72,6 +74,8 @@ export type ClientMessage =
       startingGold?: "tight" | "balanced" | "generous";
       /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
       turnLimit?: number;
+      /** Decisive win conditions enabled; omitted = all toggleable ones. */
+      enabledVictories?: VictoryKind[];
       /** Civ id per AI opponent; null/undefined = a random unique civ. */
       aiCivIds?: (string | null)[];
       /** Color per player slot (humans first, then AI); null/undefined = auto. */
@@ -99,6 +103,8 @@ export type ClientMessage =
       startingGold?: "tight" | "balanced" | "generous";
       /** Turn at which the score victory triggers; 0 = unlimited. */
       turnLimit?: number;
+      /** Decisive win conditions enabled; omitted = unchanged. */
+      enabledVictories?: VictoryKind[];
     }
   | { t: "addSlot"; gameId: string; kind: "human" | "ai" }
   | { t: "removeSlot"; gameId: string; slotId: number }

@@ -22,6 +22,8 @@ import {
   getBelief,
   religionById,
   cityFollowerCount,
+  religiousUnitCost,
+  victoryProgress,
   canFoundReligion,
   religionUnlocked,
   civicsUnlocked,
@@ -322,6 +324,10 @@ export interface UIHandlers {
   onSetGovernment(governmentId: string): void;
   onTogglePolicy(policyId: string): void;
   onFoundReligion(cityId: number, name: string, beliefs: string[]): void;
+  onBuyReligiousUnit(cityId: number, unit: "missionary" | "apostle" | "inquisitor"): void;
+  onEvangelize(unitId: number, cityId: number): void;
+  onPurgeHeresy(unitId: number, cityId: number): void;
+  onBoardTradeRoute(unitId: number, routeId: number): void;
   onActivateGreatPerson(greatPersonId: string): void;
   onRecruitLegend(legendId: string): void;
   onEstablishTrade(destCityId: number): void;
@@ -469,6 +475,7 @@ export function createUI(handlers: UIHandlers): UI {
   const techtree = div("techtree", "panel hidden");
   const civics = div("civics", "panel hidden");
   const religionPanel = div("religion", "panel hidden");
+  const victoryPanel = div("victory", "panel hidden");
   const greatPeoplePanel = div("great-people", "panel hidden");
   const legendsPanel = div("legends", "panel hidden");
   const production = div("production", "panel hidden");
@@ -829,6 +836,7 @@ export function createUI(handlers: UIHandlers): UI {
   let techtreeOpen = false;
   let civicsOpen = false;
   let religionOpen = false;
+  let victoryOpen = false;
   let greatPeopleOpen = false;
   let legendsOpen = false;
   let productionOpen = false;
@@ -1391,6 +1399,8 @@ export function createUI(handlers: UIHandlers): UI {
           <span class="tb-pl">🕊️</span><b>${player.met.length}</b>${diploActionable ? `<span class="tu-badge"></span>` : ""}</button>
         <button class="tb-pill ${turnUpdateHasNew ? "has-badge" : ""}" id="turn-update-btn" title="Turn Updates">
           <span class="tb-pl">📜</span><b>Updates</b>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>
+        <button class="tb-pill" id="victory-btn" title="Victory Progress">
+          <span class="tb-pl">🏆</span><b>Victory</b></button>
         <button class="tb-pill" id="menu-btn" title="Menu">
           <span class="tb-pl">☰</span><b>Menu</b></button>
       </div>`;
@@ -1410,6 +1420,7 @@ export function createUI(handlers: UIHandlers): UI {
       researchOpen = !researchOpen;
       civicsOpen = false;
       religionOpen = false;
+      victoryOpen = false;
       if (opening) {
         closeSideSheets();
         menuOpen = false;
@@ -1418,6 +1429,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderResearch(state);
       renderCivics(state);
       renderReligion(state);
+      renderVictory(state);
     });
     if (showCivics) {
       topbar.querySelector<HTMLButtonElement>("#civics-btn")!.addEventListener("click", () => {
@@ -1425,6 +1437,7 @@ export function createUI(handlers: UIHandlers): UI {
         civicsOpen = !civicsOpen;
         researchOpen = false;
         religionOpen = false;
+        victoryOpen = false;
         if (opening) {
           closeSideSheets();
           menuOpen = false;
@@ -1433,6 +1446,7 @@ export function createUI(handlers: UIHandlers): UI {
         renderCivics(state);
         renderResearch(state);
         renderReligion(state);
+        renderVictory(state);
       });
     }
     if (showReligion) {
@@ -1441,6 +1455,7 @@ export function createUI(handlers: UIHandlers): UI {
         religionOpen = !religionOpen;
         researchOpen = false;
         civicsOpen = false;
+        victoryOpen = false;
         if (opening) {
           closeSideSheets();
           menuOpen = false;
@@ -1449,8 +1464,25 @@ export function createUI(handlers: UIHandlers): UI {
         renderReligion(state);
         renderResearch(state);
         renderCivics(state);
+        renderVictory(state);
       });
     }
+    topbar.querySelector<HTMLButtonElement>("#victory-btn")!.addEventListener("click", () => {
+      const opening = !victoryOpen;
+      victoryOpen = !victoryOpen;
+      researchOpen = false;
+      civicsOpen = false;
+      religionOpen = false;
+      if (opening) {
+        closeSideSheets();
+        menuOpen = false;
+        renderMenu(state);
+      }
+      renderVictory(state);
+      renderResearch(state);
+      renderCivics(state);
+      renderReligion(state);
+    });
     topbar.querySelector<HTMLButtonElement>("#great-people-btn")!.addEventListener("click", () => {
       const opening = !greatPeopleOpen;
       greatPeopleOpen = !greatPeopleOpen;
@@ -2447,7 +2479,28 @@ export function createUI(handlers: UIHandlers): UI {
       html += state.religions.map((r) => `<div class="sub">${r.name} — ${cityFollowerCount(state, r.id)} cities</div>`).join("");
     }
 
+    // Holy Orders — buy missionaries/inquisitors with faith (once you follow a faith).
+    const myCity = [...state.cities.values()].find((c) => c.ownerId === player.id);
+    const followsFaith = [...state.cities.values()].some((c) => c.ownerId === player.id && c.religion);
+    if (myCity && religionUnlocked(state, player.id) && (player.foundedReligionId || followsFaith)) {
+      const orders: ("missionary" | "apostle" | "inquisitor")[] = ["missionary", "apostle", "inquisitor"];
+      html += `<div class="csub">Holy Orders</div>`;
+      html += `<div class="sub" style="margin-bottom:4px">Spend faith to ordain religious units in your nearest city.</div>`;
+      html += orders
+        .map((t) => {
+          const cost = religiousUnitCost(t);
+          const can = player.faith >= cost;
+          return `<button class="btn${can ? " primary" : ""}" data-buyrel="${t}" ${can ? "" : "disabled"} style="width:100%;margin-top:4px">${UNIT_DEFS[t].glyph} ${UNIT_DEFS[t].name} — ${cost}☮️</button>`;
+        })
+        .join("");
+    }
+
     religionPanel.innerHTML = html;
+    religionPanel.querySelectorAll<HTMLButtonElement>("[data-buyrel]").forEach((el) =>
+      el.addEventListener("click", () => {
+        if (myCity) handlers.onBuyReligiousUnit(myCity.id, el.dataset.buyrel as "missionary" | "apostle" | "inquisitor");
+      }),
+    );
     religionPanel.querySelector<HTMLButtonElement>("#relclose")!.addEventListener("click", () => {
       religionOpen = false;
       religionPanel.classList.add("hidden");
@@ -2469,6 +2522,45 @@ export function createUI(handlers: UIHandlers): UI {
       chosenBeliefs = [];
       religionOpen = false;
       religionPanel.classList.add("hidden");
+    });
+  };
+
+  const VICTORY_META: Record<string, { icon: string; name: string; color: string }> = {
+    domination: { icon: "⚔️", name: "Domination", color: "#e0533d" },
+    science: { icon: "🔬", name: "Science", color: "#5ac8e0" },
+    culture: { icon: "🎭", name: "Culture", color: "#c060d0" },
+    religious: { icon: "☮️", name: "Religious", color: "#7ad0a0" },
+    economic: { icon: "🪙", name: "Economic", color: "#e0b53d" },
+    score: { icon: "🏆", name: "Score", color: "#cdbf9f" },
+    extinction: { icon: "☠️", name: "Extinction", color: "#9aa0a6" },
+  };
+
+  const renderVictory = (state: GameState): void => {
+    victoryPanel.classList.toggle("hidden", !victoryOpen);
+    if (!victoryOpen) return;
+    const viewer = state.players[state.currentPlayerIndex]!;
+    const entries = victoryProgress(state, viewer.id);
+    let html = `<button class="cclose" id="vicclose">✕</button><div class="ctitle">🏆 Victory Progress</div>`;
+    html += `<div class="csub">Your standing on each enabled win condition.</div>`;
+    html += entries
+      .map((e) => {
+        const m = VICTORY_META[e.kind] ?? { icon: "•", name: e.kind, color: "#cdbf9f" };
+        const pct = Math.round(Math.min(1, Math.max(0, e.progress)) * 100);
+        const dim = e.enabled ? "" : "opacity:0.45";
+        const off = e.enabled ? "" : ` <span class="sub">(disabled)</span>`;
+        return (
+          `<div style="margin-top:10px;${dim}">` +
+          `<div style="display:flex;justify-content:space-between"><b>${m.icon} ${m.name}${off}</b><span class="sub">${pct}%</span></div>` +
+          `<div class="bar"><i style="width:${pct}%;background:${m.color}"></i></div>` +
+          `<div class="sub">${escapeHtml(e.detail)}</div>` +
+          `</div>`
+        );
+      })
+      .join("");
+    victoryPanel.innerHTML = html;
+    victoryPanel.querySelector<HTMLButtonElement>("#vicclose")!.addEventListener("click", () => {
+      victoryOpen = false;
+      victoryPanel.classList.add("hidden");
     });
   };
 
@@ -2813,6 +2905,30 @@ export function createUI(handlers: UIHandlers): UI {
         }
       }
 
+      if (def.religious) {
+        const here = cityAt(state, unit.col, unit.row);
+        const charges = unit.religiousCharges ?? 0;
+        html += `<div class="csub">✝ Holy mission — ${charges} charge${charges === 1 ? "" : "s"} left</div>`;
+        if (unit.inTransit) {
+          html += `<div class="sub">🐪 Travelling a trade route — arrives turn ${unit.inTransit.arrivesOnTurn}.</div>`;
+        } else if (here) {
+          if (unit.type === "inquisitor" && here.ownerId === unit.ownerId) {
+            html += `<button class="btn primary" data-purge="${here.id}" style="width:100%;margin-top:4px">☩ Purge heresy in ${escapeHtml(here.name)}</button>`;
+          }
+          if (unit.type !== "inquisitor") {
+            html += `<button class="btn primary" data-evangelize="${here.id}" style="width:100%;margin-top:4px">✝ Spread faith in ${escapeHtml(here.name)}</button>`;
+          }
+          const routes = state.tradeRoutes.filter((r) => r.fromCityId === here.id || r.toCityId === here.id);
+          routes.forEach((r) => {
+            const otherId = r.fromCityId === here.id ? r.toCityId : r.fromCityId;
+            const other = state.cities.get(otherId);
+            if (other) html += `<button class="btn" data-board="${r.id}" style="width:100%;margin-top:4px">🐪 Ride trade route to ${escapeHtml(other.name)}</button>`;
+          });
+        } else {
+          html += `<div class="locked-note">Move into (or beside) a city to spread your faith, or into a city on a trade route to ride it.</div>`;
+        }
+      }
+
       if (unit.unspentPromotions > 0) {
         const promoOptions = availablePromotions(unit);
         html +=
@@ -2870,6 +2986,12 @@ export function createUI(handlers: UIHandlers): UI {
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-trade-dest]").forEach((el) =>
       el.addEventListener("click", () => handlers.onEstablishTrade(Number(el.dataset.tradeDest))),
     );
+    unitPanel.querySelector<HTMLButtonElement>("[data-evangelize]")?.addEventListener("click", (e) =>
+      handlers.onEvangelize(unit.id, Number((e.currentTarget as HTMLElement).dataset.evangelize)));
+    unitPanel.querySelector<HTMLButtonElement>("[data-purge]")?.addEventListener("click", (e) =>
+      handlers.onPurgeHeresy(unit.id, Number((e.currentTarget as HTMLElement).dataset.purge)));
+    unitPanel.querySelectorAll<HTMLButtonElement>("[data-board]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onBoardTradeRoute(unit.id, Number(el.dataset.board))));
     unitPanel.querySelector<HTMLButtonElement>("[data-bribe]")?.addEventListener("click", () => handlers.onBribeBarbarian(unit.id));
     unitPanel.querySelector<HTMLButtonElement>("[data-recruit]")?.addEventListener("click", () => handlers.onRecruitBarbarian(unit.id));
   };
@@ -3449,6 +3571,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderTechTree(view.state);
       renderCivics(view.state);
       renderReligion(view.state);
+      renderVictory(view.state);
       renderGreatPeople(view.state);
       renderLegends(view.state);
       renderProduction(view.state);

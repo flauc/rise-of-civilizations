@@ -197,6 +197,14 @@ function applyGreatPersonEffect(state: GameState, player: Player, def: GreatPers
     }
     case "inspiration": {
       player.cultureProgress += INSPIRATION_CULTURE;
+      // Leave behind a Great Work — a lasting artefact that radiates culture and
+      // tourism from its city (feeding the Culture victory; see culture-victory.ts).
+      const city = bestProductionCity(state, player.id);
+      if (city) {
+        if (!city.greatWorks) city.greatWorks = [];
+        city.greatWorks.push({ id: state.nextEntityId++, title: def.name });
+        return `+${INSPIRATION_CULTURE} culture and a Great Work in ${city.name}`;
+      }
       return `+${INSPIRATION_CULTURE} culture`;
     }
     case "revelation": {

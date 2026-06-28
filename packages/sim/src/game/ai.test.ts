@@ -8,6 +8,7 @@ import { worksOf } from "./works";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
 import { ensureContact, declareWar } from "./diplomacy";
+import { foundReligion } from "./religion";
 import { startTraining } from "./training";
 import { UNIT_DEFS } from "./content";
 import { citiesOf, makeUnit, unitAt, unitsOf, type GameState } from "./state";
@@ -258,5 +259,26 @@ describe("AI opponent", () => {
     aiTakeTurn(s, 1);
     expect(s.players[1]!.gold).toBeLessThan(1000); // spent gold to hurry it
     expect(city.trainingQueue.some((o) => o.turnsLeft === 1)).toBe(true); // a unit was hurried
+  });
+
+  it("an AI with a founded religion ordains a missionary to spread it", () => {
+    const s = createGame({ seed: "ai-missionary", cols: 40, rows: 28, barbarians: false, humanSlots: 0, playerCount: 2, legends: false });
+    beginTurn(s);
+    const settler = unitsOf(s, 0).find((u) => u.type === "settler")!;
+    applyCommand(s, { type: "foundCity", unitId: settler.id }, 0);
+    const c0 = citiesOf(s, 0)[0]!;
+    s.players[0]!.researched.add("ritual_burial");
+    s.players[0]!.faith = 100;
+    foundReligion(s, 0, c0.id, "Test Faith", []);
+    // A second owned city that follows no religion → a target to convert.
+    const id = s.nextEntityId++;
+    s.cities.set(id, {
+      id, ownerId: 0, name: "Heathen Town", col: c0.col + 3, row: c0.row, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    });
+    s.players[0]!.faith = 300; // plenty to ordain a missionary
+    aiTakeTurn(s, 0);
+    expect(unitsOf(s, 0).some((u) => u.type === "missionary")).toBe(true);
   });
 });

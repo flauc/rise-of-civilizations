@@ -1,8 +1,8 @@
 import { axialDistance, getTile, hashSeed, makeRng, offsetToAxial } from "@roc/shared";
 import { CIV_IDS, startingUnitsFor } from "@roc/data";
 import { generateMap, type MapType } from "../worldgen";
-import type { GameState, Player } from "./state";
-import { makeUnit } from "./state";
+import type { GameState, Player, VictoryKind } from "./state";
+import { makeUnit, defaultEnabledVictories, TOGGLEABLE_VICTORIES } from "./state";
 import { isPassableLand, TERRAIN_YIELDS } from "./terrain";
 import { offsetNeighbors } from "./movement";
 import { updateExplored } from "./visibility";
@@ -34,6 +34,9 @@ export interface NewGameOptions {
   /** Starting gold treasury preset for major civ players. */
   startingGold?: "tight" | "balanced" | "generous";
   turnLimit?: number;
+  /** Decisive win conditions enabled this game. Defaults to all toggleable ones.
+   *  (Score at the turn limit and extinction always apply.) */
+  enabledVictories?: VictoryKind[];
   /** Civilization id per slot; unspecified slots get a random unique civ. */
   civIds?: (string | undefined)[];
   /** Player color per slot; unspecified slots get the next unused palette color. */
@@ -314,6 +317,9 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     log: [],
     gameOver: null,
     turnLimit: opts.turnLimit ?? 120,
+    enabledVictories: opts.enabledVictories
+      ? new Set(opts.enabledVictories.filter((v) => TOGGLEABLE_VICTORIES.includes(v)))
+      : defaultEnabledVictories(),
     religions: [],
     tradeRoutes: [],
     works: [],

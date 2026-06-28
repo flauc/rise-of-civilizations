@@ -16,7 +16,8 @@ import type {
   TradeRecordKind,
 } from "./state";
 import { citiesOf, log, playerById, unitsOf, type City } from "./state";
-import { UNIT_DEFS, isMilitary } from "./content";
+import { UNIT_DEFS, TECH_DEFS, isMilitary, type TechId } from "./content";
+import { applyVictoryCheck } from "./victory";
 import { onWarDeclared } from "./morale";
 import { RESOURCE_DEFS, empireLuxuryTypes, tradeableLuxuries, type ResourceId } from "./resources";
 import { SPECIALIST_DEFS, type SpecialistId } from "./specialists";
@@ -59,6 +60,9 @@ export function describeDealItems(items: DealItem[]): string {
         case "openBorders": return "open borders";
         case "pact": return `${it.tier.replace("_", " ")} (${it.turns}t)`;
         case "declareWarOn": return `war on #${it.civId}`;
+        case "tech": return `${TECH_DEFS[it.techId as TechId]?.name ?? it.techId} (tech)`;
+        case "city": return "a city";
+        case "unit": return it.turns > 0 ? `a unit (${it.turns}t loan)` : "a unit";
       }
     })
     .join(", ");
@@ -313,9 +317,26 @@ function canPayItems(state: GameState, payerId: number, items: DealItem[]): bool
       if (!hasSpecialistType(state, payerId, it.specialistType)) return false;
     } else if (it.kind === "declareWarOn") {
       if (!relationBetween(state, payerId, it.civId)) return false;
+    } else if (it.kind === "tech") {
+      if (!p.researched.has(it.techId as TechId)) return false;
+    } else if (it.kind === "city") {
+      if (state.cities.get(it.cityId)?.ownerId !== payerId) return false;
+    } else if (it.kind === "unit") {
+      if (state.units.get(it.unitId)?.ownerId !== payerId) return false;
     }
   }
   return true;
+}
+
+/** Technologies `fromId` knows that `toId` lacks but has the prerequisites for —
+ *  the set the deal-builder may offer (and a transfer that makes sense). */
+export function tradeableTechs(state: GameState, fromId: number, toId: number): TechId[] {
+  const from = playerById(state, fromId);
+  const to = playerById(state, toId);
+  if (!from || !to) return [];
+  return ([...from.researched] as TechId[]).filter(
+    (t) => !to.researched.has(t) && TECH_DEFS[t]?.prereqs.every((p) => to.researched.has(p)),
+  );
 }
 
 function hasSpecialistType(state: GameState, playerId: number, type: string): boolean {
@@ -635,7 +656,62 @@ function applyItem(state: GameState, payerId: number, receiverId: number, item: 
     case "declareWarOn":
       declareWar(state, payerId, item.civId);
       break;
+    case "tech":
+      // Technology is non-rival: the payer keeps it, the receiver gains it.
+      receiver.researched.add(item.techId as TechId);
+      log(state, `${civName(payer)} shared ${TECH_DEFS[item.techId as TechId]?.name ?? item.techId} with ${civName(receiver)}.`, {
+        actorId: payerId,
+        targetIds: [payerId, receiverId],
+      });
+      break;
+    case "city":
+      transferCity(state, item.cityId, payerId, receiverId);
+      break;
+    case "unit":
+      if (item.turns > 0) {
+        // Lend: move the unit now, record an obligation to return it later.
+        if (transferUnit(state, item.unitId, payerId, receiverId) && r) {
+          r.deals.push({ fromId: payerId, item, untilTurn: state.turn + item.turns, unitId: item.unitId });
+        }
+      } else {
+        transferUnit(state, item.unitId, payerId, receiverId); // sell (permanent)
+      }
+      break;
   }
+}
+
+/** Cede a city from one civ to another (a diplomatic, non-violent transfer).
+ *  Territory follows automatically (tiles reference the city, whose owner changes).
+ *  A capital changing hands can decide a domination victory, so we re-check. */
+function transferCity(state: GameState, cityId: number, fromId: number, toId: number): void {
+  const city = state.cities.get(cityId);
+  if (!city || city.ownerId !== fromId) return;
+  city.ownerId = toId;
+  city.isCapital = false; // a ceded city is never the new owner's seat of government
+  const from = playerById(state, fromId);
+  const to = playerById(state, toId);
+  log(state, `${civName(from!)} ceded ${city.name} to ${civName(to!)}.`, {
+    actorId: fromId,
+    targetIds: [fromId, toId],
+    tile: { col: city.col, row: city.row },
+  });
+  applyVictoryCheck(state);
+}
+
+/** Move a unit's ownership (sale or the start of a loan). Returns false if gone. */
+function transferUnit(state: GameState, unitId: number, fromId: number, toId: number): boolean {
+  const unit = state.units.get(unitId);
+  if (!unit || unit.ownerId !== fromId) return false;
+  unit.ownerId = toId;
+  unit.movementLeft = 0; // a freshly handed-over unit waits a turn before acting
+  return true;
+}
+
+/** Return a lent unit to its lender when the loan ends (if it still lives). */
+function returnUnit(state: GameState, ob: { fromId: number; unitId?: number }): void {
+  if (ob.unitId === undefined) return;
+  const unit = state.units.get(ob.unitId);
+  if (unit) unit.ownerId = ob.fromId;
 }
 
 // ---- per-turn tick -------------------------------------------------------
@@ -664,9 +740,10 @@ export function diplomacyTick(state: GameState): void {
         }
       }
     }
-    // Return lent specialists whose loan has expired, then drop expired deals.
+    // Return lent specialists/units whose loan has expired, then drop expired deals.
     for (const d of r.deals) {
       if (state.turn >= d.untilTurn && d.item.kind === "specialist") returnSpecialist(state, d);
+      if (state.turn >= d.untilTurn && d.item.kind === "unit") returnUnit(state, d);
     }
     r.deals = r.deals.filter((d) => state.turn < d.untilTurn);
     if (r.pactUntilTurn !== undefined && state.turn >= r.pactUntilTurn) {
@@ -827,6 +904,24 @@ function itemValue(state: GameState, aiId: number, otherId: number, item: DealIt
       return base + att * 0.15 + fear;
     }
     case "declareWarOn": return -40; // costly favour
+    case "tech": {
+      // Knowledge is dear: the AI prices a tech above its research cost and is loath
+      // to hand a rival the edge — so it asks a premium when giving one up.
+      const cost = TECH_DEFS[item.techId as TechId]?.cost ?? 60;
+      return Math.round(cost * 1.3);
+    }
+    case "city": {
+      const c = state.cities.get(item.cityId);
+      if (!c) return 0;
+      // A city is a treasure; an AI rarely parts with one and pays dearly to gain one.
+      return 160 + c.population * 25 + c.buildings.length * 12;
+    }
+    case "unit": {
+      const u = state.units.get(item.unitId);
+      const base = u ? UNIT_DEFS[u.type].cost : 20;
+      // A sale is worth the unit's build cost; a loan a fraction, scaled by its term.
+      return item.turns > 0 ? Math.round(base * 0.25 + item.turns * 1.5) : base;
+    }
   }
 }
 

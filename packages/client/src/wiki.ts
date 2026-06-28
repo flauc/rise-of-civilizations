@@ -150,7 +150,7 @@ function renderCivilizations(): string {
   return WIKI_CIV_STYLE + section("Civilizations", body);
 }
 
-const CLASS_ORDER = ["melee", "ranged", "cavalry", "siege", "naval_melee", "naval_ranged", "recon", "settler", "trader"] as const;
+const CLASS_ORDER = ["melee", "ranged", "cavalry", "siege", "naval_melee", "naval_ranged", "recon", "settler", "trader", "religious"] as const;
 
 /** Display titles for each unit class section in the wiki. */
 const CLASS_TITLES: Record<string, string> = {
@@ -163,6 +163,7 @@ const CLASS_TITLES: Record<string, string> = {
   recon: "Recon",
   settler: "Civilian",
   trader: "Trade",
+  religious: "Religious",
 };
 
 const WIKI_UNIT_STYLE = `<style>
@@ -657,7 +658,25 @@ function renderReligion(): string {
     ) +
     section(
       "Religious Pressure",
-      `<p>Religious cities exert pressure on nearby cities, converting citizens over time. Missionaries and Inquisitors can spread or defend your faith.</p>`,
+      `<p>Each city accumulates <b>pressure</b> from every religion around it. The faith with the most pressure becomes the city's dominant religion. <b>Holy cities</b> radiate the strongest pressure, follower cities a weaker one, and pressure <b>decays</b> a little each turn — so a frontier city must be actively pressed to stay converted. Conversion is gradual and contestable, not instant.</p>`,
+    ) +
+    section(
+      "Faith Travels the Trade Roads",
+      `<p>Religion follows commerce. Every <b>trade route</b> carries faith in <b>both directions</b> between its two cities — the stronger the route's commerce, the more pressure it spreads. An <b>international</b> route is a powerful way to seed your religion inside a trading partner's empire, far beyond where proximity alone could reach.</p>`,
+    ) +
+    section(
+      "Holy Orders — Missionaries, Apostles & Inquisitors",
+      `<p>Spend faith to ordain religious units from the <b>☮️ Religion</b> panel:</p>` +
+        `<ul>` +
+        `<li><b>Missionary</b> — travels to a city and floods it with your religion's pressure, converting it in one decisive act. Carries a few charges, then is spent.</li>` +
+        `<li><b>Apostle</b> — a stronger evangelist that can also defend the faith.</li>` +
+        `<li><b>Inquisitor</b> — purges rival religions' pressure from your <b>own</b> cities, locking in your faith at home.</li>` +
+        `</ul>` +
+        `<p>A religious unit standing in a city that is one end of a trade route can <b>ride the route</b> like a caravan, emerging at the far end in a fraction of the walking time — the stronger the route, the faster the journey. This lets you ferry a missionary deep into a partner's lands.</p>`,
+    ) +
+    section(
+      "Religious Victory",
+      `<p>If your religion becomes the <b>majority faith in every major civilization</b>, you win a Religious victory (when that condition is enabled). See the Victory page.</p>`,
     )
   );
 }
@@ -769,8 +788,24 @@ function renderVictory(): string {
         `<p>You can compare your score against every other civilization at any time from the <b>☰ Menu → Leaderboard</b>.</p>`,
     ) +
     section(
-      "Coming Soon",
-      `<p>Science, Culture, Religious and Economic victories are planned for future milestones as those systems deepen.</p>`,
+      "🔬 Science — The Great Endeavor",
+      `<p>Win through mastery of knowledge and exploration. You must <b>research the entire technology tree</b> — every tech, up to early gunpowder — <i>and</i> complete the age's great scientific feat: <b>circumnavigate the globe</b>. Sail a ship through every longitude band of the world; once your fleet has spanned all of them, the Endeavor is complete.</p>`,
+    ) +
+    section(
+      "🎭 Culture — Influence",
+      `<p>Win by making your civilization the envy of the world. Your <b>wonders, cultural buildings and Great Works</b> project <b>tourism</b> (renown) onto every rival. When your accumulated influence over a rival exceeds that rival's own lifetime culture you become <b>Influential</b> over them — do it to <b>every</b> living civilization to win. Open borders, shared religion and trade routes all amplify the tourism you exert.</p>`,
+    ) +
+    section(
+      "☮️ Religious — One Faith",
+      `<p>Win by converting the world to your religion. A religion claims a civilization when it is the <b>majority faith in that civ's cities</b>; spread yours until it dominates <b>every</b> major civilization. Faith spreads by pressure from holy cities, along trade routes, and — decisively — through <b>Missionaries and Apostles</b> you buy with faith. <b>Inquisitors</b> purge rival faiths from your own cities (see the Religion page).</p>`,
+    ) +
+    section(
+      "🪙 Economic — Mercantile Hegemony",
+      `<p>Win by dominating world commerce. Your <b>Economic Power</b> grows with <b>international trade routes</b>, <b>luxury monopolies</b> (resources no rival holds), a deep treasury, and commerce buildings (Markets, Banks, Harbors). When your Economic Power both clears a high bar <i>and</i> at least <b>doubles</b> the next civilization's, your mercantile hegemony is absolute and you win. International and overseas trade routes are the engine — open borders or an alliance let you trade with another civ for far richer returns.</p>`,
+    ) +
+    section(
+      "Tracking Your Progress",
+      `<p>Open the <b>🏆 Victory</b> panel at any time to see how close you — and the conditions enabled this game — stand on every path. The host chooses which victories are enabled when the game is created.</p>`,
     )
   );
 }

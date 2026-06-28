@@ -44,6 +44,12 @@ export interface Unit {
   campKey?: string;
   /** True when a land unit has embarked onto a water tile. */
   embarked?: boolean;
+  /** Religious-unit charges remaining (missionary/apostle spread, inquisitor purge).
+   *  When it hits 0 the unit is spent and removed. Absent on non-religious units. */
+  religiousCharges?: number;
+  /** Set while the unit is riding a trade route (fast-travel). It leaves the map
+   *  and re-appears at `exitCityId` on `arrivesOnTurn` (see religion.ts / trade). */
+  inTransit?: { routeId: number; exitCityId: number; arrivesOnTurn: number };
   /** Unit morale (0–200; 100 is neutral). Buffs/debuffs combat and drives routing.
    *  Undefined on legacy saves — treated as neutral by the morale helpers. */
   morale?: number;
@@ -129,8 +135,15 @@ export interface City {
    *  auto-optimisation (manual picks are respected); only unlocked citizens are
    *  reshuffled onto more profitable tiles. */
   lockedTiles?: string[];
-  /** Dominant religion id in this city (undefined = none). */
+  /** Dominant religion id in this city (undefined = none). Derived cache of the
+   *  max-pressure religion in `religionPressure`, recomputed each spread tick. */
   religion?: string;
+  /** Accumulated religious pressure per religion id (proximity + trade + missionaries).
+   *  The highest becomes the city's dominant `religion`. Absent on legacy saves. */
+  religionPressure?: Record<string, number>;
+  /** Great Works housed in this city (boost culture & tourism). Forward-compat;
+   *  populated by the Great Works system. Absent on legacy saves. */
+  greatWorks?: { id: number; title: string }[];
   isCapital: boolean;
   /** True if this city was founded as a capital (an "original capital" for the
    *  domination victory — stays true even after capture). */
@@ -142,10 +155,37 @@ export interface City {
   modifiers: CityModifier[];
 }
 
+/** Every way a game can end. The "win" conditions are toggleable per game (see
+ *  `GameState.enabledVictories`); `score` and `extinction` are always-on fallbacks. */
+export type VictoryKind =
+  | "domination"
+  | "score"
+  | "religious"
+  | "science"
+  | "culture"
+  | "economic"
+  | "extinction";
+
+/** Decisive win conditions a host may enable/disable when creating a game.
+ *  (`score` triggers at the turn limit and `extinction` ends a dead game — both
+ *  always apply, so neither is listed here.) */
+export const TOGGLEABLE_VICTORIES: readonly VictoryKind[] = [
+  "domination",
+  "religious",
+  "science",
+  "culture",
+  "economic",
+] as const;
+
+/** Default: every decisive victory is enabled. */
+export function defaultEnabledVictories(): Set<VictoryKind> {
+  return new Set<VictoryKind>(TOGGLEABLE_VICTORIES);
+}
+
 export interface GameOver {
   /** Undefined when no civilization survived (draw / extinction). */
   winnerId?: number;
-  condition: "domination" | "score" | "religious" | "extinction";
+  condition: VictoryKind;
 }
 
 export interface Player {
@@ -179,6 +219,12 @@ export interface Player {
   civicsResearched: Set<string>;
   researchingCivic: string | null;
   cultureProgress: number;
+  /** Total culture this civ has ever produced — its cultural "weight" that rivals'
+   *  tourism must overcome for a Culture victory. Absent on legacy saves (=0). */
+  cultureLifetime?: number;
+  /** Accumulated tourism/influence this civ has exerted over each rival (by id).
+   *  You are "influential" over a rival once this exceeds their cultureLifetime. */
+  influenceOver?: Record<number, number>;
   government: string;
   /** Active policy-card ids (capped at the government's slot count). */
   policies: string[];
@@ -212,6 +258,9 @@ export interface Player {
   greatPeople: string[];
   /** Lifetime count of Legends this player has recruited (drives the rising cost). */
   legendsRecruited: number;
+  /** Science-victory capstone: longitude sectors this civ's ships have visited, and
+   *  whether the globe has been circumnavigated. Absent until a ship puts to sea. */
+  circumnavigation?: { visitedSectors: number[]; done: boolean };
   /** Lifetime battles won (enemy units defeated in combat). Feeds the score;
    *  absent on legacy saves (treated as 0). */
   battlesWon?: number;
@@ -301,7 +350,13 @@ export type DealItem =
   | { kind: "peace" }
   | { kind: "openBorders" }
   | { kind: "pact"; tier: Exclude<PactTier, "none">; turns: number }
-  | { kind: "declareWarOn"; civId: number };
+  | { kind: "declareWarOn"; civId: number }
+  /** Transfer a researched technology to the other civ (permanent, non-rival). */
+  | { kind: "tech"; techId: string }
+  /** Cede a city to the other civ (permanent ownership transfer). */
+  | { kind: "city"; cityId: number }
+  /** Hand over a unit: `turns` 0 = sell (permanent), `turns` > 0 = lend (reverts). */
+  | { kind: "unit"; unitId: number; turns: number };
 
 /** A timed obligation created by an accepted deal (e.g. gold/turn for N turns). */
 export interface DealObligation {
@@ -310,6 +365,8 @@ export interface DealObligation {
   untilTurn: number;
   /** For a lent specialist: the id of the moved craftsman, so it can be returned. */
   specialistId?: number;
+  /** For a lent unit: the id of the moved unit, so it can be returned. */
+  unitId?: number;
 }
 
 /** Shared relationship record for a met pair of major civs (a < b). */
@@ -406,6 +463,11 @@ export interface TradeRoute {
   fromCityId: number;
   /** Destination city — receives a smaller share. */
   toCityId: number;
+  /** Owner of the destination city. Equals `ownerId` for a domestic route; differs
+   *  for an international route to another civ. Absent on legacy saves (= domestic). */
+  toOwnerId?: number;
+  /** True when the route runs to another civ's city (diplomacy-gated). */
+  international?: boolean;
   /** Tile keys "col,row" the caravan travels through; used for plundering. */
   path: string[];
 }
@@ -510,6 +572,10 @@ export interface GameState {
   log: LogEntry[];
   gameOver: GameOver | null;
   turnLimit: number;
+  /** Decisive win conditions enabled this game (see TOGGLEABLE_VICTORIES). Score
+   *  (at the turn limit) and extinction always apply regardless of this set.
+   *  Absent on legacy saves — treat a missing set as "all enabled". */
+  enabledVictories: Set<VictoryKind>;
   religions: Religion[];
   /** Active trade routes between cities (all players). */
   tradeRoutes: TradeRoute[];

@@ -43,6 +43,8 @@ export interface SessionStartEvent {
   turnLimit?: number;
   /** Chosen civ per AI opponent (null = random). */
   aiCivIds?: (string | null)[];
+  /** Decisive win conditions enabled this game (e.g. ["domination","science"]). */
+  enabledVictories?: string[];
   /** Epoch millis on the client when the session started. */
   ts: number;
 }
@@ -157,6 +159,16 @@ export interface OutcomeBreakdown {
   abandoned: number;
 }
 
+/** Win/loss tally for a single victory condition (e.g. "domination", "science"). */
+export interface VictoryTypeCount {
+  /** The victory/defeat condition, e.g. "domination" / "score" / "religious". */
+  condition: string;
+  /** Sessions the viewing player WON via this condition. */
+  wins: number;
+  /** Sessions that ended on this condition where the viewer lost. */
+  losses: number;
+}
+
 export interface LeaderboardEntry {
   clientId: string;
   sessionId: string;
@@ -208,4 +220,6 @@ export interface ConfigBreakdown {
   aiCount: LabelCount[];
   naturalWonders: { on: number; off: number };
   legends: { on: number; off: number };
+  /** How often each decisive victory was enabled (multi-select per session). */
+  enabledVictories: LabelCount[];
 }

@@ -1,12 +1,15 @@
 import { getTile } from "@roc/shared";
 import type {
   Attitude, BarbarianActivity, BarbarianBribe, City, ContactEvent, GameOver, GameState,
-  LogEntry, MoraleEvent, Proposal, Relation, Religion, TradeRecord, TradeRoute, TurnUpdateEvent, Unit, Work,
+  LogEntry, MoraleEvent, Proposal, Relation, Religion, TradeRecord, TradeRoute, TurnUpdateEvent,
+  Unit, VictoryKind, Work,
 } from "./state";
+import { defaultEnabledVictories } from "./state";
 import { computeVisible } from "./visibility";
 import { tileHasBridge } from "./movement";
 import { attitudeLabel, attitudeScore } from "./diplomacy";
 import { GLOBAL_MORALE_BASE } from "./morale";
+import { victoryProgress, type VictoryProgressEntry } from "./victory";
 import type { TechId } from "./content";
 
 export interface DiploView {
@@ -126,6 +129,10 @@ export interface PlayerView {
   log: LogEntry[];
   turnUpdates: TurnUpdateEvent[];
   gameOver: GameOver | null;
+  /** Decisive win conditions enabled this game (score/extinction always apply). */
+  enabledVictories: VictoryKind[];
+  /** The viewer's standing on every enabled victory path (for the Victory panel). */
+  victoryProgress: VictoryProgressEntry[];
   barbarianActivity: BarbarianActivity;
 }
 
@@ -275,6 +282,8 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     log,
     turnUpdates,
     gameOver: state.gameOver,
+    enabledVictories: [...(state.enabledVictories ?? defaultEnabledVictories())],
+    victoryProgress: victoryProgress(state, playerId),
     barbarianActivity: state.barbarianActivity,
   };
 }
@@ -289,6 +298,7 @@ export interface SerializedState {
   log: LogEntry[];
   gameOver: GameOver | null;
   turnLimit: number;
+  enabledVictories: VictoryKind[];
   religions: Religion[];
   tradeRoutes: TradeRoute[];
   works: Work[];
@@ -329,6 +339,7 @@ export function serializeState(state: GameState): SerializedState {
     log: state.log,
     gameOver: state.gameOver,
     turnLimit: state.turnLimit,
+    enabledVictories: [...(state.enabledVictories ?? defaultEnabledVictories())],
     religions: state.religions,
     tradeRoutes: state.tradeRoutes,
     works: state.works,
@@ -371,6 +382,7 @@ export function deserializeState(s: SerializedState): GameState {
       : [],
     gameOver: s.gameOver,
     turnLimit: s.turnLimit,
+    enabledVictories: s.enabledVictories ? new Set(s.enabledVictories) : defaultEnabledVictories(),
     religions: s.religions,
     tradeRoutes: s.tradeRoutes ?? [],
     works: (s.works ?? []).map((w) => ({

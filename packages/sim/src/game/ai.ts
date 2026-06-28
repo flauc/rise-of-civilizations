@@ -14,13 +14,13 @@ import { computeAttackTargets } from "./combat";
 import { abilityTargets, canUseAbility, unitAbilities } from "./abilities";
 import { availableProduction, availableTechs, workableTiles } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
-import { canFoundReligion, availableReligionNames } from "./religion";
+import { canFoundReligion, availableReligionNames, buyReligiousUnit, religiousUnitCost } from "./religion";
 import { availableLegends, canRecruitLegend } from "./legends";
 import { canUseLeaderAbility } from "./leader-abilities";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
 import { aiConsiderDiplomacy, atWar, personalityOf } from "./diplomacy";
 import { availablePromotions } from "./combat";
-import { rushCurrencies, canRushWork, canRushTraining, type RushCurrency } from "./rush";
+import { rushCurrencies, canRushWork, canRushTraining, canRushCity, type RushCurrency } from "./rush";
 import { availableTraining } from "./training";
 import { BELIEFS, WONDER_DEFS, getPolicy, type DiploPersonality } from "@roc/data";
 import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
@@ -50,11 +50,26 @@ import {
   type Unit,
 } from "./state";
 
+// Growth/expansion-first ordering. Because units now cost population, a bigger,
+// wider empire fuels everything (army, settlers, science, gold), so the AI beelines
+// the food/economy/infrastructure techs before deepening its military and reaching
+// for the late game. Anything not listed is researched after these, in tree order.
 const TECH_PREFERENCE: TechId[] = [
-  "cultivation", "pottery_kiln", "animal_taming", "native_copper", "smelting",
-  "bronze_alloying", "writing", "masonry", "the_wheel", "equestrian",
-  "composite_bow", "phalanx", "iron_bloomery", "coinage", "philosophy",
-  "engineering", "carburizing", "siegecraft", "bridge_building", "cavalry_doctrine", "crossbow",
+  // Food & early growth
+  "cultivation", "pottery_kiln", "animal_taming", "irrigation",
+  // Foundations: tools, building, knowledge, wheels & coin
+  "native_copper", "masonry", "writing", "the_wheel", "smelting", "bronze_alloying",
+  "weaving", "coinage",
+  // Culture, science & wealth infrastructure
+  "monumental_architecture", "philosophy", "mathematics", "scholasticism", "aesthetics",
+  // Seafaring (harbors, fishing, exploration)
+  "sailing", "sailcloth", "optics", "maritime_foraging", "shipbuilding",
+  // Core military
+  "composite_bow", "phalanx", "equestrian", "iron_bloomery", "engineering",
+  "carburizing", "siegecraft", "bridge_building", "cavalry_doctrine", "horse_archery",
+  "crossbow", "chariotry", "torsion_engines", "elephantry",
+  // Faith, late naval & the apex
+  "ritual_burial", "theology", "naval_architecture", "astronomy", "cartography",
   "gunpowder", "firearms",
 ];
 
@@ -300,11 +315,13 @@ function exploredFraction(state: GameState, pid: number): number {
   return me.explored.size / Math.max(1, state.map.cols * state.map.rows);
 }
 
-/** How many cities this civ aims to settle before consolidating — builders sprawl. */
+/** How many cities this civ aims to settle before consolidating. Wide empires win
+ *  (every city adds population to spend on army, settlers, science and gold), so
+ *  the AI now expands far more ambitiously — `findSettleSpot` caps it by real land. */
 function targetCityCount(p: DiploPersonality): number {
-  if (p.aggression > 0.7) return 4; // warmongers take cities rather than plant them
-  if (p.aggression < 0.45) return 7; // peaceful builders expand wide
-  return 5;
+  if (p.aggression > 0.7) return 6; // warmongers settle a core, then conquer the rest
+  if (p.aggression < 0.45) return 12; // peaceful builders blanket the map
+  return 9;
 }
 
 /**
@@ -330,10 +347,17 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
   if (warMinded && !city.training.stable) { const s = findTraining("stable"); if (s) return s; }
 
   // 2. Economy / infrastructure buildings (skips any already built / not unlocked).
-  const order: string[] = ["granary", "workshop", "library", "market"];
+  // Growth first (a Granary feeds bigger cities → more pop for everything), then the
+  // commerce/science/culture core, including the Bank and Museum that drive the
+  // economic and culture victories.
+  const order: string[] = ["granary", "workshop", "market", "library"];
   if (coastal) order.unshift("harbor");
+  if (warMinded) order.unshift("walls"); // fortify the frontier before it's tested
   if (player.gold <= 0) order.unshift("market"); // prioritise income when broke
-  order.push("walls", "forge", "shrine", "temple", "monument", "aqueduct", "academy", "amphitheater", "harbor", "lighthouse");
+  order.push(
+    "forge", "bank", "monument", "amphitheater", "academy", "museum",
+    "aqueduct", "temple", "shrine", "walls", "lighthouse",
+  );
   const seen = new Set<string>();
   for (const id of order) {
     if (seen.has(id)) continue;
@@ -383,14 +407,22 @@ function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPers
     trainable.includes(type) &&
     applyCommand(state, { type: "startTraining", cityId: city.id, unit: type }, player.id).ok;
 
-  // Civilians: a scout early, a settler to expand at peace, a trader to link cities.
+  // Civilians: a scout early, settlers to expand at peace, a trader to link cities.
   if (!threatened && exploredFraction(state, player.id) < 0.45 && !has("scout") && tryTrain("scout")) return;
-  if (!threatened && cityCount < targetCityCount(p) && city.population >= 3 && !has("settler") && tryTrain("settler")) return;
-  if (cityCount >= 2 && !has("trader") && tryTrain("trader")) return;
+  // Expand aggressively: any decent-sized city may build a settler, and several can
+  // do so at once, until the empire (cities already built + settlers en route) hits
+  // its target. This is the AI's single biggest lever now that units cost population.
+  const settlersOut = units.filter((u) => u.type === "settler").length;
+  if (!threatened && cityCount + settlersOut < targetCityCount(p) && city.population >= 3 && tryTrain("settler")) return;
+  // Keep a trader heading out whenever we have fewer routes than cities (links the
+  // empire and, with open borders, opens lucrative international trade).
+  const routeCount = state.tradeRoutes.filter((r) => r.ownerId === player.id).length;
+  if (cityCount >= 2 && !has("trader") && routeCount < cityCount && tryTrain("trader")) return;
 
-  // Military: train toward a target army size (one unit per city per turn).
+  // Military: train toward a target army size (one unit per city per turn). Keep a
+  // standing defence in peace and a real campaign army in war.
   const milCount = units.filter((u) => isMilitary(u.type)).length;
-  const desired = threatened ? cityCount * 2 + 1 : Math.max(cityCount + 1, 2);
+  const desired = threatened ? cityCount * 2 + 2 : Math.max(cityCount + 1, 3);
   if (milCount < desired) {
     const type = bestTrainableMilitary(trainable);
     if (type) tryTrain(type);
@@ -587,7 +619,18 @@ function aiPromote(state: GameState, unit: Unit, pid: number): void {
 function aiTrader(state: GameState, unit: Unit, pid: number): void {
   const tryEstablish = (): boolean => {
     if (!canEstablishTradeRoute(state, unit)) return false;
-    const dest = tradeRouteDestinations(state, unit)[0];
+    const origin = cityAt(state, unit.col, unit.row);
+    const dests = tradeRouteDestinations(state, unit);
+    // Prefer the richest route: international destinations pay +50% (and overseas
+    // ones more still), and a longer haul earns more gold — so chase those first.
+    if (origin) {
+      dests.sort((a, b) => {
+        const intl = (c: City) => (c.ownerId !== unit.ownerId ? 1 : 0);
+        if (intl(a) !== intl(b)) return intl(b) - intl(a);
+        return axialDistance(ax(b), ax(origin)) - axialDistance(ax(a), ax(origin));
+      });
+    }
+    const dest = dests[0];
     if (!dest) return false;
     return applyCommand(state, { type: "establishTradeRoute", unitId: unit.id, destCityId: dest.id }, pid).ok;
   };
@@ -607,6 +650,47 @@ function aiTrader(state: GameState, unit: Unit, pid: number): void {
   if (best && (best.col !== unit.col || best.row !== unit.row)) {
     stepToward(state, unit, best.col, best.row, pid);
     tryEstablish();
+  }
+}
+
+/** Buy a missionary when the AI has founded a faith, has spare faith, and one of
+ *  its own cities still follows a different (or no) religion. */
+function aiBuyMissionaries(state: GameState, player: Player, pid: number): void {
+  const rel = player.foundedReligionId;
+  if (!rel) return;
+  const cost = religiousUnitCost("missionary");
+  if (player.faith < cost + 60) return; // keep a reserve for founding/legends
+  const needs = citiesOf(state, pid).some((c) => c.religion !== rel);
+  if (!needs) return;
+  // Don't stockpile missionaries: only buy if we have none in the field.
+  if (unitsOf(state, pid).some((u) => u.type === "missionary")) return;
+  const city = citiesOf(state, pid)[0];
+  if (city) buyReligiousUnit(state, pid, city.id, "missionary");
+}
+
+/** Walk a missionary to the nearest of our cities that doesn't yet follow our
+ *  religion and convert it. */
+function aiReligiousUnit(state: GameState, unit: Unit, pid: number): void {
+  const rel = playerById(state, pid)?.foundedReligionId;
+  if (!rel || unit.inTransit) return;
+  let best: City | null = null;
+  let bestD = Infinity;
+  for (const c of citiesOf(state, pid)) {
+    if (c.religion === rel) continue;
+    const d = axialDistance(ax(unit), ax(c));
+    if (d < bestD) {
+      bestD = d;
+      best = c;
+    }
+  }
+  if (!best) return;
+  if (axialDistance(ax(unit), ax(best)) <= 1) {
+    applyCommand(state, { type: "evangelize", unitId: unit.id, cityId: best.id }, pid);
+    return;
+  }
+  stepToward(state, unit, best.col, best.row, pid);
+  if (state.units.has(unit.id) && axialDistance(ax(unit), ax(best)) <= 1) {
+    applyCommand(state, { type: "evangelize", unitId: unit.id, cityId: best.id }, pid);
   }
 }
 
@@ -806,6 +890,18 @@ function aiRush(state: GameState, player: Player, threatened: boolean): void {
       }
     }
   }
+  // 3) Don't let gold sit idle: when the treasury is deep, buy faster development by
+  //    rushing city construction (keeping a solid war chest in reserve).
+  if (player.gold > 400) {
+    for (const city of citiesOf(state, pid)) {
+      if (player.gold < 350) break;
+      if (!city.production) continue;
+      const r = canRushCity(state, pid, city.id, "gold");
+      if (r.ok && r.cost != null && player.gold - r.cost >= 250) {
+        applyCommand(state, { type: "rushProduction", cityId: city.id, currency: "gold" }, pid);
+      }
+    }
+  }
 }
 
 /** Play a full turn for an AI-controlled civ. */
@@ -876,6 +972,9 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     }
   }
 
+  // Evangelize the empire: buy a missionary to convert any cities not yet ours in faith.
+  aiBuyMissionaries(state, player, playerId);
+
   for (const city of citiesOf(state, playerId)) {
     if (!city.production) {
       const item = chooseConstruction(state, player, city, p);
@@ -894,6 +993,7 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     if (unit.unspentPromotions > 0) aiPromote(state, unit, playerId);
     if (def.founder) aiSettler(state, unit, playerId);
     else if (def.trader) aiTrader(state, unit, playerId);
+    else if (def.religious) aiReligiousUnit(state, unit, playerId);
     else if (def.cls === "recon") aiScout(state, unit, playerId);
     else aiMilitary(state, unit, playerId);
   }

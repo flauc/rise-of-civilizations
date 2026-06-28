@@ -232,6 +232,7 @@ export function getCityYields(state: GameState, city: City): CityYields {
   production += trade.production;
   gold += trade.gold + (eff.tradeRouteGoldBonus ?? 0);
   science += trade.science;
+  culture += trade.culture;
   faith += eff.tradeRouteFaithBonus ?? 0;
 
   // Wonders: empire-wide (every owned city) + host-city effects.
@@ -567,6 +568,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   }
   owner.faith += y.faith;
   owner.cultureProgress += y.culture;
+  owner.cultureLifetime = (owner.cultureLifetime ?? 0) + y.culture; // lifetime cultural weight
   if (owner.researchingCivic) {
     const def = getCivic(owner.researchingCivic);
     if (def && owner.cultureProgress >= def.cost) {

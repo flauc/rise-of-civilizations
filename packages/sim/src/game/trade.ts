@@ -10,16 +10,30 @@ import { cityAt, log, playerById } from "./state";
 import { UNIT_DEFS } from "./content";
 import { isPassableLand, isWaterTerrain, moveCost, type TerrainType } from "./terrain";
 import { offsetNeighbors, riverBetween, tileHasBridge } from "./movement";
+import { relationBetween, atWar } from "./diplomacy";
 import { emitTradeRouteEstablished } from "./turn-updates";
+
+/** Whether two civs' commerce may flow freely — the gate for an international
+ *  trade route: they've met, aren't at war, and have open borders or an alliance. */
+export function canTradeInternational(state: GameState, fromOwner: number, toOwner: number): boolean {
+  if (fromOwner === toOwner) return true;
+  const a = playerById(state, fromOwner);
+  const b = playerById(state, toOwner);
+  if (!a || !b || a.isBarbarian || b.isBarbarian) return false;
+  if (atWar(state, fromOwner, toOwner)) return false;
+  const rel = relationBetween(state, fromOwner, toOwner);
+  return !!rel && (rel.openBorders || rel.pact === "alliance");
+}
 
 export interface TradeYield {
   gold: number;
   food: number;
   production: number;
   science: number;
+  culture: number;
 }
 
-const ZERO: TradeYield = { gold: 0, food: 0, production: 0, science: 0 };
+const ZERO: TradeYield = { gold: 0, food: 0, production: 0, science: 0, culture: 0 };
 const MAX_ROUTE_GOLD = 10;
 
 /** Bonus gold for a route whose entire land path is paved with roads.
@@ -73,6 +87,16 @@ function roadConnectionBonus(state: GameState, route: TradeRoute): number {
   return ROAD_BONUS_BY_TIER[minTier] ?? 0;
 }
 
+/** Does any tile along the route's path lie on water? (an overseas trade lane). */
+function routeIsOverseas(state: GameState, route: TradeRoute): boolean {
+  for (const key of route.path) {
+    const [col, row] = key.split(",").map(Number) as [number, number];
+    const tile = getTile(state.map, col, row);
+    if (tile && isWaterTerrain(tile.terrain)) return true;
+  }
+  return false;
+}
+
 /** Per-turn yields a single route generates (granted to the origin city). */
 export function tradeRouteYield(state: GameState, route: TradeRoute): TradeYield {
   const from = state.cities.get(route.fromCityId);
@@ -82,9 +106,19 @@ export function tradeRouteYield(state: GameState, route: TradeRoute): TradeYield
   let gold = Math.min(MAX_ROUTE_GOLD, 3 + Math.floor(dist / 2));
   if (from.buildings.includes("market")) gold += 2;
   if (to.buildings.includes("market")) gold += 1;
+  if (from.buildings.includes("bank")) gold += 3;
   gold += roadConnectionBonus(state, route);
-  const science = to.buildings.includes("library") || to.buildings.includes("academy") ? 1 : 0;
-  return { gold, food: 1, production: 1, science };
+  let science = to.buildings.includes("library") || to.buildings.includes("academy") ? 1 : 0;
+  let culture = 0;
+  // International routes are far richer and exchange a little knowledge & culture.
+  if (route.international || (route.toOwnerId !== undefined && route.toOwnerId !== route.ownerId)) {
+    gold = Math.round(gold * 1.5);
+    science += 1;
+    culture += 1;
+  }
+  // Overseas lanes (the Age of Exploration's spice routes) pay a further premium.
+  if (routeIsOverseas(state, route)) gold += 4;
+  return { gold, food: 1, production: 1, science, culture };
 }
 
 /** Total trade yields a city receives — full as an origin, a small share as a
@@ -94,6 +128,7 @@ export function cityTradeYields(state: GameState, city: City): TradeYield {
   let food = 0;
   let production = 0;
   let science = 0;
+  let culture = 0;
   for (const r of state.tradeRoutes) {
     if (r.fromCityId === city.id) {
       const y = tradeRouteYield(state, r);
@@ -101,12 +136,16 @@ export function cityTradeYields(state: GameState, city: City): TradeYield {
       food += y.food;
       production += y.production;
       science += y.science;
+      culture += y.culture;
     } else if (r.toCityId === city.id) {
-      gold += 1; // the receiving end gains a little commerce + knowledge
+      // The receiving end gains a little commerce + knowledge — more from an
+      // international partner (mutual gains from cross-border trade).
+      gold += r.international ? 3 : 1;
       science += 1;
+      if (r.international) culture += 1;
     }
   }
-  return { gold, food, production, science };
+  return { gold, food, production, science, culture };
 }
 
 export function tradeRoutesOf(state: GameState, playerId: number): TradeRoute[] {
@@ -118,15 +157,16 @@ export function tradeRoutesFrom(state: GameState, cityId: number): TradeRoute[] 
   return state.tradeRoutes.filter((r) => r.fromCityId === cityId);
 }
 
-/** Cities a trader (standing in one of its owner's cities) can connect to. */
+/** Cities a trader (standing in one of its owner's cities) can connect to — its
+ *  owner's own cities, plus the cities of any civ it may trade with internationally. */
 export function tradeRouteDestinations(state: GameState, unit: Unit): City[] {
   if (!UNIT_DEFS[unit.type].trader) return [];
   const origin = cityAt(state, unit.col, unit.row);
   if (!origin || origin.ownerId !== unit.ownerId) return [];
   return [...state.cities.values()].filter(
     (c) =>
-      c.ownerId === unit.ownerId &&
       c.id !== origin.id &&
+      (c.ownerId === unit.ownerId || canTradeInternational(state, unit.ownerId, c.ownerId)) &&
       !state.tradeRoutes.some((r) => r.fromCityId === origin.id && r.toCityId === c.id),
   );
 }
@@ -218,7 +258,11 @@ export function establishTradeRoute(
     return { ok: false, error: "trader must be in one of your cities" };
   }
   const dest = state.cities.get(destCityId);
-  if (!dest || dest.ownerId !== unit.ownerId) return { ok: false, error: "invalid destination" };
+  if (!dest) return { ok: false, error: "invalid destination" };
+  const international = dest.ownerId !== unit.ownerId;
+  if (international && !canTradeInternational(state, unit.ownerId, dest.ownerId)) {
+    return { ok: false, error: "need open borders or an alliance to trade with them" };
+  }
   if (dest.id === origin.id) return { ok: false, error: "choose a different city" };
   if (state.tradeRoutes.some((r) => r.fromCityId === origin.id && r.toCityId === dest.id)) {
     return { ok: false, error: "route already exists" };
@@ -229,6 +273,8 @@ export function establishTradeRoute(
     ownerId: unit.ownerId,
     fromCityId: origin.id,
     toCityId: dest.id,
+    toOwnerId: dest.ownerId,
+    international,
     path: computeTradeRoutePath(state, origin, dest),
   });
   state.units.delete(unit.id);
@@ -272,11 +318,19 @@ export function cancelTradeRoute(state: GameState, routeId: number, actingPlayer
   return { ok: true };
 }
 
-/** Drop routes whose endpoints no longer exist or have changed owner. */
+/** Drop routes whose endpoints no longer exist or have changed owner. An
+ *  international route is also severed if the civs fall out of trading terms
+ *  (war declared, or open borders / alliance lapsed). */
 export function pruneTradeRoutes(state: GameState): void {
   state.tradeRoutes = state.tradeRoutes.filter((r) => {
     const from = state.cities.get(r.fromCityId);
     const to = state.cities.get(r.toCityId);
-    return !!from && !!to && from.ownerId === r.ownerId && to.ownerId === r.ownerId;
+    if (!from || !to || from.ownerId !== r.ownerId) return false;
+    if (r.international) {
+      // The destination must still belong to the partner we agreed to trade with.
+      if (to.ownerId !== r.toOwnerId) return false;
+      return canTradeInternational(state, r.ownerId, to.ownerId);
+    }
+    return to.ownerId === r.ownerId;
   });
 }

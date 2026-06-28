@@ -8,11 +8,13 @@
 import {
   createGame,
   PLAYER_COLORS,
+  TOGGLEABLE_VICTORIES,
   type BarbarianActivity,
   type GameState,
   type GameSummary,
   type LobbyRoom,
   type MapType,
+  type VictoryKind,
 } from "@roc/sim";
 import { GameHost } from "./gamehost";
 
@@ -49,6 +51,8 @@ export interface LobbyGame {
   startingGold: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit: number;
+  /** Decisive win conditions enabled this game (score/extinction always apply). */
+  enabledVictories: VictoryKind[];
   /** Optional join password; empty/undefined means the game is open. */
   password?: string;
   hostUserId: string;
@@ -74,6 +78,8 @@ export interface CreateOptions {
   startingGold?: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
   turnLimit?: number;
+  /** Decisive win conditions enabled; omitted = all toggleable ones. */
+  enabledVictories?: VictoryKind[];
   password?: string;
   /** Civ id per AI opponent; null = a random unique civ. */
   aiCivIds?: (string | null)[];
@@ -95,6 +101,7 @@ export interface ConfigurePatch {
   startingGold?: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit?: number;
+  enabledVictories?: VictoryKind[];
 }
 
 export interface SlotPatch {
@@ -163,6 +170,7 @@ export class Lobby {
       naturalWonders: opts.naturalWonders ?? true,
       startingGold: opts.startingGold ?? "balanced",
       turnLimit: opts.turnLimit ?? 120,
+      enabledVictories: opts.enabledVictories ?? [...TOGGLEABLE_VICTORIES],
       password: opts.password || undefined,
       hostUserId: ownerUserId,
       slots,
@@ -212,6 +220,9 @@ export class Lobby {
     if (patch.naturalWonders !== undefined) game.naturalWonders = patch.naturalWonders;
     if (patch.startingGold !== undefined) game.startingGold = patch.startingGold;
     if (patch.turnLimit !== undefined) game.turnLimit = Math.max(0, Math.floor(patch.turnLimit));
+    if (patch.enabledVictories !== undefined) {
+      game.enabledVictories = patch.enabledVictories.filter((v) => TOGGLEABLE_VICTORIES.includes(v));
+    }
     return { ok: true };
   }
 
@@ -322,6 +333,7 @@ export class Lobby {
       naturalWonders: g.naturalWonders,
       startingGold: g.startingGold,
       turnLimit: g.turnLimit,
+      enabledVictories: g.enabledVictories,
       hasPassword: !!g.password,
       slots: g.slots.map((s) => ({
         id: s.id,
@@ -359,6 +371,7 @@ export class Lobby {
       naturalWonders: game.naturalWonders,
       startingGold: game.startingGold,
       turnLimit: game.turnLimit,
+      enabledVictories: game.enabledVictories,
       civIds,
       colors,
     });

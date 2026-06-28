@@ -113,6 +113,32 @@ describe("MemoryAnalyticsStore", () => {
     expect(c.legends).toEqual({ on: 2, off: 1 });
   });
 
+  it("breaks down wins/losses by victory condition", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      start("s1", "p1"),
+      { t: "session_end", sessionId: "s1", clientId: "p1", outcome: "win", condition: "domination", turns: 40, ts: now },
+      start("s2", "p2"),
+      { t: "session_end", sessionId: "s2", clientId: "p2", outcome: "win", condition: "science", turns: 60, ts: now },
+      start("s3", "p3"),
+      { t: "session_end", sessionId: "s3", clientId: "p3", outcome: "loss", condition: "domination", turns: 35, ts: now },
+    ]);
+    const v = await a.victoryBreakdown();
+    expect(v.find((x) => x.condition === "domination")).toEqual({ condition: "domination", wins: 1, losses: 1 });
+    expect(v.find((x) => x.condition === "science")).toEqual({ condition: "science", wins: 1, losses: 0 });
+  });
+
+  it("counts which victory conditions were enabled at setup", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      startCfg("s1", "p1", { enabledVictories: ["domination", "science", "culture"] }),
+      startCfg("s2", "p2", { enabledVictories: ["domination", "religious"] }),
+    ]);
+    const c = await a.configBreakdown();
+    expect(c.enabledVictories.find((x) => x.label === "domination")?.count).toBe(2);
+    expect(c.enabledVictories.find((x) => x.label === "science")?.count).toBe(1);
+  });
+
   it("tallies votes idempotently and supports removal", async () => {
     const a = new MemoryAnalyticsStore();
     await a.record([
@@ -149,8 +175,8 @@ describe("MemoryAnalyticsStore", () => {
     expect(list[0]).toMatchObject({ reportId: "r2", hasState: false });
     expect(list[1]).toMatchObject({ reportId: "r1", clientId: "p1", turn: 5, hasState: true });
     // summaries omit the heavy payload
-    expect((list[1] as Record<string, unknown>).state).toBeUndefined();
-    expect((list[1] as Record<string, unknown>).errors).toBeUndefined();
+    expect((list[1] as unknown as Record<string, unknown>).state).toBeUndefined();
+    expect((list[1] as unknown as Record<string, unknown>).errors).toBeUndefined();
 
     const detail = await a.bugReport("r1");
     expect(detail).toMatchObject({ message: "older", state: '{"x":1}', errors: ["boom"], context: { url: "u" } });

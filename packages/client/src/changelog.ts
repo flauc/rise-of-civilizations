@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.1.1";
+export const CURRENT_VERSION = "0.2.0";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,66 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.2.0",
+    date: "June 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Four new ways to win",
+        desc:
+          "Conquest is no longer the only road to victory. Win by SCIENCE — master the entire technology tree and then circumnavigate the globe, the great feat of the age. Win by CULTURE — let your wonders, Great Works and cultural splendour make your civilization the envy of every rival. Win by RELIGION — convert the whole world to your faith. Or win by ECONOMY — build a trading empire whose commercial might towers over everyone else's.",
+      },
+      {
+        tag: "New",
+        title: "Choose how a game can be won",
+        desc:
+          "When you create a game — single-player or multiplayer — you now pick exactly which victory conditions are in play. Turn off the ones you don't want; in multiplayer the host decides and everyone sees the rules before the match begins. Highest score at the turn limit, and last civilization standing, always apply.",
+      },
+      {
+        tag: "UI",
+        title: "Track every road to victory",
+        desc:
+          "A new 🏆 Victory panel shows, at a glance, how close you stand on each enabled win condition — civilizations converted, technologies and your circumnavigation voyage, cultural influence, mercantile power and your running score — so you always know which path is within reach.",
+      },
+      {
+        tag: "New",
+        title: "Spread your faith with Missionaries, Apostles & Inquisitors",
+        desc:
+          "Religion now spreads by pressure that builds and fades across cities, and follows the trade roads in both directions. Spend faith to ordain religious units: Missionaries flood a city with your religion, Apostles evangelize and defend it, and Inquisitors purge rival faiths from your own cities. A religious unit standing in a trade-route city can even ride the caravan road to emerge at the far end in a fraction of the time.",
+      },
+      {
+        tag: "New",
+        title: "Trade with the world — and across the oceans",
+        desc:
+          "Trade routes are no longer limited to your own cities. With open borders or an alliance you can open lucrative international routes to another civilization, and routes that cross the sea earn a further premium — the spice lanes of the age. International routes are drawn in teal on the map to set them apart, and a route severs the moment war breaks out.",
+      },
+      {
+        tag: "New",
+        title: "Trade technologies, cities and even soldiers",
+        desc:
+          "The diplomacy table now lets you trade far more than gold and luxuries. Hand over (or buy) a technology, cede a city in a peace deal, and sell or lend a unit — a lent unit fights for its borrower and returns to you when the loan ends. The AI values each fairly and guards the techs that would arm a rival against it.",
+      },
+      {
+        tag: "New",
+        title: "Banks, Museums and Great Works",
+        desc:
+          "Two new buildings deepen your economy and culture: the Bank pours out gold and the Museum houses your culture. And a Great Artist now leaves behind a lasting Great Work in one of your cities — an enduring treasure that radiates culture and renown for the rest of the game.",
+      },
+      {
+        tag: "Gameplay",
+        title: "A far stronger opponent",
+        desc:
+          "Rival civilizations now play a much sharper game. They expand boldly — founding cities across the map instead of stopping at a handful — develop their economy and research with real purpose, build the new banks, museums and trade routes, reach out for international commerce, send missionaries to grow their faith, and put their treasury to work hurrying construction instead of letting gold pile up. Expect to be genuinely contested for the map.",
+      },
+      {
+        tag: "UI",
+        title: "Encyclopedia covers the new systems",
+        desc:
+          "The in-game Encyclopedia's Victory and Religion pages have been rewritten to explain all four new victory conditions, the religious-pressure model, and the new Missionaries, Apostles and Inquisitors — and the new religious units now appear on the Units page.",
+      },
+    ],
+  },
   {
     version: "0.1.1",
     date: "June 2026",

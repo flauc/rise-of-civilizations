@@ -9,6 +9,8 @@ import { UNIQUE_INFRA_BUILDINGS } from "@roc/data";
 export type UnitTypeId =
   // civilian
   | "settler" | "trader"
+  // religious (faith-purchased; see religion.ts)
+  | "missionary" | "apostle" | "inquisitor"
   // recon
   | "scout"
   // dawn melee/ranged (no tech)
@@ -30,7 +32,7 @@ export type UnitTypeId =
   // naval ranged
   | "dromon" | "war_junk" | "galleass" | "galleon";
 
-export type UnitClass = "settler" | "trader" | "recon" | "melee" | "ranged" | "cavalry" | "siege" | "naval_melee" | "naval_ranged";
+export type UnitClass = "settler" | "trader" | "religious" | "recon" | "melee" | "ranged" | "cavalry" | "siege" | "naval_melee" | "naval_ranged";
 export type UnitAbility = "bonus_vs_cavalry" | "bonus_vs_city";
 
 /**
@@ -137,8 +139,8 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
 
 export type BuildingId =
   | "granary" | "workshop" | "forge" | "walls"
-  | "market" | "library" | "academy" | "aqueduct" | "harbor" | "lighthouse" | "monument" | "amphitheater"
-  | "shrine" | "temple";
+  | "market" | "bank" | "library" | "academy" | "aqueduct" | "harbor" | "lighthouse" | "monument" | "amphitheater"
+  | "museum" | "shrine" | "temple";
 
 /**
  * Dedicated unit-training building families. Each trains units of one or more unit
@@ -191,6 +193,12 @@ export interface UnitDef {
   builder?: boolean;
   /** Consumed to establish a trade route between two of your cities. */
   trader?: boolean;
+  /** Faith-purchased religious unit (missionary/apostle/inquisitor). Not trained. */
+  religious?: boolean;
+  /** Charges a religious unit carries (spread/purge actions); spent then removed. */
+  religiousCharges?: number;
+  /** Faith price to buy a religious unit (base; rises with how many you've bought). */
+  faithCost?: number;
   abilities?: UnitAbility[];
   /** Player-triggered active abilities (see ACTIVE_ABILITY_DEFS). */
   activeAbilities?: ActiveAbilityId[];
@@ -215,6 +223,10 @@ const U = (d: UnitDef): UnitDef => d;
 export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
   settler: U({ id: "settler", name: "Settler", glyph: "S", cls: "settler", movement: 2, sight: 2, cost: 24, upkeep: 0, strength: 0, founder: true }),
   trader: U({ id: "trader", name: "Trader", glyph: "$", cls: "trader", movement: 3, sight: 2, cost: 30, upkeep: 1, strength: 0, reqTech: "the_wheel", trader: true }),
+  // Religious units — bought with faith (not trained), gated by Ritual & Burial.
+  missionary: U({ id: "missionary", name: "Missionary", glyph: "✝", cls: "religious", movement: 4, sight: 2, cost: 0, upkeep: 0, strength: 0, reqTech: "ritual_burial", religious: true, religiousCharges: 3, faithCost: 120 }),
+  apostle: U({ id: "apostle", name: "Apostle", glyph: "✚", cls: "religious", movement: 4, sight: 2, cost: 0, upkeep: 0, strength: 6, reqTech: "ritual_burial", religious: true, religiousCharges: 4, faithCost: 200 }),
+  inquisitor: U({ id: "inquisitor", name: "Inquisitor", glyph: "☩", cls: "religious", movement: 3, sight: 2, cost: 0, upkeep: 0, strength: 0, reqTech: "ritual_burial", religious: true, religiousCharges: 3, faithCost: 160 }),
   scout: U({ id: "scout", name: "Scout", glyph: "C", cls: "recon", movement: 3, sight: 3, cost: 10, upkeep: 1, strength: 4 }),
 
   clubman: U({ id: "clubman", name: "Clubman", glyph: "c", cls: "melee", movement: 2, sight: 2, cost: 10, upkeep: 1, strength: 6 }),
@@ -410,6 +422,7 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   forge: B({ id: "forge", name: "Forge", cost: 26, reqTech: "smelting", yields: { production: 2 } }),
   walls: B({ id: "walls", name: "Walls", cost: 24, reqTech: "masonry", yields: {}, effect: "walls" }),
   market: B({ id: "market", name: "Market", cost: 24, reqTech: "coinage", yields: { gold: 3 } }),
+  bank: B({ id: "bank", name: "Bank", cost: 34, reqTech: "mathematics", yields: { gold: 5 } }),
   library: B({ id: "library", name: "Archive", cost: 26, reqTech: "writing", yields: { science: 2 } }),
   academy: B({ id: "academy", name: "Academy", cost: 34, reqTech: "philosophy", yields: { science: 3 } }),
   aqueduct: B({ id: "aqueduct", name: "Aqueduct", cost: 30, reqTech: "engineering", yields: { food: 2 } }),
@@ -417,6 +430,7 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   lighthouse: B({ id: "lighthouse", name: "Lighthouse", cost: 30, reqTech: "optics", yields: { gold: 1, science: 1 }, effect: "lighthouse" }),
   monument: B({ id: "monument", name: "Monument", cost: 22, reqTech: "monumental_architecture", yields: { culture: 2 } }),
   amphitheater: B({ id: "amphitheater", name: "Amphitheater", cost: 26, reqTech: "writing", yields: { culture: 3 } }),
+  museum: B({ id: "museum", name: "Museum", cost: 34, reqTech: "philosophy", yields: { culture: 4 } }),
   shrine: B({ id: "shrine", name: "Shrine", cost: 18, reqTech: "ritual_burial", yields: { faith: 2 } }),
   temple: B({ id: "temple", name: "Temple", cost: 28, reqTech: "writing", yields: { faith: 2, culture: 1 } }),
 };
@@ -761,6 +775,7 @@ const ROLE: Record<UnitClass, string> = {
   recon: "Recon / scout",
   settler: "Founds a new city",
   trader: "Establishes trade routes",
+  religious: "Religious — spreads faith",
   naval_melee: "Naval melee",
   naval_ranged: "Naval ranged",
 };
@@ -1201,6 +1216,7 @@ export const PROMOTION_POOL: Record<UnitClass, PromotionId[]> = {
   ],
   settler: ["pioneer", "colonist", "explorer"],
   trader: [],
+  religious: [],
   naval_melee: [
     "boarding",
     "ramming",

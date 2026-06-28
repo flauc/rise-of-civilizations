@@ -31,7 +31,9 @@ import { rushCity, rushWork, rushTraining, type RushCurrency } from "./rush";
 import { capitalPopulationBonusFor, BASE_CITY_POPULATION } from "@roc/data";
 import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter, tickRuins, clearRuin } from "./features";
-import { foundReligion, spreadReligion } from "./religion";
+import { foundReligion, spreadReligion, buyReligiousUnit, evangelize, purgeHeresy, boardTradeRoute, processTransit } from "./religion";
+import { trackCircumnavigation } from "./science-victory";
+import { accrueInfluence } from "./culture-victory";
 import { establishTradeRoute, cancelTradeRoute, pruneTradeRoutes } from "./trade";
 import { pillageTile, plunderTradeRoute, sackCityCommand } from "./raiding";
 import { bribeBarbarian, recruitBarbarian, pruneBarbarianBribes } from "./bribery";
@@ -93,6 +95,10 @@ export type Command =
   | { type: "setGovernment"; governmentId: string }
   | { type: "togglePolicy"; policyId: string }
   | { type: "foundReligion"; cityId: number; name: string; beliefs: string[] }
+  | { type: "buyReligiousUnit"; cityId: number; unit: UnitTypeId }
+  | { type: "evangelize"; unitId: number; cityId: number }
+  | { type: "purgeHeresy"; unitId: number; cityId: number }
+  | { type: "boardTradeRoute"; unitId: number; routeId: number }
   | { type: "establishTradeRoute"; unitId: number; destCityId: number }
   | { type: "cancelTradeRoute"; routeId: number }
   | { type: "bribeBarbarian"; unitId: number }
@@ -148,6 +154,10 @@ export function beginTurn(state: GameState): void {
     processCity(state, c, player);
   }
   applyUnitUpkeep(state, player); // empire-wide unit maintenance after city income
+  processTransit(state, player.id); // deliver religious units riding trade routes
+  for (const u of unitsOf(state, player.id)) if (u.inTransit) u.movementLeft = 0; // still travelling
+  if (state.enabledVictories?.has("science")) trackCircumnavigation(state, player.id);
+  if (state.enabledVictories?.has("culture")) accrueInfluence(state, player.id);
   accrueGreatPeople(state, player); // class points -> recruit Great People
   advanceWorks(state, player.id); // specialists labour on public works
   towerBombardment(state, player.id); // towers fire on adjacent enemies
@@ -511,6 +521,27 @@ export function applyCommand(
 
     case "foundReligion": {
       return foundReligion(state, player.id, cmd.cityId, cmd.name, cmd.beliefs);
+    }
+
+    case "buyReligiousUnit":
+      return buyReligiousUnit(state, player.id, cmd.cityId, cmd.unit);
+
+    case "evangelize": {
+      const u = state.units.get(cmd.unitId);
+      if (!u || u.ownerId !== player.id) return fail("not your unit");
+      return evangelize(state, cmd.unitId, cmd.cityId);
+    }
+
+    case "purgeHeresy": {
+      const u = state.units.get(cmd.unitId);
+      if (!u || u.ownerId !== player.id) return fail("not your unit");
+      return purgeHeresy(state, cmd.unitId, cmd.cityId);
+    }
+
+    case "boardTradeRoute": {
+      const u = state.units.get(cmd.unitId);
+      if (!u || u.ownerId !== player.id) return fail("not your unit");
+      return boardTradeRoute(state, cmd.unitId, cmd.routeId);
     }
 
     case "establishTradeRoute": {

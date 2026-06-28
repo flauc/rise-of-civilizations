@@ -454,6 +454,8 @@ export function drawOverlay(
       const from = state.cities.get(r.fromCityId);
       const to = state.cities.get(r.toCityId);
       if (!from || !to) continue;
+      // International routes get a distinct teal caravan track (vs. gold domestic).
+      const intl = !!r.international;
 
       // Resolve the path to screen points, falling back to a straight
       // city-to-city line for legacy routes that lack a stored path.
@@ -491,10 +493,11 @@ export function drawOverlay(
           ctx.lineWidth = Math.max(2, size * 0.1);
           ctx.strokeStyle = "rgba(214,180,120,0.95)";
         } else {
-          // Open country: dashed golden caravan track.
+          // Open country: dashed caravan track — gold for domestic, teal for
+          // international routes so the player can tell them apart at a glance.
           ctx.setLineDash([Math.max(4, size * 0.34), Math.max(3, size * 0.24)]);
           ctx.lineWidth = Math.max(1.5, size * 0.07);
-          ctx.strokeStyle = "rgba(255,206,110,0.9)";
+          ctx.strokeStyle = intl ? "rgba(90,216,224,0.9)" : "rgba(255,206,110,0.9)";
         }
         ctx.stroke();
       }

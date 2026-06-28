@@ -274,3 +274,53 @@ describe("trade routes", () => {
     expect(tradeRouteYield(s, route).gold).toBe(baseYield + 2);
   });
 });
+
+import { ensureContact, relationBetween, declareWar } from "./diplomacy";
+
+describe("international trade routes", () => {
+  function twoCivsWithCities() {
+    const s = createGame({ seed: "trade-intl", cols: 40, rows: 28, barbarians: false, humanSlots: 2, playerCount: 2 });
+    beginTurn(s);
+    const set0 = unitsOf(s, 0).find((u) => u.type === "settler")!;
+    applyCommand(s, { type: "foundCity", unitId: set0.id }, 0);
+    const c0 = citiesOf(s, 0)[0]!;
+    const id = s.nextEntityId++;
+    const c1: City = {
+      id, ownerId: 1, name: "Foreign", col: c0.col + 5, row: c0.row, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(id, c1);
+    ensureContact(s, 0, 1);
+    return { s, c0, c1 };
+  }
+
+  it("a foreign city is only a destination with open borders or an alliance", () => {
+    const { s, c0, c1 } = twoCivsWithCities();
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", c0.col, c0.row));
+    expect(tradeRouteDestinations(s, s.units.get(tid)!).map((c) => c.id)).not.toContain(c1.id);
+    expect(establishTradeRoute(s, tid, c1.id, 0).ok).toBe(false);
+
+    relationBetween(s, 0, 1)!.openBorders = true;
+    expect(tradeRouteDestinations(s, s.units.get(tid)!).map((c) => c.id)).toContain(c1.id);
+    expect(establishTradeRoute(s, tid, c1.id, 0).ok).toBe(true);
+    const route = s.tradeRoutes.find((r) => r.toCityId === c1.id)!;
+    expect(route.international).toBe(true);
+    expect(route.toOwnerId).toBe(1);
+    expect(tradeRouteYield(s, route).gold).toBeGreaterThan(0);
+    expect(tradeRouteYield(s, route).culture).toBeGreaterThanOrEqual(1); // intl exchanges culture
+  });
+
+  it("an international route is severed when war breaks out", () => {
+    const { s, c0, c1 } = twoCivsWithCities();
+    relationBetween(s, 0, 1)!.openBorders = true;
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", c0.col, c0.row));
+    establishTradeRoute(s, tid, c1.id, 0);
+    expect(s.tradeRoutes).toHaveLength(1);
+    declareWar(s, 0, 1);
+    pruneTradeRoutes(s);
+    expect(s.tradeRoutes).toHaveLength(0);
+  });
+});

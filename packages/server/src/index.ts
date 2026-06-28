@@ -68,6 +68,8 @@ async function adminQuery(name: string): Promise<unknown | undefined> {
       return analytics.configBreakdown();
     case "outcomes":
       return analytics.outcomeBreakdown();
+    case "victories":
+      return analytics.victoryBreakdown();
     case "leaderboard":
       return analytics.leaderboard();
     case "votes":
@@ -75,18 +77,19 @@ async function adminQuery(name: string): Promise<unknown | undefined> {
     case "bugReports":
       return analytics.bugReports();
     case "all": {
-      const [overview, sessions, civs, config, outcomes, leaderboard, votes, bugReports] =
+      const [overview, sessions, civs, config, outcomes, victories, leaderboard, votes, bugReports] =
         await Promise.all([
           analytics.overview(),
           analytics.sessionsPerPlayer(),
           analytics.civDistribution(),
           analytics.configBreakdown(),
           analytics.outcomeBreakdown(),
+          analytics.victoryBreakdown(),
           analytics.leaderboard(),
           analytics.voteTotals(),
           analytics.bugReports(),
         ]);
-      return { overview, sessions, civs, config, outcomes, leaderboard, votes, bugReports };
+      return { overview, sessions, civs, config, outcomes, victories, leaderboard, votes, bugReports };
     }
     default:
       return undefined;
@@ -182,6 +185,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         naturalWonders: msg.naturalWonders,
         startingGold: msg.startingGold,
         turnLimit: msg.turnLimit,
+        enabledVictories: msg.enabledVictories,
         aiCivIds: msg.aiCivIds,
         colors: msg.colors,
         password: msg.password,
@@ -224,6 +228,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         naturalWonders: msg.naturalWonders,
         startingGold: msg.startingGold,
         turnLimit: msg.turnLimit,
+        enabledVictories: msg.enabledVictories,
       });
       if ("error" in r) return send(ws, { t: "error", message: r.error });
       broadcastLobby(msg.gameId);

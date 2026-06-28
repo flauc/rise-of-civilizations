@@ -12,11 +12,16 @@ import {
   attitudeLabel,
   reputationOf,
   tradeableLuxuries,
+  tradeableTechs,
   citiesOf,
+  unitsOf,
   RESOURCE_DEFS,
   SPECIALIST_DEFS,
+  TECH_DEFS,
+  UNIT_DEFS,
   type GameState,
   type DealItem,
+  type TechId,
   type Proposal,
   type Relation,
   type TradeRecord,
@@ -159,6 +164,9 @@ function describeItem(it: DealItem): string {
     case "openBorders": return "🚪 Open borders";
     case "pact": return `🤝 ${it.tier.replace("_", " ")} (${it.turns}t)`;
     case "declareWarOn": return `⚔ War on #${it.civId}`;
+    case "tech": return `🔬 ${TECH_DEFS[it.techId as TechId]?.name ?? it.techId}`;
+    case "city": return `🏙 City #${it.cityId}`;
+    case "unit": return it.turns > 0 ? `🪖 Unit #${it.unitId} (loan ${it.turns}t)` : `🪖 Unit #${it.unitId}`;
   }
 }
 function describeItems(items: DealItem[]): string {
@@ -556,11 +564,25 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     const theirLux = tradeableLuxuries(state, cid);
     const mySpec = specialistTypesOf(state, viewerId);
     const theirSpec = specialistTypesOf(state, cid);
+    const myTech = tradeableTechs(state, viewerId, cid);
+    const theirTech = tradeableTechs(state, cid, viewerId);
+    const myCities = citiesOf(state, viewerId);
+    const theirCities = citiesOf(state, cid);
+    const myUnits = unitsOf(state, viewerId);
+    const theirUnits = unitsOf(state, cid);
     const opt = (v: string, label: string) => `<option value="${v}">${label}</option>`;
     const luxSel = (id: string, ids: string[]) =>
       `<select id="${id}">${opt("", "— amenity —")}${ids.map((x) => opt(x, luxName(x))).join("")}</select>`;
     const specSel = (id: string, ids: string[]) =>
       `<select id="${id}">${opt("", "— specialist —")}${ids.map((x) => opt(x, specName(x))).join("")}</select>`;
+    const techSel = (id: string, ids: TechId[]) =>
+      `<select id="${id}">${opt("", "— tech —")}${ids.map((t) => opt(t, TECH_DEFS[t]?.name ?? t)).join("")}</select>`;
+    const citySel = (id: string, cs: { id: number; name: string }[]) =>
+      `<select id="${id}">${opt("", "— city —")}${cs.map((c) => opt(String(c.id), c.name)).join("")}</select>`;
+    const unitSel = (id: string, us: { id: number; type: string }[]) =>
+      `<select id="${id}">${opt("", "— unit —")}${us
+        .map((u) => opt(String(u.id), `${UNIT_DEFS[u.type as keyof typeof UNIT_DEFS]?.name ?? u.type} #${u.id}`))
+        .join("")}</select>`;
     // Hide concessions already in force (open borders / a pact of equal-or-higher tier).
     const rank: Record<string, number> = { none: 0, non_aggression: 1, defensive: 2, alliance: 3 };
     const curPact = rank[rel?.pact ?? "none"] ?? 0;
@@ -574,6 +596,9 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       `<label>🪙 <input type="number" id="give-gold" min="0" max="${yourGold}" value="0"/></label>` +
       (myLux.length ? `<label>🍷 ${luxSel("give-lux", myLux)}</label>` : "") +
       (mySpec.length ? `<label>🛠️ ${specSel("give-spec", mySpec)}</label>` : "") +
+      (myTech.length ? `<label>🔬 ${techSel("give-tech", myTech)}</label>` : "") +
+      (myCities.length ? `<label>🏙 ${citySel("give-city", myCities)}</label>` : "") +
+      (myUnits.length ? `<label>🪖 ${unitSel("give-unit", myUnits)} <input type="checkbox" id="give-unit-lend"/>loan</label>` : "") +
       (war ? `<label><input type="checkbox" id="deal-peace"/> 🕊 Peace</label>` : "") +
       (rel?.openBorders ? "" : `<label><input type="checkbox" id="deal-ob"/> 🚪 Open borders</label>`) +
       `</div>` +
@@ -581,6 +606,9 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       `<label>🪙 <input type="number" id="want-gold" min="0" value="0"/></label>` +
       (theirLux.length ? `<label>🍷 ${luxSel("want-lux", theirLux)}</label>` : "") +
       (theirSpec.length ? `<label>🛠️ ${specSel("want-spec", theirSpec)}</label>` : "") +
+      (theirTech.length ? `<label>🔬 ${techSel("want-tech", theirTech)}</label>` : "") +
+      (theirCities.length ? `<label>🏙 ${citySel("want-city", theirCities)}</label>` : "") +
+      (theirUnits.length ? `<label>🪖 ${unitSel("want-unit", theirUnits)} <input type="checkbox" id="want-unit-lend"/>loan</label>` : "") +
       `</div>` +
       `</div>` +
       `<label class="dp-sub" style="display:flex;gap:6px;align-items:center;margin-top:6px">Timed items last <input type="number" id="deal-turns" min="5" max="60" value="20" style="width:54px"/> turns</label>` +
@@ -607,6 +635,12 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     const wl = sel("want-lux"); if (wl) want.push({ kind: "resource", id: wl, turns });
     const gs = sel("give-spec"); if (gs) give.push({ kind: "specialist", specialistType: gs, turns });
     const ws = sel("want-spec"); if (ws) want.push({ kind: "specialist", specialistType: ws, turns });
+    const gt = sel("give-tech"); if (gt) give.push({ kind: "tech", techId: gt });
+    const wt = sel("want-tech"); if (wt) want.push({ kind: "tech", techId: wt });
+    const gc = sel("give-city"); if (gc) give.push({ kind: "city", cityId: Number(gc) });
+    const wc = sel("want-city"); if (wc) want.push({ kind: "city", cityId: Number(wc) });
+    const gu = sel("give-unit"); if (gu) give.push({ kind: "unit", unitId: Number(gu), turns: chk("give-unit-lend") ? turns : 0 });
+    const wu = sel("want-unit"); if (wu) want.push({ kind: "unit", unitId: Number(wu), turns: chk("want-unit-lend") ? turns : 0 });
     if (chk("deal-peace")) give.push({ kind: "peace" });
     if (chk("deal-ob")) give.push({ kind: "openBorders" });
     const tier = sel("deal-pact");

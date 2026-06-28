@@ -167,7 +167,15 @@ function persistActive(): void {
  */
 export type GameSetup = Pick<
   SessionStartMeta,
-  "mapType" | "mapSize" | "startingGold" | "naturalWonders" | "barbarianLevel" | "aiCivIds" | "legends" | "turnLimit"
+  | "mapType"
+  | "mapSize"
+  | "startingGold"
+  | "naturalWonders"
+  | "barbarianLevel"
+  | "aiCivIds"
+  | "legends"
+  | "turnLimit"
+  | "enabledVictories"
 >;
 
 export interface SessionStartMeta {
@@ -186,6 +194,8 @@ export interface SessionStartMeta {
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit?: number;
   aiCivIds?: (string | null)[];
+  /** Decisive win conditions enabled this game. */
+  enabledVictories?: string[];
 }
 
 /**
@@ -229,6 +239,7 @@ export function trackSessionStart(meta: SessionStartMeta): string {
     startingGold: meta.startingGold,
     turnLimit: meta.turnLimit,
     aiCivIds: meta.aiCivIds,
+    enabledVictories: meta.enabledVictories,
     ts: Date.now(),
   });
   return sessionId;

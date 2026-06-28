@@ -13,6 +13,7 @@ import type {
   LeaderboardEntry,
   OutcomeBreakdown,
   PlayerSessionStats,
+  VictoryTypeCount,
   VoteTotal,
 } from "@roc/shared";
 
@@ -25,6 +26,7 @@ interface AllData {
   civs: CivCount[];
   config: ConfigBreakdown;
   outcomes: OutcomeBreakdown;
+  victories: VictoryTypeCount[];
   leaderboard: LeaderboardEntry[];
   votes: VoteTotal[];
   bugReports: BugReportSummary[];
@@ -187,6 +189,14 @@ function dashboardView(d: AllData): void {
         }
       </section>
       <section>
+        <h2>Victory types</h2>
+        ${
+          d.victories.length === 0
+            ? `<div class="muted">No decided games yet.</div>`
+            : barList(d.victories.map((v) => ({ label: `${titleCase(v.condition)} (W ${v.wins} / L ${v.losses})`, value: v.wins + v.losses })))
+        }
+      </section>
+      <section>
         <h2>Civilizations picked</h2>
         ${
           d.civs.length === 0
@@ -220,6 +230,8 @@ function dashboardView(d: AllData): void {
                   { label: "Natural wonders", value: d.config.naturalWonders.on },
                   { label: "Legends (heroes)", value: d.config.legends.on },
                 ].map((t) => ({ label: t.label, count: t.value })))}
+                <div class="sub-h">Victory conditions enabled</div>
+                ${cfgBars(d.config.enabledVictories ?? [])}
               </div>
             </div>`
       }

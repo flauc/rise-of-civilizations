@@ -7,10 +7,11 @@ import {
   relationBetween, haveMet, atWar, attitudeScore,
   declareWar, makePeace, gift, proposeDeal, demandTribute, finalizeDeal,
   respondProposal, militaryPower, aiInitiateTrade, aiConsiderDiplomacy,
-  ensureContact, foreignTerritoryOwner, denounce,
+  ensureContact, foreignTerritoryOwner, denounce, diplomacyTick, tradeableTechs,
 } from "./diplomacy";
+import { beginTurn } from "./commands";
 import { makeUnit } from "./state";
-import { areEnemies, unitsOf, type GameState } from "./state";
+import { areEnemies, citiesOf, unitsOf, type GameState } from "./state";
 
 function twoCivGame(): GameState {
   // 1 human (player 0) + 1 AI (player 1), no barbarians.
@@ -348,5 +349,76 @@ describe("diplomacy", () => {
     expect(atWar(s, 0, 1)).toBe(true);
     expect(applyCommand(s, { type: "acknowledgeContact", otherId: 1 }, 0).ok).toBe(true);
     expect(s.contactQueue.length).toBe(0);
+  });
+});
+
+describe("diplomacy — trading tech, cities, and units", () => {
+  // Two humans so accept→finalize is deterministic (no AI valuation in the way).
+  function twoHumans(): GameState {
+    const s = createGame({ seed: "dip-trade", cols: 40, rows: 28, barbarians: false, humanSlots: 2, playerCount: 2 });
+    beginTurn(s);
+    return s;
+  }
+  function foundFor(s: GameState, owner: number) {
+    const settler = unitsOf(s, owner).find((u) => u.type === "settler")!;
+    applyCommand(s, { type: "foundCity", unitId: settler.id }, owner);
+    return citiesOf(s, owner)[0]!;
+  }
+  /** Strike a human↔human deal: propose, accept, finalize. */
+  function strike(s: GameState, give: Parameters<typeof proposeDeal>[3], want: Parameters<typeof proposeDeal>[4]) {
+    expect(proposeDeal(s, 0, 1, give, want).ok).toBe(true);
+    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(respondProposal(s, 1, prop.id, true).ok).toBe(true);
+    expect(finalizeDeal(s, 0, prop.id, true).ok).toBe(true);
+  }
+
+  it("transfers a researched technology to the other civ (non-rival)", () => {
+    const s = twoHumans();
+    ensureContact(s, 0, 1);
+    s.players[0]!.researched.add("fire_hardening");
+    expect(s.players[1]!.researched.has("fire_hardening")).toBe(false);
+    strike(s, [{ kind: "tech", techId: "fire_hardening" }], []);
+    expect(s.players[1]!.researched.has("fire_hardening")).toBe(true);
+    expect(s.players[0]!.researched.has("fire_hardening")).toBe(true); // giver keeps it
+  });
+
+  it("tradeableTechs offers only techs the receiver lacks but can support", () => {
+    const s = twoHumans();
+    s.players[0]!.researched.add("fire_hardening");
+    const offerable = tradeableTechs(s, 0, 1);
+    expect(offerable).toContain("fire_hardening");
+    s.players[1]!.researched.add("fire_hardening");
+    expect(tradeableTechs(s, 0, 1)).not.toContain("fire_hardening");
+  });
+
+  it("cedes a city to the other civ", () => {
+    const s = twoHumans();
+    ensureContact(s, 0, 1);
+    foundFor(s, 1); // give p1 a city so it isn't wiped out
+    const city = foundFor(s, 0);
+    strike(s, [{ kind: "city", cityId: city.id }], []);
+    expect(s.cities.get(city.id)!.ownerId).toBe(1);
+  });
+
+  it("sells a unit (permanent transfer)", () => {
+    const s = twoHumans();
+    ensureContact(s, 0, 1);
+    const unit = unitsOf(s, 0).find((u) => u.type !== "settler")!;
+    strike(s, [{ kind: "unit", unitId: unit.id, turns: 0 }], [{ kind: "gold", amount: 5 }]);
+    s.players[1]!.gold += 5; // ensure payable
+    expect(s.units.get(unit.id)!.ownerId).toBe(1);
+  });
+
+  it("lends a unit that reverts to its owner when the loan expires", () => {
+    const s = twoHumans();
+    ensureContact(s, 0, 1);
+    const unit = unitsOf(s, 0).find((u) => u.type !== "settler")!;
+    strike(s, [{ kind: "unit", unitId: unit.id, turns: 5 }], []);
+    expect(s.units.get(unit.id)!.ownerId).toBe(1); // lent now
+    const rel = relationBetween(s, 0, 1)!;
+    expect(rel.deals.some((d) => d.item.kind === "unit" && d.unitId === unit.id)).toBe(true);
+    s.turn += 5; // loan term elapses
+    diplomacyTick(s);
+    expect(s.units.get(unit.id)!.ownerId).toBe(0); // returned
   });
 });

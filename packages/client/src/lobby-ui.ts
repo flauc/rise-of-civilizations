@@ -10,11 +10,13 @@ import { createChangelog, CURRENT_VERSION } from "./changelog";
 import {
   CIVILIZATIONS,
   PLAYER_COLORS,
+  TOGGLEABLE_VICTORIES,
   type GameSummary,
   type LobbyRoom,
   type MapType,
   type SerializedState,
   type ServerMessage,
+  type VictoryKind,
 } from "@roc/sim";
 import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, startingConditionsLine, wireUuImages, wireUuDetail } from "./unique-unit";
 import { deleteSave, exportSave, importSave, listSaves, loadSave, type SaveRecord } from "./save-db";
@@ -88,6 +90,7 @@ interface MenuState {
     legends: boolean;
     startingGold: StartingGold;
     turnLimit: number;
+    enabledVictories: VictoryKind[];
   };
   mp: {
     url: string;
@@ -101,6 +104,7 @@ interface MenuState {
     userId: string;
     naturalWonders: boolean;
     startingGold: StartingGold;
+    enabledVictories: VictoryKind[];
   };
 }
 
@@ -175,6 +179,46 @@ function turnLimitLabel(value: number): string {
   return TURN_LIMIT_OPTIONS.find((o) => o.value === value)?.label ?? `${value} turns`;
 }
 
+/** Display labels for the toggleable decisive victories. */
+const VICTORY_LABELS: Record<VictoryKind, string> = {
+  domination: "⚔️ Domination",
+  religious: "☮️ Religious",
+  science: "🔬 Science",
+  culture: "🎭 Culture",
+  economic: "🪙 Economic",
+  score: "🏆 Score",
+  extinction: "Extinction",
+};
+
+/** A checklist of the toggleable decisive victories (Score/Extinction always on). */
+function victoryChecklist(idPrefix: string, enabled: VictoryKind[]): string {
+  const boxes = TOGGLEABLE_VICTORIES.map((v) => {
+    const checked = enabled.includes(v) ? " checked" : "";
+    return `<label class="vic-check"><input type="checkbox" data-vic="${v}" id="${idPrefix}-${v}"${checked}/> ${escapeHtml(
+      VICTORY_LABELS[v],
+    )}</label>`;
+  }).join("");
+  return `<div class="vic-checklist" id="${idPrefix}">${boxes}</div>`;
+}
+
+/** Read the checked victories from a checklist; Score is always implicitly on. */
+function readVictoryChecklist(idPrefix: string): VictoryKind[] {
+  const root = document.getElementById(idPrefix);
+  if (!root) return [...TOGGLEABLE_VICTORIES];
+  const out: VictoryKind[] = [];
+  for (const v of TOGGLEABLE_VICTORIES) {
+    const box = root.querySelector<HTMLInputElement>(`input[data-vic="${v}"]`);
+    if (box?.checked) out.push(v);
+  }
+  return out;
+}
+
+/** Read-only summary of enabled victories for the MP joiner view. */
+function victorySummary(enabled: VictoryKind[]): string {
+  const on = TOGGLEABLE_VICTORIES.filter((v) => enabled.includes(v)).map((v) => VICTORY_LABELS[v]);
+  return on.length ? on.join(" · ") + " · 🏆 Score" : "🏆 Score only";
+}
+
 /** A simple On/Off dropdown for a boolean game option. */
 function onOffSelect(id: string, value: boolean): string {
   const opts = [
@@ -230,6 +274,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       legends: true,
       startingGold: "balanced",
       turnLimit: DEFAULT_TURN_LIMIT,
+      enabledVictories: [...TOGGLEABLE_VICTORIES],
     },
     mp: {
       url: DEFAULT_WS,
@@ -242,6 +287,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       userId: "",
       naturalWonders: true,
       startingGold: "balanced",
+      enabledVictories: [...TOGGLEABLE_VICTORIES],
     },
   };
 
@@ -290,6 +336,10 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .menu-hint{color:#b8aa8d;font-size:12px;margin-top:6px;line-height:1.4}
     .menu-field{display:flex;flex-direction:column;gap:8px;margin-top:8px}
     .menu-field>span{color:#e8dcc5}
+    .vic-checklist{display:flex;gap:6px 14px;flex-wrap:wrap}
+    .vic-check{display:flex;align-items:center;gap:6px;color:#cdbf9f;font-size:13px;cursor:pointer;white-space:nowrap}
+    .vic-check input{accent-color:#c9a227;cursor:pointer}
+    .mp-opt-wide{grid-column:1/-1}
     .chips{display:flex;gap:6px;flex-wrap:wrap}
     .chip{font:inherit;font-size:12px;color:#b8aa8d;background:#1f1c14;border:1px solid var(--edge);border-radius:999px;padding:6px 12px;cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s}
     .chip:hover{border-color:#c9a227;color:#f0d878}
@@ -807,6 +857,11 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           ${goldChips("sp-gold", state.sp.startingGold)}
         </div>
         <div class="menu-hint" id="sp-gold-desc"></div>
+        <div class="menu-field">
+          <span>Victory conditions</span>
+          ${victoryChecklist("sp-victories", state.sp.enabledVictories)}
+        </div>
+        <div class="menu-hint">Score (at the turn limit) and elimination always apply. Disabled paths can't be won.</div>
       </div>
       <div class="menu-back-row">
         <button class="menu-btn secondary" id="back2">Back</button>
@@ -948,6 +1003,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       const spWonders = $select("#sp-wonders").value === "on";
       const spLegends = $select("#sp-legends").value === "on";
       const spTurnLimit = Number($select("#sp-turnlimit").value);
+      const spVictories = readVictoryChecklist("sp-victories");
+      state.sp.enabledVictories = spVictories;
       const spAiCivIds = state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId));
       onStart(
         new LocalSession({
@@ -961,6 +1018,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           legends: spLegends,
           startingGold: state.sp.startingGold,
           turnLimit: spTurnLimit,
+          enabledVictories: spVictories,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
         {
@@ -972,6 +1030,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           aiCivIds: spAiCivIds,
           legends: spLegends,
           turnLimit: spTurnLimit,
+          enabledVictories: spVictories,
         },
       );
     });
@@ -1151,6 +1210,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         barbarianLevel: "normal",
         aiCivIds: [],
         turnLimit: DEFAULT_TURN_LIMIT,
+        enabledVictories: [...TOGGLEABLE_VICTORIES],
       };
       mpSession?.send({
         t: "createGame",
@@ -1233,6 +1293,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
             <div class="mp-opt"><span>Barbarians</span>${barbarianSelect("rm-barb", room.barbarians)}</div>
             <div class="mp-opt"><span>Natural wonders</span>${onOffSelect("rm-wonders", room.naturalWonders)}</div>
             <div class="mp-opt"><span>Starting treasury</span>${goldChips("rm-gold", room.startingGold)}</div>
+            <div class="mp-opt mp-opt-wide"><span>Victory conditions</span>${victoryChecklist("rm-victories", room.enabledVictories ?? [...TOGGLEABLE_VICTORIES])}</div>
           </div>`
         : `
           <div class="mp-settings-readonly">
@@ -1241,6 +1302,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
             <span><b>Barbarians:</b> ${escapeHtml(room.barbarians)}</span>
             <span><b>Natural wonders:</b> ${room.naturalWonders ? "On" : "Off"}</span>
             <span><b>Treasury:</b> ${escapeHtml(room.startingGold)}</span>
+            <span><b>Victories:</b> ${escapeHtml(victorySummary(room.enabledVictories ?? [...TOGGLEABLE_VICTORIES]))}</span>
           </div>`;
 
       const slotCard = (s: typeof room.slots[number]): string => {
@@ -1353,6 +1415,13 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         );
         body.querySelectorAll<HTMLButtonElement>("#rm-gold .chip").forEach((chip) =>
           chip.addEventListener("click", () => configure({ startingGold: chip.dataset.gold })),
+        );
+        body.querySelectorAll<HTMLInputElement>('#rm-victories input[data-vic]').forEach((box) =>
+          box.addEventListener("change", () => {
+            const vics = readVictoryChecklist("rm-victories");
+            if (mpSetup) mpSetup.enabledVictories = vics;
+            configure({ enabledVictories: vics });
+          }),
         );
         body.querySelector<HTMLButtonElement>("#mp-add-human")?.addEventListener("click", () =>
           mpSession?.send({ t: "addSlot", gameId: room.gameId, kind: "human" }),

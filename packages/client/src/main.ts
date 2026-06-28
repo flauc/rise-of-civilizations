@@ -202,6 +202,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         naturalWonders: setup.naturalWonders,
         startingGold: setup.startingGold,
         aiCivIds: setup.aiCivIds,
+        enabledVictories: setup.enabledVictories,
       });
     }
     noteTurns(st().turn);
@@ -398,6 +399,10 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onSetGovernment: (governmentId) => session.order({ type: "setGovernment", governmentId }),
     onTogglePolicy: (policyId) => session.order({ type: "togglePolicy", policyId }),
     onFoundReligion: (cityId, name, beliefs) => session.order({ type: "foundReligion", cityId, name, beliefs }),
+    onBuyReligiousUnit: (cityId, unit) => session.order({ type: "buyReligiousUnit", cityId, unit }),
+    onEvangelize: (unitId, cityId) => session.order({ type: "evangelize", unitId, cityId }),
+    onPurgeHeresy: (unitId, cityId) => session.order({ type: "purgeHeresy", unitId, cityId }),
+    onBoardTradeRoute: (unitId, routeId) => session.order({ type: "boardTradeRoute", unitId, routeId }),
     onActivateGreatPerson: (greatPersonId) => session.order({ type: "activateGreatPerson", greatPersonId }),
     onRecruitLegend: (legendId) => session.order({ type: "recruitLegend", legendId }),
     onEstablishTrade: (destCityId) => {

@@ -21,6 +21,8 @@ import {
   type PlayerView,
   type SerializedState,
   type ServerMessage,
+  type VictoryKind,
+  TOGGLEABLE_VICTORIES,
 } from "@roc/sim";
 import type { TerrainType, Tile } from "@roc/shared";
 import { applyCheat, type CheatAction, type CheatResult } from "./god-mode";
@@ -66,6 +68,8 @@ export interface LocalGameOptions {
   startingGold?: "tight" | "balanced" | "generous";
   /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
   turnLimit?: number;
+  /** Decisive win conditions enabled; omitted = all toggleable ones. */
+  enabledVictories?: VictoryKind[];
   /** The human player's civilization. */
   civId?: string;
   /** Civ id per AI opponent; null/undefined = a random unique civ. */
@@ -103,6 +107,7 @@ export class LocalSession implements Session {
         naturalWonders: opts.naturalWonders ?? true,
         startingGold: opts.startingGold ?? "balanced",
         turnLimit: opts.turnLimit ?? 120,
+        enabledVictories: opts.enabledVictories,
         civIds,
         colors: opts.colors ?? undefined,
       });
@@ -227,6 +232,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     log: view.log,
     gameOver: view.gameOver,
     turnLimit: view.turnLimit ?? 0,
+    enabledVictories: new Set(view.enabledVictories ?? TOGGLEABLE_VICTORIES),
     religions: view.religions,
     tradeRoutes: view.tradeRoutes ?? [],
     works: view.works ?? [],

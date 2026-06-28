@@ -17,32 +17,12 @@ interface Milestone {
 }
 
 /**
- * The milestone catalogue. The three victory types lead the planned roadmap
- * (Phase 1–3), but every entry — including the geographic maps — is votable, and
- * the board is sorted by votes rather than this order.
+ * The milestone catalogue of planned, not-yet-built features. Every entry is
+ * votable and the board is sorted by votes rather than this order. (The Science,
+ * Religious, Economic — and Culture — victories shipped in v0.2.0 and so are no
+ * longer listed here.)
  */
 const MILESTONES: Milestone[] = [
-  {
-    id: "victory-science",
-    title: "Scientific Victory",
-    desc: "Race up the tech tree and win through discovery — culminate your research in a project no rival can match.",
-    tag: "Victory",
-    phase: "Phase 1",
-  },
-  {
-    id: "victory-religion",
-    title: "Religious Victory",
-    desc: "Spread your faith across the world. Convert the majority of cities to win a religious history victory.",
-    tag: "Victory",
-    phase: "Phase 2",
-  },
-  {
-    id: "victory-economic",
-    title: "Economic Victory",
-    desc: "Dominate trade and the treasury. Build an economic empire that outproduces and outspends every rival.",
-    tag: "Victory",
-    phase: "Phase 3",
-  },
   {
     id: "combat-system",
     title: "Improved Combat System",
