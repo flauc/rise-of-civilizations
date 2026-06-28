@@ -60,6 +60,10 @@
         display: block;
         width: 100vw;
         height: 100vh;
+        /* dvh tracks the *visible* viewport as the mobile browser's toolbar
+           shows/hides; plain vh is locked to the larger viewport, leaving a
+           black strip below the map. 100vh stays as the fallback above. */
+        height: 100dvh;
         touch-action: none;
         background: var(--bg);
       }
@@ -91,6 +95,25 @@
         background: linear-gradient(135deg, var(--accent-bright), var(--accent));
         color: #0f0e0b;
         box-shadow: 0 8px 24px rgba(201, 162, 39, 0.25);
+      }
+      /* Tile-improvement build buttons: name on top, yield preview beneath. */
+      .imp-btn {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        border-radius: 12px;
+        padding: 6px 12px;
+        text-align: left;
+      }
+      .imp-btn .imp-name {
+        line-height: 1.15;
+      }
+      .imp-prev {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0;
+        opacity: 0.8;
       }
       .panel {
         position: fixed;
@@ -310,6 +333,26 @@
       }
       .panel.collapsed .ip-detail {
         display: none;
+      }
+      /* Quick-cast ability icons — sit inline in the collapsed summary bar (beside
+         the name/stats) so a unit's abilities can be fired without expanding and
+         without adding any extra height. Hidden when expanded, where the full
+         labelled buttons live. */
+      .ip-quick {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .panel:not(.collapsed) .ip-quick {
+        display: none;
+      }
+      .ip-quick-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3px 5px;
+        line-height: 1;
       }
       .panel:not(.collapsed) .ip-detail {
         margin-top: 10px;

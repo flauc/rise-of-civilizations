@@ -12,12 +12,11 @@ import { isPassableLand, isRough } from "./terrain";
 import { enemyStructureBlocks, unitSight } from "./movement";
 import { resolveAttack, applyDirectDamage, secondaryRangedDamage, unitMaxHp } from "./combat";
 import { updateExplored } from "./visibility";
-import { effectiveAbilities } from "./civs";
-import { canHideHere, breakCover, revealHiddenInSight } from "./stealth";
+import { effectiveAbilities, unitDisplayName } from "./civs";
+import { canHideHere, revealHiddenInSight } from "./stealth";
 import {
   ACTIVE_ABILITY_DEFS,
   UNIT_DEFS,
-  isRanged,
   type ActiveAbilityId,
   type StanceId,
 } from "./content";
@@ -281,7 +280,7 @@ export function useAbility(
       if (!res.ok) return res;
       const splash = Math.round(10 * (1 + 0.05 * (unit.level - 1)));
       for (const v of splashVictims) if (state.units.has(v.id)) applyDirectDamage(state, v, splash);
-      if (rampage) log(state, `${UNIT_DEFS[unit.type].name} rampaged!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      if (rampage) log(state, `${unitDisplayName(state, unit)} rampaged!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
       if (state.units.has(unit.id) && tileFree(state, unit, behind.col, behind.row)) {
         unit.col = behind.col;
         unit.row = behind.row;

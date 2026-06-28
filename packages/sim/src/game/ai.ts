@@ -36,7 +36,8 @@ import {
 import { offsetNeighbors } from "./movement";
 import { RESOURCE_DEFS, resourceActive } from "./resources";
 import { isPassableLand, isWaterTerrain, tileYields } from "./terrain";
-import { UNIT_DEFS, isMilitary, isRanged, type TechId, type TrainingClass, type UnitTypeId } from "./content";
+import { BARBARIAN_DIPLOMACY_TECH, UNIT_DEFS, isMilitary, isRanged, type TechId, type TrainingClass, type UnitTypeId } from "./content";
+import { barbarianBribeCost, barbarianRecruitCost, canParleyWith, isBarbarianPacified } from "./bribery";
 import {
   citiesOf,
   cityAt,
@@ -281,6 +282,36 @@ function nearestUnexplored(state: GameState, unit: Unit, pid: number): { col: nu
   return best;
 }
 
+/**
+ * Nearest map feature of `kind` this player has already discovered. Tribal villages
+ * hand any unit that steps on them a free perk (tech/gold/units/morale…); barbarian
+ * camps are cleared by a military unit for gold and, crucially, to shut off the
+ * raider spawns. We only target tiles we've explored, so the AI hunts what it has
+ * legitimately found rather than cheating with knowledge of the fogged map.
+ */
+function nearestFeature(
+  state: GameState,
+  unit: Unit,
+  pid: number,
+  kind: "village" | "barb_camp",
+): { col: number; row: number } | null {
+  const me = playerById(state, pid);
+  if (!me) return null;
+  let best: { col: number; row: number } | null = null;
+  let bestD = Infinity;
+  const from = ax(unit);
+  for (const t of state.map.tiles) {
+    if (t.feature !== kind) continue;
+    if (!me.explored.has(`${t.col},${t.row}`)) continue;
+    const d = axialDistance(from, ax({ col: t.col, row: t.row }));
+    if (d < bestD) {
+      bestD = d;
+      best = { col: t.col, row: t.row };
+    }
+  }
+  return best;
+}
+
 /** When not at war, wander toward the unexplored frontier instead of idling. */
 function aiExplore(state: GameState, unit: Unit, pid: number): void {
   const goal = nearestUnexplored(state, unit, pid);
@@ -319,9 +350,9 @@ function exploredFraction(state: GameState, pid: number): number {
  *  (every city adds population to spend on army, settlers, science and gold), so
  *  the AI now expands far more ambitiously — `findSettleSpot` caps it by real land. */
 function targetCityCount(p: DiploPersonality): number {
-  if (p.aggression > 0.7) return 6; // warmongers settle a core, then conquer the rest
-  if (p.aggression < 0.45) return 12; // peaceful builders blanket the map
-  return 9;
+  if (p.aggression > 0.7) return 8; // warmongers settle a strong core, then conquer the rest
+  if (p.aggression < 0.45) return 16; // peaceful builders blanket the map
+  return 12;
 }
 
 /**
@@ -395,34 +426,50 @@ function bestTrainableMilitary(trainable: UnitTypeId[]): UnitTypeId | null {
  * and military are all trained here now (each costs a population point). Paces itself
  * by keeping some citizens working unless under threat.
  */
-function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPersonality, threatened: boolean): void {
-  // Don't drain a city below this many citizens just to make units (relaxed in war).
-  const keepPop = threatened ? 1 : 2;
-  if (city.population <= keepPop) return;
+function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPersonality, threatened: boolean, escortShortfall = false): void {
   const trainable = availableTraining(state, player, city);
   const units = unitsOf(state, player.id);
   const has = (t: string) => units.some((u) => u.type === t);
   const cityCount = citiesOf(state, player.id).length;
+  const settlersOut = units.filter((u) => u.type === "settler").length;
+  const expanding = !threatened && cityCount + settlersOut < targetCityCount(p);
+  // Opening play: get the lone capital's first settler out the door immediately — it
+  // founds a cheap, safe second city while the starting Warriors screen it. We let the
+  // capital dip to a single citizen for this one settler (it regrows once it leaves),
+  // then expansion proceeds from the healthier pop-3 gate below.
+  const openingSettler = false; void settlersOut;
+
   const tryTrain = (type: UnitTypeId): boolean =>
     trainable.includes(type) &&
     applyCommand(state, { type: "startTraining", cityId: city.id, unit: type }, player.id).ok;
 
-  // Civilians: a scout early, settlers to expand at peace, a trader to link cities.
+  // Don't drain a city below this many citizens just to make units (relaxed in war and
+  // for that all-important opening settler).
+  const keepPop = threatened || openingSettler ? 1 : 2;
+  if (city.population <= keepPop) return;
+
+  // The opening settler takes precedence over everything — beeline the second city.
+  if (openingSettler && city.population >= 2 && tryTrain("settler")) return;
+  // Civilians: a scout early (we usually start with one), a trader to link cities.
   if (!threatened && exploredFraction(state, player.id) < 0.45 && !has("scout") && tryTrain("scout")) return;
   // Expand aggressively: any decent-sized city may build a settler, and several can
   // do so at once, until the empire (cities already built + settlers en route) hits
   // its target. This is the AI's single biggest lever now that units cost population.
-  const settlersOut = units.filter((u) => u.type === "settler").length;
-  if (!threatened && cityCount + settlersOut < targetCityCount(p) && city.population >= 3 && tryTrain("settler")) return;
+  if (expanding && city.population >= 3 && tryTrain("settler")) return;
   // Keep a trader heading out whenever we have fewer routes than cities (links the
   // empire and, with open borders, opens lucrative international trade).
   const routeCount = state.tradeRoutes.filter((r) => r.ownerId === player.id).length;
   if (cityCount >= 2 && !has("trader") && routeCount < cityCount && tryTrain("trader")) return;
 
   // Military: train toward a target army size (one unit per city per turn). Keep a
-  // standing defence in peace and a real campaign army in war.
+  // standing defence in peace and a real campaign army in war. Warlike civs hold a
+  // bigger peacetime host so they can actually threaten neighbours, not just defend.
   const milCount = units.filter((u) => isMilitary(u.type)).length;
-  const desired = threatened ? cityCount * 2 + 2 : Math.max(cityCount + 1, 3);
+  // A settler stranded without a guard bumps the target so a city musters an extra
+  // soldier to send after it.
+  const desired = (threatened
+    ? cityCount * 2 + 2
+    : Math.max(cityCount + (p.aggression > 0.6 ? 3 : 2), 4)) + (escortShortfall ? 2 : 0);
   if (milCount < desired) {
     const type = bestTrainableMilitary(trainable);
     if (type) tryTrain(type);
@@ -456,10 +503,52 @@ function settleScore(state: GameState, col: number, row: number): number {
   return s;
 }
 
-function findSettleSpot(state: GameState, unit: Unit, pid: number): { col: number; row: number } | null {
+/** Tiles the AI KNOWS hold a barbarian threat: a discovered camp, or a barbarian band
+ *  standing on a tile it has explored. Gated on `explored` so the AI plans around the
+ *  raiders it has actually seen, not ones hidden in the fog (no omniscient routing). */
+function knownBarbThreats(state: GameState, pid: number): { col: number; row: number }[] {
+  const me = playerById(state, pid);
+  if (!me) return [];
+  const out: { col: number; row: number }[] = [];
+  for (const u of state.units.values()) {
+    if (!playerById(state, u.ownerId)?.isBarbarian) continue;
+    if (me.explored.has(`${u.col},${u.row}`)) out.push({ col: u.col, row: u.row });
+  }
+  for (const t of state.map.tiles) {
+    if (t.feature === "barb_camp" && me.explored.has(`${t.col},${t.row}`)) out.push({ col: t.col, row: t.row });
+  }
+  return out;
+}
+
+/** A chosen city site plus whether it (and its approach) looks clear of known raiders. */
+export interface SettlePlan {
+  col: number;
+  row: number;
+  safe: boolean;
+}
+
+/** How close a known barbarian threat may be before a site counts as "exposed". */
+const SETTLE_DANGER_RADIUS = 3;
+/** A safe site is taken over the best one as long as it's within this much quality. */
+const SETTLE_SAFE_MARGIN = 6;
+
+/**
+ * Choose where a settler should found, preferring ground clear of barbarians. We rank
+ * candidate sites by land quality (minus a trek discount), then:
+ *  - if the best site is clear of known raiders, take it (no escort needed);
+ *  - if it's exposed but a nearly-as-good *safe* site exists, take the safe one instead;
+ *  - only when the best land is unavoidably in harm's way do we take it and flag it
+ *    unsafe, so the turn planner knows to send a guard along.
+ */
+export function planSettle(state: GameState, unit: Unit, pid: number): SettlePlan | null {
   const cities = [...state.cities.values()];
+  const threats = knownBarbThreats(state, pid);
+  const exposed = (col: number, row: number) =>
+    threats.some((t) => axialDistance(ax({ col, row }), ax(t)) <= SETTLE_DANGER_RADIUS);
   let best: { col: number; row: number } | null = null;
   let bestValue = -Infinity;
+  let safeBest: { col: number; row: number } | null = null;
+  let safeBestValue = -Infinity;
   for (let dr = -6; dr <= 6; dr++) {
     for (let dc = -6; dc <= 6; dc++) {
       const col = unit.col + dc;
@@ -470,24 +559,55 @@ function findSettleSpot(state: GameState, unit: Unit, pid: number): { col: numbe
       if (cities.some((c) => axialDistance(here, ax(c)) < 3)) continue;
       if (unitAt(state, col, row) && !(col === unit.col && row === unit.row)) continue;
       const d = axialDistance(ax(unit), here);
-      // Reward good land, but discount the trek to reach it so settlers don't roam forever.
+      // Reward good land, but discount the trek to reach it so settlers don't roam
+      // forever (measured: settling nearer founds more cities than chasing far land,
+      // since a long, undefended march just feeds barbarians a free settler).
       const value = settleScore(state, col, row) - d * 1.5;
       if (value > bestValue) {
         bestValue = value;
         best = { col, row };
       }
+      if (!exposed(col, row) && value > safeBestValue) {
+        safeBestValue = value;
+        safeBest = { col, row };
+      }
     }
   }
-  return best;
+  if (!best) return null;
+  // A safe site that's almost as good as the best is worth the small downgrade.
+  if (safeBest && safeBestValue >= bestValue - SETTLE_SAFE_MARGIN) {
+    return { ...safeBest, safe: true };
+  }
+  // The best land is unavoidably exposed — take it, but it warrants an escort.
+  return { ...best, safe: !exposed(best.col, best.row) };
 }
 
-function aiSettler(state: GameState, unit: Unit, pid: number): void {
+function aiSettler(state: GameState, unit: Unit, pid: number, plan?: SettlePlan | null): void {
+  // Settlers are defenceless and a lost one squanders a whole city's worth of effort
+  // (the chief reason the AI under-expands on barbarian-infested maps). If a hostile
+  // is closing in, settle on the spot if we possibly can, else pull back toward the
+  // nearest friendly city until the coast is clear — never walk into the raiders.
+  const threat = nearestHostile(state, unit, pid);
+  if (threat && axialDistance(ax(unit), ax(threat)) <= 3) {
+    if (applyCommand(state, { type: "foundCity", unitId: unit.id }, pid).ok) return;
+    const home = citiesOf(state, pid)
+      .map((c) => ({ col: c.col, row: c.row, d: axialDistance(ax(unit), ax(c)) }))
+      .sort((a, b) => a.d - b.d)[0];
+    if (home && home.d > 0) {
+      stepToward(state, unit, home.col, home.row, pid);
+      return;
+    }
+  }
   if (applyCommand(state, { type: "foundCity", unitId: unit.id }, pid).ok) return;
-  const spot = findSettleSpot(state, unit, pid);
+  const spot = plan ?? planSettle(state, unit, pid);
   if (spot) {
     stepToward(state, unit, spot.col, spot.row, pid);
     applyCommand(state, { type: "foundCity", unitId: unit.id }, pid); // try again if we arrived
+    return;
   }
+  // No viable site within reach — push toward the unexplored frontier to uncover new
+  // land rather than letting a precious settler stand idle.
+  aiExplore(state, unit, pid);
 }
 
 /** Train craftsmen and queue public works for one city. */
@@ -560,6 +680,45 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
       kind = "fishery";
     else if (!kind && haveDiscipline("survey") && nextTierAt(tile, "road")) kind = "road";
     if (kind && applyCommand(state, { type: "startWork", kind, col, row }, pid).ok) return;
+  }
+}
+
+/**
+ * Barbarian diplomacy (needs the Parley tech). With a unit or city beside a raider,
+ * the AI can RECRUIT it (pay a fee to take a ready-made soldier into the army — no
+ * population cost, and it removes a threat) or BRIBE its war-band into a 10-turn truce.
+ * The AI recruits when it still wants troops and can afford it, and otherwise buys a
+ * truce when raiders are pressing it — both keep a gold reserve so parley never
+ * bankrupts the treasury. At most one bribe per turn (each one doubles the next price).
+ */
+export function aiBarbarianDiplomacy(state: GameState, player: Player, threatened: boolean): void {
+  const pid = player.id;
+  if (!player.researched.has(BARBARIAN_DIPLOMACY_TECH)) return;
+  const reserve = 40; // never parley ourselves to the brink of bankruptcy
+  const cityCount = citiesOf(state, pid).length;
+  let milCount = unitsOf(state, pid).filter((u) => isMilitary(u.type)).length;
+  let bribedThisTurn = false;
+  for (const e of [...state.units.values()]) {
+    if (!playerById(state, e.ownerId)?.isBarbarian) continue;
+    if (isBarbarianPacified(state, e, pid)) continue;
+    if (!canParleyWith(state, e, pid)) continue;
+    // Recruit a raider into the fold — but only when it actually pays: under threat we
+    // need bodies *now* (faster than training), or the band is a bargain (a battle-
+    // levelled unit for roughly a rookie's price). Buying rookies we could just train
+    // only bleeds gold, so we don't. Always keep a reserve.
+    const recruitCost = barbarianRecruitCost(e);
+    const bargain = e.level >= 2;
+    if ((threatened || bargain) && milCount < cityCount + 3 && player.gold >= recruitCost + reserve) {
+      if (applyCommand(state, { type: "recruitBarbarian", unitId: e.id }, pid).ok) {
+        milCount += 1;
+        continue;
+      }
+    }
+    // Otherwise, when raiders are pressing us, buy a truce rather than bleed for it.
+    const bribeCost = barbarianBribeCost(player);
+    if (!bribedThisTurn && threatened && player.gold >= bribeCost + reserve) {
+      if (applyCommand(state, { type: "bribeBarbarian", unitId: e.id }, pid).ok) bribedThisTurn = true;
+    }
   }
 }
 
@@ -694,7 +853,41 @@ function aiReligiousUnit(state: GameState, unit: Unit, pid: number): void {
   }
 }
 
-function aiMilitary(state: GameState, unit: Unit, pid: number): void {
+/**
+ * Send a guard only to settlers headed for unavoidably dangerous ground (their
+ * `planSettle` came back unsafe — the best land was exposed and no nearly-as-good safe
+ * site existed). Settlers steering to clear ground need no escort, so we don't pull
+ * soldiers off proactive camp-clearing, which protects the whole empire far better
+ * than 1:1 babysitting. Returns escortUnitId → settlerId; recomputed fresh each turn.
+ */
+function assignEscorts(state: GameState, pid: number, plans: Map<number, SettlePlan>): Map<number, number> {
+  const out = new Map<number, number>();
+  const needGuard = unitsOf(state, pid).filter((u) => plans.get(u.id)?.safe === false);
+  if (needGuard.length === 0) return out;
+  const guards = unitsOf(state, pid).filter((u) => isMilitary(u.type) && u.hp >= 40);
+  if (guards.length === 0) return out;
+  const taken = new Set<number>();
+  for (const s of needGuard) {
+    let best: Unit | null = null;
+    let bestD = Infinity;
+    for (const g of guards) {
+      if (taken.has(g.id)) continue;
+      const d = axialDistance(ax(g), ax(s));
+      if (d < bestD) {
+        bestD = d;
+        best = g;
+      }
+    }
+    // Only a soldier already reasonably near responds; a distant army stays on task.
+    if (best && bestD <= 8) {
+      taken.add(best.id);
+      out.set(best.id, s.id);
+    }
+  }
+  return out;
+}
+
+function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?: number): void {
   const abilities = unitAbilities(state, unit);
   const def = UNIT_DEFS[unit.type];
 
@@ -809,6 +1002,36 @@ function aiMilitary(state: GameState, unit: Unit, pid: number): void {
     return;
   }
 
+  // Escort duty: shepherd an assigned settler to its new home instead of roaming off
+  // to clear camps. Immediate attacks were already handled above (a raider we could
+  // favourably hit, we hit), so here we position: interpose ourselves toward the
+  // nearest raider menacing the settler, else march at its side (staying adjacent so
+  // we don't block the tile it needs to move onto).
+  if (escortSettlerId !== undefined) {
+    const settler = state.units.get(escortSettlerId);
+    if (settler && settler.ownerId === pid) {
+      let menace: { col: number; row: number } | null = null;
+      let menaceD = Infinity;
+      for (const e of state.units.values()) {
+        if (!isHostile(state, pid, e.ownerId)) continue;
+        const d = axialDistance(ax(settler), ax(e));
+        if (d <= 3 && d < menaceD) {
+          menaceD = d;
+          menace = { col: e.col, row: e.row };
+        }
+      }
+      if (menace) {
+        stepToward(state, unit, menace.col, menace.row, pid);
+        return;
+      }
+      if (axialDistance(ax(unit), ax(settler)) > 1) {
+        stepToward(state, unit, settler.col, settler.row, pid);
+        return;
+      }
+      return; // at the settler's side with no threat in sight — hold and guard
+    }
+  }
+
   // Economic warfare: raze an enemy improvement we're standing on (isHostile means
   // we're at war with — or raiding — its owner, so this is never an unprovoked act).
   {
@@ -826,7 +1049,26 @@ function aiMilitary(state: GameState, unit: Unit, pid: number): void {
     stepToward(state, unit, objective.col, objective.row, pid);
     return;
   }
-  // No city to march on: pressure the nearest hostile unit, or scout if all is quiet.
+
+  // No war to wage: make the roaming pay. March on the nearest known barbarian camp
+  // (gold, and it stops the raider spawns) and snap up tribal villages, heading to
+  // whichever is closer — ties go to the camp, since clearing it removes a standing
+  // threat. This runs ahead of chasing a lone, distant barbarian: better to burn the
+  // nest than trail one wasp across the map.
+  {
+    const camp = nearestFeature(state, unit, pid, "barb_camp");
+    const village = nearestFeature(state, unit, pid, "village");
+    let goal = camp ?? village;
+    if (camp && village) {
+      goal = axialDistance(ax(unit), ax(village)) < axialDistance(ax(unit), ax(camp)) ? village : camp;
+    }
+    if (goal) {
+      stepToward(state, unit, goal.col, goal.row, pid);
+      return;
+    }
+  }
+
+  // Nothing to collect: pressure the nearest hostile unit, or scout if all is quiet.
   const enemy = nearestHostile(state, unit, pid);
   if (enemy) stepToward(state, unit, enemy.col, enemy.row, pid);
   else aiExplore(state, unit, pid);
@@ -845,21 +1087,33 @@ function aiScout(state: GameState, unit: Unit, pid: number): void {
       return;
     }
   }
+  // Scouts are the natural village-collectors: any unit triggers a village, and a
+  // scout fans out across the map anyway, so divert to the nearest discovered one
+  // for its free perk before drifting on toward the frontier. (Camps need a military
+  // unit to clear, so scouts leave those alone.)
+  const village = nearestFeature(state, unit, pid, "village");
+  if (village) {
+    stepToward(state, unit, village.col, village.row, pid);
+    return;
+  }
   aiExplore(state, unit, pid);
 }
 
 /**
  * Spend stockpiled gold/faith/culture to hurry production when it counts — finishing
- * a wonder we're racing for, or rushing out troops under threat. Faith and culture
- * (cheaper, and only via perks) are spent before precious gold, and each pool keeps a
- * reserve so rushing never bankrupts religion, civics, or the treasury.
+ * a wonder we're racing for, hurrying out settlers to win the expansion race, rushing
+ * troops under threat, and pouring a deep treasury into faster city development. Faith
+ * and culture (cheaper, and only via perks) are spent before precious gold, and each
+ * pool keeps a reserve so rushing never bankrupts religion, civics, or the treasury.
  */
-function aiRush(state: GameState, player: Player, threatened: boolean): void {
+function aiRush(state: GameState, player: Player, p: DiploPersonality, threatened: boolean, escortShortfall = false): void {
   const pid = player.id;
   const avail = rushCurrencies(state, pid);
   if (avail.length === 0) return;
   const atWar = player.atWar.length > 0;
-  const reserve: Record<RushCurrency, number> = { gold: atWar ? 20 : 80, faith: 40, culture: 40 };
+  // Keep a war chest while fighting; at peace, spend more freely to out-tempo rivals
+  // (but never so low that next turn's upkeep tips us into bankruptcy and disbanding).
+  const reserve: Record<RushCurrency, number> = { gold: atWar ? 30 : 50, faith: 40, culture: 40 };
   const poolOf = (c: RushCurrency) => (c === "gold" ? player.gold : c === "faith" ? player.faith : player.cultureProgress);
   // Choose the cheapest affordable currency (culture → faith → gold) that still
   // leaves its reserve intact after paying.
@@ -880,8 +1134,24 @@ function aiRush(state: GameState, player: Player, threatened: boolean): void {
     const c = choose((cur) => canRushWork(state, pid, w.id, cur));
     if (c) applyCommand(state, { type: "rushWork", workId: w.id, currency: c }, pid);
   }
-  // 2) Under threat, hurry out the troops we're training to meet the danger.
-  if (threatened) {
+  // 2) Win the land grab: while still expanding at peace, hurry any settler in muster
+  //    out the door. A rushed settler founds a whole city many turns ahead of schedule
+  //    — the single biggest tempo swing the AI can buy.
+  if (!threatened) {
+    const empireSize = citiesOf(state, pid).length + unitsOf(state, pid).filter((u) => u.type === "settler").length;
+    if (empireSize <= targetCityCount(p)) {
+      for (const city of citiesOf(state, pid)) {
+        for (const order of city.trainingQueue) {
+          if (order.unit !== "settler") continue;
+          const c = choose((cur) => canRushTraining(state, pid, city.id, order.id, cur));
+          if (c) applyCommand(state, { type: "rushTraining", cityId: city.id, orderId: order.id, currency: c }, pid);
+        }
+      }
+    }
+  }
+  // 3) Hurry out the troops we're training — to meet a danger, or to get a guard
+  //    marching toward a settler that's stranded in hostile country without one.
+  if (threatened || escortShortfall) {
     for (const city of citiesOf(state, pid)) {
       for (const order of city.trainingQueue) {
         if (!isMilitary(order.unit)) continue;
@@ -890,14 +1160,16 @@ function aiRush(state: GameState, player: Player, threatened: boolean): void {
       }
     }
   }
-  // 3) Don't let gold sit idle: when the treasury is deep, buy faster development by
-  //    rushing city construction (keeping a solid war chest in reserve).
-  if (player.gold > 400) {
+  // 4) Don't let gold sit idle: pour a healthy surplus into faster city development,
+  //    keeping a reserve (a real war chest when fighting). The old bar (gold > 400)
+  //    almost never tripped; this invests far more readily so a rich AI snowballs.
+  const goldFloor = atWar ? 250 : 120;
+  if (player.gold > goldFloor) {
     for (const city of citiesOf(state, pid)) {
-      if (player.gold < 350) break;
+      if (player.gold <= goldFloor) break;
       if (!city.production) continue;
       const r = canRushCity(state, pid, city.id, "gold");
-      if (r.ok && r.cost != null && player.gold - r.cost >= 250) {
+      if (r.ok && r.cost != null && player.gold - r.cost >= goldFloor) {
         applyCommand(state, { type: "rushProduction", cityId: city.id, currency: "gold" }, pid);
       }
     }
@@ -934,7 +1206,19 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   if (!player.researching) {
     const techs = availableTechs(player);
     if (techs.length > 0) {
-      applyCommand(state, { type: "setResearch", techId: pickTech(techs, p, atWarNow) }, playerId);
+      // With barbarians on the map, grab cheap Parley (and its lone prereq) early —
+      // bribing and recruiting raiders is a powerful survival tool the AI ignored before.
+      // We wait until the food opener (cultivation) is in so growth isn't delayed for it.
+      const barbWorld = state.players.some((pl) => pl.isBarbarian);
+      let techId: TechId;
+      if (barbWorld && !player.researched.has(BARBARIAN_DIPLOMACY_TECH) && player.researched.has("cultivation" as TechId)) {
+        techId = techs.includes(BARBARIAN_DIPLOMACY_TECH)
+          ? BARBARIAN_DIPLOMACY_TECH
+          : (techs.includes("foraging" as TechId) ? ("foraging" as TechId) : pickTech(techs, p, atWarNow));
+      } else {
+        techId = pickTech(techs, p, atWarNow);
+      }
+      applyCommand(state, { type: "setResearch", techId }, playerId);
     }
   }
 
@@ -975,26 +1259,46 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   // Evangelize the empire: buy a missionary to convert any cities not yet ours in faith.
   aiBuyMissionaries(state, player, playerId);
 
+  // Plan each settler's destination once (safety-aware). This drives the guard
+  // assignment below AND tells the city/rush passes whether we must muster an extra
+  // warrior: a settler bound for dangerous ground with no soldier free to guard it is
+  // an "escort shortfall" we answer by raising — and hurrying — a fresh warrior.
+  const settlePlans = new Map<number, SettlePlan>();
+  for (const u of unitsOf(state, playerId)) {
+    if (!UNIT_DEFS[u.type].founder) continue;
+    const plan = planSettle(state, u, playerId);
+    if (plan) settlePlans.set(u.id, plan);
+  }
+  const escorts = assignEscorts(state, playerId, settlePlans);
+  const guarded = new Set(escorts.values());
+  const escortShortfall = [...settlePlans.entries()].some(
+    ([id, plan]) => plan.safe === false && !guarded.has(id),
+  );
+
   for (const city of citiesOf(state, playerId)) {
     if (!city.production) {
       const item = chooseConstruction(state, player, city, p);
       if (item) applyCommand(state, { type: "setProduction", cityId: city.id, item }, playerId);
     }
-    aiTrainUnits(state, player, city, p, threatened);
+    aiTrainUnits(state, player, city, p, threatened, escortShortfall);
     aiManageCity(state, city, player, playerId);
   }
   aiWonders(state, playerId, p);
   aiAssignSpecialists(state, playerId); // staff the works just queued (manual assignment)
-  aiRush(state, player, threatened); // hurry wonders / wartime troops with gold/faith/culture
+  aiRush(state, player, p, threatened, escortShortfall); // hurry wonders / settlers / troops
 
   for (const unit of unitsOf(state, playerId)) {
     if (!state.units.has(unit.id)) continue;
     const def = UNIT_DEFS[unit.type];
     if (unit.unspentPromotions > 0) aiPromote(state, unit, playerId);
-    if (def.founder) aiSettler(state, unit, playerId);
+    if (def.founder) aiSettler(state, unit, playerId, settlePlans.get(unit.id));
     else if (def.trader) aiTrader(state, unit, playerId);
     else if (def.religious) aiReligiousUnit(state, unit, playerId);
     else if (def.cls === "recon") aiScout(state, unit, playerId);
-    else aiMilitary(state, unit, playerId);
+    else aiMilitary(state, unit, playerId, escorts.get(unit.id));
   }
+
+  // After the army has manoeuvred, parley with any barbarians it now stands beside —
+  // recruit the ones we want, buy a truce with bands that are pressing us.
+  aiBarbarianDiplomacy(state, player, threatened);
 }

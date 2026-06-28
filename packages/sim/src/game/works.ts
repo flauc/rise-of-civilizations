@@ -341,12 +341,15 @@ export function canStartWork(state: GameState, playerId: number, kind: string, c
   }
   const host = nearestOwningCity(state, playerId, col, row);
   if (!host) return { ok: false, error: "no city to build from" };
-  // The craftsmen needn't be trained yet (the player assigns them after starting),
-  // but the work isn't completable unless the disciplines are at least researched.
   const player = playerById(state, playerId);
   if (player) {
+    // The craft must be at least researchable (or already fielded) …
     const locked = lockedDisciplines(state, playerId, player, workDisciplines(kind));
     if (locked.length) return { ok: false, error: lockedDisciplinesError(locked) };
+    // … and there must be an idle craftsman to take the job. A work can't be queued
+    // unless the player has a free specialist of each craft it needs to assign to it.
+    const missing = unstaffableDisciplines(state, playerId, kind);
+    if (missing.length) return { ok: false, error: noFreeSpecialistError(missing) };
   }
   return { ok: true };
 }
@@ -488,6 +491,38 @@ export function assignedSpecialistIds(state: GameState, playerId: number): Set<n
     for (const id of w.assignedSpecialistIds) set.add(id);
   }
   return set;
+}
+
+/** Per-discipline count of the player's trained craftsmen not currently assigned to any
+ *  work — the idle labour available to staff a freshly started work. */
+export function freeSpecialistsByDiscipline(state: GameState, playerId: number): Map<Discipline, number> {
+  const assigned = assignedSpecialistIds(state, playerId);
+  const counts = new Map<Discipline, number>();
+  for (const c of citiesOf(state, playerId)) {
+    for (const s of c.specialists) {
+      if (assigned.has(s.id)) continue;
+      const d = specialistDiscipline(s);
+      if (d) counts.set(d, (counts.get(d) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+/** Disciplines a work of `kind` needs for which the player has no idle craftsman to
+ *  spare right now (so the work could be started but never staffed). */
+function unstaffableDisciplines(state: GameState, playerId: number, kind: string): Discipline[] {
+  const free = freeSpecialistsByDiscipline(state, playerId);
+  const missing: Discipline[] = [];
+  for (const d of new Set(workDisciplines(kind))) {
+    if ((free.get(d) ?? 0) < 1) missing.push(d);
+  }
+  return missing;
+}
+
+/** Error shown when a needed craft has no idle specialist to take the job. */
+function noFreeSpecialistError(missing: Discipline[]): string {
+  // Capitalised "No …" so the build UI renders this as a locked (need-a-craftsman) button.
+  return `No ${missing.map(specialistNameForDiscipline).join(" or ")} available`;
 }
 
 export function cancelWork(state: GameState, workId: number, playerId: number): WorkResult {

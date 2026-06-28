@@ -102,17 +102,36 @@ describe("specialists & works", () => {
     void city;
   });
 
-  it("allows starting a work before any craftsman is trained (assignment is manual)", () => {
+  it("refuses to start a work with no free craftsman to take the job", () => {
     const { s, city } = gameWithCity();
     const tile = grasslandTile(s, city, city.col + 1, city.row);
-    // Carpentry is unlocked from the start, so a farm may be queued even with no
-    // carpenter yet — the player trains and assigns one afterwards.
+    // Carpentry is researched from the start, but with no carpenter trained there is
+    // no one to staff a farm — so it can't be queued.
     expect(city.specialists).toHaveLength(0);
+    const blocked = applyCommand(s, { type: "startWork", kind: "farm", col: tile.col, row: tile.row });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.error).toMatch(/^No /); // a missing-craftsman block the build UI can lock
+    expect(s.works).toHaveLength(0);
+    // Train a carpenter and the farm may now be queued.
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
     expect(applyCommand(s, { type: "startWork", kind: "farm", col: tile.col, row: tile.row }).ok).toBe(true);
     expect(s.works).toHaveLength(1);
-    // But it makes no progress while unstaffed.
-    advanceWorks(s, 0);
-    expect(s.works[0]!.progress.carpentry ?? 0).toBe(0);
+  });
+
+  it("refuses a second work when its only craftsman is busy on another", () => {
+    const { s, city } = gameWithCity();
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const carpenterId = city.specialists[0]!.id;
+    const t1 = grasslandTile(s, city, city.col + 1, city.row);
+    const t2 = grasslandTile(s, city, city.col - 1, city.row);
+    // First farm queued and the lone carpenter assigned to it.
+    const w1 = startWork(s, 0, "farm", t1.col, t1.row);
+    expect(w1.ok).toBe(true);
+    expect(assign(s, w1.workId!, carpenterId)).toBe(true);
+    // With the carpenter committed, a second farm has no free craftsman — refused.
+    const w2 = startWork(s, 0, "farm", t2.col, t2.row);
+    expect(w2.ok).toBe(false);
+    expect(w2.error).toMatch(/^No /);
   });
 
   it("refuses to start a work whose craft is not yet researched", () => {
@@ -121,8 +140,10 @@ describe("specialists & works", () => {
     tile.terrain = "hills"; // mine terrain (needs the Mason craft → Masonry tech)
     expect(applyCommand(s, { type: "startWork", kind: "mine", col: tile.col, row: tile.row }).ok).toBe(false);
     expect(s.works).toHaveLength(0);
-    // Once Masonry is researched the Mason craft is unlockable and the work is allowed.
+    // Once Masonry is researched the Mason craft is unlockable; training one then lets
+    // the work begin.
     s.players[0]!.researched.add("masonry");
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "mason", delta: 1 });
     expect(applyCommand(s, { type: "startWork", kind: "mine", col: tile.col, row: tile.row }).ok).toBe(true);
   });
 

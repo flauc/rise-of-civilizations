@@ -3,7 +3,8 @@ import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import { createGame } from "./setup";
 import { applyCommand, beginTurn } from "./commands";
 import { startSimultaneousTurn, resolveSimultaneousTurn } from "./simturn";
-import { aiTakeTurn } from "./ai";
+import { aiTakeTurn, aiBarbarianDiplomacy, planSettle } from "./ai";
+import { isBarbarianPacified } from "./bribery";
 import { worksOf } from "./works";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
@@ -23,6 +24,12 @@ function freeNeighbor(s: GameState, col: number, row: number) {
 
 const dist = (a: { col: number; row: number }, b: { col: number; row: number }) =>
   axialDistance(offsetToAxial(a), offsetToAxial(b));
+
+/** Strip every village/camp the map generator scattered, so a test can place and
+ *  isolate exactly the feature it cares about. */
+function clearFeatures(s: GameState): void {
+  for (const t of s.map.tiles) t.feature = undefined;
+}
 
 /** First unoccupied passable-land tile exactly `depth` land-steps from `start`. */
 function landTileAtDepth(s: GameState, start: { col: number; row: number }, depth: number): { col: number; row: number } | null {
@@ -143,6 +150,7 @@ describe("AI opponent", () => {
     // has no reason to move toward the (peaceful) human at all.
     for (let row = 0; row < s.map.rows; row++)
       for (let col = 0; col < s.map.cols; col++) ai.explored.add(`${col},${row}`);
+    clearFeatures(s); // and nothing to collect, so the unit has no other pull
 
     const d0 = dist(warrior!, human);
     warrior!.movementLeft = UNIT_DEFS[warrior!.type].movement;
@@ -245,6 +253,42 @@ describe("AI opponent", () => {
     expect(enemy.hp).toBe(hp0); // the scout slipped away instead of attacking
   });
 
+  it("marches a military unit toward a discovered barbarian camp to clear it", () => {
+    const s = aiWithCity("ai-camp");
+    const ai = s.players[1]!;
+    const warrior = unitsOf(s, 1).find((u) => UNIT_DEFS[u.type].strength > 0 && !UNIT_DEFS[u.type].founder)!;
+    // Isolate the warrior so only it acts, and clear any war so it's free to roam.
+    for (const u of unitsOf(s, 1)) if (u.id !== warrior.id) s.units.delete(u.id);
+    clearFeatures(s); // remove map-generated features so only our camp pulls
+    // Drop a barbarian camp a few land-steps away on a tile the AI has discovered.
+    const spot = landTileAtDepth(s, warrior, 3)!;
+    getTile(s.map, spot.col, spot.row)!.feature = "barb_camp";
+    ai.explored.add(`${spot.col},${spot.row}`);
+    const d0 = dist(warrior, spot);
+    warrior.movementLeft = UNIT_DEFS[warrior.type].movement;
+    aiTakeTurn(s, 1);
+    expect(dist(warrior, spot)).toBeLessThan(d0); // closed on the camp
+  });
+
+  it("diverts a scout to collect a discovered tribal village", () => {
+    const s = aiWithCity("ai-village");
+    const ai = s.players[1]!;
+    for (const u of unitsOf(s, 1)) s.units.delete(u.id); // only the scout acts
+    clearFeatures(s); // remove map-generated features so only our village pulls
+    const city = citiesOf(s, 1)[0]!;
+    const scoutId = s.nextEntityId++;
+    const scoutSpot = landTileAtDepth(s, city, 2)!;
+    s.units.set(scoutId, makeUnit(scoutId, 1, "scout", scoutSpot.col, scoutSpot.row));
+    const scout = s.units.get(scoutId)!;
+    const spot = landTileAtDepth(s, scout, 3)!;
+    getTile(s.map, spot.col, spot.row)!.feature = "village";
+    ai.explored.add(`${spot.col},${spot.row}`);
+    const d0 = dist(scout, spot);
+    scout.movementLeft = UNIT_DEFS["scout"].movement;
+    aiTakeTurn(s, 1);
+    expect(dist(s.units.get(scoutId)!, spot)).toBeLessThan(d0); // headed for the village
+  });
+
   it("rushes wartime troop training with surplus gold", () => {
     const s = aiWithCity("ai-rush");
     const city = citiesOf(s, 1)[0]!;
@@ -259,6 +303,51 @@ describe("AI opponent", () => {
     aiTakeTurn(s, 1);
     expect(s.players[1]!.gold).toBeLessThan(1000); // spent gold to hurry it
     expect(city.trainingQueue.some((o) => o.turnsLeft === 1)).toBe(true); // a unit was hurried
+  });
+
+  it("routes a settler around a known barbarian camp to safe ground", () => {
+    const s = aiWithCity("ai-safe-settle");
+    for (const u of unitsOf(s, 1)) s.units.delete(u.id); // only our settler matters
+    clearFeatures(s);
+    const city = citiesOf(s, 1)[0]!;
+    const spot = landTileAtDepth(s, city, 2)!;
+    const settlerId = s.nextEntityId++;
+    s.units.set(settlerId, makeUnit(settlerId, 1, "settler", spot.col, spot.row));
+    const settler = s.units.get(settlerId)!;
+    // Fully explore so any camp counts as "known" (the AI plans only around seen threats).
+    for (let row = 0; row < s.map.rows; row++)
+      for (let col = 0; col < s.map.cols; col++) s.players[1]!.explored.add(`${col},${row}`);
+
+    const before = planSettle(s, settler, 1);
+    expect(before).toBeTruthy();
+    expect(before!.safe).toBe(true); // no raiders anywhere yet → the best site is safe
+
+    // Drop a barbarian camp right on the site it would otherwise have chosen.
+    getTile(s.map, before!.col, before!.row)!.feature = "barb_camp";
+    const after = planSettle(s, settler, 1);
+    expect(after).toBeTruthy();
+    if (after!.col === before!.col && after!.row === before!.row) {
+      // No comparable safe site → it accepts the exposed one but flags it for an escort.
+      expect(after!.safe).toBe(false);
+    } else {
+      // It diverted to a different, safe site instead.
+      expect(after!.safe).toBe(true);
+      expect(getTile(s.map, after!.col, after!.row)!.feature).not.toBe("barb_camp");
+    }
+  });
+
+  it("rushes a settler out the door while expanding at peace", () => {
+    const s = aiWithCity("ai-settler-rush");
+    const city = citiesOf(s, 1)[0]!;
+    city.population = 6; // big enough to spare a citizen for a settler
+    const r = startTraining(s, city, "settler");
+    expect(r.ok).toBe(true);
+    const order = city.trainingQueue.find((o) => o.unit === "settler")!;
+    order.turnsLeft = 5; // plenty left to be worth hurrying
+    s.players[1]!.gold = 1000; // a deep treasury to spend on tempo
+    aiTakeTurn(s, 1); // at peace, below target city count → hurry the settler
+    expect(order.turnsLeft).toBe(1); // the settler was rushed to completion
+    expect(s.players[1]!.gold).toBeLessThan(1000); // gold was spent doing it
   });
 
   it("an AI with a founded religion ordains a missionary to spread it", () => {

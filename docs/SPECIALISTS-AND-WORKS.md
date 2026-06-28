@@ -117,6 +117,12 @@ oldest unfinished Works each turn (`aiAssignSpecialists`). Commands: `assignSpec
 { workId, specialistId, on }`. *(This supersedes the original auto-assignment, where
 a city's specialists were pooled onto its Works in queue order.)*
 
+A Work can only be **started** when the player has a **free** (trained, currently
+unassigned) specialist of each craft it needs — there must be someone idle to put on
+the job. `canStartWork` enforces this (returning a `"No <craft> available"` block the
+build UI renders as a locked button); assignment itself remains a separate, manual
+step after the Work is queued.
+
 ### 2.3 Distance-based cost
 
 > "the cost of something will depend on the distance from the city"
@@ -182,7 +188,7 @@ tiers give strictly better yields/effects.
 
 | Ladder | Tier 1 | Tier 2 | Tier 3 | Discipline |
 |---|---|---|---|---|
-| **Road** | Dirt Road (rough −1 move) | Paved Road *via glareata* (all land 1 move) | Imperial Road *via munita* (½ move + trade gold) | survey |
+| **Road** | Dirt Road (¾ move/tile) | Paved Road *via glareata* (½ move/tile) | Imperial Road *via munita* (¼ move/tile + trade gold) | survey |
 | **Farm** | Farm (+1 food) | Irrigated Farm (+2 food) | Estate (+3 food) | carpentry |
 | **Lumber Camp** | Lumber Camp (+1 prod) | Sawmill (+2 prod) | Timberworks (+3 prod) | carpentry |
 | **Mine** | Mine (+1 prod) | Deep Mine (+2 prod) | Great Mine (+3 prod, +1 gold) | masonry |

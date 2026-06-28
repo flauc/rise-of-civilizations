@@ -20,7 +20,7 @@ import {
   type UnitAbility,
   type ActiveAbilityId,
 } from "@roc/sim";
-import { startingUnitsFor, capitalPopulationBonusFor, BASE_CITY_POPULATION } from "@roc/data";
+import { startingUnitsFor, capitalPopulationBonusFor, uniqueUnitForCiv, BASE_CITY_POPULATION } from "@roc/data";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -37,12 +37,17 @@ export function uniqueUnitFor(civId: string): typeof UNIQUE_UNITS[number] | unde
 // Pulled straight from the data layer that the sim itself uses, so the lobby and
 // wiki always display exactly what a civ starts with.
 
-/** "2× Warrior, 1× Scout" — a civ's starting army, from its single-source loadout. */
+/** "2× Warrior, 1× Scout" — a civ's starting army, from its single-source loadout.
+ *  When a starting unit's base type is the one this civ replaces with its unique
+ *  unit, it is shown under the unique name (the civ fields its UU from turn 1). */
 export function startingUnitsSummary(civId: string): string {
   const counts = new Map<string, number>();
   for (const u of startingUnitsFor(civId)) counts.set(u, (counts.get(u) ?? 0) + 1);
   return [...counts]
-    .map(([id, n]) => `${n}× ${UNIT_DEFS[id as UnitTypeId]?.name ?? id}`)
+    .map(([id, n]) => {
+      const name = uniqueUnitForCiv(civId, id)?.name ?? UNIT_DEFS[id as UnitTypeId]?.name ?? id;
+      return `${n}× ${name}`;
+    })
     .join(", ");
 }
 

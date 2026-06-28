@@ -9,6 +9,7 @@ import { axialDistance, axialNeighbors, axialToOffset, makeRng, offsetToAxial, g
 import type { GameState, MoraleEvent, Player, Unit } from "./state";
 import { areEnemies, cityAt, log, playerById, unitAt } from "./state";
 import { UNIT_DEFS } from "./content";
+import { unitDisplayName } from "./civs";
 import { isPassableLand, isWaterTerrain } from "./terrain";
 
 // ---- bounds & pivots -----------------------------------------------------
@@ -456,7 +457,7 @@ function routeUnit(state: GameState, unit: Unit, steps: number): void {
   unit.stance = null;
   unit.routedUntilTurn = state.turn + 1; // forfeits next turn (see tickAbilities)
   const owner = playerById(state, unit.ownerId);
-  log(state, `${UNIT_DEFS[unit.type].name} (${owner?.name ?? "?"}) broke and routed!`, {
+  log(state, `${unitDisplayName(state, unit)} (${owner?.name ?? "?"}) broke and routed!`, {
     targetIds: owner ? [owner.id] : undefined,
     tile: { col: unit.col, row: unit.row },
   });

@@ -8,7 +8,7 @@
 import type { City, Discipline, GameState, Player, TrainingOrder, Work } from "./state";
 import { playerById } from "./state";
 import { playerEffects } from "./civs";
-import { getBuildingDef, trainingTier } from "./content";
+import { getBuildingDef, trainingTier, type UnitTypeId } from "./content";
 
 export type RushCurrency = "gold" | "faith" | "culture";
 
@@ -21,10 +21,40 @@ export interface RushResult {
 
 // Resource cost per remaining unit of production/labour, by currency. Faith and
 // culture rush a little cheaper than gold so the unlocking perks feel worthwhile.
-const PER_PROD: Record<RushCurrency, number> = { gold: 4, faith: 3, culture: 3 };
-const PER_LABOUR: Record<RushCurrency, number> = { gold: 4, faith: 3, culture: 3 };
+const PER_PROD: Record<RushCurrency, number> = { gold: 6, faith: 5, culture: 5 };
+const PER_LABOUR: Record<RushCurrency, number> = { gold: 6, faith: 5, culture: 5 };
 // Cost per remaining training turn (a unit's per-turn cost to rush its muster).
-const PER_TRAIN_TURN: Record<RushCurrency, number> = { gold: 8, faith: 6, culture: 6 };
+const PER_TRAIN_TURN: Record<RushCurrency, number> = { gold: 14, faith: 11, culture: 11 };
+
+// Some units are disproportionately valuable to hurry — a rushed settler founds a
+// whole city turns ahead of schedule — so their muster costs this multiple to rush.
+const UNIT_RUSH_WEIGHT: Partial<Record<UnitTypeId, number>> = { settler: 2.5 };
+
+// Repeated rushing escalates. Each rush already made within the window adds a
+// surcharge to the next one, so hurrying several things (e.g. settlers) in quick
+// succession gets steeply pricier. The spree resets — "cools down" — once a player
+// goes RUSH_COOLDOWN_TURNS turns without rushing at all.
+const RUSH_COOLDOWN_TURNS = 3;
+const RUSH_ESCALATION_STEP = 0.75; // +75% per prior rush still inside the window
+
+/** How many of a player's recent rushes still count toward the surcharge — 0 once
+ *  the spree has cooled down (RUSH_COOLDOWN_TURNS idle turns since the last rush). */
+export function activeRushCount(player: Player, turn: number): number {
+  const spree = player.rushSpree;
+  if (!spree) return 0;
+  if (turn - spree.lastTurn >= RUSH_COOLDOWN_TURNS) return 0;
+  return spree.count;
+}
+
+/** Cost multiplier applied to a player's *next* rush this turn (1× when rested). */
+export function rushSurcharge(player: Player, turn: number): number {
+  return 1 + activeRushCount(player, turn) * RUSH_ESCALATION_STEP;
+}
+
+/** Record a rush against a player's spree, restarting it if it had cooled down. */
+function bumpRushSpree(player: Player, turn: number): void {
+  player.rushSpree = { count: activeRushCount(player, turn) + 1, lastTurn: turn };
+}
 
 const CURRENCY_LABEL: Record<RushCurrency, string> = {
   gold: "gold",
@@ -72,12 +102,12 @@ function cityItemCost(city: City): number | null {
 
 /** Resource cost to rush a city's current production with `currency`, or null if
  *  there is nothing rushable (no item, a project, or already fully stored). */
-export function cityRushCost(city: City, currency: RushCurrency): number | null {
+export function cityRushCost(city: City, currency: RushCurrency, surcharge = 1): number | null {
   const cost = cityItemCost(city);
   if (cost === null) return null;
   const remaining = cost - city.productionStored;
   if (remaining <= 0) return null;
-  return Math.ceil(remaining * PER_PROD[currency]);
+  return Math.ceil(remaining * PER_PROD[currency] * surcharge);
 }
 
 /** Total remaining labour across all disciplines of a work. */
@@ -90,10 +120,10 @@ function workRemainingLabour(work: Work): number {
 }
 
 /** Resource cost to rush a work with `currency`, or null if it is already done. */
-export function workRushCost(work: Work, currency: RushCurrency): number | null {
+export function workRushCost(work: Work, currency: RushCurrency, surcharge = 1): number | null {
   const remaining = workRemainingLabour(work);
   if (remaining <= 0) return null;
-  return Math.ceil(remaining * PER_LABOUR[currency]);
+  return Math.ceil(remaining * PER_LABOUR[currency] * surcharge);
 }
 
 /** Validate rushing a city's production without mutating. */
@@ -110,7 +140,7 @@ export function canRushCity(
   if (!currencyAllowed(state, playerId, currency)) {
     return { ok: false, error: `${CURRENCY_LABEL[currency]} rushing is not unlocked` };
   }
-  const cost = cityRushCost(city, currency);
+  const cost = cityRushCost(city, currency, rushSurcharge(player, state.turn));
   if (cost === null) return { ok: false, error: "nothing to rush here" };
   if (poolOf(player, currency) < cost) return { ok: false, error: `not enough ${CURRENCY_LABEL[currency]}` };
   return { ok: true, cost };
@@ -131,6 +161,7 @@ export function rushCity(
   const fullCost = cityItemCost(city)!;
   spendFromPool(player, currency, can.cost!);
   city.productionStored = Math.max(city.productionStored, fullCost);
+  bumpRushSpree(player, state.turn);
   return { ok: true, cost: can.cost };
 }
 
@@ -148,7 +179,7 @@ export function canRushWork(
   if (!currencyAllowed(state, playerId, currency)) {
     return { ok: false, error: `${CURRENCY_LABEL[currency]} rushing is not unlocked` };
   }
-  const cost = workRushCost(work, currency);
+  const cost = workRushCost(work, currency, rushSurcharge(player, state.turn));
   if (cost === null) return { ok: false, error: "nothing to rush here" };
   if (poolOf(player, currency) < cost) return { ok: false, error: `not enough ${CURRENCY_LABEL[currency]}` };
   return { ok: true, cost };
@@ -156,9 +187,10 @@ export function canRushWork(
 
 /** Resource cost to rush a training order with `currency`, or null if it is about to
  *  finish anyway (≤1 turn left). */
-export function trainingRushCost(order: TrainingOrder, currency: RushCurrency): number | null {
+export function trainingRushCost(order: TrainingOrder, currency: RushCurrency, surcharge = 1): number | null {
   if (order.turnsLeft <= 1) return null;
-  return Math.ceil((order.turnsLeft - 1) * PER_TRAIN_TURN[currency]);
+  const weight = UNIT_RUSH_WEIGHT[order.unit] ?? 1;
+  return Math.ceil((order.turnsLeft - 1) * PER_TRAIN_TURN[currency] * weight * surcharge);
 }
 
 function findTrainingOrder(state: GameState, cityId: number, orderId: number): { city: City; order: TrainingOrder } | null {
@@ -183,7 +215,7 @@ export function canRushTraining(
   if (!currencyAllowed(state, playerId, currency)) {
     return { ok: false, error: `${CURRENCY_LABEL[currency]} rushing is not unlocked` };
   }
-  const cost = trainingRushCost(found.order, currency);
+  const cost = trainingRushCost(found.order, currency, rushSurcharge(player, state.turn));
   if (cost === null) return { ok: false, error: "nothing to rush here" };
   if (poolOf(player, currency) < cost) return { ok: false, error: `not enough ${CURRENCY_LABEL[currency]}` };
   return { ok: true, cost };
@@ -203,6 +235,7 @@ export function rushTraining(
   const { order } = findTrainingOrder(state, cityId, orderId)!;
   spendFromPool(player, currency, can.cost!);
   order.turnsLeft = 1; // completes on this turn's advanceTraining
+  bumpRushSpree(player, state.turn);
   return { ok: true, cost: can.cost };
 }
 
@@ -222,5 +255,6 @@ export function rushWork(
   for (const d of Object.keys(work.requirement) as Discipline[]) {
     work.progress[d] = work.requirement[d] ?? 0;
   }
+  bumpRushSpree(player, state.turn);
   return { ok: true, cost: can.cost };
 }

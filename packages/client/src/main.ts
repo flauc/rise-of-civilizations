@@ -721,6 +721,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     resize();
     needsRedraw = true;
   });
+  // On mobile, the dynamic browser toolbar showing/hiding changes the visible
+  // viewport without always firing a window "resize"; visualViewport does, so the
+  // canvas re-measures (against its 100dvh box) and fills the screen with no gap.
+  window.visualViewport?.addEventListener("resize", () => {
+    resize();
+    needsRedraw = true;
+  });
 
   const terrainAtlas = loadTerrainAtlas(() => {
     needsRedraw = true;

@@ -60,8 +60,8 @@ describe("river crossing movement", () => {
     b.road = true;
     a.river = 1 << 0; // direction 0 = E
 
-    // Without the Bridge Building tech the road still has to ford: 1 (road) + 1.
-    expect(computeReachable(s, u).get("11,10")!.cost).toBe(2);
+    // Without the Bridge Building tech the road still has to ford: 0.75 (dirt road) + 1.
+    expect(computeReachable(s, u).get("11,10")!.cost).toBe(1.75);
 
     // Research Bridge Building and place both crossing tiles in owned territory so a
     // bridge spans the river. The ford penalty is waived (just the road cost remains).
@@ -69,6 +69,46 @@ describe("river crossing movement", () => {
     a.ownerCityId = cityId;
     b.ownerCityId = cityId;
     s.players[0]!.researched.add("bridge_building");
-    expect(computeReachable(s, u).get("11,10")!.cost).toBe(1);
+    expect(computeReachable(s, u).get("11,10")!.cost).toBe(0.75);
+  });
+});
+
+describe("road movement speed", () => {
+  /** Lay a straight east-west road of a given tier along row 10. */
+  function roadRow(s: ReturnType<typeof flatGame>, level: number) {
+    for (let col = 0; col < s.map.cols; col++) {
+      const t = getTile(s.map, col, 10)!;
+      t.road = true;
+      t.roadLevel = level;
+    }
+  }
+
+  it("dirt roads speed travel on open ground, and each tier roughly halves the cost", () => {
+    const s = flatGame();
+    const u = makeUnit(s.nextEntityId++, 0, "warrior", 10, 10);
+    u.movementLeft = 3;
+    s.units.set(u.id, u);
+
+    // Plain grassland costs a full move to enter; a dirt road is cheaper.
+    expect(computeReachable(s, u).get("11,10")!.cost).toBe(1); // off-road neighbour
+    roadRow(s, 1);
+    expect(computeReachable(s, u).get("11,10")!.cost).toBe(0.75); // dirt
+    roadRow(s, 2);
+    expect(computeReachable(s, u).get("11,10")!.cost).toBe(0.5); // paved
+    roadRow(s, 3);
+    expect(computeReachable(s, u).get("11,10")!.cost).toBe(0.25); // imperial
+  });
+
+  it("a unit travels much farther along an imperial road than over open ground", () => {
+    const s = flatGame();
+    const u = makeUnit(s.nextEntityId++, 0, "warrior", 1, 10);
+    u.movementLeft = 2;
+    s.units.set(u.id, u);
+
+    // Off-road, 2 moves reach 2 tiles east; an imperial road (¼/tile) reaches 8.
+    expect(computeReachable(s, u).get("3,10")?.cost).toBe(2);
+    expect(computeReachable(s, u).get("9,10")).toBeUndefined();
+    roadRow(s, 3);
+    expect(computeReachable(s, u).get("9,10")!.cost).toBe(2); // 8 tiles × ¼
   });
 });

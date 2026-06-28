@@ -267,6 +267,11 @@ export interface Player {
   /** Lifetime enemy cities captured by conquest. Feeds the score; absent on
    *  legacy saves (treated as 0). */
   citiesCaptured?: number;
+  /** Rush-spending escalation: how many rushes still count toward the surcharge
+   *  and the last turn one happened. Each rush within the window makes the next
+   *  pricier; the spree resets after a few idle turns (see rush.ts). Absent until
+   *  this player's first rush / on legacy saves. */
+  rushSpree?: { count: number; lastTurn: number };
 }
 
 export interface PlayerModifier {

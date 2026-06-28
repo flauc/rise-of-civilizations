@@ -519,7 +519,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   minoans: {
     id: "minoans",
     name: "Thalassocratic Fleet",
-    desc: "Spawn 2 Biremes in coastal cities and naval +1 movement for 10 turns. Costs 2 capital population.",
+    desc: "Spawn 2 Minoan Biremes in coastal cities and naval +1 movement for 10 turns. Costs 2 capital population.",
     unlock: { kind: "tech", id: "sailing" },
     cooldown: 20,
     use: (state, player) => {
@@ -536,7 +536,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   mycenaean_greece: {
     id: "mycenaean_greece",
     name: "Heroic Muster",
-    desc: "Spawn 2 Spearmen and melee +2 strength for 10 turns. Costs 4 population.",
+    desc: "Spawn 2 Mycenaean Spearmen and melee +2 strength for 10 turns. Costs 4 population.",
     unlock: { kind: "tech", id: "bronze_alloying" },
     cooldown: 20,
     use: (state, player) => {
@@ -887,7 +887,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   china_ming: {
     id: "china_ming",
     name: "Treasure Fleet",
-    desc: "Spawn 2 War Junks, naval +2 movement and trade routes +5 gold for 10 turns; −15% production for 5 turns.",
+    desc: "Spawn 2 Ming War Junks, naval +2 movement and trade routes +5 gold for 10 turns; −15% production for 5 turns.",
     unlock: { kind: "tech", id: "astronomy" },
     cooldown: 30,
     use: (state, player) => {
@@ -931,7 +931,7 @@ export const LEADER_ABILITIES: Record<string, LeaderAbilityDef> = {
   chola: {
     id: "chola",
     name: "Naval Expedition",
-    desc: "Spawn 2 Warships in coastal cities and naval +2 movement for 10 turns. Costs 2 population.",
+    desc: "Spawn 2 Chola Warships in coastal cities and naval +2 movement for 10 turns. Costs 2 population.",
     unlock: { kind: "tech", id: "shipbuilding" },
     cooldown: 20,
     use: (state, player) => {

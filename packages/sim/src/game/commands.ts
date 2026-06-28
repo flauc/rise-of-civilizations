@@ -63,6 +63,7 @@ import {
   getCivic,
   getGovernment,
   nextCityNameForCiv,
+  unitDisplayName,
 } from "./civs";
 import { aiTakeTurn } from "./ai";
 import { onUnitPromoted, decayGlobalMorale, UPKEEP_MODIFIER_MIN, UPKEEP_MODIFIER_MAX } from "./morale";
@@ -240,7 +241,7 @@ export function applyCommand(
         unit.movementLeft = 0;
         unit.attackedThisTurn = true;
         resolveAmbush(state, occupant, unit);
-        log(state, `${player.name}'s ${UNIT_DEFS[unit.type].name} walked into an ambush!`, {
+        log(state, `${player.name}'s ${unitDisplayName(state, unit)} walked into an ambush!`, {
           actorId: occupant.ownerId,
           targetIds: [player.id, occupant.ownerId],
           tile: { col: cmd.col, row: cmd.row },

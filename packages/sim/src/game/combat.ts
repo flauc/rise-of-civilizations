@@ -13,7 +13,7 @@ import {
 } from "./content";
 import { isRough, terrainDefense, isWaterTerrain, isForestTerrain } from "./terrain";
 import { structureDefense, towerBombard } from "./fortifications";
-import { civCombatBonus, uniqueUnitForUnit } from "./civs";
+import { civCombatBonus, uniqueUnitForUnit, unitDisplayName } from "./civs";
 import { legendCombatBonus } from "./legends";
 import { applyVictoryCheck } from "./victory";
 import { emitCityLost, emitUnitDied } from "./turn-updates";
@@ -387,7 +387,7 @@ function tryScoutEscape(state: GameState, attacker: Unit, defender: Unit): boole
   if (!retreatOneStep(state, defender)) return false; // nowhere to flee — the blow lands
   defender.escapeUsedTurn = state.turn;
   const owner = playerById(state, defender.ownerId);
-  log(state, `${UNIT_DEFS[defender.type].name} (${owner?.name ?? "?"}) evaded the attack and slipped away.`, {
+  log(state, `${unitDisplayName(state, defender)} (${owner?.name ?? "?"}) evaded the attack and slipped away.`, {
     targetIds: owner ? [owner.id] : undefined,
     tile: { col: defender.col, row: defender.row },
   });
@@ -701,7 +701,7 @@ export function towerBombardment(state: GameState, playerId: number): void {
     if (target) {
       const dmg = damageFrom(towerBombard(t.structure.tier), defenseStrengthVsBombard(state, target));
       target.hp -= dmg;
-      log(state, `A tower bombarded ${UNIT_DEFS[target.type].name} for ${dmg}.`, {
+      log(state, `A tower bombarded ${unitDisplayName(state, target)} for ${dmg}.`, {
         actorId: playerId,
         targetIds: [target.ownerId],
         tile: { col: target.col, row: target.row },
@@ -724,19 +724,13 @@ function killUnit(state: GameState, unit: Unit): void {
   onUnitLost(state, unit); // nearby friendlies waver + global morale drops (before removal)
   state.units.delete(unit.id);
   const owner = playerById(state, unit.ownerId);
-  log(state, `${UNIT_DEFS[unit.type].name} (${owner?.name ?? "?"}) was destroyed.`, {
+  const name = unitDisplayName(state, unit);
+  log(state, `${name} (${owner?.name ?? "?"}) was destroyed.`, {
     targetIds: owner ? [owner.id] : undefined,
     tile: { col: unit.col, row: unit.row },
   });
   if (owner && !owner.isBarbarian) {
-    emitUnitDied(
-      state,
-      owner.id,
-      unit.id,
-      UNIT_DEFS[unit.type].name,
-      unit.col,
-      unit.row,
-    );
+    emitUnitDied(state, owner.id, unit.id, name, unit.col, unit.row);
   }
 }
 

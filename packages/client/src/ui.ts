@@ -42,6 +42,9 @@ import {
   workerSlots,
   nextTierAt,
   workName,
+  isDefenseKind,
+  improvementYields,
+  roadMoveCost,
   workLabourPerTurn,
   workEtaTurns,
   assignedSpecialistIds,
@@ -51,6 +54,7 @@ import {
   rushCurrencies,
   cityRushCost,
   workRushCost,
+  rushSurcharge,
   type RushCurrency,
   worksOfCity,
   citiesOf,
@@ -93,11 +97,9 @@ import {
   techUnlocks,
   unitInfo,
   tileYields,
-  resourceYields,
+  ownedTileYields,
   resourceActive,
-  naturalWonderYields,
   RESOURCE_DEFS,
-  addYields,
   ACTIVE_ABILITY_DEFS,
   canUseAbility,
   unitAbilities,
@@ -185,7 +187,9 @@ interface TileReport {
 /** Build the human-readable benefits/deficits breakdown for a tile. */
 function tileReport(state: GameState, tile: Tile): TileReport {
   const t = tile.terrain;
-  const y = addYields(addYields(tileYields(tile), resourceYields(tile)), naturalWonderYields(tile));
+  // Owner-aware worked yields: includes river bonuses and the owning civ/city perks,
+  // so the panel shows what a citizen actually reaps here (not a perk-blind estimate).
+  const y = ownedTileYields(state, tile.col, tile.row);
   const water = isWaterTerrain(t);
   const passable = isPassableLand(t);
   const rough = isRough(t);
@@ -203,7 +207,7 @@ function tileReport(state: GameState, tile: Tile): TileReport {
   let subtitle: string;
   if (water) subtitle = "Water · naval units only";
   else if (!passable) subtitle = "Impassable to land units";
-  else if (tile.road) subtitle = "Open · road (fast movement)";
+  else if (tile.road) subtitle = `${workName("road", tile.roadLevel ?? 1)} · ${roadMoveCost(tile.roadLevel ?? 1)} move to enter`;
   else if (rough) subtitle = `Rough · ${moveCost(t)} moves to enter`;
   else subtitle = "Open · 1 move to enter";
 
@@ -217,7 +221,13 @@ function tileReport(state: GameState, tile: Tile): TileReport {
     const imp = IMPROVEMENT_DEFS[tile.improvement as ImprovementKind]?.name ?? tile.improvement;
     lines.push({ kind: "good", text: `${imp} improvement boosts its yields` });
   }
-  if (tile.road) lines.push({ kind: "good", text: "Road speeds movement through this tile" });
+  if (tile.road) {
+    const lvl = tile.roadLevel ?? 1;
+    lines.push({
+      kind: "good",
+      text: `${workName("road", lvl)} — units spend only ${roadMoveCost(lvl)} of a move to cross (vs 1 on open ground)`,
+    });
+  }
   if (tile.river) {
     lines.push({ kind: "good", text: tile.riverLake ? "River lake — fresh water (+1 food, +1 science)" : "River — fresh water (+1 food)" });
     lines.push({ kind: "good", text: "Attackers assaulting across the river fight at -25%" });
@@ -228,7 +238,7 @@ function tileReport(state: GameState, tile: Tile): TileReport {
     const rname = rdef?.name ?? tile.resource;
     lines.push({ kind: "good", text: `Resource: ${rname}` });
     if (!resourceActive(tile)) {
-      const needed = rdef?.improvement ?? "improvement";
+      const needed = rdef ? workName(rdef.improvement, 1) : "improvement";
       lines.push({ kind: "bad", text: `Needs a ${needed} to activate` });
     }
   }
@@ -445,13 +455,14 @@ function rushButtonsHtml(
   viewerId: number,
   dataKey: "rush-prod" | "rush-work",
   id: number,
-  costFor: (currency: RushCurrency) => number | null,
+  costFor: (currency: RushCurrency, surcharge: number) => number | null,
 ): string {
   const player = state.players.find((p) => p.id === viewerId);
   if (!player) return "";
+  const surcharge = rushSurcharge(player, state.turn);
   const btns = rushCurrencies(state, viewerId)
     .map((cur) => {
-      const cost = costFor(cur);
+      const cost = costFor(cur, surcharge);
       if (cost === null) return "";
       const can = rushPool(player, cur) >= cost;
       const dis = can ? "" : ` disabled style="opacity:.5;cursor:not-allowed" title="Need ${cost} ${cur}"`;
@@ -900,6 +911,7 @@ export function createUI(handlers: UIHandlers): UI {
     isImg?: boolean;
     name: string;
     stats?: string;
+    extra?: string;
     closeId?: string;
   }): string =>
     `<div class="ip-summary">` +
@@ -908,6 +920,7 @@ export function createUI(handlers: UIHandlers): UI {
       : `<span class="ip-icon">${opts.icon}</span>`) +
     `<span class="ip-name">${opts.name}</span>` +
     (opts.stats ? `<span class="ip-stats">${opts.stats}</span>` : "") +
+    (opts.extra ?? "") +
     (opts.closeId ? `<button class="btn ip-close" id="${opts.closeId}">✕</button>` : "") +
     `<span class="ip-chevron">▾</span>` +
     `</div>`;
@@ -915,7 +928,9 @@ export function createUI(handlers: UIHandlers): UI {
   // Wire the summary bar so tapping it (but not the ✕) toggles the panel.
   const wireCollapse = (panel: HTMLElement, onToggle: () => void): void => {
     panel.querySelector<HTMLElement>(".ip-summary")?.addEventListener("click", (e) => {
-      if ((e.target as HTMLElement).closest(".ip-close")) return;
+      // The ✕ and any inline quick-action buttons (e.g. quick-cast abilities) live
+      // inside the bar but must act on their own, not collapse the panel.
+      if ((e.target as HTMLElement).closest(".ip-close, [data-ability], [data-found]")) return;
       onToggle();
     });
   };
@@ -2389,7 +2404,7 @@ export function createUI(handlers: UIHandlers): UI {
         city.trainingQueue
           .map((o) => {
             const name = uniqueUnitForCiv(player.civId, o.unit)?.name ?? UNIT_DEFS[o.unit].name;
-            const rushCost = trainingRushCost(o, "gold");
+            const rushCost = trainingRushCost(o, "gold", rushSurcharge(player, state.turn));
             const canRush = rushCost != null && player.gold >= rushCost;
             const rushBtn =
               rushCost != null
@@ -2960,6 +2975,31 @@ export function createUI(handlers: UIHandlers): UI {
         `<span>❤️ ${unit.hp}/${unitMaxHp(unit)}</span>`
       : `<span class="sub">${info.role}</span>`;
 
+    // Quick-cast bar: icon-only ability buttons surfaced on the collapsed panel
+    // (CSS hides it when expanded, where the full labelled buttons live) so the
+    // player can fire an ability without first opening the panel.
+    let quickBar = "";
+    if (own && !unit.sleeping) {
+      const quickBtns: string[] = [];
+      // Found City is a dedicated action (not an active ability), but settlers
+      // deserve the same one-tap access from the collapsed bar.
+      if (def.founder) {
+        quickBtns.push(
+          `<button class="btn ip-quick-btn" data-found title="Found City">🏛️</button>`,
+        );
+      }
+      for (const a of unitAbilities(state, unit)) {
+        const ad = ACTIVE_ABILITY_DEFS[a];
+        const usable = canUseAbility(state, unit, a).ok;
+        quickBtns.push(
+          `<button class="btn ip-quick-btn" data-ability="${a}" ${usable ? "" : "disabled"} ` +
+            `title="${ad.name} — ${ad.desc}"${usable ? "" : ' style="opacity:.5"'}>` +
+            `${abilityIconHtml(abilityAtlas, a)}</button>`,
+        );
+      }
+      if (quickBtns.length) quickBar = `<div class="ip-quick">${quickBtns.join("")}</div>`;
+    }
+
     unitPanel.classList.toggle("collapsed", !unitPanelExpanded);
     unitPanel.innerHTML =
       summaryBar({
@@ -2967,6 +3007,7 @@ export function createUI(handlers: UIHandlers): UI {
         isImg: true,
         name: `<b>${escapeHtml(displayName)}</b><span style="color:#ffd967">${stars}</span>`,
         stats: summaryStats,
+        extra: quickBar,
       }) +
       `<div class="ip-detail">${html}</div>`;
     wireCollapse(unitPanel, () => {
@@ -2975,6 +3016,7 @@ export function createUI(handlers: UIHandlers): UI {
     });
     wireWikiButtons(unitPanel);
     unitPanel.querySelector<HTMLButtonElement>("#found")?.addEventListener("click", () => handlers.onFoundCity());
+    unitPanel.querySelector<HTMLButtonElement>("[data-found]")?.addEventListener("click", () => handlers.onFoundCity());
     unitPanel.querySelector<HTMLButtonElement>("#sleep")?.addEventListener("click", () => handlers.onSleep());
     unitPanel.querySelector<HTMLButtonElement>("#wake")?.addEventListener("click", () => handlers.onWake());
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-promote]").forEach((el) =>
@@ -2996,7 +3038,15 @@ export function createUI(handlers: UIHandlers): UI {
     unitPanel.querySelector<HTMLButtonElement>("[data-recruit]")?.addEventListener("click", () => handlers.onRecruitBarbarian(unit.id));
   };
 
-  const WORK_KINDS = ["farm", "lumber_camp", "mine", "quarry", "fishery", "saltern", "road", "wall", "tower"];
+  // Every player-buildable work. Pasture/Plantation/Camp/Fishing Boats activate the
+  // resources that need them (cattle, wine, deer, fish, …); omitting them left those
+  // resources unimprovable even though the tile panel asks for them.
+  const WORK_KINDS = [
+    "farm", "lumber_camp", "mine", "quarry",
+    "pasture", "plantation", "camp",
+    "fishing_boats", "fishery", "saltern",
+    "road", "wall", "tower",
+  ];
   const CHEAT_WORK_KINDS = [
     "farm",
     "lumber_camp",
@@ -3083,7 +3133,7 @@ export function createUI(handlers: UIHandlers): UI {
         : `<div class="sub" style="margin-top:6px">No crew assigned yet — pick specialists below.</div>`) +
       picker +
       (work.ownerId === viewerId
-        ? rushButtonsHtml(state, viewerId, "rush-work", work.id, (cur) => workRushCost(work, cur))
+        ? rushButtonsHtml(state, viewerId, "rush-work", work.id, (cur, sur) => workRushCost(work, cur, sur))
         : "") +
       `<button class="btn" id="work-cancel" data-work-id="${work.id}" style="margin-top:8px">Cancel work</button>`
     );
@@ -3140,19 +3190,49 @@ export function createUI(handlers: UIHandlers): UI {
       const vplayer = state.players.find((p) => p.id === viewerId);
       const uimp = uniqueImprovementForCiv(vplayer?.civId);
       const kinds = uimp ? [...WORK_KINDS, uimp.id] : WORK_KINDS;
+      // Compact preview of what an improvement would give at the target tier, so the
+      // player can compare options (e.g. a Fishery's food/production vs Salt Pans'
+      // gold) before committing. Folds in the resource it would activate, if any.
+      const workPreview = (k: string, t: number): string => {
+        if (k === "road") return `<span class="imp-prev">${roadMoveCost(t)} move per tile (faster travel)</span>`;
+        if (isDefenseKind(k)) return `<span class="imp-prev">🛡️ defensive structure</span>`;
+        const yld = { ...improvementYields(k, t) };
+        const rdef = tile.resource ? RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS] : undefined;
+        const activates = !!rdef && rdef.improvement === k;
+        if (rdef && activates) {
+          yld.food += rdef.yields.food ?? 0;
+          yld.production += rdef.yields.production ?? 0;
+          yld.gold += rdef.yields.gold ?? 0;
+          yld.science += rdef.yields.science ?? 0;
+          yld.faith += rdef.yields.faith ?? 0;
+        }
+        const seg: string[] = [];
+        const add = (icon: string, n: number) => { if (n) seg.push(`${icon}${n}`); };
+        add("🍞", yld.food); add("⚒️", yld.production); add("🪙", yld.gold); add("🔬", yld.science); add("🙏", yld.faith);
+        if (activates && rdef!.amenity) seg.push(`😊${rdef!.amenity}`);
+        let txt = seg.join(" ") || "—";
+        // Only flag a *new* activation (an upgrade leaves the resource already active).
+        if (activates && !resourceActive(tile)) txt += ` · activates ${rdef!.name}`;
+        return `<span class="imp-prev">${txt}</span>`;
+      };
+      const workBtn = (k: string, tier: number, verb: string, locked?: string): string => {
+        const label = `<span class="imp-name">${verb}${workName(k, tier)}${locked ? " 🔒" : ""}</span>${workPreview(k, tier)}`;
+        if (locked) {
+          return `<button class="btn imp-btn" disabled title="${locked}" style="opacity:.5;cursor:not-allowed">${label}</button>`;
+        }
+        return `<button class="btn imp-btn" data-work="${k}">${label}</button>`;
+      };
       const btns = kinds.map((k) => {
         const tier = nextTierAt(tile, k);
         if (tier === null) return "";
         const verb = tier > 1 ? "Upgrade → " : "";
         const can = canStartWork(state, viewerId, k, tile.col, tile.row);
-        if (can.ok) {
-          return `<button class="btn" data-work="${k}">${verb}${workName(k, tier)}</button>`;
-        }
+        if (can.ok) return workBtn(k, tier, verb);
         // A missing-craftsman block is shown as a locked button so the player
         // knows the option exists but needs the right specialist first.
         if (can.error && can.error.startsWith("No ")) {
           needHint = can.error;
-          return `<button class="btn" disabled title="${can.error}" style="opacity:.5;cursor:not-allowed">${verb}${workName(k, tier)} 🔒</button>`;
+          return workBtn(k, tier, verb, can.error);
         }
         return "";
       }).filter(Boolean);
@@ -3426,9 +3506,9 @@ export function createUI(handlers: UIHandlers): UI {
           })()
         : `<div class="cline" style="color:var(--parchment)">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>`) +
       (city.ownerId === cityViewer
-        ? rushButtonsHtml(state, cityViewer, "rush-prod", city.id, (cur) => cityRushCost(city, cur))
+        ? rushButtonsHtml(state, cityViewer, "rush-prod", city.id, (cur, sur) => cityRushCost(city, cur, sur))
         : "") +
-      `<button class="btn primary csheet-btn" id="open-prod">🔨 Construction <span class="sub">${options.length} ▸</span></button>` +
+      `<button class="btn csheet-btn" id="open-prod">🔨 Construction <span class="sub">${options.length} ▸</span></button>` +
       `<button class="btn csheet-btn" id="open-train">⚔️ Train Units <span class="sub">${freeCitizens(city)} free${city.trainingQueue.length ? ` · ${city.trainingQueue.length} training` : ""} ▸</span></button>` +
       `<button class="btn csheet-btn" id="open-spec">🛠️ Specialists <span class="sub">${specCount} trained · ${free} free${worksCount ? ` · ${worksCount} works` : ""} ▸</span></button>` +
       (() => {

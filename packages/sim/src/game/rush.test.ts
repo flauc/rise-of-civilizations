@@ -15,6 +15,7 @@ import {
   trainingRushCost,
   canRushTraining,
   rushTraining,
+  rushSurcharge,
 } from "./rush";
 import { citiesOf, unitsOf, playerById, type City } from "./state";
 
@@ -62,7 +63,7 @@ describe("rush production", () => {
     city.productionStored = 0;
 
     const cost = getBuildingDef("granary")!.cost;
-    expect(cityRushCost(city, "gold")).toBe(Math.ceil(cost * 4));
+    expect(cityRushCost(city, "gold")).toBe(Math.ceil(cost * 6));
 
     const goldBefore = p.gold;
     const res = rushCity(s, 0, city.id, "gold");
@@ -127,10 +128,65 @@ describe("rush production", () => {
     expect(rushCity(s, 0, city.id, "faith").ok).toBe(false);
   });
 
+  it("charges more to rush a settler than a same-duration warrior", () => {
+    const { s, city } = gameWithCity();
+    city.population = 6;
+    city.training.barracks = 1;
+    startTraining(s, city, "warrior");
+    startTraining(s, city, "settler");
+    const warriorOrder = city.trainingQueue.find((o) => o.unit === "warrior")!;
+    const settlerOrder = city.trainingQueue.find((o) => o.unit === "settler")!;
+    // Normalise the remaining turns so only the unit weight differs.
+    warriorOrder.turnsLeft = 4;
+    settlerOrder.turnsLeft = 4;
+    const warriorCost = trainingRushCost(warriorOrder, "gold")!;
+    const settlerCost = trainingRushCost(settlerOrder, "gold")!;
+    expect(settlerCost).toBe(Math.ceil(warriorCost * 2.5));
+  });
+
+  it("escalates each repeated rush in the window and cools down after 3 idle turns", () => {
+    const { s } = gameWithCity();
+    const p = playerById(s, 0)!;
+
+    // Rested: no surcharge.
+    expect(rushSurcharge(p, s.turn)).toBe(1);
+
+    // Two rushes already made this turn → next one pays +2 × 0.75.
+    p.rushSpree = { count: 2, lastTurn: s.turn };
+    expect(rushSurcharge(p, s.turn)).toBeCloseTo(1 + 2 * 0.75);
+
+    // Still inside the 3-turn window two turns later.
+    expect(rushSurcharge(p, s.turn + 2)).toBeCloseTo(1 + 2 * 0.75);
+
+    // Three idle turns later it has cooled down to base.
+    expect(rushSurcharge(p, s.turn + 3)).toBe(1);
+  });
+
+  it("applies and grows the surcharge across successive city rushes", () => {
+    const { s, city } = gameWithCity();
+    const p = playerById(s, 0)!;
+    p.gold = 100000;
+    p.researched.add("pottery_kiln");
+    city.production = { kind: "building", id: "granary" };
+    city.productionStored = 0;
+
+    const base = cityRushCost(city, "gold")!;
+    const first = rushCity(s, 0, city.id, "gold");
+    expect(first.cost).toBe(base); // first rush at 1×
+    expect(p.rushSpree).toEqual({ count: 1, lastTurn: s.turn });
+
+    // A second rush this turn is surcharged (+0.75×).
+    city.productionStored = 0;
+    const second = rushCity(s, 0, city.id, "gold");
+    expect(second.cost).toBe(Math.ceil(base * (1 + 0.75)));
+    expect(p.rushSpree!.count).toBe(2);
+  });
+
   it("rushes a tile work to completion", () => {
     const { s, city } = gameWithCity();
     const p = playerById(s, 0)!;
     p.gold = 10000;
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
     const tile = grasslandTile(s, city, city.col + 1, city.row);
     const work = startWork(s, 0, "farm", tile.col, tile.row);
     expect(work.ok).toBe(true);

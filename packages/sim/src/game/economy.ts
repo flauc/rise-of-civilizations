@@ -95,10 +95,12 @@ export function citizenScore(y: Yields & { culture?: number }): number {
   );
 }
 
-/** True if the tile has fresh water (lake or adjacent lake). Rivers/marsh are not separate terrains in this map model. */
+/** True if the tile has fresh water: a river runs through it, it's a lake, or it
+ *  neighbours one. Fresh-water civ/leader perks key off this. */
 function isFreshWaterTile(state: GameState, col: number, row: number): boolean {
   const tile = getTile(state.map, col, row);
   if (!tile) return false;
+  if (tile.river || tile.riverLake) return true;
   if (tile.terrain === "lake") return true;
   for (const n of offsetNeighbors(state.map, col, row)) {
     const nt = getTile(state.map, n.col, n.row);
@@ -130,6 +132,12 @@ function tileWorkYields(state: GameState, col: number, row: number, eff: CivEffe
     ),
     naturalWonderYields(tile),
   );
+  // A river enriches the land it crosses (a river lake also waters fresh ideas) —
+  // mirrors tileYields so worked output and citizen scoring value rivers correctly.
+  if (tile.river) {
+    base.food += 1;
+    if (tile.riverLake) base.science += 1;
+  }
   // Leader-ability tile bonuses.
   if (tile.improvement === "mine") {
     base.production += eff.mineTileProductionBonus ?? 0;
@@ -157,6 +165,21 @@ function tileWorkYields(state: GameState, col: number, row: number, eff: CivEffe
     base.gold += eff.coastalTileGoldBonus ?? 0;
   }
   return base;
+}
+
+/** Full worked yields of a tile as its owning city actually reaps them — terrain,
+ *  improvement, resource, natural wonder, river, and the owner's civ/leader/city
+ *  perks — plus any natural-wonder culture. Unowned tiles get the base yields with no
+ *  perks. The UI uses this so a tile's displayed yields match what working it gives,
+ *  rather than a perk-blind terrain-only estimate. */
+export function ownedTileYields(state: GameState, col: number, row: number): Yields & { culture: number } {
+  const tile = getTile(state.map, col, row);
+  if (!tile) return { ...ZERO_YIELDS, culture: 0 };
+  const ownerCity = tile.ownerCityId !== undefined ? state.cities.get(tile.ownerCityId) : undefined;
+  const eff: CivEffects = ownerCity
+    ? mergeCivEffects(civEffectsOf(state, ownerCity.ownerId), cityEffects(state, ownerCity))
+    : {};
+  return { ...tileWorkYields(state, col, row, eff), culture: naturalWonderCulture(tile) };
 }
 
 /** Compute a city's per-turn yields, auto-assigning the best worked tiles. */

@@ -104,8 +104,17 @@ export function bridgedRiverCrossing(state: GameState, fromCol: number, fromRow:
   return tileHasBridge(state, fromCol, fromRow) || tileHasBridge(state, toCol, toRow);
 }
 
+/** Move cost to enter a graded road tile, by road tier. A road's surface sets the
+ *  cost regardless of the terrain underneath: even a dirt track speeds travel on
+ *  open ground, and each upgrade roughly halves the cost (Paved ½, Imperial ¼). */
+export function roadMoveCost(roadLevel: number): number {
+  if (roadLevel >= 3) return 0.25; // Imperial Road — graded highway
+  if (roadLevel === 2) return 0.5; // Paved Road
+  return 0.75; // Dirt Road — still quicker than open ground
+}
+
 /** Effective movement cost to enter a tile for a specific unit. */
-export function unitMoveCost(state: GameState, unit: Unit, terrain: TerrainType, road: boolean): number {
+export function unitMoveCost(state: GameState, unit: Unit, terrain: TerrainType, road: boolean, roadLevel = 1): number {
   const def = UNIT_DEFS[unit.type];
   if (isWaterDomain(unit)) {
     if (isNavalUnit(unit)) {
@@ -123,7 +132,7 @@ export function unitMoveCost(state: GameState, unit: Unit, terrain: TerrainType,
     (unit.promotions.includes("woodland_warrior") || unit.promotions.includes("trailblazer") || unit.promotions.includes("guerrilla"))) {
     return 1;
   }
-  if (road) return 1;
+  if (road) return roadMoveCost(roadLevel);
   // Leader-ability movement overrides.
   if (eff.ignoreRoughTerrain && isRough(terrain)) return 1;
   if (eff.ignoreMountainMovement && terrain === "mountains") return 1;
@@ -226,7 +235,7 @@ export function computeReachable(
       if (city && city.ownerId !== unit.ownerId) continue;
       if (!isWaterDomain(unit) && enemyStructureBlocks(state, n.col, n.row, unit.ownerId)) continue;
       if (borderBlocked(n.col, n.row)) continue; // foreign territory needs war / open borders
-      let enterCost = unitMoveCost(state, unit, tile.terrain, tile.road ?? false);
+      let enterCost = unitMoveCost(state, unit, tile.terrain, tile.road ?? false, tile.roadLevel ?? 1);
       // Fording a river costs an extra movement point (like entering rough terrain),
       // unless a bridge carries the road across it.
       if (!isWaterDomain(unit) && riverBetween(state, cur.col, cur.row, n.col, n.row) &&

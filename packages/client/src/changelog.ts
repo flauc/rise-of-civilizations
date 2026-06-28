@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.2.0";
+export const CURRENT_VERSION = "0.2.1";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,78 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.2.1",
+    date: "June 2026",
+    changes: [
+      {
+        tag: "Gameplay",
+        title: "Rivals stop feeding their settlers to barbarians",
+        desc:
+          "The AI no longer marches defenceless settlers straight into raiders. It now scouts a safe place to found, preferring clear ground over slightly better land that sits in harm's way, and sends a soldier along to guard any settler that must cross dangerous country. A settler caught near a raider founds on the spot if it can, or falls back toward a friendly city until the coast clears — so rivals actually plant the sprawling empires they set out to build.",
+      },
+      {
+        tag: "Gameplay",
+        title: "The AI works the wilds — villages and barbarian camps",
+        desc:
+          "Rival civilizations now make the map pay. Scouts divert to claim the tribal villages they've discovered for their free rewards, and armies march on known barbarian camps to clear them — pocketing the gold and shutting off the raider spawns at the source instead of chasing one war-band across the map.",
+      },
+      {
+        tag: "New",
+        title: "Rivals parley with the barbarians",
+        desc:
+          "With the Parley tech in hand, the AI now deals with raiders the way you can: recruiting a war-band straight into its army when it needs bodies fast or the unit is a battle-hardened bargain, or buying a truce when raiders are pressing it — always keeping enough gold in the treasury that parley never bankrupts it.",
+      },
+      {
+        tag: "Balance",
+        title: "Rushing costs more — and a rushing spree costs much more",
+        desc:
+          "Hurrying things with gold, faith or culture is meaningfully pricier now, and settlers in particular cost a premium to rush. On top of that, every rush you make raises the price of the next one for a few turns: a single splurge is fine, but rushing several things back-to-back climbs steeply before cooling back down once you let the spree rest. The AI plays by the same rules, and spends its surplus far more readily.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Roads come in three grades",
+        desc:
+          "Every road no longer moves troops at the same speed. A humble Dirt Road already beats open ground, a Paved Road roughly halves the cost of crossing a tile, and an Imperial highway lets armies all but glide along it. The tile panel now tells you exactly which grade a road is and how much of a move it takes to cross.",
+      },
+      {
+        tag: "Balance",
+        title: "Rivers enrich the land they cross",
+        desc:
+          "A river running through a tile now adds food to whatever a citizen works there — and a river lake waters fresh ideas with extra science. River-loving civilization and leader perks now correctly count a riverside tile as fresh water, too.",
+      },
+      {
+        tag: "UI",
+        title: "See a tile improvement's payoff before you build it",
+        desc:
+          "Build buttons for tile works now show a compact yield preview beneath the name — the food, production, gold, science or faith you'll gain, and the resource it would activate — so you can weigh a Fishery against Salt Pans at a glance. Pastures, Plantations, Camps and Fishing Boats are now on the build menu as well, so resources like cattle, wine, deer and fish can finally be improved.",
+      },
+      {
+        tag: "UI",
+        title: "Cast abilities without opening the panel",
+        desc:
+          "The compact unit bar now carries icon-only quick-cast buttons for a unit's abilities — and a one-tap Found City for settlers — so you can fire them straight from the collapsed panel without expanding it first.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Public works need a free craftsman to start",
+        desc:
+          "Starting a tile work or wonder now requires an idle specialist of each craft it needs, ready to put on the job. If every mason or carpenter is busy elsewhere the option shows as locked until one frees up, so you can no longer queue works that would sit forever with no one to build them.",
+      },
+      {
+        tag: "Fix",
+        title: "No more black strip below the map on mobile",
+        desc:
+          "On phones, the map now fills the whole screen as the browser's toolbar slides in and out, instead of leaving a black band along the bottom.",
+      },
+      {
+        tag: "Fix",
+        title: "Unique units called by their proper names",
+        desc:
+          "Combat reports, leader-ability descriptions and the civilization picker now name a civ's unique unit instead of the generic one — your Minoan Biremes, Mycenaean Spearmen and Chola Warships read as themselves, and the lobby shows the unique units you field from turn one.",
+      },
+    ],
+  },
   {
     version: "0.2.0",
     date: "June 2026",

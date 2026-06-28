@@ -1,4 +1,4 @@
-import { cityAt, cityMaxHp, tileYields, resourceYields, naturalWonderYields, addYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, type GameState, type TradeRoute } from "@roc/sim";
+import { cityAt, cityMaxHp, ownedTileYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
@@ -644,7 +644,7 @@ export function drawOverlay(
       const [col, row] = key.split(",").map(Number) as [number, number];
       const t = getTile(state.map, col, row);
       if (!t) continue;
-      const y = addYields(addYields(tileYields(t), resourceYields(t)), naturalWonderYields(t));
+      const y = ownedTileYields(state, col, row);
       const segs: { text: string; color: string }[] = [];
       if (y.food) segs.push({ text: `${y.food}F`, color: "#8ef0a0" });
       if (y.production) segs.push({ text: `${y.production}P`, color: "#ffb86b" });
