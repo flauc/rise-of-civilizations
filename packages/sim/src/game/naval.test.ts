@@ -94,6 +94,7 @@ const baseState = (map: GameMap, overrides?: Partial<GameState>): GameState => (
   completedWonders: [],
   turnUpdates: [],
   nextTurnUpdateId: 1,
+  relations: [],
   ...overrides,
 } as GameState);
 
@@ -154,8 +155,9 @@ describe("naval movement", () => {
 });
 
 describe("embarkation", () => {
-  it("embarks a land unit from coastal land onto adjacent water", () => {
+  it("embarks a land unit from coastal land onto adjacent water (with Sailing)", () => {
     const state = baseState(coastalMap);
+    state.players[0]!.researched.add("sailing");
     const warrior = addUnit(state, makeUnit(1, 0, "warrior", 2, 1));
     expect(isCoastalLand(state, 2, 1)).toBe(true);
     const res = applyCommand(state, { type: "embark", unitId: warrior.id, col: 3, row: 1 });
@@ -164,6 +166,29 @@ describe("embarkation", () => {
     expect(warrior.row).toBe(1);
     expect(warrior.embarked).toBe(true);
     expect(warrior.movementLeft).toBe(0);
+  });
+
+  it("rejects embark without the Sailing tech", () => {
+    const state = baseState(coastalMap);
+    const warrior = addUnit(state, makeUnit(1, 0, "warrior", 2, 1));
+    const res = applyCommand(state, { type: "embark", unitId: warrior.id, col: 3, row: 1 });
+    expect(res.ok).toBe(false);
+    expect(warrior.embarked).toBeFalsy();
+  });
+
+  it("blocks embarking into a met civ's waters without war or open borders", () => {
+    // Fresh map so we don't mutate the shared coastalMap's tile ownership.
+    const map = makeMap(6, 4, (col) => (col >= 3 ? "coast" : "plains"));
+    const state = baseState(map);
+    state.players[0]!.researched.add("sailing");
+    state.players[0]!.met = [1];
+    const theirCity = makeCity(50, 1, "Theirs", 0, 2);
+    state.cities.set(theirCity.id, theirCity);
+    map.tiles[1 * 6 + 3]!.ownerCityId = theirCity.id; // tile (3,1) is player 1's water
+    const warrior = addUnit(state, makeUnit(1, 0, "warrior", 2, 1));
+    const res = applyCommand(state, { type: "embark", unitId: warrior.id, col: 3, row: 1 });
+    expect(res.ok).toBe(false);
+    expect(warrior.embarked).toBeFalsy();
   });
 
   it("disembarks an embarked unit onto adjacent land", () => {
@@ -178,6 +203,7 @@ describe("embarkation", () => {
 
   it("rejects embark from inland tiles", () => {
     const state = baseState(coastalMap);
+    state.players[0]!.researched.add("sailing");
     const warrior = addUnit(state, makeUnit(1, 0, "warrior", 0, 1));
     const res = applyCommand(state, { type: "embark", unitId: warrior.id, col: 1, row: 1 });
     expect(res.ok).toBe(false);

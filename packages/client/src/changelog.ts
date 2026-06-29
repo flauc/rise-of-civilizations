@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.2.1";
+export const CURRENT_VERSION = "0.2.2";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,36 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.2.2",
+    date: "June 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Rivals play to win",
+        desc:
+          "The AI no longer just grows and hopes for the best — it picks the victory best suited to its temperament and drives for it. A builder pours its wonders, buildings and research into science or culture; a merchant prince courts open borders to open lucrative international trade routes and out-commerce the field; a zealot founds a faith and sends missionaries across the world to convert rival cities; and a warmonger that spots a beatable neighbour declares war and marches on its capital. Left alone, rivals will now actually win by science, culture, religion, economy or conquest — not merely run up the score.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Rivals expand like they mean it",
+        desc:
+          "Rival civilizations settle far harder and faster. A new empire opens by hurrying a settler out of its capital for a quick, safe second city, then keeps planting new cities from every settlement that's out of harm's way — even while a distant frontier town is being raided. (Before, a single wandering barbarian near any one city could freeze an entire empire's expansion.) Expect the map to fill with rivals' borders much sooner.",
+      },
+      {
+        tag: "Fix",
+        title: "Embarking out to sea needs Sailing",
+        desc:
+          "Land units can no longer stroll onto the water before their civilization has researched Sailing — the tech that unlocks coastal embarkation. The AI is held to the same rule, so rival armies and settlers stay ashore until they've earned their sea legs.",
+      },
+      {
+        tag: "Fix",
+        title: "Foreign borders are borders",
+        desc:
+          "Slipping a unit into another civilization's territory at peace is an act of war — and now that holds for everyone. The AI no longer wanders across borders uninvited; it routes around foreign land unless it has open borders or has declared war. And when a city's culture expands its borders around someone else's unit, that unit is escorted out to the nearest open ground rather than left camped on land it has no right to — unless the two of you have open borders.",
+      },
+    ],
+  },
   {
     version: "0.2.1",
     date: "June 2026",

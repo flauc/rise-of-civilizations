@@ -2,7 +2,7 @@ import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { City, GameState, ProductionItem } from "./state";
 import { cityAt, currentPlayer, log, playerById, unitsOf, citiesOf, unitAt, areEnemies } from "./state";
 import { isPassableLand, isWaterTerrain } from "./terrain";
-import { computeReachable, isCoastalLand, isCoastalWater, isNavalUnit, isWaterDomain } from "./movement";
+import { computeReachable, isCoastalLand, isCoastalWater, isNavalUnit, isWaterDomain, ejectTrespassers } from "./movement";
 import { updateExplored } from "./visibility";
 import { processCity, availableProduction, autoAssignCitizens, toggleCitizen, applyUnitUpkeep } from "./economy";
 import {
@@ -50,6 +50,7 @@ import {
   respondProposal,
   finalizeDeal,
   diplomacyTick,
+  foreignTerritoryOwner,
 } from "./diplomacy";
 import type { DealItem } from "./state";
 import { gatherPlayerResources } from "./resources";
@@ -154,6 +155,7 @@ export function beginTurn(state: GameState): void {
     c.rangedAttackUsed = false;
     processCity(state, c, player);
   }
+  ejectTrespassers(state); // bump any unit a freshly-expanded border just enclosed off foreign soil
   applyUnitUpkeep(state, player); // empire-wide unit maintenance after city income
   processTransit(state, player.id); // deliver religious units riding trade routes
   for (const u of unitsOf(state, player.id)) if (u.inTransit) u.movementLeft = 0; // still travelling
@@ -578,6 +580,9 @@ export function applyCommand(
       if (isNavalUnit(unit)) return fail("already naval");
       if (isWaterDomain(unit)) return fail("already embarked");
       if (unit.movementLeft <= 0) return fail("no movement");
+      // Putting a land unit to sea is unlocked by Sailing (see docs/TECHNOLOGIES.md).
+      // (Innate-embark civ traits — Polynesia/Norse — are flavour not yet implemented.)
+      if (!player.researched.has("sailing")) return fail("requires Sailing to embark");
       const tile = getTile(state.map, unit.col, unit.row);
       if (!tile || isWaterTerrain(tile.terrain)) return fail("must be on land");
       if (!isCoastalLand(state, unit.col, unit.row)) return fail("not coastal");
@@ -586,6 +591,11 @@ export function applyCommand(
       if (!isCoastalWater(state, cmd.col, cmd.row)) return fail("target must be coastal water");
       if (axialDistance(offsetToAxial({ col: unit.col, row: unit.row }), offsetToAxial({ col: cmd.col, row: cmd.row })) !== 1) {
         return fail("target not adjacent");
+      }
+      // Foreign waters are off-limits without war or open borders — same rule the land
+      // `move` path enforces via computeReachable; embarking must not be a loophole.
+      if (foreignTerritoryOwner(state, player.id, cmd.col, cmd.row) !== null) {
+        return fail("foreign territory — make war or secure open borders first");
       }
       // Cannot embark into an occupied tile.
       for (const u of state.units.values()) {
@@ -612,6 +622,10 @@ export function applyCommand(
       if (!isPassableLand(target.terrain)) return fail("impassable terrain");
       if (axialDistance(offsetToAxial({ col: unit.col, row: unit.row }), offsetToAxial({ col: cmd.col, row: cmd.row })) !== 1) {
         return fail("target not adjacent");
+      }
+      // Can't wade ashore into a civ's land without war or open borders (mirrors `move`).
+      if (foreignTerritoryOwner(state, player.id, cmd.col, cmd.row) !== null) {
+        return fail("foreign territory — make war or secure open borders first");
       }
       for (const u of state.units.values()) {
         if (u.id !== unit.id && u.col === cmd.col && u.row === cmd.row) return fail("tile occupied");

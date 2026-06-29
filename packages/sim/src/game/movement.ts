@@ -10,9 +10,9 @@ import {
 } from "@roc/shared";
 import { moveCost, isPassableLand, isNavalPassable, navalMoveCost, isWaterTerrain, isForestTerrain, isRough, type TerrainType } from "./terrain";
 import type { GameState, Unit } from "./state";
-import { cityAt, areEnemies, playerById } from "./state";
+import { cityAt, areEnemies, playerById, log } from "./state";
 import { UNIT_DEFS, type UnitDef, type TechId } from "./content";
-import { foreignTerritoryOwner } from "./diplomacy";
+import { foreignTerritoryOwner, atWar, relationBetween } from "./diplomacy";
 import { playerEffects } from "./civs";
 
 /** Whether a unit's domain is water (native ship or embarked land unit). */
@@ -279,6 +279,80 @@ export function incursionTargets(state: GameState, unit: Unit): Map<string, numb
     if (owner !== null) out.set(k, owner);
   }
   return out;
+}
+
+/**
+ * The civ whose peaceful territory `unit` would be trespassing in at (col,row), or null.
+ * "Trespassing" = the tile belongs to another non-barbarian civ that `unit`'s owner is at
+ * peace with and lacks open borders with. At war (free to invade) or with open borders
+ * (welcomed) presence is legitimate, and barbarians roam anywhere. Met status is
+ * irrelevant — you simply may not sit on another civ's land uninvited.
+ */
+function trespassOwner(state: GameState, unit: Unit, col: number, row: number): number | null {
+  const owner = playerById(state, unit.ownerId);
+  if (!owner || owner.isBarbarian) return null;
+  const tile = getTile(state.map, col, row);
+  if (!tile || tile.ownerCityId === undefined) return null;
+  const city = state.cities.get(tile.ownerCityId);
+  if (!city || city.ownerId === unit.ownerId) return null;
+  const territoryOwner = playerById(state, city.ownerId);
+  if (!territoryOwner || territoryOwner.isBarbarian) return null;
+  if (atWar(state, unit.ownerId, city.ownerId)) return null;
+  if (relationBetween(state, unit.ownerId, city.ownerId)?.openBorders) return null;
+  return city.ownerId;
+}
+
+/** The nearest tile a bumped unit may legally occupy: passable for its domain,
+ *  unoccupied, and not (another) civ's peaceful territory. BFS outward; null if none. */
+function nearestLegalTile(state: GameState, unit: Unit): Offset | null {
+  const occupied = (c: number, r: number): boolean => {
+    for (const u of state.units.values()) if (u.id !== unit.id && u.col === c && u.row === r) return true;
+    return false;
+  };
+  const seen = new Set<string>([`${unit.col},${unit.row}`]);
+  let frontier: Offset[] = [{ col: unit.col, row: unit.row }];
+  for (let depth = 0; depth < 10 && frontier.length > 0; depth++) {
+    const next: Offset[] = [];
+    for (const cur of frontier) {
+      for (const n of offsetNeighbors(state.map, cur.col, cur.row)) {
+        const k = `${n.col},${n.row}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const tile = getTile(state.map, n.col, n.row);
+        if (!tile) continue;
+        next.push(n); // keep expanding the search even past tiles we can't stop on
+        if (!isTilePassableForUnit(state, unit, tile)) continue;
+        if (occupied(n.col, n.row)) continue;
+        if (trespassOwner(state, unit, n.col, n.row) !== null) continue;
+        return n;
+      }
+    }
+    frontier = next;
+  }
+  return null;
+}
+
+/**
+ * Border patrol: any unit caught inside another civ's peaceful territory — typically
+ * because that civ's culture just expanded its borders around it — is escorted to the
+ * nearest tile it may legally occupy (unless it has open borders, or the two are at war).
+ * Applies to humans and AI alike, so no one ends up camped inside foreign borders they
+ * never had the right to enter.
+ */
+export function ejectTrespassers(state: GameState): void {
+  for (const unit of state.units.values()) {
+    const owner = trespassOwner(state, unit, unit.col, unit.row);
+    if (owner === null) continue;
+    const dest = nearestLegalTile(state, unit);
+    if (!dest) continue; // hemmed in with nowhere legal to go — leave it be for now
+    unit.col = dest.col;
+    unit.row = dest.row;
+    log(state, `${playerById(state, unit.ownerId)?.name ?? "A"} unit was escorted out of ${playerById(state, owner)?.name ?? "foreign"} territory.`, {
+      actorId: unit.ownerId,
+      targetIds: [unit.ownerId],
+      tile: { col: dest.col, row: dest.row },
+    });
+  }
 }
 
 export function unitSight(unit: Unit): number {

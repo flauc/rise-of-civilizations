@@ -21,6 +21,7 @@ import { gatherPlayerResources } from "./resources";
 import { tickAbilities } from "./abilities";
 import { canStealthMove, stealthMovement } from "./stealth";
 import { diplomacyTick } from "./diplomacy";
+import { ejectTrespassers } from "./movement";
 import { aiTakeTurn } from "./ai";
 
 /** Begin a fresh turn for ALL players at once: refresh movement, heal, reveal. */
@@ -66,6 +67,7 @@ export function resolveSimultaneousTurn(state: GameState): void {
     applyUnitUpkeep(state, p); // empire-wide unit maintenance after city income
     advanceWorks(state, p.id); // specialists labour on public works
   }
+  ejectTrespassers(state); // borders that grew this round bump foreign units off the land
   spreadReligion(state);
   diplomacyTick(state); // pay deal obligations, decay relations, expire pacts (once per round)
   pruneBarbarianBribes(state); // expire truces whose 10 turns have elapsed

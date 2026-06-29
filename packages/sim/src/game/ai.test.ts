@@ -3,12 +3,12 @@ import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import { createGame } from "./setup";
 import { applyCommand, beginTurn } from "./commands";
 import { startSimultaneousTurn, resolveSimultaneousTurn } from "./simturn";
-import { aiTakeTurn, aiBarbarianDiplomacy, planSettle } from "./ai";
+import { aiTakeTurn, aiBarbarianDiplomacy, aiVictoryFocus, aiSeekOpenBorders, aiSeekConquest, aiPeaceBlocked, planSettle } from "./ai";
 import { isBarbarianPacified } from "./bribery";
 import { worksOf } from "./works";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
-import { ensureContact, declareWar } from "./diplomacy";
+import { ensureContact, declareWar, personalityOf, relationBetween, atWar } from "./diplomacy";
 import { foundReligion } from "./religion";
 import { startTraining } from "./training";
 import { UNIT_DEFS } from "./content";
@@ -51,6 +51,36 @@ function landTileAtDepth(s: GameState, start: { col: number; row: number }, dept
   return null;
 }
 
+/** A barbarians-on game with a player-1 (AI) Warrior beside a barbarian Warrior, and
+ *  every other AI unit cleared so military counts are predictable. Returns the pieces
+ *  needed to drive barbarian-diplomacy tests. */
+function barbAdjacentSetup(seed: string): { s: GameState; ai: GameState["players"][number]; barbId: number; guardId: number; barbUnitId: number } {
+  const s = createGame({ seed, cols: 30, rows: 20, barbarians: true, humanSlots: 1, playerCount: 2 });
+  beginTurn(s);
+  const ai = s.players[1]!;
+  const barbId = s.players.find((p) => p.isBarbarian)!.id;
+  let h: { col: number; row: number } | null = null;
+  let b: { col: number; row: number } | null = null;
+  outer: for (const t of s.map.tiles) {
+    if (!isPassableLand(t.terrain)) continue;
+    for (const n of offsetNeighbors(s.map, t.col, t.row)) {
+      const nt = getTile(s.map, n.col, n.row);
+      if (nt && isPassableLand(nt.terrain)) { h = { col: t.col, row: t.row }; b = { col: n.col, row: n.row }; break outer; }
+    }
+  }
+  if (!h || !b) throw new Error("no adjacent passable tiles");
+  // Clear every AI unit (so milCount is exactly our guard) and whatever sits on b.
+  for (const u of [...s.units.values()]) {
+    if (u.ownerId === 1) s.units.delete(u.id);
+    else if (u.col === b.col && u.row === b.row) s.units.delete(u.id);
+  }
+  const guardId = s.nextEntityId++;
+  s.units.set(guardId, makeUnit(guardId, 1, "warrior", h.col, h.row));
+  const barbUnitId = s.nextEntityId++;
+  s.units.set(barbUnitId, makeUnit(barbUnitId, barbId, "warrior", b.col, b.row));
+  return { s, ai, barbId, guardId, barbUnitId };
+}
+
 /** Run end-turns until the AI (player 1) has founded a city. */
 function aiWithCity(seed: string): GameState {
   const s = createGame({ seed, cols: 44, rows: 30, barbarians: false, humanSlots: 1, playerCount: 2 });
@@ -83,7 +113,14 @@ describe("AI opponent", () => {
   });
 
   it("plays a long game (research, build, expand) without crashing", () => {
-    const s = aiWithCity("ai-long");
+    // Use four civs: in a 1v1 the passive human never settles, so the AI wins an
+    // instant domination victory (the only civ left with cities) within a few turns and
+    // the sim freezes — we'd never observe a real long game. With rival AIs around, the
+    // game runs on and we can watch player 1 actually develop.
+    const s = createGame({ seed: "ai-long", cols: 44, rows: 30, barbarians: false, humanSlots: 1, playerCount: 4 });
+    beginTurn(s);
+    let guard = 0;
+    while (citiesOf(s, 1).length === 0 && guard++ < 25) applyCommand(s, { type: "endTurn" });
     expect(() => {
       for (let i = 0; i < 50; i++) applyCommand(s, { type: "endTurn" });
     }).not.toThrow();
@@ -334,6 +371,109 @@ describe("AI opponent", () => {
       expect(after!.safe).toBe(true);
       expect(getTile(s.map, after!.col, after!.row)!.feature).not.toBe("barb_camp");
     }
+  });
+
+  it("steers a commerce-rich civ toward an economic victory", () => {
+    const s = aiWithCity("ai-focus-eco");
+    const ai = s.players[1]!;
+    ai.gold = 8000; // a deep treasury and...
+    const c = citiesOf(s, 1)[0]!;
+    for (const b of ["market", "bank", "harbor"]) if (!c.buildings.includes(b)) c.buildings.push(b); // ...full commerce
+    // Economic progress is now its furthest-along builder path → it commits to that win,
+    // regardless of its temperament's default inclination.
+    expect(aiVictoryFocus(s, ai, personalityOf(s, 1))).toBe("economic");
+  });
+
+  it("an economic-focused AI offers open borders to unlock international trade", () => {
+    const s = createGame({ seed: "ai-ob", cols: 40, rows: 28, barbarians: false, humanSlots: 1, playerCount: 2 });
+    beginTurn(s); // player 0 = human, player 1 = AI
+    ensureContact(s, 0, 1);
+    s.turn = 3; // aligns the AI(1)→0 open-borders throttle so the proposal fires this call
+    expect(relationBetween(s, 1, 0)?.openBorders).toBeFalsy();
+    aiSeekOpenBorders(s, s.players[1]!, "economic");
+    // Offer to the human stays pending (acceptance is diplomacy's job; benchmarks show AI
+    // rivals do agree). What we assert here is that the AI actively SEEKS open borders.
+    expect(
+      s.diploProposals.some(
+        (pr) => pr.fromId === 1 && pr.toId === 0 && pr.give.some((i) => i.kind === "openBorders"),
+      ),
+    ).toBe(true);
+  });
+
+  it("won't trespass into peaceful foreign territory (even pre-contact), but may at war", () => {
+    const s = createGame({ seed: "ai-tres", cols: 30, rows: 20, barbarians: false, humanSlots: 0, playerCount: 2 });
+    beginTurn(s);
+    for (const pid of [0, 1]) {
+      const settler = unitsOf(s, pid).find((u) => u.type === "settler");
+      if (settler) applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+    }
+    const theirCity = citiesOf(s, 1)[0]!;
+    const tile = s.map.tiles.find((t) => t.ownerCityId === theirCity.id)!;
+    expect(tile).toBeTruthy();
+    // At peace (and not even formally met) → player 0 treats player 1's land as off-limits.
+    expect(aiPeaceBlocked(s, 0, tile.col, tile.row)).toBe(true);
+    // Declaring war opens it up — entering is now a sanctioned act of war.
+    ensureContact(s, 0, 1);
+    declareWar(s, 0, 1);
+    expect(aiPeaceBlocked(s, 0, tile.col, tile.row)).toBe(false);
+  });
+
+  it("a domination-focused AI opens a war on a weaker, reachable neighbour", () => {
+    const s = createGame({ seed: "ai-conq", cols: 40, rows: 28, barbarians: false, humanSlots: 0, playerCount: 2 });
+    beginTurn(s);
+    for (const pid of [0, 1]) {
+      const settler = unitsOf(s, pid).find((u) => u.type === "settler");
+      if (settler) applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+    }
+    ensureContact(s, 0, 1);
+    // Disarm player 1, then mass a strong army for player 0 right beside player 1's city.
+    for (const u of unitsOf(s, 1)) if (UNIT_DEFS[u.type].strength > 0) s.units.delete(u.id);
+    const target = citiesOf(s, 1)[0]!;
+    let placed = 0;
+    for (const nb of offsetNeighbors(s.map, target.col, target.row)) {
+      if (placed >= 4) break;
+      const t = getTile(s.map, nb.col, nb.row);
+      if (!t || !isPassableLand(t.terrain) || unitAt(s, nb.col, nb.row)) continue;
+      const id = s.nextEntityId++;
+      s.units.set(id, makeUnit(id, 0, "swordsman", nb.col, nb.row));
+      placed++;
+    }
+    expect(placed).toBeGreaterThanOrEqual(3);
+    expect(atWar(s, 0, 1)).toBe(false);
+    aiSeekConquest(s, s.players[0]!, "domination");
+    expect(atWar(s, 0, 1)).toBe(true); // a beatable neighbour within reach → war
+  });
+
+  it("opens by training a settler from the lone capital (pop 2)", () => {
+    const s = aiWithCity("ai-open");
+    const city = citiesOf(s, 1)[0]!;
+    expect(citiesOf(s, 1).length).toBe(1); // just the capital
+    // Reset to a fresh opening: founding size, nothing queued, no settler in the field.
+    city.trainingQueue = [];
+    city.population = 2;
+    city.specialists = [];
+    for (const u of unitsOf(s, 1)) if (u.type === "settler") s.units.delete(u.id);
+    aiTakeTurn(s, 1);
+    expect(city.trainingQueue.some((o) => o.unit === "settler")).toBe(true); // opened with a settler
+  });
+
+  it("recruits a battle-hardened barbarian when it has Parley and spare gold", () => {
+    const { s, ai, barbUnitId } = barbAdjacentSetup("ai-recruit");
+    ai.researched.add("parley");
+    ai.gold = 1000;
+    s.units.get(barbUnitId)!.level = 2; // a bargain → recruited even when not threatened
+    aiBarbarianDiplomacy(s, ai, false);
+    expect(s.units.get(barbUnitId)?.ownerId).toBe(1); // joined the AI's army
+  });
+
+  it("bribes a barbarian war-band into a truce when pressed and recruiting is too dear", () => {
+    const { s, ai, barbId, barbUnitId } = barbAdjacentSetup("ai-bribe");
+    ai.researched.add("parley");
+    s.units.get(barbUnitId)!.campKey = "5,5"; // belongs to a camp → a war-band to truce with
+    ai.gold = 100; // enough to bribe (30 + 40 reserve) but not to recruit (75 + 40 reserve)
+    aiBarbarianDiplomacy(s, ai, true);
+    expect(s.units.get(barbUnitId)?.ownerId).toBe(barbId); // not recruited
+    expect(isBarbarianPacified(s, s.units.get(barbUnitId)!, 1)).toBe(true); // a truce was bought
   });
 
   it("rushes a settler out the door while expanding at peace", () => {

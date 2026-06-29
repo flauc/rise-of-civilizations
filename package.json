@@ -1,7 +1,7 @@
 {
   "name": "rise-of-civilizations",
   "private": true,
-  "version": "0.2.1",
+  "version": "0.2.2",
   "type": "module",
   "description": "A turn-based 4X (Ancient Era -> Age of Exploration). Canvas + TypeScript client, Bun + Postgres server.",
   "workspaces": [

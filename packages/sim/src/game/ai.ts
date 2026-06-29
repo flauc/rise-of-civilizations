@@ -18,7 +18,7 @@ import { canFoundReligion, availableReligionNames, buyReligiousUnit, religiousUn
 import { availableLegends, canRecruitLegend } from "./legends";
 import { canUseLeaderAbility } from "./leader-abilities";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
-import { aiConsiderDiplomacy, atWar, personalityOf } from "./diplomacy";
+import { aiConsiderDiplomacy, atWar, personalityOf, proposeDeal, relationBetween, attitudeScore, powerRatio, declareWar } from "./diplomacy";
 import { availablePromotions } from "./combat";
 import { rushCurrencies, canRushWork, canRushTraining, canRushCity, type RushCurrency } from "./rush";
 import { availableTraining } from "./training";
@@ -38,6 +38,7 @@ import { RESOURCE_DEFS, resourceActive } from "./resources";
 import { isPassableLand, isWaterTerrain, tileYields } from "./terrain";
 import { BARBARIAN_DIPLOMACY_TECH, UNIT_DEFS, isMilitary, isRanged, type TechId, type TrainingClass, type UnitTypeId } from "./content";
 import { barbarianBribeCost, barbarianRecruitCost, canParleyWith, isBarbarianPacified } from "./bribery";
+import { victoryProgress } from "./victory";
 import {
   citiesOf,
   cityAt,
@@ -49,6 +50,7 @@ import {
   type Player,
   type ProductionItem,
   type Unit,
+  type VictoryKind,
 } from "./state";
 
 // Growth/expansion-first ordering. Because units now cost population, a bigger,
@@ -124,19 +126,80 @@ function pickBeliefs(p: DiploPersonality): string[] {
     .map((b) => b.id);
 }
 
-/** Personality-weighted desirability of a wonder's effect (varies the AI's picks). */
-function wonderScore(effect: unknown, p: DiploPersonality): number {
+/**
+ * The victory this civ is steering toward. It starts from the civ's temperament
+ * (warmongers conquer, the greedy trade, the peaceful build culture, the rest pursue
+ * the science the AI naturally researches toward), then commits to whichever ENABLED
+ * path it is genuinely furthest along once it has a real lead — so a civ that lucks into
+ * a culture or religious edge presses it. Recomputed each turn (cheap, and it tracks the
+ * game state); only enabled decisive paths are ever chosen.
+ */
+export function aiVictoryFocus(state: GameState, player: Player, p: DiploPersonality): VictoryKind {
+  const prog = victoryProgress(state, player.id).filter((e) => e.enabled && e.kind !== "score");
+  // No decisive victory is enabled (a score-only game) → no win to race for; "score" is a
+  // neutral focus that adds no bias, so the AI just plays balanced. This is also how the
+  // AI respects the host's victory toggles: every path it considers comes from `prog`,
+  // whose entries are flagged enabled/disabled straight from `state.enabledVictories`.
+  if (prog.length === 0) return "score";
+  const has = (k: VictoryKind) => prog.some((e) => e.kind === k);
+  let focus: VictoryKind =
+    p.aggression > 0.65 ? "domination"
+    : p.greed > 0.6 ? "economic"
+    : p.aggression < 0.4 ? "culture"
+    : "science";
+  if (!has(focus)) focus = has("science") ? "science" : (prog[0]!.kind as VictoryKind);
+  // Commit to the BUILDER path we're clearly furthest along (progress drifts slowly, so
+  // this is stable). Domination is excluded from this override: its "capitals held / total"
+  // reads ~100% before rivals have founded their capitals, which would mislead the AI into
+  // thinking it's winning a conquest it isn't — so a conquest focus stays personality-driven.
+  const lead = prog
+    .filter((e) => e.kind !== "domination")
+    .sort((a, b) => b.progress - a.progress)[0];
+  if (lead && lead.progress >= 0.45) focus = lead.kind as VictoryKind;
+  return focus;
+}
+
+/** Personality- and victory-focus-weighted desirability of a wonder's effect. The focus
+ *  band makes a civ racing a given victory grab the wonders that feed it (a culture civ
+ *  prizes culture/tourism wonders, a science civ science ones, and so on). */
+function wonderScore(effect: unknown, p: DiploPersonality, focus: VictoryKind): number {
   const s = JSON.stringify(effect ?? {});
   let v = 1;
   if (/production|food/.test(s)) v += 2;
   if (/science|culture/.test(s)) v += p.aggression < 0.55 ? 2 : 1;
   if (/combat|strength|unit|military|defense/.test(s)) v += p.aggression > 0.6 ? 3 : 0;
   if (/gold/.test(s)) v += p.greed > 0.6 ? 2 : 0;
+  // The civ's win condition strongly pulls its wonder picks toward the matching yield.
+  if (focus === "culture" && /culture|tourism/.test(s)) v += 5;
+  if (focus === "science" && /science/.test(s)) v += 5;
+  if (focus === "economic" && /gold|trade/.test(s)) v += 5;
+  if (focus === "religious" && /faith|religion/.test(s)) v += 5;
+  if (focus === "domination" && /combat|strength|military|defense/.test(s)) v += 5;
   return v;
 }
 
 function ax(o: { col: number; row: number }) {
   return offsetToAxial(o);
+}
+
+/**
+ * A tile the AI must NOT trespass into during peaceful movement: it belongs to another
+ * civ we're at peace with and lack open borders with. For a human, stepping into foreign
+ * land is a deliberate act of war (the client makes you confirm and declares it); the AI
+ * honours the same rule by simply routing around such territory — it only enters once it
+ * has chosen war (see aiSeekConquest) or earned open borders. Unlike the sim's met-gated
+ * border check this also avoids the land of civs not yet formally met, so the AI never
+ * blunders across a visible border uninvited.
+ */
+export function aiPeaceBlocked(state: GameState, pid: number, col: number, row: number): boolean {
+  const tile = getTile(state.map, col, row);
+  if (!tile || tile.ownerCityId === undefined) return false;
+  const city = state.cities.get(tile.ownerCityId);
+  if (!city || city.ownerId === pid) return false;
+  const owner = playerById(state, city.ownerId);
+  if (!owner || owner.isBarbarian) return false;
+  if (atWar(state, pid, city.ownerId)) return false; // at war → free to march in
+  return !relationBetween(state, pid, city.ownerId)?.openBorders; // open borders → welcome
 }
 
 /** Move a unit one step toward (goalCol,goalRow) if it makes progress. */
@@ -148,6 +211,7 @@ function stepToward(state: GameState, unit: Unit, goalCol: number, goalRow: numb
   let bestD = axialDistance(ax(unit), goal);
   for (const key of reach.keys()) {
     const [c, r] = key.split(",").map(Number) as [number, number];
+    if (aiPeaceBlocked(state, pid, c, r)) continue; // don't trespass into peaceful foreign land
     const d = axialDistance(ax({ col: c, row: r }), goal);
     if (d < bestD) {
       bestD = d;
@@ -180,6 +244,7 @@ function tryNavalStep(state: GameState, unit: Unit, goalCol: number, goalRow: nu
     for (const n of offsetNeighbors(state.map, unit.col, unit.row)) {
       const t = getTile(state.map, n.col, n.row);
       if (!t || isWaterTerrain(t.terrain) || !isPassableLand(t.terrain) || occupied(n.col, n.row)) continue;
+      if (aiPeaceBlocked(state, pid, n.col, n.row)) continue; // don't wade ashore into foreign land
       const d = axialDistance(ax(n), goal);
       if (d < bestD) {
         bestD = d;
@@ -197,6 +262,7 @@ function tryNavalStep(state: GameState, unit: Unit, goalCol: number, goalRow: nu
   for (const n of offsetNeighbors(state.map, unit.col, unit.row)) {
     const t = getTile(state.map, n.col, n.row);
     if (!t || !isWaterTerrain(t.terrain) || occupied(n.col, n.row)) continue;
+    if (aiPeaceBlocked(state, pid, n.col, n.row)) continue; // don't put to sea into foreign waters
     const d = axialDistance(ax(n), goal);
     if (d < bestD) {
       bestD = d;
@@ -320,14 +386,17 @@ function aiExplore(state: GameState, unit: Unit, pid: number): void {
 
 // ---- production choice ---------------------------------------------------
 
-/** Is a hostile (war enemy or barbarian) lurking near any of the player's cities? */
-function hostileNearCities(state: GameState, pid: number): boolean {
-  for (const c of citiesOf(state, pid)) {
-    for (const u of state.units.values()) {
-      if (isHostile(state, pid, u.ownerId) && axialDistance(ax(c), ax(u)) <= 4) return true;
-    }
+/** Is a hostile (war enemy or barbarian) within `radius` of THIS city specifically? */
+function hostileNearCity(state: GameState, pid: number, city: City, radius: number): boolean {
+  for (const u of state.units.values()) {
+    if (isHostile(state, pid, u.ownerId) && axialDistance(ax(city), ax(u)) <= radius) return true;
   }
   return false;
+}
+
+/** Is a hostile (war enemy or barbarian) lurking near any of the player's cities? */
+function hostileNearCities(state: GameState, pid: number): boolean {
+  return citiesOf(state, pid).some((c) => hostileNearCity(state, pid, c, 4));
 }
 
 /** A city with open water in its inner ring — values a harbor and seafaring. */
@@ -350,16 +419,16 @@ function exploredFraction(state: GameState, pid: number): number {
  *  (every city adds population to spend on army, settlers, science and gold), so
  *  the AI now expands far more ambitiously — `findSettleSpot` caps it by real land. */
 function targetCityCount(p: DiploPersonality): number {
-  if (p.aggression > 0.7) return 8; // warmongers settle a strong core, then conquer the rest
-  if (p.aggression < 0.45) return 16; // peaceful builders blanket the map
-  return 12;
+  if (p.aggression > 0.7) return 14; // warmongers settle a strong core, then conquer the rest
+  if (p.aggression < 0.45) return 26; // peaceful builders blanket the map
+  return 20;
 }
 
 /**
  * Construction chooser: what a city should BUILD (units are trained separately, see
  * aiTrainUnits). Covers training-building tiers, infrastructure, projects.
  */
-function chooseConstruction(state: GameState, player: Player, city: City, p: DiploPersonality): ProductionItem | null {
+function chooseConstruction(state: GameState, player: Player, city: City, p: DiploPersonality, focus: VictoryKind): ProductionItem | null {
   const opts = availableProduction(state, player, city);
   const atWar = player.atWar.length > 0;
   const warMinded = atWar || p.aggression > 0.6;
@@ -385,6 +454,16 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
   if (coastal) order.unshift("harbor");
   if (warMinded) order.unshift("walls"); // fortify the frontier before it's tested
   if (player.gold <= 0) order.unshift("market"); // prioritise income when broke
+  // The civ's victory focus pulls its win-condition buildings to the front of the queue:
+  // commerce for an economic hegemony, culture buildings for tourism, science buildings
+  // for the Great Endeavor, shrines/temples for a religious crusade.
+  const focusBuildings: Partial<Record<VictoryKind, string[]>> = {
+    economic: ["market", "bank", "harbor"],
+    culture: ["amphitheater", "monument", "museum", "temple"],
+    science: ["library", "academy"],
+    religious: ["shrine", "temple"],
+  };
+  for (const id of [...(focusBuildings[focus] ?? [])].reverse()) order.unshift(id);
   order.push(
     "forge", "bank", "monument", "amphitheater", "academy", "museum",
     "aqueduct", "temple", "shrine", "walls", "lighthouse",
@@ -426,48 +505,56 @@ function bestTrainableMilitary(trainable: UnitTypeId[]): UnitTypeId | null {
  * and military are all trained here now (each costs a population point). Paces itself
  * by keeping some citizens working unless under threat.
  */
-function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPersonality, threatened: boolean, escortShortfall = false): void {
+function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPersonality, escortShortfall = false): void {
   const trainable = availableTraining(state, player, city);
   const units = unitsOf(state, player.id);
   const has = (t: string) => units.some((u) => u.type === t);
   const cityCount = citiesOf(state, player.id).length;
   const settlersOut = units.filter((u) => u.type === "settler").length;
-  const expanding = !threatened && cityCount + settlersOut < targetCityCount(p);
+  const milCount = units.filter((u) => isMilitary(u.type)).length;
+  // Threat is LOCAL, not empire-wide: a city pauses its own expansion only if an enemy
+  // is right on top of it. Two coarser flags used to freeze the WHOLE empire's growth —
+  // a single roaming barbarian near any city, and (worse) merely *being at war* — which
+  // is why an AI stuck in a stalemate war it can't end would stop settling entirely and
+  // wither. Now safe backline cities keep expanding while the front does the fighting.
+  const localThreat = hostileNearCity(state, player.id, city, 2);
+  const atWar = player.atWar.length > 0;
+  const expanding = !localThreat && cityCount + settlersOut < targetCityCount(p);
   // Opening play: get the lone capital's first settler out the door immediately — it
   // founds a cheap, safe second city while the starting Warriors screen it. We let the
-  // capital dip to a single citizen for this one settler (it regrows once it leaves),
-  // then expansion proceeds from the healthier pop-3 gate below.
-  const openingSettler = false; void settlersOut;
+  // capital dip to a single citizen for this one settler (it regrows once it leaves);
+  // afterwards settlers come from the healthier pop-3 gate so cities keep growing rather
+  // than freezing into a swarm of fragile pop-1 hamlets.
+  const openingSettler = expanding && cityCount <= 1 && settlersOut === 0;
 
   const tryTrain = (type: UnitTypeId): boolean =>
     trainable.includes(type) &&
     applyCommand(state, { type: "startTraining", cityId: city.id, unit: type }, player.id).ok;
 
-  // Don't drain a city below this many citizens just to make units (relaxed in war and
-  // for that all-important opening settler).
-  const keepPop = threatened || openingSettler ? 1 : 2;
+  // Don't drain a city below this many citizens just to make units (relaxed under threat
+  // and for that all-important opening settler).
+  const keepPop = localThreat || openingSettler ? 1 : 2;
   if (city.population <= keepPop) return;
 
-  // The opening settler takes precedence over everything — beeline the second city.
+  // The opening settler takes precedence over the rest — beeline the second city.
   if (openingSettler && city.population >= 2 && tryTrain("settler")) return;
-  // Civilians: a scout early (we usually start with one), a trader to link cities.
-  if (!threatened && exploredFraction(state, player.id) < 0.45 && !has("scout") && tryTrain("scout")) return;
-  // Expand aggressively: any decent-sized city may build a settler, and several can
-  // do so at once, until the empire (cities already built + settlers en route) hits
-  // its target. This is the AI's single biggest lever now that units cost population.
+  // Civilians: a scout early (we usually start with one), a trader to link cities. Note
+  // expansion continues even during a distant war — safe cities keep settling rather than
+  // freezing the whole empire; the army is raised by the frontier and by maxed-out cities.
+  if (!localThreat && exploredFraction(state, player.id) < 0.45 && !has("scout") && tryTrain("scout")) return;
+  // Expand: a safe city below the empire's target builds settlers from pop 3 (dropping
+  // to 2, so it keeps growing). The biggest single lever now that units cost population.
   if (expanding && city.population >= 3 && tryTrain("settler")) return;
   // Keep a trader heading out whenever we have fewer routes than cities (links the
   // empire and, with open borders, opens lucrative international trade).
   const routeCount = state.tradeRoutes.filter((r) => r.ownerId === player.id).length;
-  if (cityCount >= 2 && !has("trader") && routeCount < cityCount && tryTrain("trader")) return;
+  if (!localThreat && cityCount >= 2 && !has("trader") && routeCount < cityCount && tryTrain("trader")) return;
 
-  // Military: train toward a target army size (one unit per city per turn). Keep a
-  // standing defence in peace and a real campaign army in war. Warlike civs hold a
-  // bigger peacetime host so they can actually threaten neighbours, not just defend.
-  const milCount = units.filter((u) => isMilitary(u.type)).length;
-  // A settler stranded without a guard bumps the target so a city musters an extra
-  // soldier to send after it.
-  const desired = (threatened
+  // Military: a war footing when fighting or locally menaced, else a peacetime garrison
+  // that scales with the empire (warlike civs hold a bigger host so they can threaten
+  // neighbours, not just defend). Cities still expanding above don't reach here, so the
+  // army is mustered by frontier cities and by those that have hit the expansion target.
+  const desired = ((atWar || localThreat)
     ? cityCount * 2 + 2
     : Math.max(cityCount + (p.aggression > 0.6 ? 3 : 2), 4)) + (escortShortfall ? 2 : 0);
   if (milCount < desired) {
@@ -723,13 +810,13 @@ export function aiBarbarianDiplomacy(state: GameState, player: Player, threatene
 }
 
 /** Start the wonder that best fits the civ, on an owned tile a capable city can reach. */
-function aiWonders(state: GameState, pid: number, p: DiploPersonality): void {
+function aiWonders(state: GameState, pid: number, p: DiploPersonality, focus: VictoryKind): void {
   if (worksOf(state, pid).some((w) => w.kind === "wonder")) return; // one at a time
   // Rank still-available wonders by how well their effect suits this civ, then take
   // the first we can actually start (canStartWonder checks craftsmen + an empty tile).
   const candidates = WONDER_DEFS.filter(
     (w) => !state.completedWonders.includes(w.id) && !worksOf(state, pid).some((x) => x.wonderId === w.id),
-  ).sort((a, b) => wonderScore(b.effect, p) - wonderScore(a.effect, p));
+  ).sort((a, b) => wonderScore(b.effect, p, focus) - wonderScore(a.effect, p, focus));
   for (const wonder of candidates) {
     for (const t of state.map.tiles) {
       const owner = t.ownerCityId !== undefined ? state.cities.get(t.ownerCityId) : undefined;
@@ -813,25 +900,30 @@ function aiTrader(state: GameState, unit: Unit, pid: number): void {
 }
 
 /** Buy a missionary when the AI has founded a faith, has spare faith, and one of
- *  its own cities still follows a different (or no) religion. */
-function aiBuyMissionaries(state: GameState, player: Player, pid: number): void {
+ *  its own cities still follows a different (or no) religion. A civ pursuing a religious
+ *  victory keeps a smaller faith reserve and runs several missionaries at once to convert
+ *  its empire fast (the bedrock for the win). */
+function aiBuyMissionaries(state: GameState, player: Player, pid: number, focus: VictoryKind): void {
   const rel = player.foundedReligionId;
   if (!rel) return;
+  const zealot = focus === "religious";
   const cost = religiousUnitCost("missionary");
-  if (player.faith < cost + 60) return; // keep a reserve for founding/legends
+  if (player.faith < cost + (zealot ? 20 : 60)) return; // keep a reserve for founding/legends
   const needs = citiesOf(state, pid).some((c) => c.religion !== rel);
   if (!needs) return;
-  // Don't stockpile missionaries: only buy if we have none in the field.
-  if (unitsOf(state, pid).some((u) => u.type === "missionary")) return;
+  // Don't stockpile missionaries: a zealot fields up to three at once, others just one.
+  const inField = unitsOf(state, pid).filter((u) => u.type === "missionary").length;
+  if (inField >= (zealot ? 3 : 1)) return;
   const city = citiesOf(state, pid)[0];
   if (city) buyReligiousUnit(state, pid, city.id, "missionary");
 }
 
 /** Walk a missionary to the nearest of our cities that doesn't yet follow our
  *  religion and convert it. */
-function aiReligiousUnit(state: GameState, unit: Unit, pid: number): void {
+function aiReligiousUnit(state: GameState, unit: Unit, pid: number, focus: VictoryKind): void {
   const rel = playerById(state, pid)?.foundedReligionId;
   if (!rel || unit.inTransit) return;
+  // 1) Convert our own cities first — a faithful home empire is the bedrock of the win.
   let best: City | null = null;
   let bestD = Infinity;
   for (const c of citiesOf(state, pid)) {
@@ -840,6 +932,21 @@ function aiReligiousUnit(state: GameState, unit: Unit, pid: number): void {
     if (d < bestD) {
       bestD = d;
       best = c;
+    }
+  }
+  // 2) Pursuing a religious victory and the home empire is converted? Carry the faith
+  //    abroad: head for the nearest peaceful rival city (open borders let the missionary
+  //    cross the border) that doesn't yet follow us. This is the only way to win — the
+  //    condition needs a majority in EVERY civ, not just our own.
+  if (!best && focus === "religious") {
+    for (const c of state.cities.values()) {
+      if (c.ownerId === pid || c.religion === rel) continue;
+      const owner = playerById(state, c.ownerId);
+      if (!owner || owner.isBarbarian) continue;
+      const r = relationBetween(state, pid, c.ownerId);
+      if (!r || r.status !== "peace" || !r.openBorders) continue; // can only cross with open borders
+      const d = axialDistance(ax(unit), ax(c));
+      if (d < bestD) { bestD = d; best = c; }
     }
   }
   if (!best) return;
@@ -1176,6 +1283,102 @@ function aiRush(state: GameState, player: Player, p: DiploPersonality, threatene
   }
 }
 
+// ---- active victory pursuit ----------------------------------------------
+
+/**
+ * A builder-victory civ courts mutual open borders with peaceful neighbours. Open
+ * borders are the gate to three things the AI otherwise can't reach: international
+ * trade routes (economic power), missionaries crossing into rival cities (religious
+ * conversion), and a tourism multiplier (culture). The deal is symmetric, so a civ
+ * that isn't openly hostile almost always agrees.
+ */
+export function aiSeekOpenBorders(state: GameState, player: Player, focus: VictoryKind): void {
+  if (focus !== "economic" && focus !== "culture" && focus !== "religious") return;
+  const pid = player.id;
+  for (const otherId of player.met) {
+    // Throttle: weigh each neighbour roughly every ten turns, not every single turn.
+    if ((state.turn + pid * 7 + otherId) % 10 !== 0) continue;
+    const r = relationBetween(state, pid, otherId);
+    if (!r || r.status !== "peace" || r.openBorders) continue;
+    const other = playerById(state, otherId);
+    if (!other || other.isBarbarian) continue;
+    if (attitudeScore(state, pid, otherId) <= -25) continue; // a hostile civ would refuse
+    if (state.diploProposals.some((pr) => pr.fromId === pid && pr.toId === otherId && pr.status === "pending")) continue;
+    proposeDeal(state, pid, otherId, [{ kind: "openBorders" }], [{ kind: "openBorders" }]);
+  }
+}
+
+/** Closest hop from any of our forces/cities to a rival's nearest city. */
+function nearestRivalCityDistance(state: GameState, pid: number, otherId: number): number {
+  const mine = [
+    ...citiesOf(state, pid).map((c) => ax(c)),
+    ...unitsOf(state, pid).filter((u) => isMilitary(u.type)).map((u) => ax(u)),
+  ];
+  let best = Infinity;
+  for (const c of citiesOf(state, otherId)) {
+    const t = ax(c);
+    for (const m of mine) best = Math.min(best, axialDistance(m, t));
+  }
+  return best;
+}
+
+/**
+ * A domination-focused civ doesn't wait to be provoked. Once it fields a real army and
+ * a clearly weaker neighbour sits within striking range, it declares war and goes for
+ * the capital — the per-unit military AI already converges on enemy cities and storms
+ * them. This is what turns a warmonger's intent into an actual conquest victory.
+ */
+export function aiSeekConquest(state: GameState, player: Player, focus: VictoryKind): void {
+  if (focus !== "domination" || player.atWar.length > 0) return;
+  const pid = player.id;
+  const army = unitsOf(state, pid).filter((u) => isMilitary(u.type) && u.hp >= 40).length;
+  if (army < 3) return; // need a credible force before opening a war
+  let target: number | null = null;
+  let bestScore = -Infinity;
+  for (const otherId of player.met) {
+    const r = relationBetween(state, pid, otherId);
+    if (!r || r.status !== "peace" || r.pact !== "none") continue;
+    if (r.warAllowedTurn !== undefined && state.turn < r.warAllowedTurn) continue; // a peace holds
+    const other = playerById(state, otherId);
+    if (!other || other.isBarbarian || citiesOf(state, otherId).length === 0) continue;
+    if (powerRatio(state, pid, otherId) < 1.25) continue; // only strike the clearly weaker
+    const reach = nearestRivalCityDistance(state, pid, otherId);
+    if (reach > 16) continue; // too far to prosecute a campaign
+    const score = powerRatio(state, pid, otherId) * 10 - reach;
+    if (score > bestScore) { bestScore = score; target = otherId; }
+  }
+  if (target !== null) declareWar(state, pid, target);
+}
+
+/** The longitude sector (0..5) a map column falls in — mirrors science-victory.ts. */
+function sectorOfCol(col: number, cols: number): number {
+  return Math.min(5, Math.floor((col / Math.max(1, cols)) * 6));
+}
+
+/**
+ * Send a science civ's voyager toward the nearest unvisited longitude sector's water,
+ * chipping away at the circumnavigation capstone (a ship — or an embarked land unit —
+ * must visit every sector). stepToward handles embarking from the coast. Returns true if
+ * it took the helm of this unit. Only worth doing once the civ can actually put to sea.
+ */
+function aiCircumnavigate(state: GameState, unit: Unit, pid: number): boolean {
+  const me = playerById(state, pid);
+  if (!me?.researched.has("sailing")) return false;
+  const visited = new Set(me.circumnavigation?.visitedSectors ?? []);
+  if (visited.size >= 6) return false; // already circled the globe
+  const cols = state.map.cols;
+  let best: { col: number; row: number } | null = null;
+  let bestD = Infinity;
+  for (const t of state.map.tiles) {
+    if (!isWaterTerrain(t.terrain) || visited.has(sectorOfCol(t.col, cols))) continue;
+    const d = axialDistance(ax(unit), ax({ col: t.col, row: t.row }));
+    if (d < bestD) { bestD = d; best = { col: t.col, row: t.row }; }
+  }
+  if (!best) return false;
+  stepToward(state, unit, best.col, best.row, pid);
+  return true;
+}
+
 /** Play a full turn for an AI-controlled civ. */
 export function aiTakeTurn(state: GameState, playerId: number): void {
   const player = playerById(state, playerId);
@@ -1183,8 +1386,13 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   const p = personalityOf(state, playerId);
   const atWarNow = player.atWar.length > 0;
   const threatened = atWarNow || hostileNearCities(state, playerId);
+  // The victory this civ is actively steering toward — it biases wonders, construction,
+  // research, religion and naval exploration below so the AI plays to win, not just to grow.
+  const focus = aiVictoryFocus(state, player, p);
 
   aiConsiderDiplomacy(state, playerId); // declare/sue for war, court friends
+  aiSeekOpenBorders(state, player, focus); // court open borders for trade/faith/tourism
+  aiSeekConquest(state, player, focus); // a warmonger opens a war it can win
 
   // Military pay (upkeep modifier): pay more in war to steady morale when affordable;
   // economise in peacetime, especially when the treasury is thin.
@@ -1257,7 +1465,7 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   }
 
   // Evangelize the empire: buy a missionary to convert any cities not yet ours in faith.
-  aiBuyMissionaries(state, player, playerId);
+  aiBuyMissionaries(state, player, playerId, focus);
 
   // Plan each settler's destination once (safety-aware). This drives the guard
   // assignment below AND tells the city/rush passes whether we must muster an extra
@@ -1277,15 +1485,21 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
 
   for (const city of citiesOf(state, playerId)) {
     if (!city.production) {
-      const item = chooseConstruction(state, player, city, p);
+      const item = chooseConstruction(state, player, city, p, focus);
       if (item) applyCommand(state, { type: "setProduction", cityId: city.id, item }, playerId);
     }
-    aiTrainUnits(state, player, city, p, threatened, escortShortfall);
+    aiTrainUnits(state, player, city, p, escortShortfall);
     aiManageCity(state, city, player, playerId);
   }
-  aiWonders(state, playerId, p);
+  aiWonders(state, playerId, p, focus);
   aiAssignSpecialists(state, playerId); // staff the works just queued (manual assignment)
   aiRush(state, player, p, threatened, escortShortfall); // hurry wonders / settlers / troops
+
+  // A science civ dedicates its first recon unit to the circumnavigation capstone —
+  // sailing the globe — while the rest scout as normal.
+  const voyagerId = focus === "science"
+    ? unitsOf(state, playerId).filter((u) => UNIT_DEFS[u.type].cls === "recon").sort((a, b) => a.id - b.id)[0]?.id
+    : undefined;
 
   for (const unit of unitsOf(state, playerId)) {
     if (!state.units.has(unit.id)) continue;
@@ -1293,8 +1507,11 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     if (unit.unspentPromotions > 0) aiPromote(state, unit, playerId);
     if (def.founder) aiSettler(state, unit, playerId, settlePlans.get(unit.id));
     else if (def.trader) aiTrader(state, unit, playerId);
-    else if (def.religious) aiReligiousUnit(state, unit, playerId);
-    else if (def.cls === "recon") aiScout(state, unit, playerId);
+    else if (def.religious) aiReligiousUnit(state, unit, playerId, focus);
+    else if (def.cls === "recon") {
+      if (unit.id === voyagerId && aiCircumnavigate(state, unit, playerId)) continue;
+      aiScout(state, unit, playerId);
+    }
     else aiMilitary(state, unit, playerId, escorts.get(unit.id));
   }
 
