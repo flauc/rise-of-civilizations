@@ -40,6 +40,7 @@ import { bribeBarbarian, recruitBarbarian, pruneBarbarianBribes } from "./briber
 import { useLeaderAbility } from "./leader-abilities";
 import { accrueGreatPeople, activateGreatPerson } from "./great-people";
 import { recruitLegend, tickLegends } from "./legends";
+import { tickLegendPassives } from "./legend-passives";
 import {
   declareWar,
   makePeace,
@@ -151,6 +152,7 @@ export function beginTurn(state: GameState): void {
   decayGlobalMorale(state, player); // global morale slips when wins dry up
   tickAbilities(state, player); // expire stances/pulses, enforce pins (after movement reset)
   tickLegends(state, player.id); // retire heroes whose lifespan has elapsed
+  tickLegendPassives(state, player); // living heroes' per-turn powers (income, drilling, dread)
   gatherPlayerResources(state, player.id);
   for (const c of citiesOf(state, player.id)) {
     c.rangedAttackUsed = false;

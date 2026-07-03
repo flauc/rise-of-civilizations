@@ -2,8 +2,10 @@
 // recruited with faith. Each reskins a base unit, carries its own combat bonus,
 // heartens adjacent friendly units (aura), and has a lifespan after which it
 // "passes into legend" (retires). Globally unique; rechargeable legends return to
-// the pool when they retire. Toggleable per game (state.legendsEnabled). See
-// docs/GREAT-PEOPLE.md §2.
+// the pool when they retire. Toggleable per game (state.legendsEnabled). Every
+// hero also carries a real signature power: active kits in content.ts
+// (LEGEND_ABILITY_OVERRIDES), passives in legend-passives.ts / legend-effects.ts.
+// See docs/GREAT-PEOPLE.md §2 and docs/UNIT-ABILITIES.md §9.
 
 import { getTile } from "@roc/shared";
 import { LEGENDS, getLegend, type LegendDef } from "@roc/data";
@@ -14,6 +16,7 @@ import { offsetNeighbors } from "./movement";
 import { isWaterTerrain } from "./terrain";
 import { startingUnitMorale } from "./morale";
 import { emitLegendRecruited } from "./turn-updates";
+import { legendSituationalCombatBonus } from "./legend-effects";
 
 export type { LegendDef };
 
@@ -136,7 +139,9 @@ export function tickLegends(state: GameState, playerId: number): void {
 /**
  * Combat-strength bonus from Legends for `unit`: its own hero bonus (if it is a
  * legend) plus the strongest aura from an adjacent friendly legend (auras don't
- * stack). Added into attack/defense strength alongside the civ combat bonus.
+ * stack), plus the situational hero passives (Belisarius outnumbered, El Cid on
+ * the frontier, an enemy Cleopatra's Allure — see legend-effects.ts). Added into
+ * attack/defense strength alongside the civ combat bonus.
  */
 export function legendCombatBonus(state: GameState, unit: Unit): number {
   let bonus = 0;
@@ -152,6 +157,7 @@ export function legendCombatBonus(state: GameState, unit: Unit): number {
     }
     bonus += aura;
   }
+  bonus += legendSituationalCombatBonus(state, unit);
   return bonus;
 }
 

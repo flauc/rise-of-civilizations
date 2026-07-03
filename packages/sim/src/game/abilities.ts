@@ -11,7 +11,7 @@ import { areEnemies, cityAt, log, playerById, unitAt, unitsOf } from "./state";
 import { isPassableLand, isRough } from "./terrain";
 import { enemyStructureBlocks, unitSight } from "./movement";
 import { resolveAttack, applyDirectDamage, secondaryRangedDamage, unitMaxHp, killUnit } from "./combat";
-import { changeUnitMorale, maybeRoute } from "./morale";
+import { changeUnitMorale, maybeRoute, startingUnitMorale } from "./morale";
 import { updateExplored } from "./visibility";
 import { effectiveAbilities, unitDisplayName } from "./civs";
 import { canHideHere, revealHiddenInSight } from "./stealth";
@@ -110,7 +110,10 @@ export function abilityTargets(state: GameState, unit: Unit, ability: ActiveAbil
   for (const u of state.units.values()) {
     if (u.ownerId === unit.ownerId) continue;
     const o = playerById(state, u.ownerId);
-    if (o && areEnemies(owner, o) && dist(unit, u) <= reach) out.add(`${u.col},${u.row}`);
+    if (!o || !areEnemies(owner, o) || dist(unit, u) > reach) continue;
+    // Uprising only rouses barbarian war-bands — the tribes, not a rival's army.
+    if (ability === "uprising" && !o.isBarbarian) continue;
+    out.add(`${u.col},${u.row}`);
   }
   return out;
 }
@@ -128,6 +131,7 @@ function abilityRange(unit: Unit, ability: ActiveAbilityId): number {
   if (ability === "repeating_fire") return def.range ?? 1;
   if (ability === "arrow_storm") return (def.range ?? 1) + 1;
   if (ability === "fire_lance") return (def.range ?? 1) + 1; // a lance reaches a tile beyond a melee thrust
+  if (ability === "basilica_bombard") return (def.range ?? 1) + 1; // the great bombard outranges every other engine
   if (ability === "pierce") return Math.max(1, (def.range ?? 1) - 1);
   if (ability === "aimed_shot" || ability === "poisoned_arrows") return def.range ?? 1;
   if (ability === "broadside") return def.range ?? 1;
@@ -228,6 +232,22 @@ export function useAbility(
         if (owner && o && areEnemies(owner, o)) changeUnitMorale(u, -10);
       }
       log(state, `${unitDisplayName(state, unit)} cried "Desperta ferro!"`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      return ok;
+    }
+
+    // Sacred Banner: the standard of Orléans is raised — the hero and adjacent
+    // allies heal and take heart. Ends the turn.
+    if (ability === "sacred_banner") {
+      unit.hp = Math.min(unitMaxHp(unit), unit.hp + 10);
+      changeUnitMorale(unit, 15);
+      for (const u of unitsAround(state, unit)) {
+        if (u.ownerId !== unit.ownerId) continue;
+        u.hp = Math.min(unitMaxHp(u), u.hp + 10);
+        changeUnitMorale(u, 15);
+      }
+      unit.movementLeft = 0;
+      unit.attackedThisTurn = true;
+      log(state, `${unitDisplayName(state, unit)} raised the sacred banner!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
       return ok;
     }
 
@@ -438,9 +458,63 @@ export function useAbility(
     case "stone_hail":
     case "beach_assault":
     case "obsidian_reap":
+    case "basilica_bombard":
     case "leiomano": {
       const res = resolveAttack(state, unit, col, row, { ability });
       if (!res.ok) return res;
+      setCd();
+      return ok;
+    }
+
+    case "uprising": {
+      // Boudica rouses a barbarian war-band to her cause — no blow is struck.
+      if (!tOwner?.isBarbarian) return fail("only barbarian war-bands can be roused");
+      target.ownerId = unit.ownerId;
+      target.morale = startingUnitMorale(state, unit.ownerId);
+      target.hidden = false;
+      target.stance = null;
+      target.movementLeft = 0;
+      target.attackedThisTurn = true;
+      unit.movementLeft = 0;
+      unit.attackedThisTurn = true;
+      updateExplored(state, unit.ownerId);
+      log(state, `${unitDisplayName(state, unit)} roused the ${UNIT_DEFS[target.type].name} to join the uprising!`, { actorId: unit.ownerId, targetIds: [unit.ownerId], tile: { col, row } });
+      setCd();
+      return ok;
+    }
+
+    case "slay_the_beast": {
+      const from = { col: unit.col, row: unit.row };
+      const res = resolveAttack(state, unit, col, row, { ability: "slay_the_beast" });
+      if (!res.ok) return res;
+      if (state.units.has(unit.id) && !state.units.has(target.id)) {
+        // The monster is slain — the hero and those who saw it take heart.
+        // (The hero may have advanced onto the kill tile, so count allies
+        // around where he stood as well as where he stands.)
+        changeUnitMorale(unit, 10);
+        for (const u of state.units.values()) {
+          if (u.id === unit.id || u.ownerId !== unit.ownerId) continue;
+          if (dist(u, unit) === 1 || dist(u, from) === 1) changeUnitMorale(u, 10);
+        }
+        log(state, `${unitDisplayName(state, unit)} slew the beast — the war-band takes heart!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      }
+      setCd();
+      return ok;
+    }
+
+    case "pyramid_of_skulls": {
+      const res = resolveAttack(state, unit, col, row, { ability: "pyramid_of_skulls" });
+      if (!res.ok) return res;
+      if (!state.units.has(target.id)) {
+        // The example is made: every enemy in sight of the kill loses its nerve.
+        for (const u of [...state.units.values()]) {
+          const o = playerById(state, u.ownerId);
+          if (owner && o && areEnemies(owner, o) && dist({ col, row }, u) <= 2) {
+            changeUnitMorale(u, -15);
+          }
+        }
+        log(state, `${unitDisplayName(state, unit)} raised a pyramid of skulls — terror spreads!`, { actorId: unit.ownerId, targetIds: [unit.ownerId], tile: { col, row } });
+      }
       setCd();
       return ok;
     }

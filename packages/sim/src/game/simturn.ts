@@ -19,6 +19,8 @@ import { pruneBarbarianBribes } from "./bribery";
 import { advanceWorks } from "./works";
 import { gatherPlayerResources } from "./resources";
 import { tickAbilities } from "./abilities";
+import { tickLegends } from "./legends";
+import { tickLegendPassives } from "./legend-passives";
 import { canStealthMove, stealthMovement } from "./stealth";
 import { diplomacyTick } from "./diplomacy";
 import { ejectTrespassers } from "./movement";
@@ -35,6 +37,8 @@ export function startSimultaneousTurn(state: GameState): void {
   for (const p of state.players) {
     healAndReset(state, p);
     tickAbilities(state, p); // expire stances/pulses, enforce pins (after movement reset)
+    tickLegends(state, p.id); // retire heroes whose lifespan has elapsed
+    tickLegendPassives(state, p); // living heroes' per-turn powers (income, drilling, dread)
     gatherPlayerResources(state, p.id); // stockpile strategic resources for the turn
     for (const c of state.cities.values()) {
       if (c.ownerId === p.id) c.rangedAttackUsed = false;

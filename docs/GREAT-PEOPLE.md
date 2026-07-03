@@ -24,20 +24,22 @@ Two related "character" systems:
 
 > **Implementation (`great-people.ts`, `@roc/data` `GREAT_PEOPLE`).** Eight classes: **General, Admiral, Scientist, Engineer, Merchant, Prophet, Artist, Statesman** — the design's Writers/Artists/Musicians are merged into one **Artist** (culture) class. Per-turn class points come from buildings: Archive/Academy → Scientist; Market/Harbor → Merchant; Harbor/Lighthouse → Admiral; Barracks/Stable → General; Workshop/Forge → Engineer; Shrine/Temple → Prophet; Monument/Amphitheater → Artist; the **capital** (seat of government) → Statesman. The first figure of a class costs **60** points, each later one **+50** (60 → 110 → 160 …). Recruits wait in the 🎖️ panel until **activated** for a one-shot, **per-class** effect (the figure's own row is flavour): Scientist → **+160 science** (eureka); Merchant → **+250 gold**; Engineer → **+150 production** in your best city; Artist → **+150 culture**; Statesman → **+150 culture** (toward civics); Prophet → **+200 faith**; General → a **free promotion to every land military unit** + morale; Admiral → **heal your fleet & army** + morale. Auras, placed improvements, unit-attach, and Great Works/tourism are **not** built. AI activates recruits immediately; an in-game **Wiki → Great People** category and generated portraits (`great-people/<id>.png`) round it out.
 
+> **No double-dipping with Legends (2026-07-03):** a historical person appears in ONE system only. Figures who exist as Legends (Sun Tzu, Hannibal, Julius Caesar, Belisarius, Subutai, Joan of Arc, Zheng He, Yi Sun-sin) were removed from the Great People roster and replaced by era-matched peers (Epaminondas, Pyrrhus, Gaius Marius, Charles Martel, Baibars, du Guesclin, Andrea Doria, Francis Drake).
+
 ### 1.1 Great Generals (land military)
 *Earned from: combat, Barracks/Armory, Military civics. Effect template: combat aura to nearby units + a one-shot (build Citadel, instant promotion, or retreat).*
 
 | Figure | Era | Signature effect |
 |--------|-----|------------------|
-| Sun Tzu | Classical | Nearby units +XP; one-shot: grant a free promotion to all adjacent units |
-| Hannibal Barca | Classical | Aura: +combat across rivers/in rough terrain; one-shot: ambush move |
+| Epaminondas | Classical | Oblique order: one-shot free promotion to the land army |
+| Pyrrhus of Epirus | Classical | The fighting king: rallies the land army with a free promotion |
 | Scipio Africanus | Classical | Aura vs other civ's UUs; build a Citadel |
-| Julius Caesar | Classical | Aura + gold/culture when you win battles |
-| Belisarius | Medieval | Aura: outnumbered units fight at full strength |
+| Gaius Marius | Classical | Reformer of the legions: drills the land army (free promotion) |
+| Charles Martel | Medieval | The Hammer of Tours: steels the land army (free promotion) |
 | Khalid ibn al-Walid | Medieval | Aura: cavalry pursuit & morale; heal on kill |
-| Subutai | Medieval | Aura: mounted/ranged extra movement & flanking |
+| Baibars | Medieval | Victor of Ain Jalut: drills the land army (free promotion) |
 | Jan Žižka | Medieval | Aura: defensive wagon-fort bonus; gunpowder ready |
-| Joan of Arc | Medieval | Aura: rally — heal & +combat; clears war-weariness |
+| Bertrand du Guesclin | Medieval | The Eagle of Brittany: drills the land army (free promotion) |
 | Gonzalo de Córdoba | Exploration | Aura: gunpowder units +combat (tercio) |
 
 ### 1.2 Great Admirals (naval)
@@ -49,10 +51,9 @@ Two related "character" systems:
 | Gaius Duilius | Classical | Aura: boarding bonus (naval melee) |
 | Artemisia | Classical | Aura: hit-and-run at sea |
 | Leif Erikson | Medieval | One-shot: fleet may cross ocean before Astronomy |
-| Zheng He | Exploration | Aura + huge trade/diplomacy bonus from naval trade routes |
+| Francis Drake | Exploration | Scourge of the Armada: heals fleet & army, lifts morale |
 | Andrea Doria | Exploration | Aura: +gold from coastal cities; repair fleet |
 | Khair ad-Din Barbarossa | Exploration | Aura: coastal raiding gold; capture enemy ships |
-| Yi Sun-sin | Exploration | Aura: armored ships (turtle) take reduced damage |
 
 ### 1.3 Great Scientists
 *Earned from: Library/University/Academy, science specialists. Template: instant tech/eureka or science burst.*
@@ -159,39 +160,39 @@ Heroes are **recruitable, powerful, limited units** central to the game's identi
 
 **Type:** `land` / `naval` / `support`. **Recruit via:** the path that fits the hero (Faith, Culture, Conquest, Wonder, Quest). **Lifespan:** turns active before they retire (some rechargeable).
 
-> **Implementation (`legends.ts`, `@roc/data` `LEGENDS`).** All heroes below exist with their era and type. They are recruited from the **⭐ Legends** panel by spending **faith** — the "Recruit via" column is flavour; the real cost is faith, rising **150 → 250 → 350 …** per hero. Each is **globally unique** while alive. On recruit, the hero spawns at one of your cities (naval heroes on adjacent water) as a unit reskinning a base type (`baseType`), with a flat **combat bonus**, an **aura** giving adjacent friendly military +combat (strongest nearby aura only; no stacking), and a **lifespan** (~30 turns; a few — e.g. Joan of Arc — are *rechargeable* and return to the pool when they retire). On the map a hero shows a gold ring, a 👑 crown, and its name. The per-hero **signature active ability** in the table is **flavour** — the base unit's own active abilities apply, but the bespoke hero powers in [UNIT-ABILITIES.md §9](UNIT-ABILITIES.md) are not coded. Enabled by default; a per-game **Legends** toggle (lobby + `legendsEnabled`) switches the whole feature off. AI recruits heroes when it can afford them; an in-game **Wiki → Legends** category, generated **portraits** (`legends/<id>.png`) and **map unit tokens** (`units/<id>.png`) complete it. The optional **Mythic toggle** is not built.
+> **Implementation (`legends.ts`, `@roc/data` `LEGENDS`).** All heroes below exist with their era and type. They are recruited from the **⭐ Legends** panel by spending **faith** — the "Recruit via" column is flavour; the real cost is faith, rising **150 → 250 → 350 …** per hero. Each is **globally unique** while alive. On recruit, the hero spawns at one of your cities (naval heroes on adjacent water) as a unit reskinning a base type (`baseType`), with a flat **combat bonus**, an **aura** giving adjacent friendly military +combat (strongest nearby aura only; no stacking), and a **lifespan** (~30 turns; a few — e.g. Joan of Arc — are *rechargeable* and return to the pool when they retire). On the map a hero shows a gold ring, a 👑 crown, and its name. Every hero's **signature power is now real** (2026-07-03): combat legends field curated/bespoke active-ability kits (`LEGEND_ABILITY_OVERRIDES`, content.ts), support legends exert passives while they live (`legend-passives.ts` per-turn ticks + `legend-effects.ts` presence effects) — see [UNIT-ABILITIES.md §9](UNIT-ABILITIES.md) for the full as-built table. Enabled by default; a per-game **Legends** toggle (lobby + `legendsEnabled`) switches the whole feature off. AI recruits heroes when it can afford them; an in-game **Wiki → Legends** category, generated **portraits** (`legends/<id>.png`) and **map unit tokens** (`units/<id>.png`) complete it. The optional **Mythic toggle** is not built.
 
-| Legend | Era | Type | Signature ability | Recruit via |
-|--------|-----|------|-------------------|-------------|
-| Gilgamesh | Bronze | land | Inspires adjacent units; bonus vs barbarians/beasts | Quest (slay a beast camp) |
-| Hammurabi | Bronze | support | Grants instant eureka/civic while present; reduces unrest | Wonder (Walls of Babylon) |
-| Ramesses II | Bronze | support | Massive wonder/district production aura | Faith |
-| Cyrus the Great | Classical | land | Lightning conquest: captured cities keep loyalty; fast move | Conquest |
-| Leonidas | Classical | land | Last-stand: huge defensive bonus when outnumbered | Culture |
-| Alexander | Classical | land | No war-weariness; capturing cities heals army | Conquest |
-| Hannibal | Classical | land | Crossing/ambush mastery; flanking aura | Quest (cross mountains) |
-| Sun Tzu | Classical | support | Army-wide +XP & free promotions; reveals enemy plans | Culture |
-| Qin Shi Huang | Classical | support | Builders/army surge; speeds a wonder (Great Wall) | Wonder |
-| Ashoka | Classical | support | Converts war into faith; amenities aura | Faith |
-| Boudica | Classical | land | Converts nearby barbarians/units; rally vs occupiers | Quest |
-| Julius Caesar | Classical | land | Gold/culture from victories; veteran legions | Conquest |
-| Cleopatra | Classical | support | Trade/diplomacy & gold aura; allure (city-state influence) | Faith |
-| Attila | Medieval | land | Siege from movement; raze for production | Conquest |
-| Belisarius | Medieval | land | Outnumbered-army full strength; reconquest | Conquest |
-| Charlemagne | Medieval | support | Faith + military synergy; crowns/loyalty | Faith |
-| Harald Hardrada | Medieval | naval | Coastal raiding gold; ocean voyaging early | Conquest |
-| El Cid | Medieval | land | Frontier hero: combat vs other religions; loyalty | Quest |
-| Saladin | Medieval | land | Heal on holy ground; bonus vs crusaders/other faiths | Faith |
-| Genghis Khan | Medieval | land | Supercharges cavalry (move/sight/combat); terror | Conquest |
-| Subutai | Medieval | land | Mounted-ranged hit-and-run mastery; flanking aura | Conquest |
-| Joan of Arc | Medieval | land | Rally: heal + combat surge; martyr resurrection once | Faith |
-| Tamerlane | Exploration | land | Siege devastation; plunder enriches empire | Conquest |
-| Mehmed II | Exploration | support | Great Bombard siege; walls fall faster | Wonder |
-| Pachacuti | Exploration | support | Mountain logistics & terrace food aura; rapid expansion | Culture |
-| Mansa Musa | Medieval | support | Flood of gold; trade-route value aura | Faith |
-| Zheng He | Exploration | naval | Treasure fleet: trade/diplomacy & exploration aura | Wonder |
-| Yi Sun-sin | Exploration | naval | Armored ships; crushing naval defense | Quest |
-| Tomoe Gozen | Medieval | land | Duelist: massive single-combat strength; mounted archery | Quest |
+| Legend | Era | Type | Signature power (as built) | Recruit via |
+|--------|-----|------|----------------------------|-------------|
+| Gilgamesh | Bronze | land | Slay the Beast: +6 vs barbarians; kills hearten nearby allies | Quest (slay a beast camp) |
+| Hammurabi | Bronze | support | Code of Laws: +1 global morale every turn | Wonder (Walls of Babylon) |
+| Ramesses II | Bronze | support | Monument Builder: his city +25% production & culture | Faith |
+| Cyrus the Great | Classical | land | The King's March: +1 movement for Cyrus & adjacent allies | Conquest |
+| Leonidas | Classical | land | Last Stand: hero-grade brace that grows as he is wounded | Culture |
+| Alexander | Classical | land | Hammer & Anvil + Shock Charge | Conquest |
+| Hannibal | Classical | land | Grand Ambush: the only elephant that Hides in cover; Trample | Quest (cross mountains) |
+| Sun Tzu | Classical | support | Art of War: adjacent allies +3 XP/turn; reveals hidden enemies | Culture |
+| Qin Shi Huang | Classical | support | Great Wall: every city +6 defense while he lives | Wonder |
+| Ashoka | Classical | support | Dhamma: +2 faith/turn; adjacent allies heal +10/turn; no attacks | Faith |
+| Boudica | Classical | land | Uprising: an adjacent barbarian war-band joins your side | Quest |
+| Julius Caesar | Classical | land | Veteran Legions: Pilum Volley + Plunder | Conquest |
+| Cleopatra | Classical | support | Allure: adjacent enemies −2 CS; +3 gold/turn | Faith |
+| Attila | Medieval | land | Terror: Terrorize (rout check) + Fire & Retreat | Conquest |
+| Belisarius | Medieval | land | Against All Odds: +2 CS per adjacent enemy beyond the first | Conquest |
+| Charlemagne | Medieval | support | Crown of the West: +2 faith/turn; Heroic Challenge | Faith |
+| Harald Hardrada | Medieval | naval | Strandhögg: raiding strike that loots gold; Ram | Conquest |
+| El Cid | Medieval | land | Campeador: +4 CS beyond your own borders | Quest |
+| Saladin | Medieval | land | Horns of Hattin: Feigned Retreat + Harry | Faith |
+| Genghis Khan | Medieval | land | Terror of the Steppe: adjacent enemies −3 morale/turn; Nerge | Conquest |
+| Subutai | Medieval | land | Hit and Run: Parthian Shot + Feigned Retreat | Conquest |
+| Joan of Arc | Medieval | land | Sacred Banner: heal + morale surge; martyr (rechargeable) | Faith |
+| Tomoe Gozen | Medieval | land | Duelist: Heroic Challenge + mounted archery | Quest |
+| Mansa Musa | Medieval | support | Golden Flood: +8 gold every turn | Faith |
+| Tamerlane | Exploration | land | Pyramid of Skulls: kills panic every enemy within 2 tiles | Conquest |
+| Mehmed II | Exploration | support | The Basilica: +1-range bombard, +6 vs wall/fort defenders | Wonder |
+| Pachacuti | Exploration | support | Qhapaq Ñan: land units ignore rough terrain; his city +25% food | Culture |
+| Zheng He | Exploration | naval | Treasure Fleet: +4 gold/turn, ships +1 movement; Monsoon Run | Wonder |
+| Yi Sun-sin | Exploration | naval | Turtle Ship: Turtle Shell stance + Broadside | Quest |
 
 > **Mythic toggle (optional):** a separate switch can add legendary/mythic heroes (e.g. Gilgamesh's beast-hunts expanded) for groups who want fantasy flavor — kept out of the default historically-grounded mode.
 
@@ -199,7 +200,7 @@ Heroes are **recruitable, powerful, limited units** central to the game's identi
 
 ## Implementation notes (as built)
 - **Great person schema** (`@roc/data` `GreatPersonDef`): `{ id, name, cls: GreatPersonClass, era, effect: GreatPersonEffect, desc }`. `effect` is one of eight **class-level** hooks (`eureka | windfall | masterwork | inspiration | revelation | reform | drill | flagship`) resolved in `great-people.ts`; there is no per-figure `kind`/`work` field (all activations are instant).
-- **Legend schema** (`@roc/data` `LegendDef`): `{ id, name, era, type, recruitVia, baseType, combatBonus, auraBonus, lifespan, rechargeable, ability, abilityDesc, auraDesc }`. `recruitVia`/`ability`/`abilityDesc` are flavour; the coded mechanics are `baseType` + `combatBonus` + `auraBonus` + `lifespan` + `rechargeable`.
+- **Legend schema** (`@roc/data` `LegendDef`): `{ id, name, era, type, recruitVia, baseType, combatBonus, auraBonus, lifespan, rechargeable, ability, abilityDesc, auraDesc }`. `recruitVia` is flavour; `ability`/`abilityDesc` name the hero's REAL signature power, coded as active kits (`LEGEND_ABILITY_OVERRIDES`, content.ts; resolution in abilities.ts/combat.ts) or passives (`legend-passives.ts` ticks + `legend-effects.ts` presence effects), alongside `baseType` + `combatBonus` + `auraBonus` + `lifespan` + `rechargeable`.
 - **State:** `Player.greatPeoplePoints` / `greatPeopleEarned` / `greatPeople[]` and `GameState.recruitedGreatPeople[]`; `Player.legendsRecruited`, `GameState.legendsEnabled` / `recruitedLegends[]`; a Legend on the map is a `Unit` with `legendId` + `legendExpiresOnTurn`. All serialized for save/load and the multiplayer player-view.
 - **Commands:** `activateGreatPerson { greatPersonId }`, `recruitLegend { legendId, cityId? }`. Accrual/recruitment runs in `beginTurn` (`accrueGreatPeople`), lifespans retire in `beginTurn` (`tickLegends`). Tested in `great-people.test.ts` (12) + `legends.test.ts` (9).
 - Cross-references: civ leaders that double as Legends are linked in [CIVILIZATIONS.md](CIVILIZATIONS.md); eras align with [TECHNOLOGIES.md](TECHNOLOGIES.md).

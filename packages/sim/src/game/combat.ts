@@ -15,6 +15,7 @@ import { isRough, terrainDefense, isWaterTerrain, isForestTerrain } from "./terr
 import { structureDefense, towerBombard } from "./fortifications";
 import { civCombatBonus, uniqueUnitForUnit, unitDisplayName } from "./civs";
 import { legendCombatBonus } from "./legends";
+import { legendCityDefenseBonus } from "./legend-effects";
 import { applyVictoryCheck } from "./victory";
 import { emitCityLost, emitUnitDied } from "./turn-updates";
 import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween } from "./movement";
@@ -126,6 +127,10 @@ function attackStrength(
   if (!ranged && ability === "sparth_cleave") s += 2; // the great axe sweeps an arc
   if (!ranged && ability === "shear_oars") s += 2; // rake the oar-bank
   if (ranged && ability === "siege_volley" && defendsWalls(state, defender)) s += 5; // arcing fire onto the ramparts
+  // Legend (hero) signature abilities (docs/UNIT-ABILITIES.md §9).
+  if (!ranged && ability === "slay_the_beast") s += playerById(state, defender.ownerId)?.isBarbarian ? 6 : 1; // the hero's blow out of the Epic
+  if (!ranged && ability === "pyramid_of_skulls") s += 4; // a conqueror's blow, struck to be seen
+  if (ranged && ability === "basilica_bombard") s += defendsWalls(state, defender) ? 6 : 2; // the great bombard against the ramparts
   if (ranged && ability === "mountain_ambush" && attackerOnRough(state, unit)) s += 4; // loosed from the high passes
   if (ranged && ability === "winter_war" && attackerOnWinter(state, unit)) s += 4; // struck from the white silence
   if (!ranged && ability === "duel_of_kings") s += defenderCls === "cavalry" ? 6 : 2; // single combat between the beasts
@@ -422,6 +427,8 @@ export function cityDefenseStrength(state: GameState, city: City): number {
   const tile = getTile(state.map, city.col, city.row);
   let s = 6 + 1.5 * city.population;
   if (cityHasWalls(city)) s += 6;
+  s += legendCityDefenseBonus(state, city); // Qin Shi Huang's Great Wall
+
   // A Barracks fortifies its city — defense scales with the building's tier.
   const barracksTier = city.training.barracks ?? 0;
   if (barracksTier > 0) s += trainingTier("barracks", barracksTier).defense ?? 0;
@@ -615,6 +622,7 @@ export function resolveAttack(
   if (ability === "pierce") range = Math.max(1, range - 1); // careful aimed bolt, shorter
   if (ability === "arrow_storm") range += 1; // a long massed volley
   if (ability === "fire_lance") range += 1; // the lance reaches a tile beyond a melee thrust
+  if (ability === "basilica_bombard") range += 1; // the great bombard outranges every other engine
   if (ability === "double_ballista") range = 2; // the elephant-back ballista outranges a thrust
   if (ability === "howdah_volley") range = Math.max(1, range); // bows from the howdah strike adjacent
   const d = dist({ col: attacker.col, row: attacker.row }, { col, row });

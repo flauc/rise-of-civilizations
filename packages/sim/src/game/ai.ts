@@ -1037,6 +1037,39 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
     }
   }
 
+  // Mehmed's great bombard: an outranging siege shot with no retaliation.
+  if (abilities.includes("basilica_bombard")) {
+    const t = [...abilityTargets(state, unit, "basilica_bombard")][0];
+    if (t && canUseAbility(state, unit, "basilica_bombard").ok) {
+      const [col, row] = t.split(",").map(Number) as [number, number];
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: "basilica_bombard", col, row }, pid);
+      return;
+    }
+  }
+
+  // Boudica rouses an adjacent barbarian war-band to her side whenever she can.
+  if (abilities.includes("uprising")) {
+    const t = [...abilityTargets(state, unit, "uprising")][0];
+    if (t && canUseAbility(state, unit, "uprising").ok) {
+      const [col, row] = t.split(",").map(Number) as [number, number];
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: "uprising", col, row }, pid);
+      return;
+    }
+  }
+
+  // Joan raises the sacred banner when the line around her is battered.
+  if (abilities.includes("sacred_banner") && canUseAbility(state, unit, "sacred_banner").ok) {
+    const battered =
+      unit.hp <= 60 ||
+      [...state.units.values()].some(
+        (u) => u.ownerId === pid && u.id !== unit.id && u.hp <= 60 && axialDistance(ax(unit), ax(u)) === 1,
+      );
+    if (battered) {
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: "sacred_banner", col: 0, row: 0 }, pid);
+      return;
+    }
+  }
+
   const targets = computeAttackTargets(state, unit);
   if (targets.size > 0) {
     let chosen: { col: number; row: number } | null = null;
@@ -1073,7 +1106,7 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
         applyCommand(state, { type: "useAbility", unitId: unit.id, ability: ranged2, col: chosen.col, row: chosen.row }, pid);
         return;
       }
-      const sunder = abilities.find((a) => a === "sunder" || a === "pierce" || a === "harry" || a === "siege_assault");
+      const sunder = abilities.find((a) => a === "sunder" || a === "pierce" || a === "harry" || a === "siege_assault" || a === "slay_the_beast" || a === "pyramid_of_skulls");
       if (enemy && sunder && abilityTargets(state, unit, sunder).has(`${chosen.col},${chosen.row}`)) {
         applyCommand(state, { type: "useAbility", unitId: unit.id, ability: sunder, col: chosen.col, row: chosen.row }, pid);
         return;

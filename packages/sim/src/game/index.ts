@@ -33,4 +33,6 @@ export * from "./fortifications";
 export * from "./leader-abilities";
 export * from "./great-people";
 export * from "./legends";
+export * from "./legend-effects";
+export * from "./legend-passives";
 export * from "./turn-updates";

@@ -24,6 +24,7 @@ import {
   greatPersonThreshold,
   legendCost,
   legendBaseName,
+  legendActiveAbilityIds,
   SCORE_WEIGHTS,
   ACTIVE_ABILITY_DEFS,
   uniqueInfraForCiv,
@@ -48,6 +49,7 @@ import {
   unitHistory,
   greatPersonHistory,
   legendHistory,
+  legendAbilityHistory,
   civLocation,
   CIV_REGIONS,
   type CivLocation,
@@ -610,6 +612,7 @@ function renderLegends(): string {
         `<ul>` +
         `<li><b>Hero strength</b> — the legend itself fights with a large combat bonus on top of its base unit.</li>` +
         `<li><b>Inspiring aura</b> — adjacent friendly <i>military</i> units gain a flat combat bonus while they stand beside the hero (auras from multiple heroes do not stack — the strongest applies).</li>` +
+        `<li><b>Signature power</b> — every hero carries a real, historically-rooted power: combat legends field a bespoke <i>active-ability kit</i> (Leonidas' Last Stand, Hannibal's ambush, Mehmed's great bombard…), while support legends exert <i>passive powers</i> simply by living (Mansa Musa's gold, Qin Shi Huang's wall, Sun Tzu's drilling). Each hero's page details the power and the history behind it.</li>` +
         `<li><b>Steadfast</b> — heroes muster with very high morale, so they rarely waver or rout.</li>` +
         `</ul>`,
     ) +
@@ -1057,11 +1060,23 @@ function renderLegendDetail(id: string): string {
     detailStat("⏳ Lifespan", `${l.lifespan}t${l.rechargeable ? " · recharges" : ""}`),
   ];
   const sub = `${escapeHtml(LEGEND_TYPE_TITLE[l.type])} · ${escapeHtml(l.era)} era · via ${escapeHtml(l.recruitVia)}`;
+  // The hero's real battlefield kit (legend override or the base unit's abilities).
+  const abilityRow = (glyph: string, name: string, desc: string): string =>
+    `<div class="uud-ability"><div class="uud-ability-head"><span class="uud-ability-glyph">${glyph}</span>` +
+    `<b>${escapeHtml(name)}</b></div><div class="uud-ability-desc">${escapeHtml(desc)}</div></div>`;
+  const kit = legendActiveAbilityIds(l.id, l.baseType as UnitTypeId)
+    .map((a) => {
+      const ad = ACTIVE_ABILITY_DEFS[a];
+      return ad ? abilityRow(ad.glyph, ad.name, ad.desc) : "";
+    })
+    .join("");
   return (
     detailHead(src, l.name, sub, stats.join("")) +
-    section("Ability", `<p>${escapeHtml(l.abilityDesc)}</p><p><b>Aura:</b> ${escapeHtml(l.auraDesc)}</p>`) +
+    section("Signature Power", `<p>${escapeHtml(l.abilityDesc)}</p><p><b>Aura:</b> ${escapeHtml(l.auraDesc)} (+${l.auraBonus} combat strength to adjacent friendly military; the strongest nearby aura applies.)</p>`) +
+    (kit ? section("Battlefield Abilities", kit) : "") +
     (base ? `<p>${navLink(`unit:${l.baseType}`, `Built on the ${base.name}`)}</p>` : "") +
-    historyBlock("History", legendHistory(id))
+    historyBlock("History", legendHistory(id)) +
+    historyBlock("The History Behind the Power", legendAbilityHistory(id))
   );
 }
 

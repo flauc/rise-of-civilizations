@@ -142,7 +142,13 @@ export type ActiveAbilityId =
   | "mourning_war"
   | "atlatl_volley"
   | "obsidian_reap"
-  | "leiomano";
+  | "leiomano"
+  // legend (hero) signature abilities (docs/UNIT-ABILITIES.md §9)
+  | "slay_the_beast"
+  | "uprising"
+  | "sacred_banner"
+  | "pyramid_of_skulls"
+  | "basilica_bombard";
 
 /** A persistent stance a unit enters by forfeiting its movement for the turn. */
 export type StanceId = "brace" | "shield_wall" | "testudo" | "emplace" | "othismos" | "last_stand" | "pavise" | "stone_bulwark" | "zareba" | "iron_wall" | "wagenburg" | "schiltron" | "elephant_wall" | "turtle_shell";
@@ -268,6 +274,12 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
   atlatl_volley: A({ id: "atlatl_volley", name: "Atlatl Volley", verb: "Cast Darts", glyph: "🎯", kind: "targeted", cooldown: 1, desc: "A volley of spear-thrower darts softens the target, then the obsidian spears close in — a ranged strike and a melee strike in one." }),
   obsidian_reap: A({ id: "obsidian_reap", name: "Obsidian Reap", verb: "Reap", glyph: "🖤", kind: "targeted", cooldown: 0, desc: "Blades of volcanic glass sharper than steel: +1 attack, ignoring 6 of the defender's defense." }),
   leiomano: A({ id: "leiomano", name: "Leiomano", verb: "Strike with Shark's Teeth", glyph: "🦈", kind: "targeted", cooldown: 1, desc: "The shark-tooth club tears rather than cuts (+2 attack): the survivor bleeds 8 HP at the start of each of its next two turns." }),
+  // legend (hero) signature abilities (docs/UNIT-ABILITIES.md §9)
+  slay_the_beast: A({ id: "slay_the_beast", name: "Slay the Beast", verb: "Slay the Beast", glyph: "🦁", kind: "targeted", cooldown: 1, desc: "A hero's blow out of the Epic: +6 attack against barbarians (+1 against others). If the foe falls, this hero and adjacent allies gain +10 morale." }),
+  uprising: A({ id: "uprising", name: "Uprising", verb: "Raise in Revolt", glyph: "🔥", kind: "targeted", cooldown: 3, desc: "Rouse an adjacent barbarian war-band to the cause: the unit joins your side. Ends the turn." }),
+  sacred_banner: A({ id: "sacred_banner", name: "Sacred Banner", verb: "Raise the Banner", glyph: "🚩", kind: "self", cooldown: 2, desc: "Raise the banner of Orléans: this hero and adjacent allies heal 10 HP and gain +15 morale. Ends the turn." }),
+  pyramid_of_skulls: A({ id: "pyramid_of_skulls", name: "Pyramid of Skulls", verb: "Make an Example", glyph: "💀", kind: "targeted", cooldown: 2, desc: "A conqueror's blow (+4 attack) struck to be seen: if the target falls, every enemy unit within 2 tiles loses 15 morale." }),
+  basilica_bombard: A({ id: "basilica_bombard", name: "The Basilica", verb: "Fire the Great Bombard", glyph: "💣", kind: "targeted", cooldown: 2, desc: "The great bombard hurls a stone ball at +1 range: +6 ranged strength against units holding walls or forts (+2 otherwise). Two turns to reload." }),
   // naval
   ram: A({ id: "ram", name: "Ram", verb: "Ram", glyph: "⚓", kind: "targeted", cooldown: 0, desc: "Drive the ship into an adjacent enemy vessel (+4 attack)." }),
   boarding_party: A({ id: "boarding_party", name: "Boarding Party", verb: "Board", glyph: "⚔️", kind: "targeted", cooldown: 1, desc: "Grapple and storm an adjacent ship (+5 attack, heal on kill)." }),
@@ -625,6 +637,44 @@ export const UNIQUE_ABILITY_OVERRIDES: Record<string, ActiveAbilityId[]> = {
   aztec_eagle_warrior: ["flower_war", "furor", "hide"], // captives for the altar — or the wild charge
   maori_toa: ["haka", "furor", "hide"], // the challenge first, then the fury
 };
+
+/**
+ * Legends (heroes) that REPLACE their base unit's active-ability list with a
+ * signature kit (docs/UNIT-ABILITIES.md §9). Keyed by legend id (see LEGENDS in
+ * @roc/data); resolved per unit by its `legendId` in abilities.ts. Legends not
+ * listed inherit their base unit's abilities (their signature power is a passive
+ * — see legends.ts). Each kit is chosen for the hero's actual historical way of
+ * war; the wiki's Legends pages carry the full historical context.
+ */
+export const LEGEND_ABILITY_OVERRIDES: Record<string, ActiveAbilityId[]> = {
+  gilgamesh: ["slay_the_beast", "sunder", "hide"], // the beast-slayer of the Epic, with the axeman's crushing blow
+  hannibal: ["trample", "hide"], // Trebia and Trasimene — the only elephant army that hides in ambush
+  leonidas: ["last_stand", "hide"], // Thermopylae itself
+  alexander: ["hammer_and_anvil", "shock_charge"], // the Companion charge where the phalanx holds
+  ashoka: [], // after Kalinga the emperor renounced the charge — he rides unarmed
+  boudica: ["uprising", "charge"], // the tribes rise where her chariot passes
+  julius_caesar_legend: ["pilum", "plunder", "hide"], // the legion's volley, and Gaul's gold
+  attila: ["terrorize", "fire_and_retreat"], // the Scourge of God on a steppe pony
+  charlemagne: ["heroic_challenge", "sunder", "hide"], // the emperor of the chansons de geste
+  saladin: ["feigned_retreat", "harry"], // Hattin — lure, exhaust, deny water, destroy
+  genghis_khan: ["nerge", "fire_and_retreat"], // the great hunt's ring, closed on men
+  subutai: ["parthian_shot", "feigned_retreat"], // Kalka's nine-day false flight
+  joan_of_arc_legend: ["sacred_banner", "sunder", "hide"], // the banner she bore instead of a sword
+  tomoe_gozen: ["heroic_challenge", "fire_and_retreat"], // single combat and mounted archery
+  tamerlane: ["pyramid_of_skulls", "shock_charge"], // the towers of skulls at Isfahan and Delhi
+  mehmed_ii: ["basilica_bombard", "emplace"], // Orban's bombard before the Theodosian walls
+  harald_hardrada: ["ram", "strandhogg"], // the last great Viking, raiding as he ever did
+  zheng_he_legend: ["ram", "monsoon_run"], // the treasure fleet rode the monsoon
+  yi_sun_sin_legend: ["broadside", "turtle_shell"], // standoff cannon, spiked iron roof
+};
+
+/**
+ * The active abilities a legend fields, for static display (wiki, legends panel).
+ * Honors the legend kit override; falls back to the base unit's abilities.
+ */
+export function legendActiveAbilityIds(legendId: string, baseType: UnitTypeId): ActiveAbilityId[] {
+  return LEGEND_ABILITY_OVERRIDES[legendId] ?? UNIT_DEFS[baseType].activeAbilities ?? [];
+}
 
 /**
  * The active abilities a unit type fields, for static display (wiki, lobby) where

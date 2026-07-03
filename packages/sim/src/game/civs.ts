@@ -29,7 +29,9 @@ import {
   type UniqueUnitDef,
   type UniqueInfraDef,
 } from "@roc/data";
-import { UNIT_DEFS, CIVICS_REQUIRED_TECH, UNIQUE_ABILITY_OVERRIDES, type ActiveAbilityId } from "./content";
+import { getLegend } from "@roc/data";
+import { UNIT_DEFS, CIVICS_REQUIRED_TECH, UNIQUE_ABILITY_OVERRIDES, LEGEND_ABILITY_OVERRIDES, type ActiveAbilityId } from "./content";
+import { legendEmpireEffects, legendGarrisonEffects } from "./legend-effects";
 import type { GameState, Player, Unit, City } from "./state";
 import { playerById, citiesOf } from "./state";
 
@@ -43,18 +45,26 @@ export function uniqueUnitForUnit(state: GameState, unit: Unit): UniqueUnitDef |
   return uniqueUnitForCiv(playerById(state, unit.ownerId)?.civId, unit.type);
 }
 
-/** Display name for a unit: its civ's unique-unit name if it has one, else the base name. */
+/** Display name for a unit: its legend name if it is a hero, else its civ's
+ *  unique-unit name if it has one, else the base name. */
 export function unitDisplayName(state: GameState, unit: Unit): string {
+  const legend = getLegend(unit.legendId);
+  if (legend) return legend.name;
   return uniqueUnitForUnit(state, unit)?.name ?? UNIT_DEFS[unit.type].name;
 }
 
 /**
- * The active abilities a unit instance actually has, honoring civ-unique
- * overrides (docs/UNIT-ABILITIES.md §8). A unique unit listed in
- * UNIQUE_ABILITY_OVERRIDES replaces its base unit's ability list; everyone else
- * inherits the base unit's abilities.
+ * The active abilities a unit instance actually has, honoring legend signature
+ * kits (docs/UNIT-ABILITIES.md §9) and civ-unique overrides (§8). A legend
+ * listed in LEGEND_ABILITY_OVERRIDES fields its hero kit; a unique unit listed
+ * in UNIQUE_ABILITY_OVERRIDES replaces its base unit's ability list; everyone
+ * else inherits the base unit's abilities.
  */
 export function effectiveAbilities(state: GameState, unit: Unit): ActiveAbilityId[] {
+  if (unit.legendId) {
+    const heroKit = LEGEND_ABILITY_OVERRIDES[unit.legendId];
+    if (heroKit) return heroKit;
+  }
   const uu = uniqueUnitForUnit(state, unit);
   if (uu) {
     const override = UNIQUE_ABILITY_OVERRIDES[uu.id];
@@ -158,6 +168,8 @@ export function playerEffects(state: GameState, playerId: number): CivEffects {
   for (const m of p.modifiers) {
     if (m.expiresOnTurn >= state.turn) mergeInto(acc, m.effect);
   }
+  // Living legends' empire-wide presence effects (Pachacuti's roads, Zheng He's fleet).
+  mergeInto(acc, legendEmpireEffects(state, playerId));
   return acc;
 }
 
@@ -167,6 +179,8 @@ export function cityEffects(state: GameState, city: City): CivEffects {
   for (const m of city.modifiers) {
     if (m.expiresOnTurn >= state.turn) mergeInto(acc, m.effect);
   }
+  // A legend holding court in the city (Ramesses' monuments, Pachacuti's terraces).
+  mergeInto(acc, legendGarrisonEffects(state, city));
   return acc;
 }
 

@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.3.0";
+export const CURRENT_VERSION = "0.3.1";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,36 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.3.1",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Legends' signature powers are now real",
+        desc:
+          "Every one of the 29 heroes now carries a working, historically-rooted power. Combat legends field bespoke ability kits — Gilgamesh slays the beast, Boudica raises barbarian war-bands in revolt, Joan lifts the army with her sacred banner, Tamerlane's kills spread panic, Mehmed's great bombard outranges every engine. Support legends exert passive powers while they live: Mansa Musa floods your treasury, Qin Shi Huang walls every city, Sun Tzu drills the troops beside him, Pachacuti's roads carry your armies over rough ground.",
+      },
+      {
+        tag: "New",
+        title: "Legend wiki pages tell the history behind each power",
+        desc:
+          "Every hero's wiki page now lists its real battlefield abilities and a detailed write-up of the historical events the power is drawn from — Thermopylae, Lake Trasimene, the Horns of Hattin, the towers of skulls, the treasure fleets.",
+      },
+      {
+        tag: "Fix",
+        title: "Honest hero descriptions",
+        desc:
+          "Legend ability descriptions previously promised effects that were not implemented; every description now states exactly what the hero does in play.",
+      },
+      {
+        tag: "Fix",
+        title: "Great People and Legends no longer overlap",
+        desc:
+          "Eight figures appeared in both systems (Sun Tzu, Hannibal, Julius Caesar, Belisarius, Subutai, Joan of Arc, Zheng He, Yi Sun-sin). Each person now lives in one system only: they remain Legends, and the Great General and Great Admiral rosters gained era-matched replacements — Epaminondas, Pyrrhus of Epirus, Gaius Marius, Charles Martel, Baibars, Bertrand du Guesclin, Andrea Doria and Francis Drake — each with a freshly painted portrait.",
+      },
+    ],
+  },
   {
     version: "0.3.0",
     date: "July 2026",

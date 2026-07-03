@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getGreatPerson } from "@roc/data";
+import { getGreatPerson, GREAT_PEOPLE, LEGENDS } from "@roc/data";
 import { createGame } from "./setup";
 import { serializeState, deserializeState } from "./serialize";
 import { playerById, unitsOf, type City } from "./state";
@@ -159,8 +159,8 @@ describe("great people: activation", () => {
     const land = unitsOf(state, 0).filter((u) => u.type === "warrior" || u.type === "javelineer");
     expect(land.length).toBeGreaterThan(0);
     const before = land[0]!.unspentPromotions;
-    player.greatPeople = ["sun_tzu"];
-    activateGreatPerson(state, player, "sun_tzu");
+    player.greatPeople = ["epaminondas"];
+    activateGreatPerson(state, player, "epaminondas");
     expect(land[0]!.unspentPromotions).toBe(before + 1);
   });
 
@@ -169,6 +169,20 @@ describe("great people: activation", () => {
     const player = playerById(state, 0)!;
     const res = activateGreatPerson(state, player, "archimedes");
     expect(res.ok).toBe(false);
+  });
+});
+
+describe("great people vs legends: no double-dipping", () => {
+  it("no historical person appears in both rosters", () => {
+    // A person lives in ONE system: either a Great Person or a Legend, never
+    // both (e.g. Hannibal the Legend rules out "Hannibal Barca" the general).
+    for (const g of GREAT_PEOPLE) {
+      for (const l of LEGENDS) {
+        const a = g.name.toLowerCase();
+        const b = l.name.toLowerCase();
+        expect(a.includes(b) || b.includes(a), `"${g.name}" (great person) duplicates the legend "${l.name}"`).toBe(false);
+      }
+    }
   });
 });
 

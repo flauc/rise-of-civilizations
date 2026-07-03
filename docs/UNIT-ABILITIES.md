@@ -4,7 +4,7 @@
 > - ✅ **§3 generic catalogue is built**: `brace, shield_wall, testudo, emplace, charge, shock_charge, trample, fire_and_retreat, skirmish, sunder, pierce, harry, reconnoiter` plus naval `ram, boarding_party, greek_fire, coastal_bombardment` — defined in `content.ts` (`ACTIVE_ABILITY_DEFS` + per-unit assignment), resolved in `abilities.ts`/`combat.ts`/`commands.ts`, with AI and client UI.
 > - ✅ **§8 civ-unique / enhanced abilities BUILT** (2026-06-20): `war_cart_charge, parthian_shot, feigned_retreat, hussar_charge, othismos, last_stand, repeating_fire, pavise, arrow_storm, furor, siege_assault`. Now that unique units exist (resolved per civ from a base type), each is mapped in `content.ts` `UNIQUE_ABILITY_OVERRIDES` (keyed by unique-unit id) and resolved by `effectiveAbilities` in `civs.ts`. Mechanics live in `abilities.ts`/`combat.ts`. Reconciliations vs. the §8.2 wishlist: Sassanid Savaran and Timurid Siege Train keep the class default (no bespoke entry yet); Gupta Elephant-Archer keeps Trample (no howdah ranged shot); Maya Holkan/Lusitani/Numidia/Scythian/Sumer also pick up **Hide** (below).
 > - ✅ **Hide / ambush (new layer) BUILT** (2026-06-20): a `hide` self-ability across the board for foot infantry and scouts (forest cover), with curated unique units hiding in more terrain and ambushing harder. See "§11 Hide & ambush" below. Sim in `stealth.ts`; fog enforced in `serialize.ts`.
-> - ❌ **§9 hero signature abilities NOT built**: `duel, rally, grand_ambush, lightning_advance, terror, great_bombard, inspire` — the entire Legends/hero system is unimplemented ([GREAT-PEOPLE.md](GREAT-PEOPLE.md)).
+> - ✅ **§9 hero signature abilities BUILT** (2026-07-03): every Legend now carries a real signature power. Combat heroes field curated/bespoke active kits via `LEGEND_ABILITY_OVERRIDES` (`content.ts`, resolved by `effectiveAbilities` in `civs.ts`), including five hero-only abilities: `slay_the_beast, uprising, sacred_banner, pyramid_of_skulls, basilica_bombard`. Support heroes exert passives: per-turn ticks in `legend-passives.ts` (income, drilling, healing, dread, marching), presence effects in `legend-effects.ts` (empire/city `CivEffects` merges, city defense, situational combat bonuses). See the rewritten §9 below.
 > - ⚠️ Numbers below are first-draft; treat the §3 entries as "exists, values may differ from code."
 
 ---
@@ -452,62 +452,71 @@ reuses the §3 ability. Bespoke rows reference the new ids in §8.1.*
 ## 9. Legend (hero) signature abilities
 
 **Legends** (heroes) are the game's core character feature — recruitable, limited, lifespan-bound
-units (see [GREAT-PEOPLE.md §2](GREAT-PEOPLE.md)). Every combat Legend already has a **passive aura**
-described there. This section adds the matching layer for heroes: a **signature *active* ability** —
-a single dramatic verb that defines the hero in battle, on top of the aura.
+units (see [GREAT-PEOPLE.md §2](GREAT-PEOPLE.md)). Every Legend keeps its **passive aura**
+(flat +CS to adjacent friendly military). On top of that, every hero now carries a **real
+signature power**, built in one of two ways:
 
-**How hero abilities differ from unit abilities:**
+- **Combat heroes** field a curated **active-ability kit** replacing their base unit's list —
+  `LEGEND_ABILITY_OVERRIDES` in `content.ts` (keyed by legend id), resolved per unit by
+  `effectiveAbilities` (`civs.ts`) via `unit.legendId`. Where an existing ability IS the hero's
+  historical tactic it is reused (Leonidas → `last_stand`, Saladin → `feigned_retreat`+`harry`);
+  five bespoke hero-only abilities were added for powers nothing else captured (§9.1).
+- **Support heroes** exert **passive powers** simply by living: per-turn ticks in
+  `legend-passives.ts` (`tickLegendPassives`, run in `beginTurn` and `startSimultaneousTurn`) and
+  always-on presence effects in `legend-effects.ts` (empire/city `CivEffects` merged into
+  `playerEffects`/`cityEffects`, a city-defense hook in `cityDefenseStrength`, and situational
+  combat bonuses folded into `legendCombatBonus`).
 
-- **Aura stays passive.** A hero's army-wide buff (e.g. Sun Tzu's +XP, Genghis's cavalry boost) is
-  always-on while the hero lives — unchanged from GREAT-PEOPLE.md. The signature ability is *extra*.
-- **Cooldown via lifespan.** Hero actives are powerful, so most carry a **multi-turn cooldown**
-  (3–5 turns) rather than the 0–1 turn cooldowns of regular units. This keeps a hero's big moment
-  precious and ties into the "heroes are a strategic resource" pillar.
-- **Reuse where it fits.** A hero whose identity *is* a known tactic simply gets the enhanced
-  version of that ability (Leonidas → `last_stand`, Subutai → `feigned_retreat`). Truly unique
-  heroes get a bespoke hero-only ability (§9.1).
-- **Support & naval heroes** keep their auras/one-shots from GREAT-PEOPLE.md; naval signature
-  actives wait for the naval layer. Only **land combat** Legends are specced here.
+The wiki's Legends pages document each power and the history behind it
+(`LEGEND_ABILITY_HISTORY` in `@roc/data` history-people.ts).
 
-### 9.1 New hero-only abilities
+### 9.1 Hero-only active abilities (new mechanics)
 
-| Ability id | Name | Effect |
+| Ability id | Hero | Effect |
 |---|---|---|
-| `duel` | Challenge to Single Combat | Force an adjacent enemy unit into a duel: a one-on-one strike at **+8 attack** with no terrain/support help for either side. The duelist takes no retaliation if the target dies. |
-| `rally` | Rally | Heal all friendly units within 2 tiles for **+20 HP** and grant them **+3 attack** until your next turn. (Joan of Arc / Boudica style.) |
-| `grand_ambush` | Grand Ambush | A first-strike from rough terrain or across a river dealing **+8 attack** and applying **Sundered** to the target. (Hannibal.) |
-| `lightning_advance` | Lightning Advance | The hero and up to 2 adjacent friendly units gain **+2 movement** this turn and may **Charge** even if normally on foot. (Cyrus / Alexander.) |
-| `terror` | Terror | All enemy units within 2 tiles suffer **−4 strength** until their next turn and cannot enter Set Spears/stance this turn. (Genghis / Attila.) |
-| `great_bombard` | Great Bombard | A devastating ranged strike vs a city or fortification that **ignores all wall defense** and deals bonus structure damage. (Mehmed II / Tamerlane.) |
-| `inspire` | Inspire | Adjacent friendly units immediately clear "attacked this turn" (may act again) and gain **+2 strength** for the turn. (Gilgamesh.) |
+| `slay_the_beast` | Gilgamesh | +6 attack vs barbarians (+1 others); a kill grants +10 morale to the hero and adjacent allies. CD 1. |
+| `uprising` | Boudica | An adjacent **barbarian** unit joins your side (no blow struck; ends the turn). CD 3. |
+| `sacred_banner` | Joan of Arc | Self: the hero and adjacent allies heal 10 HP and gain +15 morale; ends the turn. CD 2. |
+| `pyramid_of_skulls` | Tamerlane | +4 attack; if the target dies, every enemy within 2 tiles of the kill loses 15 morale. CD 2. |
+| `basilica_bombard` | Mehmed II | Ranged shot at +1 range; +6 ranged strength vs units holding walls/forts (+2 otherwise); no retaliation. CD 2 (reload). |
 
-### 9.2 Curated Legend → signature ability
+### 9.2 Legend → signature power (as built)
 
-Land combat Legends only (support/naval keep their GREAT-PEOPLE.md auras/one-shots).
+| Legend | Kind | Power |
+|---|---|---|
+| Gilgamesh | active kit | `slay_the_beast, sunder, hide` |
+| Hammurabi | passive | Code of Laws: +1 global morale per turn |
+| Ramesses II | passive | Monument Builder: garrisoned city +25% production & +25% culture |
+| Cyrus the Great | passive | The King's March: Cyrus + adjacent friendlies +1 movement each turn |
+| Leonidas | active kit | `last_stand, hide` (one stance — no shield-wall stacking) |
+| Alexander | active kit | `hammer_and_anvil, shock_charge` |
+| Hannibal | active kit | `trample, hide` — the only elephant that can ambush from cover |
+| Sun Tzu | passive | Art of War: adjacent allies +3 XP/turn; reveals hidden enemies in sight |
+| Qin Shi Huang | passive | Great Wall: ALL your cities +6 defense strength |
+| Ashoka | passive | Dhamma: +2 faith/turn; adjacent allies heal +10/turn; fields **no** attack abilities |
+| Boudica | active kit | `uprising, charge` |
+| Julius Caesar | active kit | `pilum, plunder, hide` |
+| Cleopatra | passive | Allure: adjacent enemies −2 CS; +3 gold/turn |
+| Attila | active kit | `terrorize, fire_and_retreat` |
+| Belisarius | passive | Against All Odds: +2 CS per adjacent enemy beyond the first (max +6) |
+| Charlemagne | mixed | +2 faith/turn; kit `heroic_challenge, sunder, hide` |
+| Harald Hardrada | active kit | `ram, strandhogg` |
+| El Cid | passive | Campeador: +4 CS outside your own borders |
+| Saladin | active kit | `feigned_retreat, harry` (Hattin) |
+| Genghis Khan | mixed | Dread: adjacent enemies −3 morale/turn; kit `nerge, fire_and_retreat` |
+| Subutai | active kit | `parthian_shot, feigned_retreat` |
+| Joan of Arc | active kit | `sacred_banner, sunder, hide` (+ rechargeable martyr return) |
+| Tomoe Gozen | active kit | `heroic_challenge, fire_and_retreat` |
+| Mansa Musa | passive | Golden Flood: +8 gold/turn |
+| Tamerlane | active kit | `pyramid_of_skulls, shock_charge` |
+| Mehmed II | active kit | `basilica_bombard, emplace` |
+| Pachacuti | passive | Qhapaq Ñan: land units ignore rough terrain; garrisoned city +25% food |
+| Zheng He | mixed | Treasure Fleet: +4 gold/turn, ships +1 movement; kit `ram, monsoon_run` |
+| Yi Sun-sin | active kit | `broadside, turtle_shell` |
 
-| Legend | Era | Signature active | Notes |
-|---|---|---|---|
-| Gilgamesh | Bronze | `inspire` | rouses the war-band; pairs with his anti-beast aura |
-| Leonidas | Classical | `last_stand` | the canonical Spartan brace, hero-grade |
-| Cyrus the Great | Classical | `lightning_advance` | lightning conquest |
-| Alexander | Classical | `lightning_advance` | breakthrough + the army-heal aura |
-| Hannibal | Classical | `grand_ambush` | crossing/ambush mastery |
-| Boudica | Classical | `rally` | rally the tribes against occupiers |
-| Julius Caesar | Classical | `inspire` | veteran legions press the attack |
-| Attila | Medieval | `terror` | scourge of God; pairs with raze-for-production |
-| Belisarius | Medieval | `rally` | outnumbered army fights on |
-| Genghis Khan | Medieval | `terror` | terror + his cavalry aura |
-| Subutai | Medieval | `feigned_retreat` | mounted hit-and-run mastery |
-| Saladin | Medieval | `rally` | heal on holy ground, vs other faiths |
-| El Cid | Medieval | `duel` | frontier champion's single combat |
-| Joan of Arc | Medieval | `rally` | heal + combat surge (martyr revive stays in GP doc) |
-| Tomoe Gozen | Medieval | `duel` | duelist + her mounted-archery (`parthian_shot`) aura |
-| Tamerlane | Exploration | `great_bombard` | siege devastation |
-| Mehmed II | Exploration | `great_bombard` | the Great Bombard (support hero w/ a combat active) |
-
-*Heroes not listed (Hammurabi, Ramesses, Sun Tzu, Qin Shi Huang, Ashoka, Cleopatra, Charlemagne,
-Mansa Musa, Pachacuti, and the naval Harald/Zheng He/Yi Sun-sin) remain **support/naval** and keep
-their existing auras and one-shots — no field active needed.*
+**AI:** legends use their kits through the existing ability categories in `ai.ts`, plus dedicated
+handling for `basilica_bombard`, `uprising` and `sacred_banner`. **Tests:**
+`legend-abilities.test.ts` (kits, actives, situational passives, presence effects, per-turn ticks).
 
 ---
 
