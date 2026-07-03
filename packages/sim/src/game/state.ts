@@ -37,6 +37,10 @@ export interface Unit {
   ambushBonus?: number;
   /** Exposed (Furor): −4 defense while state.turn <= this. */
   exposedUntilTurn?: number;
+  /** Maimed (Aimed Shot): attacks −25% while state.turn <= this. */
+  maimedUntilTurn?: number;
+  /** Poisoned (Poisoned Arrows): bleeds 8 HP at its turn start while state.turn <= this. */
+  poisonedUntilTurn?: number;
   /** True when the unit is sleeping: skips moves and stays asleep across turns. */
   sleeping?: boolean;
   /** For barbarians: "col,row" of the camp this unit spawned from. Units sharing

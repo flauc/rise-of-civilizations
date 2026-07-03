@@ -20,11 +20,12 @@ import {
   currentWorkFor,
   tradeRoutesOf,
   tradeRouteYield,
+  tradeRouteGoldBreakdown,
   uniqueUnitForCiv,
   type GameState,
   type City,
 } from "@roc/sim";
-import { WONDER_DEFS, getWonder } from "@roc/data";
+import { WONDER_DEFS, getWonder, getCiv } from "@roc/data";
 import { ASSET_BASE_URL } from "./asset-base";
 
 export interface EmpireHandlers {
@@ -265,37 +266,76 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     return html;
   }
 
+  /** Name of the civ that owns a player id (falls back to the player's own name). */
+  function civNameOf(state: GameState, playerId: number | undefined): string {
+    const p = state.players.find((x) => x.id === playerId);
+    return getCiv(p?.civId)?.name ?? p?.name ?? "Unknown";
+  }
+
   function renderTrade(state: GameState, viewerId: number): string {
     const routes = tradeRoutesOf(state, viewerId);
     if (routes.length === 0) {
       return (
         `<div class="emp-empty">No trade routes yet.<br>` +
-        `Move a Trader into one of your cities and use “Establish trade route” to open one.</div>`
+        `Move a Trader into one of your cities and use “Establish trade route” to open one.<br>` +
+        `<span style="color:#9fc3e0">Tip: connect cities with roads — and upgrade them — to grow a route's gold past the base cap.</span></div>`
       );
     }
-    return routes
-      .map((r) => {
-        const from = state.cities.get(r.fromCityId);
-        const to = state.cities.get(r.toCityId);
-        const y = tradeRouteYield(state, r);
-        const yieldBits = [
-          y.gold ? `🪙${y.gold}` : "",
-          y.food ? `🍞${y.food}` : "",
-          y.production ? `⚒️${y.production}` : "",
-          y.science ? `🔬${y.science}` : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        return (
-          `<div class="emp-card">` +
-          `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">` +
-          `<div class="grow"><div class="emp-name">🐫 ${from?.name ?? "?"} → ${to?.name ?? "?"}</div>` +
-          `<div class="emp-sub">${yieldBits || "no yield"} / turn · ${r.path.length} tiles</div></div>` +
-          `<button class="btn" data-cancel-route="${r.id}" title="Disband this route — the trader is lost">Cancel</button>` +
-          `</div></div>`
-        );
-      })
-      .join("");
+    const totalGold = routes.reduce((sum, r) => sum + tradeRouteYield(state, r).gold, 0);
+    const header =
+      `<div class="emp-sub" style="margin-bottom:8px">${routes.length} route${routes.length === 1 ? "" : "s"} · ` +
+      `+${totalGold}🪙 / turn total</div>`;
+    return (
+      header +
+      routes
+        .map((r) => {
+          const from = state.cities.get(r.fromCityId);
+          const to = state.cities.get(r.toCityId);
+          const y = tradeRouteYield(state, r);
+          const b = tradeRouteGoldBreakdown(state, r);
+          const yieldBits = [
+            y.gold ? `🪙${y.gold}` : "",
+            y.food ? `🍞${y.food}` : "",
+            y.production ? `⚒️${y.production}` : "",
+            y.science ? `🔬${y.science}` : "",
+            y.culture ? `🎭${y.culture}` : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          // Tag: a domestic route between your own cities, or an international one —
+          // in which case we name the partner civilization.
+          const tag = b.isInternational
+            ? `<span class="emp-pill" style="color:#c9a24a;border-color:#c9a24a" title="Route to an allied civilization">🤝 ${civNameOf(state, r.toOwnerId ?? to?.ownerId)}</span>`
+            : `<span class="emp-pill" title="Route between two of your own cities">🏠 Domestic</span>`;
+          // Road-connection line — the ask is to make the infrastructure bonus visible.
+          const roadLine =
+            b.roadTier > 0
+              ? `<div class="emp-sub" style="color:#8fce8f">🛣️ ${workName("road", b.roadTier)} link · +${b.road}🪙</div>`
+              : `<div class="emp-sub" style="color:#c98f8f">⚠ No road link — pave every tile of the path to boost this route</div>`;
+          // Gold breakdown so it's clear how the total is built up.
+          const goldParts = [
+            `base ${b.base}`,
+            b.buildings ? `buildings +${b.buildings}` : "",
+            b.road ? `road +${b.road}` : "",
+            b.international ? `intl +${b.international}` : "",
+            b.overseas ? `sea +${b.overseas}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            `<div class="emp-card">` +
+            `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">` +
+            `<div class="grow"><div class="emp-name">🐫 ${from?.name ?? "?"} → ${to?.name ?? "?"} ${tag}</div>` +
+            `<div class="emp-sub">${yieldBits || "no yield"} / turn · ${r.path.length} tiles</div>` +
+            `<div class="emp-sub" style="opacity:.75">${goldParts}</div>` +
+            roadLine +
+            `</div>` +
+            `<button class="btn" data-cancel-route="${r.id}" title="Disband this route — the trader is lost">Cancel</button>` +
+            `</div></div>`
+          );
+        })
+        .join("")
+    );
   }
 
   function render(state: GameState, viewerId: number): void {

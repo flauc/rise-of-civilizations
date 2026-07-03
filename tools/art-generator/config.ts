@@ -335,13 +335,23 @@ export const IMPROVEMENT_SUBSET: AssetEntry[] = IMPROVEMENT_KINDS.flatMap((kind)
 });
 
 /** Per-category "under construction" build-site tokens, drawn on tiles with a Work
- *  in progress. Output: construction/<id>.png (econ / defense / wonder). */
+ *  in progress. Output: construction/<id>.png (econ / road / defense / wonder). */
 export const CONSTRUCTION_SUBSET: AssetEntry[] = [
   {
     id: "econ",
     name: "Economic Construction Site",
     description:
       "an in-progress economic build site on a single tile: timber scaffolding, dug foundation pits, stacked cut stone and raw timber, baskets of earth, simple wooden tools, and a half-finished low structure. Work underway, NOT finished. No walls, no background terrain",
+    aspectRatio: "1:1",
+    size: { width: 128, height: 128 },
+    category: "construction" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "road",
+    name: "Road Construction Site",
+    description:
+      "an in-progress road build site on a single tile: a half-laid dirt-and-gravel roadbed with a graded cut, partly-set paving stones and cobbles laid in a line, piled gravel and rubble, wooden stakes and marker pegs, a pick and shovel resting on the ground, and a small wheelbarrow of earth. A clear unfinished path under construction, NOT a building. Work underway, NOT finished. No walls, no structure, no background terrain",
     aspectRatio: "1:1",
     size: { width: 128, height: 128 },
     category: "construction" as const,

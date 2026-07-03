@@ -440,6 +440,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .uud-ability-kind{font-size:11px;color:#b8aa8d;text-transform:uppercase;letter-spacing:.03em}
     .uud-badge{font-size:10px;font-weight:700;color:#15120c;background:linear-gradient(135deg,#c9a227,#a6821f);border-radius:999px;padding:2px 7px;text-transform:uppercase;letter-spacing:.04em}
     .uud-ability-desc{color:#cdbfa6;font-size:12.5px;line-height:1.5;margin-top:4px}
+    .uud-lore{font-style:italic;color:#b8aa8d;border-left:2px solid #6b5a33;padding-left:9px}
     /* Roster civ-picker trigger button (replaces the human civ <select>) */
     .civ-pick-btn{display:flex;align-items:center;gap:8px;flex:1;min-width:0;text-align:left;cursor:pointer;background:#1f1c14}
     .civ-pick-btn:hover{border-color:#c9a227}

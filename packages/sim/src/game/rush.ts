@@ -30,6 +30,11 @@ const PER_TRAIN_TURN: Record<RushCurrency, number> = { gold: 14, faith: 11, cult
 // whole city turns ahead of schedule — so their muster costs this multiple to rush.
 const UNIT_RUSH_WEIGHT: Partial<Record<UnitTypeId, number>> = { settler: 2.5 };
 
+// Wonders are the game's most impactful works, so buying one to completion outright
+// is meant to be a heavy sink rather than a routine shortcut. Rushing a wonder costs
+// this multiple of its remaining labour.
+const WONDER_RUSH_WEIGHT = 8;
+
 // Repeated rushing escalates. Each rush already made within the window adds a
 // surcharge to the next one, so hurrying several things (e.g. settlers) in quick
 // succession gets steeply pricier. The spree resets — "cools down" — once a player
@@ -123,7 +128,8 @@ function workRemainingLabour(work: Work): number {
 export function workRushCost(work: Work, currency: RushCurrency, surcharge = 1): number | null {
   const remaining = workRemainingLabour(work);
   if (remaining <= 0) return null;
-  return Math.ceil(remaining * PER_LABOUR[currency] * surcharge);
+  const weight = work.kind === "wonder" ? WONDER_RUSH_WEIGHT : 1;
+  return Math.ceil(remaining * PER_LABOUR[currency] * weight * surcharge);
 }
 
 /** Validate rushing a city's production without mutating. */

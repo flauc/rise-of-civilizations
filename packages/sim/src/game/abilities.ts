@@ -10,7 +10,8 @@ import type { GameState, Player, Unit } from "./state";
 import { areEnemies, cityAt, log, playerById, unitAt, unitsOf } from "./state";
 import { isPassableLand, isRough } from "./terrain";
 import { enemyStructureBlocks, unitSight } from "./movement";
-import { resolveAttack, applyDirectDamage, secondaryRangedDamage, unitMaxHp } from "./combat";
+import { resolveAttack, applyDirectDamage, secondaryRangedDamage, unitMaxHp, killUnit } from "./combat";
+import { changeUnitMorale, maybeRoute } from "./morale";
 import { updateExplored } from "./visibility";
 import { effectiveAbilities, unitDisplayName } from "./civs";
 import { canHideHere, revealHiddenInSight } from "./stealth";
@@ -28,7 +29,7 @@ export interface AbilityResult {
 const ok: AbilityResult = { ok: true };
 const fail = (error: string): AbilityResult => ({ ok: false, error });
 
-const STANCE_ABILITIES = new Set<ActiveAbilityId>(["brace", "shield_wall", "testudo", "emplace", "othismos", "last_stand", "pavise"]);
+const STANCE_ABILITIES = new Set<ActiveAbilityId>(["brace", "shield_wall", "testudo", "emplace", "othismos", "last_stand", "pavise", "stone_bulwark", "zareba", "iron_wall", "wagenburg", "schiltron"]);
 
 function dist(a: { col: number; row: number }, b: { col: number; row: number }): number {
   return axialDistance(offsetToAxial(a), offsetToAxial(b));
@@ -117,12 +118,19 @@ export function abilityTargets(state: GameState, unit: Unit, ability: ActiveAbil
 /** Range (in tiles) a targeted ability can reach from the unit. */
 function abilityRange(unit: Unit, ability: ActiveAbilityId): number {
   const def = UNIT_DEFS[unit.type];
-  if (ability === "fire_and_retreat" || ability === "skirmish" || ability === "parthian_shot") return def.range ?? 1;
+  if (ability === "fire_and_retreat" || ability === "skirmish" || ability === "parthian_shot" || ability === "zagros_shot") return def.range ?? 1;
+  if (ability === "siege_volley") return def.range ?? 1;
+  if (ability === "mountain_ambush" || ability === "winter_war") return def.range ?? 1;
+  if (ability === "double_ballista") return 2;
+  if (ability === "whistling_arrows" || ability === "steady_volley" || ability === "camel_panic" || ability === "naphtha_shot") return def.range ?? 1;
+  if (ability === "bolas" || ability === "hornet_bomb" || ability === "stone_hail") return def.range ?? 1;
   if (ability === "feigned_retreat") return Math.max(1, def.range ?? 1); // kite at range or charge adjacent
   if (ability === "repeating_fire") return def.range ?? 1;
   if (ability === "arrow_storm") return (def.range ?? 1) + 1;
   if (ability === "fire_lance") return (def.range ?? 1) + 1; // a lance reaches a tile beyond a melee thrust
   if (ability === "pierce") return Math.max(1, (def.range ?? 1) - 1);
+  if (ability === "aimed_shot" || ability === "poisoned_arrows") return def.range ?? 1;
+  if (ability === "broadside") return def.range ?? 1;
   if (ability === "greek_fire" || ability === "coastal_bombardment") return def.range ?? 1;
   return 1; // melee/charge/trample/sunder/harry/ram/boarding_party strike adjacent
 }
@@ -159,13 +167,74 @@ export function useAbility(
     return ok;
   }
 
-  // ---- self (Reconnoiter) ----
+  // ---- self ----
   if (def.kind === "self") {
+    if (!unit.abilityCooldowns) unit.abilityCooldowns = {};
+    unit.abilityCooldowns[ability] = cooldownAfter(state, ability);
+
+    // War Drums: rally this unit and adjacent allies; dismay adjacent enemies. Ends the turn.
+    if (ability === "war_drums") {
+      const owner = playerById(state, unit.ownerId);
+      changeUnitMorale(unit, 15);
+      for (const u of unitsAround(state, unit)) {
+        const o = playerById(state, u.ownerId);
+        if (u.ownerId === unit.ownerId) changeUnitMorale(u, 15);
+        else if (owner && o && areEnemies(owner, o)) changeUnitMorale(u, -10);
+      }
+      unit.movementLeft = 0;
+      unit.attackedThisTurn = true;
+      log(state, `${unitDisplayName(state, unit)} beat the war drums.`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      return ok;
+    }
+
+    // Endless Ranks: the fallen are replaced from the reserve. Ends the turn.
+    if (ability === "endless_ranks") {
+      unit.hp = Math.min(unitMaxHp(unit), unit.hp + 30);
+      unit.movementLeft = 0;
+      unit.attackedThisTurn = true;
+      log(state, `${unitDisplayName(state, unit)} closed its endless ranks.`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      return ok;
+    }
+
+    // Fresh Mounts / Monsoon Run / Swift Oars: a burst of movement that does NOT end the turn.
+    if (ability === "fresh_mounts") {
+      unit.movementLeft = UNIT_DEFS[unit.type].movement;
+      return ok;
+    }
+    if (ability === "monsoon_run" || ability === "swift_oars") {
+      unit.movementLeft += 2;
+      return ok;
+    }
+
+    // Haka: the war challenge — heartens the line, shakes the foe, and does NOT end the turn.
+    if (ability === "haka") {
+      const owner = playerById(state, unit.ownerId);
+      changeUnitMorale(unit, 10);
+      for (const u of unitsAround(state, unit)) {
+        const o = playerById(state, u.ownerId);
+        if (u.ownerId === unit.ownerId) changeUnitMorale(u, 10);
+        else if (owner && o && areEnemies(owner, o)) changeUnitMorale(u, -10);
+      }
+      log(state, `${unitDisplayName(state, unit)} performed the haka.`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      return ok;
+    }
+
+    // Desperta Ferro: the war-cry before the charge — does NOT end the turn.
+    if (ability === "desperta_ferro") {
+      const owner = playerById(state, unit.ownerId);
+      changeUnitMorale(unit, 15);
+      for (const u of unitsAround(state, unit)) {
+        const o = playerById(state, u.ownerId);
+        if (owner && o && areEnemies(owner, o)) changeUnitMorale(u, -10);
+      }
+      log(state, `${unitDisplayName(state, unit)} cried "Desperta ferro!"`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      return ok;
+    }
+
+    // Reconnoiter: forfeit the turn for a vision pulse.
     unit.scouting = true;
     unit.movementLeft = 0;
     unit.attackedThisTurn = true;
-    if (!unit.abilityCooldowns) unit.abilityCooldowns = {};
-    unit.abilityCooldowns[ability] = cooldownAfter(state, ability);
     revealHiddenInSight(state, unit, unitSight(unit) + 2); // the pulse flushes out hidden units
     updateExplored(state, unit.ownerId); // reveal the wider radius now
     return ok;
@@ -187,7 +256,8 @@ export function useAbility(
 
   switch (ability) {
     case "charge":
-    case "hussar_charge": {
+    case "hussar_charge":
+    case "kadesh_charge": {
       const behind = tileBeyond(unit, target);
       const res = resolveAttack(state, unit, col, row, { ability });
       if (!res.ok) return res;
@@ -292,7 +362,8 @@ export function useAbility(
 
     case "fire_and_retreat":
     case "skirmish":
-    case "parthian_shot": {
+    case "parthian_shot":
+    case "zagros_shot": {
       const threat = { col, row };
       const res = resolveAttack(state, unit, col, row, { ability });
       if (!res.ok) return res;
@@ -339,9 +410,266 @@ export function useAbility(
     case "pierce":
     case "harry":
     case "siege_assault":
-    case "fire_lance": {
+    case "fire_lance":
+    case "aimed_shot":
+    case "poisoned_arrows":
+    case "drilled_charge":
+    case "broadside":
+    case "zweihander":
+    case "king_of_battle":
+    case "siege_volley":
+    case "ride_down":
+    case "halberd_hook":
+    case "couched_lance":
+    case "mountain_ambush":
+    case "falx_reap":
+    case "winter_war":
+    case "shear_oars":
+    case "howdah_volley":
+    case "double_ballista":
+    case "duel_of_kings":
+    case "gate_breaker":
+    case "highland_charge":
+    case "qamargah":
+    case "nerge":
+    case "steady_volley":
+    case "wolf_pack":
+    case "bolas":
+    case "stone_hail":
+    case "beach_assault":
+    case "obsidian_reap":
+    case "leiomano": {
       const res = resolveAttack(state, unit, col, row, { ability });
       if (!res.ok) return res;
+      setCd();
+      return ok;
+    }
+
+    case "flower_war": {
+      const res = resolveAttack(state, unit, col, row, { ability: "flower_war" });
+      if (!res.ok) return res;
+      if (owner && !state.units.has(target.id)) {
+        owner.faith += 20; // captives for the altar
+        log(state, `${unitDisplayName(state, unit)} took captives in the flower war (+20 faith).`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      }
+      setCd();
+      return ok;
+    }
+
+    case "mourning_war": {
+      const res = resolveAttack(state, unit, col, row, { ability: "mourning_war" });
+      if (!res.ok) return res;
+      if (state.units.has(unit.id) && !state.units.has(target.id)) {
+        unit.hp = Math.min(unitMaxHp(unit), unit.hp + 20); // the fallen are replaced
+        log(state, `${unitDisplayName(state, unit)} restored its ranks in the mourning war.`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      }
+      setCd();
+      return ok;
+    }
+
+    case "hornet_bomb": {
+      const res = resolveAttack(state, unit, col, row, { ability: "hornet_bomb" });
+      if (!res.ok) return res;
+      const survivor = unitAt(state, col, row);
+      if (survivor && survivor.id === target.id) changeUnitMorale(survivor, -10); // nothing fights well inside a swarm
+      setCd();
+      return ok;
+    }
+
+    case "whistling_arrows": {
+      const res = resolveAttack(state, unit, col, row, { ability: "whistling_arrows" });
+      if (!res.ok) return res;
+      const survivor = unitAt(state, col, row);
+      if (survivor && survivor.id === target.id) {
+        // The shriek of the arrowheads breaks nerves before it breaks bodies.
+        changeUnitMorale(survivor, -12);
+        if (maybeRoute(state, survivor)) {
+          log(state, `${unitDisplayName(state, unit)}'s whistling arrows broke the enemy!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+        }
+      }
+      setCd();
+      return ok;
+    }
+
+    case "camel_panic": {
+      const res = resolveAttack(state, unit, col, row, { ability: "camel_panic" });
+      if (!res.ok) return res;
+      const survivor = unitAt(state, col, row);
+      if (survivor && survivor.id === target.id && UNIT_DEFS[survivor.type].cls === "cavalry") {
+        changeUnitMorale(survivor, -10); // the horses shy and will not settle
+      }
+      setCd();
+      return ok;
+    }
+
+    case "naphtha_shot": {
+      // A burning pot bursts on the target; fire splashes everyone beside it.
+      const res = resolveAttack(state, unit, col, row, { ability: "naphtha_shot" });
+      if (!res.ok) return res;
+      const splash = Math.round(10 * (1 + 0.05 * (unit.level - 1)));
+      const owner2 = playerById(state, unit.ownerId);
+      for (const u of [...state.units.values()]) {
+        if (u.col === col && u.row === row) continue;
+        const o = playerById(state, u.ownerId);
+        if (owner2 && o && areEnemies(owner2, o) && dist({ col, row }, u) === 1) {
+          applyDirectDamage(state, u, splash);
+        }
+      }
+      setCd();
+      return ok;
+    }
+
+    case "sparth_cleave": {
+      // A full strike on the target; the sweeping arc catches a second enemy
+      // standing beside the axeman.
+      const owner2 = playerById(state, unit.ownerId);
+      let secondVictim: Unit | undefined;
+      for (const u of unitsAround(state, unit)) {
+        if (u.id === target.id) continue;
+        const o = playerById(state, u.ownerId);
+        if (owner2 && o && areEnemies(owner2, o)) { secondVictim = u; break; }
+      }
+      const res = resolveAttack(state, unit, col, row, { ability: "sparth_cleave" });
+      if (!res.ok) return res;
+      const glance = Math.round(10 * (1 + 0.05 * (unit.level - 1)));
+      if (secondVictim && state.units.has(secondVictim.id)) applyDirectDamage(state, secondVictim, glance);
+      setCd();
+      return ok;
+    }
+
+    case "pilum":
+    case "mounted_volley":
+    case "atlatl_volley": {
+      // A softening ranged volley (no retaliation), then the full melee strike.
+      const volley = Math.round(10 * (1 + 0.05 * (unit.level - 1)));
+      applyDirectDamage(state, target, volley);
+      if (!state.units.has(target.id)) {
+        // The volley alone finished it — the strike is spent.
+        unit.attackedThisTurn = true;
+        unit.movementLeft = 0;
+        setCd();
+        return ok;
+      }
+      const res = resolveAttack(state, unit, col, row, { ability });
+      if (!res.ok) return res;
+      setCd();
+      return ok;
+    }
+
+    case "strandhogg": {
+      const spoils = UNIT_DEFS[target.type]?.cost ?? 15;
+      const res = resolveAttack(state, unit, col, row, { ability: "strandhogg" });
+      if (!res.ok) return res;
+      if (owner && !state.units.has(target.id)) {
+        const loot = Math.min(50, Math.round(spoils * 1.2));
+        owner.gold += loot;
+        log(state, `${unitDisplayName(state, unit)} carried off ${loot} gold in the strandhögg.`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      }
+      setCd();
+      return ok;
+    }
+
+    case "hellburner": {
+      // The powder ship goes in: heavy damage to the target, half to adjacent
+      // enemy ships — and the vessel itself is consumed in the blast.
+      const blast = Math.round(50 * (1 + 0.05 * (unit.level - 1)));
+      applyDirectDamage(state, target, blast);
+      const owner2 = playerById(state, unit.ownerId);
+      for (const u of [...state.units.values()]) {
+        if (u.id === unit.id) continue;
+        if (u.col === col && u.row === row) continue;
+        const o = playerById(state, u.ownerId);
+        if (owner2 && o && areEnemies(owner2, o) && dist({ col, row }, u) === 1 &&
+            (UNIT_DEFS[u.type].cls === "naval_melee" || UNIT_DEFS[u.type].cls === "naval_ranged")) {
+          applyDirectDamage(state, u, Math.round(blast / 2));
+        }
+      }
+      log(state, `${unitDisplayName(state, unit)} went up as a hellburner!`, { actorId: unit.ownerId, targetIds: [unit.ownerId], tile: { col, row } });
+      killUnit(state, unit); // consumed in the blast
+      return ok;
+    }
+
+    case "hammer_and_anvil": {
+      // Requires the anvil: another friendly unit adjacent to the target.
+      const hasAnvil = [...state.units.values()].some(
+        (u) => u.id !== unit.id && u.ownerId === unit.ownerId && dist(u, target) === 1,
+      );
+      if (!hasAnvil) return fail("needs another of your units beside the target");
+      const res = resolveAttack(state, unit, col, row, { ability: "hammer_and_anvil" });
+      if (!res.ok) return res;
+      setCd();
+      return ok;
+    }
+
+    case "wedge_charge": {
+      // The wedge punches through: half damage splashes onto one enemy beside the target.
+      const owner2 = playerById(state, unit.ownerId);
+      let splashVictim: Unit | undefined;
+      for (const u of state.units.values()) {
+        if (u.id === target.id || u.ownerId === unit.ownerId) continue;
+        const o = playerById(state, u.ownerId);
+        if (owner2 && o && areEnemies(owner2, o) && dist({ col, row }, u) === 1) { splashVictim = u; break; }
+      }
+      const res = resolveAttack(state, unit, col, row, { ability: "wedge_charge" });
+      if (!res.ok) return res;
+      const splash = Math.round(10 * (1 + 0.05 * (unit.level - 1)));
+      if (splashVictim && state.units.has(splashVictim.id)) applyDirectDamage(state, splashVictim, splash);
+      setCd();
+      return ok;
+    }
+
+    case "heroic_challenge": {
+      const res = resolveAttack(state, unit, col, row, { ability: "heroic_challenge" });
+      if (!res.ok) return res;
+      if (state.units.has(unit.id) && !state.units.has(target.id)) {
+        // The champion's kill heartens every friend who saw it.
+        for (const u of state.units.values()) {
+          if (u.ownerId === unit.ownerId && dist(unit, u) <= 2) changeUnitMorale(u, 10);
+        }
+        log(state, `${unitDisplayName(state, unit)} felled the champion — the host takes heart!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      }
+      setCd();
+      return ok;
+    }
+
+    case "terrorize": {
+      const res = resolveAttack(state, unit, col, row, { ability: "terrorize" });
+      if (!res.ok) return res;
+      const survivor = unitAt(state, col, row);
+      if (survivor && survivor.id === target.id) {
+        // The trumpeting beast shakes the survivor's nerve — it may break outright.
+        changeUnitMorale(survivor, -15);
+        if (maybeRoute(state, survivor)) {
+          log(state, `${unitDisplayName(state, unit)} terrorized the foe into rout!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+        }
+      }
+      setCd();
+      return ok;
+    }
+
+    case "overrun": {
+      const res = resolveAttack(state, unit, col, row, { ability: "overrun" });
+      if (!res.ok) return res;
+      if (state.units.has(unit.id) && !state.units.has(target.id)) {
+        // The target fell — the rider surges on and may act again this turn.
+        unit.attackedThisTurn = false;
+        unit.movementLeft = Math.max(unit.movementLeft, 1);
+        log(state, `${unitDisplayName(state, unit)} overran the enemy and rides on!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      }
+      setCd();
+      return ok;
+    }
+
+    case "plunder": {
+      const spoils = UNIT_DEFS[target.type]?.cost ?? 15; // loot scales with what you destroy
+      const res = resolveAttack(state, unit, col, row, { ability: "plunder" });
+      if (!res.ok) return res;
+      if (owner && !state.units.has(target.id)) {
+        // Target slain — seize gold from the fallen.
+        const loot = Math.min(50, Math.round(spoils * 1.2));
+        owner.gold += loot;
+        log(state, `${unitDisplayName(state, unit)} plundered ${loot} gold from the slain.`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      }
       setCd();
       return ok;
     }
@@ -418,7 +746,7 @@ function unitsAround(state: GameState, unit: Unit): Unit[] {
  */
 export function tickAbilities(state: GameState, player: Player): void {
   for (const u of unitsOf(state, player.id)) {
-    if (u.stance && u.stance !== "emplace") u.stance = null;
+    if (u.stance && u.stance !== "emplace" && u.stance !== "wagenburg") u.stance = null;
     u.scouting = false;
     if (u.pinnedUntilTurn !== undefined && state.turn <= u.pinnedUntilTurn) {
       u.movementLeft = 0;
@@ -426,6 +754,10 @@ export function tickAbilities(state: GameState, player: Player): void {
     // A routed unit forfeits all actions on the turn after it broke.
     if (u.routedUntilTurn !== undefined && state.turn <= u.routedUntilTurn) {
       u.movementLeft = 0;
+    }
+    // Poisoned units bleed at their turn start while the venom lasts.
+    if (u.poisonedUntilTurn !== undefined && state.turn <= u.poisonedUntilTurn && state.units.has(u.id)) {
+      applyDirectDamage(state, u, 8);
     }
   }
 }

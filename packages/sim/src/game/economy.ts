@@ -7,7 +7,7 @@ import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources
 import { naturalWonderYields, naturalWonderCulture } from "./natural-wonders";
 import { expandTerritory } from "./territory";
 import { getWonder, uniqueBuildingForCiv, type CivEffects } from "@roc/data";
-import { civEffectsOf, cityEffects, getCivic } from "./civs";
+import { civEffectsOf, cityEffects, getCivic, effectSources, cityEffectSources, type EffectSource } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
@@ -180,6 +180,70 @@ export function ownedTileYields(state: GameState, col: number, row: number): Yie
     ? mergeCivEffects(civEffectsOf(state, ownerCity.ownerId), cityEffects(state, ownerCity))
     : {};
   return { ...tileWorkYields(state, col, row, eff), culture: naturalWonderCulture(tile) };
+}
+
+/** One named trait's contribution to a specific tile's worked yields. */
+export interface TileYieldSource {
+  label: string;
+  delta: Yields;
+}
+
+/** A tile's worked yields plus a per-trait attribution of the perk-driven portion.
+ *  For an owned tile the sources are the owner's traits (what the tile actually
+ *  reaps). For an unclaimed tile the sources are the viewer's own traits as a
+ *  *preview* (`preview: true`) of what they'd add once the tile is worked — the
+ *  headline `yields` stay perk-blind so they reflect the tile as it is now. */
+export interface TileYieldReport {
+  yields: Yields & { culture: number };
+  sources: TileYieldSource[];
+  preview: boolean;
+}
+
+/** True if any yield field of `y` is non-zero. */
+function anyYield(y: Yields): boolean {
+  return !!(y.food || y.production || y.gold || y.science || y.faith);
+}
+
+export function tileYieldReport(state: GameState, col: number, row: number, viewerId: number): TileYieldReport {
+  const tile = getTile(state.map, col, row);
+  if (!tile) return { yields: { ...ZERO_YIELDS, culture: 0 }, sources: [], preview: false };
+  const base = tileWorkYields(state, col, row, {});
+  const culture = naturalWonderCulture(tile);
+
+  // Whose traits do we attribute? The owning player for a claimed tile (actual
+  // output); otherwise the viewer as a foresight preview.
+  const ownerCity = tile.ownerCityId !== undefined ? state.cities.get(tile.ownerCityId) : undefined;
+  const preview = !ownerCity;
+  const attributedId = ownerCity ? ownerCity.ownerId : viewerId;
+
+  let srcDefs: EffectSource[] = [];
+  if (attributedId >= 0) {
+    srcDefs = effectSources(state, attributedId);
+    if (ownerCity) srcDefs = [...srcDefs, ...cityEffectSources(state, ownerCity)];
+  }
+
+  // Each source's tile delta = its worked yields on this tile minus the perk-blind
+  // base. Every tile-yield perk field is a flat per-field add gated by the tile's
+  // terrain/improvement/feature, so evaluating a source in isolation is exact.
+  const sources: TileYieldSource[] = [];
+  for (const s of srcDefs) {
+    const with1 = tileWorkYields(state, col, row, s.effects);
+    const delta: Yields = {
+      food: with1.food - base.food,
+      production: with1.production - base.production,
+      gold: with1.gold - base.gold,
+      science: with1.science - base.science,
+      faith: with1.faith - base.faith,
+    };
+    if (anyYield(delta)) sources.push({ label: s.label, delta });
+  }
+
+  // Headline: owner-aware actual yields when claimed; perk-blind base otherwise.
+  const yields = ownerCity
+    ? { ...tileWorkYields(state, col, row, mergeCivEffects(civEffectsOf(state, ownerCity.ownerId), cityEffects(state, ownerCity))), culture }
+    : { ...base, culture };
+
+  return { yields, sources, preview };
 }
 
 /** Compute a city's per-turn yields, auto-assigning the best worked tiles. */
@@ -688,9 +752,11 @@ export function availableProduction(state: GameState, player: Player, city: City
     const label = current === 0 ? TRAINING_BUILDING_DEFS[family].name : `${TRAINING_BUILDING_DEFS[family].name} (Tier ${next})`;
     out.push({ item: { kind: "trainingBuilding", family, tier: next }, name: label, cost: tierDef.cost });
   }
+  const coastal = isCoastalLand(state, city.col, city.row);
   for (const def of Object.values(BUILDING_DEFS)) {
     if (def.reqTech && !player.researched.has(def.reqTech)) continue;
     if (def.reqResource && resourceStock(player, def.reqResource.resource) < def.reqResource.count) continue;
+    if (def.requiresCoastal && !coastal) continue;
     if (city.buildings.includes(def.id)) continue;
     out.push({
       item: { kind: "building", id: def.id },

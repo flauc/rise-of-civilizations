@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
-import { advanceWorks, startWork } from "./works";
+import { advanceWorks, startWork, startWonder } from "./works";
 import { processCity } from "./economy";
 import { getBuildingDef } from "./content";
 import { startTraining } from "./training";
@@ -20,7 +20,8 @@ import {
 import { citiesOf, unitsOf, playerById, type City } from "./state";
 
 function gameWithCity(): { s: ReturnType<typeof createGame>; city: City } {
-  const s = createGame({ seed: "rush-test", cols: 40, rows: 28, barbarians: false, humanSlots: 1, playerCount: 1 });
+  // Pin a civ with no rush perk — some civs (Ethiopia, Fatimids) natively rush with faith.
+  const s = createGame({ seed: "rush-test", cols: 40, rows: 28, barbarians: false, humanSlots: 1, playerCount: 1, civIds: ["rome"] });
   beginTurn(s);
   const settler = unitsOf(s, 0).find((u) => u.type === "settler")!;
   applyCommand(s, { type: "foundCity", unitId: settler.id });
@@ -200,5 +201,26 @@ describe("rush production", () => {
     advanceWorks(s, 0);
     expect(tile.improvement).toBe("farm");
     expect(s.works.length).toBe(0);
+  });
+
+  it("rushing a wonder costs the heavy wonder multiple of its remaining labour", () => {
+    const { s, city } = gameWithCity();
+    const p = playerById(s, 0)!;
+    p.gold = 100000;
+    p.researched.add("masonry");
+    // Great Pyramid needs masonry + architecture — field a mason and an architect.
+    city.specialists.push(
+      { id: 201, type: "mason", xp: 0, level: 1 },
+      { id: 202, type: "architect", xp: 0, level: 1 },
+    );
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    const res = startWonder(s, 0, "great_pyramid", tile.col, tile.row);
+    expect(res.ok, res.error).toBe(true);
+    const work = s.works.find((w) => w.id === res.workId)!;
+
+    const remaining = Object.values(work.requirement).reduce((a, b) => a + b, 0);
+    // Gold rushes at 6 per labour; a wonder is an 8× sink over a plain work of the
+    // same labour, so it must never be a routine shortcut.
+    expect(workRushCost(work, "gold")).toBe(remaining * 6 * 8);
   });
 });

@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { getTile } from "@roc/shared";
+import { getTile, axialDistance, offsetToAxial } from "@roc/shared";
 import { createGame } from "./setup";
 import { applyCommand } from "./commands";
 import { updateExplored } from "./visibility";
+import { isPassableLand } from "./terrain";
 import {
   relationBetween, haveMet, atWar, attitudeScore,
   declareWar, makePeace, gift, proposeDeal, demandTribute, finalizeDeal,
@@ -420,5 +421,86 @@ describe("diplomacy — trading tech, cities, and units", () => {
     s.turn += 5; // loan term elapses
     diplomacyTick(s);
     expect(s.units.get(unit.id)!.ownerId).toBe(0); // returned
+  });
+});
+
+describe("diplomacy — settling on a rival's doorstep", () => {
+  /** An unowned passable-land tile exactly `d` tiles from (col,row), if any. */
+  function landAtDistance(s: GameState, col: number, row: number, d: number) {
+    const center = offsetToAxial({ col, row });
+    for (const t of s.map.tiles) {
+      if (!isPassableLand(t.terrain) || t.ownerCityId !== undefined) continue;
+      if (axialDistance(center, offsetToAxial({ col: t.col, row: t.row })) === d) return t;
+    }
+    return undefined;
+  }
+
+  /** Two met civs, an AI (1) city founded, and a player-0 settler parked `d` from it. */
+  function setup(seed: string, d: number) {
+    const s = createGame({ seed, cols: 40, rows: 28, barbarians: false, humanSlots: 1, playerCount: 2 });
+    beginTurn(s);
+    const aiSettler = unitsOf(s, 1).find((u) => u.type === "settler")!;
+    applyCommand(s, { type: "foundCity", unitId: aiSettler.id }, 1);
+    const aiCity = citiesOf(s, 1)[0]!;
+    ensureContact(s, 0, 1);
+    const spot = landAtDistance(s, aiCity.col, aiCity.row, d);
+    expect(spot).toBeTruthy();
+    const mySettler = unitsOf(s, 0).find((u) => u.type === "settler")!;
+    mySettler.col = spot!.col;
+    mySettler.row = spot!.row;
+    return { s, aiCity, mySettler };
+  }
+
+  it("sours a met civ's attitude when a city is founded on their doorstep", () => {
+    const { s, mySettler } = setup("encroach", 3);
+    const before = attitudeScore(s, 1, 0);
+    expect(applyCommand(s, { type: "foundCity", unitId: mySettler.id }, 0).ok).toBe(true);
+    const at = s.attitudes.find((x) => x.from === 1 && x.to === 0)!;
+    expect(at.modifiers.some((m) => m.reason === "you settled on our borders" && m.value < 0)).toBe(true);
+    expect(attitudeScore(s, 1, 0)).toBeLessThan(before);
+  });
+
+  it("does not resent a city founded far from anyone's borders", () => {
+    const { s, mySettler } = setup("encroach-far", 8);
+    applyCommand(s, { type: "foundCity", unitId: mySettler.id }, 0);
+    const at = s.attitudes.find((x) => x.from === 1 && x.to === 0);
+    expect(at?.modifiers.some((m) => m.reason === "you settled on our borders")).toBeFalsy();
+  });
+
+  it("an already-hostile AI that can win declares war over a city on its border", () => {
+    const { s, aiCity, mySettler } = setup("encroach-war", 3);
+    // The AI already loathes player 0, and fields an army that outmatches them.
+    const at = s.attitudes.find((x) => x.from === 1 && x.to === 0)!;
+    at.modifiers.push({ reason: "old grudge", value: -90 });
+    for (let i = 0; i < 3; i++) {
+      const id = s.nextEntityId++;
+      s.units.set(id, makeUnit(id, 1, "warrior", aiCity.col, aiCity.row));
+    }
+    expect(atWar(s, 0, 1)).toBe(false);
+    applyCommand(s, { type: "foundCity", unitId: mySettler.id }, 0);
+    expect(atWar(s, 0, 1)).toBe(true);
+  });
+
+  it("a human offended party never auto-declares war (they choose their own wars)", () => {
+    // Roles reversed: AI (1) founds on the human's (0) doorstep.
+    const s = createGame({ seed: "encroach-human", cols: 40, rows: 28, barbarians: false, humanSlots: 1, playerCount: 2 });
+    beginTurn(s);
+    const humanSettler = unitsOf(s, 0).find((u) => u.type === "settler")!;
+    applyCommand(s, { type: "foundCity", unitId: humanSettler.id }, 0);
+    const humanCity = citiesOf(s, 0)[0]!;
+    ensureContact(s, 0, 1);
+    const at = s.attitudes.find((x) => x.from === 0 && x.to === 1)!;
+    at.modifiers.push({ reason: "old grudge", value: -90 });
+    const center = offsetToAxial({ col: humanCity.col, row: humanCity.row });
+    const spot = s.map.tiles.find(
+      (t) => isPassableLand(t.terrain) && t.ownerCityId === undefined &&
+        axialDistance(center, offsetToAxial({ col: t.col, row: t.row })) === 3,
+    )!;
+    expect(spot).toBeTruthy();
+    const aiSettler = unitsOf(s, 1).find((u) => u.type === "settler")!;
+    aiSettler.col = spot.col;
+    aiSettler.row = spot.row;
+    applyCommand(s, { type: "foundCity", unitId: aiSettler.id }, 1);
+    expect(atWar(s, 0, 1)).toBe(false); // the human is annoyed but not dragged into war
   });
 });

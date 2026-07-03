@@ -107,8 +107,11 @@ export function isEconKind(kind: string): kind is EconKind {
   return kind in ECON_BASE;
 }
 
-// ---- civ-unique tile improvements (single-tier, owner-civ only) ------------
-const UNIQUE_IMP_BASE = 5; // labour, scaled by distance
+// ---- civ-unique tile improvements (3-tier, owner-civ only) -----------------
+// Like the economic ladders, a civ's signature improvement now upgrades through
+// three tiers (its worked yields grow each tier — see improvements.ts), so it is
+// never strictly worse than a plain Farm/Mine the player could otherwise build.
+const UNIQUE_IMP_BASE = 5; // labour, scaled by distance and tier
 const UNIQUE_IMP_BY_KIND = new Map<string, UniqueInfraDef>(UNIQUE_IMPROVEMENTS.map((u) => [u.id, u]));
 
 /** Whether a kind string is a civ-unique tile improvement (kind === its infra id). */
@@ -129,7 +132,11 @@ export function isDefenseKind(kind: string): kind is DefenseKind {
 
 /** Human-readable name of a work kind at a tier. */
 export function workName(kind: string, tier: number): string {
-  if (isUniqueImpKind(kind)) return uniqueImpDef(kind)!.name;
+  if (isUniqueImpKind(kind)) {
+    const name = uniqueImpDef(kind)!.name;
+    const lvl = Math.min(MAX_TIER, Math.max(1, tier));
+    return lvl > 1 ? `${name} ${"I".repeat(lvl)}` : name; // "Obelisk", "Obelisk II", "Obelisk III"
+  }
   const i = Math.min(MAX_TIER, Math.max(1, tier)) - 1;
   if (isEconKind(kind)) return ECON_NAMES[kind][i]!;
   if (isDefenseKind(kind)) return DEFENSE_NAMES[kind][i]!;
@@ -194,8 +201,9 @@ export function nextTierAt(tile: Tile, kind: string): number | null {
     const def = uniqueImpDef(kind)!;
     if (tile.structure) return null;
     if (def.terrain && !def.terrain.includes(tile.terrain)) return null;
-    if (tile.improvement && tile.improvement !== kind) return null;
-    return tile.improvement === kind ? null : 1; // single tier
+    if (tile.improvement && tile.improvement !== kind) return null; // a different improvement is here
+    const cur = tile.improvement === kind ? tile.improvementLevel ?? 1 : 0;
+    return cur < MAX_TIER ? cur + 1 : null; // build (tier 1) or upgrade toward tier 3
   }
   return null;
 }
@@ -348,7 +356,7 @@ export function canStartWork(state: GameState, playerId: number, kind: string, c
     if (locked.length) return { ok: false, error: lockedDisciplinesError(locked) };
     // … and there must be an idle craftsman to take the job. A work can't be queued
     // unless the player has a free specialist of each craft it needs to assign to it.
-    const missing = unstaffableDisciplines(state, playerId, kind);
+    const missing = unstaffableDisciplines(state, playerId, workDisciplines(kind));
     if (missing.length) return { ok: false, error: noFreeSpecialistError(missing) };
   }
   return { ok: true };
@@ -408,8 +416,15 @@ export function canStartWonder(state: GameState, playerId: number, wonderId: str
   if (!host) return { ok: false, error: "no city to build from" };
   const player = playerById(state, playerId);
   if (player) {
-    const locked = lockedDisciplines(state, playerId, player, Object.keys(def.requirement) as Discipline[]);
+    const disciplines = Object.keys(def.requirement) as Discipline[];
+    // The crafts must be at least researchable (or already fielded) …
+    const locked = lockedDisciplines(state, playerId, player, disciplines);
     if (locked.length) return { ok: false, error: lockedDisciplinesError(locked) };
+    // … and each must have an idle craftsman free to take the job, exactly as a
+    // tile improvement requires. A wonder can't be queued until the player has a
+    // free specialist of every craft it needs (there's nobody to staff it otherwise).
+    const missing = unstaffableDisciplines(state, playerId, disciplines);
+    if (missing.length) return { ok: false, error: noFreeSpecialistError(missing) };
   }
   return { ok: true };
 }
@@ -508,12 +523,12 @@ export function freeSpecialistsByDiscipline(state: GameState, playerId: number):
   return counts;
 }
 
-/** Disciplines a work of `kind` needs for which the player has no idle craftsman to
- *  spare right now (so the work could be started but never staffed). */
-function unstaffableDisciplines(state: GameState, playerId: number, kind: string): Discipline[] {
+/** Disciplines from `disciplines` for which the player has no idle craftsman to
+ *  spare right now (so a work needing them could be started but never staffed). */
+function unstaffableDisciplines(state: GameState, playerId: number, disciplines: Discipline[]): Discipline[] {
   const free = freeSpecialistsByDiscipline(state, playerId);
   const missing: Discipline[] = [];
-  for (const d of new Set(workDisciplines(kind))) {
+  for (const d of new Set(disciplines)) {
     if ((free.get(d) ?? 0) < 1) missing.push(d);
   }
   return missing;

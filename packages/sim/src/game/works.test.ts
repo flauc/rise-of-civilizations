@@ -5,6 +5,8 @@ import { beginTurn, applyCommand } from "./commands";
 import {
   advanceWorks,
   startWork,
+  startWonder,
+  canStartWonder,
   nextTierAt,
   workLabourFor,
   workLabourPerTurn,
@@ -132,6 +134,32 @@ describe("specialists & works", () => {
     const w2 = startWork(s, 0, "farm", t2.col, t2.row);
     expect(w2.ok).toBe(false);
     expect(w2.error).toMatch(/^No /);
+  });
+
+  it("refuses to start a wonder when a required craftsman is busy on another work", () => {
+    const { s, city } = gameWithCity();
+    s.players[0]!.researched.add("masonry");
+    // The Great Pyramid needs a Mason and an Architect — field one of each.
+    city.specialists.push(
+      { id: 101, type: "mason", xp: 0, level: 1 },
+      { id: 102, type: "architect", xp: 0, level: 1 },
+    );
+    const wonderTile = grasslandTile(s, city, city.col + 1, city.row);
+    // With both crafts idle the wonder may be raised, exactly like a tile improvement.
+    expect(canStartWonder(s, 0, "great_pyramid", wonderTile.col, wonderTile.row).ok).toBe(true);
+
+    // Put the lone Mason to work on a mine; now there's no free Mason for the wonder.
+    const mineTile = grasslandTile(s, city, city.col - 1, city.row);
+    mineTile.terrain = "hills";
+    const mine = startWork(s, 0, "mine", mineTile.col, mineTile.row);
+    expect(mine.ok).toBe(true);
+    expect(assign(s, mine.workId!, 101)).toBe(true);
+
+    const blocked = canStartWonder(s, 0, "great_pyramid", wonderTile.col, wonderTile.row);
+    expect(blocked.ok).toBe(false);
+    expect(blocked.error).toMatch(/^No /); // a missing-craftsman block, same as improvements
+    expect(startWonder(s, 0, "great_pyramid", wonderTile.col, wonderTile.row).ok).toBe(false);
+    expect(s.works.some((w) => w.wonderId === "great_pyramid")).toBe(false);
   });
 
   it("refuses to start a work whose craft is not yet researched", () => {

@@ -96,8 +96,7 @@ import {
   buildingInfo,
   techUnlocks,
   unitInfo,
-  tileYields,
-  ownedTileYields,
+  tileYieldReport,
   resourceActive,
   RESOURCE_DEFS,
   ACTIVE_ABILITY_DEFS,
@@ -180,16 +179,27 @@ type TileLine = { kind: "good" | "bad" | "neutral"; text: string };
 interface TileReport {
   name: string;
   subtitle: string;
-  yields: ReturnType<typeof tileYields>;
+  yields: ReturnType<typeof tileYieldReport>["yields"];
   lines: TileLine[];
 }
 
+/** Format a trait's per-tile yield delta as "+1 🪙 −1 🍞", icons only for non-zero fields. */
+function formatYieldDelta(d: { food: number; production: number; gold: number; science: number; faith: number }): string {
+  const seg: string[] = [];
+  const add = (icon: string, n: number) => { if (n) seg.push(`${n > 0 ? "+" : "−"}${Math.abs(n)} ${icon}`); };
+  add("🍞", d.food); add("⚒️", d.production); add("🪙", d.gold); add("🔬", d.science); add("🙏", d.faith);
+  return seg.join(" ");
+}
+
 /** Build the human-readable benefits/deficits breakdown for a tile. */
-function tileReport(state: GameState, tile: Tile): TileReport {
+function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
   const t = tile.terrain;
-  // Owner-aware worked yields: includes river bonuses and the owning civ/city perks,
-  // so the panel shows what a citizen actually reaps here (not a perk-blind estimate).
-  const y = ownedTileYields(state, tile.col, tile.row);
+  // Owner-aware worked yields plus a per-trait attribution: for a claimed tile the
+  // headline is what a citizen actually reaps and the sources are the owner's traits;
+  // for an unclaimed tile the headline is the perk-blind base and the sources preview
+  // what the viewer's own traits would add once it's worked.
+  const report = tileYieldReport(state, tile.col, tile.row, viewerId);
+  const y = report.yields;
   const water = isWaterTerrain(t);
   const passable = isPassableLand(t);
   const rough = isRough(t);
@@ -216,6 +226,14 @@ function tileReport(state: GameState, tile: Tile): TileReport {
   if (y.production) lines.push({ kind: "good", text: `+${y.production} production` });
   if (y.gold) lines.push({ kind: "good", text: `+${y.gold} gold` });
   if (y.science) lines.push({ kind: "good", text: `+${y.science} science` });
+  // Named trait attribution: which perk contributes what to this tile's yields.
+  if (report.sources.length) {
+    if (report.preview) lines.push({ kind: "neutral", text: "Once part of your empire, your traits add:" });
+    for (const s of report.sources) {
+      const net = s.delta.food + s.delta.production + s.delta.gold + s.delta.science + s.delta.faith;
+      lines.push({ kind: net < 0 ? "bad" : "good", text: `${s.label}: ${formatYieldDelta(s.delta)}` });
+    }
+  }
   if (def > 0) lines.push({ kind: "good", text: `+${def} combat defense for units standing here` });
   if (tile.improvement) {
     const imp = IMPROVEMENT_DEFS[tile.improvement as ImprovementKind]?.name ?? tile.improvement;
@@ -401,6 +419,12 @@ function escapeHtml(text: string): string {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+/** Civilization name for a player id, falling back to the player's own name. */
+function civNameForPlayer(state: GameState, playerId: number): string {
+  const p = state.players.find((x) => x.id === playerId);
+  return getCiv(p?.civId)?.name ?? p?.name ?? "Unknown";
 }
 
 function downloadJson(filename: string, json: string): void {
@@ -2891,30 +2915,55 @@ export function createUI(handlers: UIHandlers): UI {
         const origin = cityAt(state, unit.col, unit.row);
         const dests = tradeRouteDestinations(state, unit);
         if (origin && dests.length > 0) {
+          const destBtn = (c: (typeof dests)[number]): string => {
+            const international = c.ownerId !== unit.ownerId;
+            const y = tradeRouteYield(state, {
+              id: 0,
+              ownerId: unit.ownerId,
+              fromCityId: origin.id,
+              toCityId: c.id,
+              toOwnerId: c.ownerId,
+              international,
+              path: [],
+            });
+            const extra =
+              (y.food ? ` +${y.food}🍞` : "") +
+              (y.production ? ` +${y.production}⚒️` : "") +
+              (y.science ? ` +${y.science}🔬` : "") +
+              (y.culture ? ` +${y.culture}🎭` : "");
+            // Name the owning civ so it's clear whose city an allied route runs to.
+            const civTag = international
+              ? ` <span class="sub" style="color:#c9a24a">🤝 ${escapeHtml(civNameForPlayer(state, c.ownerId))}</span>`
+              : "";
+            return (
+              `<button class="btn" data-trade-dest="${c.id}" style="text-align:left;display:flex;justify-content:space-between;gap:8px">` +
+              `<span><b style="color:#fff">${escapeHtml(c.name)}</b>${civTag}</span>` +
+              `<span class="sub">+${y.gold}🪙${extra}</span></button>`
+            );
+          };
+          const own = dests.filter((c) => c.ownerId === unit.ownerId);
+          const foreign = dests.filter((c) => c.ownerId !== unit.ownerId);
           html += `<div class="csub">🐪 Trade route from ${origin.name}</div>`;
-          html +=
-            `<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">` +
-            dests
-              .map((c) => {
-                const y = tradeRouteYield(state, {
-                  id: 0,
-                  ownerId: unit.ownerId,
-                  fromCityId: origin.id,
-                  toCityId: c.id,
-                  path: [],
-                });
-                const extra =
-                  (y.food ? ` +${y.food}🍞` : "") +
-                  (y.production ? ` +${y.production}⚒️` : "") +
-                  (y.science ? ` +${y.science}🔬` : "");
-                return (
-                  `<button class="btn" data-trade-dest="${c.id}" style="text-align:left;display:flex;justify-content:space-between;gap:8px">` +
-                  `<span><b style="color:#fff">${c.name}</b></span>` +
-                  `<span class="sub">+${y.gold}🪙${extra}</span></button>`
-                );
-              })
-              .join("") +
-            `</div>`;
+          if (foreign.length > 0) {
+            // Let the player hide allied destinations and focus on their own network.
+            html +=
+              `<label style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:12px;color:#9fc3e0;cursor:pointer">` +
+              `<input type="checkbox" id="trade-only-mine"> Only my cities</label>`;
+          }
+          if (own.length > 0) {
+            html += `<div class="sub" style="margin-top:6px;color:#8fce8f">🏠 Your cities</div>`;
+            html +=
+              `<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">` +
+              own.map(destBtn).join("") +
+              `</div>`;
+          }
+          if (foreign.length > 0) {
+            html += `<div class="sub" data-foreign-group style="margin-top:8px;color:#c9a24a">🤝 Allied cities</div>`;
+            html +=
+              `<div data-foreign-group style="display:flex;flex-direction:column;gap:6px;margin-top:4px">` +
+              foreign.map(destBtn).join("") +
+              `</div>`;
+          }
         } else {
           html += `<div class="locked-note">🐪 Move this Trader into one of your cities, then it can open a trade route to another city.</div>`;
         }
@@ -3028,6 +3077,12 @@ export function createUI(handlers: UIHandlers): UI {
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-trade-dest]").forEach((el) =>
       el.addEventListener("click", () => handlers.onEstablishTrade(Number(el.dataset.tradeDest))),
     );
+    const onlyMine = unitPanel.querySelector<HTMLInputElement>("#trade-only-mine");
+    onlyMine?.addEventListener("change", () => {
+      unitPanel
+        .querySelectorAll<HTMLElement>("[data-foreign-group]")
+        .forEach((el) => (el.style.display = onlyMine.checked ? "none" : ""));
+    });
     unitPanel.querySelector<HTMLButtonElement>("[data-evangelize]")?.addEventListener("click", (e) =>
       handlers.onEvangelize(unit.id, Number((e.currentTarget as HTMLElement).dataset.evangelize)));
     unitPanel.querySelector<HTMLButtonElement>("[data-purge]")?.addEventListener("click", (e) =>
@@ -3150,7 +3205,7 @@ export function createUI(handlers: UIHandlers): UI {
       tilePanelKey = tileKey;
       tilePanelExpanded = !isMobile();
     }
-    const r = tileReport(state, tile);
+    const r = tileReport(state, tile, viewerId);
     const y = r.yields;
     const chip = (icon: string, n: number) =>
       `<span style="${n ? "" : "opacity:.35"}" title="${icon}">${icon} <b>${n}</b></span>`;

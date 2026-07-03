@@ -63,8 +63,31 @@ describe("unique infrastructure", () => {
     tile.terrain = imp.terrain![0]! as typeof tile.terrain; // valid terrain
     tile.improvement = undefined;
     tile.structure = undefined;
-    expect(nextTierAt(tile, imp.id)).toBe(1); // single tier, buildable
+    expect(nextTierAt(tile, imp.id)).toBe(1); // not built yet → build tier 1
     tile.terrain = "ocean" as typeof tile.terrain;
     expect(nextTierAt(tile, imp.id)).toBeNull(); // wrong terrain
+  });
+
+  it("lets a civ's unique IMPROVEMENT level up through three tiers, buffing its yields", () => {
+    const imp = uniqueImprovementForCiv("inca")!; // Terrace Farm, base food 2
+    const base = imp.yields.food ?? 0;
+
+    // Each tier adds +1 to every yield the base produces.
+    expect(improvementYields(imp.id, 1).food).toBe(base);
+    expect(improvementYields(imp.id, 2).food).toBe(base + 1);
+    expect(improvementYields(imp.id, 3).food).toBe(base + 2);
+
+    // nextTierAt walks a built improvement up to (and stops at) tier 3.
+    const s = game();
+    const tile = getTile(s.map, 6, 6)!;
+    tile.terrain = imp.terrain![0]! as typeof tile.terrain;
+    tile.structure = undefined;
+    tile.improvement = imp.id;
+    tile.improvementLevel = 1;
+    expect(nextTierAt(tile, imp.id)).toBe(2); // upgrade available
+    tile.improvementLevel = 2;
+    expect(nextTierAt(tile, imp.id)).toBe(3);
+    tile.improvementLevel = 3;
+    expect(nextTierAt(tile, imp.id)).toBeNull(); // maxed out
   });
 });

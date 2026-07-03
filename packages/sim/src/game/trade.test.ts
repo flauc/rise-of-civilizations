@@ -7,6 +7,7 @@ import {
   establishTradeRoute,
   cancelTradeRoute,
   tradeRouteYield,
+  tradeRouteGoldBreakdown,
   cityTradeYields,
   pruneTradeRoutes,
   tradeRouteDestinations,
@@ -128,7 +129,7 @@ describe("trade routes", () => {
         tile.roadLevel = 1;
       }
     }
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 2);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 3);
 
     // Upgrade to paved roads.
     for (let i = 1; i < route.path.length - 1; i++) {
@@ -136,7 +137,7 @@ describe("trade routes", () => {
       const tile = getTile(s.map, col, row);
       if (tile) tile.roadLevel = 2;
     }
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 4);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
 
     // Upgrade to imperial roads.
     for (let i = 1; i < route.path.length - 1; i++) {
@@ -144,7 +145,7 @@ describe("trade routes", () => {
       const tile = getTile(s.map, col, row);
       if (tile) tile.roadLevel = 3;
     }
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 9);
   });
 
   it("gains no road bonus if any intermediate tile lacks a road", () => {
@@ -185,7 +186,7 @@ describe("trade routes", () => {
     expect(tradeRouteYield(s, route).gold).toBe(baseYield);
     // With Sailing the river route earns the best-grade (tier 3) connection bonus.
     s.players[0]!.researched.add("sailing");
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 9);
   });
 
   it("a river severs the road connection unless a bridge spans it", () => {
@@ -205,7 +206,7 @@ describe("trade routes", () => {
         tile.roadLevel = 3;
       }
     }
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 9);
 
     // Run a river along the edge between the first two intermediate road tiles.
     const a = route.path[1]!.split(",").map(Number) as [number, number];
@@ -221,7 +222,7 @@ describe("trade routes", () => {
     s.players[0]!.researched.add("bridge_building");
     getTile(s.map, a[0], a[1])!.ownerCityId = from.id;
     getTile(s.map, b[0], b[1])!.ownerCityId = from.id;
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 9);
   });
 
   it("serializes a bridge flag for a roaded river crossing only once the tech is researched", () => {
@@ -271,7 +272,94 @@ describe("trade routes", () => {
         tile.roadLevel = i === 1 ? 1 : 3; // one dirt road, the rest imperial
       }
     }
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 2);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 3);
+  });
+
+  it("routes through a chain of roads even on a longer path, and keeps the bonus across a city hub", () => {
+    const { s, from, to } = gameWithTwoCities();
+    // Build an L-shaped Imperial road: straight east to the destination's column,
+    // one row *south* of the direct line, then north into the destination. This road
+    // is strictly longer than the straight shot, so a shortest-distance router would
+    // ignore it — the caravan should still hug it because roads are near-free.
+    const roadTiles: [number, number][] = [];
+    for (let c = from.col; c <= to.col; c++) roadTiles.push([c, from.row + 1]);
+    roadTiles.push([to.col, from.row]); // step back up into the destination row
+    for (const [col, row] of roadTiles) {
+      const tile = getTile(s.map, col, row);
+      if (tile) {
+        tile.road = true;
+        tile.roadLevel = 3;
+      }
+    }
+
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tid, to.id, 0);
+    const route = s.tradeRoutes[0]!;
+
+    // The chosen path runs along the detoured road, not the straight line.
+    expect(route.path).toContain(`${from.col + 3},${from.row + 1}`);
+    // Every intermediate tile is roaded, so the imperial-road bonus applies.
+    expect(tradeRouteGoldBreakdown(s, route).roadTier).toBe(3);
+    expect(tradeRouteGoldBreakdown(s, route).road).toBe(9);
+  });
+
+  it("lifts every yield — not just gold — when a route is improved", () => {
+    const { s, from, to } = gameWithTwoCities();
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tid, to.id, 0);
+    const route = s.tradeRoutes[0]!;
+    const before = tradeRouteYield(s, route);
+
+    // Pave the whole path with imperial roads and add a Market + Bank at the origin.
+    for (let i = 1; i < route.path.length - 1; i++) {
+      const [col, row] = route.path[i]!.split(",").map(Number) as [number, number];
+      const tile = getTile(s.map, col, row);
+      if (tile) {
+        tile.road = true;
+        tile.roadLevel = 3;
+      }
+    }
+    from.buildings.push("market", "bank");
+    const after = tradeRouteYield(s, route);
+
+    // Gold clearly grows, and so does every other yield the caravan carries.
+    expect(after.gold).toBeGreaterThan(before.gold);
+    expect(after.food).toBeGreaterThan(before.food);
+    expect(after.production).toBeGreaterThan(before.production);
+    expect(after.science).toBeGreaterThan(before.science);
+    expect(after.culture).toBeGreaterThan(before.culture);
+  });
+
+  it("counts a city that sits along the route as a road hub", () => {
+    const { s, from, to } = gameWithTwoCities();
+    // Drop a third owned city on the direct line between the two endpoints.
+    const midCol = from.col + 3;
+    const midId = s.nextEntityId++;
+    const mid: City = {
+      id: midId, ownerId: 0, name: "Midtown", col: midCol, row: from.row, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(midId, mid);
+
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tid, to.id, 0);
+    const route = s.tradeRoutes[0]!;
+    // Road every intermediate tile *except* the city tile (a city has no road flag).
+    for (let i = 1; i < route.path.length - 1; i++) {
+      const [col, row] = route.path[i]!.split(",").map(Number) as [number, number];
+      if (col === midCol && row === from.row) continue; // the city hub
+      const tile = getTile(s.map, col, row);
+      if (tile) {
+        tile.road = true;
+        tile.roadLevel = 2;
+      }
+    }
+    // The city bridges the road chain, so the paved-road bonus still applies.
+    expect(tradeRouteGoldBreakdown(s, route).roadTier).toBe(2);
   });
 });
 

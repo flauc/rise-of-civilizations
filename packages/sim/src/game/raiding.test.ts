@@ -104,12 +104,12 @@ describe("raiding", () => {
     const tile = getTile(state.map, 11, 8)!;
     tile.ownerCityId = city.id;
     tile.improvement = "farm";
-    tile.improvementLevel = 1; // base 30, +25% => 37
+    tile.improvementLevel = 1; // base 30, +35% => 40
 
     const raider = place(state, 0, "warrior", 11, 8);
     const res = pillageTile(state, raider.id, 0);
     expect(res.ok).toBe(true);
-    expect(res.gold).toBe(37); // floor(30 * 1.25)
+    expect(res.gold).toBe(40); // floor(30 * 1.35)
   });
 
   it("Norse coastal raiding bonus applies on water-adjacent tiles", () => {

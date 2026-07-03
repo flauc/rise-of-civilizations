@@ -91,12 +91,15 @@ export function loadImprovementAtlas(onLoad?: () => void): ImprovementAtlas {
     trackImage(img, "farm_t1");
   }
 
-  // Civ-unique tile improvements are single-tier: one sprite (improvements/<id>.png)
-  // serves the map (keyed as `<id>_t1`) — the same file the civ picker shows.
+  // Civ-unique tile improvements upgrade through three tiers but share a single
+  // sprite (improvements/<id>.png) — the same file the civ picker shows. Register it
+  // under every tier key (`<id>_t1..t3`) so a leveled-up one still renders its art.
   for (const u of UNIQUE_IMPROVEMENTS) {
-    const img = new Image();
-    img.src = `${ASSET_BASE_URL}improvements/${u.id}.png`;
-    trackImage(img, `${u.id}_t1`);
+    for (let tier = 1; tier <= TIERS; tier++) {
+      const img = new Image();
+      img.src = `${ASSET_BASE_URL}improvements/${u.id}.png`;
+      trackImage(img, `${u.id}_t${tier}`);
+    }
   }
 
   const atlas: ImprovementAtlas = { images, loaded: remaining === 0 };

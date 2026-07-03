@@ -795,6 +795,86 @@ function nearestCityDistance(state: GameState, a: number, b: number): number {
   return best;
 }
 
+// ---- settling on a rival's doorstep --------------------------------------
+
+// How close a new city must sit to another civ's territory to register as an
+// intrusion at all, and the point at which planting one is read as an outright
+// encroachment that a hostile neighbour may answer with war.
+const ENCROACH_RANGE = 4; // tiles from their nearest owned tile to provoke resentment
+const ENCROACH_PROVOKE = 2; // this close (right against their borders) can spark war
+
+/** Deepen a stacking opinion penalty (each fresh affront adds to it, to a floor). */
+function worsenModifier(state: GameState, from: number, to: number, reason: string, delta: number, floor: number, ttl: number): void {
+  const at = attitudeRec(state, from, to);
+  let m = at.modifiers.find((x) => x.reason === reason);
+  if (!m) {
+    m = { reason, value: 0 };
+    at.modifiers.push(m);
+  }
+  m.value = Math.max(floor, m.value + delta);
+  m.expiresTurn = state.turn + ttl;
+}
+
+/**
+ * A newly founded city sits on the map; every met major civ whose borders it
+ * crowds resents it. The nearer it is planted to their territory the sharper the
+ * affront, and it cuts deeper against an aggressive, territorial temperament.
+ * When a city is dropped right against the borders of a civ that already dislikes
+ * the founder — and that civ can reach and beat them — the intrusion is a casus
+ * belli it may answer with war on the spot. Only an AI reacts with war; a human
+ * chooses their own wars.
+ */
+export function onCityFoundedNearRivals(state: GameState, city: City): void {
+  const founderId = city.ownerId;
+  const founder = playerById(state, founderId);
+  if (!founder || founder.isBarbarian) return;
+  const here = offsetToAxial({ col: city.col, row: city.row });
+
+  // Nearest owned tile of each other civ to the new city (one pass over the map).
+  const terrDist = new Map<number, number>();
+  for (const t of state.map.tiles) {
+    if (t.ownerCityId === undefined) continue;
+    const owner = state.cities.get(t.ownerCityId)?.ownerId;
+    if (owner === undefined || owner === founderId) continue;
+    const d = axialDistance(here, offsetToAxial({ col: t.col, row: t.row }));
+    const cur = terrDist.get(owner);
+    if (cur === undefined || d < cur) terrDist.set(owner, d);
+  }
+
+  for (const [otherId, dist] of terrDist) {
+    if (dist > ENCROACH_RANGE) continue;
+    const other = playerById(state, otherId);
+    if (!other || other.isBarbarian) continue;
+    const r = relationBetween(state, founderId, otherId);
+    if (!r || !other.met.includes(founderId)) continue; // must have met to care
+    if (r.status === "war") continue; // already fighting — nothing to escalate
+
+    const p = personalityOf(state, otherId);
+    // Severity: ~1.0 right on their border, tapering to ~0 at ENCROACH_RANGE.
+    const severity = Math.max(0, 1 - dist / (ENCROACH_RANGE + 1));
+    const penalty = -Math.round((6 + severity * 16) * (0.6 + p.aggression * 0.9));
+    worsenModifier(state, otherId, founderId, "you settled on our borders", penalty, -60, 60);
+    log(state, `${civName(other)} resent ${civName(founder)} founding ${city.name} near their borders.`, {
+      actorId: founderId,
+      targetIds: [otherId, founderId],
+      tile: { col: city.col, row: city.row },
+    });
+
+    // A city planted right against their borders can be a casus belli — but only
+    // an AI already soured on the founder, able to reach and beat them and not
+    // bound by a pact, will actually march. How low its opinion must sink scales
+    // with temperament: a warlike civ needs far less provocation than a placid one.
+    if (other.isHuman || dist > ENCROACH_PROVOKE) continue;
+    const canWar = r.pact === "none" && (r.warAllowedTurn === undefined || state.turn >= r.warAllowedTurn);
+    if (!canWar || !canWageWarOn(state, otherId, founderId)) continue;
+    const score = attitudeScore(state, otherId, founderId); // includes the fresh penalty
+    const warThreshold = -35 - (1 - p.aggression) * 35; // aggr 1 → -35, placid → -70
+    if (score <= warThreshold && powerRatio(state, otherId, founderId) >= 1.0) {
+      declareWar(state, otherId, founderId);
+    }
+  }
+}
+
 // ---- AI ------------------------------------------------------------------
 
 export function militaryPower(state: GameState, playerId: number): number {
@@ -1039,6 +1119,44 @@ function aiDecideDemand(
     return { accept: false, reason: "You dare make demands of us? This means war!" };
   }
   return { accept: false, reason: ratio >= 1.3 ? "We will not be bullied — yet." : "You are in no position to make demands." };
+}
+
+/** A tribute demand's verdict WITHOUT side effects — the pure core of aiDecideDemand. */
+function demandVerdict(state: GameState, aiId: number, fromId: number, want: DealItem[]): { accept: boolean; reason: string } {
+  const p = personalityOf(state, aiId);
+  const ratio = powerRatio(state, fromId, aiId);
+  const required = 2.0 + p.boldness * 1.5;
+  if (!canPayItems(state, aiId, want)) return { accept: false, reason: "They have nothing to give." };
+  if (ratio >= required) return { accept: true, reason: "Their armies leave them no choice — they would yield." };
+  return { accept: false, reason: ratio >= 1.3 ? "They will not be bullied — yet." : "They are in no position to be bullied." };
+}
+
+/**
+ * How an AI recipient would answer a proposal, computed WITHOUT mutating state —
+ * so the UI can tell the player up front whether a deal or demand will be met.
+ * Returns null when there's no predictable verdict to show: the recipient is a
+ * human/barbarian, the two haven't met, or the offer is empty. A redundant or
+ * unpayable offer comes back as a refusal with the same reason the sim would give.
+ */
+export function previewProposal(
+  state: GameState,
+  fromId: number,
+  toId: number,
+  give: DealItem[],
+  want: DealItem[],
+  coercive = false,
+): { accept: boolean; reason: string } | null {
+  const to = playerById(state, toId);
+  if (!to || to.isHuman || to.isBarbarian) return null;
+  const rel = relationBetween(state, fromId, toId);
+  if (!rel) return null;
+  if (give.length === 0 && want.length === 0) return null;
+  if (!canPayItems(state, fromId, give)) return { accept: false, reason: "You cannot provide that." };
+  const redundant = redundantItem(rel, [...give, ...want]);
+  if (redundant) return { accept: false, reason: redundant };
+  if (coercive) return demandVerdict(state, toId, fromId, want);
+  const d = aiDecideOffer(state, toId, fromId, give, want);
+  return { accept: d.accept, reason: d.reason };
 }
 
 /** Distinct specialist types currently trained in a player's cities. */

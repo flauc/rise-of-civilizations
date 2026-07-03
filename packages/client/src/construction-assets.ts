@@ -1,15 +1,15 @@
 /// <reference types="vite/client" />
 
 // Per-category "under construction" sprites drawn on tiles that have a Work in
-// progress. Three build-site categories — economic, defensive, and wonder — keyed
-// by category id. Mirrors improvement-assets.ts but with a tiny fixed key set.
+// progress. Four build-site categories — economic, road, defensive, and wonder —
+// keyed by category id. Mirrors improvement-assets.ts but with a tiny fixed key set.
 
 import { ASSET_BASE_URL } from "./asset-base";
 import { isImageReady } from "./improvement-assets";
 
-export type ConstructionCategory = "econ" | "defense" | "wonder";
+export type ConstructionCategory = "econ" | "road" | "defense" | "wonder";
 
-const CATEGORIES: ConstructionCategory[] = ["econ", "defense", "wonder"];
+const CATEGORIES: ConstructionCategory[] = ["econ", "road", "defense", "wonder"];
 
 export interface ConstructionAtlas {
   /** Images keyed by construction category. */
@@ -48,8 +48,9 @@ export function constructionCategoryForKind(
   isDefenseKind: (k: string) => boolean,
 ): ConstructionCategory {
   if (kind === "wonder") return "wonder";
+  if (kind === "road") return "road";
   if (isDefenseKind(kind)) return "defense";
-  // Roads, civ-unique improvements and everything else read as economic build sites.
+  // Civ-unique improvements and everything else read as economic build sites.
   void isEconKind;
   return "econ";
 }

@@ -20,7 +20,7 @@ import {
   type UnitAbility,
   type ActiveAbilityId,
 } from "@roc/sim";
-import { startingUnitsFor, capitalPopulationBonusFor, uniqueUnitForCiv, BASE_CITY_POPULATION } from "@roc/data";
+import { startingUnitsFor, capitalPopulationBonusFor, uniqueUnitForCiv, uuAbilityLore, BASE_CITY_POPULATION } from "@roc/data";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -223,7 +223,11 @@ export function uniqueUnitDetailHtml(uu: typeof UNIQUE_UNITS[number]): string {
     `<ul class="uud-compare">${compareParts.join("")}</ul></div>` +
     `<div class="uud-section"><div class="uud-section-title">Abilities</div>` +
     (abilityHtml || `<div class="uud-ability-desc">No special abilities.</div>`) +
-    `</div>`
+    `</div>` +
+    (uuAbilityLore(uu.id)
+      ? `<div class="uud-section"><div class="uud-section-title">Where the abilities come from</div>` +
+        `<div class="uud-ability-desc uud-lore">${escapeHtml(uuAbilityLore(uu.id)!)}</div></div>`
+      : "")
   );
 }
 

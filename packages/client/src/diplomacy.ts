@@ -11,6 +11,7 @@ import {
   attitudeScore,
   attitudeLabel,
   reputationOf,
+  previewProposal,
   tradeableLuxuries,
   tradeableTechs,
   citiesOf,
@@ -128,6 +129,16 @@ const STYLE = `
 .dp-hint{font-size:11.5px;color:#e0c98a;margin-top:6px}
 .dp-summary{margin-top:8px;padding:8px 10px;border-radius:8px;background:#10283a;border:1px solid #234763;font-size:12.5px;color:#eaf3fb;line-height:1.5}
 .dp-summary b{color:#ffd967}
+.dp-treaties{margin-top:10px}
+.dp-treaties label{margin-top:5px}
+/* up-front verdict: will the AI accept what you're about to propose? */
+.dp-verdict{margin-top:8px;font-size:12px;border-radius:7px;padding:5px 8px;line-height:1.4}
+.dp-verdict.yes{background:#152a1f;border:1px solid #2f6b46;color:#a8e0bd}
+.dp-verdict.no{background:#2a1718;border:1px solid #6b3030;color:#f0b3a8}
+.dp-verdict i{opacity:.85}
+.dp-verdict-inline{font-size:11px;font-weight:700;white-space:nowrap}
+.dp-verdict-inline.yes{color:#7ad08a}
+.dp-verdict-inline.no{color:#e0907d}
 /* offer cards */
 .dp-prop{border:1px solid #4a5a6e;background:#14222f;border-radius:9px;padding:10px;margin-top:8px}
 .dp-prop.in{border-color:#7c5a8e;background:#251c30;box-shadow:0 0 0 1px #7c5a8e44}
@@ -144,6 +155,14 @@ const STYLE = `
 .dp-hist{font-size:12px;color:#cfe3f7;padding:4px 0;border-bottom:1px dashed #15283a;display:flex;gap:8px}
 .dp-hist .t{color:#7f9bb3;flex:none;width:46px}
 .dp-empty{color:#7f9bb3;font-size:12px;font-style:italic;margin-top:6px}
+/* mobile: stack the give/want columns, fill selects, enlarge tap targets */
+@media (max-width:560px){
+  .dp-cols{flex-direction:column}
+  .dp-col select{width:100%}
+  .dp-actbar .btn,.dp-actbtns .btn{padding:8px 12px}
+  .dc-cards{flex-direction:column}
+  .dc-vs{padding:4px}
+}
 `;
 
 export interface Diplomacy {
@@ -532,6 +551,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       `<button class="btn" data-act="gift">Send</button>` +
       `<label class="dp-sub">⚔ Demand <input type="number" id="demand-amt" min="0" value="50"/>🪙</label>` +
       `<button class="btn" data-act="demand">Demand</button>` +
+      `<span id="demand-verdict" class="dp-verdict-inline"></span>` +
       `</div></div>`;
 
     const builderToggle =
@@ -599,8 +619,6 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       (myTech.length ? `<label>🔬 ${techSel("give-tech", myTech)}</label>` : "") +
       (myCities.length ? `<label>🏙 ${citySel("give-city", myCities)}</label>` : "") +
       (myUnits.length ? `<label>🪖 ${unitSel("give-unit", myUnits)} <input type="checkbox" id="give-unit-lend"/>loan</label>` : "") +
-      (war ? `<label><input type="checkbox" id="deal-peace"/> 🕊 Peace</label>` : "") +
-      (rel?.openBorders ? "" : `<label><input type="checkbox" id="deal-ob"/> 🚪 Open borders</label>`) +
       `</div>` +
       `<div class="dp-col"><h5>They give</h5>` +
       `<label>🪙 <input type="number" id="want-gold" min="0" value="0"/></label>` +
@@ -611,10 +629,17 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       (theirUnits.length ? `<label>🪖 ${unitSel("want-unit", theirUnits)} <input type="checkbox" id="want-unit-lend"/>loan</label>` : "") +
       `</div>` +
       `</div>` +
-      `<label class="dp-sub" style="display:flex;gap:6px;align-items:center;margin-top:6px">Timed items last <input type="number" id="deal-turns" min="5" max="60" value="20" style="width:54px"/> turns</label>` +
+      // Treaties bind both sides at once, so they're shared terms rather than a
+      // one-sided "give" — granting open borders or a pact means asking for it too.
+      `<div class="dp-col dp-treaties"><h5>Treaties (both sides)</h5>` +
+      (war ? `<label><input type="checkbox" id="deal-peace"/> 🕊 End the war (peace)</label>` : "") +
+      (rel?.openBorders ? "" : `<label><input type="checkbox" id="deal-ob"/> 🚪 Open borders (mutual)</label>`) +
       (availPacts.length
-        ? `<label class="dp-sub" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">🤝 Pact <select id="deal-pact"><option value="">none</option>${availPacts.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select> for <input type="number" id="deal-pact-turns" min="5" max="60" value="20" style="width:54px"/> turns</label>`
+        ? `<label style="flex-wrap:wrap">🤝 Pact <select id="deal-pact"><option value="">none</option>${availPacts.map(([v, l]) => `<option value="${v}">${l}</option>`).join("")}</select> for <input type="number" id="deal-pact-turns" min="5" max="60" value="20" style="width:54px"/> turns</label>`
         : "") +
+      (!war && rel?.openBorders && !availPacts.length ? `<div class="dp-sub">Every treaty is already in force.</div>` : "") +
+      `</div>` +
+      `<label class="dp-sub" style="display:flex;gap:6px;align-items:center;margin-top:8px">Timed items last <input type="number" id="deal-turns" min="5" max="60" value="20" style="width:54px"/> turns</label>` +
       `<div class="dp-summary" id="deal-summary">Add items to build an offer.</div>` +
       `<button class="btn primary" id="deal-propose" style="margin-top:8px;width:100%">${pendingOut ? "Revise offer" : "Propose deal"}</button>` +
       `</div>`
@@ -642,18 +667,46 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     const gu = sel("give-unit"); if (gu) give.push({ kind: "unit", unitId: Number(gu), turns: chk("give-unit-lend") ? turns : 0 });
     const wu = sel("want-unit"); if (wu) want.push({ kind: "unit", unitId: Number(wu), turns: chk("want-unit-lend") ? turns : 0 });
     if (chk("deal-peace")) give.push({ kind: "peace" });
-    if (chk("deal-ob")) give.push({ kind: "openBorders" });
+    // Open borders and pacts are mutual: both sides grant them, so they appear on
+    // both halves of the deal (matching how the sim and AI model these treaties).
+    if (chk("deal-ob")) { give.push({ kind: "openBorders" }); want.push({ kind: "openBorders" }); }
     const tier = sel("deal-pact");
-    if (tier) give.push({ kind: "pact", tier: tier as "non_aggression" | "defensive" | "alliance", turns: num("deal-pact-turns") || 20 });
+    if (tier) {
+      const pact: DealItem = { kind: "pact", tier: tier as "non_aggression" | "defensive" | "alliance", turns: num("deal-pact-turns") || 20 };
+      give.push(pact);
+      want.push({ ...pact });
+    }
     return { give, want };
   }
 
-  function updateSummary(): void {
+  function updateSummary(state: GameState, viewerId: number, cid: number): void {
     const el = panel.querySelector<HTMLDivElement>("#deal-summary");
     if (!el) return;
     const { give, want } = readDeal();
-    if (give.length === 0 && want.length === 0) { el.textContent = "Add items to build an offer."; return; }
-    el.innerHTML = `You give <b>${describeItems(give)}</b><br/>They give <b>${describeItems(want)}</b>`;
+    if (give.length === 0 && want.length === 0) { el.innerHTML = "Add items to build an offer."; return; }
+    el.innerHTML =
+      `You give <b>${describeItems(give)}</b><br/>They give <b>${describeItems(want)}</b>` +
+      verdictHtml(previewProposal(state, viewerId, cid, give, want));
+  }
+
+  /** A coloured "they'll accept / refuse" line from a preview verdict (blank if none). */
+  function verdictHtml(v: { accept: boolean; reason: string } | null): string {
+    if (!v) return "";
+    return (
+      `<div class="dp-verdict ${v.accept ? "yes" : "no"}">${v.accept ? "✓ They will accept" : "✗ They will refuse"}` +
+      (v.reason ? ` — <i>“${v.reason}”</i>` : "") +
+      `</div>`
+    );
+  }
+
+  /** Live verdict beside the tribute-demand input: would the AI pay up? */
+  function updateDemandVerdict(state: GameState, viewerId: number, cid: number): void {
+    const el = panel.querySelector<HTMLSpanElement>("#demand-verdict");
+    if (!el) return;
+    const amt = Math.max(0, Number(panel.querySelector<HTMLInputElement>("#demand-amt")?.value ?? 0));
+    const v = amt > 0 ? previewProposal(state, viewerId, cid, [], [{ kind: "gold", amount: amt }], true) : null;
+    el.className = `dp-verdict-inline ${v ? (v.accept ? "yes" : "no") : ""}`;
+    el.textContent = v ? (v.accept ? "✓ would pay" : "✗ would refuse") : "";
   }
 
   function wire(state: GameState, viewerId: number): void {
@@ -692,11 +745,14 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
           }
         }),
       );
+      // Live verdict beside the tribute demand as its amount changes.
+      panel.querySelector<HTMLInputElement>("#demand-amt")?.addEventListener("input", () => updateDemandVerdict(state, viewerId, cid));
+      updateDemandVerdict(state, viewerId, cid);
       if (builderOpen) {
-        // Live exchange summary as the builder changes.
+        // Live exchange summary + accept/refuse verdict as the builder changes.
         panel.querySelectorAll<HTMLElement>(".dp-deal input, .dp-deal select").forEach((el) =>
-          el.addEventListener("input", updateSummary));
-        updateSummary();
+          el.addEventListener("input", () => updateSummary(state, viewerId, cid)));
+        updateSummary(state, viewerId, cid);
         panel.querySelector<HTMLButtonElement>("#deal-propose")?.addEventListener("click", () => {
           const { give, want } = readDeal();
           if (give.length === 0 && want.length === 0) { resultMsg = "Add something to the deal first."; forceRender(state, viewerId); return; }

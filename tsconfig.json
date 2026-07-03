@@ -11,5 +11,5 @@
       "@roc/ai": ["packages/ai/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "packages/client/vite.config.ts", "tools/art-generator/*.ts"]
+  "include": ["packages/*/src", "packages/client/vite.config.ts", "tools/art-generator/*.ts", "tools/balance/*.ts"]
 }

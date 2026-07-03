@@ -51,6 +51,7 @@ import {
   finalizeDeal,
   diplomacyTick,
   foreignTerritoryOwner,
+  onCityFoundedNearRivals,
 } from "./diplomacy";
 import type { DealItem } from "./state";
 import { gatherPlayerResources } from "./resources";
@@ -254,7 +255,7 @@ export function applyCommand(
       unit.col = cmd.col;
       unit.row = cmd.row;
       unit.movementLeft = Math.max(0, unit.movementLeft - entry.cost);
-      if (unit.stance === "emplace") unit.stance = null; // moving packs up an emplaced engine
+      if (unit.stance === "emplace" || unit.stance === "wagenburg") unit.stance = null; // moving packs up an engine / unchains the wagons
       // Moving breaks concealment — unless this unit can creep while hidden.
       if (unit.hidden && !canStealthMove(state, unit)) breakCover(state, unit);
       onUnitEnter(state, unit); // resolve villages / barbarian camps
@@ -333,6 +334,7 @@ export function applyCommand(
       state.units.delete(unit.id);
       log(state, `${player.name} founded ${name}.`, { actorId: player.id, targetIds: [player.id], tile: { col: city.col, row: city.row } });
       updateExplored(state, player.id);
+      onCityFoundedNearRivals(state, city); // met neighbours resent a city on their doorstep
       return ok;
     }
 

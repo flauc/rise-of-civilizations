@@ -73,10 +73,79 @@ export type ActiveAbilityId =
   | "arrow_storm"
   | "furor"
   | "siege_assault"
-  | "fire_lance";
+  | "fire_lance"
+  | "plunder"
+  // bespoke civ-unique abilities (Egypt & Africa wave)
+  | "aimed_shot"
+  | "terrorize"
+  | "overrun"
+  | "war_drums"
+  | "poisoned_arrows"
+  | "stone_bulwark"
+  | "fresh_mounts"
+  | "drilled_charge"
+  | "zareba"
+  | "monsoon_run"
+  // bespoke civ-unique abilities (Mediterranean & Europe wave)
+  | "pilum"
+  | "strandhogg"
+  | "hellburner"
+  | "broadside"
+  | "zweihander"
+  | "hammer_and_anvil"
+  | "wedge_charge"
+  | "heroic_challenge"
+  | "mounted_volley"
+  // bespoke civ-unique abilities (Mesopotamia & Persia revisit)
+  | "king_of_battle"
+  | "siege_volley"
+  | "kadesh_charge"
+  | "zagros_shot"
+  | "ride_down"
+  | "endless_ranks"
+  | "iron_wall"
+  // bespoke civ-unique abilities (European expansion wave)
+  | "wagenburg"
+  | "halberd_hook"
+  | "schiltron"
+  | "sparth_cleave"
+  | "couched_lance"
+  | "mountain_ambush"
+  | "desperta_ferro"
+  | "falx_reap"
+  | "winter_war"
+  | "shear_oars"
+  | "swift_oars"
+  // bespoke civ-unique abilities (Asia wave)
+  | "howdah_volley"
+  | "double_ballista"
+  | "duel_of_kings"
+  | "elephant_wall"
+  | "gate_breaker"
+  | "turtle_shell"
+  | "highland_charge"
+  | "qamargah"
+  // bespoke civ-unique abilities (Steppe & Near East wave)
+  | "whistling_arrows"
+  | "nerge"
+  | "steady_volley"
+  | "wolf_pack"
+  | "naphtha_shot"
+  | "camel_panic"
+  // bespoke civ-unique abilities (Americas & Oceania wave)
+  | "flower_war"
+  | "haka"
+  | "bolas"
+  | "hornet_bomb"
+  | "stone_hail"
+  | "beach_assault"
+  | "mourning_war"
+  | "atlatl_volley"
+  | "obsidian_reap"
+  | "leiomano";
 
 /** A persistent stance a unit enters by forfeiting its movement for the turn. */
-export type StanceId = "brace" | "shield_wall" | "testudo" | "emplace" | "othismos" | "last_stand" | "pavise";
+export type StanceId = "brace" | "shield_wall" | "testudo" | "emplace" | "othismos" | "last_stand" | "pavise" | "stone_bulwark" | "zareba" | "iron_wall" | "wagenburg" | "schiltron" | "elephant_wall" | "turtle_shell";
 
 /**
  * How an ability is invoked:
@@ -130,6 +199,75 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
   furor: A({ id: "furor", name: "Furor", verb: "Furor", glyph: "⚔️", kind: "targeted", cooldown: 0, desc: "A fanatic charge: +6 attack this strike, but −4 defense until your next turn." }),
   siege_assault: A({ id: "siege_assault", name: "Assault Tower", verb: "Assault", glyph: "🪜", kind: "targeted", cooldown: 0, desc: "Storm a city wall: a melee assault that ignores wall defense and shelters its crew." }),
   fire_lance: A({ id: "fire_lance", name: "Fire Lance", verb: "Fire Lance", glyph: "🔥", kind: "targeted", cooldown: 2, desc: "Loose a gunpowder lance at a target up to 2 tiles away — slightly stronger than a melee thrust and drawing no retaliation. Needs two turns to reload." }),
+  plunder: A({ id: "plunder", name: "Plunder", verb: "Plunder", glyph: "💰", kind: "targeted", cooldown: 0, desc: "A raiding strike (+2 attack). If it kills the target, seize gold scaled to the spoils." }),
+  // bespoke civ-unique abilities (Egypt & Africa wave)
+  aimed_shot: A({ id: "aimed_shot", name: "Aimed Shot", verb: "Aim", glyph: "👁️", kind: "targeted", cooldown: 1, desc: "A marksman's shot that ignores 4 defense; a survivor is maimed, attacking −25% until its next turn." }),
+  terrorize: A({ id: "terrorize", name: "Terrorize", verb: "Terrorize", glyph: "🐘", kind: "targeted", cooldown: 1, desc: "A thunderous assault (+3 attack) that shakes the survivor's morale — it must pass a rout check or break and flee." }),
+  overrun: A({ id: "overrun", name: "Overrun", verb: "Overrun", glyph: "🐎", kind: "targeted", cooldown: 1, desc: "A momentum strike (+2 attack). If it kills the target, the rider surges on and may act again this turn." }),
+  war_drums: A({ id: "war_drums", name: "War Drums", verb: "Beat the Drums", glyph: "🥁", kind: "self", cooldown: 2, desc: "Thunder the great drums: this unit and adjacent allies gain +15 morale; adjacent enemies lose 10. Ends the turn." }),
+  poisoned_arrows: A({ id: "poisoned_arrows", name: "Poisoned Arrows", verb: "Envenom", glyph: "🌿", kind: "targeted", cooldown: 1, desc: "A lighter shot tipped with venom: the survivor bleeds 8 HP at the start of each of its next two turns." }),
+  stone_bulwark: A({ id: "stone_bulwark", name: "Stone Bulwark", verb: "Form Bulwark", glyph: "🧱", kind: "stance", cooldown: 0, desc: "Anchor a living wall: +25% defense, and adjacent friendly units gain +15% defense while it holds. Forfeits movement." }),
+  fresh_mounts: A({ id: "fresh_mounts", name: "Fresh Mounts", verb: "Remount", glyph: "🐎", kind: "self", cooldown: 2, desc: "Switch to fresh horses: movement is fully restored, and the unit may still act this turn." }),
+  drilled_charge: A({ id: "drilled_charge", name: "Drilled Charge", verb: "Charge", glyph: "🐎", kind: "targeted", cooldown: 1, desc: "A parade-ground-perfect charge (+4 attack) executed so cleanly the target gets no retaliation." }),
+  zareba: A({ id: "zareba", name: "Zareba", verb: "Raise Zareba", glyph: "🌵", kind: "stance", cooldown: 0, desc: "Ring the position with thorn fencing: +25% defense (+45% vs cavalry), and melee attackers bleed 6 HP on the thorns. Forfeits movement." }),
+  monsoon_run: A({ id: "monsoon_run", name: "Monsoon Run", verb: "Catch the Wind", glyph: "🌬️", kind: "self", cooldown: 2, desc: "Catch the monsoon: +2 movement now, and the ship may still act this turn." }),
+  // bespoke civ-unique abilities (Mediterranean & Europe wave)
+  pilum: A({ id: "pilum", name: "Pilum Volley", verb: "Throw Pila", glyph: "🎯", kind: "targeted", cooldown: 1, desc: "Hurl the heavy javelins, then close with the sword: a softening ranged volley followed by a full melee strike." }),
+  strandhogg: A({ id: "strandhogg", name: "Strandhögg", verb: "Raid", glyph: "⚔️", kind: "targeted", cooldown: 0, desc: "A lightning coastal raid (+2 attack). If it kills the target, carry off gold scaled to the spoils." }),
+  hellburner: A({ id: "hellburner", name: "Hellburner", verb: "Ignite", glyph: "💥", kind: "targeted", cooldown: 0, desc: "Pack the hull with powder and steer it in: massive damage to the target and half to adjacent enemy ships — but the vessel is consumed." }),
+  broadside: A({ id: "broadside", name: "Broadside", verb: "Fire Broadside", glyph: "💣", kind: "targeted", cooldown: 1, desc: "A crashing gun broadside fired at range (no retaliation) that also wrecks the survivor's rigging: −25% defense until its next turn." }),
+  zweihander: A({ id: "zweihander", name: "Zweihänder", verb: "Break the Pikes", glyph: "⚔️", kind: "targeted", cooldown: 0, desc: "The great two-handed sword hacks through the enemy's pike hedge (+2 attack) and breaks their stance." }),
+  hammer_and_anvil: A({ id: "hammer_and_anvil", name: "Hammer & Anvil", verb: "Coordinate", glyph: "🔨", kind: "targeted", cooldown: 1, desc: "A coordinated strike (+4 attack) on an enemy already engaged by another of your units — the anvil holds, the hammer falls." }),
+  wedge_charge: A({ id: "wedge_charge", name: "Wedge Charge", verb: "Form Wedge", glyph: "🐎", kind: "targeted", cooldown: 1, desc: "A cataphract wedge (+4 attack) that punches through: half damage splashes onto one enemy beside the target." }),
+  heroic_challenge: A({ id: "heroic_challenge", name: "Heroic Challenge", verb: "Challenge", glyph: "🏇", kind: "targeted", cooldown: 2, desc: "Ride out and strike a champion's blow (+3 attack). If it kills the foe, every friendly unit within 2 tiles takes heart (+10 morale)." }),
+  mounted_volley: A({ id: "mounted_volley", name: "Mounted Volley", verb: "Volley & Charge", glyph: "🏹", kind: "targeted", cooldown: 1, desc: "Loose a mounted crossbow volley to soften the target, then charge home with the lance in the same breath." }),
+  // bespoke civ-unique abilities (Mesopotamia & Persia revisit)
+  king_of_battle: A({ id: "king_of_battle", name: "King of Battle", verb: "Strike as One", glyph: "👑", kind: "targeted", cooldown: 0, desc: "The professional army fights as one: +1 attack for every friendly military unit adjacent to this one (up to +4)." }),
+  siege_volley: A({ id: "siege_volley", name: "Siege Volley", verb: "Volley the Walls", glyph: "🏹", kind: "targeted", cooldown: 0, desc: "An arcing volley against the defenders of walls: +5 ranged strength against a unit garrisoning a city or holding a fort." }),
+  kadesh_charge: A({ id: "kadesh_charge", name: "Three-Man Chariot", verb: "Charge", glyph: "🐎", kind: "targeted", cooldown: 1, desc: "The heavy three-crew chariot charges (+4) and rides through to the far side; the shield-bearer halves any retaliation." }),
+  zagros_shot: A({ id: "zagros_shot", name: "Zagros Shot", verb: "Loose & Climb", glyph: "🏹", kind: "targeted", cooldown: 1, desc: "A heavy highland shaft that ignores 4 defense — then the archer slips a tile back toward the high ground." }),
+  ride_down: A({ id: "ride_down", name: "Ride Down", verb: "Ride Down", glyph: "🐎", kind: "targeted", cooldown: 0, desc: "Run down a faltering enemy: +6 attack against targets below half strength (+1 otherwise)." }),
+  endless_ranks: A({ id: "endless_ranks", name: "Endless Ranks", verb: "Reinforce", glyph: "♾️", kind: "self", cooldown: 2, desc: "Every fallen man is instantly replaced: heal 30 HP. Ends the turn." }),
+  iron_wall: A({ id: "iron_wall", name: "Iron Wall", verb: "Stand as Iron", glyph: "🛡️", kind: "stance", cooldown: 0, desc: "Mailed riders on mailed horses stand as a wall: +35% defense until your next turn. Forfeits movement." }),
+  // bespoke civ-unique abilities (European expansion wave)
+  wagenburg: A({ id: "wagenburg", name: "Wagenburg", verb: "Circle the Wagons", glyph: "🛞", kind: "stance", cooldown: 0, desc: "Chain the war wagons into a fortress: +40% defense, and it PERSISTS until the wagon moves — fire from behind the walls each turn." }),
+  halberd_hook: A({ id: "halberd_hook", name: "Halberd Hook", verb: "Hook", glyph: "🪝", kind: "targeted", cooldown: 0, desc: "The halberd's hook drags riders from the saddle: +6 attack against cavalry (+2 against others)." }),
+  schiltron: A({ id: "schiltron", name: "Schiltron", verb: "Form Schiltron", glyph: "🦔", kind: "stance", cooldown: 0, desc: "An all-round hedgehog of spears: +30% defense (+50% vs cavalry), and cavalry that attack it bleed 5 HP on the spear points. Forfeits movement." }),
+  sparth_cleave: A({ id: "sparth_cleave", name: "Sparth Cleave", verb: "Cleave", glyph: "🪓", kind: "targeted", cooldown: 1, desc: "The great sparth axe sweeps in an arc: a full strike on the target, and a second enemy beside the axeman takes a glancing wound." }),
+  couched_lance: A({ id: "couched_lance", name: "Couched Lance", verb: "Couch Lance", glyph: "🐎", kind: "targeted", cooldown: 0, desc: "A running lance charge that feeds on momentum: +2 attack, plus +1 for every tile moved this turn (up to +6 total)." }),
+  mountain_ambush: A({ id: "mountain_ambush", name: "Mountain Ambush", verb: "Ambush", glyph: "⛰️", kind: "targeted", cooldown: 1, desc: "Loose from the high passes: +4 ranged strength when firing from rough terrain (hills, forest or mountains)." }),
+  desperta_ferro: A({ id: "desperta_ferro", name: "Desperta Ferro!", verb: "Awaken Iron", glyph: "⚡", kind: "self", cooldown: 2, desc: "Strike sparks from the blades and scream the war-cry: adjacent enemies lose 10 morale, this unit gains 15 — and may still act this turn." }),
+  falx_reap: A({ id: "falx_reap", name: "Falx Reap", verb: "Reap", glyph: "🌙", kind: "targeted", cooldown: 0, desc: "The two-handed falx reaches over shield and past armor: +1 attack, ignoring 6 of the defender's defense." }),
+  winter_war: A({ id: "winter_war", name: "Winter War", verb: "Strike in Snow", glyph: "❄️", kind: "targeted", cooldown: 0, desc: "On skis in the white silence: +4 ranged strength when firing from tundra, taiga or snow." }),
+  shear_oars: A({ id: "shear_oars", name: "Shear Oars", verb: "Shear Oars", glyph: "🚣", kind: "targeted", cooldown: 1, desc: "Rake down the enemy's oar-bank (+2 attack): a survivor is crippled in the water and cannot move on its next turn." }),
+  swift_oars: A({ id: "swift_oars", name: "Swift Oars", verb: "Row Hard", glyph: "💨", kind: "self", cooldown: 2, desc: "The pirate galley leaps forward: +2 movement now, and the ship may still act this turn." }),
+  // bespoke civ-unique abilities (Asia wave)
+  howdah_volley: A({ id: "howdah_volley", name: "Howdah Volley", verb: "Loose from the Howdah", glyph: "🏹", kind: "targeted", cooldown: 1, desc: "The archers atop the beast loose a volley over the melee: a ranged strike that draws no retaliation." }),
+  double_ballista: A({ id: "double_ballista", name: "Double Ballista", verb: "Fire Ballista", glyph: "🎯", kind: "targeted", cooldown: 1, desc: "The twin crossbow mounted on the elephant's back fires a heavy bolt up to 2 tiles, drawing no retaliation." }),
+  duel_of_kings: A({ id: "duel_of_kings", name: "Duel of Kings", verb: "Offer the Duel", glyph: "⚔️", kind: "targeted", cooldown: 1, desc: "Single combat from the howdah: +6 attack against mounted foes and rival elephants (+2 against others)." }),
+  elephant_wall: A({ id: "elephant_wall", name: "Elephant Wall", verb: "Form the Wall", glyph: "🐘", kind: "stance", cooldown: 0, desc: "The great beasts stand as a living rampart: +25% defense, and adjacent friendly units gain +15% while the wall holds. Forfeits movement." }),
+  gate_breaker: A({ id: "gate_breaker", name: "Gate Breaker", verb: "Break the Gate", glyph: "🚪", kind: "targeted", cooldown: 1, desc: "Drive the armored beast at the defenses: +5 attack against a unit garrisoning a city or holding a fort (+1 otherwise)." }),
+  turtle_shell: A({ id: "turtle_shell", name: "Turtle Shell", verb: "Seal the Shell", glyph: "🐢", kind: "stance", cooldown: 0, desc: "Seal the spiked iron roof: +30% defense, and melee attackers bleed 8 HP on the spikes. Forfeits movement." }),
+  highland_charge: A({ id: "highland_charge", name: "Highland Charge", verb: "Charge Downhill", glyph: "🏔️", kind: "targeted", cooldown: 0, desc: "A charge launched from the high ground: +4 attack when attacking from rough terrain (+1 otherwise)." }),
+  qamargah: A({ id: "qamargah", name: "Qamargah", verb: "Close the Circle", glyph: "🎯", kind: "targeted", cooldown: 1, desc: "The hunt-circle closes: +5 attack against a target already weakened — sundered, pinned, maimed, poisoned or routed (+1 otherwise)." }),
+  // bespoke civ-unique abilities (Steppe & Near East wave)
+  whistling_arrows: A({ id: "whistling_arrows", name: "Whistling Arrows", verb: "Loose the Shriek", glyph: "🎶", kind: "targeted", cooldown: 1, desc: "A volley of shrieking arrowheads: a full ranged strike whose survivor loses 12 morale and must pass a rout check or break." }),
+  nerge: A({ id: "nerge", name: "Nerge", verb: "Close the Ring", glyph: "⭕", kind: "targeted", cooldown: 1, desc: "The great hunt's ring closes: +5 attack when two or more of your units stand adjacent to the target (+1 otherwise)." }),
+  steady_volley: A({ id: "steady_volley", name: "Steady Volley", verb: "Hold and Fire", glyph: "🎯", kind: "targeted", cooldown: 0, desc: "Fire discipline: +4 ranged strength if this unit has not moved this turn." }),
+  wolf_pack: A({ id: "wolf_pack", name: "Wolf Pack", verb: "Hunt as the Pack", glyph: "🐺", kind: "targeted", cooldown: 0, desc: "The böri hunt together: +3 attack when a friendly cavalry unit stands beside the target." }),
+  naphtha_shot: A({ id: "naphtha_shot", name: "Naphtha Shot", verb: "Loose Fire", glyph: "🔥", kind: "targeted", cooldown: 1, desc: "A burning naphtha pot arcs onto the target and bursts: full damage, and enemies beside it are splashed with fire." }),
+  camel_panic: A({ id: "camel_panic", name: "Camel Panic", verb: "Drive the Camels", glyph: "🐪", kind: "targeted", cooldown: 0, desc: "Horses cannot abide the smell of camels: +4 ranged strength against cavalry, and a surviving mounted target loses 10 morale." }),
+  // bespoke civ-unique abilities (Americas & Oceania wave)
+  flower_war: A({ id: "flower_war", name: "Flower War", verb: "Take Captives", glyph: "🌺", kind: "targeted", cooldown: 0, desc: "Fight for the altar (+2 attack): if the strike kills, captives are taken and the empire gains 20 faith." }),
+  haka: A({ id: "haka", name: "Haka", verb: "Perform the Haka", glyph: "👣", kind: "self", cooldown: 2, desc: "The war challenge thunders out: this unit and adjacent allies gain +10 morale, adjacent enemies lose 10 — and the unit may still act this turn." }),
+  bolas: A({ id: "bolas", name: "Bolas", verb: "Throw Bolas", glyph: "🪢", kind: "targeted", cooldown: 1, desc: "Whirling cords entangle the target: a lighter strike, but the survivor cannot move on its next turn." }),
+  hornet_bomb: A({ id: "hornet_bomb", name: "Hornet Bomb", verb: "Hurl the Nest", glyph: "🐝", kind: "targeted", cooldown: 1, desc: "A sealed gourd of furious wasps bursts over the enemy: light damage, but the survivor is pinned in the swarm and loses 10 morale." }),
+  stone_hail: A({ id: "stone_hail", name: "Stone Hail", verb: "Loose Stone Hail", glyph: "🪨", kind: "targeted", cooldown: 1, desc: "Sling-stones crack shields and dent helmets: a full ranged strike whose survivor defends −25% until its next turn." }),
+  beach_assault: A({ id: "beach_assault", name: "Beach Assault", verb: "Storm Ashore", glyph: "🌊", kind: "targeted", cooldown: 1, desc: "Storm out of the surf: +5 attack while this unit is embarked — the landing strike of the canoe fleets." }),
+  mourning_war: A({ id: "mourning_war", name: "Mourning War", verb: "Raid for the Lost", glyph: "🍂", kind: "targeted", cooldown: 1, desc: "A raid to replace the fallen (+2 attack): if the strike kills, the warband restores itself, healing 20 HP." }),
+  atlatl_volley: A({ id: "atlatl_volley", name: "Atlatl Volley", verb: "Cast Darts", glyph: "🎯", kind: "targeted", cooldown: 1, desc: "A volley of spear-thrower darts softens the target, then the obsidian spears close in — a ranged strike and a melee strike in one." }),
+  obsidian_reap: A({ id: "obsidian_reap", name: "Obsidian Reap", verb: "Reap", glyph: "🖤", kind: "targeted", cooldown: 0, desc: "Blades of volcanic glass sharper than steel: +1 attack, ignoring 6 of the defender's defense." }),
+  leiomano: A({ id: "leiomano", name: "Leiomano", verb: "Strike with Shark's Teeth", glyph: "🦈", kind: "targeted", cooldown: 1, desc: "The shark-tooth club tears rather than cuts (+2 attack): the survivor bleeds 8 HP at the start of each of its next two turns." }),
   // naval
   ram: A({ id: "ram", name: "Ram", verb: "Ram", glyph: "⚓", kind: "targeted", cooldown: 0, desc: "Drive the ship into an adjacent enemy vessel (+4 attack)." }),
   boarding_party: A({ id: "boarding_party", name: "Boarding Party", verb: "Board", glyph: "⚔️", kind: "targeted", cooldown: 1, desc: "Grapple and storm an adjacent ship (+5 attack, heal on kill)." }),
@@ -345,8 +483,8 @@ for (const id of Object.keys(UNIT_DEFS) as UnitTypeId[]) {
 export const UNIQUE_ABILITY_OVERRIDES: Record<string, ActiveAbilityId[]> = {
   sumer_war_cart: ["war_cart_charge", "hide"],
   parthia_parthian_horse_archer: ["parthian_shot"],
-  scythians_scythian_horse_archer: ["parthian_shot", "hide"],
-  mongols_keshig: ["feigned_retreat"],
+  scythians_scythian_horse_archer: ["parthian_shot", "hide"], // Herodotus' originals of the backward shot
+  mongols_keshig: ["feigned_retreat", "nerge"], // lure them out, then close the ring at the kill ground
   greece_hoplite: ["othismos", "hide"],
   sparta_spartan_hoplite: ["last_stand", "hide"],
   celts_gauls_gaesatae: ["furor", "hide"],
@@ -358,21 +496,134 @@ export const UNIQUE_ABILITY_OVERRIDES: Record<string, ActiveAbilityId[]> = {
   genoa_genoese_crossbowman: ["pierce", "pavise", "hide"],
   anglo_saxon_england_longbowman: ["arrow_storm", "hide"],
   assyria_siege_tower: ["siege_assault"],
+  // ---- Mesopotamia & Near East ----
+  akkad_sargonic_guard: ["king_of_battle", "hide"], // Sargon's salaried regulars fought as one army
+  babylon_bowman: ["siege_volley", "hide"], // Nebuchadnezzar's archers arced fire over every wall
+  hittites_hittite_chariot: ["kadesh_charge"], // the heavy three-crew chariot of Kadesh
+  elam_susian_archer: ["zagros_shot", "hide"], // highland shafts, then back up the slope
+  phoenicia_bireme: ["ram", "boarding_party"], // ram as the everyday blow; board when the grapples are ready
+  lydia_heavy_cavalry: ["shock_charge", "plunder"], // the alpha strike vs the loot-finisher — pick by target
+  // ---- Persia & Iran ----
+  median_empire_median_lancer: ["shock_charge", "ride_down"], // break the strong, run down the faltering
+  persia_immortal: ["endless_ranks", "shield_wall", "hide"], // the ranks refill; the spara wall holds
+  sassanid_persia_savaran_cataphract: ["shock_charge", "iron_wall"], // charge, or stand as a mailed wall
+  greco_bactria_bactrian_cataphract: ["hammer_and_anvil", "charge"], // Alexander's heirs kept his playbook
+  sogdia_sogdian_cavalry: ["charge", "harry"], // kill raiders — or pin the ones that flee the caravan
+  khwarazm_khwarazmian_lancer: ["shock_charge", "plunder"], // the rich shahs' raiding lancers
+  // ---- Egypt & Africa ----
+  kush_nubia_nubian_archer: ["aimed_shot", "skirmish", "hide"], // Herodotus' "eye-shooters" — famed marksmen
+  carthage_war_elephant: ["trample", "terrorize"], // Hannibal's beasts broke lines by sheer dread
+  aksum_aksumite_spearman: ["shield_wall", "hide"], // the sarawit regiments of the negus
+  ethiopia_zagwe_oromo_cavalry: ["overrun", "charge"], // highland riders surging through a broken foe
+  mali_mandekalu_cavalry: ["shock_charge", "plunder"], // the mansa's gold-armored nobles
+  ghana_empire_soninke_warrior: ["sunder", "brace", "hide"], // Wagadu's iron-armed levy held the line
+  songhai_songhai_cavalry: ["charge", "fresh_mounts"], // Sonni Ali's couriers rode relays of horses
+  great_zimbabwe_zimbabwe_spearman: ["stone_bulwark", "hide"], // the living wall of the stone enclosures
+  kanem_bornu_kanembu_guard: ["zareba", "hide"], // the mai's guard camped behind thorn fences
+  fatimids_fatimid_ghulam: ["drilled_charge", "harry"], // drilled slave-cavalry, parade-ground precise
+  ayyubids_ayyubid_faris: ["feigned_retreat", "harry"], // Hattin — lure, exhaust, destroy
+  mamluks_mamluk: ["shock_charge", "fire_and_retreat"], // furusiyya masters of lance AND bow
+  almoravids_lamtuna_spearman: ["war_drums", "last_stand", "hide"], // drums that terrified Iberia; the Lamtuna never fled
+  swahili_swahili_dhow: ["ram", "boarding_party", "monsoon_run"], // corsair dhows riding the trade winds
+  benin_ogboni_guard: ["sunder", "hide"], // the Oba's enforcers with crushing ada swords
+  kongo_kongo_archer: ["poisoned_arrows", "skirmish", "hide"], // forest bowmen with envenomed shafts
+  // ---- Mediterranean & Europe ----
+  rome_legionary: ["pilum", "testudo", "hide"], // pila thrown, then the gladius — and the tortoise under fire
+  minoans_minoan_bireme: ["ram", "harry"], // the first navy corralled pirates and pinned blockade-runners
+  macedon_hypaspist: ["hammer_and_anvil", "hide"], // Alexander's shield-bearers struck where the anvil held
+  byzantium_cataphract: ["wedge_charge"], // the kataphraktoi wedge of the Praecepta Militaria
+  norse_longship: ["ram", "strandhogg"], // the lightning ship-borne raid that named an age
+  franks_frankish_paladin: ["heroic_challenge", "shock_charge"], // the champions of the chansons de geste
+  goths_gothic_rider: ["shock_charge", "overrun"], // Adrianople — the charge that rode Rome down
+  france_garde_ecossaise: ["shock_charge", "last_stand"], // the king's guard died to a man at Verneuil
+  castile_spain_conquistador: ["shock_charge", "terrorize"], // horses unknown in the New World spread panic
+  portugal_nau: ["broadside", "boarding_party"], // standoff gunnery perfected at Diu
+  venice_venetian_galleass: ["broadside", "coastal_bombardment"], // the gun-galleasses that opened Lepanto
+  dutch_republic_sea_beggar: ["boarding_party", "hellburner"], // the hellburners of Antwerp, 1585
+  holy_roman_empire_landsknecht: ["zweihander", "brace", "hide"], // Doppelsöldner hacked lanes through pike hedges
+  kievan_rus_druzhina: ["shock_charge", "shield_wall"], // Varangian-rooted retainers charged mounted or dismounted to the wall
+  hungary_black_army: ["mounted_volley", "shock_charge"], // Corvinus' professionals mixed crossbow and lance
+  // ---- European expansion ----
+  bulgaria_bulgar_horse_archer: ["mountain_ambush", "fire_and_retreat"], // Krum destroyed an emperor in the Balkan passes
+  serbia_pronoia_knight: ["wedge_charge"], // pronoia is a Byzantine grant — they fought in the Byzantine style
+  bohemia_hussite_war_wagon: ["wagenburg", "pierce", "hide"], // Žižka's rolling fortress
+  swiss_swiss_halberdier: ["halberd_hook", "brace", "hide"], // the hook that dragged Charles the Bold's knights down
+  aragon_almogaver: ["desperta_ferro", "skirmish", "hide"], // the war-cry of the Catalan Company
+  scotland_highland_schiltron: ["schiltron", "hide"], // Bannockburn's hedgehog of spears
+  gaelic_ireland_gallowglass: ["sparth_cleave", "hide"], // the sweeping sparth axe of the chief's retainers
+  normans_norman_knight: ["couched_lance"], // the running couched charge born at Hastings
+  visigoths_visigothic_noble: ["shock_charge", "plunder"], // the men who sacked Rome in 410
+  novgorod_ushkuinik: ["ram", "strandhogg"], // Varangian-founded river pirates kept the strandhögg alive
+  illyrians_liburnian: ["ram", "swift_oars"], // the fast pirate galley Rome copied
+  arevaci_celtiberian_warrior: ["last_stand", "hide"], // Numantia chose death over surrender
+  thracians_thracian_peltast: ["skirmish", "harry", "hide"], // shoot, fall back, and never let the hoplite rest
+  dacians_falxman: ["falx_reap", "hide"], // the blade that forced Rome to reinforce its helmets
+  sami_ski_raider: ["winter_war", "reconnoiter", "hide"], // masters of the white silence
+  corinth_corinthian_trireme: ["shear_oars", "ram"], // the city that invented the trireme knew how to cripple one
+  // ---- Central, South & East Asia ----
+  maurya_war_elephant: ["terrorize", "trample"], // the corps that made Alexander's army mutiny at the Hyphasis
+  gupta_india_gupta_elephant_archer: ["howdah_volley", "trample"], // archers shooting over the melee from the beast's back
+  khmer_domrey: ["double_ballista", "trample"], // the twin crossbows carved on the Bayon reliefs
+  pagan_burma_burmese_war_elephant: ["war_drums", "trample"], // the king's gong-and-drum corps rode to war with the beasts
+  ayutthaya_siam_siamese_war_elephant: ["duel_of_kings", "trample"], // Naresuan's royal duel on elephant-back
+  delhi_sultanate_delhi_war_elephant: ["elephant_wall", "trample"], // the living rampart that met the Mongols
+  vijayanagara_vijayanagara_war_elephant: ["gate_breaker", "trample"], // the beasts that broke Raichur's defenses
+  sinhala_sinhala_war_elephant: ["gate_breaker", "trample"], // Kandula, who breached the gate of Vijitanagara
+  dai_viet_vietnam_voi_chien: ["trample", "hide"], // Le Loi's jungle ambushes — elephants rising out of the green
+  china_ming_war_junk: ["broadside", "boarding_party"], // cannon junks of the treasure fleet
+  korea_turtle_ship: ["turtle_shell", "greek_fire"], // the spiked iron roof and the smoke-breathing dragon head
+  chola_chola_warship: ["ram", "boarding_party", "monsoon_run"], // the fleet that rode the monsoon to Srivijaya
+  srivijaya_jong: ["boarding_party", "swift_oars"], // the strait-lords' fast boarders
+  majapahit_majapahit_jong: ["broadside", "ram"], // cetbang swivel-guns — Southeast Asia's first gunpowder navy
+  champa_cham_raider: ["swift_oars", "strandhogg"], // the river raid that sacked Angkor in 1177
+  tibet_tibetan_cavalry: ["highland_charge", "charge"], // lamellar riders striking downhill from the plateau
+  khitan_ordo_cavalry: ["shock_charge", "fresh_mounts"], // every Khitan rider marched with three remounts
+  jurchen_iron_pagoda: ["wedge_charge", "iron_wall"], // the guaisimazi — armored files that charged or stood like towers
+  mughals_mughal_sowar: ["qamargah", "shock_charge"], // Akbar's hunt-circle, closed on a weakened foe
+  zhou_china_zhou_chariot: ["kadesh_charge"], // the Chinese chariot trio: driver, archer, dagger-axe
   // Unique cavalry/skirmishers that gain Hide (some can hide in the open, see stealth.ts).
   numidia_numidian_cavalry: ["fire_and_retreat", "hide"],
   lusitani_falcata_warrior: ["sunder", "hide"],
-  maya_holkan: ["skirmish", "hide"],
+  maya_holkan: ["hornet_bomb", "skirmish", "hide"], // wasp-nest bombs of the Popol Vuh, then the javelins
   // Spread to more iconic uniques (reusing existing ability mechanics, class-fit).
   japan_samurai: ["sunder", "last_stand", "hide"], // Bushido — fights on while wounded
-  ottomans_janissary: ["pierce", "pavise", "hide"], // elite gunners
+  ottomans_janissary: ["steady_volley", "pavise", "hide"], // the corps' fire discipline behind prepared cover
   crete_cretan_archer: ["arrow_storm", "hide"], // famed mercenary archers
   thebes_sacred_band: ["othismos", "hide"], // Theban phalanx
   mycenaean_greece_mycenaean_spearman: ["othismos", "hide"],
-  huns_hunnic_horde: ["feigned_retreat"],
-  xiongnu_xiongnu_horse_archer: ["parthian_shot", "hide"],
-  golden_horde_tatar_horse_archer: ["feigned_retreat"],
-  aztec_eagle_warrior: ["furor", "hide"], // ferocious shock infantry
-  maori_toa: ["furor", "hide"], // haka ferocity
+  huns_hunnic_horde: ["feigned_retreat"], // the false rout Roman observers described again and again
+  xiongnu_xiongnu_horse_archer: ["whistling_arrows", "hide"], // Modu's shrieking arrowheads — terror and signal in one
+  golden_horde_tatar_horse_archer: ["feigned_retreat", "harry"], // lure the pursuit, pin the tribute-dodgers
+  // ---- Steppe & Near East (expansion & revisit) ----
+  gokturks_turkic_lancer: ["wolf_pack", "charge"], // the böri — the qaghan's wolf-banner guard hunted as a pack
+  seljuks_ghulam: ["feigned_retreat", "hide"], // Manzikert — the false flight into the hidden wings
+  timurids_timurid_siege_train: ["naphtha_shot", "emplace"], // Timur's naphtha teams burned what walls withstood
+  arabia_camel_archer: ["camel_panic", "fire_and_retreat"], // camels routed horse from Thymbra to the crusades
+  israelites_gibborim: ["heroic_challenge", "hide"], // David's mighty men — champions of single combat
+  nabataeans_desert_raider: ["charge", "hide"], // raiders who vanished to hidden desert cisterns
+  saba_sabaean_spearman: ["brace", "harry", "hide"], // caravan guards who held the incense road and pinned its raiders
+  mitanni_maryannu_chariot: ["charge", "fresh_mounts"], // Kikkuli's interval-trained teams never blew their wind
+  urartu_urartian_charioteer: ["kadesh_charge"], // heavy Anatolian-style chariots of the Assyrian frontier
+  khazars_khazar_lancer: ["shock_charge", "plunder"], // the toll-lords of the Volga took their cut by force too
+  avars_avar_lancer: ["couched_lance"], // the stirrup came to Europe on Avar saddles
+  // ---- Americas & Oceania ----
+  inca_warak_aq: ["bolas", "skirmish", "hide"], // entangle the quarry, or shoot and slip away
+  olmec_olmec_spearman: ["terrorize", "hide"], // jaguar-masked shock troops of the mother culture
+  zapotec_zapotec_warrior: ["highland_charge", "hide"], // striking down from Monte Albán's terraces
+  teotihuacan_pyramid_guard: ["atlatl_volley", "brace", "hide"], // darts first, then the obsidian spears
+  toltec_toltec_warrior: ["obsidian_reap", "hide"], // volcanic glass sharper than steel
+  muisca_guecha_warrior: ["plunder", "hide"], // the warriors of El Dorado fought for gold and trophies
+  haudenosaunee_mohawk_warrior: ["mourning_war", "hide"], // raids to replace the fallen — the League's way of war
+  tarascans_copper_macehead: ["shield_wall", "sunder", "hide"], // the fortified frontier that stopped the Aztecs cold
+  chimu_chimu_slinger: ["stone_hail", "hide"], // Andean sling-stones cracked shields at a hundred paces
+  moche_moche_warrior: ["heroic_challenge", "hide"], // the ritual duel painted on every Moche pot
+  tiwanaku_tiwanaku_spearman: ["stone_bulwark", "hide"], // the monolith-builders stood like their stones
+  pueblo_pueblo_skirmisher: ["mountain_ambush", "skirmish", "hide"], // fire from the mesa rim
+  polynesia_koa_warrior: ["war_drums", "hide"], // the pahu drums sounded before the spears
+  hawaii_hawaiian_koa: ["leiomano", "hide"], // the shark-tooth club leaves wounds that keep bleeding
+  tonga_tongan_toa: ["beach_assault", "hide"], // the canoe-borne empire struck from the surf
+  aztec_eagle_warrior: ["flower_war", "furor", "hide"], // captives for the altar — or the wild charge
+  maori_toa: ["haka", "furor", "hide"], // the challenge first, then the fury
 };
 
 /**
@@ -412,6 +663,8 @@ export interface BuildingDef {
   reqResource?: { resource: string; count: number };
   yields: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
   effect?: "walls" | "barracks" | "harbor" | "lighthouse";
+  /** Building can only be constructed in a city adjacent to a water tile (harbors, lighthouses). */
+  requiresCoastal?: boolean;
 }
 
 const B = (d: BuildingDef): BuildingDef => d;
@@ -426,8 +679,8 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   library: B({ id: "library", name: "Archive", cost: 26, reqTech: "writing", yields: { science: 2 } }),
   academy: B({ id: "academy", name: "Academy", cost: 34, reqTech: "philosophy", yields: { science: 3 } }),
   aqueduct: B({ id: "aqueduct", name: "Aqueduct", cost: 30, reqTech: "engineering", yields: { food: 2 } }),
-  harbor: B({ id: "harbor", name: "Harbor", cost: 24, reqTech: "sailcloth", yields: { gold: 2 }, effect: "harbor" }),
-  lighthouse: B({ id: "lighthouse", name: "Lighthouse", cost: 30, reqTech: "optics", yields: { gold: 1, science: 1 }, effect: "lighthouse" }),
+  harbor: B({ id: "harbor", name: "Harbor", cost: 24, reqTech: "sailcloth", yields: { gold: 2 }, effect: "harbor", requiresCoastal: true }),
+  lighthouse: B({ id: "lighthouse", name: "Lighthouse", cost: 30, reqTech: "optics", yields: { gold: 1, science: 1 }, effect: "lighthouse", requiresCoastal: true }),
   monument: B({ id: "monument", name: "Monument", cost: 22, reqTech: "monumental_architecture", yields: { culture: 2 } }),
   amphitheater: B({ id: "amphitheater", name: "Amphitheater", cost: 26, reqTech: "writing", yields: { culture: 3 } }),
   museum: B({ id: "museum", name: "Museum", cost: 34, reqTech: "philosophy", yields: { culture: 4 } }),

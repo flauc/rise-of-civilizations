@@ -170,6 +170,62 @@ export function cityEffects(state: GameState, city: City): CivEffects {
   return acc;
 }
 
+/** A named contributor to a player's effects, for attribution in the UI. */
+export interface EffectSource {
+  label: string;
+  effects: CivEffects;
+}
+
+/**
+ * The same effect contributors `playerEffects` merges, but kept separate and
+ * labelled so the UI can attribute a bonus to the specific trait that grants it.
+ * Walks the identical sources in the identical order — keep in sync with
+ * `playerEffects`.
+ */
+export function effectSources(state: GameState, playerId: number): EffectSource[] {
+  const p = playerById(state, playerId);
+  const out: EffectSource[] = [];
+  if (!p) return out;
+  const push = (label: string | undefined, effects: CivEffects | undefined) => {
+    if (label && effects) out.push({ label, effects });
+  };
+  const civ = getCiv(p.civId);
+  push(civ?.abilityName ?? civ?.name, civ?.effects);
+  const gov = getGovernment(p.government);
+  push(gov?.name, gov?.effects);
+  for (const policyId of p.policies) {
+    const pol = getPolicy(policyId);
+    push(pol?.name, pol?.effects);
+  }
+  const seenInfra = new Set<string>();
+  for (const c of citiesOf(state, playerId)) {
+    for (const b of c.buildings) {
+      if (seenInfra.has(b)) continue;
+      seenInfra.add(b);
+      const inf = getUniqueInfra(b);
+      push(inf?.name, inf?.effects);
+    }
+  }
+  const religion = p.foundedReligionId ? state.religions.find((r) => r.id === p.foundedReligionId) : undefined;
+  if (religion) for (const b of religion.beliefs) {
+    const belief = getBelief(b);
+    push(belief?.name, belief?.effects);
+  }
+  for (const m of p.modifiers) {
+    if (m.expiresOnTurn >= state.turn) push(m.source, m.effect);
+  }
+  return out;
+}
+
+/** Named city-specific effect contributors (timed leader-ability modifiers). */
+export function cityEffectSources(state: GameState, city: City): EffectSource[] {
+  const out: EffectSource[] = [];
+  for (const m of city.modifiers) {
+    if (m.expiresOnTurn >= state.turn) out.push({ label: m.source, effects: m.effect });
+  }
+  return out;
+}
+
 /** Back-compat alias used by economy/founding (civ + gov + policies). */
 export const civEffectsOf = playerEffects;
 

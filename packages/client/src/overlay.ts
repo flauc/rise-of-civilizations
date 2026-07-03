@@ -59,7 +59,7 @@ function drawConstructionStandin(
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
   if (size > 12) {
-    const glyph = cat === "wonder" ? "🏛️" : cat === "defense" ? "🧱" : "🛠️";
+    const glyph = cat === "wonder" ? "🏛️" : cat === "defense" ? "🧱" : cat === "road" ? "🛤️" : "🛠️";
     ctx.fillStyle = "#f0d77a";
     ctx.font = `${Math.round(size * 0.34)}px system-ui, sans-serif`;
     ctx.textAlign = "center";

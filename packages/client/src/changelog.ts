@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.2.2";
+export const CURRENT_VERSION = "0.3.0";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,36 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.3.0",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "A wave of new unique unit abilities",
+        desc:
+          "Dozens of civilizations across every region now have bespoke unique unit abilities that didn't exist before, giving their signature units distinct tricks in combat instead of generic bonuses.",
+      },
+      {
+        tag: "Balance",
+        title: "Civilizations rebalanced across the board",
+        desc:
+          "We went through all 137 civilizations and rebalanced their bonuses using a new power-budget scoring tool, smoothing out outliers so no civilization is left far ahead of or behind the pack.",
+      },
+      {
+        tag: "New",
+        title: "Roads get their own look",
+        desc:
+          "Roads now render with dedicated artwork instead of a placeholder, making trade routes and empire infrastructure easier to read on the map.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Trade and diplomacy improvements",
+        desc:
+          "Trade routes and diplomatic dealings between civilizations have been reworked and expanded, with new tests covering the updated behavior.",
+      },
+    ],
+  },
   {
     version: "0.2.2",
     date: "June 2026",

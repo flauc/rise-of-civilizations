@@ -94,6 +94,11 @@ function attackStrength(
   let s = (ranged ? def.rangedStrength ?? 0 : def.strength) * levelMultiplier(unit);
   // A melee unit's Fire Lance fires off its melee strength (it has no rangedStrength).
   if (ranged && ability === "fire_lance") s = (def.strength + FIRE_LANCE_BONUS) * levelMultiplier(unit);
+  // Broadside: gun-armed ships fire their battery using hull strength if they lack a ranged rating.
+  if (ranged && ability === "broadside" && !def.rangedStrength) s = def.strength * levelMultiplier(unit);
+  // Elephant-back shooters fire a lighter weapon than the beast's bulk suggests.
+  if (ranged && ability === "howdah_volley") s = Math.max(4, def.strength - 4) * levelMultiplier(unit);
+  if (ranged && ability === "double_ballista") s = Math.max(4, def.strength - 2) * levelMultiplier(unit);
   s += civCombatBonus(state, unit);
   s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
 
@@ -104,6 +109,41 @@ function attackStrength(
   if (!ranged && ability === "hussar_charge") s += 4; // winged lance punches through a brace
   if (!ranged && ability === "furor") s += 6; // fanatic naked charge
   if (!ranged && ability === "shock_charge") s += 6;
+  if (!ranged && (ability === "plunder" || ability === "strandhogg")) s += 2; // a raiding strike, out for loot not the biggest blow
+  if (!ranged && ability === "overrun") s += 2; // momentum strike — surges on if the target falls
+  if (!ranged && ability === "drilled_charge") s += 4; // parade-ground charge, too clean to answer
+  if (!ranged && ability === "terrorize") s += 3; // thunderous assault that shakes morale
+  if (!ranged && ability === "wedge_charge") s += 4; // the cataphract wedge punches through
+  if (!ranged && ability === "hammer_and_anvil") s += 4; // coordinated blow on an engaged enemy
+  if (!ranged && ability === "heroic_challenge") s += 3; // a champion's blow
+  if (!ranged && ability === "zweihander") s += 2; // the great sword hacks the pike hedge
+  if (!ranged && ability === "kadesh_charge") s += 4; // the heavy three-crew chariot
+  if (!ranged && ability === "king_of_battle") s += Math.min(4, adjacentFriendlyMilitary(state, unit)); // the army fights as one
+  if (!ranged && ability === "ride_down") s += defender.hp < unitMaxHp(defender) / 2 ? 6 : 1; // run down the faltering
+  if (!ranged && ability === "halberd_hook") s += defenderCls === "cavalry" ? 6 : 2; // the hook drags riders down
+  if (!ranged && ability === "couched_lance") s += 2 + Math.min(4, UNIT_DEFS[unit.type].movement - unit.movementLeft); // momentum feeds the lance
+  if (!ranged && ability === "falx_reap") s += 1; // the falx reaches over the shield (armor bypass below)
+  if (!ranged && ability === "sparth_cleave") s += 2; // the great axe sweeps an arc
+  if (!ranged && ability === "shear_oars") s += 2; // rake the oar-bank
+  if (ranged && ability === "siege_volley" && defendsWalls(state, defender)) s += 5; // arcing fire onto the ramparts
+  if (ranged && ability === "mountain_ambush" && attackerOnRough(state, unit)) s += 4; // loosed from the high passes
+  if (ranged && ability === "winter_war" && attackerOnWinter(state, unit)) s += 4; // struck from the white silence
+  if (!ranged && ability === "duel_of_kings") s += defenderCls === "cavalry" ? 6 : 2; // single combat between the beasts
+  if (!ranged && ability === "gate_breaker") s += defendsWalls(state, defender) ? 5 : 1; // drive the beast at the gate
+  if (!ranged && ability === "highland_charge") s += attackerOnRough(state, unit) ? 4 : 1; // striking downhill
+  if (!ranged && ability === "qamargah") s += isWeakened(state, defender) ? 5 : 1; // the circle closes on the weak
+  if (ability === "nerge") s += friendliesBeside(state, unit, defender) >= 2 ? 5 : 1; // the ring is closed — lance or arrow alike
+  if (!ranged && ability === "wolf_pack") s += cavalryBeside(state, unit, defender) ? 3 : 0; // the pack hunts together
+  if (ranged && ability === "steady_volley" && unit.movementLeft >= UNIT_DEFS[unit.type].movement) s += 4; // planted feet, level barrels
+  if (ranged && ability === "camel_panic" && defenderCls === "cavalry") s += 4; // horses bolt at the smell
+  if (!ranged && ability === "flower_war") s += 2; // fighting for captives, not corpses
+  if (!ranged && ability === "mourning_war") s += 2; // a raid to replace the fallen
+  if (!ranged && ability === "obsidian_reap") s += 1; // volcanic glass (armor bypass below)
+  if (!ranged && ability === "leiomano") s += 2; // the shark-tooth club tears
+  if (!ranged && ability === "beach_assault" && unit.embarked) s += 5; // storming out of the surf
+  if (ranged && ability === "bolas") s *= 0.7; // thrown to entangle, not to kill
+  if (ranged && ability === "hornet_bomb") s *= 0.6; // the wasps do the real work
+  if (ranged && ability === "poisoned_arrows") s *= 0.8; // a lighter shot — the venom does the rest
   if (!ranged && ability === "trample") s += 3;
   if (!ranged && ability === "sunder") s -= 2; // a crushing blow lands lighter but debuffs
   if (!ranged && ability === "harry") s *= 0.6; // a harrying nip, not a kill blow
@@ -193,6 +233,9 @@ function attackStrength(
     s *= 1 + (unit.ambushBonus ?? 0.2);
   }
 
+  // Maimed (Aimed Shot): a wounded arm strikes weaker.
+  if (unit.maimedUntilTurn !== undefined && state.turn <= unit.maimedUntilTurn) s *= 0.75;
+
   return s * woundFactor(unit.hp, unitMaxHp(unit)) * moraleAttackMultiplier(unit);
 }
 
@@ -265,7 +308,14 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   if (unit.stance === "brace") stanceMult = attackerCls === "cavalry" ? 1.4 : 1.25;
   else if (unit.stance === "shield_wall" || unit.stance === "othismos") {
     stanceMult = Math.min(1.45, 1.15 + 0.1 * adjacentInfantry(state, unit));
-  } else if (unit.stance === "last_stand") {
+  } else if (unit.stance === "stone_bulwark") stanceMult = 1.25;
+  else if (unit.stance === "zareba") stanceMult = attackerCls === "cavalry" ? 1.45 : 1.25;
+  else if (unit.stance === "iron_wall") stanceMult = 1.35;
+  else if (unit.stance === "wagenburg") stanceMult = 1.4;
+  else if (unit.stance === "schiltron") stanceMult = attackerCls === "cavalry" ? 1.5 : 1.3;
+  else if (unit.stance === "elephant_wall") stanceMult = 1.25;
+  else if (unit.stance === "turtle_shell") stanceMult = 1.3;
+  else if (unit.stance === "last_stand") {
     // Spartan refusal: brace that sharpens as HP drops (up to +60% near death).
     const missing = 1 - unit.hp / unitMaxHp(unit);
     const base = attackerCls === "cavalry" ? 1.4 : 1.25;
@@ -273,12 +323,78 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   } else if (unit.stance === "testudo") stanceMult = vsRanged ? 1.5 : 0.9;
   else if (unit.stance === "pavise") stanceMult = vsRanged ? 1.5 : 1.0;
   else if (unit.stance === "emplace") stanceMult = 0.75;
+  // A friendly Stone Bulwark or Elephant Wall on an adjacent tile shelters this unit too.
+  if (unit.stance !== "stone_bulwark" && unit.stance !== "elephant_wall" && adjacentBulwark(state, unit)) stanceMult *= 1.15;
   // Sundered units defend weaker.
   if (unit.sunderedUntilTurn !== undefined && state.turn <= unit.sunderedUntilTurn) stanceMult *= 0.75;
   // Bushidō: a cornered Samurai fights all the harder.
   if (hasBushido(state, unit)) stanceMult *= 1.3;
 
   return Math.max(1, s) * stanceMult * woundFactor(unit.hp, unitMaxHp(unit)) * moraleDefenseMultiplier(unit);
+}
+
+/** Count the attacker's friendly units adjacent to the defender (Nerge). */
+function friendliesBeside(state: GameState, attacker: Unit, defender: Unit): number {
+  let count = 0;
+  for (const u of state.units.values()) {
+    if (u.ownerId !== attacker.ownerId || u.id === attacker.id) continue;
+    if (dist(defender, u) === 1) count++;
+  }
+  return count;
+}
+
+/** True if one of the attacker's cavalry units stands beside the defender (Wolf Pack). */
+function cavalryBeside(state: GameState, attacker: Unit, defender: Unit): boolean {
+  for (const u of state.units.values()) {
+    if (u.ownerId !== attacker.ownerId || u.id === attacker.id) continue;
+    if (UNIT_DEFS[u.type].cls === "cavalry" && dist(defender, u) === 1) return true;
+  }
+  return false;
+}
+
+/** True if the target already carries a combat debuff (Qamargah). */
+function isWeakened(state: GameState, unit: Unit): boolean {
+  const active = (t?: number) => t !== undefined && state.turn <= t;
+  return active(unit.sunderedUntilTurn) || active(unit.pinnedUntilTurn) || active(unit.maimedUntilTurn) ||
+    active(unit.poisonedUntilTurn) || active(unit.routedUntilTurn);
+}
+
+/** True if the attacker fires from rough terrain (Mountain Ambush). */
+function attackerOnRough(state: GameState, unit: Unit): boolean {
+  const tile = getTile(state.map, unit.col, unit.row);
+  return !!tile && isRough(tile.terrain);
+}
+
+/** True if the attacker fires from winter terrain (Winter War). */
+function attackerOnWinter(state: GameState, unit: Unit): boolean {
+  const t = getTile(state.map, unit.col, unit.row)?.terrain;
+  return t === "tundra" || t === "taiga" || t === "snow";
+}
+
+/** Count friendly military units adjacent to `unit` (King of Battle). */
+function adjacentFriendlyMilitary(state: GameState, unit: Unit): number {
+  let count = 0;
+  for (const u of state.units.values()) {
+    if (u.ownerId !== unit.ownerId || u.id === unit.id) continue;
+    if (UNIT_DEFS[u.type].strength > 0 && dist(unit, u) === 1) count++;
+  }
+  return count;
+}
+
+/** True if `unit` garrisons a city or holds a fortified tile (Siege Volley). */
+function defendsWalls(state: GameState, unit: Unit): boolean {
+  if (cityAt(state, unit.col, unit.row)) return true;
+  const tile = getTile(state.map, unit.col, unit.row);
+  return !!tile?.structure;
+}
+
+/** True if a friendly unit holding a wall stance (Stone Bulwark / Elephant Wall) stands adjacent. */
+function adjacentBulwark(state: GameState, unit: Unit): boolean {
+  for (const u of state.units.values()) {
+    if (u.ownerId !== unit.ownerId || u.id === unit.id) continue;
+    if ((u.stance === "stone_bulwark" || u.stance === "elephant_wall") && dist(unit, u) === 1) return true;
+  }
+  return false;
 }
 
 /** Count friendly melee/cavalry infantry-style neighbors (for Shield Wall). */
@@ -476,7 +592,8 @@ export function resolveAttack(
   const def = UNIT_DEFS[attacker.type];
   if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return { ok: false, error: "unit cannot attack" };
   if (attacker.attackedThisTurn || attacker.movementLeft <= 0) return { ok: false, error: "no attack available" };
-  if (attacker.embarked) return { ok: false, error: "embarked units cannot attack" };
+  // Beach Assault is the one strike an embarked unit can make: storming ashore.
+  if (attacker.embarked && ability !== "beach_assault") return { ok: false, error: "embarked units cannot attack" };
 
   // Striking from concealment springs the ambush: reveal and arm the attacker.
   breakCover(state, attacker);
@@ -484,7 +601,7 @@ export function resolveAttack(
   const attackerOwner = playerById(state, attacker.ownerId)!;
   const attackerNaval = isNavalUnit(attacker);
   // Fire Lance turns a melee unit's strike into a ranged volley for that shot.
-  const ranged = isRanged(def) || ability === "fire_lance";
+  const ranged = isRanged(def) || ability === "fire_lance" || ability === "broadside" || ability === "howdah_volley" || ability === "double_ballista";
 
   // Gunpowder weapons can only fire a charged shot — they reload (and cannot
   // fire) on the turn after firing. See healAndReset for the reload tick.
@@ -498,6 +615,8 @@ export function resolveAttack(
   if (ability === "pierce") range = Math.max(1, range - 1); // careful aimed bolt, shorter
   if (ability === "arrow_storm") range += 1; // a long massed volley
   if (ability === "fire_lance") range += 1; // the lance reaches a tile beyond a melee thrust
+  if (ability === "double_ballista") range = 2; // the elephant-back ballista outranges a thrust
+  if (ability === "howdah_volley") range = Math.max(1, range); // bows from the howdah strike adjacent
   const d = dist({ col: attacker.col, row: attacker.row }, { col, row });
   if (d > range) return { ok: false, error: "out of range" };
 
@@ -519,7 +638,11 @@ export function resolveAttack(
     enemyCity.lastAttackedTurn = state.turn;
 
     if (ranged) {
-      const rs = ability === "fire_lance" ? def.strength + FIRE_LANCE_BONUS : def.rangedStrength ?? 0;
+      const rs = ability === "fire_lance" ? def.strength + FIRE_LANCE_BONUS
+        : ability === "broadside" ? (def.rangedStrength ?? def.strength)
+        : ability === "howdah_volley" ? Math.max(4, def.strength - 4)
+        : ability === "double_ballista" ? Math.max(4, def.strength - 2)
+        : def.rangedStrength ?? 0;
       const base = rs * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker));
       let attEff = (base + cityAttackBonus(attacker)) * mult;
       if (def.cls === "siege" && eff.siegeVsCityDefenseMultiplier) {
@@ -585,10 +708,17 @@ export function resolveAttack(
       const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, true, ability);
       let defEff = defenseStrength(state, enemyUnit, attacker, true);
       if (ability === "pierce") defEff = Math.max(1, defEff - 6); // armor-piercing bolt
+      if (ability === "aimed_shot") defEff = Math.max(1, defEff - 4); // the marksman finds the gap
+      if (ability === "zagros_shot") defEff = Math.max(1, defEff - 4); // a heavy highland shaft
       enemyUnit.hp -= damageFrom(attEff, defEff);
       awardXp(attacker, 3);
       awardXp(enemyUnit, 2);
       if (ability === "sunder") enemyUnit.sunderedUntilTurn = state.turn + 1;
+      if (ability === "aimed_shot" && enemyUnit.hp > 0) enemyUnit.maimedUntilTurn = state.turn + 1;
+      if (ability === "poisoned_arrows" && enemyUnit.hp > 0) enemyUnit.poisonedUntilTurn = state.turn + 2;
+      if (ability === "broadside" && enemyUnit.hp > 0) enemyUnit.sunderedUntilTurn = state.turn + 1; // rigging wrecked
+      if (ability === "stone_hail" && enemyUnit.hp > 0) enemyUnit.sunderedUntilTurn = state.turn + 1; // shields cracked
+      if ((ability === "bolas" || ability === "hornet_bomb") && enemyUnit.hp > 0) enemyUnit.pinnedUntilTurn = state.turn + 1; // entangled / swarmed
       if (enemyUnit.hp <= 0) {
         killUnit(state, enemyUnit);
         onEnemyDefeated(state, attacker, enemyUnit); // the marksman and nearby allies rally
@@ -599,14 +729,28 @@ export function resolveAttack(
       const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, false, ability);
       let defEff = defenseStrength(state, enemyUnit, attacker, false);
       if (ability === "pierce") defEff = Math.max(1, defEff - 6);
+      if (ability === "falx_reap" || ability === "obsidian_reap") defEff = Math.max(1, defEff - 6); // the blade reaches past armor
       enemyUnit.hp -= damageFrom(attEff, defEff);
       if ((ability === "sunder" || ability === "greek_fire") && enemyUnit.hp > 0) enemyUnit.sunderedUntilTurn = state.turn + 1;
       if (ability === "harry" && enemyUnit.hp > 0) enemyUnit.pinnedUntilTurn = state.turn + 1;
+      if (ability === "zweihander" && enemyUnit.hp > 0) enemyUnit.stance = null; // the pike hedge is broken open
+      if (ability === "shear_oars" && enemyUnit.hp > 0) enemyUnit.pinnedUntilTurn = state.turn + 1; // crippled in the water
+      if (ability === "leiomano" && enemyUnit.hp > 0) enemyUnit.poisonedUntilTurn = state.turn + 2; // torn flesh keeps bleeding
       let retaliation = damageFrom(defEff, attEff);
       if (has(attacker, "suppression")) retaliation = Math.max(0, retaliation - 3);
       // Charging onto braced spears is punished with heavier retaliation.
       const defenderBraced = enemyUnit.stance === "brace" || enemyUnit.stance === "shield_wall" || enemyUnit.stance === "othismos" || enemyUnit.stance === "last_stand";
       if ((ability === "charge" || ability === "shock_charge" || ability === "war_cart_charge") && defenderBraced) retaliation = Math.round(retaliation * 1.25);
+      // A drilled charge is executed too cleanly to answer.
+      if (ability === "drilled_charge") retaliation = 0;
+      // The three-man chariot's shield-bearer wards off half the reply.
+      if (ability === "kadesh_charge") retaliation = Math.round(retaliation / 2);
+      // Storming a zareba means wading through the thorns first.
+      if (enemyUnit.stance === "zareba") attacker.hp -= 6;
+      // Cavalry breaking on a schiltron bleed on the spear points.
+      if (enemyUnit.stance === "schiltron" && UNIT_DEFS[attacker.type].cls === "cavalry") attacker.hp -= 5;
+      // Boarders die on the turtle ship's spiked roof.
+      if (enemyUnit.stance === "turtle_shell") attacker.hp -= 8;
       attacker.hp -= retaliation;
       awardXp(attacker, 4);
       awardXp(enemyUnit, 4);
@@ -720,7 +864,7 @@ function defenseStrengthVsBombard(state: GameState, unit: Unit): number {
   return Math.max(1, s) * woundFactor(unit.hp, unitMaxHp(unit));
 }
 
-function killUnit(state: GameState, unit: Unit): void {
+export function killUnit(state: GameState, unit: Unit): void {
   onUnitLost(state, unit); // nearby friendlies waver + global morale drops (before removal)
   state.units.delete(unit.id);
   const owner = playerById(state, unit.ownerId);

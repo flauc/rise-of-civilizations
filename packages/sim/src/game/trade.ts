@@ -1,8 +1,10 @@
 // Trade routes. A Trader unit (unlocked by The Wheel) is consumed in one of your
-// cities to establish a permanent route to another of your cities. The route
-// yields gold (scaling with distance + Markets) plus a little food/production to
-// the origin city, and a small share to the destination. Routes are pruned when
-// either endpoint is lost or changes owner.
+// cities to establish a permanent route to another of your cities. The route yields
+// gold (scaling with distance, Markets/Banks, roads and cross-border reach), and
+// every other yield — food, production, science, culture — rides on that same value,
+// so improving a route lifts all of them. The origin city takes the bulk; the
+// destination a smaller share. Routes are pruned when either endpoint is lost or
+// changes owner.
 
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { City, GameState, TradeRoute, Unit } from "./state";
@@ -34,11 +36,15 @@ export interface TradeYield {
 }
 
 const ZERO: TradeYield = { gold: 0, food: 0, production: 0, science: 0, culture: 0 };
+/** The distance-based base gold is capped here; roads (and buildings) lift a route
+ *  above this ceiling, so paving a route is the way to grow it past the early game. */
 const MAX_ROUTE_GOLD = 10;
 
-/** Bonus gold for a route whose entire land path is paved with roads.
- *  The weakest road tier along the path determines the bonus. */
-const ROAD_BONUS_BY_TIER: Record<number, number> = { 1: 2, 2: 4, 3: 6 };
+/** Bonus gold for a route whose entire land path is connected by roads (or, with
+ *  Sailing, rivers). The weakest road tier along the path determines the bonus, and
+ *  upgrading the road — Dirt → Paved → Imperial — clearly lifts the route past the
+ *  base cap. */
+const ROAD_BONUS_BY_TIER: Record<number, number> = { 1: 3, 2: 6, 3: 9 };
 
 const ax = (c: { col: number; row: number }) => offsetToAxial({ col: c.col, row: c.row });
 
@@ -49,11 +55,12 @@ function riversConnectFor(state: GameState, ownerId: number): boolean {
   return !!playerById(state, ownerId)?.researched.has("sailing");
 }
 
-/** Extra gold when every intermediate tile of a route is paved with road — or,
- *  for a player with Sailing, threaded by a river (a top-grade artery). Returns
- *  the weakest tier bonus along the path, or 0 if any land tile is unconnected.
- *  Water tiles in the path naturally prevent the bonus. */
-function roadConnectionBonus(state: GameState, route: TradeRoute): number {
+/** The weakest road tier (1–3) along a route whose entire land path is connected —
+ *  by road, a city hub, or (with Sailing) a river. Returns 0 when any intermediate
+ *  land tile is unconnected, so the caller pays no bonus. Cities count as top-grade
+ *  hubs: a route chained through other cities stays connected across them, and they
+ *  never drag the bonus down. Water tiles in the path naturally prevent the bonus. */
+function roadConnectionTier(state: GameState, route: TradeRoute): number {
   if (route.path.length < 3) return 0;
   const riverConnects = riversConnectFor(state, route.ownerId);
   const coords: [number, number][] = [];
@@ -64,6 +71,9 @@ function roadConnectionBonus(state: GameState, route: TradeRoute): number {
   let minTier = Number.MAX_SAFE_INTEGER;
   for (let i = 1; i < coords.length - 1; i++) {
     const [col, row] = coords[i]!;
+    // A city is a trade hub: the caravan passes through it as if on a top-grade
+    // road, so it keeps the chain intact but never lowers the connection tier.
+    if (cityAt(state, col, row)) continue;
     const tile = getTile(state.map, col, row);
     if (!tile) return 0;
     // A river (with Sailing) counts as the best grade of road; otherwise the tile
@@ -74,17 +84,24 @@ function roadConnectionBonus(state: GameState, route: TradeRoute): number {
   }
   // A river crossing the path severs the road connection unless a bridge carries the
   // road over it — or the player has Sailing, which makes rivers navigable arteries.
+  // A city on either side spans the crossing as well (its bridges are implicit).
   if (!riverConnects) {
     for (let i = 0; i < coords.length - 1; i++) {
       const [c1, r1] = coords[i]!;
       const [c2, r2] = coords[i + 1]!;
-      if (riverBetween(state, c1, r1, c2, r2) && !tileHasBridge(state, c1, r1) && !tileHasBridge(state, c2, r2)) {
+      if (
+        riverBetween(state, c1, r1, c2, r2) &&
+        !tileHasBridge(state, c1, r1) &&
+        !tileHasBridge(state, c2, r2) &&
+        !cityAt(state, c1, r1) &&
+        !cityAt(state, c2, r2)
+      ) {
         return 0;
       }
     }
   }
   if (minTier === Number.MAX_SAFE_INTEGER) return 0;
-  return ROAD_BONUS_BY_TIER[minTier] ?? 0;
+  return minTier;
 }
 
 /** Does any tile along the route's path lie on water? (an overseas trade lane). */
@@ -97,28 +114,80 @@ function routeIsOverseas(state: GameState, route: TradeRoute): boolean {
   return false;
 }
 
+/** A route's gold, itemised so the Trade overview can show players exactly where a
+ *  route's income comes from — and how paving it (road tier) grows it past the base
+ *  cap. `total` is the gold actually granted per turn. */
+export interface TradeGoldBreakdown {
+  /** Distance-based base income, capped at MAX_ROUTE_GOLD. */
+  base: number;
+  /** Extra from Markets (both ends) and a Bank at the origin. */
+  buildings: number;
+  /** Road-/river-connection bonus (0 when the path isn't fully connected). */
+  road: number;
+  /** Connection tier driving the road bonus: 0 none, 1 Dirt, 2 Paved, 3 Imperial. */
+  roadTier: number;
+  /** Extra gold from the international ×1.5 premium (0 for a domestic route). */
+  international: number;
+  /** Overseas (over-water) lane premium. */
+  overseas: number;
+  /** Whether this route crosses another civ's border (drives the intl premium). */
+  isInternational: boolean;
+  /** Gold actually paid to the origin each turn. */
+  total: number;
+}
+
+function isInternationalRoute(route: TradeRoute): boolean {
+  return !!route.international || (route.toOwnerId !== undefined && route.toOwnerId !== route.ownerId);
+}
+
+/** Itemised gold for a route (see TradeGoldBreakdown). Also drives tradeRouteYield. */
+export function tradeRouteGoldBreakdown(state: GameState, route: TradeRoute): TradeGoldBreakdown {
+  const empty: TradeGoldBreakdown = {
+    base: 0, buildings: 0, road: 0, roadTier: 0, international: 0, overseas: 0, isInternational: false, total: 0,
+  };
+  const from = state.cities.get(route.fromCityId);
+  const to = state.cities.get(route.toCityId);
+  if (!from || !to) return empty;
+  const dist = axialDistance(ax(from), ax(to));
+  const base = Math.min(MAX_ROUTE_GOLD, 3 + Math.floor(dist / 2));
+  let buildings = 0;
+  if (from.buildings.includes("market")) buildings += 2;
+  if (to.buildings.includes("market")) buildings += 1;
+  if (from.buildings.includes("bank")) buildings += 3;
+  const roadTier = roadConnectionTier(state, route);
+  const road = ROAD_BONUS_BY_TIER[roadTier] ?? 0;
+  const isInternational = isInternationalRoute(route);
+  // International routes are far richer: the whole land yield is boosted ×1.5.
+  const preIntl = base + buildings + road;
+  const international = isInternational ? Math.round(preIntl * 1.5) - preIntl : 0;
+  // Overseas lanes (the Age of Exploration's spice routes) pay a further flat premium.
+  const overseas = routeIsOverseas(state, route) ? 4 : 0;
+  const total = preIntl + international + overseas;
+  return { base, buildings, road, roadTier, international, overseas, isInternational, total };
+}
+
 /** Per-turn yields a single route generates (granted to the origin city). */
 export function tradeRouteYield(state: GameState, route: TradeRoute): TradeYield {
   const from = state.cities.get(route.fromCityId);
   const to = state.cities.get(route.toCityId);
   if (!from || !to) return ZERO;
-  const dist = axialDistance(ax(from), ax(to));
-  let gold = Math.min(MAX_ROUTE_GOLD, 3 + Math.floor(dist / 2));
-  if (from.buildings.includes("market")) gold += 2;
-  if (to.buildings.includes("market")) gold += 1;
-  if (from.buildings.includes("bank")) gold += 3;
-  gold += roadConnectionBonus(state, route);
-  let science = to.buildings.includes("library") || to.buildings.includes("academy") ? 1 : 0;
-  let culture = 0;
-  // International routes are far richer and exchange a little knowledge & culture.
-  if (route.international || (route.toOwnerId !== undefined && route.toOwnerId !== route.ownerId)) {
-    gold = Math.round(gold * 1.5);
+  const b = tradeRouteGoldBreakdown(state, route);
+  const g = b.total;
+  // Every yield rides on the route's overall value, so anything that grows a route —
+  // paving and upgrading its roads, Markets/Banks at the ends, reaching a foreign
+  // partner or an overseas port, or simply spanning a longer distance — lifts its
+  // food, production, science and culture too, not just its gold. Gold stays the
+  // headline (full value); the others accrue at a gentler rate.
+  const food = 1 + Math.floor(g / 8);
+  const production = 1 + Math.floor(g / 8);
+  let science = (to.buildings.includes("library") || to.buildings.includes("academy") ? 1 : 0) + Math.floor(g / 12);
+  let culture = Math.floor(g / 12);
+  // International routes exchange a little extra knowledge & culture on top.
+  if (b.isInternational) {
     science += 1;
     culture += 1;
   }
-  // Overseas lanes (the Age of Exploration's spice routes) pay a further premium.
-  if (routeIsOverseas(state, route)) gold += 4;
-  return { gold, food: 1, production: 1, science, culture };
+  return { gold: g, food, production, science, culture };
 }
 
 /** Total trade yields a city receives — full as an origin, a small share as a
@@ -175,12 +244,26 @@ export function canEstablishTradeRoute(state: GameState, unit: Unit): boolean {
   return tradeRouteDestinations(state, unit).length > 0;
 }
 
-/** Cost for a caravan to traverse a tile when routing. Roads are strongly
- *  preferred so a route hugs an existing road network when one is nearby;
- *  open land is cheap, rough terrain costs more, and water is a last resort. */
-function caravanTileCost(tile: { terrain: TerrainType; road?: boolean; river?: number }, riverConnects: boolean): number {
-  if (riverConnects && tile.river) return 0.45; // follow rivers in preference to roads
-  if (tile.road) return 0.5; // hugging a road is cheapest of all
+/** Cost for a caravan to traverse a tile when routing. Roads (and, with Sailing,
+ *  rivers) are made drastically cheaper than open land — roughly an order of
+ *  magnitude — so a route follows an existing road network even when that network
+ *  wanders a much longer way round, chaining through the cities and roads that link
+ *  two settlements rather than cutting cross-country. Better road tiers are slightly
+ *  cheaper still, so the caravan favours the finest highway; cities are top-grade
+ *  hubs; open land is cheap, rough terrain costs more, and water is a last resort. */
+function caravanTileCost(
+  state: GameState,
+  tile: { terrain: TerrainType; road?: boolean; roadLevel?: number; river?: number },
+  col: number,
+  row: number,
+  riverConnects: boolean,
+): number {
+  if (cityAt(state, col, row)) return 0.08; // a city is a road hub — traverse it freely
+  if (tile.road) {
+    const tier = tile.roadLevel ?? 1;
+    return tier >= 3 ? 0.08 : tier === 2 ? 0.1 : 0.12; // hug roads, prefer the better grade
+  }
+  if (riverConnects && tile.river) return 0.1; // a navigable river carries the caravan like a road
   if (isWaterTerrain(tile.terrain)) return 3; // detour over water only when unavoidable
   return moveCost(tile.terrain); // 1 for open land, 2 for rough (forest/jungle/hills/mesa)
 }
@@ -215,7 +298,7 @@ function computeTradeRoutePath(state: GameState, from: City, to: City): string[]
       const tile = getTile(state.map, n.col, n.row);
       if (!tile || (!isPassableLand(tile.terrain) && !isWaterTerrain(tile.terrain))) continue;
       const nk = `${n.col},${n.row}`;
-      const next = curCost + caravanTileCost(tile, riverConnects);
+      const next = curCost + caravanTileCost(state, tile, n.col, n.row, riverConnects);
       if (next < (dist.get(nk) ?? Infinity)) {
         dist.set(nk, next);
         cameFrom.set(nk, key);
