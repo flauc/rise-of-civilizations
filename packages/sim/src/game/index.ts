@@ -19,6 +19,7 @@ export * from "./serialize";
 export * from "./victory";
 export * from "./territory";
 export * from "./religion";
+export * from "./religion-units";
 export * from "./trade";
 export * from "./diplomacy";
 export * from "./specialists";

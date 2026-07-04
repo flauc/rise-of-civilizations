@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.3.1";
+export const CURRENT_VERSION = "0.4.0";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -22,6 +22,96 @@ interface Release {
 /** Newest release first. */
 const CHANGELOG: Release[] = [
   {
+    version: "0.4.0",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Every religion is now its own religion",
+        desc:
+          "Each of the 24 faiths carries a historically-fitting preset benefit the moment you found it — Islam's House of Wisdom feeds science and gold, the Aztec faith turns every kill into faith for the sun, Norse raiders plunder richer along the coasts, Jain merchants prosper, Zoroastrian fire temples drive production. Founding also grants one perk pick from a much larger shared pool — and perks are exclusive: a perk claimed by a rival religion is gone for good.",
+      },
+      {
+        tag: "New",
+        title: "Religion tiers — grow your faith to tier 5",
+        desc:
+          "Religions now rise through five tiers. Each upgrade costs faith (250 / 500 / 1000 / 2000) and demands a minimum of follower cities (3 / 6 / 10 / 14), and every tier grants a new perk pick — from that tier or any below it. The perk pool spans five tiers too, from Tithe and Harvest Blessing all the way to Dominion of Heaven and the Sword of God.",
+      },
+      {
+        tag: "New",
+        title: "Holy capitals",
+        desc:
+          "The city where you found your faith is its religious capital: it radiates the strongest pressure and enjoys a bonus fitted to the religion — pilgrims enrich the Christian holy city, the Sikh Khalsa musters troops faster, the Grand Madrasa of Islam feeds science. For 200 faith the capital can be moved to any other follower city you own.",
+      },
+      {
+        tag: "New",
+        title: "24 religion unique units with bespoke powers",
+        desc:
+          "Every faith fields a unique holy unit, trained in any follower city with a Temple. Each carries a genuinely distinct kit: the Evangelist heals and converts as he walks, the Templar Knight and Ghazi turn war into faith, the Jain Ahimsa Ascetic cannot strike a blow yet unmans everyone around him, the Gothi promises Valhalla so every nearby death rallies the line, the Oracle of Delphi prophesies doom, the Nihang's chakram whirls through every adjacent enemy, the Miko dances the Kagura, the Egyptian Mortuary Priest harvests souls, the Manichaean Elect out-converts every preacher alive. Units grow stronger with your religion's tier — and several unlock a second signature ability at tier 4.",
+      },
+      {
+        tag: "Fix",
+        title: "Religious victory no longer triggers by accident",
+        desc:
+          "A city now only counts as converted when a faith truly holds it — a strict majority of its religious pressure above an absolute floor. Previously the faintest trace of ambient spread counted as conversion, so the game could declare a religious victory nobody was pursuing.",
+      },
+      {
+        tag: "New",
+        title: "Religion wiki",
+        desc:
+          "The wiki's religion section documents the whole system — founding, presets, perk tiers and exclusivity, holy capitals, spread and the fixed victory — and every religion now has its own page with its history, benefits and unique unit.",
+      },
+      {
+        tag: "New",
+        title: "Share vision across borders",
+        desc:
+          "A new Exchange Maps treaty lets two civilizations see each other's explored lands and everything their units and cities can see, for as long as the pact holds. Offer it at the table like open borders, end it whenever you like from the agreements list — and it tears up the instant war breaks out. Rivals value it too, and will share sight with civilizations they've come to trust.",
+      },
+      {
+        tag: "UI",
+        title: "A rebuilt diplomacy table",
+        desc:
+          "The negotiation screen has been rebuilt around two tabs — an Overview of every standing offer, action and agreement, and a Make a deal composer. Treaties are now one-tap chips, and everything changing hands sits in clear 'You give' and 'You receive' trays, so a single proposal can bundle open borders, gold, a luxury and a technology at once. One live verdict tells you whether the AI will accept before you send it, suing for peace has its own button and its own read on whether the enemy will take it, and the whole panel now wears the game's parchment-and-gold look.",
+      },
+      {
+        tag: "New",
+        title: "Let a governor run your cities",
+        desc:
+          "Any city can be handed to a governor with a focus — Growth, Military, Science or Money — and it will assign its citizens and choose what to build toward that goal on its own, or stay on Manual if you'd rather manage it yourself. Pick a mode from the compact selector on the city panel. A city you capture always reverts to Manual, so you decide its new course.",
+      },
+      {
+        tag: "Balance",
+        title: "Signature improvements are worth the upgrade",
+        desc:
+          "A civilization's unique tile improvement now grows by +2 yields with every tier you upgrade it, instead of +1 — so putting your craftsmen on your signature works pulls decisively ahead of a plain farm or mine.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Coastal bounty waits on the right craft",
+        desc:
+          "Fisheries and Salt Pans now call for the Maritime Foraging technology before you can build them — and once you've researched a resource's unlocking tech, a city founded right on that resource reaps it automatically, with no improvement needed.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Improve the land before you claim it",
+        desc:
+          "You can now lay roads and build tile improvements on unclaimed, neutral ground — prepare a route or a work site ahead of the settler that will one day annex it (defences and wonders still need your own territory). And a unit whose own civilization has learned Bridge Building can cross a bridged river even when the bridge sits on someone else's land.",
+      },
+      {
+        tag: "Fix",
+        title: "One breakthrough at a time",
+        desc:
+          "A vast surplus of science or culture no longer completes several technologies or civics in a single turn. The overflow now carries into your next research instead, so a windfall speeds you along rather than skipping whole rows of the tree at once.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Rivals wield the new systems",
+        desc:
+          "The AI plays the expanded game. It raises its religion through the tiers, claims tier-fitting perks and musters its faith's unique holy units where they're needed; it prices units, cities and technologies far more shrewdly at the trade table — refusing to arm a civilization it distrusts except at a ransom and guarding its capital dearly; and a rival losing a war will now cede a besieged city (never its capital) to buy peace when the offer includes it.",
+      },
+    ],
+  },
+  {
     version: "0.3.1",
     date: "July 2026",
     changes: [
@@ -36,6 +126,18 @@ const CHANGELOG: Release[] = [
         title: "Legend wiki pages tell the history behind each power",
         desc:
           "Every hero's wiki page now lists its real battlefield abilities and a detailed write-up of the historical events the power is drawn from — Thermopylae, Lake Trasimene, the Horns of Hattin, the towers of skulls, the treasure fleets.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Wonders are a real undertaking again",
+        desc:
+          "Wonders no longer snap into being the moment you have a couple of craftsmen. Each wonder now demands a whole crew — you must gather its entire workforce idle and ready (e.g. 11 Masons and 6 Architects for the Great Pyramid), pooled from across your cities, before you can even break ground. That crew is the wonder's whole workforce; no more may join, so you can't rush it by piling on bodies. And even fully crewed, raising a wonder is a long build of many turns — though a crew of veterans, who each work faster, finishes sooner.",
+      },
+      {
+        tag: "New",
+        title: "Wonders are unlocked, gated, and world-changing",
+        desc:
+          "Every wonder is now unlocked by a specific technology, costs a one-time outlay of gold, faith, or culture to begin, and can only be raised where its geography fits — the Pyramids and Sphinx in the desert, Tenochtitlán on a hill, the Colossus on the coast, the Great Lighthouse on coastal water, the Hanging Gardens by fresh water, the Oracle beside a mountain, Stonehenge within sight of one, and the Great Library beside one of your cities. Their yields are stronger across the board — and several now reshape the game itself. The Great Lighthouse gives all your ships +2 sight and +1 movement; the Colossus launches a free, upkeep-free warship from its harbour every six turns; the Oracle lets you rush production with faith; Tenochtitlán's causeways grant all your land units +1 movement; and the Great Pyramid rewards a great offering of faith whenever one of your Legends falls in battle or passes into legend.",
       },
       {
         tag: "Fix",

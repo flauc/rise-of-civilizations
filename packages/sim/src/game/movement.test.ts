@@ -4,11 +4,11 @@ import { createGame } from "./setup";
 import { makeUnit, type City } from "./state";
 import { computeReachable, riverBetween } from "./movement";
 
-/** Register a player-0 city in the state and return its id (for tile ownership). */
-function ownedCity(s: ReturnType<typeof flatGame>, col: number, row: number): number {
+/** Register a city owned by `ownerId` in the state and return its id (for tile ownership). */
+function ownedCity(s: ReturnType<typeof flatGame>, col: number, row: number, ownerId = 0): number {
   const id = s.nextEntityId++;
   const city: City = {
-    id, ownerId: 0, name: "Bridgeton", col, row, population: 1,
+    id, ownerId, name: "Bridgeton", col, row, population: 1,
     foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
     isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
   };
@@ -71,6 +71,28 @@ describe("river crossing movement", () => {
     s.players[0]!.researched.add("bridge_building");
     expect(computeReachable(s, u).get("11,10")!.cost).toBe(0.75);
   });
+
+  it("bridges a river on a neutral road for any army that knows Bridge Building", () => {
+    const s = flatGame();
+    const u = makeUnit(s.nextEntityId++, 0, "warrior", 10, 10);
+    u.movementLeft = 4;
+    s.units.set(u.id, u);
+
+    // A roaded river crossing on wholly unclaimed land (nobody owns these tiles).
+    const a = getTile(s.map, 10, 10)!;
+    const b = getTile(s.map, 11, 10)!;
+    a.road = true;
+    b.road = true;
+    a.river = 1 << 0; // direction 0 = E
+
+    // No owner and no tech → the crossing still fords: 0.75 (dirt road) + 1.
+    expect(computeReachable(s, u).get("11,10")!.cost).toBe(1.75);
+
+    // The moving army's own civ researches Bridge Building; its engineers throw a
+    // span, so the ford penalty is waived even though the road belongs to no one.
+    s.players[0]!.researched.add("bridge_building");
+    expect(computeReachable(s, u).get("11,10")!.cost).toBe(0.75);
+  });
 });
 
 describe("road movement speed", () => {
@@ -97,6 +119,23 @@ describe("road movement speed", () => {
     expect(computeReachable(s, u).get("11,10")!.cost).toBe(0.5); // paved
     roadRow(s, 3);
     expect(computeReachable(s, u).get("11,10")!.cost).toBe(0.25); // imperial
+  });
+
+  it("gives a unit the road's speed on another civ's road, not just its own", () => {
+    const s = flatGame();
+    const u = makeUnit(s.nextEntityId++, 0, "warrior", 10, 10);
+    u.movementLeft = 3;
+    s.units.set(u.id, u);
+
+    // An imperial road whose tiles are claimed by a rival civ (player 1).
+    roadRow(s, 3);
+    const rivalCity = ownedCity(s, 8, 8, 1);
+    getTile(s.map, 10, 10)!.ownerCityId = rivalCity;
+    getTile(s.map, 11, 10)!.ownerCityId = rivalCity;
+
+    // With the right of passage (war / open borders → ignoreBorders), the rival's
+    // graded highway carries our unit just as fast as our own would (¼ per tile).
+    expect(computeReachable(s, u, { ignoreBorders: true }).get("11,10")!.cost).toBe(0.25);
   });
 
   it("a unit travels much farther along an imperial road than over open ground", () => {

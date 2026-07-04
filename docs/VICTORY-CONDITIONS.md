@@ -95,6 +95,12 @@ Great Works do **not** exist yet — the Artist Great Person currently gives an 
 
 ## 3. ☮️ Religious victory — *deepen the existing path*
 
+> ✅ **Update (2026-07-04):** the win check no longer reads `city.religion` (which flips
+> on ANY trace of pressure and caused accidental victories). A city now counts as
+> converted only via `cityConvertedTo` — a strict majority of its pressure AND ≥
+> `CONVERSION_PRESSURE` (12) absolute. The wider religion progression (tiers, perks,
+> holy capitals, unique units) is documented in [RELIGION.md](RELIGION.md).
+
 **Win condition (kept, refined):** a religion is the **dominant faith in every major civ that owns cities** (≥ 2 such civs). Today this reads `city.religion` (a single id) and spread is automatic. We make conversion **active and contestable**.
 
 ### 3.1 Per-city pressure model

@@ -87,7 +87,7 @@ export function tickLegendPassives(state: GameState, player: Player): void {
         for (const u of adjacentUnits(state, hero)) {
           if (u.ownerId === player.id && isMilitary(u.type)) awardUnitXp(u, 3);
         }
-        revealHiddenInSight(state, hero, unitSight(hero));
+        revealHiddenInSight(state, hero, unitSight(state, hero));
         break;
       }
 

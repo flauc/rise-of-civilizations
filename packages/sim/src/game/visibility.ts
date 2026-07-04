@@ -30,7 +30,7 @@ export function computeVisible(state: GameState, playerId: number): Set<string> 
     }
   };
 
-  for (const u of unitsOf(state, playerId)) reveal(u.col, u.row, unitSight(u));
+  for (const u of unitsOf(state, playerId)) reveal(u.col, u.row, unitSight(state, u));
   for (const c of citiesOf(state, playerId)) reveal(c.col, c.row, CITY_SIGHT);
   return visible;
 }
@@ -49,7 +49,7 @@ export function nearestReconInSight(
   for (const u of unitsOf(state, playerId)) {
     if (UNIT_DEFS[u.type].cls !== "recon") continue;
     const d = axialDistance(offsetToAxial(u), target);
-    if (d <= unitSight(u) && d < bestDist) {
+    if (d <= unitSight(state, u) && d < bestDist) {
       bestDist = d;
       best = u;
     }

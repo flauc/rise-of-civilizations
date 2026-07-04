@@ -1,4 +1,4 @@
-import { cityAt, cityMaxHp, ownedTileYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, type GameState, type TradeRoute } from "@roc/sim";
+import { cityAt, cityMaxHp, ownedTileYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, majorityReligion, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
@@ -11,7 +11,9 @@ import {
   type ConstructionAtlas,
   type ConstructionCategory,
 } from "./construction-assets";
-import { getNaturalWonder, getLegend } from "@roc/data";
+import { getNaturalWonder, getLegend, getReligionByName } from "@roc/data";
+import type { ReligionIconAtlas } from "./religion-assets";
+import { drawGlyph } from "./icons";
 
 export interface OverlayState {
   viewingPlayerId: number;
@@ -33,6 +35,7 @@ export interface OverlayState {
   cityAtlas?: CityAtlas;
   featureAtlas?: FeatureAtlas;
   constructionAtlas?: ConstructionAtlas;
+  religionIconAtlas?: ReligionIconAtlas;
 }
 
 /** Vector fallback for a construction site when the sprite atlas hasn't loaded
@@ -413,7 +416,7 @@ export function drawOverlay(
         ctx.font = `bold ${Math.round(size * 0.3)}px system-ui, sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("♜", s.x, s.y + 1);
+        drawGlyph(ctx, "♜", s.x, s.y + 1, Math.round(size * 0.34));
       }
     }
 
@@ -626,6 +629,20 @@ export function drawOverlay(
       ctx.textBaseline = "middle";
       ctx.fillText(label, labelX + pad + dotR * 2 + pad, labelY + labelH / 2);
       ctx.textAlign = "center";
+
+      // Religion badge — when a faith holds the majority of the city, draw its emblem
+      // just left of the name pill. city.religion holds the religion INSTANCE id, so
+      // map it through the instance's name to the def id that keys the emblem art.
+      const relInstId = majorityReligion(city);
+      if (relInstId) {
+        const inst = state.religions.find((r) => r.id === relInstId);
+        const def = inst ? getReligionByName(inst.name) : undefined;
+        const relImg = def ? o.religionIconAtlas?.images[def.id] : undefined;
+        if (relImg && isImageReady(relImg)) {
+          const rSize = labelH;
+          ctx.drawImage(relImg, labelX - pad - rSize, labelY + (labelH - rSize) / 2, rSize, rSize);
+        }
+      }
     }
     const maxHp = cityMaxHp(city);
     if (city.hp < maxHp) drawHpBar(ctx, s.x, s.y + imgSize / 2 + size * 0.12, imgSize, city.hp / maxHp);
@@ -732,7 +749,7 @@ export function drawOverlay(
       ctx.font = `${Math.round(size * 0.42 * unitScale)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(ACTIVE_ABILITY_DEFS[unit.stance].glyph, s.x - half * 0.9, s.y + half * 0.9);
+      drawGlyph(ctx, ACTIVE_ABILITY_DEFS[unit.stance].glyph, s.x - half * 0.9, s.y + half * 0.9, Math.round(size * 0.42 * unitScale));
     }
 
     // Sleep / hide badge at the unit's lower-right.
@@ -740,7 +757,7 @@ export function drawOverlay(
       ctx.font = `${Math.round(size * 0.42 * unitScale)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(unit.hidden ? "🌲" : "💤", s.x + half * 0.9, s.y + half * 0.9);
+      drawGlyph(ctx, unit.hidden ? "🌲" : "💤", s.x + half * 0.9, s.y + half * 0.9, Math.round(size * 0.42 * unitScale));
     }
 
     // Promotion-available star.
@@ -749,7 +766,7 @@ export function drawOverlay(
       ctx.font = `${Math.round(size * 0.5 * unitScale)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("★", s.x + half * 0.9, s.y - half * 0.9);
+      drawGlyph(ctx, "★", s.x + half * 0.9, s.y - half * 0.9, Math.round(size * 0.5 * unitScale));
     }
 
     // Legend crown badge at the unit's upper-left.
@@ -757,7 +774,7 @@ export function drawOverlay(
       ctx.font = `${Math.round(size * 0.45 * unitScale)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("👑", s.x - half * 0.9, s.y - half * 0.9);
+      drawGlyph(ctx, "👑", s.x - half * 0.9, s.y - half * 0.9, Math.round(size * 0.45 * unitScale));
     }
 
     // Player-color label above the unit (colored dot + unit name + level stars).

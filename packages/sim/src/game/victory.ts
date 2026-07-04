@@ -12,6 +12,7 @@
 import type { GameState, GameOver, Player, VictoryKind } from "./state";
 import { citiesOf, defaultEnabledVictories, log, unitsOf } from "./state";
 import { empireLuxuryTypes } from "./resources";
+import { cityConvertedTo } from "./religion";
 import { scienceVictoryAchieved, techProgress, CIRCUMNAVIGATION_SECTORS } from "./science-victory";
 import { cultureVictoryAchieved, influenceStanding } from "./culture-victory";
 
@@ -155,11 +156,14 @@ function civsWithCities(state: GameState): Player[] {
   );
 }
 
-/** True if `religionId` is the strict majority faith in `player`'s cities. */
+/** True if `religionId` truly holds a strict majority of `player`'s cities.
+ *  Uses the victory-grade `cityConvertedTo` (majority pressure share + an absolute
+ *  pressure floor) rather than `city.religion`, which flips on ANY trace of
+ *  ambient seepage — counting that made the religious victory fire by accident. */
 function religionDominatesCiv(state: GameState, player: Player, religionId: string): boolean {
   const cities = [...state.cities.values()].filter((c) => c.ownerId === player.id);
   if (cities.length === 0) return false;
-  const following = cities.filter((c) => c.religion === religionId).length;
+  const following = cities.filter((c) => cityConvertedTo(c, religionId)).length;
   return following * 2 > cities.length; // strict majority
 }
 

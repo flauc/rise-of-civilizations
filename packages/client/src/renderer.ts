@@ -662,7 +662,7 @@ export function drawScene(
         if (img && isImageReady(img)) {
           const iconSize = size * 0.75;
           ctx.save();
-          ctx.globalAlpha = resourceActive(t) ? 1 : 0.55;
+          ctx.globalAlpha = resourceActive(t, state) ? 1 : 0.55;
           ctx.drawImage(img, sx - iconSize / 2, sy - iconSize / 2, iconSize, iconSize);
           ctx.restore();
         } else {
@@ -673,7 +673,7 @@ export function drawScene(
             ctx.font = `bold ${Math.round(size * 0.3)}px system-ui, sans-serif`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillStyle = resourceActive(t) ? "#ffffff" : "#888888";
+            ctx.fillStyle = resourceActive(t, state) ? "#ffffff" : "#888888";
             ctx.fillText(def.name.slice(0, 2).toUpperCase(), sx, sy - size * 0.45);
             ctx.restore();
           }

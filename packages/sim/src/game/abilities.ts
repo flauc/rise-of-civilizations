@@ -10,7 +10,8 @@ import type { GameState, Player, Unit } from "./state";
 import { areEnemies, cityAt, log, playerById, unitAt, unitsOf } from "./state";
 import { isPassableLand, isRough } from "./terrain";
 import { enemyStructureBlocks, unitSight } from "./movement";
-import { resolveAttack, applyDirectDamage, secondaryRangedDamage, unitMaxHp, killUnit } from "./combat";
+import { resolveAttack, applyDirectDamage, secondaryRangedDamage, sweepMeleeDamage, unitMaxHp, killUnit } from "./combat";
+import { religionTierForUnit, scaledPassive } from "./religion-units";
 import { changeUnitMorale, maybeRoute, startingUnitMorale } from "./morale";
 import { updateExplored } from "./visibility";
 import { effectiveAbilities, unitDisplayName } from "./civs";
@@ -107,7 +108,15 @@ export function abilityTargets(state: GameState, unit: Unit, ability: ActiveAbil
   const owner = playerById(state, unit.ownerId);
   if (!owner) return out;
   const reach = abilityRange(unit, ability);
+  // The blessing family targets FRIENDLY units, not enemies.
+  const blessing = ability === "benediction" || ability === "darshan" || ability === "orisha_favor";
   for (const u of state.units.values()) {
+    if (blessing) {
+      if (u.ownerId === unit.ownerId && u.id !== unit.id && dist(unit, u) <= reach) {
+        out.add(`${u.col},${u.row}`);
+      }
+      continue;
+    }
     if (u.ownerId === unit.ownerId) continue;
     const o = playerById(state, u.ownerId);
     if (!o || !areEnemies(owner, o) || dist(unit, u) > reach) continue;
@@ -251,17 +260,124 @@ export function useAbility(
       return ok;
     }
 
+    // ---- religion unique-unit self abilities (magnitudes scale with faith tier) ----
+    const relTier = religionTierForUnit(state, unit);
+
+    // Purifying Flame / Storm Call: scour every adjacent enemy. Ends the turn.
+    if (ability === "purifying_flame" || ability === "storm_call") {
+      const owner = playerById(state, unit.ownerId);
+      const dmg = scaledPassive(8, relTier);
+      const moraleHit = scaledPassive(10, relTier);
+      for (const u of unitsAround(state, unit)) {
+        const o = playerById(state, u.ownerId);
+        if (!owner || !o || !areEnemies(owner, o)) continue;
+        changeUnitMorale(u, -moraleHit);
+        applyDirectDamage(state, u, dmg);
+      }
+      unit.movementLeft = 0;
+      unit.attackedThisTurn = true;
+      log(state, `${unitDisplayName(state, unit)} unleashed ${ability === "storm_call" ? "the storm" : "purifying flame"}!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      return ok;
+    }
+
+    // Doom Prophecy family: curse enemies within 2 tiles. Ends the turn.
+    if (ability === "doom_prophecy" || ability === "omen_of_ishtar" || ability === "eclipse_prophecy") {
+      const owner = playerById(state, unit.ownerId);
+      const penalty = scaledPassive(3, relTier);
+      const moraleHit = scaledPassive(10, relTier);
+      for (const u of state.units.values()) {
+        if (u.id === unit.id || dist(unit, u) > 2) continue;
+        const o = playerById(state, u.ownerId);
+        if (!owner || !o || !areEnemies(owner, o)) continue;
+        u.cursedUntilTurn = state.turn + 1;
+        u.cursedPenalty = penalty;
+        changeUnitMorale(u, -moraleHit);
+      }
+      unit.movementLeft = 0;
+      unit.attackedThisTurn = true;
+      log(state, `${unitDisplayName(state, unit)} spoke a doom over the enemy!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      return ok;
+    }
+
+    // Kagura / Mettā: restore friendly units within 2 tiles. Ends the turn.
+    if (ability === "kagura" || ability === "metta") {
+      const heal = scaledPassive(10, relTier);
+      const lift = scaledPassive(15, relTier);
+      for (const u of state.units.values()) {
+        if (u.id === unit.id || u.ownerId !== unit.ownerId || dist(unit, u) > 2) continue;
+        u.hp = Math.min(unitMaxHp(u), u.hp + heal);
+        changeUnitMorale(u, lift);
+      }
+      unit.movementLeft = 0;
+      unit.attackedThisTurn = true;
+      log(state, `${unitDisplayName(state, unit)} restored the faithful around them.`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      return ok;
+    }
+
+    // Takbīr: the battle-cry — hearten the line, dismay the foe. Ends the turn.
+    if (ability === "takbir") {
+      const owner = playerById(state, unit.ownerId);
+      const lift = scaledPassive(15, relTier);
+      changeUnitMorale(unit, lift);
+      for (const u of state.units.values()) {
+        if (u.id === unit.id) continue;
+        const o = playerById(state, u.ownerId);
+        if (u.ownerId === unit.ownerId && dist(unit, u) <= 2) changeUnitMorale(u, lift);
+        else if (owner && o && areEnemies(owner, o) && dist(unit, u) === 1) changeUnitMorale(u, -10);
+      }
+      unit.movementLeft = 0;
+      unit.attackedThisTurn = true;
+      log(state, `${unitDisplayName(state, unit)} raised the takbīr!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      return ok;
+    }
+
+    // Chakkar: one whirling strike on every adjacent enemy, no retaliation. Ends the turn.
+    if (ability === "chakkar") {
+      const owner = playerById(state, unit.ownerId);
+      let struck = 0;
+      for (const u of [...state.units.values()]) {
+        if (u.id === unit.id || dist(unit, u) !== 1) continue;
+        const o = playerById(state, u.ownerId);
+        if (!owner || !o || !areEnemies(owner, o)) continue;
+        sweepMeleeDamage(state, unit, u, 0.6);
+        struck++;
+      }
+      if (struck === 0) return fail("no adjacent enemies");
+      unit.movementLeft = 0;
+      unit.attackedThisTurn = true;
+      log(state, `${unitDisplayName(state, unit)}'s chakram whirled through ${struck} ${struck === 1 ? "enemy" : "enemies"}!`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+      return ok;
+    }
+
     // Reconnoiter: forfeit the turn for a vision pulse.
     unit.scouting = true;
     unit.movementLeft = 0;
     unit.attackedThisTurn = true;
-    revealHiddenInSight(state, unit, unitSight(unit) + 2); // the pulse flushes out hidden units
+    revealHiddenInSight(state, unit, unitSight(state, unit) + 2); // the pulse flushes out hidden units
     updateExplored(state, unit.ownerId); // reveal the wider radius now
     return ok;
   }
 
   // ---- targeted ----
   if (col === undefined || row === undefined) return fail("ability needs a target");
+
+  // Blessing family (Benediction / Darshan / Orisha's Favor): targets a FRIENDLY
+  // adjacent unit — heal and hearten it. Magnitudes scale with the faith's tier.
+  if (ability === "benediction" || ability === "darshan" || ability === "orisha_favor") {
+    const ally = unitAt(state, col, row);
+    if (!ally || ally.ownerId !== unit.ownerId || ally.id === unit.id) return fail("no friendly unit there");
+    if (dist(unit, ally) > 1) return fail("out of range");
+    const tier = religionTierForUnit(state, unit);
+    ally.hp = Math.min(unitMaxHp(ally), ally.hp + scaledPassive(15, tier));
+    changeUnitMorale(ally, scaledPassive(10, tier));
+    if (!unit.abilityCooldowns) unit.abilityCooldowns = {};
+    unit.abilityCooldowns[ability] = cooldownAfter(state, ability);
+    unit.movementLeft = 0;
+    unit.attackedThisTurn = true;
+    log(state, `${unitDisplayName(state, unit)} blessed ${unitDisplayName(state, ally)}.`, { actorId: unit.ownerId, targetIds: [unit.ownerId] });
+    return ok;
+  }
+
   const target = unitAt(state, col, row);
   if (!target || target.ownerId === unit.ownerId) return fail("no enemy there");
   const owner = playerById(state, unit.ownerId);
@@ -275,6 +391,14 @@ export function useAbility(
   };
 
   switch (ability) {
+    case "deus_vult": {
+      // The crusader's charge: a straight +5 strike (+8 vs cities in resolveAttack).
+      const res = resolveAttack(state, unit, col, row, { ability });
+      if (!res.ok) return res;
+      setCd();
+      return ok;
+    }
+
     case "charge":
     case "hussar_charge":
     case "kadesh_charge": {

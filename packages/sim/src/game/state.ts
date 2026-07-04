@@ -41,6 +41,10 @@ export interface Unit {
   maimedUntilTurn?: number;
   /** Poisoned (Poisoned Arrows): bleeds 8 HP at its turn start while state.turn <= this. */
   poisonedUntilTurn?: number;
+  /** Cursed by a prophecy (Doom Prophecy family): fights at −cursedPenalty while state.turn <= this. */
+  cursedUntilTurn?: number;
+  /** Combat penalty applied while cursed (set when the prophecy lands). */
+  cursedPenalty?: number;
   /** True when the unit is sleeping: skips moves and stays asleep across turns. */
   sleeping?: boolean;
   /** For barbarians: "col,row" of the camp this unit spawned from. Units sharing
@@ -73,6 +77,8 @@ export interface Unit {
   /** Gunpowder units only: true on the turn the unit is reloading — it cannot
    *  fire this turn even though `loaded` is now set. Cleared next turn. */
   reloading?: boolean;
+  /** Exempt from gold upkeep (e.g. a warship gifted each turn by the Colossus). */
+  freeUpkeep?: boolean;
 }
 
 export type ProductionItem =
@@ -98,6 +104,10 @@ export interface TrainingOrder {
 
 /** A craft a specialist practises; Works require labour of specific disciplines. */
 export type Discipline = "carpentry" | "survey" | "masonry" | "architecture" | "engineering";
+
+/** Player-facing "governor" focus a city can be set to auto-manage toward
+ *  (see `City.autoMode` and ai.ts `autoManageCity`). */
+export type CityAutoFocus = "growth" | "military" | "science" | "money";
 
 /** A citizen trained into a craft (lives on its City, never on the map). */
 export interface Specialist {
@@ -139,6 +149,11 @@ export interface City {
    *  auto-optimisation (manual picks are respected); only unlocked citizens are
    *  reshuffled onto more profitable tiles. */
   lockedTiles?: string[];
+  /** Governor mode: when set, `autoManageCity` (ai.ts) runs every turn for this
+   *  city — biasing worked-tile assignment, choosing production/buildings, and
+   *  (military only) training units toward the given focus, falling back to
+   *  generic development otherwise. Undefined = fully manual (default). */
+  autoMode?: CityAutoFocus;
   /** Dominant religion id in this city (undefined = none). Derived cache of the
    *  max-pressure religion in `religionPressure`, recomputed each spread tick. */
   religion?: string;
@@ -314,8 +329,14 @@ export interface Religion {
   id: string;
   name: string;
   founderId: number;
+  /** The faith's religious capital. Radiates the strongest pressure, enjoys the
+   *  religion's capital bonus, and can be moved for faith (see religion.ts). */
   holyCityId: number;
+  /** Perk ids picked from the shared pool (@roc/data BELIEFS). One is picked at
+   *  founding; each tier upgrade grants one more pick. Exclusive across religions. */
   beliefs: string[];
+  /** Religion tier 1–5 (see @roc/data RELIGION_TIERS). Missing in legacy saves → 1. */
+  tier: number;
 }
 
 /** A public-works project: develop/upgrade a tile, or raise a wonder. */
@@ -358,6 +379,9 @@ export type DealItem =
   | { kind: "specialist"; specialistType: string; turns: number }
   | { kind: "peace" }
   | { kind: "openBorders" }
+  /** Exchange maps: each side sees what the other sees, indefinitely until either
+   *  cancels (or war breaks out). Mutual, like open borders — no timer. */
+  | { kind: "sharedVision" }
   | { kind: "pact"; tier: Exclude<PactTier, "none">; turns: number }
   | { kind: "declareWarOn"; civId: number }
   /** Transfer a researched technology to the other civ (permanent, non-rival). */
@@ -388,6 +412,9 @@ export interface Relation {
   /** Earliest turn war may be re-declared after a peace (cooldown); undefined = now. */
   warAllowedTurn?: number;
   openBorders: boolean;
+  /** Maps exchanged: each civ sees the other's vision. Indefinite until cancelled
+   *  by either side, or cleared when they go to war. */
+  sharedVision: boolean;
   pact: PactTier;
   pactUntilTurn?: number;
   deals: DealObligation[];
@@ -515,6 +542,7 @@ export type TurnUpdateType =
   | "cityGrew"
   | "greatPersonRecruited"
   | "legendRecruited"
+  | "religionFounded"
   | "treasuryExhausted";
 
 /** A structured event shown to a specific player in the turn-start update dialog. */

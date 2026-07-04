@@ -234,15 +234,27 @@ describe("AI opponent", () => {
     expect(worksOf(s, 1).some((w) => w.kind === "tower" || w.kind === "wall")).toBe(true);
   });
 
-  it("starts a wonder when it has Architect + Military Engineer", () => {
+  it("starts a wonder once it has gathered a full wonder crew", () => {
     const s = aiWithCity("ai-wonder");
     const ai = s.players[1]!;
     ai.researched.add("masonry");
     ai.researched.add("engineering");
+    ai.gold = 2000; // afford a wonder's one-time gold cost
     const city = citiesOf(s, 1)[0]!;
-    city.population = 10;
-    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "architect", delta: 1 }, 1);
-    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "engineer", delta: 1 }, 1);
+    city.population = 40;
+    // A wonder now needs its ENTIRE crew idle before it can start (11 Masons, etc.),
+    // so hand the AI a generous bench covering every non-survey wonder's crafts.
+    let id = 5000;
+    const bench: [string, number][] = [["mason", 12], ["architect", 8], ["engineer", 8], ["carpenter", 8]];
+    for (const [type, n] of bench) for (let i = 0; i < n; i++) city.specialists.push({ id: id++, type: type as never, xp: 0, level: 1 });
+    // Wonders now have terrain gates; give the AI a legal desert site for the Great Pyramid.
+    const site = s.map.tiles.find(
+      (t) => t.ownerCityId === city.id && !t.improvement && !t.structure && !(t.col === city.col && t.row === city.row),
+    )!;
+    site.terrain = "desert";
+    site.feature = undefined;
+    site.wonder = undefined;
+    site.naturalWonder = undefined;
     aiTakeTurn(s, 1);
     expect(worksOf(s, 1).some((w) => w.kind === "wonder")).toBe(true);
   });
@@ -269,6 +281,49 @@ describe("AI opponent", () => {
     // An even matchup it would otherwise attack — but wounded, it disengages instead.
     expect(enemy.hp).toBe(hp0);
     expect(s.units.has(woundedId)).toBe(true); // and it survived to heal
+  });
+
+  it("musters its faith's holy unit in a temple city that follows the religion", () => {
+    const s = aiWithCity("ai-holy-train");
+    const ai = s.players[1]!;
+    const city = citiesOf(s, 1)[0]!;
+    // Give the AI a founded religion (Christianity → the Evangelist) and a city that
+    // follows it, has a Temple, the tech, and the population to spare.
+    ai.researched.add("ritual_burial");
+    ai.researched.add("writing");
+    ai.faith = 100;
+    expect(foundReligion(s, 1, city.id, "Christianity", ["tithe"]).ok).toBe(true);
+    city.buildings.push("temple");
+    city.population = 6;
+    city.religionPressure = { [ai.foundedReligionId!]: 100 };
+    city.religion = ai.foundedReligionId;
+    aiTakeTurn(s, 1);
+    const training = city.trainingQueue.some((o) => UNIT_DEFS[o.unit].religionUnit === "christianity");
+    const fielded = unitsOf(s, 1).some((u) => u.type === "evangelist");
+    expect(training || fielded).toBe(true);
+  });
+
+  it("fires a holy unit's blessing to heal a wounded nearby ally", () => {
+    const s = aiWithCity("ai-holy-ability");
+    for (const u of unitsOf(s, 1)) s.units.delete(u.id); // isolate the evangelist + one ally
+    const ai = s.players[1]!;
+    ai.researched.add("ritual_burial");
+    ai.faith = 100;
+    const city = citiesOf(s, 1)[0]!;
+    foundReligion(s, 1, city.id, "Christianity", ["tithe"]);
+    const spot = landTileAtDepth(s, city, 3)!;
+    const evId = s.nextEntityId++;
+    const ev = makeUnit(evId, 1, "evangelist", spot.col, spot.row);
+    ev.movementLeft = UNIT_DEFS["evangelist"].movement; // aiTakeTurn doesn't refresh movement
+    s.units.set(evId, ev);
+    const adj = freeNeighbor(s, spot.col, spot.row)!;
+    const woundedId = s.nextEntityId++;
+    const wounded = makeUnit(woundedId, 1, "warrior", adj.col, adj.row);
+    wounded.hp = 20;
+    s.units.set(woundedId, wounded);
+    aiTakeTurn(s, 1);
+    // Benediction (or the evangelist's healing aura on the AI's own turn) mends the ally.
+    expect(s.units.get(woundedId)!.hp).toBeGreaterThan(20);
   });
 
   it("uses scouts to explore, not to fight (won't attack an adjacent enemy)", () => {

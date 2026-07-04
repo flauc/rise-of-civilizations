@@ -30,7 +30,14 @@ export type UnitTypeId =
   // naval melee
   | "galley" | "bireme" | "trireme" | "quinquereme" | "longship" | "caravel"
   // naval ranged
-  | "dromon" | "war_junk" | "galleass" | "galleon";
+  | "dromon" | "war_junk" | "galleass" | "galleon"
+  // religion unique units (one per faith; trained in temple cities — see religion-units.ts)
+  | "evangelist" | "templar_knight" | "hesychast_monk" | "ghazi_warrior"
+  | "maccabee_zealot" | "sadhu" | "bodhisattva" | "flame_magus"
+  | "ahimsa_ascetic" | "nihang_warrior" | "sage_of_the_way" | "imperial_scholar"
+  | "miko_priestess" | "sky_shaman" | "gothi_warpriest" | "oracle_of_delphi"
+  | "mortuary_priest" | "ziggurat_astrologer" | "archdruid" | "elect_missionary"
+  | "eagle_priest" | "daykeeper" | "sun_priest" | "babalawo";
 
 export type UnitClass = "settler" | "trader" | "religious" | "recon" | "melee" | "ranged" | "cavalry" | "siege" | "naval_melee" | "naval_ranged";
 export type UnitAbility = "bonus_vs_cavalry" | "bonus_vs_city";
@@ -148,7 +155,21 @@ export type ActiveAbilityId =
   | "uprising"
   | "sacred_banner"
   | "pyramid_of_skulls"
-  | "basilica_bombard";
+  | "basilica_bombard"
+  // religion unique-unit signature abilities (see religion-units.ts)
+  | "benediction"
+  | "darshan"
+  | "orisha_favor"
+  | "purifying_flame"
+  | "storm_call"
+  | "chakkar"
+  | "doom_prophecy"
+  | "omen_of_ishtar"
+  | "eclipse_prophecy"
+  | "kagura"
+  | "metta"
+  | "takbir"
+  | "deus_vult";
 
 /** A persistent stance a unit enters by forfeiting its movement for the turn. */
 export type StanceId = "brace" | "shield_wall" | "testudo" | "emplace" | "othismos" | "last_stand" | "pavise" | "stone_bulwark" | "zareba" | "iron_wall" | "wagenburg" | "schiltron" | "elephant_wall" | "turtle_shell";
@@ -280,6 +301,20 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
   sacred_banner: A({ id: "sacred_banner", name: "Sacred Banner", verb: "Raise the Banner", glyph: "🚩", kind: "self", cooldown: 2, desc: "Raise the banner of Orléans: this hero and adjacent allies heal 10 HP and gain +15 morale. Ends the turn." }),
   pyramid_of_skulls: A({ id: "pyramid_of_skulls", name: "Pyramid of Skulls", verb: "Make an Example", glyph: "💀", kind: "targeted", cooldown: 2, desc: "A conqueror's blow (+4 attack) struck to be seen: if the target falls, every enemy unit within 2 tiles loses 15 morale." }),
   basilica_bombard: A({ id: "basilica_bombard", name: "The Basilica", verb: "Fire the Great Bombard", glyph: "💣", kind: "targeted", cooldown: 2, desc: "The great bombard hurls a stone ball at +1 range: +6 ranged strength against units holding walls or forts (+2 otherwise). Two turns to reload." }),
+  // religion unique-unit signature abilities (see religion-units.ts; magnitudes scale with religion tier)
+  benediction: A({ id: "benediction", name: "Benediction", verb: "Bless", glyph: "✝", kind: "targeted", cooldown: 1, desc: "Lay hands on an adjacent friendly unit: it heals 15 HP and gains +10 morale. Scales with the faith's tier." }),
+  darshan: A({ id: "darshan", name: "Darshan", verb: "Grant Darshan", glyph: "🕉", kind: "targeted", cooldown: 1, desc: "Bestow an auspicious sight on an adjacent friendly unit: it heals 15 HP and gains +10 morale. Scales with the faith's tier." }),
+  orisha_favor: A({ id: "orisha_favor", name: "Orisha's Favor", verb: "Call the Orisha", glyph: "🪘", kind: "targeted", cooldown: 1, desc: "Cast the opele for an adjacent friendly unit: it heals 15 HP and gains +10 morale. Scales with the faith's tier." }),
+  purifying_flame: A({ id: "purifying_flame", name: "Purifying Flame", verb: "Purify", glyph: "🔥", kind: "self", cooldown: 2, desc: "Holy fire scours every adjacent enemy: 8 damage and −10 morale. Scales with the faith's tier. Ends the turn." }),
+  storm_call: A({ id: "storm_call", name: "Storm Call", verb: "Call the Storm", glyph: "🌩", kind: "self", cooldown: 2, desc: "Tengri's storm lashes every adjacent enemy: 8 damage and −10 morale. Scales with the faith's tier. Ends the turn." }),
+  chakkar: A({ id: "chakkar", name: "Chakkar", verb: "Whirl the Chakram", glyph: "⭕", kind: "self", cooldown: 2, desc: "The steel quoit whirls: strike EVERY adjacent enemy at 60% strength, drawing no retaliation. Ends the turn." }),
+  doom_prophecy: A({ id: "doom_prophecy", name: "Doom Prophecy", verb: "Prophesy Doom", glyph: "🔮", kind: "self", cooldown: 2, desc: "Name the doom of enemies within 2 tiles: −3 combat until your next turn and −10 morale. Scales with the faith's tier. Ends the turn." }),
+  omen_of_ishtar: A({ id: "omen_of_ishtar", name: "Omen of Ishtar", verb: "Read the Omen", glyph: "✶", kind: "self", cooldown: 2, desc: "A baleful star confounds enemies within 2 tiles: −3 combat until your next turn and −10 morale. Scales with the faith's tier. Ends the turn." }),
+  eclipse_prophecy: A({ id: "eclipse_prophecy", name: "Eclipse Prophecy", verb: "Darken the Sun", glyph: "🌑", kind: "self", cooldown: 2, desc: "The foretold eclipse dismays enemies within 2 tiles: −3 combat until your next turn and −10 morale. Scales with the faith's tier. Ends the turn." }),
+  kagura: A({ id: "kagura", name: "Kagura", verb: "Dance the Kagura", glyph: "⛩", kind: "self", cooldown: 2, desc: "The sacred dance restores friendly units within 2 tiles: heal 10 HP and +15 morale. Scales with the faith's tier. Ends the turn." }),
+  metta: A({ id: "metta", name: "Mettā", verb: "Radiate Mettā", glyph: "☸", kind: "self", cooldown: 2, desc: "Loving-kindness suffuses friendly units within 2 tiles: heal 10 HP and +15 morale. Scales with the faith's tier. Ends the turn." }),
+  takbir: A({ id: "takbir", name: "Takbīr", verb: "Raise the Cry", glyph: "☪", kind: "self", cooldown: 2, desc: "The battle-cry rings out: friendly units within 2 tiles gain +15 morale, adjacent enemies lose 10. Ends the turn." }),
+  deus_vult: A({ id: "deus_vult", name: "Deus Vult", verb: "Charge", glyph: "✠", kind: "targeted", cooldown: 1, desc: "A crusader's charge (+5 attack, +8 against cities) against an adjacent enemy." }),
   // naval
   ram: A({ id: "ram", name: "Ram", verb: "Ram", glyph: "⚓", kind: "targeted", cooldown: 0, desc: "Drive the ship into an adjacent enemy vessel (+4 attack)." }),
   boarding_party: A({ id: "boarding_party", name: "Boarding Party", verb: "Board", glyph: "⚔️", kind: "targeted", cooldown: 1, desc: "Grapple and storm an adjacent ship (+5 attack, heal on kill)." }),
@@ -349,6 +384,9 @@ export interface UnitDef {
   religiousCharges?: number;
   /** Faith price to buy a religious unit (base; rises with how many you've bought). */
   faithCost?: number;
+  /** Religion def id (@roc/data RELIGIONS) whose unique unit this is. Trainable
+   *  only in temple cities whose majority faith matches (see religion-units.ts). */
+  religionUnit?: string;
   abilities?: UnitAbility[];
   /** Player-triggered active abilities (see ACTIVE_ABILITY_DEFS). */
   activeAbilities?: ActiveAbilityId[];
@@ -377,6 +415,35 @@ export const UNIT_DEFS: Record<UnitTypeId, UnitDef> = {
   missionary: U({ id: "missionary", name: "Missionary", glyph: "✝", cls: "religious", movement: 4, sight: 2, cost: 0, upkeep: 0, strength: 0, reqTech: "ritual_burial", religious: true, religiousCharges: 3, faithCost: 120 }),
   apostle: U({ id: "apostle", name: "Apostle", glyph: "✚", cls: "religious", movement: 4, sight: 2, cost: 0, upkeep: 0, strength: 6, reqTech: "ritual_burial", religious: true, religiousCharges: 4, faithCost: 200 }),
   inquisitor: U({ id: "inquisitor", name: "Inquisitor", glyph: "☩", cls: "religious", movement: 3, sight: 2, cost: 0, upkeep: 0, strength: 0, reqTech: "ritual_burial", religious: true, religiousCharges: 3, faithCost: 160 }),
+
+  // ---- religion unique units (one per faith; production-trained in any city that
+  // follows the faith and has a Temple; stats/abilities scale with religion tier —
+  // see religion-units.ts for each unit's signature kit) ----
+  evangelist: U({ id: "evangelist", name: "Evangelist", glyph: "✝", cls: "religious", movement: 4, sight: 2, cost: 45, upkeep: 0, strength: 6, reqTech: "writing", religionUnit: "christianity", activeAbilities: ["benediction"] }),
+  templar_knight: U({ id: "templar_knight", name: "Templar Knight", glyph: "✠", cls: "cavalry", movement: 4, sight: 2, cost: 70, upkeep: 1, strength: 16, reqTech: "writing", religionUnit: "catholicism" }),
+  hesychast_monk: U({ id: "hesychast_monk", name: "Hesychast Monk", glyph: "📿", cls: "religious", movement: 3, sight: 2, cost: 40, upkeep: 0, strength: 5, reqTech: "writing", religionUnit: "orthodoxy" }),
+  ghazi_warrior: U({ id: "ghazi_warrior", name: "Ghazi", glyph: "☪", cls: "melee", movement: 3, sight: 2, cost: 65, upkeep: 1, strength: 15, reqTech: "writing", religionUnit: "islam" }),
+  maccabee_zealot: U({ id: "maccabee_zealot", name: "Maccabee Zealot", glyph: "✡", cls: "melee", movement: 3, sight: 2, cost: 60, upkeep: 1, strength: 14, reqTech: "writing", religionUnit: "judaism" }),
+  sadhu: U({ id: "sadhu", name: "Sadhu", glyph: "🕉", cls: "religious", movement: 4, sight: 2, cost: 40, upkeep: 0, strength: 4, reqTech: "writing", religionUnit: "hinduism", activeAbilities: ["darshan"] }),
+  bodhisattva: U({ id: "bodhisattva", name: "Bodhisattva", glyph: "☸", cls: "religious", movement: 4, sight: 2, cost: 45, upkeep: 0, strength: 4, reqTech: "writing", religionUnit: "buddhism" }),
+  flame_magus: U({ id: "flame_magus", name: "Magus of the Flame", glyph: "🔥", cls: "religious", movement: 3, sight: 2, cost: 55, upkeep: 0, strength: 8, reqTech: "writing", religionUnit: "zoroastrianism", activeAbilities: ["purifying_flame"] }),
+  ahimsa_ascetic: U({ id: "ahimsa_ascetic", name: "Ahimsa Ascetic", glyph: "🤲", cls: "religious", movement: 4, sight: 2, cost: 40, upkeep: 0, strength: 3, reqTech: "writing", religionUnit: "jainism" }),
+  nihang_warrior: U({ id: "nihang_warrior", name: "Nihang", glyph: "⚔", cls: "melee", movement: 3, sight: 2, cost: 70, upkeep: 1, strength: 16, reqTech: "writing", religionUnit: "sikhism" }),
+  sage_of_the_way: U({ id: "sage_of_the_way", name: "Sage of the Way", glyph: "☯", cls: "religious", movement: 4, sight: 2, cost: 40, upkeep: 0, strength: 4, reqTech: "writing", religionUnit: "taoism" }),
+  imperial_scholar: U({ id: "imperial_scholar", name: "Imperial Scholar", glyph: "📜", cls: "religious", movement: 3, sight: 2, cost: 45, upkeep: 0, strength: 3, reqTech: "writing", religionUnit: "confucianism" }),
+  miko_priestess: U({ id: "miko_priestess", name: "Miko", glyph: "⛩", cls: "religious", movement: 3, sight: 4, cost: 45, upkeep: 0, strength: 4, reqTech: "writing", religionUnit: "shinto", detectHiddenRadius: 2, activeAbilities: ["kagura"] }),
+  sky_shaman: U({ id: "sky_shaman", name: "Sky Shaman", glyph: "🥁", cls: "cavalry", movement: 5, sight: 3, cost: 55, upkeep: 1, strength: 8, reqTech: "writing", religionUnit: "tengrism" }),
+  gothi_warpriest: U({ id: "gothi_warpriest", name: "Gothi War-Priest", glyph: "ᛟ", cls: "melee", movement: 3, sight: 2, cost: 65, upkeep: 1, strength: 15, reqTech: "writing", religionUnit: "norse" }),
+  oracle_of_delphi: U({ id: "oracle_of_delphi", name: "Oracle", glyph: "🔮", cls: "religious", movement: 3, sight: 5, cost: 50, upkeep: 0, strength: 3, reqTech: "writing", religionUnit: "hellenism", detectHiddenRadius: 2, activeAbilities: ["doom_prophecy"] }),
+  mortuary_priest: U({ id: "mortuary_priest", name: "Mortuary Priest", glyph: "☥", cls: "religious", movement: 3, sight: 2, cost: 50, upkeep: 0, strength: 5, reqTech: "writing", religionUnit: "egyptian" }),
+  ziggurat_astrologer: U({ id: "ziggurat_astrologer", name: "Ziggurat Astrologer", glyph: "✶", cls: "religious", movement: 3, sight: 4, cost: 45, upkeep: 0, strength: 4, reqTech: "writing", religionUnit: "mesopotamian" }),
+  archdruid: U({ id: "archdruid", name: "Archdruid", glyph: "🌿", cls: "religious", movement: 3, sight: 2, cost: 55, upkeep: 0, strength: 7, reqTech: "writing", religionUnit: "druidism", activeAbilities: ["hide"] }),
+  elect_missionary: U({ id: "elect_missionary", name: "Elect", glyph: "☀", cls: "religious", movement: 4, sight: 2, cost: 40, upkeep: 0, strength: 3, reqTech: "writing", religionUnit: "manichaeism" }),
+  eagle_priest: U({ id: "eagle_priest", name: "Eagle Priest", glyph: "🦅", cls: "melee", movement: 3, sight: 2, cost: 65, upkeep: 1, strength: 15, reqTech: "writing", religionUnit: "aztec" }),
+  daykeeper: U({ id: "daykeeper", name: "Daykeeper", glyph: "𝍎", cls: "religious", movement: 3, sight: 4, cost: 45, upkeep: 0, strength: 4, reqTech: "writing", religionUnit: "maya" }),
+  sun_priest: U({ id: "sun_priest", name: "Sun Priest of Inti", glyph: "☀", cls: "religious", movement: 3, sight: 2, cost: 50, upkeep: 0, strength: 5, reqTech: "writing", religionUnit: "inca" }),
+  babalawo: U({ id: "babalawo", name: "Babalawo", glyph: "🪘", cls: "religious", movement: 3, sight: 2, cost: 50, upkeep: 0, strength: 5, reqTech: "writing", religionUnit: "yoruba", detectHiddenRadius: 2, activeAbilities: ["orisha_favor"] }),
+
   scout: U({ id: "scout", name: "Scout", glyph: "C", cls: "recon", movement: 3, sight: 3, cost: 10, upkeep: 1, strength: 4 }),
 
   clubman: U({ id: "clubman", name: "Clubman", glyph: "c", cls: "melee", movement: 2, sight: 2, cost: 10, upkeep: 1, strength: 6 }),

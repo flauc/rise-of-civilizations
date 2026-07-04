@@ -13,7 +13,8 @@ import {
   type TrainingClass, type UnitTypeId,
 } from "./content";
 import { resourceStock } from "./resources";
-import { playerEffects } from "./civs";
+import { cityEffects, playerEffects } from "./civs";
+import { canTrainReligionUnit, religionUnitKit, unitPassive } from "./religion-units";
 import { isCoastalLand } from "./movement";
 import { autoAssignCitizens, placeUnit } from "./economy";
 import { emitUnitTrained } from "./turn-updates";
@@ -54,6 +55,12 @@ export function availableTraining(state: GameState, player: Player, city: City):
     const def = UNIT_DEFS[type];
     if (def.reqTech && !player.researched.has(def.reqTech)) continue;
     if (def.reqResource && resourceStock(player, def.reqResource.resource) < def.reqResource.count) continue;
+    if (def.religionUnit) {
+      // A faith's unique unit trains from the Temple of any follower city.
+      if (!canTrainReligionUnit(state, city, type).ok) continue;
+      out.push(type);
+      continue;
+    }
     const family = trainingClassFor(type);
     if (family) {
       if (familyTier(city, family) <= 0) continue;
@@ -83,6 +90,14 @@ export function canStartTraining(state: GameState, city: City, type: UnitTypeId)
   // Never train your last citizen, and a non-specialist must be free to go.
   if (city.population < 2) return { ok: false, error: "city too small (needs pop ≥ 2)" };
   if (freeCitizens(city) < 1) return { ok: false, error: "no free citizen to train" };
+  if (def.religionUnit) {
+    // Temple + faith gate; one holy unit musters at a time (its own slot).
+    const gate = canTrainReligionUnit(state, city, type);
+    if (!gate.ok) return gate;
+    const holyOrders = city.trainingQueue.filter((o) => UNIT_DEFS[o.unit].religionUnit).length;
+    if (holyOrders >= 1) return { ok: false, error: "already training a holy unit" };
+    return { ok: true };
+  }
   const family = trainingClassFor(type);
   if (family) {
     if (familyTier(city, family) <= 0) return { ok: false, error: `no ${TRAINING_BUILDING_DEFS[family].name}` };
@@ -99,12 +114,29 @@ export function canStartTraining(state: GameState, city: City, type: UnitTypeId)
   return { ok: true };
 }
 
-/** Train time (turns) for a unit in this city: building-tier speed × civ trainTimePercent. */
+/** Train time (turns) for a unit in this city: building-tier speed × civ/city
+ *  trainTimePercent (e.g. the Sikh holy capital) × any garrisoned drillmaster
+ *  (the Imperial Scholar's kit). Religion units use no family building. */
 export function trainingTimeInCity(state: GameState, city: City, type: UnitTypeId): number {
-  const family = trainingClassFor(type);
+  const family = UNIT_DEFS[type].religionUnit ? null : trainingClassFor(type);
   const speedPct = family ? trainingTier(family, familyTier(city, family)).speedPct : 1;
   const civPct = playerEffects(state, city.ownerId).trainTimePercent ?? 0;
-  return trainTimeFor(type, speedPct * (1 + civPct / 100));
+  const cityPct = cityEffects(state, city).trainTimePercent ?? 0;
+  const garrisonPct = garrisonTrainPercent(state, city);
+  return trainTimeFor(type, speedPct * (1 + civPct / 100) * (1 + cityPct / 100) * (1 - garrisonPct / 100));
+}
+
+/** Training speed-up (percent) from religion units garrisoned in the city. */
+function garrisonTrainPercent(state: GameState, city: City): number {
+  let pct = 0;
+  for (const u of state.units.values()) {
+    if (u.col !== city.col || u.row !== city.row || u.ownerId !== city.ownerId) continue;
+    const kit = religionUnitKit(u.type);
+    if (kit?.passives.trainPercentGarrisoned) {
+      pct += unitPassive(state, u, kit, kit.passives.trainPercentGarrisoned);
+    }
+  }
+  return Math.min(50, pct);
 }
 
 /** Begin training a unit: debits a citizen (pop −1) and queues the order. */
@@ -118,7 +150,7 @@ export function startTraining(state: GameState, city: City, type: UnitTypeId): T
     turnsLeft: trainingTimeInCity(state, city, type),
     startTurn: state.turn,
   });
-  autoAssignCitizens(state, city); // the departing citizen frees a worked tile
+  autoAssignCitizens(state, city, city.autoMode); // the departing citizen frees a worked tile
   return { ok: true };
 }
 
@@ -128,7 +160,7 @@ export function cancelTraining(state: GameState, city: City, orderId: number): T
   if (idx < 0) return { ok: false, error: "no such training order" };
   city.trainingQueue.splice(idx, 1);
   city.population += 1;
-  autoAssignCitizens(state, city);
+  autoAssignCitizens(state, city, city.autoMode);
   return { ok: true };
 }
 

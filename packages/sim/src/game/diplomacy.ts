@@ -16,7 +16,8 @@ import type {
   TradeRecordKind,
 } from "./state";
 import { citiesOf, log, playerById, unitsOf, type City } from "./state";
-import { UNIT_DEFS, TECH_DEFS, isMilitary, type TechId } from "./content";
+import { UNIT_DEFS, TECH_DEFS, baseTrainTime, isMilitary, type TechId } from "./content";
+import { cityMaxHp } from "./combat";
 import { applyVictoryCheck } from "./victory";
 import { onWarDeclared } from "./morale";
 import { RESOURCE_DEFS, empireLuxuryTypes, tradeableLuxuries, type ResourceId } from "./resources";
@@ -58,6 +59,7 @@ export function describeDealItems(items: DealItem[]): string {
         case "specialist": return `${it.specialistType} (${it.turns}t)`;
         case "peace": return "peace";
         case "openBorders": return "open borders";
+        case "sharedVision": return "shared vision";
         case "pact": return `${it.tier.replace("_", " ")} (${it.turns}t)`;
         case "declareWarOn": return `war on #${it.civId}`;
         case "tech": return `${TECH_DEFS[it.techId as TechId]?.name ?? it.techId} (tech)`;
@@ -93,6 +95,17 @@ export function relationBetween(state: GameState, a: number, b: number): Relatio
 
 export function haveMet(state: GameState, a: number, b: number): boolean {
   return !!relationBetween(state, a, b);
+}
+
+/** Ids of every civ `playerId` currently shares vision (an exchanged map) with. */
+export function sharedVisionPartners(state: GameState, playerId: number): number[] {
+  const out: number[] = [];
+  for (const r of state.relations) {
+    if (!r.sharedVision) continue;
+    if (r.a === playerId) out.push(r.b);
+    else if (r.b === playerId) out.push(r.a);
+  }
+  return out;
 }
 
 /**
@@ -178,7 +191,7 @@ export function ensureContact(state: GameState, aId: number, bId: number): boole
   const hi = Math.max(aId, bId);
   state.relations.push({
     a: lo, b: hi, status: "peace", metTurn: state.turn, lastStatusChangeTurn: state.turn,
-    openBorders: false, pact: "none", deals: [],
+    openBorders: false, sharedVision: false, pact: "none", deals: [],
   });
   if (!A.met.includes(bId)) A.met.push(bId);
   if (!B.met.includes(aId)) B.met.push(aId);
@@ -219,6 +232,7 @@ function setWar(state: GameState, r: Relation): void {
   r.status = "war";
   r.lastStatusChangeTurn = state.turn;
   r.openBorders = false;
+  r.sharedVision = false; // maps are no longer shared once the two are at war
   r.pact = "none";
   r.pactUntilTurn = undefined;
   r.deals = [];
@@ -297,6 +311,24 @@ export function denounce(state: GameState, aId: number, targetId: number): Diplo
     actorId: aId,
     targetIds: [aId, targetId],
   });
+  return ok;
+}
+
+/**
+ * End a standing shared-vision (exchanged-maps) agreement. Either party may pull
+ * out at any time; the other loses the borrowed sight at once and takes it a
+ * little personally.
+ */
+export function cancelSharedVision(state: GameState, aId: number, targetId: number): DiploResult {
+  const r = relationBetween(state, aId, targetId);
+  if (!r) return fail("you have not met them");
+  if (!r.sharedVision) return fail("you do not share vision with them");
+  r.sharedVision = false;
+  addModifier(state, targetId, aId, "you ended our map sharing", -6, 30);
+  const A = playerById(state, aId)!;
+  const T = playerById(state, targetId)!;
+  recordTrade(state, aId, targetId, "deal", [], [], `${civName(A)} ended map sharing with ${civName(T)}`);
+  log(state, `${civName(A)} ended map sharing with ${civName(T)}.`, { actorId: aId, targetIds: [aId, targetId] });
   return ok;
 }
 
@@ -401,6 +433,7 @@ const PACT_RANK: Record<PactTier, number> = { none: 0, non_aggression: 1, defens
 function redundantItem(rel: Relation, items: DealItem[]): string | undefined {
   for (const it of items) {
     if (it.kind === "openBorders" && rel.openBorders) return "you already have open borders";
+    if (it.kind === "sharedVision" && rel.sharedVision) return "you already share vision";
     if (it.kind === "pact" && PACT_RANK[rel.pact] >= PACT_RANK[it.tier]) {
       return `you already have a ${rel.pact.replace("_", " ")} in force`;
     }
@@ -647,6 +680,9 @@ function applyItem(state: GameState, payerId: number, receiverId: number, item: 
     case "openBorders":
       if (r) r.openBorders = true;
       break;
+    case "sharedVision":
+      if (r) r.sharedVision = true;
+      break;
     case "pact":
       if (r) {
         r.pact = item.tier;
@@ -688,6 +724,7 @@ function transferCity(state: GameState, cityId: number, fromId: number, toId: nu
   if (!city || city.ownerId !== fromId) return;
   city.ownerId = toId;
   city.isCapital = false; // a ceded city is never the new owner's seat of government
+  city.autoMode = undefined; // hand it over under the new owner's manual control
   const from = playerById(state, fromId);
   const to = playerById(state, toId);
   log(state, `${civName(from!)} ceded ${city.name} to ${civName(to!)}.`, {
@@ -891,6 +928,23 @@ export function powerRatio(state: GameState, aId: number, bId: number): number {
   return militaryPower(state, aId) / Math.max(1, militaryPower(state, bId));
 }
 
+/** Count enemy (at-war-with `aiId`) military units on or adjacent to (col,row). */
+function enemyMilitaryNear(state: GameState, aiId: number, col: number, row: number): number {
+  const here = offsetToAxial({ col, row });
+  let n = 0;
+  for (const u of state.units.values()) {
+    if (u.ownerId === aiId || !isMilitary(u.type)) continue;
+    if (!atWar(state, aiId, u.ownerId)) continue;
+    if (axialDistance(here, offsetToAxial({ col: u.col, row: u.row })) <= 1) n++;
+  }
+  return n;
+}
+
+/** A city on the brink: badly wounded, or ringed by enemy troops about to storm it. */
+function cityUnderSiege(state: GameState, aiId: number, c: City): boolean {
+  return c.hp <= cityMaxHp(c) * 0.5 || enemyMilitaryNear(state, aiId, c.col, c.row) >= 2;
+}
+
 /** Battle-ready offensive units (civilians and badly wounded units don't count). */
 function offensiveUnitCount(state: GameState, playerId: number): number {
   let n = 0;
@@ -974,6 +1028,14 @@ function itemValue(state: GameState, aiId: number, otherId: number, item: DealIt
       const friendly = att >= 60 ? 6 + (att - 60) * 0.25 : att >= 30 ? 2 : -4;
       return friendly + (atWarWithAnyone(state, aiId) ? 4 : 0);
     }
+    case "sharedVision": {
+      // Seeing a friend's lands is welcome intel — worth more when actively at war
+      // (spot troop movements). But baring your own map to a civ you distrust is a
+      // liability, so a wary/hostile AI values it at a loss and won't sign on.
+      const att = attitudeScore(state, aiId, otherId);
+      const friendly = att >= 25 ? 5 + att * 0.06 : att >= -10 ? 1 : -8;
+      return friendly + (atWarWithAnyone(state, aiId) ? 5 : 0);
+    }
     case "pact": {
       const att = attitudeScore(state, aiId, otherId);
       if (item.tier === "alliance" && att < 40) return -999; // won't ally a non-friend
@@ -994,13 +1056,29 @@ function itemValue(state: GameState, aiId: number, otherId: number, item: DealIt
       const c = state.cities.get(item.cityId);
       if (!c) return 0;
       // A city is a treasure; an AI rarely parts with one and pays dearly to gain one.
-      return 160 + c.population * 25 + c.buildings.length * 12;
+      // The capital is all but priceless (and ceding one is hard-gated in aiDecideOffer).
+      const base = 300 + c.population * 60 + c.buildings.length * 25 + c.wonders.length * 120;
+      return c.isCapital ? base * 5 + 2000 : base;
     }
     case "unit": {
       const u = state.units.get(item.unitId);
-      const base = u ? UNIT_DEFS[u.type].cost : 20;
-      // A sale is worth the unit's build cost; a loan a fraction, scaled by its term.
-      return item.turns > 0 ? Math.round(base * 0.25 + item.turns * 1.5) : base;
+      if (!u) return 20;
+      const def = UNIT_DEFS[u.type];
+      // A unit is worth what it costs in GOLD to raise a replacement — the same
+      // "fast-train" (rush) price a player pays: ~14 gold per training turn, and
+      // turns ≈ cost/6. Pricing it at the raw hammer cost (as before) sold units
+      // for a fraction of that, so the AI parted with troops far too cheaply.
+      const replace = Math.max(def.cost, (baseTrainTime(u.type) - 1) * 14);
+      const levelMult = 1 + 0.15 * Math.max(0, u.level - 1); // veterans cost more
+      const hpMult = Math.max(0.4, u.hp / 100); // a battered unit is worth less
+      // A permanent sale asks a premium over bare replacement — parting with a
+      // standing unit weakens the army. A loan is a fraction, scaled by its term.
+      // (A further standing-based premium is applied in aiDecideOffer: the AI
+      // will not arm a civ it distrusts except for an exorbitant sum.)
+      const value = item.turns > 0
+        ? replace * 0.4 + item.turns * 3
+        : replace * 1.8;
+      return Math.round(value * levelMult * hpMult);
     }
   }
 }
@@ -1044,6 +1122,21 @@ function buildCounterOffer(give: DealItem[], want: DealItem[], deficit: number):
   return { give: trimmedGive, want: cWant };
 }
 
+/**
+ * How much more the AI demands to PART WITH a unit, scaled by standing. Handing
+ * troops to a civ is arming them, so the AI will sell near replacement cost only
+ * to a close ally; for anyone it does not trust it asks a steep premium, and for
+ * a rival an outright exorbitant one — effectively refusing to sell for any fair
+ * price. Applied only to units the AI gives up (never to what it receives).
+ */
+function unitPartingPremium(state: GameState, aiId: number, otherId: number): number {
+  const att = attitudeScore(state, aiId, otherId);
+  if (att >= 70) return 1;    // allied — sells at the standard premium
+  if (att >= 40) return 1.6;  // friendly — a modest surcharge
+  if (att >= 10) return 3;    // neutral / wary — steep
+  return 5;                   // unfriendly or hostile — only for an absurd sum
+}
+
 /** Evaluate a (non-coercive) offer from the AI's perspective. */
 function aiDecideOffer(
   state: GameState,
@@ -1060,6 +1153,30 @@ function aiDecideOffer(
   if (!canPayItems(state, aiId, want)) {
     return { accept: false, reason: "We cannot provide what you ask." };
   }
+  // A city — above all the capital — is almost never for sale. The AI hard-refuses
+  // ceding one in trade, regardless of how much gold is piled on, with a single
+  // narrow exception: surrendering a doomed city to end a war it is losing, when
+  // the offer includes peace, the city is besieged, and the enemy is the stronger.
+  const buyingPeace = give.some((it) => it.kind === "peace");
+  for (const it of want) {
+    if (it.kind !== "city") continue;
+    const c = state.cities.get(it.cityId);
+    if (!c || c.ownerId !== aiId) continue;
+    const desperate =
+      buyingPeace && atWar(state, aiId, fromId) &&
+      cityUnderSiege(state, aiId, c) && powerRatio(state, fromId, aiId) >= 1.3;
+    if (desperate) {
+      return {
+        accept: true,
+        reason: c.isCapital
+          ? "Our capital is all but lost — take it, and end this war."
+          : "Take the city, and let there be peace.",
+      };
+    }
+    if (c.isCapital) return { accept: false, reason: "Our capital is not for sale — at any price." };
+    if (citiesOf(state, aiId).length <= 1) return { accept: false, reason: "We will not trade away our last city." };
+    if (attitudeScore(state, aiId, fromId) < 40) return { accept: false, reason: "We will not hand over one of our cities." };
+  }
   const ai = playerById(state, aiId)!;
   const p = personalityOf(state, aiId);
   // It will drain the treasury only to buy peace or when it genuinely fears the
@@ -1074,7 +1191,12 @@ function aiDecideOffer(
   const gain = give.reduce((s, it) => s + itemValue(state, aiId, fromId, it), 0);
   // Greedy/proud civs overvalue what they part with → drive a harder bargain.
   const costMult = 1 + (p.greed - 0.5) * 0.4 + Math.max(0, -attitudeScore(state, aiId, fromId)) / 200;
-  const cost = want.reduce((s, it) => s + itemValue(state, aiId, fromId, it), 0) * costMult;
+  // Units carry an extra standing-based premium when handed over: the AI won't
+  // arm a civ it distrusts for a fair price (see unitPartingPremium).
+  const cost = want.reduce(
+    (s, it) => s + itemValue(state, aiId, fromId, it) * (it.kind === "unit" ? unitPartingPremium(state, aiId, fromId) : 1),
+    0,
+  ) * costMult;
   if (gain >= cost) {
     return { accept: true, reason: gain > cost * 1.3 ? "A most generous offer — agreed." : "These terms are acceptable." };
   }
@@ -1157,6 +1279,21 @@ export function previewProposal(
   if (coercive) return demandVerdict(state, toId, fromId, want);
   const d = aiDecideOffer(state, toId, fromId, give, want);
   return { accept: d.accept, reason: d.reason };
+}
+
+/**
+ * Whether the AI (`toId`) would accept a peace offer from `fromId`, computed
+ * WITHOUT side effects — mirrors the `makePeace` path (`aiAcceptsPeace`), which
+ * lets a winning, proud AI hold out. Returns null when there's no verdict to show
+ * (recipient is human/barbarian, or the two aren't at war).
+ */
+export function previewPeace(state: GameState, fromId: number, toId: number): { accept: boolean; reason: string } | null {
+  const to = playerById(state, toId);
+  if (!to || to.isHuman || to.isBarbarian) return null;
+  const r = relationBetween(state, fromId, toId);
+  if (!r || r.status !== "war") return null;
+  const accept = aiAcceptsPeace(state, toId, fromId);
+  return { accept, reason: accept ? "They are willing to end the war." : "They refuse to make peace." };
 }
 
 /** Distinct specialist types currently trained in a player's cities. */
@@ -1321,6 +1458,10 @@ export function aiConsiderDiplomacy(state: GameState, aiId: number): void {
     if (score >= 40 && r.pact === "none" && (state.turn + aiId) % 13 === 0 && !offerOnCooldown(state, aiId, otherId)) {
       if (!r.openBorders) {
         proposeDeal(state, aiId, otherId, [{ kind: "openBorders" }], [{ kind: "openBorders" }]);
+        continue;
+      } else if (!r.sharedVision) {
+        // Once borders are open, friends swap maps too — shared eyes on the world.
+        proposeDeal(state, aiId, otherId, [{ kind: "sharedVision" }], [{ kind: "sharedVision" }]);
         continue;
       } else if (p.loyalty > 0.6 && score >= 55) {
         proposeDeal(state, aiId, otherId, [{ kind: "pact", tier: "non_aggression", turns: 25 }], [{ kind: "pact", tier: "non_aggression", turns: 25 }]);

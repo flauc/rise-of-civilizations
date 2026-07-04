@@ -72,10 +72,11 @@ describe("unique infrastructure", () => {
     const imp = uniqueImprovementForCiv("inca")!; // Terrace Farm, base food 2
     const base = imp.yields.food ?? 0;
 
-    // Each tier adds +1 to every yield the base produces.
+    // Each tier adds +2 to every yield the base produces (steeper than a generic
+    // improvement's +1/tier — the buff that makes a unique improvement worth building).
     expect(improvementYields(imp.id, 1).food).toBe(base);
-    expect(improvementYields(imp.id, 2).food).toBe(base + 1);
-    expect(improvementYields(imp.id, 3).food).toBe(base + 2);
+    expect(improvementYields(imp.id, 2).food).toBe(base + 2);
+    expect(improvementYields(imp.id, 3).food).toBe(base + 4);
 
     // nextTierAt walks a built improvement up to (and stops at) tier 3.
     const s = game();

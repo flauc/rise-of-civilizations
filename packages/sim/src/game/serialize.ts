@@ -7,7 +7,7 @@ import type {
 import { defaultEnabledVictories } from "./state";
 import { computeVisible } from "./visibility";
 import { tileHasBridge } from "./movement";
-import { attitudeLabel, attitudeScore } from "./diplomacy";
+import { attitudeLabel, attitudeScore, sharedVisionPartners } from "./diplomacy";
 import { GLOBAL_MORALE_BASE } from "./morale";
 import { victoryProgress, type VictoryProgressEntry } from "./victory";
 import type { TechId } from "./content";
@@ -184,8 +184,17 @@ function buildDiploView(state: GameState, playerId: number): DiploView {
 /** Build the state a player is allowed to see (fog of war enforced here). */
 export function viewForPlayer(state: GameState, playerId: number): PlayerView {
   const me = state.players.find((p) => p.id === playerId);
-  const explored = me?.explored ?? new Set<string>();
+  // Start from the player's own knowledge, then fold in every civ they've swapped
+  // maps with: their explored tiles (fog memory) and current sight. Working on
+  // copies means cancelling the pact cleanly revokes the borrowed vision — nothing
+  // partner-owned ever leaks into the player's persisted `explored` set.
+  const explored = new Set<string>(me?.explored ?? []);
   const visible = computeVisible(state, playerId);
+  for (const partnerId of sharedVisionPartners(state, playerId)) {
+    const partner = state.players.find((p) => p.id === partnerId);
+    if (partner) for (const k of partner.explored) explored.add(k);
+    for (const k of computeVisible(state, partnerId)) visible.add(k);
+  }
 
   const tiles: TileView[] = [];
   for (const key of explored) {
@@ -383,7 +392,8 @@ export function deserializeState(s: SerializedState): GameState {
     gameOver: s.gameOver,
     turnLimit: s.turnLimit,
     enabledVictories: s.enabledVictories ? new Set(s.enabledVictories) : defaultEnabledVictories(),
-    religions: s.religions,
+    // Legacy saves predate religion tiers — every faith starts at tier 1.
+    religions: (s.religions ?? []).map((r) => ({ ...r, tier: r.tier ?? 1 })),
     tradeRoutes: s.tradeRoutes ?? [],
     works: (s.works ?? []).map((w) => ({
       ...w,

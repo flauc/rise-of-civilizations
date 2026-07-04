@@ -9,14 +9,14 @@
 import type { GameState } from "./state";
 import { unitMovement } from "./civs";
 import { healAndReset, towerBombardment } from "./combat";
-import { processCity, applyUnitUpkeep } from "./economy";
+import { processCity, advanceResearch, advanceCivic, applyUnitUpkeep } from "./economy";
 import { barbarianTurn } from "./barbarians";
 import { updateExplored } from "./visibility";
 import { applyVictoryCheck } from "./victory";
 import { spreadReligion } from "./religion";
 import { pruneTradeRoutes } from "./trade";
 import { pruneBarbarianBribes } from "./bribery";
-import { advanceWorks } from "./works";
+import { advanceWorks, tickWonders } from "./works";
 import { gatherPlayerResources } from "./resources";
 import { tickAbilities } from "./abilities";
 import { tickLegends } from "./legends";
@@ -24,7 +24,7 @@ import { tickLegendPassives } from "./legend-passives";
 import { canStealthMove, stealthMovement } from "./stealth";
 import { diplomacyTick } from "./diplomacy";
 import { ejectTrespassers } from "./movement";
-import { aiTakeTurn } from "./ai";
+import { aiTakeTurn, autoManageCities } from "./ai";
 
 /** Begin a fresh turn for ALL players at once: refresh movement, heal, reveal. */
 export function startSimultaneousTurn(state: GameState): void {
@@ -40,6 +40,7 @@ export function startSimultaneousTurn(state: GameState): void {
     tickLegends(state, p.id); // retire heroes whose lifespan has elapsed
     tickLegendPassives(state, p); // living heroes' per-turn powers (income, drilling, dread)
     gatherPlayerResources(state, p.id); // stockpile strategic resources for the turn
+    tickWonders(state, p.id); // active wonder effects (e.g. the Colossus's free warships)
     for (const c of state.cities.values()) {
       if (c.ownerId === p.id) c.rangedAttackUsed = false;
     }
@@ -68,6 +69,9 @@ export function resolveSimultaneousTurn(state: GameState): void {
     for (const c of state.cities.values()) {
       if (c.ownerId === p.id) processCity(state, c, p);
     }
+    autoManageCities(state, p); // governor mode: opted-in cities manage themselves
+    advanceResearch(state, p); // complete at most one tech from the pooled science
+    advanceCivic(state, p); // and at most one civic from the pooled culture
     applyUnitUpkeep(state, p); // empire-wide unit maintenance after city income
     advanceWorks(state, p.id); // specialists labour on public works
   }

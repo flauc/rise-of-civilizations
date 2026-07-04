@@ -45,6 +45,28 @@ describe("religion", () => {
     expect(playerEffects(s, 0).yieldPercent?.science ?? 0).toBeGreaterThanOrEqual(15);
   });
 
+  it("alerts every RIVAL civ (but not the founder) when a religion is founded", () => {
+    const s = gameWithCity(); // humanSlots: 2 → players 0 and 1 are majors
+    s.players[0]!.faith = FAITH_TO_FOUND;
+    const city = citiesOf(s, 0)[0]!;
+    foundReligion(s, 0, city.id, "Christianity", ["tithe"]);
+    const relName = s.religions[0]!.name;
+    const founded = s.turnUpdates.filter((u) => u.type === "religionFounded");
+    const rivals = s.players.filter((p) => !p.isBarbarian && p.id !== 0);
+    // One alert per rival civ; the founder gets NO self-alert (they just did it).
+    expect(founded).toHaveLength(rivals.length);
+    expect(new Set(founded.map((u) => u.playerId))).toEqual(new Set(rivals.map((p) => p.id)));
+    expect(founded.some((u) => u.playerId === 0)).toBe(false);
+    // A rival's message names the founder and the faith, and carries the emblem id + holy tile.
+    const theirs = founded.find((u) => u.playerId === 1)!;
+    expect(theirs.message).toContain(`founded ${relName}`);
+    expect(theirs.message).not.toContain("You founded");
+    expect(theirs.payload?.religionId).toBeTruthy();
+    expect(theirs.tile).toEqual({ col: city.col, row: city.row });
+    // The founding is still recorded once, world-visible, in the game log.
+    expect(s.log.some((e) => e.world && e.message.includes(`founded ${relName}`))).toBe(true);
+  });
+
   it("spreads from a holy city to a nearby city", () => {
     const s = gameWithCity();
     const holy = citiesOf(s, 0)[0]!;

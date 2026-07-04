@@ -22,6 +22,16 @@ import {
   getBelief,
   religionById,
   cityFollowerCount,
+  majorityFollowerCount,
+  majorityReligion,
+  takenPerkIds,
+  availablePerks,
+  pendingPerkPicks,
+  canUpgradeReligion,
+  nextTierRequirement,
+  religionUnitKit,
+  MAX_RELIGION_TIER,
+  MOVE_HOLY_CITY_COST,
   religiousUnitCost,
   victoryProgress,
   canFoundReligion,
@@ -47,6 +57,9 @@ import {
   roadMoveCost,
   workLabourPerTurn,
   workEtaTurns,
+  wonderCraftFull,
+  wonderCrewNeeded,
+  wonderStartCost,
   assignedSpecialistIds,
   specialistNameForDiscipline,
   canStartWork,
@@ -125,6 +138,7 @@ import {
   legendBaseName,
   findSpecialist,
   type City,
+  type CityAutoFocus,
   type Discipline,
   type Work,
   type SpecialistId,
@@ -151,6 +165,9 @@ import {
   GREAT_PERSON_CLASSES,
   GREAT_PERSON_CLASS_INFO,
   getLegend,
+  RELIGIONS,
+  getReligionByName,
+  getReligionKit,
   type GreatPersonClass,
 } from "@roc/data";
 import { abilityIconHtml, type AbilityAtlas } from "./ability-assets";
@@ -255,7 +272,7 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
     const rdef = RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS];
     const rname = rdef?.name ?? tile.resource;
     lines.push({ kind: "good", text: `Resource: ${rname}` });
-    if (!resourceActive(tile)) {
+    if (!resourceActive(tile, state)) {
       const needed = rdef ? workName(rdef.improvement, 1) : "improvement";
       lines.push({ kind: "bad", text: `Needs a ${needed} to activate` });
     }
@@ -320,6 +337,8 @@ export interface UIHandlers {
   onSleep(): void;
   onWake(): void;
   onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
+  /** Toggle a city's governor mode (auto-manage toward a focus); null = manual. */
+  onSetCityAutoMode(cityId: number, mode: CityAutoFocus | null): void;
   onStartWork(kind: string, col: number, row: number): void;
   onStartWonder(wonderId: string, col: number, row: number): void;
   onCancelWork(workId: number): void;
@@ -339,6 +358,7 @@ export interface UIHandlers {
   onGift(targetId: number, gold: number): void;
   onDemandTribute(targetId: number, gold: number): void;
   onProposeDeal(targetId: number, give: DealItem[], want: DealItem[]): void;
+  onCancelSharedVision(targetId: number): void;
   onRespondProposal(proposalId: number, accept: boolean): void;
   onFinalizeDeal(proposalId: number, confirm: boolean): void;
   onAcknowledgeContact(otherId: number): void;
@@ -352,6 +372,12 @@ export interface UIHandlers {
   onSetGovernment(governmentId: string): void;
   onTogglePolicy(policyId: string): void;
   onFoundReligion(cityId: number, name: string, beliefs: string[]): void;
+  /** Raise the player's founded religion one tier (faith + follower-city gated). */
+  onUpgradeReligion(): void;
+  /** Spend an unspent perk pick on a belief from the shared pool. */
+  onPickReligionPerk(perkId: string): void;
+  /** Move the religion's holy capital to another follower city (costs faith). */
+  onMoveHolyCity(cityId: number): void;
   onBuyReligiousUnit(cityId: number, unit: "missionary" | "apostle" | "inquisitor"): void;
   onEvangelize(unitId: number, cityId: number): void;
   onPurgeHeresy(unitId: number, cityId: number): void;
@@ -496,6 +522,23 @@ function rushButtonsHtml(
   if (!btns.length) return "";
   return `<div class="csub">Rush</div><div class="row" style="flex-wrap:wrap;gap:6px">${btns.join("")}</div>`;
 }
+
+/** Governor-mode options offered on the city panel (null = manual/off). */
+const GOVERNOR_MODES: { mode: CityAutoFocus | null; icon: string; label: string; title: string }[] = [
+  { mode: null, icon: "🖐️", label: "Manual", title: "Manage this city yourself" },
+  { mode: "growth", icon: "🌾", label: "Growth", title: "Auto-manage toward population growth" },
+  { mode: "military", icon: "⚔️", label: "Military", title: "Auto-manage toward training soldiers" },
+  { mode: "science", icon: "🔬", label: "Science", title: "Auto-manage toward science output" },
+  { mode: "money", icon: "🪙", label: "Money", title: "Auto-manage toward gold income" },
+];
+
+/** One-line summary of what a governed city is currently doing, per focus. */
+const GOVERNOR_NOTE: Record<CityAutoFocus, string> = {
+  growth: "Auto: favouring food tiles & growth buildings, plus works & specialists.",
+  military: "Auto: training troops, war buildings & tiles, plus works & specialists.",
+  science: "Auto: favouring science tiles & buildings, plus works & specialists.",
+  money: "Auto: favouring gold tiles & buildings, plus works & specialists.",
+};
 
 export function createUI(handlers: UIHandlers): UI {
   let abilityAtlas: AbilityAtlas | undefined;
@@ -884,7 +927,10 @@ export function createUI(handlers: UIHandlers): UI {
   let specCityId: number | null = null;
   let trainingOpen = false;
   let trainCityId: number | null = null;
+  /** The ONE founding belief picked in the founding flow (0 or 1 entries). */
   let chosenBeliefs: string[] = [];
+  /** Religion the player has picked in the (step 1) founding grid, before beliefs. */
+  let chosenReligionName: string | null = null;
   let bannerTimer = 0;
   let lastState: GameState | null = null;
   let lastViewerId = -1;
@@ -1066,6 +1112,9 @@ export function createUI(handlers: UIHandlers): UI {
     if (ev.type === "legendRecruited" && ev.payload?.legendId) {
       return assetUrl(`legends/${ev.payload.legendId}.png`);
     }
+    if (ev.type === "religionFounded" && ev.payload?.religionId) {
+      return assetUrl(`religions/${ev.payload.religionId}.png`);
+    }
     return assetUrl(`turn-updates/${ev.type}.png`);
   };
 
@@ -1125,6 +1174,8 @@ export function createUI(handlers: UIHandlers): UI {
         return "Great Person Recruited";
       case "legendRecruited":
         return "A Legend Rises";
+      case "religionFounded":
+        return "Religion Founded";
       case "treasuryExhausted":
         return "Treasury Exhausted";
       default:
@@ -1141,7 +1192,13 @@ export function createUI(handlers: UIHandlers): UI {
       buttons.push(`<button class="btn primary" data-tu-prod="${ev.cityId}">Choose Production</button>`);
     }
     if (ev.type === "researchComplete") {
-      buttons.push(`<button class="btn primary" data-tu-research>Choose Research</button>`);
+      // Only prompt once the queue has run dry. While a research target is still
+      // queued the game auto-advances to the next tech, so don't nag on every
+      // intermediate discovery along the way.
+      const me = lastView?.state.players.find((p) => p.id === lastView?.viewerId);
+      if (!me || me.researching == null) {
+        buttons.push(`<button class="btn primary" data-tu-research>Choose Research</button>`);
+      }
     }
     if (ev.type === "civicComplete") {
       buttons.push(`<button class="btn primary" data-tu-civics>Choose Civic</button>`);
@@ -1438,8 +1495,6 @@ export function createUI(handlers: UIHandlers): UI {
           <span class="tb-pl">🕊️</span><b>${player.met.length}</b>${diploActionable ? `<span class="tu-badge"></span>` : ""}</button>
         <button class="tb-pill ${turnUpdateHasNew ? "has-badge" : ""}" id="turn-update-btn" title="Turn Updates">
           <span class="tb-pl">📜</span><b>Updates</b>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>
-        <button class="tb-pill" id="victory-btn" title="Victory Progress">
-          <span class="tb-pl">🏆</span><b>Victory</b></button>
         <button class="tb-pill" id="menu-btn" title="Menu">
           <span class="tb-pl">☰</span><b>Menu</b></button>
       </div>`;
@@ -1506,22 +1561,6 @@ export function createUI(handlers: UIHandlers): UI {
         renderVictory(state);
       });
     }
-    topbar.querySelector<HTMLButtonElement>("#victory-btn")!.addEventListener("click", () => {
-      const opening = !victoryOpen;
-      victoryOpen = !victoryOpen;
-      researchOpen = false;
-      civicsOpen = false;
-      religionOpen = false;
-      if (opening) {
-        closeSideSheets();
-        menuOpen = false;
-        renderMenu(state);
-      }
-      renderVictory(state);
-      renderResearch(state);
-      renderCivics(state);
-      renderReligion(state);
-    });
     topbar.querySelector<HTMLButtonElement>("#great-people-btn")!.addEventListener("click", () => {
       const opening = !greatPeopleOpen;
       greatPeopleOpen = !greatPeopleOpen;
@@ -1652,6 +1691,25 @@ export function createUI(handlers: UIHandlers): UI {
     });
   };
 
+  // Victory progress lives in the Game Menu (both mobile and desktop). Opening it
+  // closes the menu and any other exclusive side sheet, mirroring the topbar pills.
+  const openVictory = (state: GameState): void => {
+    const opening = !victoryOpen;
+    victoryOpen = !victoryOpen;
+    researchOpen = false;
+    civicsOpen = false;
+    religionOpen = false;
+    if (opening) {
+      closeSideSheets();
+      menuOpen = false;
+      renderMenu(state);
+    }
+    renderVictory(state);
+    renderResearch(state);
+    renderCivics(state);
+    renderReligion(state);
+  };
+
   const renderMenu = (state: GameState): void => {
     saveModal.classList.toggle("hidden", !menuOpen);
     if (!menuOpen) return;
@@ -1694,6 +1752,7 @@ export function createUI(handlers: UIHandlers): UI {
         `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
         `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
         `<button class="btn primary" id="menu-save">Save Game</button>` +
+        `<button class="btn" id="menu-victory">🏆 Victory Progress</button>` +
         `<button class="btn" id="menu-settings">Settings</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki</button>` +
         `<button class="btn" id="menu-leaderboard">Leaderboard</button>` +
@@ -1720,6 +1779,9 @@ export function createUI(handlers: UIHandlers): UI {
       saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
         menuOpen = false;
         renderMenu(state);
+      });
+      saveModal.querySelector<HTMLButtonElement>("#menu-victory")!.addEventListener("click", () => {
+        openVictory(state);
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
         settingsOpen = true;
@@ -1809,7 +1871,7 @@ export function createUI(handlers: UIHandlers): UI {
         `<div class="row" style="justify-content:space-between"><b>🐞 Report a Bug</b>` +
         `<button class="btn" id="bug-close">Cancel</button></div>` +
         `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
-        `(turn ${state.turn}, full state &amp; recent errors) is attached automatically to help us reproduce it.</div>` +
+        `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
         `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
         `style="width:100%;min-height:120px;resize:vertical;margin-bottom:8px"></textarea>` +
         `<button class="btn primary" id="bug-confirm" style="width:100%" ${isReporting ? "disabled" : ""}>` +
@@ -2388,7 +2450,11 @@ export function createUI(handlers: UIHandlers): UI {
       const can = canStartTraining(state, city, type);
       const t = trainingTimeInCity(state, city, type);
       const name = uniqueUnitForCiv(player.civId, type)?.name ?? UNIT_DEFS[type].name;
-      const title = can.ok ? `Train ${name} — ${t} turns, costs 1 citizen` : can.error ?? "";
+      // Religion unique units carry a signature kit — surface it in the tooltip.
+      const kit = religionUnitKit(type);
+      const title =
+        (can.ok ? `Train ${name} — ${t} turns, costs 1 citizen` : can.error ?? "") +
+        (kit ? `\n${kit.abilityName}: ${kit.desc}` : "");
       return (
         `<button class="btn" data-train="${type}" title="${escapeHtml(title)}"${can.ok ? "" : " disabled"}>` +
         `${UNIT_DEFS[type].glyph} ${escapeHtml(name)} <span class="sub">${t}t</span></button>`
@@ -2407,19 +2473,29 @@ export function createUI(handlers: UIHandlers): UI {
         continue;
       }
       const slots = trainSlots(state, city, fam);
-      const inUse = city.trainingQueue.filter((o) => trainingClassFor(o.unit) === fam).length;
-      const units = trainable.filter((u) => trainingClassFor(u) === fam);
+      const inUse = city.trainingQueue.filter((o) => trainingClassFor(o.unit) === fam && !UNIT_DEFS[o.unit].religionUnit).length;
+      // Religion units train from the Temple (own section below), never the family.
+      const units = trainable.filter((u) => trainingClassFor(u) === fam && !UNIT_DEFS[u].religionUnit);
       sections.push(
         `<div class="csub" style="margin-top:10px">${trainingIconImg(fam, def.glyph, 20)} ${def.name} (Tier ${tier}) <span class="sub">— ${inUse}/${slots} slots in use</span></div>` +
         `<div class="row" style="flex-wrap:wrap;gap:4px">${units.map(unitButton).join("") || `<span class="sub">No units available yet.</span>`}</div>`,
       );
     }
 
-    const civ = trainable.filter((u) => trainingClassFor(u) === null);
+    const civ = trainable.filter((u) => trainingClassFor(u) === null && !UNIT_DEFS[u].religionUnit);
     if (civ.length) {
       sections.push(
         `<div class="csub" style="margin-top:10px">🏙️ City Center <span class="sub">— civilians & scouts</span></div>` +
         `<div class="row" style="flex-wrap:wrap;gap:4px">${civ.map(unitButton).join("")}</div>`,
+      );
+    }
+
+    // A faith's unique unit musters from the Temple of any follower city (one at a time).
+    const holyUnits = trainable.filter((u) => UNIT_DEFS[u].religionUnit);
+    if (holyUnits.length) {
+      sections.push(
+        `<div class="csub" style="margin-top:10px">⛪ Temple <span class="sub">— holy orders (one trains at a time)</span></div>` +
+        `<div class="row" style="flex-wrap:wrap;gap:4px">${holyUnits.map(unitButton).join("")}</div>`,
       );
     }
 
@@ -2464,19 +2540,53 @@ export function createUI(handlers: UIHandlers): UI {
     );
   };
 
+  const REL_STYLE = `<style>
+    #religion .rel-emblem{vertical-align:middle;margin-right:6px;object-fit:contain}
+    #religion .rel-row{display:flex;align-items:center;gap:2px}
+    #religion .rel-pick-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px;margin-top:6px}
+    #religion .rel-pick-card{border:1px solid var(--edge,#3a352a);border-radius:10px;overflow:hidden;cursor:pointer;background:rgba(255,255,255,.03);transition:border-color .12s,transform .06s}
+    #religion .rel-pick-card:hover{border-color:#ffd967}
+    #religion .rel-pick-card:active{transform:translateY(1px)}
+    #religion .rel-pick-art{width:100%;height:96px;background:#15120c;overflow:hidden}
+    #religion .rel-pick-art img{width:100%;height:100%;object-fit:cover;object-position:50% 28%;display:block}
+    #religion .rel-pick-body{padding:8px 9px}
+    #religion .rel-pick-name{display:flex;align-items:center;gap:6px;color:#e8dcc5}
+    #religion .rel-pick-emblem{width:18px;height:18px;object-fit:contain}
+    #religion .rel-pick-actions{margin-top:6px}
+    #religion .rel-chosen{display:flex;align-items:center;gap:10px;margin-top:8px;padding:8px 10px;border:1px solid #ffd967;border-radius:10px;background:#27331d}
+    #religion .rel-chosen-emblem{width:40px;height:40px;object-fit:contain;flex:0 0 auto}
+    #religion .rel-chosen .rel-change{margin-left:auto;flex:0 0 auto}
+    #religion .rel-mine-art{width:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;margin:6px 0;border:1px solid var(--edge,#3a352a);background:#15120c}
+    #religion .rel-mine-art img{width:100%;height:100%;object-fit:cover;object-position:50% 25%;display:block}
+    #religion .rel-mine-head{display:flex;align-items:center;gap:8px;margin-top:4px}
+    #religion .rel-tier-badge{flex:0 0 auto;padding:1px 6px;border:1px solid #c9a24a;border-radius:8px;background:rgba(201,162,74,.15);color:#ffd967;font-size:11px;line-height:1.4;white-space:nowrap}
+    #religion .rel-kit-line{margin-top:3px}
+  </style>`;
+
   const renderReligion = (state: GameState): void => {
     religionPanel.classList.toggle("hidden", !religionOpen);
     if (!religionOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const totalCities = state.cities.size;
-    let html = `<div class="row" style="justify-content:space-between"><b>Religion</b><button class="btn" id="relclose">✕</button></div>`;
+    let html = REL_STYLE + `<div class="row" style="justify-content:space-between"><b>Religion</b><button class="btn" id="relclose">✕</button></div>`;
     const myRel = religionById(state, player.foundedReligionId);
+    /** Small emblem <img> for a founded religion (matched by name), or "" if none. */
+    const relEmblem = (name: string, size = 18): string => {
+      const def = getReligionByName(name);
+      return def ? `<img class="rel-emblem" style="width:${size}px;height:${size}px" src="${assetUrl(`religion-icons/${def.id}.png`)}" alt="" onerror="this.style.display='none'">` : "";
+    };
+    /** The "World religions" follower tally, shared by every branch below. */
+    const worldReligionsHtml = (): string =>
+      !state.religions.length
+        ? ""
+        : `<div class="csub">World religions</div>` +
+          state.religions
+            .map((r) => `<div class="sub rel-row">${relEmblem(r.name)}<span>${r.name} — Tier ${r.tier} · ${cityFollowerCount(state, r.id)} cities</span></div>`)
+            .join("");
 
     if (!myRel && !religionUnlocked(state, player.id)) {
       html += `<div class="locked-note">🔒 Religion unlocks after researching <b>${TECH_DEFS[RELIGION_REQUIRED_TECH].name}</b>. Then build Shrines/Temples to earn faith.</div>`;
-      if (state.religions.length) {
-        html += `<div class="csub">World religions</div>` + state.religions.map((r) => `<div class="sub">${r.name} — ${cityFollowerCount(state, r.id)} cities</div>`).join("");
-      }
+      html += worldReligionsHtml();
       religionPanel.innerHTML = html;
       religionPanel.querySelector<HTMLButtonElement>("#relclose")!.addEventListener("click", () => {
         religionOpen = false;
@@ -2487,24 +2597,144 @@ export function createUI(handlers: UIHandlers): UI {
 
     if (myRel) {
       const holy = state.cities.get(myRel.holyCityId);
-      html += `<div style="margin-top:4px"><b style="font-size:15px">☮️ ${myRel.name}</b></div>`;
-      html += `<div class="sub">Holy city: ${holy?.name ?? "—"} · Following <b style="color:#fff">${cityFollowerCount(state, myRel.id)}/${totalCities}</b> cities</div>`;
+      const def = getReligionByName(myRel.name);
+      const kit = getReligionKit(def?.id);
+      const followers = majorityFollowerCount(state, myRel.id);
+      if (def) html += `<div class="rel-mine-art"><img src="${assetUrl(`religions/${def.id}.png`)}" alt="${myRel.name}" onerror="this.style.display='none'"></div>`;
+      html += `<div class="rel-mine-head">${relEmblem(myRel.name, 24)}<b style="font-size:15px">${myRel.name}</b><span class="rel-tier-badge">Tier ${myRel.tier}/${MAX_RELIGION_TIER}</span>${def ? wikiBtn(`religion:${def.id}`, "📖") : ""}</div>`;
+      html += `<div class="sub">Holy city: <b style="color:#fff">${escapeHtml(holy?.name ?? "—")}</b> · Following <b style="color:#fff">${cityFollowerCount(state, myRel.id)}/${totalCities}</b> cities · <b style="color:#fff">${followers}</b> majority</div>`;
+
+      if (kit) {
+        html += `<div class="csub">Empire benefit</div>`;
+        html += `<div class="sub">✨ <b style="color:#fff">${kit.preset.name}</b> — ${kit.preset.desc}</div>`;
+        html += `<div class="csub">Holy capital${holy ? ` — ${escapeHtml(holy.name)}` : ""}</div>`;
+        html += `<div class="sub">👑 <b style="color:#fff">${kit.capital.name}</b> — ${kit.capital.desc}</div>`;
+      }
+      // Move the holy capital to another majority-follower city the player owns.
+      const moveTargets = [...state.cities.values()].filter(
+        (c) => c.ownerId === player.id && c.id !== myRel.holyCityId && majorityReligion(c) === myRel.id,
+      );
+      if (moveTargets.length) {
+        const canMove = player.faith >= MOVE_HOLY_CITY_COST;
+        html += `<div class="sub" style="margin-top:4px">Move the holy capital — ${MOVE_HOLY_CITY_COST}☮️:</div>`;
+        html += `<div class="row" style="flex-wrap:wrap;gap:4px;margin-top:2px">${moveTargets
+          .map((c) => {
+            const title = canMove ? `Move the holy capital to ${c.name} for ${MOVE_HOLY_CITY_COST} faith` : `needs ${MOVE_HOLY_CITY_COST} faith`;
+            return `<button class="btn" data-move-holy="${c.id}" title="${escapeHtml(title)}"${canMove ? "" : " disabled"}>⛪ ${escapeHtml(c.name)}</button>`;
+          })
+          .join("")}</div>`;
+      }
+
+      // Tier upgrade — flat faith cost + a minimum of majority-follower cities.
+      const req = nextTierRequirement(state, myRel.id);
+      if (req) {
+        const can = canUpgradeReligion(state, player.id);
+        html += `<div class="csub">Next tier</div>`;
+        html += `<div class="sub">Tier ${req.tier}: ${req.faithCost}☮️ · ${req.minFollowerCities} follower cities (have ${followers}). Each tier grants one belief pick.</div>`;
+        html += `<button class="btn${can.ok ? " primary" : ""}" id="rel-upgrade"${can.ok ? "" : " disabled"} title="${escapeHtml(can.ok ? `Upgrade ${myRel.name} to tier ${req.tier}` : can.error ?? "")}" style="width:100%;margin-top:4px">` +
+          `⬆ Upgrade to Tier ${req.tier} — ${req.faithCost}☮️${can.ok ? "" : ` <span class="sub">(${escapeHtml(can.error ?? "")})</span>`}</button>`;
+      } else {
+        html += `<div class="csub">Next tier</div><div class="sub">🏆 ${myRel.name} has reached the highest tier.</div>`;
+      }
+
       html += `<div class="csub">Beliefs</div>`;
       html += myRel.beliefs.length
-        ? myRel.beliefs.map((b) => `<div class="sub">• <b style="color:#fff">${getBelief(b)?.name}</b> — ${getBelief(b)?.desc}</div>`).join("")
+        ? myRel.beliefs.map((b) => {
+            const bd = getBelief(b);
+            return `<div class="sub">• <b style="color:#fff">${bd?.name}</b>${bd ? ` <span class="rel-tier-badge">T${bd.tier}</span>` : ""} — ${bd?.desc}</div>`;
+          }).join("")
         : `<div class="sub">No beliefs chosen.</div>`;
+
+      // Unspent perk picks — one is earned at founding and one per tier gained.
+      // The pool is shared and exclusive: a belief claimed by ANY faith is gone.
+      const pending = pendingPerkPicks(state, myRel.id);
+      if (pending > 0) {
+        const perks = [...availablePerks(state, myRel.id)].sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
+        html += `<div class="csub">Choose a belief — ${pending} pick${pending === 1 ? "" : "s"} left</div>`;
+        html += `<div class="sub" style="margin-bottom:4px">Beliefs are exclusive across all religions; you may pick any tier up to ${myRel.tier}.</div>`;
+        html += perks.length
+          ? perks.map((b) => `<div class="tech" data-perk="${b.id}"><div style="flex:1"><b>${b.name}</b> <span class="rel-tier-badge">T${b.tier}</span><div class="sub">${b.desc}</div></div></div>`).join("")
+          : `<div class="sub">Every remaining belief has been claimed by a rival faith.</div>`;
+      }
+
+      // The faith's unique unit — trained from Temples in follower cities.
+      const ukit = kit ? religionUnitKit(kit.unit.id as UnitTypeId) : undefined;
+      if (kit && ukit) {
+        const udef = UNIT_DEFS[kit.unit.id as UnitTypeId];
+        html += `<div class="csub">Unique unit</div>`;
+        html += `<div class="sub">${udef?.glyph ?? "⚔"} <b style="color:#fff">${kit.unit.name}</b> — ${kit.unit.blurb}</div>`;
+        html += `<div class="sub">📜 <b style="color:#fff">${ukit.abilityName}</b> — ${ukit.desc}</div>`;
+        if (ukit.tier4Active) {
+          const a4 = ACTIVE_ABILITY_DEFS[ukit.tier4Active];
+          html += `<div class="sub">🔓 <b style="color:#fff">${a4.name}</b> ${myRel.tier >= 4 ? "— unlocked" : "— unlocks at tier 4"}</div>`;
+        }
+        const tierNote = myRel.tier > 1
+          ? `Tier ${myRel.tier}: +${2 * (myRel.tier - 1)} strength, aura magnitudes +${25 * (myRel.tier - 1)}%.`
+          : `Gains +2 strength and +25% aura magnitudes per tier above 1.`;
+        html += `<div class="sub">Trained in any follower city with a Temple. ${tierNote}</div>`;
+      }
     } else if (canFoundReligion(state, player.id)) {
       const holy = [...state.cities.values()].find((c) => c.ownerId === player.id);
       const names = availableReligionNames(state);
+      // Keep the picked religion valid (a rival may have founded it since last render).
+      if (chosenReligionName && !names.includes(chosenReligionName)) chosenReligionName = null;
       html += `<div class="csub">Found a Religion</div>`;
       html += `<div class="sub">Holy city: <b style="color:#fff">${holy?.name}</b></div>`;
-      html += `<div style="margin-top:6px">Name <select id="rel-name" class="lobby-in" style="width:100%">${names.map((n) => `<option>${n}</option>`).join("")}</select></div>`;
-      html += `<div class="csub">Choose up to 2 beliefs (${chosenBeliefs.length}/2)</div>`;
-      html += BELIEFS.map((b) => {
-        const on = chosenBeliefs.includes(b.id);
-        return `<div class="tech" data-belief="${b.id}" style="${on ? "border-color:#ffd967;background:#27331d" : ""}"><div style="flex:1"><b>${b.name}</b><div class="sub">${b.desc}</div></div>${on ? "✓" : ""}</div>`;
-      }).join("");
-      html += `<button class="btn primary" id="found-rel" style="width:100%;margin-top:8px">Found Religion ☮️</button>`;
+
+      if (!chosenReligionName) {
+        // Step 1 — pick the faith from an artwork grid (each card links to the wiki).
+        html += `<div class="csub">Choose your faith</div>`;
+        html += `<div class="rel-pick-grid">`;
+        html += names
+          .map((n) => {
+            const def = getReligionByName(n);
+            if (!def) return "";
+            const art = assetUrl(`religions/${def.id}.png`);
+            const icon = assetUrl(`religion-icons/${def.id}.png`);
+            const kit = getReligionKit(def.id);
+            const kitLine = kit
+              ? `<div class="sub rel-kit-line">✨ ${kit.preset.name} · ${UNIT_DEFS[kit.unit.id as UnitTypeId]?.glyph ?? "⚔"} ${kit.unit.name}</div>`
+              : "";
+            return (
+              `<div class="rel-pick-card" data-relpick="${n}">` +
+              `<div class="rel-pick-art"><img src="${art}" loading="lazy" alt="${def.name}" onerror="this.style.display='none'"></div>` +
+              `<div class="rel-pick-body">` +
+              `<div class="rel-pick-name"><img class="rel-pick-emblem" src="${icon}" alt="" onerror="this.style.display='none'"><b>${def.name}</b></div>` +
+              `<div class="sub">${def.blurb}</div>` +
+              kitLine +
+              `<div class="rel-pick-actions">${wikiBtn(`religion:${def.id}`, "📖 Wiki")}</div>` +
+              `</div></div>`
+            );
+          })
+          .join("");
+        html += `</div>`;
+      } else {
+        // Step 2 — the chosen faith (with its preset kit preview), then ONE
+        // founding belief from the shared tier-1 pool (exclusive across faiths).
+        const def = getReligionByName(chosenReligionName)!;
+        const icon = assetUrl(`religion-icons/${def.id}.png`);
+        const kit = getReligionKit(def.id);
+        html += `<div class="rel-chosen"><img class="rel-chosen-emblem" src="${icon}" alt="" onerror="this.style.display='none'"><div><b style="color:#fff">${def.name}</b><div class="sub">${def.blurb}</div></div>` +
+          `<button class="btn rel-change" id="rel-change" title="Pick a different faith">Change</button></div>`;
+        if (kit) {
+          html += `<div class="csub">What ${def.name} grants</div>`;
+          html += `<div class="sub rel-kit-line">✨ <b style="color:#fff">${kit.preset.name}</b> (empire benefit) — ${kit.preset.desc}</div>`;
+          html += `<div class="sub rel-kit-line">👑 <b style="color:#fff">${kit.capital.name}</b> (holy capital) — ${kit.capital.desc}</div>`;
+          html += `<div class="sub rel-kit-line">${UNIT_DEFS[kit.unit.id as UnitTypeId]?.glyph ?? "⚔"} <b style="color:#fff">${kit.unit.name}</b> (unique unit) — ${kit.unit.blurb}</div>`;
+        }
+        const taken = takenPerkIds(state);
+        // A rival may have claimed the picked belief since last render.
+        chosenBeliefs = chosenBeliefs.filter((b) => !taken.has(b));
+        const founding = BELIEFS.filter((b) => b.tier === 1 && !taken.has(b.id));
+        html += `<div class="csub">Choose 1 founding belief (${chosenBeliefs.length}/1)</div>`;
+        html += `<div class="sub" style="margin-bottom:4px">Beliefs are exclusive across religions. More picks unlock as your faith gains tiers.</div>`;
+        html += founding.map((b) => {
+          const on = chosenBeliefs.includes(b.id);
+          return `<div class="tech" data-belief="${b.id}" style="${on ? "border-color:#ffd967;background:#27331d" : ""}"><div style="flex:1"><b>${b.name}</b><div class="sub">${b.desc}</div></div>${on ? "✓" : ""}</div>`;
+        }).join("");
+        const ready = chosenBeliefs.length === 1;
+        html += `<button class="btn primary" id="found-rel"${ready ? "" : " disabled"} title="${ready ? `Found ${def.name}` : "Pick a founding belief first"}" style="width:100%;margin-top:8px">Found ${def.name} ☮️</button>`;
+      }
     } else {
       const pct = Math.min(100, (player.faith / FAITH_TO_FOUND) * 100);
       const allFounded = state.religions.length >= state.players.filter((p) => !p.isBarbarian).length;
@@ -2513,10 +2743,7 @@ export function createUI(handlers: UIHandlers): UI {
       html += `<div class="sub" style="margin-top:6px">Build Shrines and Temples to generate faith.${allFounded ? " All religions have been founded." : ""}</div>`;
     }
 
-    if (state.religions.length) {
-      html += `<div class="csub">World religions</div>`;
-      html += state.religions.map((r) => `<div class="sub">${r.name} — ${cityFollowerCount(state, r.id)} cities</div>`).join("");
-    }
+    html += worldReligionsHtml();
 
     // Holy Orders — buy missionaries/inquisitors with faith (once you follow a faith).
     const myCity = [...state.cities.values()].find((c) => c.ownerId === player.id);
@@ -2547,18 +2774,37 @@ export function createUI(handlers: UIHandlers): UI {
     religionPanel.querySelectorAll<HTMLDivElement>("[data-belief]").forEach((el) =>
       el.addEventListener("click", () => {
         const id = el.dataset.belief!;
-        const i = chosenBeliefs.indexOf(id);
-        if (i >= 0) chosenBeliefs.splice(i, 1);
-        else if (chosenBeliefs.length < 2) chosenBeliefs.push(id);
+        // One founding belief: clicking selects it, clicking again deselects.
+        chosenBeliefs = chosenBeliefs[0] === id ? [] : [id];
         renderReligion(state);
       }),
     );
+    religionPanel.querySelector<HTMLButtonElement>("#rel-upgrade")?.addEventListener("click", () => handlers.onUpgradeReligion());
+    religionPanel.querySelectorAll<HTMLDivElement>("[data-perk]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onPickReligionPerk(el.dataset.perk!)),
+    );
+    religionPanel.querySelectorAll<HTMLButtonElement>("[data-move-holy]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onMoveHolyCity(Number(el.dataset.moveHoly))),
+    );
+    // Step 1: pick a faith card (ignore clicks that landed on the card's Wiki button).
+    religionPanel.querySelectorAll<HTMLDivElement>("[data-relpick]").forEach((el) =>
+      el.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).closest("[data-wiki-open]")) return;
+        chosenReligionName = el.dataset.relpick!;
+        renderReligion(state);
+      }),
+    );
+    religionPanel.querySelector<HTMLButtonElement>("#rel-change")?.addEventListener("click", () => {
+      chosenReligionName = null;
+      renderReligion(state);
+    });
+    wireWikiButtons(religionPanel); // 📖 buttons on the faith cards deep-link into the wiki
     religionPanel.querySelector<HTMLButtonElement>("#found-rel")?.addEventListener("click", () => {
       const holy = [...state.cities.values()].find((c) => c.ownerId === player.id);
-      if (!holy) return;
-      const name = religionPanel.querySelector<HTMLSelectElement>("#rel-name")?.value ?? "";
-      handlers.onFoundReligion(holy.id, name, [...chosenBeliefs]);
+      if (!holy || !chosenReligionName) return;
+      handlers.onFoundReligion(holy.id, chosenReligionName, [...chosenBeliefs]);
       chosenBeliefs = [];
+      chosenReligionName = null;
       religionOpen = false;
       religionPanel.classList.add("hidden");
     });
@@ -3133,8 +3379,30 @@ export function createUI(handlers: UIHandlers): UI {
     const etaText =
       eta === 0 ? "Ready" : eta === Infinity ? "Idle — assign a specialist to begin" : `~${eta} turn${eta === 1 ? "" : "s"} left`;
 
+    const isWonder = work.kind === "wonder";
+    // For a wonder the per-craft bar tracks CREW (how many of the needed craftsmen
+    // are committed); build progress is the overall % + ETA above. For a tile work it
+    // tracks labour done toward the requirement.
+    const assignedByDisc = new Map<Discipline, number>();
+    if (isWonder) {
+      for (const id of work.assignedSpecialistIds) {
+        const f = findSpecialist(state, viewerId, id);
+        const d = f && SPECIALIST_DEFS[f.specialist.type as SpecialistId]?.discipline;
+        if (d) assignedByDisc.set(d, (assignedByDisc.get(d) ?? 0) + 1);
+      }
+    }
     const bars = reqDisc
       .map((d) => {
+        if (isWonder) {
+          const need = wonderCrewNeeded(work, d);
+          const have = assignedByDisc.get(d) ?? 0;
+          const pct = need > 0 ? Math.floor((Math.min(have, need) / need) * 100) : 0;
+          const full = have >= need;
+          return (
+            `<div class="sub" style="margin-top:6px">${escapeHtml(specialistNameForDiscipline(d))} — ${have}/${need} committed${full ? " ✓" : ""}</div>` +
+            `<div class="bar"><i style="width:${pct}%;background:${full ? "#7ad08a" : "#c9a24a"}"></i></div>`
+          );
+        }
         const req = work.requirement[d] ?? 0;
         const done = Math.min(req, work.progress[d] ?? 0);
         const pct = req > 0 ? Math.floor((done / req) * 100) : 0;
@@ -3168,6 +3436,8 @@ export function createUI(handlers: UIHandlers): UI {
         if (committed.has(spec.id)) continue;
         const disc = SPECIALIST_DEFS[spec.type as SpecialistId]?.discipline;
         if (!disc || !reqDisc.includes(disc)) continue;
+        // A wonder's crew is capped per craft — don't offer more once it's full.
+        if (wonderCraftFull(state, work, disc)) continue;
         const def = SPECIALIST_DEFS[spec.type as SpecialistId];
         avail.push(
           `<button class="btn" data-assign-on="${spec.id}">+ ${escapeHtml(spec.name ?? def?.name ?? spec.type)} · ${escapeHtml(def?.name ?? "")} Lv${spec.level} (+${specialistLabour(spec).toFixed(1)}/t) · ${escapeHtml(c.name)}</button>`,
@@ -3183,6 +3453,9 @@ export function createUI(handlers: UIHandlers): UI {
       `<div class="csub">🛠️ ${escapeHtml(buildLabel)} — ${overall}%</div>` +
       `<div class="sub">⏱️ ${etaText}</div>` +
       bars +
+      (isWonder
+        ? `<div class="sub" style="margin-top:6px;color:#9fc3e0">Commit the full crew shown above to raise this wonder. It's a long build even fully crewed — but veteran craftsmen finish it faster.</div>`
+        : "") +
       (crewRows
         ? `<div class="csub">Crew (${work.assignedSpecialistIds.length})</div>${crewRows}`
         : `<div class="sub" style="margin-top:6px">No crew assigned yet — pick specialists below.</div>`) +
@@ -3232,14 +3505,18 @@ export function createUI(handlers: UIHandlers): UI {
         `</ul>`;
     }
 
-    // Develop (start a public work) — only for tiles in the viewer's territory.
+    // Develop (start a public work). Owned tiles get everything; neutral (unclaimed)
+    // land is open to roads and tile improvements only, so infrastructure can be laid
+    // ahead of a settler — the per-kind canStartWork gate below hides the rest.
     const ownsTile = tile.ownerCityId !== undefined && state.cities.get(tile.ownerCityId)?.ownerId === viewerId;
+    const neutralTile = tile.ownerCityId === undefined;
+    const canDevelop = ownsTile || neutralTile;
     const existing = state.works.find(
       (w) => w.ownerId === viewerId && w.target && w.target.col === tile.col && w.target.row === tile.row,
     );
     if (existing) {
       html += constructionSection(state, existing, viewerId);
-    } else if (ownsTile) {
+    } else if (canDevelop) {
       let needHint = "";
       // Offer the viewer civ's unique tile improvement alongside the base works.
       const vplayer = state.players.find((p) => p.id === viewerId);
@@ -3267,7 +3544,7 @@ export function createUI(handlers: UIHandlers): UI {
         if (activates && rdef!.amenity) seg.push(`😊${rdef!.amenity}`);
         let txt = seg.join(" ") || "—";
         // Only flag a *new* activation (an upgrade leaves the resource already active).
-        if (activates && !resourceActive(tile)) txt += ` · activates ${rdef!.name}`;
+        if (activates && !resourceActive(tile, state)) txt += ` · activates ${rdef!.name}`;
         return `<span class="imp-prev">${txt}</span>`;
       };
       const workBtn = (k: string, tier: number, verb: string, locked?: string): string => {
@@ -3294,14 +3571,39 @@ export function createUI(handlers: UIHandlers): UI {
       if (btns.length) {
         html += `<div class="csub">Develop</div><div class="row" style="flex-wrap:wrap;gap:6px">${btns.join("")}</div>`;
         if (needHint) html += `<div class="sub" style="margin-top:4px;color:#e0b07d">🔒 ${needHint}.</div>`;
+        // On neutral land the improvement is built but yields nothing until a city's
+        // borders reach the tile — make that expectation explicit.
+        if (neutralTile) {
+          html += `<div class="sub" style="margin-top:4px;color:#9fb7d0">Outside your borders — ready for when a city claims this tile.</div>`;
+        }
       }
       // World wonders are tile-targeted too: offer any that can be raised on this
-      // clear, owned tile by a nearby city with the required craftsmen.
-      const wonderBtns = WONDER_DEFS.map((w) => {
-        const can = canStartWonder(state, viewerId, w.id, tile.col, tile.row);
-        if (!can.ok) return "";
-        return `<button class="btn" data-wonder="${w.id}" title="${escapeHtml(w.desc)}">🏛️ ${escapeHtml(w.name)}</button>`;
-      }).filter(Boolean);
+      // clear, owned tile. Buildable ones are active buttons (with their one-time
+      // cost); wonders gated by a missing tech, crew, or resource show as locked with
+      // the reason, so the player knows what to work toward. Wonders stay
+      // territory-locked, so they never appear on neutral land.
+      const costLabel = (w: (typeof WONDER_DEFS)[number]): string => {
+        const c = wonderStartCost(w);
+        const bits = [c.gold ? `${c.gold}🪙` : "", c.faith ? `${c.faith}☮️` : "", c.culture ? `${c.culture}🎭` : ""].filter(Boolean);
+        return bits.length ? ` · ${bits.join(" ")}` : "";
+      };
+      // Only surface a locked entry for a *gating* reason (tech/crew/resource), not a
+      // tile-site problem (which would spam every wonder with the same message).
+      const isGateReason = (err: string | undefined): boolean =>
+        !!err && /^(requires|costs|Need |No )/.test(err);
+      const wonderBtns = (ownsTile ? WONDER_DEFS : [])
+        .filter((w) => !state.completedWonders.includes(w.id))
+        .map((w) => {
+          const can = canStartWonder(state, viewerId, w.id, tile.col, tile.row);
+          if (can.ok) {
+            return `<button class="btn" data-wonder="${w.id}" title="${escapeHtml(w.desc)}">🏛️ ${escapeHtml(w.name)}${costLabel(w)}</button>`;
+          }
+          if (isGateReason(can.error)) {
+            return `<button class="btn" disabled title="${escapeHtml(w.desc)}\n\n${escapeHtml(can.error!)}">🔒 ${escapeHtml(w.name)} — ${escapeHtml(can.error!)}</button>`;
+          }
+          return "";
+        })
+        .filter(Boolean);
       if (wonderBtns.length) {
         html += `<div class="csub">Wonders</div><div class="row" style="flex-wrap:wrap;gap:6px">${wonderBtns.join("")}</div>`;
       }
@@ -3538,11 +3840,23 @@ export function createUI(handlers: UIHandlers): UI {
     const specCount = city.specialists.length;
     const worksCount = worksOfCity(state, city.id).length;
 
+    const governorRow =
+      city.ownerId === cityViewer
+        ? `<div class="csub">Governor</div><div class="gov-row">` +
+          GOVERNOR_MODES.map(
+            (g) =>
+              `<button class="gov-btn${(city.autoMode ?? null) === g.mode ? " active" : ""}" data-gov-mode="${g.mode ?? ""}" title="${g.title}" aria-pressed="${(city.autoMode ?? null) === g.mode}"><span class="gi">${g.icon}</span>${g.label}</button>`,
+          ).join("") +
+          `</div>` +
+          (city.autoMode ? `<div class="gov-note">⚙️ ${GOVERNOR_NOTE[city.autoMode]}</div>` : "")
+        : "";
+
     const detail =
       `<div class="cline">` +
       `🛡️ ${cityDefenseStrength(state, city)} · ❤️ ${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)} · ⬣ ${territorySize(state, city)}` +
       (city.religion ? ` · ☮️ ${religionById(state, city.religion)?.name ?? ""}` : "") +
       `</div>` +
+      governorRow +
       // growth
       `<div class="cline" style="color:var(--parchment)">Growth ${Math.floor(city.foodStored)}/${need} ` +
       (buildingSettler
@@ -3609,6 +3923,11 @@ export function createUI(handlers: UIHandlers): UI {
     cityPanel.querySelectorAll<HTMLButtonElement>("[data-rush-prod]").forEach((el) =>
       el.addEventListener("click", () =>
         handlers.onRushProduction(Number(el.dataset.rushProd), el.dataset.rushCur as RushCurrency),
+      ),
+    );
+    cityPanel.querySelectorAll<HTMLButtonElement>("[data-gov-mode]").forEach((el) =>
+      el.addEventListener("click", () =>
+        handlers.onSetCityAutoMode(city.id, (el.dataset.govMode || null) as CityAutoFocus | null),
       ),
     );
     cityPanel.querySelector<HTMLButtonElement>("#open-train")!.addEventListener("click", () => {
@@ -3690,6 +4009,7 @@ export function createUI(handlers: UIHandlers): UI {
     onGift: (t, g) => handlers.onGift(t, g),
     onDemandTribute: (t, g) => handlers.onDemandTribute(t, g),
     onProposeDeal: (t, give, want) => handlers.onProposeDeal(t, give, want),
+    onCancelSharedVision: (t) => handlers.onCancelSharedVision(t),
     onRespondProposal: (id, acc) => handlers.onRespondProposal(id, acc),
     onFinalizeDeal: (id, confirm) => handlers.onFinalizeDeal(id, confirm),
     onAcknowledgeContact: (o) => handlers.onAcknowledgeContact(o),

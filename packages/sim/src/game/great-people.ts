@@ -21,7 +21,6 @@ import { civicsUnlocked } from "./civs";
 import { BUILDING_DEFS, UNIT_DEFS, isMilitary, isNaval, type BuildingId, type TrainingClass } from "./content";
 import { unitMaxHp } from "./combat";
 import { GLOBAL_MORALE_MAX, globalMoraleOf, recordMoraleEvent, recordMoraleGain } from "./morale";
-import { emitGreatPersonRecruited } from "./turn-updates";
 
 export type { GreatPersonClass, GreatPersonDef };
 
@@ -140,11 +139,12 @@ export function accrueGreatPeople(state: GameState, player: Player): void {
       earnedOf(player)[cls] = earned + 1;
       state.recruitedGreatPeople.push(figure.id);
       (player.greatPeople ??= []).push(figure.id);
+      // No turn-start pop-up for your own recruitment (see suppression note); the
+      // log entry above is the record, and the Great People panel is where you act.
       log(state, `${player.name} recruited ${figure.name}, a ${figure.cls === "general" ? "Great General" : "Great Person"}.`, {
         actorId: player.id,
         targetIds: [player.id],
       });
-      emitGreatPersonRecruited(state, player.id, figure);
     }
   }
 }

@@ -10,11 +10,12 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import { applyCommand } from "./commands";
 import { computeReachable } from "./movement";
-import { computeAttackTargets } from "./combat";
+import { computeAttackTargets, unitMaxHp } from "./combat";
 import { abilityTargets, canUseAbility, unitAbilities } from "./abilities";
+import { religionUnitKit, religionInstanceForDefId, cityMajorityFaith } from "./religion-units";
 import { availableProduction, availableTechs, workableTiles } from "./economy";
 import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
-import { canFoundReligion, availableReligionNames, buyReligiousUnit, religiousUnitCost } from "./religion";
+import { canFoundReligion, availableReligionNames, buyReligiousUnit, religiousUnitCost, availablePerks, canUpgradeReligion, nextTierRequirement, takenPerkIds } from "./religion";
 import { availableLegends, canRecruitLegend } from "./legends";
 import { canUseLeaderAbility } from "./leader-abilities";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
@@ -46,6 +47,7 @@ import {
   unitAt,
   unitsOf,
   type City,
+  type CityAutoFocus,
   type GameState,
   type Player,
   type ProductionItem,
@@ -118,11 +120,20 @@ function rankPolicies(ids: string[], p: DiploPersonality, atWarNow: boolean): st
     effectScore(getPolicy(a)?.effects as Record<string, unknown>, p, atWarNow));
 }
 
-/** Choose two religion beliefs that suit the civ's temperament. */
-function pickBeliefs(p: DiploPersonality): string[] {
-  return [...BELIEFS]
+/** The founding perk pick: the best-scoring TIER-1 perk no other faith claimed. */
+function pickBeliefs(state: GameState, p: DiploPersonality): string[] {
+  const taken = takenPerkIds(state);
+  return BELIEFS
+    .filter((b) => b.tier === 1 && !taken.has(b.id))
     .sort((a, b) => effectScore(b.effects as Record<string, unknown>, p, false) - effectScore(a.effects as Record<string, unknown>, p, false))
-    .slice(0, 2)
+    .slice(0, 1)
+    .map((b) => b.id);
+}
+
+/** Available religion perks ranked to the civ's temperament, best first. */
+function rankPerks(perks: { id: string; effects: unknown }[], p: DiploPersonality): string[] {
+  return [...perks]
+    .sort((a, b) => effectScore(b.effects as Record<string, unknown>, p, false) - effectScore(a.effects as Record<string, unknown>, p, false))
     .map((b) => b.id);
 }
 
@@ -708,12 +719,16 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
   // cities support deeper benches so their public works actually keep pace.
   const wants: SpecialistId[] = [];
   const wantCarpenter = Math.min(3, Math.floor(city.population / 3));
-  const wantMason = Math.min(2, Math.floor(city.population / 4));
+  // Masons earn their keep on mines/quarries, so a deep bench is never wasted — and a
+  // large empire needs it to ever pool a wonder's heavy masonry crew. Architects and
+  // engineers scale up with size too so a big civ can gather a full wonder workforce.
+  const wantMason = Math.min(4, Math.floor(city.population / 3));
   if (unlocked.includes("carpenter") && countOf("carpenter") < wantCarpenter) wants.push("carpenter");
   if (unlocked.includes("mason") && countOf("mason") < wantMason) wants.push("mason");
   if (city.population >= 6 && unlocked.includes("engineer") && countOf("engineer") < 1) wants.push("engineer");
   if (city.population >= 7 && unlocked.includes("architect") && countOf("architect") < 1) wants.push("architect");
   if (city.population >= 9 && unlocked.includes("engineer") && countOf("engineer") < 2) wants.push("engineer");
+  if (city.population >= 11 && unlocked.includes("architect") && countOf("architect") < 2) wants.push("architect");
   for (const id of wants) {
     if (workerSlots(city) > 1) applyCommand(state, { type: "convertCitizen", cityId: city.id, specialistId: id, delta: 1 }, pid);
   }
@@ -751,7 +766,7 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
   for (const { col, row, tile } of tiles) {
     let kind: string | null = null;
     // Prioritize improving a resource with the correct improvement.
-    if (tile.resource && !resourceActive(tile)) {
+    if (tile.resource && !resourceActive(tile, state)) {
       const rdef = RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS];
       if (rdef) {
         const needed = rdef.improvement;
@@ -768,6 +783,113 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
     else if (!kind && haveDiscipline("survey") && nextTierAt(tile, "road")) kind = "road";
     if (kind && applyCommand(state, { type: "startWork", kind, col, row }, pid).ok) return;
   }
+}
+
+// ---- governor mode (player-facing "auto mode" for a single city) ---------
+
+/** Building/training-building order per governor focus, tried before the
+ *  generic development order below. */
+const AUTO_FOCUS_BUILDING_ORDER: Record<CityAutoFocus, string[]> = {
+  growth: ["granary", "aqueduct"],
+  military: ["walls", "forge"],
+  science: ["library", "academy"],
+  money: ["market", "harbor", "bank"],
+};
+
+const MILITARY_TRAINING_FAMILIES: TrainingClass[] = ["archery_range", "stable", "siege_workshop", "shipyard"];
+
+/** Production choice for a governed city: front-load whatever serves its
+ *  focus (a training-building ladder for military, else its focus buildings),
+ *  then fall back to the same generic economy/infrastructure order the full
+ *  AI uses, so a governed city never idles once its focus is satisfied. */
+function chooseAutoProduction(state: GameState, player: Player, city: City, focus: CityAutoFocus): ProductionItem | null {
+  const opts = availableProduction(state, player, city);
+  const findBuilding = (id: string): ProductionItem | null =>
+    opts.find((o) => o.item.kind === "building" && o.item.id === id)?.item ?? null;
+  const findTraining = (fam: TrainingClass): ProductionItem | null =>
+    opts.find((o) => o.item.kind === "trainingBuilding" && o.item.family === fam)?.item ?? null;
+
+  if (focus === "military") {
+    if (!city.training.barracks) { const b = findTraining("barracks"); if (b) return b; }
+    for (const fam of MILITARY_TRAINING_FAMILIES) {
+      if (!city.training[fam]) { const b = findTraining(fam); if (b) return b; }
+    }
+  }
+
+  const order = [
+    ...AUTO_FOCUS_BUILDING_ORDER[focus],
+    "granary", "workshop", "market", "library", "forge", "bank", "aqueduct", "harbor",
+    "monument", "amphitheater", "academy", "museum", "temple", "shrine", "lighthouse", "walls",
+  ];
+  const seen = new Set<string>();
+  for (const id of order) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const b = findBuilding(id);
+    if (b) return b;
+  }
+
+  // Nothing fresh to build: for a military city, upgrade an existing training
+  // building tier instead of idling.
+  if (focus === "military") {
+    for (const fam of ["barracks", ...MILITARY_TRAINING_FAMILIES] as TrainingClass[]) {
+      const up = findTraining(fam);
+      if (up) return up;
+    }
+  }
+
+  if (player.gold < 0) {
+    const coin = opts.find((o) => o.item.kind === "project" && o.item.id === "coinage")?.item;
+    if (coin) return coin;
+  }
+  return opts.find((o) => o.item.kind === "building")?.item
+    ?? opts.find((o) => o.item.kind === "project")?.item
+    ?? null;
+}
+
+/** Keep a military-focus governed city training soldiers up to a standing
+ *  garrison target, without draining it below a safe population floor or
+ *  stacking up orders faster than they can be trained. */
+function autoTrainMilitary(state: GameState, city: City, player: Player): void {
+  if (city.population <= 2 || city.trainingQueue.length > 0) return;
+  const trainable = availableTraining(state, player, city);
+  const type = bestTrainableMilitary(trainable);
+  if (!type) return;
+  const cityCount = citiesOf(state, player.id).length;
+  const milCount = unitsOf(state, player.id).filter((u) => isMilitary(u.type)).length;
+  if (milCount >= cityCount * 2 + 2) return;
+  applyCommand(state, { type: "startTraining", cityId: city.id, unit: type }, player.id);
+}
+
+/**
+ * Player-facing "governor" mode: auto-manage one city toward a chosen focus
+ * (growth/military/science/money) every turn. Worked-tile assignment is
+ * already skewed toward the focus by `processCity`→`autoAssignCitizens`
+ * (keyed off `city.autoMode`); this adds production/training on top, then
+ * falls back to the same generic tile-improvement/specialist logic the full
+ * AI uses (`aiManageCity`) so a governed city keeps developing even once its
+ * focus-specific queue is empty. Military units are only ever trained here
+ * when the focus is explicitly "military".
+ */
+export function autoManageCity(state: GameState, city: City, player: Player): void {
+  const focus = city.autoMode;
+  if (!focus) return;
+  if (!city.production) {
+    const item = chooseAutoProduction(state, player, city, focus);
+    if (item) applyCommand(state, { type: "setProduction", cityId: city.id, item }, player.id);
+  }
+  if (focus === "military") autoTrainMilitary(state, city, player);
+  aiManageCity(state, city, player, player.id); // generic: specialists, tile works, roads
+}
+
+/** Run governor mode for every auto-managed city this player owns, then let
+ *  their idle specialists (from those cities only) staff the empire's Works —
+ *  mirroring what the AI does for itself, but scoped to opted-in cities. */
+export function autoManageCities(state: GameState, player: Player): void {
+  const autoCities = citiesOf(state, player.id).filter((c) => c.autoMode);
+  if (autoCities.length === 0) return;
+  for (const city of autoCities) autoManageCity(state, city, player);
+  aiAssignSpecialists(state, player.id, autoCities);
 }
 
 /**
@@ -833,19 +955,28 @@ function aiWonders(state: GameState, pid: number, p: DiploPersonality, focus: Vi
  * Staff the empire's works. With manual assignment, nothing labours unless it is
  * explicitly assigned, so the AI pins every idle craftsman to the oldest work that
  * still needs its discipline (mirroring the old auto-assignment as explicit orders).
+ * `cities` scopes which cities' specialists are considered (default: all of them);
+ * `autoManageCities` passes only the player's governor-mode cities.
  */
-function aiAssignSpecialists(state: GameState, pid: number): void {
+function aiAssignSpecialists(state: GameState, pid: number, cities: City[] = citiesOf(state, pid)): void {
   const works = worksOf(state, pid);
   if (works.length === 0) return;
   const assigned = assignedSpecialistIds(state, pid);
-  for (const city of citiesOf(state, pid)) {
+  for (const city of cities) {
     for (const s of city.specialists) {
       if (assigned.has(s.id)) continue;
       const disc = SPECIALIST_DEFS[s.type as SpecialistId]?.discipline;
       if (!disc) continue;
-      const w = works.find((x) => (x.requirement[disc] ?? 0) > (x.progress[disc] ?? 0));
-      if (!w) continue;
-      if (assignSpecialist(state, pid, w.id, s.id, true).ok) assigned.add(s.id);
+      // Try each work needing this craft in turn — a wonder may refuse us (its
+      // per-craft crew is capped), so fall through to the next candidate work
+      // rather than leaving the craftsman idle.
+      for (const w of works) {
+        if ((w.requirement[disc] ?? 0) <= (w.progress[disc] ?? 0)) continue;
+        if (assignSpecialist(state, pid, w.id, s.id, true).ok) {
+          assigned.add(s.id);
+          break;
+        }
+      }
     }
   }
 }
@@ -958,6 +1089,159 @@ function aiReligiousUnit(state: GameState, unit: Unit, pid: number, focus: Victo
   if (state.units.has(unit.id) && axialDistance(ax(unit), ax(best)) <= 1) {
     applyCommand(state, { type: "evangelize", unitId: unit.id, cityId: best.id }, pid);
   }
+}
+
+// ---- religion UNIQUE units (production-trained; see religion-units.ts) -----
+
+/** Train the faith's unique holy unit in an eligible temple city. Support and
+ *  converter clergy scale with the empire and with a religious focus; war-priests
+ *  are mustered only by aggressive/at-war civs. Kept modest so cities don't starve. */
+function aiTrainReligionUnit(state: GameState, player: Player, city: City, p: DiploPersonality, focus: VictoryKind): void {
+  const relId = player.foundedReligionId;
+  if (!relId) return;
+  if (city.population < 4) return; // never drain a small city for a holy unit
+  if (hostileNearCity(state, player.id, city, 2)) return; // a menaced city musters soldiers instead
+  // Only OUR faith's unit, and only when the city can truly train it right now —
+  // availableTraining gates on reqTech AND temple AND majority faith (unlike the
+  // looser trainableReligionUnits, which skips the tech check).
+  const type = availableTraining(state, player, city).find(
+    (t) => UNIT_DEFS[t].religionUnit && religionInstanceForDefId(state, UNIT_DEFS[t].religionUnit)?.id === relId,
+  );
+  if (!type) return;
+  const kit = religionUnitKit(type);
+  if (!kit) return;
+  const def = UNIT_DEFS[type];
+  const inField = unitsOf(state, player.id).filter((u) => u.type === type).length;
+  const zealot = focus === "religious";
+  const aggressive = p.aggression > 0.6 || player.atWar.length > 0;
+  const cityCount = citiesOf(state, player.id).length;
+  const milCount = unitsOf(state, player.id).filter((u) => isMilitary(u.type)).length;
+
+  let cap: number;
+  if (isMilitary(type) && !kit.passives.cannotAttack) {
+    cap = aggressive ? Math.min(3, Math.ceil(cityCount / 2)) : 0; // war-priest
+  } else if ((kit.passives.pressureAura ?? 0) >= 3) {
+    cap = zealot ? 4 : 2; // converter (Evangelist / Elect / Sadhu): spread the faith
+  } else if (kit.passives.cannotAttack) {
+    cap = zealot ? 2 : 1; // pacifist debuff-aura (Ahimsa Ascetic)
+  } else {
+    cap = milCount >= 3 ? 1 + (zealot ? 1 : 0) : 0; // support priest — only worth it with an army
+  }
+  void def;
+  if (inField >= cap) return;
+  applyCommand(state, { type: "startTraining", cityId: city.id, unit: type }, player.id);
+}
+
+/** Drive a religion unique unit: war-priests fight; converters spread the faith by
+ *  proximity; support clergy shadow the army; and all of them fire their signature
+ *  actives (heals, rallies, holy fire, prophetic curses) when it lands well. */
+function aiReligionUnit(state: GameState, unit: Unit, pid: number, focus: VictoryKind): void {
+  const kit = religionUnitKit(unit.type);
+  if (!kit) { aiMilitary(state, unit, pid); return; }
+
+  // Offensive holy actives (holy fire / prophecies / the whirling chakram) come first —
+  // they hit multiple foes and are worth ending the turn for.
+  if (aiReligionAbility(state, unit, pid)) return;
+
+  // War-priests otherwise behave like any soldier (and know their charge, e.g. Deus Vult).
+  if (isMilitary(unit.type) && !kit.passives.cannotAttack) {
+    aiMilitary(state, unit, pid);
+    return;
+  }
+  if (!state.units.has(unit.id) || unit.movementLeft <= 0 || unit.attackedThisTurn) return;
+
+  // Converters radiate faith into cities within two tiles — park them among the unconverted.
+  if ((kit.passives.pressureAura ?? 0) >= 3) {
+    aiConverterMove(state, unit, pid, focus);
+    return;
+  }
+  // Support and pacifist clergy shadow the nearest friendly fighters so their auras land.
+  aiAccompanyArmy(state, unit, pid);
+}
+
+/** Fire a religion unit's best available active ability, returning true if it did.
+ *  Heals/rallies help our side; holy fire and prophecies hurt clustered enemies. */
+function aiReligionAbility(state: GameState, unit: Unit, pid: number): boolean {
+  const abilities = unitAbilities(state, unit);
+  const use = (a: string, col: number, row: number): boolean => {
+    if (!canUseAbility(state, unit, a as never).ok) return false;
+    return applyCommand(state, { type: "useAbility", unitId: unit.id, ability: a as never, col, row }, pid).ok;
+  };
+  const enemiesWithin = (r: number) =>
+    [...state.units.values()].filter((e) => isHostile(state, pid, e.ownerId) && axialDistance(ax(unit), ax(e)) <= r);
+
+  // Holy fire / whirling strike: hit every adjacent enemy. Worth it with 2+ in reach.
+  for (const a of ["chakkar", "purifying_flame", "storm_call"]) {
+    if (abilities.includes(a as never) && enemiesWithin(1).length >= 2 && use(a, 0, 0)) return true;
+  }
+  // Prophetic dooms: curse a knot of enemies within two tiles before battle is joined.
+  for (const a of ["doom_prophecy", "omen_of_ishtar", "eclipse_prophecy"]) {
+    if (abilities.includes(a as never) && enemiesWithin(2).length >= 2 && use(a, 0, 0)) return true;
+  }
+  // Area heal / rally: when clustered with allies and a fight is near, lift the whole group.
+  for (const a of ["kagura", "metta", "takbir"]) {
+    if (!abilities.includes(a as never)) continue;
+    const alliesNear = unitsOf(state, pid).filter((u) => u.id !== unit.id && axialDistance(ax(unit), ax(u)) <= 2).length;
+    if (alliesNear >= 2 && enemiesWithin(3).length >= 1 && use(a, 0, 0)) return true;
+  }
+  // Blessing: heal a wounded adjacent ally (Benediction / Darshan / Orisha's Favor).
+  for (const a of ["benediction", "darshan", "orisha_favor"]) {
+    if (!abilities.includes(a as never)) continue;
+    for (const key of abilityTargets(state, unit, a as never)) {
+      const [col, row] = key.split(",").map(Number) as [number, number];
+      const ally = unitAt(state, col, row);
+      if (ally && ally.hp < unitMaxHp(ally) * 0.7 && use(a, col, row)) return true;
+    }
+  }
+  return false;
+}
+
+/** Move a converter toward the nearest city not yet following our faith — its
+ *  pressure aura converts from two tiles away, so it need only loiter nearby. */
+function aiConverterMove(state: GameState, unit: Unit, pid: number, focus: VictoryKind): void {
+  const relId = playerById(state, pid)?.foundedReligionId;
+  if (!relId || unit.inTransit) return;
+  let best: City | null = null;
+  let bestD = Infinity;
+  for (const c of citiesOf(state, pid)) {
+    if (cityMajorityFaith(c) === relId) continue;
+    const d = axialDistance(ax(unit), ax(c));
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  // Religious-victory civ with a converted home empire carries the faith abroad,
+  // to peaceful rivals whose open borders let the converter cross.
+  if (!best && focus === "religious") {
+    for (const c of state.cities.values()) {
+      if (c.ownerId === pid || cityMajorityFaith(c) === relId) continue;
+      const owner = playerById(state, c.ownerId);
+      if (!owner || owner.isBarbarian) continue;
+      const r = relationBetween(state, pid, c.ownerId);
+      if (!r || r.status !== "peace" || !r.openBorders) continue;
+      const d = axialDistance(ax(unit), ax(c));
+      if (d < bestD) { bestD = d; best = c; }
+    }
+  }
+  if (best && bestD > 2) stepToward(state, unit, best.col, best.row, pid);
+}
+
+/** Shadow the nearest friendly fighting unit so support/pacifist auras land where the
+ *  fighting is; with no army in the field, shelter in the nearest city. */
+function aiAccompanyArmy(state: GameState, unit: Unit, pid: number): void {
+  let target: Unit | null = null;
+  let bestD = Infinity;
+  for (const u of unitsOf(state, pid)) {
+    if (u.id === unit.id || !isMilitary(u.type)) continue;
+    const d = axialDistance(ax(unit), ax(u));
+    if (d < bestD) { bestD = d; target = u; }
+  }
+  if (target) {
+    if (bestD > 1) stepToward(state, unit, target.col, target.row, pid);
+    return;
+  }
+  const home = citiesOf(state, pid)
+    .map((c) => ({ c, d: axialDistance(ax(unit), ax(c)) }))
+    .sort((a, b) => a.d - b.d)[0];
+  if (home && home.d > 0) stepToward(state, unit, home.c.col, home.c.row, pid);
 }
 
 /**
@@ -1096,7 +1380,7 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
     if (chosen) {
       // Cavalry strike with a charge (extra punch + breakthrough) when hitting a unit.
       const enemy = unitAt(state, chosen.col, chosen.row);
-      const charge = abilities.find((a) => a === "shock_charge" || a === "charge" || a === "hussar_charge" || a === "war_cart_charge" || a === "furor");
+      const charge = abilities.find((a) => a === "shock_charge" || a === "charge" || a === "hussar_charge" || a === "war_cart_charge" || a === "furor" || a === "deus_vult");
       if (enemy && charge && abilityTargets(state, unit, charge).has(`${chosen.col},${chosen.row}`)) {
         applyCommand(state, { type: "useAbility", unitId: unit.id, ability: charge, col: chosen.col, row: chosen.row }, pid);
         return;
@@ -1493,7 +1777,25 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     const city = citiesOf(state, playerId)[0];
     if (city) {
       const name = availableReligionNames(state)[0] ?? "";
-      applyCommand(state, { type: "foundReligion", cityId: city.id, name, beliefs: pickBeliefs(p) }, playerId);
+      applyCommand(state, { type: "foundReligion", cityId: city.id, name, beliefs: pickBeliefs(state, p) }, playerId);
+    }
+  }
+
+  // Tend the founded faith: spend any unspent perk picks, then rise a tier when
+  // the followers and the faith reserve allow (a religious-victory civ upgrades
+  // eagerly; others keep a cushion for missionaries and legends).
+  if (player.foundedReligionId) {
+    const relId = player.foundedReligionId;
+    for (const perk of rankPerks(availablePerks(state, relId), p)) {
+      if (!applyCommand(state, { type: "pickReligionPerk", perkId: perk }, playerId).ok) break;
+    }
+    const req = nextTierRequirement(state, relId);
+    const cushion = focus === "religious" ? 0 : 150;
+    if (req && player.faith >= req.faithCost + cushion && canUpgradeReligion(state, playerId).ok) {
+      applyCommand(state, { type: "upgradeReligion" }, playerId);
+      for (const perk of rankPerks(availablePerks(state, relId), p)) {
+        if (!applyCommand(state, { type: "pickReligionPerk", perkId: perk }, playerId).ok) break;
+      }
     }
   }
 
@@ -1522,6 +1824,7 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
       if (item) applyCommand(state, { type: "setProduction", cityId: city.id, item }, playerId);
     }
     aiTrainUnits(state, player, city, p, escortShortfall);
+    aiTrainReligionUnit(state, player, city, p, focus); // muster the faith's holy unit
     aiManageCity(state, city, player, playerId);
   }
   aiWonders(state, playerId, p, focus);
@@ -1541,6 +1844,7 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     if (def.founder) aiSettler(state, unit, playerId, settlePlans.get(unit.id));
     else if (def.trader) aiTrader(state, unit, playerId);
     else if (def.religious) aiReligiousUnit(state, unit, playerId, focus);
+    else if (religionUnitKit(unit.type)) aiReligionUnit(state, unit, playerId, focus);
     else if (def.cls === "recon") {
       if (unit.id === voyagerId && aiCircumnavigate(state, unit, playerId)) continue;
       aiScout(state, unit, playerId);

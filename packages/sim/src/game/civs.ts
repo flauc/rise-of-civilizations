@@ -29,8 +29,10 @@ import {
   type UniqueUnitDef,
   type UniqueInfraDef,
 } from "@roc/data";
-import { getLegend } from "@roc/data";
+import { getLegend, getWonder } from "@roc/data";
 import { UNIT_DEFS, CIVICS_REQUIRED_TECH, UNIQUE_ABILITY_OVERRIDES, LEGEND_ABILITY_OVERRIDES, type ActiveAbilityId } from "./content";
+import { getReligionKit } from "@roc/data";
+import { cityMajorityFaith, religionDefIdOf, religionTierForUnit, religionUnitKit } from "./religion-units";
 import { legendEmpireEffects, legendGarrisonEffects } from "./legend-effects";
 import type { GameState, Player, Unit, City } from "./state";
 import { playerById, citiesOf } from "./state";
@@ -70,7 +72,13 @@ export function effectiveAbilities(state: GameState, unit: Unit): ActiveAbilityI
     const override = UNIQUE_ABILITY_OVERRIDES[uu.id];
     if (override) return override;
   }
-  return UNIT_DEFS[unit.type].activeAbilities ?? [];
+  const base = UNIT_DEFS[unit.type].activeAbilities ?? [];
+  // A religion unique unit unlocks its second active once its faith hits tier 4.
+  const kit = religionUnitKit(unit.type);
+  if (kit?.tier4Active && religionTierForUnit(state, unit) >= 4) {
+    return [...base, kit.tier4Active];
+  }
+  return base;
 }
 
 /** Whether a unit instance has a given active ability (civ-unique aware). */
@@ -137,6 +145,15 @@ function mergeInto(acc: CivEffects, e: CivEffects | undefined): void {
   if (e.raidGoldPercent) acc.raidGoldPercent = (acc.raidGoldPercent ?? 0) + e.raidGoldPercent;
   if (e.coastalRaidGoldPercent) acc.coastalRaidGoldPercent = (acc.coastalRaidGoldPercent ?? 0) + e.coastalRaidGoldPercent;
   if (e.raidSciencePercent) acc.raidSciencePercent = (acc.raidSciencePercent ?? 0) + e.raidSciencePercent;
+  if (e.faithOnKill) acc.faithOnKill = (acc.faithOnKill ?? 0) + e.faithOnKill;
+  if (e.xpGainPercent) acc.xpGainPercent = (acc.xpGainPercent ?? 0) + e.xpGainPercent;
+  if (e.trainTimePercent) acc.trainTimePercent = (acc.trainTimePercent ?? 0) + e.trainTimePercent;
+  if (e.startMoraleBonus) acc.startMoraleBonus = (acc.startMoraleBonus ?? 0) + e.startMoraleBonus;
+  if (e.startXpBonus) acc.startXpBonus = (acc.startXpBonus ?? 0) + e.startXpBonus;
+  if (e.trainingSlotsBonus) acc.trainingSlotsBonus = (acc.trainingSlotsBonus ?? 0) + e.trainingSlotsBonus;
+  if (e.freeTrainingFamilies) {
+    acc.freeTrainingFamilies = [...new Set([...(acc.freeTrainingFamilies ?? []), ...e.freeTrainingFamilies])];
+  }
   // Founding bonuses come from the civ only (not merged additively).
   if (e.newCityFreeBuilding && !acc.newCityFreeBuilding) acc.newCityFreeBuilding = e.newCityFreeBuilding;
   if (e.newCityExtraPopulation) acc.newCityExtraPopulation = (acc.newCityExtraPopulation ?? 0) + e.newCityExtraPopulation;
@@ -161,15 +178,24 @@ export function playerEffects(state: GameState, playerId: number): CivEffects {
       if (inf?.effects) mergeInto(acc, inf.effects);
     }
   }
-  // Founder beliefs of the player's religion apply to their empire.
+  // The founder's religion applies to their empire: its historically-fitting
+  // PRESET benefit (see @roc/data RELIGION_KITS) plus every perk it has picked.
   const religion = p.foundedReligionId ? state.religions.find((r) => r.id === p.foundedReligionId) : undefined;
-  if (religion) for (const b of religion.beliefs) mergeInto(acc, getBelief(b)?.effects);
+  if (religion) {
+    mergeInto(acc, getReligionKit(religionDefIdOf(religion))?.preset.effects);
+    for (const b of religion.beliefs) mergeInto(acc, getBelief(b)?.effects);
+  }
   // Timed leader-ability modifiers.
   for (const m of p.modifiers) {
     if (m.expiresOnTurn >= state.turn) mergeInto(acc, m.effect);
   }
   // Living legends' empire-wide presence effects (Pachacuti's roads, Zheng He's fleet).
   mergeInto(acc, legendEmpireEffects(state, playerId));
+  // World wonders the player has raised grant their passive empire effects
+  // (the Colossus's trade gold, the Oracle's faith-rushing, Tenochtitlán's causeways…).
+  const ownedWonders = new Set<string>();
+  for (const c of citiesOf(state, playerId)) for (const w of c.wonders) ownedWonders.add(w);
+  for (const wid of ownedWonders) mergeInto(acc, getWonder(wid)?.effect.civEffects);
   return acc;
 }
 
@@ -181,7 +207,20 @@ export function cityEffects(state: GameState, city: City): CivEffects {
   }
   // A legend holding court in the city (Ramesses' monuments, Pachacuti's terraces).
   mergeInto(acc, legendGarrisonEffects(state, city));
+  // A religion's holy city enjoys the faith's CAPITAL bonus while it keeps the faith.
+  mergeInto(acc, holyCityBonus(state, city));
   return acc;
+}
+
+/** The capital bonus of the religion whose holy city this is, if the city still
+ *  follows that faith (a converted-away holy city grants nothing). */
+export function holyCityBonus(state: GameState, city: City): CivEffects | undefined {
+  for (const r of state.religions) {
+    if (r.holyCityId !== city.id) continue;
+    if (cityMajorityFaith(city) !== r.id) continue;
+    return getReligionKit(religionDefIdOf(r))?.capital.effects;
+  }
+  return undefined;
 }
 
 /** A named contributor to a player's effects, for attribution in the UI. */
@@ -221,9 +260,13 @@ export function effectSources(state: GameState, playerId: number): EffectSource[
     }
   }
   const religion = p.foundedReligionId ? state.religions.find((r) => r.id === p.foundedReligionId) : undefined;
-  if (religion) for (const b of religion.beliefs) {
-    const belief = getBelief(b);
-    push(belief?.name, belief?.effects);
+  if (religion) {
+    const kit = getReligionKit(religionDefIdOf(religion));
+    push(kit?.preset.name, kit?.preset.effects);
+    for (const b of religion.beliefs) {
+      const belief = getBelief(b);
+      push(belief?.name, belief?.effects);
+    }
   }
   for (const m of p.modifiers) {
     if (m.expiresOnTurn >= state.turn) push(m.source, m.effect);

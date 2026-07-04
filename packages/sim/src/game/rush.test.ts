@@ -51,7 +51,7 @@ describe("rush production", () => {
     // A founded religion with the belief unlocks faith rushing.
     const p = playerById(s, 0)!;
     p.foundedReligionId = "test_faith";
-    s.religions.push({ id: "test_faith", name: "Test", founderId: 0, holyCityId: 0, beliefs: ["labor_of_devotion"] });
+    s.religions.push({ id: "test_faith", name: "Test", founderId: 0, holyCityId: 0, beliefs: ["labor_of_devotion"], tier: 1 });
     expect(rushCurrencies(s, 0)).toContain("faith");
   });
 
@@ -208,12 +208,11 @@ describe("rush production", () => {
     const p = playerById(s, 0)!;
     p.gold = 100000;
     p.researched.add("masonry");
-    // Great Pyramid needs masonry + architecture — field a mason and an architect.
-    city.specialists.push(
-      { id: 201, type: "mason", xp: 0, level: 1 },
-      { id: 202, type: "architect", xp: 0, level: 1 },
-    );
+    // Great Pyramid needs its full crew (11 Masons + 6 Architects) before it can be started.
+    for (let i = 0; i < 11; i++) city.specialists.push({ id: 100 + i, type: "mason", xp: 0, level: 1 });
+    for (let i = 0; i < 6; i++) city.specialists.push({ id: 200 + i, type: "architect", xp: 0, level: 1 });
     const tile = grasslandTile(s, city, city.col + 1, city.row);
+    tile.terrain = "desert"; // Great Pyramid placement
     const res = startWonder(s, 0, "great_pyramid", tile.col, tile.row);
     expect(res.ok, res.error).toBe(true);
     const work = s.works.find((w) => w.id === res.workId)!;

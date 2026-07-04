@@ -1,11 +1,14 @@
 import type { Yields } from "./terrain";
+import type { TechId } from "./content";
 import { UNIQUE_IMPROVEMENTS } from "@roc/data";
 
 // Civ-unique tile improvements (see UNIQUE_INFRA in @roc/data). Like the economic
-// ladders, they now come in three tiers: the def's `yields` are the tier-1 base,
-// and each higher tier adds +1 to every yield the improvement already produces
-// (see uniqueImpYieldsAt). Keyed by the improvement id, which is also the
-// tile.improvement kind string the Works system stamps.
+// ladders, they come in three tiers: the def's `yields` are the tier-1 base, and
+// each higher tier adds +2 to every yield the improvement already produces (see
+// uniqueImpYieldsAt). Generic improvements gain only +1/tier, so this steeper curve
+// is what makes a civ's signature improvement worth its higher Works labour cost.
+// Keyed by the improvement id, which is also the tile.improvement kind string the
+// Works system stamps.
 const UNIQUE_IMP_BASE_YIELDS: Record<string, Yields> = {};
 for (const u of UNIQUE_IMPROVEMENTS) {
   UNIQUE_IMP_BASE_YIELDS[u.id] = {
@@ -18,10 +21,12 @@ for (const u of UNIQUE_IMPROVEMENTS) {
 }
 
 /** Worked yields of a civ-unique improvement at a given tier (1–3). Tier 1 is the
- *  def's base; each tier above adds +1 to every yield the base already produces, so
- *  a single-yield improvement like an Obelisk (faith 2) climbs 2 → 3 → 4. */
+ *  def's base; each tier above adds +2 to every yield the base already produces, so
+ *  a single-yield improvement like an Obelisk (faith 2) climbs 2 → 4 → 6. The steeper
+ *  +2/tier curve (generic improvements gain only +1/tier) rewards upgrading a civ's
+ *  signature improvement and covers its higher build cost. */
 function uniqueImpYieldsAt(base: Yields, level: number): Yields {
-  const bump = Math.min(3, Math.max(1, level)) - 1; // 0 at tier 1, +2 at tier 3
+  const bump = (Math.min(3, Math.max(1, level)) - 1) * 2; // 0 at tier 1, +4 at tier 3
   const grow = (n: number): number => (n > 0 ? n + bump : 0);
   return {
     food: grow(base.food),
@@ -114,6 +119,14 @@ export const IMPROVEMENT_DEFS: Record<ImprovementKind, ImprovementDef> = {
     name: "Salt Pans",
     tiers: [{ gold: 1 }, { gold: 2 }, { gold: 2, food: 1 }],
   },
+};
+
+// Improvements gated behind a researched technology. Most are available from the
+// start; these unlock with progress. Single source of truth shared by the Works
+// build validation (works.ts) and the resource-activation rule (resources.ts).
+export const IMPROVEMENT_REQ_TECH: Partial<Record<ImprovementKind, TechId>> = {
+  fishery: "maritime_foraging",
+  saltern: "maritime_foraging",
 };
 
 const ZERO: Yields = { food: 0, production: 0, gold: 0, science: 0, faith: 0 };

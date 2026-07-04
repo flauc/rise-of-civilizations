@@ -21,8 +21,10 @@ import { emitCityLost, emitUnitDied } from "./turn-updates";
 import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween } from "./movement";
 import { playerEffects } from "./civs";
 import { breakCover } from "./stealth";
-import { moraleAttackMultiplier, moraleDefenseMultiplier, onEnemyDefeated, onUnitLost, maybeRoute, retreatOneStep } from "./morale";
+import { changeUnitMorale, moraleAttackMultiplier, moraleDefenseMultiplier, onEnemyDefeated, onUnitLost, maybeRoute, retreatOneStep } from "./morale";
+import { cityMajorityFaith, religionInstanceForDefId, religionUnitCombatBonus, religionUnitKit, unitPassive } from "./religion-units";
 import { onUnitEnter, leaveRuin } from "./features";
+import { grantLegendDeathFaith } from "./works";
 
 /** Fire Lance fires off the unit's melee strength plus this, so the ranged shot
  *  lands slightly harder than a regular thrust (and takes no retaliation). */
@@ -102,6 +104,8 @@ function attackStrength(
   if (ranged && ability === "double_ballista") s = Math.max(4, def.strength - 2) * levelMultiplier(unit);
   s += civCombatBonus(state, unit);
   s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
+  s += religionUnitCombatBonus(state, unit); // faith-tier strength + religious auras
+  if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) s -= unit.cursedPenalty ?? 3;
 
   // Active-ability attack bonuses.
   const defenderBraced = defender.stance === "brace" || defender.stance === "shield_wall" || defender.stance === "othismos" || defender.stance === "last_stand";
@@ -126,6 +130,7 @@ function attackStrength(
   if (!ranged && ability === "falx_reap") s += 1; // the falx reaches over the shield (armor bypass below)
   if (!ranged && ability === "sparth_cleave") s += 2; // the great axe sweeps an arc
   if (!ranged && ability === "shear_oars") s += 2; // rake the oar-bank
+  if (!ranged && ability === "deus_vult") s += 5; // the crusader's charge
   if (ranged && ability === "siege_volley" && defendsWalls(state, defender)) s += 5; // arcing fire onto the ramparts
   // Legend (hero) signature abilities (docs/UNIT-ABILITIES.md §9).
   if (!ranged && ability === "slay_the_beast") s += playerById(state, defender.ownerId)?.isBarbarian ? 6 : 1; // the hero's blow out of the Epic
@@ -307,6 +312,8 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
 
   s += civCombatBonus(state, unit);
   s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
+  s += religionUnitCombatBonus(state, unit); // faith-tier strength + religious auras
+  if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) s -= unit.cursedPenalty ?? 3;
 
   // Stance defensive multipliers.
   let stanceMult = 1;
@@ -463,10 +470,14 @@ export function unitXpForNextLevel(level: number): number {
   return 10 * level;
 }
 
-function awardXp(unit: Unit, amount: number): void {
+function awardXp(state: GameState, unit: Unit, amount: number): void {
+  applyXp(unit, amount, playerEffects(state, unit.ownerId).xpGainPercent ?? 0);
+}
+
+function applyXp(unit: Unit, amount: number, xpGainPercent: number): void {
   const def = UNIT_DEFS[unit.type];
   if (def.cls === "settler" || def.cls === "trader") return;
-  let mult = 1;
+  let mult = 1 + Math.max(0, xpGainPercent) / 100;
   if (has(unit, "veteran") || has(unit, "veteran_marksman")) mult += 0.25;
   unit.xp += Math.ceil(amount * mult);
   while (unit.xp >= unitXpForNextLevel(unit.level)) {
@@ -484,7 +495,7 @@ export const SCOUT_DISCOVERY_XP = 3;
 /** Grant XP to a unit from a non-combat source (e.g. scout reconnaissance
  *  discoveries). Mirrors combat awards: settlers/traders get none, veterans more. */
 export function awardUnitXp(unit: Unit, amount: number): void {
-  awardXp(unit, amount);
+  applyXp(unit, amount, 0);
 }
 
 /** Recon Escape: the unit's best dodge chance among its escape promotions (0 = none). */
@@ -566,6 +577,7 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
 
   city.ownerId = attacker.ownerId;
   city.production = null;
+  city.autoMode = undefined; // a captured city reverts to its new owner's manual control
   const eff = playerEffects(state, attacker.ownerId);
   const popBonus = eff.captureCityPopulationBonus ?? 0;
   city.population = Math.max(1, city.population - 1 + popBonus);
@@ -598,6 +610,8 @@ export function resolveAttack(
   const ability = opts?.ability;
   const def = UNIT_DEFS[attacker.type];
   if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return { ok: false, error: "unit cannot attack" };
+  // The Ahimsa Ascetic (and any pacifist kit) refuses violence outright.
+  if (religionUnitKit(attacker.type)?.passives.cannotAttack) return { ok: false, error: "this unit refuses violence" };
   if (attacker.attackedThisTurn || attacker.movementLeft <= 0) return { ok: false, error: "no attack available" };
   // Beach Assault is the one strike an embarked unit can make: storming ashore.
   if (attacker.embarked && ability !== "beach_assault") return { ok: false, error: "embarked units cannot attack" };
@@ -657,7 +671,7 @@ export function resolveAttack(
         attEff *= 1 + eff.siegeVsCityDefenseMultiplier / 100;
       }
       enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
-      awardXp(attacker, 3);
+      awardXp(state, attacker, 3);
     } else {
       if (enemyCity.hp <= 0) {
         if (attackerNaval) {
@@ -669,12 +683,13 @@ export function resolveAttack(
       } else {
         const base = def.strength * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker));
         let attEff = (base + cityAttackBonus(attacker)) * mult + (eff.meleeVsCityBonus ?? 0);
+        if (ability === "deus_vult") attEff += 8; // God wills the walls down
         if (def.cls === "siege" && eff.siegeVsCityDefenseMultiplier) {
           attEff *= 1 + eff.siegeVsCityDefenseMultiplier / 100;
         }
         enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
         attacker.hp -= Math.round(damageFrom(cityDef, attEff) * (ability === "siege_assault" ? 0.5 : 1)); // the tower shelters its crew
-        awardXp(attacker, 4);
+        awardXp(state, attacker, 4);
         if (enemyCity.hp <= 0 && attacker.hp > 0) {
           if (attackerNaval) {
             enemyCity.hp = 0;
@@ -719,8 +734,8 @@ export function resolveAttack(
       if (ability === "aimed_shot") defEff = Math.max(1, defEff - 4); // the marksman finds the gap
       if (ability === "zagros_shot") defEff = Math.max(1, defEff - 4); // a heavy highland shaft
       enemyUnit.hp -= damageFrom(attEff, defEff);
-      awardXp(attacker, 3);
-      awardXp(enemyUnit, 2);
+      awardXp(state, attacker, 3);
+      awardXp(state, enemyUnit, 2);
       if (ability === "sunder") enemyUnit.sunderedUntilTurn = state.turn + 1;
       if (ability === "aimed_shot" && enemyUnit.hp > 0) enemyUnit.maimedUntilTurn = state.turn + 1;
       if (ability === "poisoned_arrows" && enemyUnit.hp > 0) enemyUnit.poisonedUntilTurn = state.turn + 2;
@@ -730,6 +745,7 @@ export function resolveAttack(
       if (enemyUnit.hp <= 0) {
         killUnit(state, enemyUnit);
         onEnemyDefeated(state, attacker, enemyUnit); // the marksman and nearby allies rally
+        harvestFaithOnKill(state, attacker); // Zealotry / Ghazi / Eagle Priest &c.
       } else {
         maybeRoute(state, enemyUnit); // a unit under fire may break
       }
@@ -760,13 +776,19 @@ export function resolveAttack(
       // Boarders die on the turtle ship's spiked roof.
       if (enemyUnit.stance === "turtle_shell") attacker.hp -= 8;
       attacker.hp -= retaliation;
-      awardXp(attacker, 4);
-      awardXp(enemyUnit, 4);
+      // Striking a serene or nonviolent holy figure shames the attacker.
+      const thornKit = religionUnitKit(enemyUnit.type);
+      if (thornKit?.passives.thornMorale) {
+        changeUnitMorale(attacker, -unitPassive(state, enemyUnit, thornKit, thornKit.passives.thornMorale));
+      }
+      awardXp(state, attacker, 4);
+      awardXp(state, enemyUnit, 4);
       const defenderDead = enemyUnit.hp <= 0;
       const attackerDead = attacker.hp <= 0;
       if (defenderDead) {
         killUnit(state, enemyUnit);
         onEnemyDefeated(state, attacker, enemyUnit); // the victor and nearby allies rally
+        harvestFaithOnKill(state, attacker); // Zealotry / Ghazi / Eagle Priest &c.
         if (!attackerDead) {
           let heal = 0;
           if (has(attacker, "bloodlust")) heal += 12;
@@ -809,7 +831,7 @@ export function resolveAttack(
       const attEff = (base + cityAttackBonus(attacker)) * vsCityMultiplier(attacker);
       struct.hp = Math.max(0, struct.hp - damageFrom(attEff, structDef));
       if (!ranged) attacker.hp -= damageFrom(structDef * 0.5, attEff); // melee takes some back
-      awardXp(attacker, 3);
+      awardXp(state, attacker, 3);
       if (struct.hp <= 0) {
         targetTile.structure = undefined;
         attackerOwner.gold += 10;
@@ -873,10 +895,15 @@ function defenseStrengthVsBombard(state: GameState, unit: Unit): number {
 }
 
 export function killUnit(state: GameState, unit: Unit): void {
+  religionRitesOnDeath(state, unit); // mortuary harvests + Valhalla rallies (before removal)
   onUnitLost(state, unit); // nearby friendlies waver + global morale drops (before removal)
+  const wasLegend = !!unit.legendId;
+  const legendTile = { col: unit.col, row: unit.row };
   state.units.delete(unit.id);
   const owner = playerById(state, unit.ownerId);
   const name = unitDisplayName(state, unit);
+  // A slain Legend may be honoured with faith by its owner's wonder (Great Pyramid).
+  if (wasLegend) grantLegendDeathFaith(state, unit.ownerId, legendTile);
   log(state, `${name} (${owner?.name ?? "?"}) was destroyed.`, {
     targetIds: owner ? [owner.id] : undefined,
     tile: { col: unit.col, row: unit.row },
@@ -904,9 +931,24 @@ export function resolveAmbush(state: GameState, hider: Unit, intruder: Unit): vo
   const attEff = attackStrength(state, hider, intruder, tile.terrain, false, undefined);
   const defEff = defenseStrength(state, intruder, hider, false) * 0.8; // surprised: −20%
   intruder.hp -= damageFrom(attEff, defEff);
-  awardXp(hider, 4);
-  awardXp(intruder, 2);
+  awardXp(state, hider, 4);
+  awardXp(state, intruder, 2);
   if (intruder.hp <= 0) killUnit(state, intruder);
+}
+
+/** A melee sweep hit at `factor` of full strength drawing no retaliation (Chakkar). */
+export function sweepMeleeDamage(state: GameState, attacker: Unit, target: Unit, factor: number): void {
+  const tile = getTile(state.map, target.col, target.row);
+  if (!tile) return;
+  const attEff = attackStrength(state, attacker, target, tile.terrain, false, undefined) * factor;
+  const defEff = defenseStrength(state, target, attacker, false);
+  target.hp -= damageFrom(attEff, defEff);
+  awardXp(state, attacker, 2);
+  if (target.hp <= 0) {
+    killUnit(state, target);
+    onEnemyDefeated(state, attacker, target);
+    harvestFaithOnKill(state, attacker);
+  }
 }
 
 /** An extra ranged hit at `factor` of full strength (Repeating Fire 2nd shot, Arrow Storm splash). */
@@ -916,7 +958,7 @@ export function secondaryRangedDamage(state: GameState, attacker: Unit, target: 
   const attEff = attackStrength(state, attacker, target, tile.terrain, true, undefined) * factor;
   const defEff = defenseStrength(state, target, attacker, true);
   target.hp -= damageFrom(attEff, defEff);
-  awardXp(attacker, 1);
+  awardXp(state, attacker, 1);
   if (target.hp <= 0) killUnit(state, target);
 }
 
@@ -1110,6 +1152,101 @@ export function healAndReset(state: GameState, player: Player): void {
       const tile = getTile(state.map, u.col, u.row);
       if (tile && isWaterTerrain(tile.terrain)) {
         u.hp = Math.min(unitMaxHp(u), u.hp + 5);
+      }
+    }
+  }
+  tickReligionUnitAuras(state, player);
+}
+
+// ---- religion unique-unit hooks (kits live in religion-units.ts) -----------
+
+/** Faith harvested when `killer` fells an enemy: empire-wide faith-on-kill
+ *  effects (Zealotry, the Aztec preset) plus the killer's own kit (Ghazi,
+ *  Eagle Priest, Templar). Called right after onEnemyDefeated. */
+function harvestFaithOnKill(state: GameState, killer: Unit): void {
+  const owner = playerById(state, killer.ownerId);
+  if (!owner || owner.isBarbarian) return;
+  let faith = playerEffects(state, owner.id).faithOnKill ?? 0;
+  const kit = religionUnitKit(killer.type);
+  if (kit?.passives.faithOnKillSelf) faith += unitPassive(state, killer, kit, kit.passives.faithOnKillSelf);
+  if (faith > 0) owner.faith += faith;
+}
+
+/** Death rites around a falling unit: mortuary kits harvest faith from ANY
+ *  adjacent death, and death-rally kits (Valhalla) turn a fallen comrade into
+ *  fresh resolve. Runs while the dying unit is still on the map. */
+function religionRitesOnDeath(state: GameState, dead: Unit): void {
+  for (const u of state.units.values()) {
+    if (u.id === dead.id) continue;
+    const kit = religionUnitKit(u.type);
+    if (!kit || dist(u, dead) !== 1) continue;
+    const keeper = playerById(state, u.ownerId);
+    if (kit.passives.faithOnNearbyDeath && keeper && !keeper.isBarbarian) {
+      keeper.faith += unitPassive(state, u, kit, kit.passives.faithOnNearbyDeath);
+    }
+    if (kit.passives.deathRally && u.ownerId === dead.ownerId) {
+      const rally = unitPassive(state, u, kit, kit.passives.deathRally);
+      changeUnitMorale(u, rally);
+      for (const f of state.units.values()) {
+        if (f.id === u.id || f.id === dead.id || f.ownerId !== u.ownerId) continue;
+        if (dist(u, f) === 1) changeUnitMorale(f, rally);
+      }
+    }
+  }
+}
+
+/** Per-turn powers of `player`'s religion unique units: healing/morale/XP/move
+ *  auras on adjacent allies, dread on adjacent enemies, ambient pressure into
+ *  nearby cities, and garrison boons in follower cities. Runs from healAndReset
+ *  (after movement refresh, so movement auras persist through the turn). */
+function tickReligionUnitAuras(state: GameState, player: Player): void {
+  for (const u of [...state.units.values()]) {
+    if (u.ownerId !== player.id) continue;
+    const kit = religionUnitKit(u.type);
+    if (!kit) continue;
+    const p = kit.passives;
+    const healN = unitPassive(state, u, kit, p.healAura);
+    const moraleN = unitPassive(state, u, kit, p.moraleAura);
+    const xpN = unitPassive(state, u, kit, p.xpAura);
+    const moveN = unitPassive(state, u, kit, p.moveAura);
+    const enemyMoraleN = unitPassive(state, u, kit, p.enemyMoraleAura);
+    if (healN || moraleN || xpN || moveN || enemyMoraleN) {
+      for (const other of state.units.values()) {
+        if (other.id === u.id || dist(u, other) !== 1) continue;
+        if (other.ownerId === player.id) {
+          if (healN) other.hp = Math.min(unitMaxHp(other), other.hp + healN);
+          if (moraleN) changeUnitMorale(other, moraleN);
+          if (xpN) awardXp(state, other, xpN);
+          if (moveN) other.movementLeft += moveN;
+        } else if (enemyMoraleN) {
+          const otherOwner = playerById(state, other.ownerId);
+          if (otherOwner && areEnemies(player, otherOwner)) changeUnitMorale(other, -enemyMoraleN);
+        }
+      }
+    }
+    // The faith seeps outward from its holy servants (cities within 2 tiles).
+    if (p.pressureAura) {
+      const rel = religionInstanceForDefId(state, UNIT_DEFS[u.type].religionUnit);
+      if (rel) {
+        const amt = unitPassive(state, u, kit, p.pressureAura);
+        for (const c of state.cities.values()) {
+          if (dist(u, c) > 2) continue;
+          c.religionPressure ??= {};
+          c.religionPressure[rel.id] = (c.religionPressure[rel.id] ?? 0) + amt;
+        }
+      }
+    }
+    // Garrison boons only flow in a city that actually keeps the faith.
+    if (p.goldGarrisoned || p.cultureGarrisoned) {
+      const city = cityAt(state, u.col, u.row);
+      const rel = religionInstanceForDefId(state, UNIT_DEFS[u.type].religionUnit);
+      if (city && city.ownerId === player.id && rel && cityMajorityFaith(city) === rel.id) {
+        if (p.goldGarrisoned) player.gold += unitPassive(state, u, kit, p.goldGarrisoned);
+        if (p.cultureGarrisoned) {
+          const culture = unitPassive(state, u, kit, p.cultureGarrisoned);
+          player.cultureProgress += culture;
+          player.cultureLifetime = (player.cultureLifetime ?? 0) + culture;
+        }
       }
     }
   }

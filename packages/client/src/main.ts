@@ -51,15 +51,19 @@ import { loadNaturalWonderAtlas } from "./natural-wonder-assets";
 import { loadWonderAtlas } from "./wonder-assets";
 import { loadResourceAtlas } from "./resource-assets";
 import { loadAbilityAtlas } from "./ability-assets";
+import { loadReligionIconAtlas } from "./religion-assets";
 import { MAP_DIMENSIONS, type Session } from "./session";
 import type { CheatAction } from "./god-mode";
 import { exportSave, listSaves, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
 import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, type GameSetup } from "./analytics";
+import { installIconifyHook } from "./icons";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
 if (!ctx) throw new Error("2D canvas context unavailable");
 
+// Swap emoji for generated icons app-wide (no-op until the icon set is present).
+installIconifyHook();
 initAnalytics();
 createLobby(startGame);
 
@@ -357,6 +361,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     },
     onConvertCitizen: (cityId, specialistId, delta) =>
       session.order({ type: "convertCitizen", cityId, specialistId, delta }),
+    onSetCityAutoMode: (cityId, mode) => session.order({ type: "setCityAutoMode", cityId, mode }),
     onStartWork: (kind, col, row) => session.order({ type: "startWork", kind, col, row }),
     onStartWonder: (wonderId, col, row) => session.order({ type: "startWonder", wonderId, col, row }),
     onCancelWork: (workId) => session.order({ type: "cancelWork", workId }),
@@ -384,6 +389,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onGift: (t, g) => session.order({ type: "giftTo", targetId: t, gold: g }),
     onDemandTribute: (t, g) => session.order({ type: "demandTribute", targetId: t, gold: g }),
     onProposeDeal: (t, give, want) => session.order({ type: "proposeDeal", targetId: t, give, want }),
+    onCancelSharedVision: (t) => session.order({ type: "cancelSharedVision", targetId: t }),
     onRespondProposal: (id, accept) => session.order({ type: "respondProposal", proposalId: id, accept }),
     onFinalizeDeal: (id, confirm) => session.order({ type: "finalizeDeal", proposalId: id, confirm }),
     onAcknowledgeContact: (o) => session.order({ type: "acknowledgeContact", otherId: o }),
@@ -399,6 +405,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onSetGovernment: (governmentId) => session.order({ type: "setGovernment", governmentId }),
     onTogglePolicy: (policyId) => session.order({ type: "togglePolicy", policyId }),
     onFoundReligion: (cityId, name, beliefs) => session.order({ type: "foundReligion", cityId, name, beliefs }),
+    onUpgradeReligion: () => session.order({ type: "upgradeReligion" }),
+    onPickReligionPerk: (perkId) => session.order({ type: "pickReligionPerk", perkId }),
+    onMoveHolyCity: (cityId) => session.order({ type: "moveHolyCity", cityId }),
     onBuyReligiousUnit: (cityId, unit) => session.order({ type: "buyReligiousUnit", cityId, unit }),
     onEvangelize: (unitId, cityId) => session.order({ type: "evangelize", unitId, cityId }),
     onPurgeHeresy: (unitId, cityId) => session.order({ type: "purgeHeresy", unitId, cityId }),
@@ -768,6 +777,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   const abilityAtlas = loadAbilityAtlas(() => {
     needsRedraw = true;
   });
+  const religionIconAtlas = loadReligionIconAtlas(() => {
+    needsRedraw = true;
+  });
   ui.setAbilityAtlas(abilityAtlas);
 
   // The map and overlay draw from these atlases; the loading veil lifts once every
@@ -833,6 +845,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         cityAtlas,
         featureAtlas,
         constructionAtlas,
+        religionIconAtlas,
       });
       ui.render({
         state: st(),

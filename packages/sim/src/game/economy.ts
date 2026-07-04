@@ -1,5 +1,5 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
-import type { GameState, City, Player, Unit } from "./state";
+import type { GameState, City, Player, Unit, CityAutoFocus } from "./state";
 import { areEnemies, cityAt, log, makeUnit, playerById, unitAt, unitsOf } from "./state";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, isForestTerrain, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
@@ -81,17 +81,42 @@ export function workableTiles(state: GameState, city: City): { col: number; row:
   return tiles;
 }
 
+interface TileWeights {
+  food: number;
+  production: number;
+  gold: number;
+  science: number;
+  faith: number;
+  culture: number;
+}
+
+const BALANCED_TILE_WEIGHTS: TileWeights = {
+  food: 1.0, production: 0.8, gold: 0.5, science: 0.6, faith: 0.5, culture: 0.5,
+};
+
+/** Governor-mode tile-scoring weights, keyed by `CityAutoFocus`. Skews worked-
+ *  tile assignment toward the chosen focus without zeroing out the rest (a
+ *  science-focused city still needs to eat) — see `autoAssignCitizens`. */
+const FOCUS_TILE_WEIGHTS: Record<CityAutoFocus, TileWeights> = {
+  growth: { food: 2.2, production: 0.6, gold: 0.4, science: 0.4, faith: 0.4, culture: 0.4 },
+  military: { food: 0.9, production: 1.8, gold: 0.4, science: 0.3, faith: 0.3, culture: 0.3 },
+  science: { food: 0.9, production: 0.6, gold: 0.4, science: 2.0, faith: 0.4, culture: 0.4 },
+  money: { food: 0.9, production: 0.6, gold: 2.0, science: 0.4, faith: 0.4, culture: 0.4 },
+};
+
 /** Citizen-assignment desirability of a tile's yields (food-leaning early).
  *  Every yield a tile can produce is weighted so that faith/culture tiles
- *  (forest faith bonuses, natural wonders, etc.) aren't treated as worthless. */
-export function citizenScore(y: Yields & { culture?: number }): number {
+ *  (forest faith bonuses, natural wonders, etc.) aren't treated as worthless.
+ *  An optional governor `focus` swaps in a skewed weight table instead. */
+export function citizenScore(y: Yields & { culture?: number }, focus?: CityAutoFocus): number {
+  const w = focus ? FOCUS_TILE_WEIGHTS[focus] : BALANCED_TILE_WEIGHTS;
   return (
-    y.food * 1.0 +
-    y.production * 0.8 +
-    y.gold * 0.5 +
-    y.science * 0.6 +
-    y.faith * 0.5 +
-    (y.culture ?? 0) * 0.5
+    y.food * w.food +
+    y.production * w.production +
+    y.gold * w.gold +
+    y.science * w.science +
+    y.faith * w.faith +
+    (y.culture ?? 0) * w.culture
   );
 }
 
@@ -128,7 +153,7 @@ function tileWorkYields(state: GameState, col: number, row: number, eff: CivEffe
   const base = addYields(
     addYields(
       addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement, tile.improvementLevel)),
-      resourceYields(tile),
+      resourceYields(tile, state),
     ),
     naturalWonderYields(tile),
   );
@@ -420,7 +445,7 @@ const keyOf = (t: { col: number; row: number }) => `${t.col},${t.row}`;
 /** A per-city scorer ranking a tile by how profitable it is to work — using the
  *  full tile yields (terrain + improvement + resource + leader-ability bonuses),
  *  so a freshly-completed improvement immediately makes its tile more desirable. */
-function tileScorer(state: GameState, city: City): (key: string) => number {
+function tileScorer(state: GameState, city: City, focus?: CityAutoFocus): (key: string) => number {
   const eff = mergeCivEffects(civEffectsOf(state, city.ownerId), cityEffects(state, city));
   return (key: string): number => {
     const [c, r] = key.split(",").map(Number) as [number, number];
@@ -428,7 +453,7 @@ function tileScorer(state: GameState, city: City): (key: string) => number {
     if (!tile) return -Infinity;
     // Culture from natural wonders is summed separately in getCityYields (not part
     // of tileWorkYields), so fold it in here or scenic tiles look worthless.
-    return citizenScore({ ...tileWorkYields(state, c, r, eff), culture: naturalWonderCulture(tile) });
+    return citizenScore({ ...tileWorkYields(state, c, r, eff), culture: naturalWonderCulture(tile) }, focus);
   };
 }
 
@@ -441,9 +466,9 @@ function tileScorer(state: GameState, city: City): (key: string) => number {
  * while manual assignments stay put. Also drops capacity (specialists/starvation)
  * and lost-territory tiles.
  */
-export function autoAssignCitizens(state: GameState, city: City): void {
+export function autoAssignCitizens(state: GameState, city: City, focus?: CityAutoFocus): void {
   const cap = workerSlots(city);
-  const score = tileScorer(state, city);
+  const score = tileScorer(state, city, focus);
   const valid = new Set(workableTiles(state, city).map(keyOf));
   // Drop locks on tiles we can no longer work (lost territory, etc.).
   const locked = [...new Set(city.lockedTiles ?? [])].filter((k) => valid.has(k));
@@ -478,7 +503,7 @@ export function toggleCitizen(state: GameState, city: City, col: number, row: nu
   // Lock the pick, then re-optimise; at capacity this swaps out the worst
   // unlocked tile rather than over-committing past the worker cap.
   city.lockedTiles.push(key);
-  autoAssignCitizens(state, city);
+  autoAssignCitizens(state, city, city.autoMode);
   return true;
 }
 
@@ -491,38 +516,41 @@ export function placeUnit(
   type: keyof typeof UNIT_DEFS,
   xpBonus = 0,
   moraleBonus = 0,
-): void {
+  freeUpkeep = false,
+): Unit | undefined {
   const morale = startingUnitMorale(state, city.ownerId, moraleBonus);
   const udef = UNIT_DEFS[type];
-  const spawn = (col: number, row: number) => {
+  const spawn = (col: number, row: number): Unit => {
     const id = state.nextEntityId++;
-    state.units.set(id, makeUnit(id, city.ownerId, type, col, row, xpBonus, morale));
+    const u = makeUnit(id, city.ownerId, type, col, row, xpBonus, morale);
+    if (freeUpkeep) u.freeUpkeep = true;
+    state.units.set(id, u);
+    return u;
   };
   // Naval units spawn on an adjacent water tile; land units spawn on land.
   const wantsWater = udef.cls === "naval_melee" || udef.cls === "naval_ranged";
   if (!wantsWater && !unitAt(state, city.col, city.row)) {
-    spawn(city.col, city.row);
-    return;
+    return spawn(city.col, city.row);
   }
   for (const n of offsetNeighbors(state.map, city.col, city.row)) {
     const tile = getTile(state.map, n.col, n.row);
     if (!tile || unitAt(state, n.col, n.row)) continue;
     if (wantsWater && isWaterTerrain(tile.terrain)) {
-      spawn(n.col, n.row);
-      return;
+      return spawn(n.col, n.row);
     }
     if (!wantsWater && tile.terrain !== "mountains" && !isWaterTerrain(tile.terrain)) {
-      spawn(n.col, n.row);
-      return;
+      return spawn(n.col, n.row);
     }
   }
+  return undefined;
 }
 
 /** Advance one city by a turn: yields -> growth, production, gold, research. */
 export function processCity(state: GameState, city: City, owner: Player): void {
   // Re-optimise tile assignments before computing yields, so improvements that
-  // completed (or territory that changed) pull citizens onto better tiles.
-  autoAssignCitizens(state, city);
+  // completed (or territory that changed) pull citizens onto better tiles. A
+  // governed city (city.autoMode) skews this toward its chosen focus.
+  autoAssignCitizens(state, city, city.autoMode);
   const y = getCityYields(state, city);
 
   // Food / growth. Surplus amenities speed growth; a shortfall never slows it
@@ -536,7 +564,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   if (city.foodStored < 0) {
     if (city.population > 1) {
       city.population -= 1;
-      autoAssignCitizens(state, city);
+      autoAssignCitizens(state, city, city.autoMode);
       log(state, `${city.name} starved (now pop ${city.population}).`, {
         actorId: city.ownerId,
         targetIds: [city.ownerId],
@@ -550,7 +578,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       city.foodStored -= need;
       city.population += 1;
       expandTerritory(state, city); // borders grow with the city
-      autoAssignCitizens(state, city); // new citizen works the best free tile
+      autoAssignCitizens(state, city, city.autoMode); // new citizen works the best free tile
       log(state, `${city.name} grew to pop ${city.population}.`, {
         actorId: city.ownerId,
         targetIds: [city.ownerId],
@@ -639,33 +667,14 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   // Advance any units this city is training (population was spent when each started).
   advanceTraining(state, city, owner);
 
-  // Gold + science + culture (empire pools).
+  // Gold + science + culture (empire pools). Science accumulates here from every
+  // city, but a tech is only *completed* once per turn by advanceResearch (run
+  // after the whole city loop) so a science surplus can't finish several at once.
   owner.gold += y.gold;
   owner.scienceProgress += y.science;
-  if (owner.researching) {
-    const def = TECH_DEFS[owner.researching];
-    if (owner.scienceProgress >= def.cost) {
-      owner.scienceProgress -= def.cost;
-      owner.researched.add(owner.researching);
-      log(state, `${owner.name} discovered ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
-      emitResearchComplete(state, owner.id, def.name);
-      owner.researching = null;
-      advanceResearchQueue(owner);
-    }
-  }
   owner.faith += y.faith;
   owner.cultureProgress += y.culture;
   owner.cultureLifetime = (owner.cultureLifetime ?? 0) + y.culture; // lifetime cultural weight
-  if (owner.researchingCivic) {
-    const def = getCivic(owner.researchingCivic);
-    if (def && owner.cultureProgress >= def.cost) {
-      owner.cultureProgress -= def.cost;
-      owner.civicsResearched.add(owner.researchingCivic);
-      log(state, `${owner.name} adopted ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
-      emitCivicComplete(state, owner.id, def.name);
-      owner.researchingCivic = null;
-    }
-  }
 
   // City HP regen when not under attack; keep within current max.
   const maxHp = cityMaxHp(city);
@@ -675,9 +684,41 @@ export function processCity(state: GameState, city: City, owner: Player): void {
   city.hp = Math.min(city.hp, maxHp);
 }
 
+/** Complete at most one tech from the empire's accumulated science, then advance
+ *  the research queue. Called once per player per turn (after every city has added
+ *  its science) so a large surplus finishes only a single tech, carrying the
+ *  remainder into the next. While a queued target remains, the queue keeps the
+ *  player researching automatically — no per-tech prompt until the queue empties. */
+export function advanceResearch(state: GameState, owner: Player): void {
+  if (!owner.researching) return;
+  const def = TECH_DEFS[owner.researching];
+  if (owner.scienceProgress < def.cost) return;
+  owner.scienceProgress -= def.cost;
+  owner.researched.add(owner.researching);
+  log(state, `${owner.name} discovered ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
+  emitResearchComplete(state, owner.id, def.name);
+  owner.researching = null;
+  advanceResearchQueue(owner);
+}
+
+/** Complete at most one civic from the empire's accumulated culture. Called once
+ *  per player per turn (after every city has added its culture) so a large culture
+ *  surplus adopts only a single civic, carrying the remainder into the next. */
+export function advanceCivic(state: GameState, owner: Player): void {
+  if (!owner.researchingCivic) return;
+  const def = getCivic(owner.researchingCivic);
+  if (!def || owner.cultureProgress < def.cost) return;
+  owner.cultureProgress -= def.cost;
+  owner.civicsResearched.add(owner.researchingCivic);
+  log(state, `${owner.name} adopted ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
+  emitCivicComplete(state, owner.id, def.name);
+  owner.researchingCivic = null;
+}
+
 /** Per-unit gold upkeep, modified by the owner's militaryMaintenanceCostMultiplier
  *  and their military-pay setting (see morale.ts upkeepGoldMultiplier). */
 export function unitUpkeep(state: GameState, unit: Unit): number {
+  if (unit.freeUpkeep) return 0; // gifted units (e.g. the Colossus's warships) cost nothing to maintain
   const base = UNIT_DEFS[unit.type].upkeep ?? 0;
   if (base <= 0) return 0;
   const mult = civEffectsOf(state, unit.ownerId).militaryMaintenanceCostMultiplier ?? 1;

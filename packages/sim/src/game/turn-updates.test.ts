@@ -120,13 +120,11 @@ describe("turn update events", () => {
     applyCommand(state, { type: "foundCity", unitId: settler.id });
     const city = citiesOf(state, 0)[0]!;
 
-    // Give player 0 the required tech and train specialists for the Great Pyramid.
+    // Give player 0 the required tech, gold, and the Great Pyramid's full crew (11 Masons + 6 Architects).
     state.players[0]!.researched.add("masonry");
-    city.specialists.push(
-      { id: 1, type: "mason", xp: 0, level: 1, name: "Test Mason" },
-      { id: 2, type: "mason", xp: 0, level: 1, name: "Test Mason 2" },
-      { id: 3, type: "architect", xp: 0, level: 1, name: "Test Architect" },
-    );
+    state.players[0]!.gold = 1000;
+    for (let i = 0; i < 11; i++) city.specialists.push({ id: 100 + i, type: "mason", xp: 0, level: 1 });
+    for (let i = 0; i < 6; i++) city.specialists.push({ id: 200 + i, type: "architect", xp: 0, level: 1 });
 
     // Wonders are tile-targeted: pick an empty owned tile (not the city itself).
     const target = state.map.tiles.find(
@@ -137,6 +135,7 @@ describe("turn update events", () => {
         !t.structure &&
         !(t.col === city.col && t.row === city.row),
     )!;
+    target.terrain = "desert"; // the Great Pyramid must sit on a desert tile
     const res = startWonder(state, 0, "great_pyramid", target.col, target.row);
     expect(res.ok).toBe(true);
     const work = state.works.find((w) => w.ownerId === 0 && w.wonderId === "great_pyramid")!;

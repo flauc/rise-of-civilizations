@@ -3,9 +3,9 @@
 // strategic resources are stockpiled per player to unlock unit production.
 
 import { getTile, hashSeed, type TerrainType, type Tile } from "@roc/shared";
-import type { ImprovementKind } from "./improvements";
+import { IMPROVEMENT_REQ_TECH, type ImprovementKind } from "./improvements";
 import type { City, GameState, Player } from "./state";
-import { citiesOf } from "./state";
+import { citiesOf, cityAt, playerById } from "./state";
 import { addYields, TERRAIN_YIELDS, type Yields } from "./terrain";
 
 export type ResourceType = "bonus" | "luxury" | "strategic";
@@ -218,17 +218,29 @@ export const RESOURCE_IDS: ResourceId[] = Object.keys(RESOURCE_DEFS) as Resource
 
 const ZERO: Yields = { food: 0, production: 0, gold: 0, science: 0, faith: 0 };
 
-/** True if the tile's resource is improved by the matching improvement. */
-export function resourceActive(tile: Tile): boolean {
+/** True if the tile's resource is live. A resource is active when the tile carries
+ *  its matching improvement, OR when a city is founded directly on it — a city
+ *  harvests the resource under its centre for free, provided its owner has
+ *  researched the tech that would normally improve it (most improvements need
+ *  none). The city-centre rule only applies when `state` is supplied. */
+export function resourceActive(tile: Tile, state?: GameState): boolean {
   if (!tile.resource) return false;
   const def = RESOURCE_DEFS[tile.resource as ResourceId];
   if (!def) return false;
-  return tile.improvement === def.improvement;
+  if (tile.improvement === def.improvement) return true;
+  if (state) {
+    const city = cityAt(state, tile.col, tile.row);
+    if (city) {
+      const reqTech = IMPROVEMENT_REQ_TECH[def.improvement];
+      if (!reqTech || playerById(state, city.ownerId)?.researched.has(reqTech)) return true;
+    }
+  }
+  return false;
 }
 
 /** Yield bonus from the tile's resource, if active. */
-export function resourceYields(tile: Tile): Yields {
-  if (!resourceActive(tile)) return ZERO;
+export function resourceYields(tile: Tile, state?: GameState): Yields {
+  if (!resourceActive(tile, state)) return ZERO;
   const def = RESOURCE_DEFS[tile.resource as ResourceId]!;
   return {
     food: def.yields.food ?? 0,
@@ -240,8 +252,8 @@ export function resourceYields(tile: Tile): Yields {
 }
 
 /** Amenity bonus from an active resource on this tile (per tile, not unique). */
-export function resourceAmenity(tile: Tile): number {
-  if (!resourceActive(tile)) return 0;
+export function resourceAmenity(tile: Tile, state?: GameState): number {
+  if (!resourceActive(tile, state)) return 0;
   const def = RESOURCE_DEFS[tile.resource as ResourceId];
   if (!def) return 0;
   return def.amenity ?? 0;
@@ -252,7 +264,7 @@ export function resourceAmenity(tile: Tile): number {
 function activeResourceTiles(state: GameState, playerId: number): Tile[] {
   const out: Tile[] = [];
   for (const tile of state.map.tiles) {
-    if (!tile.resource || !resourceActive(tile)) continue;
+    if (!tile.resource || !resourceActive(tile, state)) continue;
     if (tile.ownerCityId === undefined) continue;
     const city = state.cities.get(tile.ownerCityId);
     if (!city || city.ownerId !== playerId) continue;
@@ -303,7 +315,7 @@ export function cityAmenities(state: GameState, city: City): number {
   }
   for (const tile of activeResourceTiles(state, city.ownerId)) {
     if (tile.ownerCityId === city.id) {
-      amenities += resourceAmenity(tile);
+      amenities += resourceAmenity(tile, state);
     }
   }
   return amenities;

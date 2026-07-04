@@ -39,6 +39,7 @@ interface Relation {
   metTurn: number;
   lastStatusChangeTurn: number;         // gates the peace/war cooldown
   openBorders: boolean;                 // mutual right of passage
+  sharedVision: boolean;                // exchanged maps — each sees the other's vision, indefinite until cancelled
   pact: "none" | "non_aggression" | "defensive" | "alliance";
   pactUntilTurn?: number;               // timed pacts expire
   deals: Deal[];                        // active, time-limited agreements
@@ -122,6 +123,7 @@ network. They fall into **unilateral** (apply immediately) and **consensual**
 | **Demand Tribute** | semi | coerce gold/resource under threat; AI complies if weak/afraid, else refuses with an attitude hit. |
 | **Propose Deal** | consensual | a structured two-sided offer (§5). |
 | **Open Borders** | consensual | mutual right of passage (units may cross each other's territory; matters once territory restricts movement — see §9). |
+| **Exchange Maps** | consensual | mutual shared vision: each civ sees what the other sees (their remembered map **and** their current sight). Alliance-like — stands **indefinitely until either side cancels** (`cancelSharedVision`) or war breaks out. Applied in `viewForPlayer`, so cancelling instantly revokes the borrowed sight and nothing ever leaks into the player's own `explored` set. |
 | **Form Pact** | consensual | non-aggression / defensive pact / alliance (timed). Higher tiers need higher attitude. |
 | **Respond to Proposal** | n/a | accept / reject a pending `Proposal` (human side of a consensual action). |
 
@@ -149,6 +151,7 @@ type DealItem =
   | { kind: "resource"; id: string; turns: number }  // strategic resource, per turn
   | { kind: "peace" }                                 // end a war
   | { kind: "openBorders" }
+  | { kind: "sharedVision" }                          // exchange maps (mutual, indefinite)
   | { kind: "pact"; tier: "non_aggression" | "defensive" | "alliance"; turns: number }
   | { kind: "declareWarOn"; civId: number }           // a favour
   | { kind: "embassy" };                              // shares basic info (future)
@@ -213,12 +216,34 @@ A **Contacts** panel (opened from a new topbar 🕊️ button) lists every met c
 with: leader portrait, civ, **status** (Peace/War), the AI's **attitude label**,
 and active treaties. Selecting one opens the **negotiation view**:
 
-- header: the two leaders, status, attitude, reputation;
-- **action buttons:** Declare War / Make Peace / Denounce / Gift / Demand
-  Tribute / Open Borders / Form Pact / **Propose Deal**;
-- the **deal builder**: two columns ("They give" / "You give") of addable
-  `DealItem`s with a running value hint; **Propose** sends it; the AI's
-  accept/reject (with a one-line reason) returns immediately.
+a **relationship card** (leaders, status, attitude meter, reputation, treaties in
+force) sits above two tabs. The whole panel uses the game's parchment/gold theme.
+
+**Overview tab**
+- **Live offers:** incoming proposals to accept/decline/counter, your accepted
+  offers to finalize, and pending ones to withdraw (the Overview tab shows a badge
+  when any need attention);
+- **Actions:** Declare War / Denounce / Gift / Demand Tribute (the tribute demand
+  carries its own inline "would pay / would refuse" verdict);
+- **Active agreements** and an **Opinion & history** drawer.
+
+**Make a deal tab** — one composer where treaty terms and material trades combine:
+- **Treaty terms** (peacetime) are toggle chips — Open Borders, Exchange Maps
+  (shared vision), and the three pact tiers (non-aggression / defensive /
+  alliance). Each is mutual, so toggling one adds it to both halves of the deal.
+  Terms already in force, and pact tiers at/below the current one, are omitted.
+- **You give / You receive** — two trays you add any `DealItem`s to via a "＋ Add…"
+  dropdown (gold with an inline editable amount, luxuries, specialists, tech,
+  cities, units — sell or lend). Items already added drop out of the dropdown.
+- A **single live verdict** — ✓ They will accept / ✗ They will refuse (with the
+  reason) plus a one-line summary — updates as you toggle a chip or change a tray,
+  computed via `previewProposal` without mutating state. **Propose** sends the
+  whole combination as one offer and the AI's answer returns immediately. This is
+  how a refused treaty gets "sweetened": add gold (or a luxury, tech…) until the
+  verdict flips.
+- **While at war** the trays stay, but the only treaty lever is a **Make Peace**
+  button with its own verdict (`previewPeace` / `aiAcceptsPeace`) — peace follows
+  the war-weariness path and isn't a buyable trade item.
 
 ### 7.3 Notifications
 
@@ -251,8 +276,8 @@ territory-passage is a fast follow, not v1.
 
 - **Peace cooldown:** N turns (e.g. 10) after making peace before war can be
   re-declared; prevents war spam.
-- **Treaty break on war:** declaring war voids open borders, pacts and deals
-  with that civ (and triggers ally responses).
+- **Treaty break on war:** declaring war voids open borders, shared vision, pacts
+  and deals with that civ (and triggers ally responses).
 - **Elimination:** when a civ loses its last city (existing domination logic),
   its relations/attitudes/proposals are purged.
 - **Determinism:** all AI decisions are pure functions of state (seeded where

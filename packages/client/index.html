@@ -432,8 +432,11 @@
       #city-panel {
         right: max(12px, env(safe-area-inset-right));
         top: calc(150px + env(safe-area-inset-top));
-        width: 300px;
-        max-height: min(76vh, 640px);
+        width: 320px;
+        /* Fill the space below the panel's 150px top offset (with a small bottom
+           gap), capped so it never gets absurdly tall — removes the desktop
+           scroll while staying on-screen on short displays. */
+        max-height: min(calc(100vh - 172px), 820px);
         overflow: auto;
         z-index: 10;
       }
@@ -805,6 +808,54 @@
       }
       #civics .row {
         gap: 6px;
+      }
+      /* Governor (city auto-mode) picker: a compact 5-across segmented control
+         that stays one tidy row on both the 300px desktop panel and the
+         full-width mobile bottom sheet — icon over a short label. */
+      .gov-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 5px;
+        margin-top: 4px;
+      }
+      .gov-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        padding: 7px 2px;
+        min-height: 44px;
+        border: 1px solid var(--edge);
+        border-radius: 8px;
+        background: rgba(201, 162, 39, 0.06);
+        color: var(--parchment-dim);
+        font: inherit;
+        font-size: 10px;
+        line-height: 1.1;
+        cursor: pointer;
+        user-select: none;
+        text-align: center;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+      }
+      .gov-btn .gi {
+        font-size: 15px;
+        line-height: 1;
+      }
+      .gov-btn:hover {
+        border-color: var(--accent);
+        color: var(--parchment);
+      }
+      .gov-btn.active {
+        background: rgba(201, 162, 39, 0.18);
+        border-color: var(--accent);
+        color: var(--parchment);
+        font-weight: 700;
+      }
+      .gov-note {
+        margin-top: 5px;
+        font-size: 11px;
+        color: #9fc0dc;
       }
       .tech {
         display: flex;
@@ -1764,8 +1815,14 @@
         #topbar #civics-btn b {
           display: none;
         }
+        /* Shrink the resource numbers so a big gold/faith balance doesn't push
+           the resource pills past the top bar's width. */
+        #topbar .tb-res .tb-pill b {
+          font-size: 11px;
+        }
         #topbar .tb-score {
           margin-left: 2px;
+          font-size: 9px;
         }
         /* The resources wrap onto their own row, so the player/civ label keeps
            the full width of the first row (only truncating very long names). */

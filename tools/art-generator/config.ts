@@ -6,7 +6,7 @@
 // - Google Gemini Nano Banana 2 (gemini-3.1-flash-image) is the default model.
 
 import { join } from "node:path";
-import { CIVILIZATIONS, WONDER_DEFS, UNIQUE_UNITS, UNIQUE_INFRA, NATURAL_WONDER_DEFS, GREAT_PEOPLE, GREAT_PERSON_CLASS_INFO, LEGENDS } from "@roc/data";
+import { CIVILIZATIONS, WONDER_DEFS, UNIQUE_UNITS, UNIQUE_INFRA, NATURAL_WONDER_DEFS, GREAT_PEOPLE, GREAT_PERSON_CLASS_INFO, LEGENDS, RELIGIONS, RELIGION_KITS } from "@roc/data";
 import { RESOURCE_DEFS, IMPROVEMENT_DEFS, UNIT_DEFS } from "@roc/sim";
 
 export interface TargetSize {
@@ -21,7 +21,7 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "construction" | "ui" | "icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder" | "wonder_tile" | "great_person" | "legend";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "construction" | "ui" | "icon" | "emoji_icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder" | "wonder_tile" | "great_person" | "legend" | "religion" | "religion_icon";
   /** Tall natural wonders (peaks, spires, tepuis) whose summit should rise ABOVE
    *  the hex footprint and overhang the tiles above — like the hand-painted
    *  hex-terrain/mountains.png. Generated on a flat magenta chroma-key backdrop
@@ -98,6 +98,10 @@ export const UNIT_SUBSET: AssetEntry[] = [
   { id: "battering_ram", name: "Battering Ram", description: "a wooden siege ram with a roofed frame and crew pushing it", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "catapult", name: "Catapult", description: "a classical torsion catapult stone-throwing siege engine", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "ballista", name: "Ballista", description: "a large bolt-shooting ballista siege engine", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  // religious (faith-purchased) — deliberately faith-neutral so one token reads for any religion
+  { id: "missionary", name: "Missionary", description: "a devout travelling missionary: a single robed preacher in a simple long hooded travelling robe, walking staff in one hand and a holy book or scroll held to the chest in the other, a small satchel at the hip, humble and serene, no weapons, no armor, generic devotional look not tied to any one religion", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "apostle", name: "Apostle", description: "a senior evangelist apostle: a single dignified robed cleric in fuller ceremonial robes and a mantle, one hand raised in blessing and the other holding an ornate holy book or a tall staff topped with a sacred emblem, an air of authority and conviction, generic devotional look not tied to any one religion, no armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
+  { id: "inquisitor", name: "Inquisitor", description: "a stern inquisitor of the faith: a single severe robed figure in dark heavy hooded robes with a rope belt, holding aloft a censer of smoking incense or a sacred staff, a grim resolute expression, austere and forbidding, generic devotional look not tied to any one religion, no armor", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   // early gunpowder
   { id: "hand_cannon", name: "Hand Cannon", description: "a late-medieval handgunner firing an early hand cannon, a short iron tube on a wooden stock with a smoking touch-hole", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
   { id: "matchlock", name: "Matchlock Infantry", description: "an early matchlock arquebusier soldier aiming a long matchlock firearm rested on a forked stand, with a smoldering match cord", category: "unit", aspectRatio: "1:1", size: { width: 128, height: 128 } },
@@ -399,6 +403,106 @@ export const ICON_SUBSET: AssetEntry[] = [
     referenceTile: DEFAULT_REFERENCE_TILE,
   },
 ];
+
+// Small UI glyph icons that replace the emojis used throughout the app. The `id`
+// here MUST match the value side of EMOJI_ICON in packages/client/src/icons.ts,
+// and the client loads them from `<asset base>/icons/<id>.png`.
+const EMOJI_ICON_DEFS: readonly (readonly [string, string])[] = [
+  ["ic_gold", "a single shiny gold coin"],
+  ["ic_war", "two crossed swords"],
+  ["ic_peace_symbol", "a round peace symbol emblem"],
+  ["ic_science", "a microscope representing science and research"],
+  ["ic_temple", "a classical columned stone temple building"],
+  ["ic_production", "a crossed blacksmith hammer and mining pick"],
+  ["ic_culture", "two theatre masks, comedy and tragedy, representing culture"],
+  ["ic_trophy", "a golden victory trophy cup"],
+  ["ic_star_outline", "a single clean five-pointed star"],
+  ["ic_food", "a golden loaf of bread representing food"],
+  ["ic_dove", "a white dove of peace in flight"],
+  ["ic_handshake", "two hands clasped in a handshake"],
+  ["ic_city", "a small cluster of ancient city buildings, a city skyline"],
+  ["ic_gear", "a single mechanical cog gear"],
+  ["ic_tools", "a hammer and wrench crossed, tools"],
+  ["ic_scroll", "a partly unrolled ancient parchment scroll"],
+  ["ic_lock", "a closed metal padlock"],
+  ["ic_book", "an open book"],
+  ["ic_map", "a folded treasure map"],
+  ["ic_shield", "a heraldic defensive shield"],
+  ["ic_warning", "a warning triangle with an exclamation mark"],
+  ["ic_medal", "a military honour medal on a ribbon"],
+  ["ic_dromedary", "a one-humped dromedary camel"],
+  ["ic_helmet", "an ancient military helmet"],
+  ["ic_crown", "a royal golden crown"],
+  ["ic_bolt", "a lightning bolt"],
+  ["ic_population", "two overlapping human head-and-shoulders silhouettes, population"],
+  ["ic_menu", "three stacked horizontal bars, a menu icon"],
+  ["ic_festival", "two crossed celebratory festival flags"],
+  ["ic_worker", "a labourer wearing a work cap with a tool, a worker"],
+  ["ic_star", "a bright gold five-pointed star"],
+  ["ic_sparkles", "a small cluster of sparkles and stars"],
+  ["ic_wine", "a goblet of red wine, a luxury"],
+  ["ic_door", "an open doorway, open borders"],
+  ["ic_envelope", "a sealed letter envelope"],
+  ["ic_wheat", "a bundled sheaf of wheat"],
+  ["ic_sleep", "the letter Z repeated as a sleep symbol"],
+  ["ic_pin", "a map location pin marker"],
+  ["ic_bactrian", "a two-humped bactrian camel"],
+  ["ic_stopwatch", "a stopwatch timer"],
+  ["ic_church", "a small church building topped with a cross"],
+  ["ic_bow", "a drawn bow with an arrow"],
+  ["ic_boot", "a sturdy leather travelling boot, movement"],
+  ["ic_hourglass", "an hourglass with running sand"],
+  ["ic_house", "a small simple house"],
+  ["ic_pine", "a single evergreen pine tree"],
+  ["ic_arrows_lr", "a horizontal double-headed left-right arrow"],
+  ["ic_pray", "two hands pressed together in prayer"],
+  ["ic_hand", "an open raised human hand, palm forward"],
+  ["ic_fire", "a single flame of fire"],
+  ["ic_bug", "a small ladybug beetle"],
+  ["ic_pause", "a pause symbol of two vertical bars"],
+  ["ic_cross", "a plain upright Latin cross"],
+  ["ic_heart", "a red love heart"],
+  ["ic_exclaim", "a bold exclamation mark"],
+  ["ic_megaphone", "a loudspeaker megaphone, denounce"],
+  ["ic_gift", "a wrapped gift box with a ribbon bow"],
+  ["ic_outbox", "an outbox tray with an upward arrow"],
+  ["ic_inbox", "an inbox tray with a downward arrow"],
+  ["ic_road", "a stretch of paved road seen in perspective"],
+  ["ic_die", "a single rolling game die showing pips"],
+  ["ic_folder", "an open file folder"],
+  ["ic_brick", "a stack of clay bricks"],
+  ["ic_rail", "a short section of railway track"],
+  ["ic_rook", "a chess rook fortress tower piece"],
+  ["ic_pickaxe", "a mining pickaxe"],
+  ["ic_tri_left", "a solid left-pointing triangle, previous"],
+  ["ic_tri_right", "a solid right-pointing triangle, next"],
+  ["ic_save", "a floppy disk save icon"],
+  ["ic_tree", "a single leafy broadleaf tree"],
+  ["ic_recycle", "three arrows forming a recycling loop"],
+  ["ic_arrow_up", "an upward-pointing arrow"],
+  ["ic_unlock", "an open unlocked padlock"],
+  ["ic_skull", "a skull with crossed bones"],
+  ["ic_anchor", "a ship's anchor"],
+  ["ic_runner", "a running human figure in motion"],
+  ["ic_flag", "a triangular pennant flag on a pole"],
+  ["ic_musket", "an antique flintlock firearm, gunpowder"],
+  ["ic_refresh", "two arrows curved into a circular refresh loop"],
+  ["ic_cross_ornate", "an ornate ceremonial cross emblem"],
+  ["ic_smile", "a simple smiling happy face"],
+  ["ic_frown", "a simple worried unhappy face"],
+  ["ic_hammer", "a single blacksmith's hammer"],
+  ["ic_eye", "a single watching human eye"],
+];
+
+export const EMOJI_ICON_SUBSET: AssetEntry[] = EMOJI_ICON_DEFS.map(([id, description]) => ({
+  id,
+  name: id,
+  description,
+  aspectRatio: "1:1" as const,
+  size: { width: 128, height: 128 },
+  category: "emoji_icon" as const,
+  referenceTile: DEFAULT_REFERENCE_TILE,
+}));
 
 export const TURN_UPDATE_SUBSET: AssetEntry[] = [
   {
@@ -1005,8 +1109,76 @@ export const WONDER_TILE_SUBSET: AssetEntry[] = GENERATED_WONDER_TILES.map((w) =
   referenceTile: DEFAULT_REFERENCE_TILE,
 }));
 
+// ---- Religions -------------------------------------------------------------
+// Two assets per faith: a small EMBLEM icon (transparent token, drawn on city
+// labels and the founding cards) and a full ARTWORK portrait (founding screen +
+// encyclopedia). `symbol` steers the emblem; `scene` steers the artwork. Both are
+// deliberately reverent and historically grounded, never gory.
+export const RELIGION_ART: Record<string, { symbol: string; scene: string }> = {
+  christianity: { symbol: "a simple slender Latin cross", scene: "an early Christian scene: a plain wooden Latin cross on a hill at dawn, a fish (ichthys) symbol carved in stone nearby, soft golden light" },
+  catholicism: { symbol: "an ornate golden Latin crucifix crossed with two papal keys", scene: "the interior of a great Gothic cathedral: soaring stone arches, a rose window casting coloured light, candles and a gilded altar" },
+  orthodoxy: { symbol: "a golden three-bar Eastern Orthodox cross with a slanted lower beam", scene: "a Byzantine church interior: a gilded domed apse with a mosaic of Christ, glowing icons, hanging oil lamps and incense smoke" },
+  islam: { symbol: "a crescent moon cradling a single star", scene: "a serene mosque at dusk: a domed prayer hall with a slender minaret, geometric tilework and arched arcades under a violet sky" },
+  judaism: { symbol: "a Star of David above a seven-branched menorah", scene: "a reverent scene of the Torah: an open scroll on a reading table beside a seven-branched golden menorah, warm lamplight" },
+  hinduism: { symbol: "the sacred Aum (Om) symbol", scene: "a Hindu temple at a river ghat: an ornate carved gopuram tower, oil lamps floating on the water, marigold offerings and rising incense" },
+  buddhism: { symbol: "an eight-spoked golden Dharma wheel (dharmachakra)", scene: "a tranquil Buddhist scene: a serene seated Buddha statue beneath a bodhi tree, lotus flowers and a golden stupa in the distance" },
+  zoroastrianism: { symbol: "a winged Faravahar figure above a flame", scene: "a Zoroastrian fire temple: a sacred eternal flame burning bright in a stone chalice within a columned sanctuary, dawn light" },
+  jainism: { symbol: "an open hand with a wheel on the palm (the ahimsa hand)", scene: "a Jain temple of white marble: intricately carved pillars and domes, a serene tirthankara statue, quiet reverent austerity" },
+  sikhism: { symbol: "the Khanda — a central double-edged sword ringed by a chakkar and two curved kirpans", scene: "a golden Sikh gurdwara mirrored in a still sacred pool at dawn, its gilded dome glowing, calm and radiant" },
+  taoism: { symbol: "the yin-yang taijitu of balanced light and dark", scene: "a misty Taoist mountain: a small tiled temple among pine and cloud-wreathed peaks, a stream and stone bridge, tranquil balance" },
+  confucianism: { symbol: "an open scholar's scroll and writing brush", scene: "a Confucian temple courtyard: red lacquered halls, a bronze statue of the sage, scholars in robes, ordered and dignified" },
+  shinto: { symbol: "a vermilion torii gate", scene: "a Shinto shrine in a forest: a bright vermilion torii gate before a wooden shrine, hanging shimenawa rope, cherry petals and dappled light" },
+  tengrism: { symbol: "a stylized sun-and-sky emblem with a soaring bird over the steppe", scene: "a windswept steppe under an immense blue sky: a stone ovoo cairn hung with blue prayer cloths, an eagle circling above the grasslands" },
+  norse: { symbol: "Mjölnir, Thor's hammer, over a Valknut of three interlocking triangles", scene: "a Norse scene: a carved wooden stave temple among fjords under the northern lights, a rune stone and a longship on the water" },
+  hellenism: { symbol: "a Corinthian temple column crowned with a laurel wreath", scene: "a classical Greek temple of white marble columns on a hilltop above the wine-dark sea, an olive tree and an owl, bright Mediterranean light" },
+  egyptian: { symbol: "a golden ankh beside the Eye of Horus", scene: "an ancient Egyptian temple on the Nile: massive painted stone pillars and a sun disc, an obelisk and palms, the sun-god's rays over the river" },
+  mesopotamian: { symbol: "the eight-pointed star of Ishtar", scene: "a Mesopotamian ziggurat rising in tiers of mud-brick against a desert sky, a processional stair and lapis-blue gateway, priests ascending" },
+  druidism: { symbol: "a triple spiral triskele wreathed in oak leaves", scene: "a Celtic sacred grove: a ring of standing stones among ancient oaks at misty dawn, mistletoe and a quiet forest altar" },
+  manichaeism: { symbol: "a radiant sun paired with a crescent moon", scene: "a Manichaean scene of light: a luminous figure of light against darkness, a glowing sun and moon over a stylized cosmos, jewel tones" },
+  aztec: { symbol: "a round Aztec sun-stone glyph", scene: "a great Aztec pyramid-temple in Tenochtitlan: a stepped stone teocalli with twin shrines, feathered banners and a carved sun-stone, dramatic sky" },
+  maya: { symbol: "a Maya glyph of the sun and feathered serpent", scene: "a Maya pyramid rising above the jungle canopy: a steep limestone temple with carved stelae, a feathered-serpent balustrade, misty rainforest" },
+  inca: { symbol: "a golden radiant sun disc with a face (Inti)", scene: "an Inca sun temple of fitted golden-lit stone high in the Andes: a golden sun disc on the wall, terraced peaks and llamas, clear mountain light" },
+  yoruba: { symbol: "a double-headed axe of Shango above an Ifá divination tray", scene: "a Yoruba shrine: carved wooden orisha figures and a round Ifá divination tray with cowrie shells, drums and offerings under a sacred tree" },
+};
+
+/** One token per religion UNIQUE UNIT (see @roc/data RELIGION_KITS; trained in
+ *  temple cities of the faith). Output: units/<id>.png (same pipeline as units). */
+export const RELIGION_UNIT_SUBSET: AssetEntry[] = RELIGION_KITS.map((k) => {
+  const religionName = RELIGIONS.find((r) => r.id === k.religionId)?.name ?? k.religionId;
+  return {
+    id: k.unit.id,
+    name: k.unit.name,
+    description: `${k.unit.name}, the unique holy unit of ${religionName}: ${k.unit.art}; a single standing figure, historically accurate and reverent, facing to the right`,
+    aspectRatio: "1:1" as const,
+    size: { width: 128, height: 128 },
+    category: "unit" as const,
+  };
+});
+
+/** Full artwork portrait per religion. Output: religions/<id>.png. */
+export const RELIGION_SUBSET: AssetEntry[] = RELIGIONS.map((r) => ({
+  id: r.id,
+  name: r.name,
+  description: RELIGION_ART[r.id]?.scene ?? r.blurb,
+  aspectRatio: "3:4",
+  size: { width: 320, height: 400 },
+  category: "religion" as const,
+  referenceTile: DEFAULT_REFERENCE_TILE,
+}));
+
+/** Small emblem icon per religion (transparent token). Output: religion-icons/<id>.png. */
+export const RELIGION_ICON_SUBSET: AssetEntry[] = RELIGIONS.map((r) => ({
+  id: r.id,
+  name: r.name,
+  description: RELIGION_ART[r.id]?.symbol ?? `the emblem of ${r.name}`,
+  aspectRatio: "1:1",
+  size: { width: 128, height: 128 },
+  category: "religion_icon" as const,
+  referenceTile: DEFAULT_REFERENCE_TILE,
+}));
+
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...UNIQUE_INFRA_SUBSET, ...IMPROVEMENT_SUBSET, ...CONSTRUCTION_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...UNIQUE_INFRA_SUBSET, ...IMPROVEMENT_SUBSET, ...CONSTRUCTION_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...EMOJI_ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET, ...RELIGION_SUBSET, ...RELIGION_ICON_SUBSET, ...RELIGION_UNIT_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -1132,6 +1304,15 @@ export function promptFor(entry: AssetEntry): string {
   }
   if (entry.category === "icon") {
     return `Create a square mobile app icon for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile. Render as a centered, self-contained square icon filling the frame. No text, no letters, no words, no UI labels, no watermark, no border frame, and no cast shadow outside the icon. The icon should look polished and readable as a small phone home-screen app.`;
+  }
+  if (entry.category === "emoji_icon") {
+    return `Create a single small hand-painted UI glyph icon for an ancient turn-based strategy game, replacing an emoji. Subject: ${entry.description}. Render ONE bold, simple, instantly-recognizable symbol, centered and filling most of the frame, as an isolated icon on a clean solid pure-white background. Match the game's painted, slightly stylized look with warm bronze/gold/stone tones and clear readable shapes — it must read at very small sizes (down to ~16px) like a crisp toolbar glyph. Keep it a flat near-front view of just the object/symbol. NO scene, NO landscape, NO background objects, NO people (unless the subject is a person/figure), NO text, NO letters, NO numbers, NO UI panel, NO border, NO frame, NO drop shadow, and NO ground plane. Everything except the glyph must be clean solid white so the background can be removed cleanly.`;
+  }
+  if (entry.category === "religion") {
+    return `Create a stylized hand-painted devotional illustration of the world religion "${entry.name}" for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a centered, reverent scene that captures the sacred architecture, symbols and mood of the faith, set against a soft painted background. Depict places, symbols and objects — NOT a portrait of a single deity's face filling the frame. Be respectful and historically grounded; NO gore, NO blood, NO violence. NO text, NO letters, NO numbers, NO symbols-as-writing, NO UI elements, NO border, NO frame, NO modern objects, and NO cast shadow. Keep the composition clear and readable at small sizes.`;
+  }
+  if (entry.category === "religion_icon") {
+    return `Create a small standalone religious EMBLEM icon for an ancient turn-based strategy game — the holy symbol of "${entry.name}". Subject: ${entry.description}. Render it as a single clean, bold, instantly-recognizable emblem/symbol, centered, filling most of the frame, as an isolated icon on a clean solid pure-white background. Match the painted, slightly stylized look of the attached reference tile (use it only for style, ignore its hexagonal shape). Give it a crafted look — gold, stone, wood or painted pigment as fits the faith. It must read clearly at very small sizes as a tiny map badge. NO scene, NO landscape, NO building interior, NO people, NO text, NO letters, NO UI, NO border, NO ground plane, and NO cast shadow. Everything except the emblem must be clean solid white so the background can be removed cleanly.`;
   }
   if (entry.category === "age") {
     return `Create a stylized hand-painted era portrait for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a centered scene with a strong sense of time and place, set against a soft painted background. NO text, NO letters, NO numbers, NO percentages, NO plus signs, NO symbols, NO UI elements, NO ability descriptions, NO stat boxes, NO border, NO frame, NO modern objects, and NO cast shadow. Keep the composition clear and readable at small sizes.`;

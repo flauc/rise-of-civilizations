@@ -110,6 +110,21 @@ describe("resources & amenities", () => {
     expect(cityAmenities(state, city)).toBe(2);
   });
 
+  it("a city founded on a luxury harvests its amenity for free, no improvement needed", () => {
+    const state = createGame({ seed: "res-city-lux", cols: 30, rows: 20, barbarians: false });
+    const city = foundCapital(state);
+
+    // Drop a wine resource onto the city-centre tile. Wine is worked by a
+    // plantation, which needs no research, so the city should harvest it at once.
+    const center = getTile(state.map, city.col, city.row)!;
+    center.resource = "wine";
+    expect(center.improvement).toBeUndefined();
+
+    expect(resourceActive(center, state)).toBe(true); // live via the city, not an improvement
+    expect(resourceActive(center)).toBe(false); // ...but only when state (the city) is known
+    expect(cityAmenities(state, city)).toBe(1);
+  });
+
   it("an amenity shortfall slows growth (0.85 for a pop-1 city with none)", () => {
     const state = createGame({ seed: "res-happy", cols: 30, rows: 20, barbarians: false });
     const city = foundCapital(state);

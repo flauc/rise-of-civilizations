@@ -25,6 +25,7 @@ import { expandTerritory } from "./territory";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
 import { computeVisible } from "./visibility";
+import { religionUnlocked } from "./religion";
 
 /** Target number of barbarian camps for the map — scales with area and activity.
  *  Used both at map generation and to replenish cleared camps out in the fog, so
@@ -153,7 +154,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
   } else if (roll < 0.52 && city) {
     city.population += 1;
     expandTerritory(state, city); // borders grow with the city
-    autoAssignCitizens(state, city); // gifted citizen works the best free tile
+    autoAssignCitizens(state, city, city.autoMode); // gifted citizen works the best free tile
     log(state, `A village added a citizen to ${city.name}.`, {
       actorId: player.id,
       targetIds: [player.id],
@@ -179,8 +180,10 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       tile: { col: unit.col, row: unit.row },
       reward: "global_morale",
     });
-  } else if (roll < 0.75) {
+  } else if (roll < 0.75 && religionUnlocked(state, player.id)) {
     // The village's shrine-keepers share their blessings — a stockpile of faith.
+    // Only offered once the civ can actually use faith (Ritual & Burial); before
+    // that it falls through to the next eligible reward, like the civic band.
     const faith = 30 + Math.floor(rng.next() * 30);
     player.faith += faith;
     log(state, `A village's shrine blessed ${player.name} with ${faith} faith.`, {

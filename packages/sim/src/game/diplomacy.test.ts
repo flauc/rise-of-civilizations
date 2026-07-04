@@ -9,7 +9,9 @@ import {
   declareWar, makePeace, gift, proposeDeal, demandTribute, finalizeDeal,
   respondProposal, militaryPower, aiInitiateTrade, aiConsiderDiplomacy,
   ensureContact, foreignTerritoryOwner, denounce, diplomacyTick, tradeableTechs,
+  cancelSharedVision, sharedVisionPartners,
 } from "./diplomacy";
+import { viewForPlayer } from "./serialize";
 import { beginTurn } from "./commands";
 import { makeUnit } from "./state";
 import { areEnemies, citiesOf, unitsOf, type GameState } from "./state";
@@ -502,5 +504,97 @@ describe("diplomacy — settling on a rival's doorstep", () => {
     aiSettler.row = spot.row;
     applyCommand(s, { type: "foundCity", unitId: aiSettler.id }, 1);
     expect(atWar(s, 0, 1)).toBe(false); // the human is annoyed but not dragged into war
+  });
+});
+
+describe("shared vision (map exchange)", () => {
+  it("a mutual map-exchange deal grants both sides shared vision", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    // Sweeten the swap with gold so the AI clearly gains from it whatever its
+    // temperament — a bare symmetric trade is a wash a greedy civ would refuse.
+    s.players[0]!.gold = 100;
+    expect(
+      proposeDeal(s, 0, 1, [{ kind: "sharedVision" }, { kind: "gold", amount: 40 }], [{ kind: "sharedVision" }]).ok,
+    ).toBe(true);
+    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
+    expect(prop.status).toBe("accepted");
+    expect(finalizeDeal(s, 0, prop.id, true).ok).toBe(true);
+    expect(relationBetween(s, 0, 1)!.sharedVision).toBe(true);
+    expect(sharedVisionPartners(s, 0)).toContain(1);
+    expect(sharedVisionPartners(s, 1)).toContain(0);
+  });
+
+  it("rejects a redundant map-exchange offer once vision is already shared", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    relationBetween(s, 0, 1)!.sharedVision = true;
+    expect(proposeDeal(s, 0, 1, [{ kind: "sharedVision" }], [{ kind: "sharedVision" }]).ok).toBe(false);
+  });
+
+  it("reveals the partner's remembered map and current sight in the player's view", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    // Park player 1's unit in a far corner player 0 cannot see, and give player 1
+    // a memory of that tile.
+    const p1u = unitsOf(s, 1)[0]!;
+    p1u.col = 35;
+    p1u.row = 25;
+    const key = "35,25";
+    s.players[0]!.explored.delete(key);
+    expect(viewForPlayer(s, 0).visible).not.toContain(key); // no pact → hidden
+
+    s.players[1]!.explored.add(key);
+    relationBetween(s, 0, 1)!.sharedVision = true;
+    const view = viewForPlayer(s, 0);
+    expect(view.visible).toContain(key); // live sight is shared
+    expect(view.tiles.some((t) => `${t.col},${t.row}` === key)).toBe(true); // remembered map too
+  });
+
+  it("cancelling revokes the borrowed sight without leaking into the player's own map", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    const p1u = unitsOf(s, 1)[0]!;
+    p1u.col = 35;
+    p1u.row = 25;
+    const key = "35,25";
+    s.players[0]!.explored.delete(key);
+    relationBetween(s, 0, 1)!.sharedVision = true;
+    expect(viewForPlayer(s, 0).visible).toContain(key);
+
+    // Either party may end it; here the other side pulls out.
+    expect(cancelSharedVision(s, 1, 0).ok).toBe(true);
+    expect(relationBetween(s, 0, 1)!.sharedVision).toBe(false);
+    expect(viewForPlayer(s, 0).visible).not.toContain(key); // sight gone at once
+    expect(s.players[0]!.explored.has(key)).toBe(false); // never persisted
+  });
+
+  it("cancelling shared vision that was never agreed fails", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    expect(cancelSharedVision(s, 0, 1).ok).toBe(false);
+  });
+
+  it("declaring war ends any standing map-exchange agreement", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    relationBetween(s, 0, 1)!.sharedVision = true;
+    declareWar(s, 0, 1);
+    expect(relationBetween(s, 0, 1)!.sharedVision).toBe(false);
+  });
+
+  it("a friendly AI offers to exchange maps once borders are open", () => {
+    const s = twoCivGame();
+    ensureContact(s, 0, 1);
+    relationBetween(s, 0, 1)!.openBorders = true;
+    // Make the AI (player 1) warmly disposed toward player 0.
+    const at = s.attitudes.find((x) => x.from === 1 && x.to === 0)!;
+    at.modifiers.push({ reason: "test-friendship", value: 60 });
+    s.turn = 12; // aligns the throttle: (turn + aiId=1) % 13 === 0
+    aiConsiderDiplomacy(s, 1);
+    const offer = s.diploProposals.find(
+      (p) => p.fromId === 1 && p.toId === 0 && p.give.some((i) => i.kind === "sharedVision"),
+    );
+    expect(offer).toBeDefined();
   });
 });

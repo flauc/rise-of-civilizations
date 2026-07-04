@@ -15,8 +15,8 @@ import { UNIT_DEFS, isMilitary, type UnitTypeId } from "./content";
 import { offsetNeighbors } from "./movement";
 import { isWaterTerrain } from "./terrain";
 import { startingUnitMorale } from "./morale";
-import { emitLegendRecruited } from "./turn-updates";
 import { legendSituationalCombatBonus } from "./legend-effects";
+import { grantLegendDeathFaith } from "./works";
 
 export type { LegendDef };
 
@@ -105,12 +105,13 @@ export function recruitLegend(
   unit.legendExpiresOnTurn = state.turn + def.lifespan;
   state.units.set(id, unit);
 
+  // No turn-start pop-up for your own recruitment (you just chose it); the log
+  // entry above records it and the Legends panel is where you review the hero.
   log(state, `${player.name} recruited the Legend ${def.name}!`, {
     actorId: playerId,
     targetIds: [playerId],
     tile: { col: spawn.col, row: spawn.row },
   });
-  emitLegendRecruited(state, playerId, def);
   return { ok: true };
 }
 
@@ -133,6 +134,8 @@ export function tickLegends(state: GameState, playerId: number): void {
       targetIds: [playerId],
       tile: { col: unit.col, row: unit.row },
     });
+    // A wonder (the Great Pyramid) may sanctify the hero's passing with faith.
+    grantLegendDeathFaith(state, playerId, { col: unit.col, row: unit.row });
   }
 }
 

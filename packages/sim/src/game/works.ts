@@ -5,13 +5,13 @@
 // Wonders are great Works needing several disciplines and (optionally) several
 // cities. See docs/SPECIALISTS-AND-WORKS.md.
 
-import { axialDistance, getTile, offsetToAxial, type Tile } from "@roc/shared";
-import { getWonder, WONDER_DEFS, UNIQUE_IMPROVEMENTS, type UniqueInfraDef } from "@roc/data";
+import { axialDistance, axialNeighbors, axialToOffset, getTile, offsetToAxial, type Tile } from "@roc/shared";
+import { getWonder, WONDER_DEFS, UNIQUE_IMPROVEMENTS, type UniqueInfraDef, type WonderDef } from "@roc/data";
 import type { City, Discipline, GameState, Player, Specialist, Work } from "./state";
 import { citiesOf, cityAt, log, playerById } from "./state";
-import { isPassableLand } from "./terrain";
-import { availableTechs } from "./economy";
-import { TECH_DEFS, type TechId } from "./content";
+import { isPassableLand, isWaterTerrain } from "./terrain";
+import { availableTechs, placeUnit } from "./economy";
+import { TECH_DEFS, UNIT_DEFS, type TechId } from "./content";
 import {
   SPECIALIST_DEFS,
   availableSpecialists,
@@ -20,6 +20,7 @@ import {
   type SpecialistId,
 } from "./specialists";
 import { DEFENSE_NAMES, STRUCTURE_HP, type DefenseKind } from "./fortifications";
+import { IMPROVEMENT_REQ_TECH, type ImprovementKind } from "./improvements";
 import { emitImprovementComplete, emitWonderComplete } from "./turn-updates";
 
 export type EconKind =
@@ -40,6 +41,16 @@ export type WorkKind = EconKind | DefenseKind | "wonder";
 const MAX_TIER = 3;
 const DISTANCE_FACTOR = 0.5;
 
+// A wonder is a grand national project: you must gather its full crew of craftsmen
+// (WonderDef.crew — e.g. 11 Masons + 6 Architects) before you can even start it, and
+// no more than that crew may work it. Raising it then takes a fixed span of
+// construction no matter how skilled the crew is impatient to finish: the labour
+// requirement is the crew size × this many turns, so a full crew of fresh craftsmen
+// completes it in ~WONDER_BUILD_TURNS turns (veterans, contributing more labour each,
+// finish sooner). This makes a wonder a real, sustained undertaking rather than
+// something that snaps into being the moment the crew is assembled.
+export const WONDER_BUILD_TURNS = 12;
+
 const ECON_DISCIPLINE: Record<EconKind, Discipline> = {
   farm: "carpentry",
   lumber_camp: "carpentry",
@@ -54,12 +65,6 @@ const ECON_DISCIPLINE: Record<EconKind, Discipline> = {
   road: "survey",
 };
 
-// Econ improvements gated behind a researched technology (loose TechId strings).
-// Most improvements are available from the start; these unlock with progress.
-export const ECON_REQ_TECH: Partial<Record<EconKind, TechId>> = {
-  fishery: "maritime_foraging",
-  saltern: "maritime_foraging",
-};
 export const ECON_BASE: Record<EconKind, number> = {
   farm: 3,
   lumber_camp: 3,
@@ -108,9 +113,10 @@ export function isEconKind(kind: string): kind is EconKind {
 }
 
 // ---- civ-unique tile improvements (3-tier, owner-civ only) -----------------
-// Like the economic ladders, a civ's signature improvement now upgrades through
-// three tiers (its worked yields grow each tier — see improvements.ts), so it is
-// never strictly worse than a plain Farm/Mine the player could otherwise build.
+// Like the economic ladders, a civ's signature improvement upgrades through three
+// tiers, but its worked yields grow a steeper +2/tier (vs +1 for generics — see
+// improvements.ts), so a fully-upgraded unique improvement clearly outperforms the
+// plain Farm/Mine the player could otherwise build, repaying its higher labour cost.
 const UNIQUE_IMP_BASE = 5; // labour, scaled by distance and tier
 const UNIQUE_IMP_BY_KIND = new Map<string, UniqueInfraDef>(UNIQUE_IMPROVEMENTS.map((u) => [u.id, u]));
 
@@ -241,6 +247,31 @@ function tileOwnedBy(state: GameState, tile: Tile, playerId: number): boolean {
   return !!city && city.ownerId === playerId;
 }
 
+/** True only when the tile is claimed by a *different* player's city. Unclaimed
+ *  (neutral) land is not "owned by another", so it returns false there. */
+function tileOwnedByOther(state: GameState, tile: Tile, playerId: number): boolean {
+  if (tile.ownerCityId === undefined) return false;
+  const city = state.cities.get(tile.ownerCityId);
+  return !!city && city.ownerId !== playerId;
+}
+
+/** Work kinds that may be laid on neutral land beyond your borders, so roads and
+ *  tile improvements can be prepared ahead of a settler founding a city there.
+ *  Roads and economic/civ-unique improvements qualify; defensive structures and
+ *  wonders stay territory-locked (they must sit inside your own claim). "road" is
+ *  itself an econ kind, so isEconKind already covers it. */
+export function buildableOutsideTerritory(kind: string): boolean {
+  return isEconKind(kind) || isUniqueImpKind(kind);
+}
+
+/** Whether the player may target this tile with a work of `kind`, given ownership.
+ *  Neutral tiles are open to roads/improvements; enemy-claimed tiles never are;
+ *  territory-locked kinds (defences, wonders) still require the tile to be yours. */
+function tileBuildableFor(state: GameState, tile: Tile, playerId: number, kind: string): boolean {
+  if (buildableOutsideTerritory(kind)) return !tileOwnedByOther(state, tile, playerId);
+  return tileOwnedBy(state, tile, playerId);
+}
+
 /** Specialist disciplines a work of `kind` needs trained before it can begin. */
 export function workDisciplines(kind: string): Discipline[] {
   if (isEconKind(kind)) return [ECON_DISCIPLINE[kind]];
@@ -293,6 +324,31 @@ function lockedDisciplines(state: GameState, playerId: number, player: Player, d
   return disciplines.filter((d) => !disciplineUnlocked(player, d) && !playerHasDiscipline(state, playerId, d));
 }
 
+/** How many of a work's already-assigned specialists practise `disc` (drives the
+ *  per-craft wonder crew cap). */
+function assignedCountOfDiscipline(state: GameState, w: Work, disc: Discipline): number {
+  let n = 0;
+  for (const sid of w.assignedSpecialistIds) {
+    const found = findSpecialist(state, w.ownerId, sid);
+    if (found && specialistDiscipline(found.specialist) === disc) n++;
+  }
+  return n;
+}
+
+/** The crew headcount a wonder needs of `disc` (0 for tile/defensive works or a
+ *  discipline the wonder doesn't use). */
+export function wonderCrewNeeded(w: Work, disc: Discipline): number {
+  if (w.kind !== "wonder") return 0;
+  return getWonder(w.wonderId)?.crew[disc] ?? 0;
+}
+
+/** True when a wonder already has its full crew of `disc` craftsmen (so the UI can
+ *  stop offering more of that craft). Non-wonder works are never capped. */
+export function wonderCraftFull(state: GameState, w: Work, disc: Discipline): boolean {
+  if (w.kind !== "wonder") return false;
+  return assignedCountOfDiscipline(state, w, disc) >= wonderCrewNeeded(w, disc);
+}
+
 /** Recompute a work's contributing cities from its assigned specialists. */
 function recomputeCityIds(state: GameState, w: Work): void {
   const ids = new Set<number>();
@@ -321,7 +377,16 @@ export function canStartWork(state: GameState, playerId: number, kind: string, c
   if (!isEconKind(kind) && !isDefenseKind(kind) && !isUniqueImpKind(kind)) return { ok: false, error: "unknown work" };
   const tile = getTile(state.map, col, row);
   if (!tile) return { ok: false, error: "no such tile" };
-  if (!tileOwnedBy(state, tile, playerId)) return { ok: false, error: "tile not in your territory" };
+  // Roads and tile improvements may be prepared on neutral land ahead of a settler;
+  // only enemy-claimed tiles are off-limits. Defences/wonders still need your territory.
+  if (!tileBuildableFor(state, tile, playerId, kind)) {
+    return {
+      ok: false,
+      error: tileOwnedByOther(state, tile, playerId)
+        ? "tile in another civilization's territory"
+        : "tile not in your territory",
+    };
+  }
   // A civ's unique improvement can only be built by that civ, once its tech is known.
   if (isUniqueImpKind(kind)) {
     const p = playerById(state, playerId);
@@ -337,7 +402,7 @@ export function canStartWork(state: GameState, playerId: number, kind: string, c
   // Some econ improvements are locked behind a technology (e.g. water works
   // unlocked by Maritime Foraging).
   if (isEconKind(kind)) {
-    const req = ECON_REQ_TECH[kind];
+    const req = IMPROVEMENT_REQ_TECH[kind as ImprovementKind];
     if (req && !playerById(state, playerId)?.researched.has(req)) {
       return { ok: false, error: `requires ${TECH_DEFS[req].name}` };
     }
@@ -385,13 +450,68 @@ export function startWork(state: GameState, playerId: number, kind: string, col:
   return { ok: true, workId: id };
 }
 
-/** Is this tile a clear, buildable spot for a world-wonder? (no city, feature,
- *  improvement, structure, natural or built wonder, and passable land). */
-export function isWonderBuildableTile(tile: Tile): boolean {
-  if (!isPassableLand(tile.terrain)) return false;
+/** Is this tile a clear, buildable spot for a world-wonder? (no feature, improvement,
+ *  structure, natural or built wonder.) Most wonders need passable land; a few sit on
+ *  open water (the Great Lighthouse) — pass `onWater` for those. */
+export function isWonderBuildableTile(tile: Tile, onWater = false): boolean {
+  if (onWater ? !isWaterTerrain(tile.terrain) : !isPassableLand(tile.terrain)) return false;
   if (tile.improvement || tile.structure || tile.feature) return false;
   if (tile.naturalWonder || tile.wonder) return false;
   return true;
+}
+
+/** The tiles neighbouring (col,row) that exist on the map. */
+function neighborTiles(state: GameState, col: number, row: number): Tile[] {
+  const out: Tile[] = [];
+  for (const ax of axialNeighbors(offsetToAxial({ col, row }))) {
+    const o = axialToOffset(ax);
+    const t = getTile(state.map, o.col, o.row);
+    if (t) out.push(t);
+  }
+  return out;
+}
+
+/** True if the tile has or borders fresh water (a river runs through it, it is a
+ *  lake, or it neighbours one). Mirrors economy.ts's fresh-water test. */
+function tileHasFreshWater(state: GameState, tile: Tile): boolean {
+  if (tile.river || tile.riverLake) return true;
+  if (tile.terrain === "lake") return true;
+  return neighborTiles(state, tile.col, tile.row).some((n) => n.terrain === "lake");
+}
+
+/** Some terrain within `range` hexes of the tile matches one of `terrains`. */
+function terrainWithinRange(state: GameState, tile: Tile, terrains: string[], range: number): boolean {
+  const center = offsetToAxial({ col: tile.col, row: tile.row });
+  const want = new Set(terrains);
+  for (const t of state.map.tiles) {
+    if (!want.has(t.terrain)) continue;
+    if (axialDistance(center, offsetToAxial({ col: t.col, row: t.row })) <= range) return true;
+  }
+  return false;
+}
+
+/** Terrain/geography gate for a wonder's chosen tile: null if the site is legal, or
+ *  a "requires <site>" message naming what the wonder needs. */
+function wonderPlacementError(state: GameState, playerId: number, def: WonderDef, tile: Tile): string | null {
+  const pl = def.placement;
+  if (!pl) return null;
+  let ok = true;
+  if (pl.terrain && !pl.terrain.includes(tile.terrain)) ok = false;
+  if (ok && pl.coastalWater) {
+    ok = isWaterTerrain(tile.terrain) && neighborTiles(state, tile.col, tile.row).some((n) => isPassableLand(n.terrain));
+  }
+  if (ok && pl.adjacentToWater) {
+    ok = neighborTiles(state, tile.col, tile.row).some((n) => isWaterTerrain(n.terrain));
+  }
+  if (ok && pl.freshWater) ok = tileHasFreshWater(state, tile);
+  if (ok && pl.adjacentTerrain) {
+    ok = neighborTiles(state, tile.col, tile.row).some((n) => pl.adjacentTerrain!.includes(n.terrain));
+  }
+  if (ok && pl.nearTerrain) ok = terrainWithinRange(state, tile, pl.nearTerrain.terrain, pl.nearTerrain.range);
+  if (ok && pl.adjacentToCity) {
+    ok = neighborTiles(state, tile.col, tile.row).some((n) => cityAt(state, n.col, n.row)?.ownerId === playerId);
+  }
+  return ok ? null : `requires ${pl.site}`;
 }
 
 /** Validate starting a wonder on a tile without mutating (drives the wonder UI).
@@ -408,7 +528,14 @@ export function canStartWonder(state: GameState, playerId: number, wonderId: str
   if (!tile) return { ok: false, error: "no such tile" };
   if (!tileOwnedBy(state, tile, playerId)) return { ok: false, error: "tile not in your territory" };
   if (cityAt(state, col, row)) return { ok: false, error: "cannot build a wonder on a city" };
-  if (!isWonderBuildableTile(tile)) return { ok: false, error: "cannot build a wonder here" };
+  // Most wonders occupy clear passable land; a few (the Great Lighthouse) sit on water.
+  const onWater = !!def.placement?.coastalWater;
+  if (!isWonderBuildableTile(tile, onWater)) {
+    return { ok: false, error: onWater ? "must be built on open water" : "cannot build a wonder here" };
+  }
+  // Terrain/geography gate (a desert tile, a hill, near a mountain, …).
+  const placeErr = wonderPlacementError(state, playerId, def, tile);
+  if (placeErr) return { ok: false, error: placeErr };
   if (state.works.some((w) => w.ownerId === playerId && w.target && w.target.col === col && w.target.row === row)) {
     return { ok: false, error: "this tile is already being worked" };
   }
@@ -416,17 +543,41 @@ export function canStartWonder(state: GameState, playerId: number, wonderId: str
   if (!host) return { ok: false, error: "no city to build from" };
   const player = playerById(state, playerId);
   if (player) {
-    const disciplines = Object.keys(def.requirement) as Discipline[];
+    // A wonder is unlocked by a specific technology (the Great Library needs Writing,
+    // the Colossus bronze-working, and so on).
+    if (def.reqTech && !player.researched.has(def.reqTech as TechId)) {
+      return { ok: false, error: `requires ${TECH_DEFS[def.reqTech as TechId]?.name ?? def.reqTech}` };
+    }
+    const disciplines = Object.keys(def.crew) as Discipline[];
     // The crafts must be at least researchable (or already fielded) …
     const locked = lockedDisciplines(state, playerId, player, disciplines);
     if (locked.length) return { ok: false, error: lockedDisciplinesError(locked) };
-    // … and each must have an idle craftsman free to take the job, exactly as a
-    // tile improvement requires. A wonder can't be queued until the player has a
-    // free specialist of every craft it needs (there's nobody to staff it otherwise).
-    const missing = unstaffableDisciplines(state, playerId, disciplines);
-    if (missing.length) return { ok: false, error: noFreeSpecialistError(missing) };
+    // … and — unlike a tile improvement, which needs a single free craftsman — a
+    // wonder needs its ENTIRE crew idle and ready before it can even begin (e.g. 11
+    // free Masons + 6 free Architects). Gather the whole workforce first.
+    const short = crewShortfall(state, playerId, def.crew as Partial<Record<Discipline, number>>);
+    if (short.length) return { ok: false, error: crewShortfallError(short) };
+    // Some wonders also demand a one-time outlay of gold, faith, or culture at the
+    // moment they break ground, spent from the treasury on top of the crew.
+    const costErr = wonderCostError(player, def);
+    if (costErr) return { ok: false, error: costErr };
   }
   return { ok: true };
+}
+
+/** One-time resources a wonder charges to START it (0s for a free wonder). */
+export function wonderStartCost(def: WonderDef): { gold: number; faith: number; culture: number } {
+  return { gold: def.goldCost ?? 0, faith: def.faithCost ?? 0, culture: def.cultureCost ?? 0 };
+}
+
+/** Whether the player can't (yet) afford a wonder's one-time start cost — the error
+ *  the build UI shows, or null if affordable. */
+function wonderCostError(player: Player, def: WonderDef): string | null {
+  const c = wonderStartCost(def);
+  if (player.gold < c.gold) return `costs ${c.gold} gold`;
+  if (player.faith < c.faith) return `costs ${c.faith} faith`;
+  if (player.cultureProgress < c.culture) return `costs ${c.culture} culture`;
+  return null;
 }
 
 /** Begin a wonder on an owned tile, hosted by the nearest city with the crew. */
@@ -435,6 +586,12 @@ export function startWonder(state: GameState, playerId: number, wonderId: string
   if (!can.ok) return can;
   const def = getWonder(wonderId)!;
   const host = nearestOwningCity(state, playerId, col, row)!;
+  // Pay the one-time start cost (validated affordable in canStartWonder).
+  const player = playerById(state, playerId)!;
+  const cost = wonderStartCost(def);
+  player.gold -= cost.gold;
+  player.faith -= cost.faith;
+  player.cultureProgress -= cost.culture;
   const id = state.nextEntityId++;
   state.works.push({
     id,
@@ -445,10 +602,24 @@ export function startWonder(state: GameState, playerId: number, wonderId: string
     hostCityId: host.id,
     cityIds: [],
     assignedSpecialistIds: [],
-    requirement: { ...(def.requirement as Partial<Record<Discipline, number>>) },
+    // Labour target = crew headcount × build turns, so a full crew of fresh (Lv1,
+    // 1 labour/turn) craftsmen finishes in WONDER_BUILD_TURNS turns; a veteran crew,
+    // contributing more labour each, finishes sooner. The crew itself is capped at
+    // the headcount (assignSpecialist), so this span can't be short-cut with bodies.
+    requirement: wonderLabourRequirement(def.crew as Partial<Record<Discipline, number>>),
     progress: {},
   });
   return { ok: true, workId: id };
+}
+
+/** A wonder's internal labour target per discipline: its crew headcount stretched
+ *  over WONDER_BUILD_TURNS turns of construction. */
+export function wonderLabourRequirement(
+  crew: Partial<Record<Discipline, number>>,
+): Partial<Record<Discipline, number>> {
+  const req: Partial<Record<Discipline, number>> = {};
+  for (const d of Object.keys(crew) as Discipline[]) req[d] = (crew[d] ?? 0) * WONDER_BUILD_TURNS;
+  return req;
 }
 
 /**
@@ -481,6 +652,14 @@ export function assignSpecialist(
     return { ok: false, error: "this work needs no labour of that craft" };
   }
   if (w.assignedSpecialistIds.includes(specialistId)) return { ok: true, workId };
+  // A wonder's crew is fixed at its required headcount per craft — you can't pile on
+  // extra bodies to rush it (nor is there work for them).
+  if (w.kind === "wonder" && assignedCountOfDiscipline(state, w, disc) >= wonderCrewNeeded(w, disc)) {
+    return {
+      ok: false,
+      error: `the wonder's ${specialistNameForDiscipline(disc)} crew is full (${wonderCrewNeeded(w, disc)})`,
+    };
+  }
   // Enforce one-work-per-specialist: detach from any other work first.
   unassignSpecialistEverywhere(state, playerId, specialistId);
   w.assignedSpecialistIds.push(specialistId);
@@ -540,6 +719,32 @@ function noFreeSpecialistError(missing: Discipline[]): string {
   return `No ${missing.map(specialistNameForDiscipline).join(" or ")} available`;
 }
 
+/** For a required crew (headcount per discipline), the crafts the player can't fully
+ *  field from idle specialists right now, each with how many it has vs. needs. Drives
+ *  the wonder start gate: a wonder needs its WHOLE crew free, not just one of each. */
+export function crewShortfall(
+  state: GameState,
+  playerId: number,
+  crew: Partial<Record<Discipline, number>>,
+): { disc: Discipline; have: number; need: number }[] {
+  const free = freeSpecialistsByDiscipline(state, playerId);
+  const short: { disc: Discipline; have: number; need: number }[] = [];
+  for (const d of Object.keys(crew) as Discipline[]) {
+    const need = crew[d] ?? 0;
+    const have = free.get(d) ?? 0;
+    if (have < need) short.push({ disc: d, have, need });
+  }
+  return short;
+}
+
+/** Error shown when a wonder's full crew isn't yet available (e.g. "Need 11 Masons
+ *  (have 7)"). Capitalised so the build UI renders it as a locked button. */
+function crewShortfallError(short: { disc: Discipline; have: number; need: number }[]): string {
+  return `Need ${short
+    .map((s) => `${s.need} ${specialistNameForDiscipline(s.disc)}${s.need === 1 ? "" : "s"} (have ${s.have})`)
+    .join(", ")}`;
+}
+
 export function cancelWork(state: GameState, workId: number, playerId: number): WorkResult {
   const before = state.works.length;
   state.works = state.works.filter((w) => !(w.id === workId && w.ownerId === playerId));
@@ -594,9 +799,11 @@ export function workEtaTurns(state: GameState, w: Work): number {
   return eta;
 }
 
-/** Drop works whose host city is gone/changed owner or whose tile left our territory.
- *  Works with no assigned specialists are kept (they sit idle until the player staffs
- *  them) — only the host-city/target/wonder anchors can retire a work. */
+/** Drop works whose host city is gone/changed owner or whose target tile is no longer
+ *  a legal build site (an enemy claimed it, or a territory-locked work left our land).
+ *  Roads/improvements on neutral land are kept — that's the whole point of building
+ *  ahead of a settler. Works with no assigned specialists are also kept (they sit idle
+ *  until the player staffs them) — only the anchors above can retire a work. */
 function pruneWorks(state: GameState): void {
   state.works = state.works.filter((w) => {
     const host = state.cities.get(w.hostCityId);
@@ -606,7 +813,7 @@ function pruneWorks(state: GameState): void {
     recomputeCityIds(state, w);
     if (w.target) {
       const t = getTile(state.map, w.target.col, w.target.row);
-      if (!t || !tileOwnedBy(state, t, w.ownerId)) return false;
+      if (!t || !tileBuildableFor(state, t, w.ownerId, w.kind)) return false;
     }
     if (w.wonderId && state.completedWonders.includes(w.wonderId)) return false;
     return true;
@@ -722,6 +929,68 @@ export function advanceWorks(state: GameState, playerId: number): void {
   }
   state.works = state.works.filter((w) => !(w.ownerId === playerId && isComplete(w)));
   pruneWorks(state);
+}
+
+// ---- completed-wonder mechanics -------------------------------------------
+// Beyond flat yields (economy.ts) and passive CivEffects (civs.ts), some wonders
+// have active, game-changing effects that fire on a schedule or on an event. These
+// helpers, keyed off the WonderEffect data (never hard-coded ids), are invoked from
+// the turn loop and the legend/unit-death paths.
+
+/** Ids of the world wonders this player has completed (built anywhere in the empire). */
+export function ownedWonderIds(state: GameState, playerId: number): Set<string> {
+  const ids = new Set<string>();
+  for (const c of citiesOf(state, playerId)) for (const w of c.wonders) ids.add(w);
+  return ids;
+}
+
+/** Per-turn active wonder effects for a player: currently the Colossus launching a
+ *  free-upkeep warship every few turns. Called once per player per turn. */
+export function tickWonders(state: GameState, playerId: number): void {
+  const owner = playerById(state, playerId);
+  if (!owner || owner.isBarbarian) return;
+  for (const wid of ownedWonderIds(state, playerId)) {
+    const def = getWonder(wid);
+    const every = def?.effect.spawnShipEveryTurns ?? 0;
+    if (!def || every <= 0 || state.turn % every !== 0) continue;
+    const host = citiesOf(state, playerId).find((c) => c.wonders.includes(wid));
+    if (!host) continue;
+    const ship = placeUnit(state, host, (def.effect.spawnShipType ?? "galley") as never, 0, 0, true);
+    if (ship) {
+      log(state, `The ${def.name} launched a ${UNIT_DEFS[ship.type].name} at ${host.name}.`, {
+        actorId: owner.id,
+        targetIds: [owner.id],
+        tile: { col: ship.col, row: ship.row },
+      });
+    }
+  }
+}
+
+/** Total faith a player's wonders grant each time one of their Legends dies/expires. */
+function legendDeathFaith(state: GameState, playerId: number): number {
+  let faith = 0;
+  for (const wid of ownedWonderIds(state, playerId)) faith += getWonder(wid)?.effect.faithOnLegendDeath ?? 0;
+  return faith;
+}
+
+/** Award the Great-Pyramid-style faith offering when one of `playerId`'s Legends is
+ *  lost (killed in battle or passing into legend at the end of its span). No-op if the
+ *  player has raised no wonder that rewards it. `at` marks where to anchor the log. */
+export function grantLegendDeathFaith(
+  state: GameState,
+  playerId: number,
+  at?: { col: number; row: number },
+): void {
+  const owner = playerById(state, playerId);
+  if (!owner || owner.isBarbarian) return;
+  const faith = legendDeathFaith(state, playerId);
+  if (faith <= 0) return;
+  owner.faith += faith;
+  log(state, `${owner.name}'s people honour a fallen legend with a great offering (+${faith} faith).`, {
+    actorId: owner.id,
+    targetIds: [owner.id],
+    tile: at,
+  });
 }
 
 export { WONDER_DEFS };

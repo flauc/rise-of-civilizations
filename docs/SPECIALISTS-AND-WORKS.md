@@ -109,7 +109,8 @@ raised, and the contributing crew earns a completion XP bonus.
 only accrues labour from specialists the player has **explicitly assigned** to it,
 and a specialist may labour on **at most one Work at a time**. Specialists can be
 pulled from **any** of the player's cities (not just the host city), and several
-can be stacked on one Work to finish it faster — the per-Work panel shows the
+can be stacked on one Work to finish it faster (a **wonder** instead needs its
+whole fixed crew and caps at that headcount — see §2.4) — the per-Work panel shows the
 crew's combined labour/turn and the resulting ETA, so the speed impact of picking a
 veteran (Lv5 = 3× labour) over an apprentice is visible. Releasing a specialist (or
 losing its city) detaches it automatically. The AI assigns its idle craftsmen to its
@@ -144,30 +145,62 @@ distance term is meaningful.
 
 ### 2.4 Wonders
 
-Wonders are the showcase Works. A Wonder:
+Wonders are the showcase Works. A Wonder is defined by its **crew** — a headcount of
+craftsmen per discipline (`WonderDef.crew`, e.g. the Great Pyramid's 11 Masons + 6
+Architects) — and is a grand national project rather than a labour pool. A Wonder:
 
-- is hosted by **one city** but **multiple cities can be assigned to contribute**
-  their specialists, pooling labour to finish faster;
-- requires **several disciplines at once** (e.g. lots of `masonry` +
-  `architecture`, some `engineering`), so a city must field a mixed crew;
-- has a large labour requirement (tens of labour) → many turns / many cities;
-- grants a strong, permanent empire or city bonus when completed, and can only
-  be built **once in the world** (first to finish claims it).
+- **needs its ENTIRE crew idle and free before it can even start.** Unlike a tile
+  work (which needs a single free craftsman), `canStartWonder` refuses until the
+  player fields the whole crew of each craft — 11 free Masons *and* 6 free
+  Architects for the Pyramid. Craftsmen may be **pooled from any/all of the
+  player's cities** (the count is empire-wide), so a big civilization gathering
+  the workforce is the real gate;
+- **caps the crew at that headcount.** No more than `crew[d]` specialists of each
+  craft may work it — you cannot rush it by piling on extra bodies (there's no
+  room for them), so gathering the crew, not out-massing the labour, is the cost.
+  Tile and defensive works stay **uncapped** (stacking a crew on a distant
+  farm/road is a legitimate way to hurry it);
+- **takes a long, fixed span of construction even fully crewed.** Internally the
+  labour requirement is `crew × WONDER_BUILD_TURNS` (= 12), so a full crew of fresh
+  (Lv1) craftsmen raises the wonder in ~12 turns; a **veteran** crew (each
+  contributing more labour/turn) finishes sooner. It never snaps into being the
+  moment the crew is assembled;
+- is **unlocked by a technology** (`WonderDef.reqTech`) and charges a **one-time
+  cost** in gold, faith, or culture (`goldCost`/`faithCost`/`cultureCost`) the
+  moment it breaks ground — a resource sink on top of the crew. `canStartWonder`
+  enforces both; `startWonder` deducts the cost;
+- can only be **sited where its geography allows** (`WonderDef.placement` — terrain,
+  coastal/water, fresh water, near/adjacent terrain, or beside one of your cities),
+  checked against the live map in `canStartWonder` (the Great Lighthouse even sits on
+  a coastal *water* tile);
+- grants strong, permanent **yields** *and*, for several wonders, a **dynamic,
+  game-changing effect**. Beyond `yieldPerCity`/`yieldHostCity`/`freeTech`, a
+  `WonderEffect` can carry: `civEffects` (a `Partial<CivEffects>` merged into the
+  owner's empire bonuses like a policy — see `playerEffects` in civs.ts),
+  `shipSightBonus` (naval sight, applied in `unitSight`), `spawnShipEveryTurns` +
+  `spawnShipType` (a free-upkeep ship launched from the host city on a schedule via
+  `tickWonders`), and `faithOnLegendDeath` (faith granted when one of the owner's
+  Legends dies in battle or expires — hooked in `killUnit` and `tickLegends`);
+- can only be built **once in the world** (first to finish claims it).
 
-Launch wonder set (ancient era, illustrative — extensible in `@roc/data`):
+Launch wonder set (ancient era, extensible in `@roc/data`). "Crew" is the craftsmen
+you must gather; construction then spans ~`WONDER_BUILD_TURNS` turns:
 
-| Wonder | Requires | Effect |
-|---|---|---|
-| **Great Pyramid** | masonry ×11, architecture ×6 | +1 production in every city |
-| **Hanging Gardens** | carpentry ×6, architecture ×6, engineering ×4 | +1 food in every city |
-| **Great Library** | architecture ×7, engineering ×5 | +3 science in the host city; free tech on completion |
-| **Colossus** | masonry ×6, engineering ×6 | +3 gold in the host city; +1 trade-route gold |
-| **Great Lighthouse** | masonry ×5, architecture ×5, engineering ×5 | +1 sight & +1 movement to your units near the host city |
+| Wonder | Unlock (tech · cost) | Site | Crew | Effect |
+|---|---|---|---|---|
+| **Great Pyramid** | Masonry · 150🪙 | Desert | 11 Masons, 6 Architects | +2 production/city, +2 culture host; **+60 faith whenever a Legend dies or expires** |
+| **Hanging Gardens** | Irrigation · 120🪙 | Fresh water (river/lake) | 6 Carpenters, 6 Architects, 4 Engineers | +2 food/city, +2 culture host |
+| **Great Library** | Writing · 120🎭 | Beside a city | 7 Architects, 5 Engineers | +4 science host, +1 science/city, free tech |
+| **Colossus** | Bronze-working · 140🪙 | Coastal (beside sea) | 6 Masons, 6 Engineers | +5 gold host, +2 trade-route gold; **free warship every 6 turns** |
+| **Great Lighthouse** | Sailing · 130🪙 | Coastal water tile | 5 Masons, 5 Architects, 5 Engineers | +1 gold/city, +2 science host; **all ships +2 sight, +1 movement** |
+| **Great Sphinx** | Monumental Architecture · 100🎭 | Desert | 9 Masons, 5 Architects | +3 culture & +3 gold host, +1 culture/city |
+| **Stonehenge** | Ritual Burial · 80☮️ | Within 5 tiles of a mountain | 9 Masons, 4 Surveyors | +1 faith/city, +3 faith host |
+| **The Oracle** | Theology · 120☮️ | Beside a mountain | 6 Architects, 5 Masons | +3 faith & +2 science host, +1 faith/city; **rush production with faith** |
+| **Tenochtitlán** | Engineering · 160🪙 | Hill | 7 Engineers, 6 Architects, 5 Masons | +1 food & +1 production/city, +2 gold host; **all land units +1 movement** |
 
-Wonders live in `@roc/data` as `WONDER_DEFS` (dependency-free) with `id, name,
-requirement: Partial<Record<Discipline, number>>, effect`. Effects reuse the
-existing `CivEffects`/yield plumbing where possible (e.g. `yieldPerCity`,
-`yieldInHostCity`).
+Wonders live in `@roc/data` as `WONDER_DEFS` (dependency-free) with `id, name, crew,
+reqTech?, goldCost?/faithCost?/cultureCost?, effect`. Effects reuse the existing
+`CivEffects`/yield plumbing where possible.
 
 ### 2.5 Specialist upkeep value
 

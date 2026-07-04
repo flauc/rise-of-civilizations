@@ -18,6 +18,10 @@ import {
   MILITARY_CLASSES,
   SPECIALIST_DEFS,
   SPECIALIST_IDS,
+  specialistNameForDiscipline,
+  wonderStartCost,
+  type Discipline,
+  type TechId,
   BRIBE_TURNS,
   BARBARIAN_BRIBE_BASE,
   barbarianRecruitCost,
@@ -29,6 +33,10 @@ import {
   ACTIVE_ABILITY_DEFS,
   uniqueInfraForCiv,
   TECH_DEFS,
+  RELIGION_UNIT_KITS,
+  RELIGION_REQUIRED_TECH,
+  FAITH_TO_FOUND,
+  CONVERSION_PRESSURE,
   type ActiveAbilityId,
   type UnitTypeId,
 } from "@roc/sim";
@@ -52,6 +60,13 @@ import {
   legendAbilityHistory,
   civLocation,
   CIV_REGIONS,
+  RELIGIONS,
+  getReligionDef,
+  RELIGION_KITS,
+  getReligionKit,
+  BELIEFS,
+  RELIGION_TIERS,
+  MOVE_HOLY_CITY_COST,
   type CivLocation,
   type GreatPersonClass,
   type LegendType,
@@ -124,7 +139,7 @@ function civCardHtml(c: typeof CIVILIZATIONS[number]): string {
     `<div class="wiki-card-title">${escapeHtml(c.name)}</div>` +
     `<div class="wiki-card-sub">Leader: <b>${escapeHtml(c.leader)}</b></div>` +
     `<div class="wiki-card-body"><b>${escapeHtml(c.abilityName)}</b> — ${escapeHtml(c.abilityDesc)}</div>` +
-    `<div class="uu-hint">View details &amp; history &rsaquo;</div>` +
+    `<div class="uu-hint">View details & history &rsaquo;</div>` +
     `</div></div>`
   );
 }
@@ -204,6 +219,7 @@ function unitCard(id: string, title: string, statsLine: string, metaLine: string
 function renderUnits(): string {
   const byClass = new Map<string, typeof UNIT_DEFS[keyof typeof UNIT_DEFS][]>();
   for (const u of Object.values(UNIT_DEFS)) {
+    if (u.religionUnit) continue; // religion units get their own "Holy Units" segment below
     const arr = byClass.get(u.cls) ?? [];
     arr.push(u);
     byClass.set(u.cls, arr);
@@ -247,6 +263,24 @@ function renderUnits(): string {
   html +=
     `<div class="wiki-unit-classtitle">Unique Units (${UNIQUE_UNITS.length})</div>` +
     `<div class="wiki-unit-grid">${uuCards}</div>`;
+
+  // Holy Units — every faith's champion (war-priests and peaceful clergy alike),
+  // trained in a follower city with a Temple. Kept in one segment regardless of
+  // their combat class, so the whole set reads together.
+  const holyCards = RELIGION_KITS.map((k) => {
+    const hu = defs[k.unit.id] ? UNIT_DEFS[k.unit.id as UnitTypeId] : undefined;
+    const rel = getReligionDef(k.religionId);
+    const stats: string[] = [];
+    if (hu) {
+      if (hu.strength) stats.push(`Str ${hu.strength}`);
+      stats.push(`Move ${hu.movement}`);
+    }
+    return unitCard(k.unit.id, k.unit.name, stats.join(" · "), escapeHtml(rel?.name ?? k.religionId), `unit:${k.unit.id}`);
+  }).join("");
+  html +=
+    `<div class="wiki-unit-classtitle">⛪ Holy Units (${RELIGION_KITS.length})</div>` +
+    `<p class="wiki-unit-note">Each religion fields one unique holy unit, trained with production in any city that follows the faith and has a Temple. They grow stronger as the faith rises through its tiers. See the ${catLink("religion", "Religion")} section for the full system.</p>` +
+    `<div class="wiki-unit-grid">${holyCards}</div>`;
 
   return section("Units", html);
 }
@@ -292,6 +326,10 @@ function renderGameplay(): string {
         `<p>You can also dial upkeep up or down empire-wide with the <b>Military Pay</b> setting (−100% to +200%), which trades gold against army morale — see the <b>Morale</b> section.</p>`,
     ) +
     section(
+      "Faith & Religion",
+      `<p>Faith is a full victory path. After researching <b>${escapeHtml(TECH_DEFS[RELIGION_REQUIRED_TECH]?.name ?? String(RELIGION_REQUIRED_TECH))}</b>, ${FAITH_TO_FOUND}☮️ faith founds one of ${RELIGIONS.length} real-world religions at one of your cities (its <b>holy city</b>) — each faith is <b>exclusive to one civilization</b> and brings a fixed <b>preset benefit</b>, a <b>capital bonus</b>, picks from a shared <b>perk pool</b>, and a <b>unique unit</b> trained in Temple cities that follow it. Raise the religion through <b>five tiers</b> for more perks and a stronger champion, spread it by pressure, trade routes and missionaries, and convert the world. ${catLink("religion", "Full details in the Religion section")}</p>`,
+    ) +
+    section(
       "Barbarians & Parley",
       `<p>Barbarian camps spawn raiders that attack everyone. You can fight them — clearing a camp with a military unit pays a gold reward — but once you research <b>Parley</b> (a very early technology, branching off Foraging) you gain two diplomatic options whenever one of your units stands <b>adjacent</b> to a barbarian.</p>` +
         `<ul>` +
@@ -330,12 +368,12 @@ function renderTerrain(): string {
       "Terrain",
       `<p>Tiles provide yields when worked and modify movement and combat. Forests, woods, jungle, taiga, hills, mesas and the soggy wetlands and bogs are all rough ground that slows attackers; tree cover and high ground also aid defenders (open marsh does not).</p>` +
         `<p><b>Woods vs. Forest:</b> both are tree-covered and rough, but a true <b>Forest</b> is the denser, knowledge-rich woodland and yields an extra <b>+1 science</b> over open <b>Woods</b>.</p>` +
-        `<p><b>Cold &amp; tropical biomes:</b> the poles spread from barren <b>Snow</b> (no yield) through frozen <b>Tundra</b> steppe (food + science) to snowy <b>Taiga</b> pine forest (production); the tropics range from dense <b>Jungle</b> through fertile <b>Wetlands</b> (food) to poor <b>Bog</b> (a trickle of faith).</p>` +
+        `<p><b>Cold & tropical biomes:</b> the poles spread from barren <b>Snow</b> (no yield) through frozen <b>Tundra</b> steppe (food + science) to snowy <b>Taiga</b> pine forest (production); the tropics range from dense <b>Jungle</b> through fertile <b>Wetlands</b> (food) to poor <b>Bog</b> (a trickle of faith).</p>` +
         `<p><b>Water bodies:</b> <b>Lakes</b> are calm inland fresh water, <b>Coasts</b> are the shallow seas that ring the land, and <b>Oceans</b> are the deep open sea (crossable only once Astronomy is researched).</p>` +
         `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Terrain</th><th>Yields</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table></div>`,
     ) +
     section(
-      "Rivers &amp; Fresh Water",
+      "Rivers & Fresh Water",
       `<p>Rivers thread across the land as an overlay on top of whatever terrain they cross. Any tile a river runs through gains <b>+1 food</b>, and a <b>river lake</b> (where a river springs or pools) adds a further <b>+1 science</b>.</p>` +
         `<ul>` +
         `<li><b>Defense:</b> a unit attacking across a river fights at <b>-25%</b> strength.</li>` +
@@ -346,7 +384,7 @@ function renderTerrain(): string {
     ) +
     section(
       "Improvements",
-      `<p>Tiles are developed by city <b>specialists</b> rather than by roaming workers — see the <b>Specialists &amp; Works</b> section. Every improvement has three tiers, each a separate project that must be contracted to craftsmen.</p>`,
+      `<p>Tiles are developed by city <b>specialists</b> rather than by roaming workers — see the <b>Specialists & Works</b> section. Every improvement has three tiers, each a separate project that must be contracted to craftsmen.</p>`,
     )
   );
 }
@@ -624,7 +662,8 @@ function renderCities(): string {
   return (
     section(
       "Founding",
-      `<p>Train or move a Settler to a desirable tile and use the Found City action. Cities claim surrounding territory and can work tiles within three rings.</p>`,
+      `<p>Train or move a Settler to a desirable tile and use the Found City action. Cities claim surrounding territory and can work tiles within three rings.</p>` +
+        `<p><b>Settling on a resource:</b> if you found a city directly on a tile carrying a resource, the city <b>harvests it for free</b> — no improvement needed. A luxury grants its <b>amenity</b> at once, a bonus resource adds its <b>yields</b>, and a strategic resource starts <b>stockpiling</b> — all provided you have already researched the technology that would normally improve that resource (most improvements need none). Without the required research, the resource stays dormant until you unlock it. A <b>river</b> under the city centre always keeps its bonuses (+1 food, and +1 science for a river lake), and the tile counts as fresh water.</p>`,
     ) +
     section(
       "Growth",
@@ -632,7 +671,20 @@ function renderCities(): string {
     ) +
     section(
       "Production",
-      `<p>Production is spent on <b>buildings, wonders and projects</b> — one item at a time; gold can rush it. Units are no longer built here: they are trained from dedicated military buildings and cost population (see the <b>Gameplay → Construction &amp; Training</b> section).</p>`,
+      `<p>Production is spent on <b>buildings, wonders and projects</b> — one item at a time; gold can rush it. Units are no longer built here: they are trained from dedicated military buildings and cost population (see the <b>Gameplay → Construction & Training</b> section).</p>`,
+    ) +
+    section(
+      "Governors — City Auto-Management",
+      `<p>Any city can be handed to a <b>Governor</b> that manages it for you every turn, so a large empire doesn't need micro-managing. Open a city and pick a focus from the <b>Governor</b> row:</p>` +
+        `<ul>` +
+        `<li><b>🖐️ Manual</b> — the default. You run the city yourself; the Governor does nothing.</li>` +
+        `<li><b>🌾 Growth</b> — steers citizens onto food tiles and builds growth infrastructure (Granary, Aqueduct) to raise the city's population as fast as possible.</li>` +
+        `<li><b>⚔️ Military</b> — the only mode that <b>trains units</b>. It raises training buildings and war works, works production tiles, and musters soldiers up to a standing garrison.</li>` +
+        `<li><b>🔬 Science</b> — favours science tiles and builds the research core (Archive, Academy).</li>` +
+        `<li><b>🪙 Money</b> — favours gold tiles and builds the commerce core (Market, Harbor, Bank).</li>` +
+        `</ul>` +
+        `<p>Whatever the focus, a Governor also handles the generic housekeeping: assigning citizens to the best tiles, training and deploying <b>specialists</b>, and queuing <b>public works</b> (farms, mines, roads). If it can't advance its chosen focus — for example a Science city that has already built every research building — it simply falls back to sensible all-round development rather than idling.</p>` +
+        `<p><b>You stay in charge.</b> A Governor only fills <b>empty</b> production slots and never overrides a tile you have <b>locked</b> by hand, so you can always take a decision back. Switch focus or return to Manual at any time. A city that is <b>captured or ceded</b> reverts to Manual for its new owner.</p>`,
     ) +
     section(
       "Buildings",
@@ -645,23 +697,126 @@ function renderCities(): string {
   );
 }
 
-function renderReligion(): string {
+const WIKI_REL_STYLE = `<style>
+.wiki-rel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
+.wiki-rel-card{display:flex;flex-direction:column;padding:0;overflow:hidden}
+.wiki-rel-art{width:100%;aspect-ratio:4/3;background:var(--bg-card);overflow:hidden}
+.wiki-rel-art img{width:100%;height:100%;object-fit:cover;object-position:50% 25%;display:block}
+.wiki-rel-body{padding:12px 14px}
+.wiki-rel-name{display:flex;align-items:center;gap:8px;font-family:'Cinzel',Georgia,serif;font-size:15px;font-weight:700;color:#e8dcc5}
+.wiki-rel-name img{width:22px;height:22px;object-fit:contain}
+.wiki-rel-blurb{color:#e8dcc5;font-size:13px;line-height:1.45;margin-top:8px}
+</style>`;
+
+function religionCardHtml(r: (typeof RELIGIONS)[number]): string {
+  const art = `${ASSET_BASE_URL}religions/${r.id}.png`;
+  const icon = `${ASSET_BASE_URL}religion-icons/${r.id}.png`;
   return (
+    `<div class="wiki-card wiki-rel-card wiki-clickable" data-wiki-nav="religion:${r.id}">` +
+    `<div class="wiki-rel-art"><img src="${art}" loading="lazy" alt="${escapeHtml(r.name)}" onerror="this.closest('.wiki-rel-art').style.display='none'"></div>` +
+    `<div class="wiki-rel-body">` +
+    `<div class="wiki-rel-name"><img src="${icon}" alt="" onerror="this.style.display='none'">${escapeHtml(r.name)}</div>` +
+    `<div class="wiki-rel-blurb">${escapeHtml(r.blurb)}</div>` +
+    `</div></div>`
+  );
+}
+
+function renderReligion(): string {
+  const reqTechName = TECH_DEFS[RELIGION_REQUIRED_TECH]?.name ?? String(RELIGION_REQUIRED_TECH);
+
+  // Tier upgrade table (tiers 2+; tier 1 is the founding itself).
+  const tierRows = RELIGION_TIERS.filter((t) => t.tier > 1)
+    .map(
+      (t) =>
+        `<tr><td><b>Tier ${t.tier}</b></td>` +
+        `<td>${t.faithCost}☮️</td>` +
+        `<td>${t.minFollowerCities} follower cities</td></tr>`,
+    )
+    .join("");
+
+  // The full perk pool, grouped by tier.
+  const perkRows = [...BELIEFS]
+    .sort((a, b) => a.tier - b.tier)
+    .map(
+      (b) =>
+        `<tr><td>Tier ${b.tier}</td>` +
+        `<td><b>${escapeHtml(b.name)}</b></td>` +
+        `<td>${escapeHtml(b.desc)}</td></tr>`,
+    )
+    .join("");
+
+  // Every faith's unique unit, clicking through to its religion's page.
+  const relUnitCards = RELIGION_KITS.map((k) => {
+    const d = UNIT_DEFS[k.unit.id as UnitTypeId];
+    const stats = d ? [`Str ${d.strength}`, `Move ${d.movement}`, `⚙ ${d.cost}`].join(" · ") : "";
+    const relName = getReligionDef(k.religionId)?.name ?? k.religionId;
+    return unitCard(k.unit.id, k.unit.name, stats, escapeHtml(relName), `religion:${k.religionId}`);
+  }).join("");
+
+  const missionary = UNIT_DEFS.missionary;
+  const apostle = UNIT_DEFS.apostle;
+  const inquisitor = UNIT_DEFS.inquisitor;
+
+  return (
+    WIKI_REL_STYLE +
+    WIKI_UNIT_STYLE +
     section(
-      "Faith",
-      `<p>Faith is generated by certain buildings, beliefs and wonders. Accumulate enough faith to found a pantheon and later a full religion.</p>`,
+      "Faiths of the World",
+      `<p>${RELIGIONS.length} real historical faiths may be founded, each carrying a historically fitting <b>preset benefit</b>, a <b>capital bonus</b> for its holy city, and a <b>unique unit</b> all its own. Every religion is <b>exclusive</b> — once a civilization founds it, no one else may. Click a faith for its lore, benefits and champion.</p>` +
+        `<div class="wiki-rel-grid">${RELIGIONS.map(religionCardHtml).join("")}</div>`,
     ) +
     section(
-      "Pantheons",
-      `<p>Your first faith milestone unlocks a pantheon belief, granting empire-wide bonuses such as extra food from resources or production from forests.</p>`,
+      "Faith",
+      `<p>Faith flows from <b>Shrines and Temples</b>, certain terrain and wonders, religion perks, and the deeds of your religion's champions. You spend it to <b>found a religion</b>, ordain <b>missionaries, apostles and inquisitors</b>, raise your religion's <b>tier</b>, move your <b>holy capital</b>, and summon <b>Legends</b>.</p>`,
     ) +
     section(
       "Founding a Religion",
-      `<p>Once the required civic is available and you have enough faith, a Prophet can found a religion in one of your cities. Choose a founder belief and follower beliefs that shape your empire.</p>`,
+      `<p>Once you have researched <b>${escapeHtml(reqTechName)}</b> and gathered <b>${FAITH_TO_FOUND}☮️ faith</b>, you may found a religion at one of your cities — that city becomes the faith's <b>holy city</b>. Choose any real-world religion still unclaimed; <b>only one civilization can ever hold each faith</b>, so the founders' race is first come, first served.</p>` +
+        `<p>Founding immediately grants two things:</p>` +
+        `<ul>` +
+        `<li>The religion's fixed <b>preset benefit</b> — applied empire-wide, automatically.</li>` +
+        `<li><b>One perk pick</b> from the tier-1 perk pool (see below).</li>` +
+        `</ul>`,
+    ) +
+    section(
+      "Preset Benefits & Capital Bonuses",
+      `<p>Every religion carries a historically fitting pair of bonuses:</p>` +
+        `<ul>` +
+        `<li><b>Preset benefit</b> — granted to the founder's whole empire the moment the faith is founded, for as long as they hold the religion.</li>` +
+        `<li><b>Capital bonus</b> — applies to the <b>holy city</b> while it keeps the faith (and follows the holy capital if you move it).</li>` +
+        `</ul>` +
+        `<p>Each religion's page lists its preset, capital bonus and unique unit — pick the faith whose gifts fit your game plan.</p>`,
+    ) +
+    section(
+      "The Perk Pool",
+      `<p>Beyond its preset, a religion is customised with <b>perks</b> drawn from a shared pool of ${BELIEFS.length}, arranged in <b>five tiers</b>. Perks are <b>exclusive across religions</b>: once any religion takes a perk, no other religion in that game may. You pick <b>one perk at founding</b> (tier 1) and <b>one more at each tier upgrade</b> — and each pick may come from <b>any tier at or below</b> your religion's current tier, so a saved pick can grab a freshly unlocked, stronger perk.</p>` +
+        `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Tier</th><th>Perk</th><th>Effect</th></tr></thead><tbody>${perkRows}</tbody></table></div>`,
+    ) +
+    section(
+      "Religion Tiers",
+      `<p>A founded religion starts at <b>tier 1</b> and can be raised through <b>tier ${RELIGION_TIERS[RELIGION_TIERS.length - 1]!.tier}</b> by paying faith and gathering <b>follower cities</b> — a follower city is one where your faith holds a <b>strict majority</b> of its religious pressure (it shows your religion's converted badge on the map).</p>` +
+        `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Upgrade</th><th>Faith cost</th><th>Requires</th></tr></thead><tbody>${tierRows}</tbody></table></div>` +
+        `<p>Every tier gained grants:</p>` +
+        `<ul>` +
+        `<li><b>+1 perk pick</b> from the pool (any tier up to your new tier).</li>` +
+        `<li><b>+2 strength</b> to your religion's unique unit.</li>` +
+        `<li><b>+25%</b> to the magnitudes of its auras and abilities.</li>` +
+        `<li>At <b>tier 4</b>, some unique units unlock a <b>second active ability</b>.</li>` +
+        `</ul>`,
+    ) +
+    section(
+      "The Holy Capital",
+      `<p>Your religion's <b>holy city</b> radiates the strongest religious pressure of any source and enjoys the faith's <b>capital bonus</b>. If your seat of faith is poorly placed — or threatened — you may <b>move the holy capital</b> to any other follower city for <b>${MOVE_HOLY_CITY_COST}☮️ faith</b>; the pressure heart and the capital bonus move with it.</p>`,
+    ) +
+    section(
+      "Faith's Champions — Unique Units",
+      `<p>Every religion fields <b>one unique unit</b>, from warrior-monks and holy warriors to oracles, druids and pacifist ascetics. Unlike missionaries they are <b>not bought with faith</b>: a unique unit is trained with <b>production</b> in any city that <b>follows the faith</b> (majority pressure) <i>and</i> has a <b>Temple</b> — only one may train per city at a time.</p>` +
+        `<p>Each carries a genuinely distinct signature kit — healing, morale, XP or dread auras, faith harvested from kills or nearby deaths, pressure radiation, garrison boons, homeland fervor, forest affinity, death rallies, and signature actives such as Benediction, Purifying Flame, Chakkar, Doom Prophecy, Kagura, Takbīr and Deus Vult. The unit grows with its faith: <b>+2 strength and +25% ability power per tier above 1</b>, and at tier 4 several unlock a second active ability. See each religion's page for the full kit.</p>` +
+        `<div class="wiki-unit-grid">${relUnitCards}</div>`,
     ) +
     section(
       "Religious Pressure",
-      `<p>Each city accumulates <b>pressure</b> from every religion around it. The faith with the most pressure becomes the city's dominant religion. <b>Holy cities</b> radiate the strongest pressure, follower cities a weaker one, and pressure <b>decays</b> a little each turn — so a frontier city must be actively pressed to stay converted. Conversion is gradual and contestable, not instant.</p>`,
+      `<p>Each city accumulates <b>pressure</b> from every religion around it. The faith with the most pressure becomes the city's dominant religion, and a faith holding a <b>strict majority</b> of a city's pressure converts it (the on-map badge). <b>Holy cities</b> radiate the strongest pressure, follower cities a weaker one, and pressure <b>decays</b> a little each turn — so a frontier city must be actively pressed to stay converted. Conversion is gradual and contestable, not instant.</p>`,
     ) +
     section(
       "Faith Travels the Trade Roads",
@@ -671,15 +826,15 @@ function renderReligion(): string {
       "Holy Orders — Missionaries, Apostles & Inquisitors",
       `<p>Spend faith to ordain religious units from the <b>☮️ Religion</b> panel:</p>` +
         `<ul>` +
-        `<li><b>Missionary</b> — travels to a city and floods it with your religion's pressure, converting it in one decisive act. Carries a few charges, then is spent.</li>` +
-        `<li><b>Apostle</b> — a stronger evangelist that can also defend the faith.</li>` +
-        `<li><b>Inquisitor</b> — purges rival religions' pressure from your <b>own</b> cities, locking in your faith at home.</li>` +
+        `<li><b>Missionary</b> (${missionary.faithCost}☮️) — travels to a city and floods it with your religion's pressure, converting it in one decisive act. Carries ${missionary.religiousCharges} charges, then is spent.</li>` +
+        `<li><b>Apostle</b> (${apostle.faithCost}☮️) — a stronger evangelist with ${apostle.religiousCharges} charges that can also defend the faith.</li>` +
+        `<li><b>Inquisitor</b> (${inquisitor.faithCost}☮️) — purges rival religions' pressure from your <b>own</b> cities, locking in your faith at home.</li>` +
         `</ul>` +
         `<p>A religious unit standing in a city that is one end of a trade route can <b>ride the route</b> like a caravan, emerging at the far end in a fraction of the walking time — the stronger the route, the faster the journey. This lets you ferry a missionary deep into a partner's lands.</p>`,
     ) +
     section(
       "Religious Victory",
-      `<p>If your religion becomes the <b>majority faith in every major civilization</b>, you win a Religious victory (when that condition is enabled). See the Victory page.</p>`,
+      `<p>Win by <b>truly converting every civilization</b> to your religion (when that condition is enabled). The bar is strict: a city only counts as <b>converted</b> when your faith holds a <b>strict majority</b> of its religious pressure <i>and</i> at least <b>${CONVERSION_PRESSURE} absolute pressure</b> — trace seepage that faintly touches a distant city does not count. A civilization is converted when a <b>strict majority of its cities</b> are. See the Victory page.</p>`,
     )
   );
 }
@@ -700,12 +855,21 @@ function renderSpecialists(): string {
   }).join("");
 
   const wonderRows = WONDER_DEFS.map((w) => {
-    const needs = Object.entries(w.requirement)
-      .map(([disc, n]) => `${escapeHtml(disc)} ${n}`)
+    const needs = Object.entries(w.crew)
+      .map(([disc, n]) => `${n} ${escapeHtml(specialistNameForDiscipline(disc as Discipline))}${n === 1 ? "" : "s"}`)
       .join(" · ");
+    const cost = wonderStartCost(w);
+    const unlock = [
+      w.reqTech ? `🔬 ${escapeHtml(TECH_DEFS[w.reqTech as TechId]?.name ?? w.reqTech)}` : "",
+      cost.gold ? `${cost.gold}🪙` : "",
+      cost.faith ? `${cost.faith}☮️` : "",
+      cost.culture ? `${cost.culture}🎭` : "",
+      w.placement?.site ? `📍 ${escapeHtml(w.placement.site)}` : "",
+    ].filter(Boolean).join("<br>");
     return (
       `<tr>` +
       `<td><b>${escapeHtml(w.name)}</b></td>` +
+      `<td>${unlock || "—"}</td>` +
       `<td>${needs}</td>` +
       `<td>${escapeHtml(w.desc)}</td>` +
       `</tr>`
@@ -730,8 +894,9 @@ function renderSpecialists(): string {
     ) +
     section(
       "Wonders",
-      `<p>Wonders are the grandest Works: world-unique projects needing several disciplines at once, so a host city must field a mixed crew of craftsmen — and several cities can pool their specialists to finish faster. Each grants a powerful, permanent bonus.</p>` +
-        `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Wonder</th><th>Requires</th><th>Effect</th></tr></thead><tbody>${wonderRows}</tbody></table></div>`,
+      `<p>Wonders are the grandest Works: world-unique projects that demand a whole <b>crew of craftsmen</b> — you must have the <i>entire</i> crew idle and ready (e.g. <b>11 Masons and 6 Architects</b>) before you can even break ground, pooled from as many cities as you like. That crew is the wonder's whole workforce: no more may join, so you can't rush it by piling on bodies. Even with the full crew, raising a wonder is a long undertaking of many turns — though a crew of <b>veterans</b> (who each contribute more) finishes sooner.</p>` +
+        `<p>Each wonder is also unlocked by a specific <b>technology</b>, demands a one-time outlay of <b>gold, faith, or culture</b> to begin, and can only be sited where its <b>geography</b> allows (see the Unlock column): the Pyramids and Sphinx rise from the <b>desert</b>, Tenochtitlán crowns a <b>hill</b>, the Colossus guards a <b>coastal</b> tile, the Great Lighthouse stands on <b>coastal water</b>, the Hanging Gardens need <b>fresh water</b>, the Oracle sits <b>beside a mountain</b> and Stonehenge <b>within sight of one</b>, and the Great Library must adjoin one of your <b>cities</b>. Beyond their strong permanent yields, several reshape the game: the <b>Great Lighthouse</b> gives all your ships far-seeing eyes and swifter passage, the <b>Colossus</b> launches a free warship from its harbour every few turns, the <b>Oracle</b> lets you rush production with faith, Tenochtitlán's causeways speed your armies, and the <b>Great Pyramid</b> rewards a great offering of faith whenever one of your Legends falls or passes into legend.</p>` +
+        `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Wonder</th><th>Unlock</th><th>Crew</th><th>Effect</th></tr></thead><tbody>${wonderRows}</tbody></table></div>`,
     ) +
     renderMasterCraftsmen()
   );
@@ -800,7 +965,7 @@ function renderVictory(): string {
     ) +
     section(
       "☮️ Religious — One Faith",
-      `<p>Win by converting the world to your religion. A religion claims a civilization when it is the <b>majority faith in that civ's cities</b>; spread yours until it dominates <b>every</b> major civilization. Faith spreads by pressure from holy cities, along trade routes, and — decisively — through <b>Missionaries and Apostles</b> you buy with faith. <b>Inquisitors</b> purge rival faiths from your own cities (see the Religion page).</p>`,
+      `<p>Win by <b>truly converting</b> the world to your religion. A city counts as converted only when your faith holds a <b>strict majority</b> of its religious pressure <i>and</i> at least <b>${CONVERSION_PRESSURE} absolute pressure</b> — trace seepage does not count. A civilization is claimed when a <b>strict majority of its cities</b> are converted; claim <b>every</b> major civilization to win. Faith spreads by pressure from holy cities, along trade routes, and — decisively — through <b>Missionaries and Apostles</b> you buy with faith. <b>Inquisitors</b> purge rival faiths from your own cities (see the Religion page).</p>`,
     ) +
     section(
       "🪙 Economic — Mercantile Hegemony",
@@ -826,7 +991,8 @@ export type WikiNav =
   | { kind: "uniqueUnit"; id: string }
   | { kind: "uniqueInfra"; id: string }
   | { kind: "greatPerson"; id: string }
-  | { kind: "legend"; id: string };
+  | { kind: "legend"; id: string }
+  | { kind: "religion"; id: string };
 
 /** Plain-English label for a few base-unit passive abilities (matches unique-unit.ts). */
 const PASSIVE_LABEL: Record<string, string> = {
@@ -862,6 +1028,11 @@ function historyBlock(title: string, text: string | undefined): string {
 /** An inline text link that navigates to another detail page. */
 function navLink(nav: string, label: string): string {
   return `<button type="button" class="wiki-link" data-wiki-nav="${nav}">${escapeHtml(label)} &rsaquo;</button>`;
+}
+
+/** An inline text link that switches to another wiki category. */
+function catLink(cat: WikiCategory, label: string): string {
+  return `<button type="button" class="wiki-link" data-wiki-cat="${cat}">${escapeHtml(label)} &rsaquo;</button>`;
 }
 
 function detailNotFound(): string {
@@ -1028,11 +1199,32 @@ function renderUnitDetail(id: string): string {
     })
     .join("");
 
-  const sub = escapeHtml(CLASS_TITLES[d.cls] ?? d.cls);
+  // Religion units carry a signature kit and belong to a faith; surface both,
+  // and prefer their bespoke historical write-up over the base-unit history.
+  const relKit = RELIGION_UNIT_KITS[id];
+  const relDef = relKit ? getReligionDef(relKit.religionId) : undefined;
+  const relUnitInfo = relKit ? getReligionKit(relKit.religionId)?.unit : undefined;
+  let holySection = "";
+  if (relKit) {
+    let kh = abilityRow("✦", relKit.abilityName, relKit.desc);
+    if (relKit.tier4Active) {
+      const t4 = ACTIVE_ABILITY_DEFS[relKit.tier4Active];
+      kh += abilityRow(t4.glyph, `${t4.name} — unlocked at tier 4`, t4.desc);
+    }
+    holySection = section(
+      "Holy Order" + (relDef ? " — " + escapeHtml(relDef.name) : ""),
+      kh +
+        `<p>Trained with <b>production</b> in any city that follows the faith and has a <b>Temple</b> (one holy unit at a time per city). Grows with the faith: <b>+2 strength and +25% ability power per tier above 1</b>.</p>` +
+        (relDef ? `<p>${navLink(`religion:${relDef.id}`, `Faith: ${relDef.name}`)}</p>` : ""),
+    );
+  }
+
+  const sub = escapeHtml(relDef ? `Holy unit · ${relDef.name}` : (CLASS_TITLES[d.cls] ?? d.cls));
   return (
     detailHead(src, d.name, sub, stats.join("")) +
     (active || passive ? section("Abilities", active + passive) : "") +
-    historyBlock("History", unitHistory(id))
+    holySection +
+    historyBlock("History", relUnitInfo?.history ?? unitHistory(id))
   );
 }
 
@@ -1080,6 +1272,85 @@ function renderLegendDetail(id: string): string {
   );
 }
 
+function renderReligionDetail(id: string): string {
+  const r = getReligionDef(id);
+  if (!r) return detailNotFound();
+  const art = `${ASSET_BASE_URL}religions/${r.id}.png`;
+  const icon = `${ASSET_BASE_URL}religion-icons/${r.id}.png`;
+  const kit = getReligionKit(r.id);
+
+  // Founder-empire preset benefit + holy-city capital bonus.
+  let benefits = "";
+  if (kit) {
+    benefits = section(
+      "Founder's Benefits",
+      `<ul>` +
+        `<li><b>${escapeHtml(kit.preset.name)}</b> (preset, empire-wide) — ${escapeHtml(kit.preset.desc)}</li>` +
+        `<li><b>${escapeHtml(kit.capital.name)}</b> (capital bonus) — ${escapeHtml(kit.capital.desc)} Applies to the holy city while it keeps the faith.</li>` +
+        `</ul>`,
+    );
+  }
+
+  // The faith's unique unit: art, stats, signature kit, tier-4 unlock, scaling.
+  let champion = "";
+  if (kit) {
+    const unitId = kit.unit.id;
+    const d = UNIT_DEFS[unitId as UnitTypeId];
+    const mech = RELIGION_UNIT_KITS[unitId];
+    const big = `${ASSET_BASE_URL}units-big/${unitId}.png`;
+    const token = `${ASSET_BASE_URL}units/${unitId}.png`;
+    const stats: string[] = [];
+    if (d) {
+      if (d.strength) stats.push(detailStat("⚔ Strength", String(d.strength)));
+      stats.push(detailStat("🥾 Movement", String(d.movement)));
+      stats.push(detailStat("⚙ Cost", String(d.cost)));
+    }
+    const abilityRow = (glyph: string, name: string, desc: string): string =>
+      `<div class="uud-ability"><div class="uud-ability-head"><span class="uud-ability-glyph">${glyph}</span>` +
+      `<b>${escapeHtml(name)}</b></div><div class="uud-ability-desc">${escapeHtml(desc)}</div></div>`;
+    let kitHtml = "";
+    if (mech) {
+      kitHtml += abilityRow("✦", mech.abilityName, mech.desc);
+      if (mech.tier4Active) {
+        const t4 = ACTIVE_ABILITY_DEFS[mech.tier4Active];
+        kitHtml += abilityRow(t4.glyph, `${t4.name} — unlocked at tier 4`, t4.desc);
+      }
+    }
+    champion = section(
+      "Faith's Champion — " + kit.unit.name,
+      `<div class="wiki-detail-head">` +
+        `<div class="wiki-detail-img wiki-clickable" data-wiki-nav="unit:${unitId}">` +
+        `<img src="${big}" loading="lazy" alt="${escapeHtml(kit.unit.name)}" onerror="this.onerror=null;this.src='${token}'"></div>` +
+        `<div class="wiki-detail-headinfo">` +
+        `<div class="wiki-detail-title">${escapeHtml(kit.unit.name)}</div>` +
+        `<div class="wiki-detail-sub">${escapeHtml(kit.unit.blurb)}</div>` +
+        (stats.length ? `<div class="wiki-detail-stats">${stats.join("")}</div>` : "") +
+        `</div></div>` +
+      kitHtml +
+      `<p>Trained with <b>production</b> in any city that <b>follows ${escapeHtml(r.name)}</b> and has a <b>Temple</b> (one at a time per city). Grows with the faith: <b>+2 strength and +25% ability power per tier above 1</b>.</p>` +
+      `<p>${navLink(`unit:${unitId}`, `Full unit entry: ${kit.unit.name}`)}</p>`,
+    );
+  }
+
+  return (
+    detailHead(art, r.name, escapeHtml(r.blurb)) +
+    `<div style="display:flex;align-items:center;gap:12px;margin:-6px 0 14px"><img src="${icon}" alt="" style="width:44px;height:44px;object-fit:contain" onerror="this.style.display='none'"><span class="wiki-detail-sub">Holy symbol of ${escapeHtml(r.name)}</span></div>` +
+    section("History", paragraphs(r.wiki)) +
+    benefits +
+    champion
+  );
+}
+
+/** Render a "\n\n"-separated block of prose into one <p> per paragraph. */
+function paragraphs(text: string): string {
+  return text
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p>${escapeHtml(p)}</p>`)
+    .join("");
+}
+
 const DETAIL_RENDERERS: Record<WikiNav["kind"], (id: string) => string> = {
   civ: renderCivDetail,
   unit: renderUnitDetail,
@@ -1087,6 +1358,7 @@ const DETAIL_RENDERERS: Record<WikiNav["kind"], (id: string) => string> = {
   uniqueInfra: renderUniqueInfraDetail,
   greatPerson: renderGreatPersonDetail,
   legend: renderLegendDetail,
+  religion: renderReligionDetail,
 };
 
 const RENDERERS: Record<WikiCategory, () => string> = {
@@ -1292,6 +1564,13 @@ export function createWiki(): {
       render();
       return;
     }
+    const catEl = t.closest<HTMLElement>("[data-wiki-cat]");
+    if (catEl) {
+      category = catEl.dataset.wikiCat as WikiCategory;
+      navStack = [];
+      render();
+      return;
+    }
     const uuEl = t.closest<HTMLElement>("[data-uu-detail]");
     if (uuEl) {
       navStack.push({ kind: "uniqueUnit", id: uuEl.dataset.uuDetail! });
@@ -1331,6 +1610,7 @@ export function createWiki(): {
         uniqueUnit: "units",
         greatPerson: "great_people",
         legend: "legends",
+        religion: "religion",
       };
       category = catFor[kind];
       navStack = [{ kind, id } as WikiNav];

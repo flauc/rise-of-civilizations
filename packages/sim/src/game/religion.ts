@@ -3,26 +3,36 @@
 // founder's empire (merged in civs.playerEffects).
 
 import { axialDistance, offsetToAxial } from "@roc/shared";
-import { RELIGION_NAMES, getBelief, BELIEFS } from "@roc/data";
+import {
+  RELIGION_NAMES, getBelief, BELIEFS,
+  RELIGION_TIERS, MAX_RELIGION_TIER, MOVE_HOLY_CITY_COST, getReligionTier,
+  getReligionByName,
+  type BeliefDef,
+} from "@roc/data";
 import { RELIGION_REQUIRED_TECH, UNIT_DEFS, type UnitTypeId } from "./content";
 import type { City, GameState, Religion, Unit } from "./state";
 import { citiesOf, cityAt, log, makeUnit, playerById } from "./state";
+import { emitReligionFounded } from "./turn-updates";
 import { tradeRouteYield } from "./trade";
 
-export { BELIEFS, getBelief };
+export { BELIEFS, getBelief, RELIGION_TIERS, MAX_RELIGION_TIER, MOVE_HOLY_CITY_COST };
 export type { BeliefDef } from "@roc/data";
 
 export const FAITH_TO_FOUND = 100;
 const SPREAD_RANGE = 5;
 /** Pressure a holy city radiates per turn; follower cities radiate a fraction. */
 const HOLY_PRESSURE = 6;
-const FOLLOWER_PRESSURE = 2;
+/** Ordinary follower cities re-radiate only weakly, so a newly founded city inside
+ *  your empire is NOT instantly blanket-converted by its neighbours — the faith
+ *  seeps out gradually from the holy city (and far faster along trade routes). */
+const FOLLOWER_PRESSURE = 1;
 /** Pressure decays slightly each turn so frontiers must be actively held. */
 const PRESSURE_DECAY = 0.9;
 /** A missionary charge injects a decisive burst into a single city. */
 const MISSIONARY_PRESSURE = 40;
-/** Faith ↔ trade: a route carries this much pressure per point of its gold yield. */
-const RELIGION_TRADE_FACTOR = 0.5;
+/** Faith ↔ trade: a route carries this much pressure per point of its gold yield.
+ *  Trade is the fast lane for conversion, so it outweighs ambient proximity. */
+const RELIGION_TRADE_FACTOR = 0.75;
 
 /** The religion with the most pressure in a city (its dominant faith), or undefined. */
 export function dominantReligion(city: City): string | undefined {
@@ -37,6 +47,46 @@ export function dominantReligion(city: City): string | undefined {
     }
   }
   return best;
+}
+
+/** The religion followed by the MAJORITY of a city — its dominant faith, but only
+ *  once that faith holds more than half of the city's total religious pressure.
+ *  Used for the on-map "converted" badge: a merely-contested city shows nothing. */
+export function majorityReligion(city: City): string | undefined {
+  const p = city.religionPressure;
+  if (!p) return undefined;
+  let total = 0;
+  let best: string | undefined;
+  let bestP = 0;
+  for (const [rel, amt] of Object.entries(p)) {
+    total += amt;
+    if (amt > bestP) {
+      bestP = amt;
+      best = rel;
+    }
+  }
+  return total > 0 && bestP / total > 0.5 ? best : undefined;
+}
+
+/** Absolute pressure a faith must hold in a city before that city counts as
+ *  CONVERTED for the religious victory. Ambient seepage from a distant follower
+ *  city settles around 2–10 pressure; sustained proximity to a holy city, a trade
+ *  route, or a missionary charge (40) comfortably clears this bar. Without the
+ *  floor, a lone religion "dominates" every city it faintly touches, ending the
+ *  game by accident. */
+export const CONVERSION_PRESSURE = 12;
+
+/** True when `religionId` truly holds a city: a strict majority of its religious
+ *  pressure AND at least CONVERSION_PRESSURE in absolute terms. This is the
+ *  victory-grade notion of a follower city — deliberately stricter than
+ *  `dominantReligion` (any nonzero plurality), which drives spread mechanics. */
+export function cityConvertedTo(city: City, religionId: string): boolean {
+  const p = city.religionPressure;
+  if (!p) return false;
+  let total = 0;
+  for (const amt of Object.values(p)) total += amt;
+  const mine = p[religionId] ?? 0;
+  return mine >= CONVERSION_PRESSURE && mine * 2 > total;
 }
 
 function addPressure(city: City, relId: string, amount: number): void {
@@ -94,22 +144,26 @@ export function foundReligion(
   if (!canFoundReligion(state, playerId)) return { ok: false, error: "cannot found a religion now" };
   const city = state.cities.get(cityId);
   if (!city || city.ownerId !== playerId) return { ok: false, error: "not your city" };
-  const validBeliefs = beliefs.filter((b) => getBelief(b)).slice(0, 2);
+  // One founding perk, tier 1, not already claimed by another religion.
+  const taken = takenPerkIds(state);
+  const validBeliefs = beliefs
+    .filter((b) => {
+      const def = getBelief(b);
+      return def && def.tier === 1 && !taken.has(b);
+    })
+    .slice(0, 1);
   const names = availableReligionNames(state);
   const finalName = name && names.includes(name) ? name : names[0] ?? `Religion ${state.religions.length + 1}`;
   const id = `rel_${playerId}`;
-  const religion: Religion = { id, name: finalName, founderId: playerId, holyCityId: cityId, beliefs: validBeliefs };
+  const religion: Religion = { id, name: finalName, founderId: playerId, holyCityId: cityId, beliefs: validBeliefs, tier: 1 };
   state.religions.push(religion);
   const p = playerById(state, playerId)!;
   p.foundedReligionId = id;
   p.faith -= FAITH_TO_FOUND;
   addPressure(city, id, HOLY_PRESSURE * 4); // the holy city is firmly the faith's seat
   city.religion = id;
-  log(state, `${p.name} founded ${finalName} in ${city.name}!`, {
-    actorId: p.id,
-    targetIds: [p.id],
-    tile: { col: city.col, row: city.row },
-  });
+  // Alert every civ: a new faith has entered the world (a turn-start update each).
+  emitReligionFounded(state, playerId, p.name, finalName, getReligionByName(finalName)?.id ?? id, city.name, city.col, city.row);
   return { ok: true };
 }
 
@@ -328,4 +382,120 @@ export function cityFollowerCount(state: GameState, religionId: string): number 
   let n = 0;
   for (const c of state.cities.values()) if (c.religion === religionId) n++;
   return n;
+}
+
+/** Cities where the religion holds a strict MAJORITY of pressure — the count
+ *  that gates tier upgrades (visible on the map as the converted badge). */
+export function majorityFollowerCount(state: GameState, religionId: string): number {
+  let n = 0;
+  for (const c of state.cities.values()) if (majorityReligion(c) === religionId) n++;
+  return n;
+}
+
+// ---- religion tiers & the shared perk pool ---------------------------------
+
+/** Every perk id already claimed by ANY founded religion (perks are exclusive). */
+export function takenPerkIds(state: GameState): Set<string> {
+  const taken = new Set<string>();
+  for (const r of state.religions) for (const b of r.beliefs) taken.add(b);
+  return taken;
+}
+
+/** Perks `religionId` could pick right now: tier ≤ the religion's tier, not yet
+ *  claimed by any religion, and only while the religion has an unspent pick. */
+export function availablePerks(state: GameState, religionId: string): BeliefDef[] {
+  const religion = religionById(state, religionId);
+  if (!religion || pendingPerkPicks(state, religionId) <= 0) return [];
+  const taken = takenPerkIds(state);
+  return BELIEFS.filter((b) => b.tier <= religion.tier && !taken.has(b.id));
+}
+
+/** Unspent perk picks: a religion earns one pick at founding and one per tier
+ *  reached. (Legacy religions founded with 2 beliefs simply owe picks later.) */
+export function pendingPerkPicks(state: GameState, religionId: string): number {
+  const religion = religionById(state, religionId);
+  if (!religion) return 0;
+  return Math.max(0, religion.tier - religion.beliefs.length);
+}
+
+export interface TierResult {
+  ok: boolean;
+  error?: string;
+}
+
+/** Requirements for a religion's NEXT tier, or undefined at max tier. */
+export function nextTierRequirement(state: GameState, religionId: string) {
+  const religion = religionById(state, religionId);
+  if (!religion || religion.tier >= MAX_RELIGION_TIER) return undefined;
+  return getReligionTier(religion.tier + 1);
+}
+
+export function canUpgradeReligion(state: GameState, playerId: number): TierResult {
+  const p = playerById(state, playerId);
+  const religion = p?.foundedReligionId ? religionById(state, p.foundedReligionId) : undefined;
+  if (!p || !religion) return { ok: false, error: "you have founded no religion" };
+  const req = nextTierRequirement(state, religion.id);
+  if (!req) return { ok: false, error: "already at the highest tier" };
+  if (p.faith < req.faithCost) return { ok: false, error: `needs ${req.faithCost} faith` };
+  const followers = majorityFollowerCount(state, religion.id);
+  if (followers < req.minFollowerCities) {
+    return { ok: false, error: `needs ${req.minFollowerCities} follower cities (have ${followers})` };
+  }
+  return { ok: true };
+}
+
+/** Raise the founder's religion one tier, paying its faith price. The new tier
+ *  grants one more perk pick (see pickReligionPerk). */
+export function upgradeReligion(state: GameState, playerId: number): TierResult {
+  const can = canUpgradeReligion(state, playerId);
+  if (!can.ok) return can;
+  const p = playerById(state, playerId)!;
+  const religion = religionById(state, p.foundedReligionId)!;
+  const req = getReligionTier(religion.tier + 1)!;
+  p.faith -= req.faithCost;
+  religion.tier += 1;
+  log(state, `${religion.name} rose to tier ${religion.tier}!`, {
+    actorId: playerId,
+    world: true,
+  });
+  return { ok: true };
+}
+
+/** Spend an unspent perk pick on `perkId` (tier-gated, exclusive across religions). */
+export function pickReligionPerk(state: GameState, playerId: number, perkId: string): TierResult {
+  const p = playerById(state, playerId);
+  const religion = p?.foundedReligionId ? religionById(state, p.foundedReligionId) : undefined;
+  if (!p || !religion) return { ok: false, error: "you have founded no religion" };
+  if (pendingPerkPicks(state, religion.id) <= 0) return { ok: false, error: "no perk pick available" };
+  const def = getBelief(perkId);
+  if (!def) return { ok: false, error: "no such perk" };
+  if (def.tier > religion.tier) return { ok: false, error: `requires religion tier ${def.tier}` };
+  if (takenPerkIds(state).has(perkId)) return { ok: false, error: "another religion already claimed that perk" };
+  religion.beliefs.push(perkId);
+  log(state, `${religion.name} adopted ${def.name}.`, { actorId: playerId, targetIds: [playerId] });
+  return { ok: true };
+}
+
+// ---- the religious capital (holy city) -------------------------------------
+
+/** Move the faith's holy capital to another follower city for MOVE_HOLY_CITY_COST
+ *  faith. The new capital anchors and radiates the faith (and its capital bonus). */
+export function moveHolyCity(state: GameState, playerId: number, cityId: number): TierResult {
+  const p = playerById(state, playerId);
+  const religion = p?.foundedReligionId ? religionById(state, p.foundedReligionId) : undefined;
+  if (!p || !religion) return { ok: false, error: "you have founded no religion" };
+  const city = state.cities.get(cityId);
+  if (!city || city.ownerId !== playerId) return { ok: false, error: "not your city" };
+  if (city.id === religion.holyCityId) return { ok: false, error: "already the holy city" };
+  if (majorityReligion(city) !== religion.id) return { ok: false, error: "that city does not follow your religion" };
+  if (p.faith < MOVE_HOLY_CITY_COST) return { ok: false, error: `needs ${MOVE_HOLY_CITY_COST} faith` };
+  p.faith -= MOVE_HOLY_CITY_COST;
+  religion.holyCityId = cityId;
+  addPressure(city, religion.id, HOLY_PRESSURE * 4); // the new seat is firmly anchored
+  log(state, `${city.name} is now the holy city of ${religion.name}.`, {
+    actorId: playerId,
+    targetIds: [playerId],
+    tile: { col: city.col, row: city.row },
+  });
+  return { ok: true };
 }

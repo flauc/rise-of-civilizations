@@ -225,6 +225,42 @@ describe("victory", () => {
     expect(v?.winnerId).toBe(0);
   });
 
+  it("does not declare a religious victory from trace ambient pressure alone", () => {
+    const state = createGame({ seed: "vic-rel", cols: 36, rows: 24, barbarians: false, humanSlots: 1, playerCount: 2 });
+    beginTurn(state);
+    for (const owner of [0, 1]) {
+      const settler = unitsOf(state, owner).find((u) => u.type === "settler")!;
+      applyCommand(state, { type: "foundCity", unitId: settler.id }, owner);
+    }
+    state.enabledVictories = new Set(["religious"]);
+    state.religions.push({ id: "rel_0", name: "Sun Cult", founderId: 0, holyCityId: citiesOf(state, 0)[0]!.id, beliefs: [], tier: 1 });
+    state.players[0]!.foundedReligionId = "rel_0";
+    // Faint seepage touches every city — the old bug counted this as conversion.
+    for (const c of state.cities.values()) {
+      c.religionPressure = { rel_0: 2 };
+      c.religion = "rel_0"; // dominantReligion would set this from any trace
+    }
+    expect(checkVictory(state)).toBeNull();
+    // Real conversion (majority share above the absolute floor) does win.
+    for (const c of state.cities.values()) c.religionPressure = { rel_0: 50 };
+    expect(checkVictory(state)).toEqual({ winnerId: 0, condition: "religious" });
+  });
+
+  it("does not declare a religious victory while a rival faith splits the pressure", () => {
+    const state = createGame({ seed: "vic-rel2", cols: 36, rows: 24, barbarians: false, humanSlots: 1, playerCount: 2 });
+    beginTurn(state);
+    for (const owner of [0, 1]) {
+      const settler = unitsOf(state, owner).find((u) => u.type === "settler")!;
+      applyCommand(state, { type: "foundCity", unitId: settler.id }, owner);
+    }
+    state.enabledVictories = new Set(["religious"]);
+    state.religions.push({ id: "rel_0", name: "Sun Cult", founderId: 0, holyCityId: citiesOf(state, 0)[0]!.id, beliefs: [], tier: 1 });
+    state.players[0]!.foundedReligionId = "rel_0";
+    // Strong pressure everywhere, but a rival faith holds half — no strict majority.
+    for (const c of state.cities.values()) c.religionPressure = { rel_0: 50, rel_1: 50 };
+    expect(checkVictory(state)).toBeNull();
+  });
+
   it("declares extinction when every major civ is wiped out", () => {
     const state = createGame({ seed: "vic-ext", cols: 36, rows: 24, barbarians: false, humanSlots: 0, playerCount: 2 });
     // Wipe out every major player.

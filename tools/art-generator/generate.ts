@@ -49,6 +49,7 @@ import {
   RESOURCE_SUBSET,
   UI_SUBSET,
   ICON_SUBSET,
+  EMOJI_ICON_SUBSET,
   VILLAGE_REWARD_SUBSET,
   BARBARIAN_REWARD_SUBSET,
   AGE_SUBSET,
@@ -59,6 +60,9 @@ import {
   TURN_UPDATE_IMPROVEMENT_SUBSET,
   NATURAL_WONDER_SUBSET,
   WONDER_TILE_SUBSET,
+  RELIGION_SUBSET,
+  RELIGION_UNIT_SUBSET,
+  RELIGION_ICON_SUBSET,
 } from "./config";
 
 interface Options {
@@ -284,6 +288,13 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--emoji-icon": {
+        const id = next();
+        const e = EMOJI_ICON_SUBSET.find((x) => x.id === id);
+        if (!e) fail(`Unknown emoji icon: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--village-reward": {
         const id = next();
         const e = findEntry(id);
@@ -319,6 +330,21 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--religion": {
+        // Icons share ids with artwork, so match within the artwork subset (not findEntry).
+        const id = next();
+        const e = RELIGION_SUBSET.find((x) => x.id === id);
+        if (!e) fail(`Unknown religion: ${id}`);
+        entries.push(e);
+        break;
+      }
+      case "--religion-icon": {
+        const id = next();
+        const e = RELIGION_ICON_SUBSET.find((x) => x.id === id);
+        if (!e) fail(`Unknown religion icon: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--subset": {
         const name = next();
         if (name === "terrain" || name === "tiles") entries.push(...TERRAIN_SUBSET);
@@ -340,6 +366,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "resources") entries.push(...RESOURCE_SUBSET);
         else if (name === "ui") entries.push(...UI_SUBSET);
         else if (name === "icons") entries.push(...ICON_SUBSET);
+        else if (name === "emoji-icons") entries.push(...EMOJI_ICON_SUBSET);
         else if (name === "village-rewards") entries.push(...VILLAGE_REWARD_SUBSET);
         else if (name === "barbarian-rewards") entries.push(...BARBARIAN_REWARD_SUBSET);
         else if (name === "ages") entries.push(...AGE_SUBSET);
@@ -350,6 +377,9 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "turn-update-improvements") entries.push(...TURN_UPDATE_IMPROVEMENT_SUBSET);
         else if (name === "natural-wonders") entries.push(...NATURAL_WONDER_SUBSET);
         else if (name === "wonder-tiles") entries.push(...WONDER_TILE_SUBSET);
+        else if (name === "religions") entries.push(...RELIGION_SUBSET);
+        else if (name === "religion-icons") entries.push(...RELIGION_ICON_SUBSET);
+        else if (name === "religion-units") entries.push(...RELIGION_UNIT_SUBSET);
         else if (name === "all") entries.push(...allEntries());
         else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-improvements, natural-wonders, or all.`);
         break;
@@ -741,15 +771,30 @@ async function postProcessToken(rawPath: string, outPath: string, entry: AssetEn
     source = rembgPath;
   }
 
-  // Step 1: color-key the solid white/light background out and trim to the
-  // figure. This "cleaned" image keeps the model's full resolution.
+  // Step 1: remove the background and trim to the figure. Flood-fill the
+  // border-connected white region only — a global `-transparent white` would
+  // also punch holes through white INSIDE the figure (robes, shields, beards).
+  // The 1px white border guarantees the background is one connected region.
   const cleaned = `${rawPath}.clean.png`;
   await runCmd("magick", [
     source,
+    "-bordercolor",
+    "white",
+    "-border",
+    "1",
+    "-alpha",
+    "set",
+    "-channel",
+    "RGBA",
     "-fuzz",
     "20%",
-    "-transparent",
+    "-fill",
+    "none",
+    "-floodfill",
+    "+0+0",
     "white",
+    "-shave",
+    "1x1",
     "-trim",
     "+repage",
     "-define",
@@ -928,7 +973,10 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
     entry.category === "wonder_tile" ? "wonders" :
     entry.category === "great_person" ? "great-people" :
     entry.category === "legend" ? "legends" :
+    entry.category === "religion" ? "religions" :
+    entry.category === "religion_icon" ? "religion-icons" :
     entry.category === "ui" ? "ui" :
+    entry.category === "emoji_icon" ? "icons" :
     `${entry.category}s`;
   const rawDir = join(options.outDir, "raw", categoryDir);
   const finalDir = join(options.outDir, categoryDir);
@@ -981,7 +1029,8 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
       } else if (entry.category === "tile" || entry.category === "road" || entry.category === "river" || entry.category === "natural_wonder") {
         // Natural wonders are full hex tiles — same hex-masked tile pipeline.
         await postProcessTile(rawPath, finalPath, entry);
-      } else if (entry.category === "leader" || entry.category === "great_person" || entry.category === "legend" || entry.category === "age" || entry.category === "pillar" || entry.category === "hero" || entry.category === "turn_update") {
+      } else if (entry.category === "leader" || entry.category === "great_person" || entry.category === "legend" || entry.category === "age" || entry.category === "pillar" || entry.category === "hero" || entry.category === "turn_update" || entry.category === "religion") {
+        // Religion artwork keeps its painted background like a leader/age portrait.
         await postProcessPortrait(rawPath, finalPath, entry);
       } else if (entry.category === "icon" && entry.id === "favicon") {
         await postProcessFavicon(rawPath, finalDir, entry);

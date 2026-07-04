@@ -4,7 +4,7 @@ import { cityAt, currentPlayer, log, playerById, unitsOf, citiesOf, unitAt, areE
 import { isPassableLand, isWaterTerrain } from "./terrain";
 import { computeReachable, isCoastalLand, isCoastalWater, isNavalUnit, isWaterDomain, ejectTrespassers } from "./movement";
 import { updateExplored } from "./visibility";
-import { processCity, availableProduction, autoAssignCitizens, toggleCitizen, applyUnitUpkeep } from "./economy";
+import { processCity, advanceResearch, advanceCivic, availableProduction, autoAssignCitizens, toggleCitizen, applyUnitUpkeep } from "./economy";
 import {
   cityMaxHp,
   healAndReset,
@@ -21,6 +21,7 @@ import { applyVictoryCheck } from "./victory";
 import { convertCitizen, type SpecialistId } from "./specialists";
 import {
   advanceWorks,
+  tickWonders,
   assignSpecialist,
   cancelWork,
   startWonder,
@@ -31,7 +32,7 @@ import { rushCity, rushWork, rushTraining, type RushCurrency } from "./rush";
 import { capitalPopulationBonusFor, BASE_CITY_POPULATION } from "@roc/data";
 import { foundTerritory, expandTerritory } from "./territory";
 import { onUnitEnter, tickRuins, clearRuin } from "./features";
-import { foundReligion, spreadReligion, buyReligiousUnit, evangelize, purgeHeresy, boardTradeRoute, processTransit } from "./religion";
+import { foundReligion, spreadReligion, buyReligiousUnit, evangelize, purgeHeresy, boardTradeRoute, processTransit, upgradeReligion, pickReligionPerk, moveHolyCity } from "./religion";
 import { trackCircumnavigation } from "./science-victory";
 import { accrueInfluence } from "./culture-victory";
 import { establishTradeRoute, cancelTradeRoute, pruneTradeRoutes } from "./trade";
@@ -50,11 +51,12 @@ import {
   proposeDeal,
   respondProposal,
   finalizeDeal,
+  cancelSharedVision,
   diplomacyTick,
   foreignTerritoryOwner,
   onCityFoundedNearRivals,
 } from "./diplomacy";
-import type { DealItem } from "./state";
+import type { CityAutoFocus, DealItem } from "./state";
 import { gatherPlayerResources } from "./resources";
 import {
   civEffectsOf,
@@ -68,7 +70,7 @@ import {
   nextCityNameForCiv,
   unitDisplayName,
 } from "./civs";
-import { aiTakeTurn } from "./ai";
+import { aiTakeTurn, autoManageCities } from "./ai";
 import { onUnitPromoted, decayGlobalMorale, UPKEEP_MODIFIER_MIN, UPKEEP_MODIFIER_MAX } from "./morale";
 import { UNIT_DEFS, TECH_DEFS, techUnlocked, computeResearchPath, advanceResearchQueue, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId, type UnitTypeId } from "./content";
 import { startTraining, cancelTraining } from "./training";
@@ -93,6 +95,7 @@ export type Command =
   | { type: "rushProduction"; cityId: number; currency: RushCurrency }
   | { type: "rushWork"; workId: number; currency: RushCurrency }
   | { type: "assignCitizen"; cityId: number; col: number; row: number }
+  | { type: "setCityAutoMode"; cityId: number; mode: CityAutoFocus | null }
   | { type: "setResearch"; techId: TechId }
   | { type: "setResearchTarget"; techId: TechId }
   | { type: "setCivic"; civicId: string }
@@ -103,6 +106,9 @@ export type Command =
   | { type: "evangelize"; unitId: number; cityId: number }
   | { type: "purgeHeresy"; unitId: number; cityId: number }
   | { type: "boardTradeRoute"; unitId: number; routeId: number }
+  | { type: "upgradeReligion" }
+  | { type: "pickReligionPerk"; perkId: string }
+  | { type: "moveHolyCity"; cityId: number }
   | { type: "establishTradeRoute"; unitId: number; destCityId: number }
   | { type: "cancelTradeRoute"; routeId: number }
   | { type: "bribeBarbarian"; unitId: number }
@@ -118,6 +124,7 @@ export type Command =
   | { type: "giftTo"; targetId: number; gold?: number; resource?: string }
   | { type: "demandTribute"; targetId: number; gold?: number; resource?: string }
   | { type: "proposeDeal"; targetId: number; give: DealItem[]; want: DealItem[] }
+  | { type: "cancelSharedVision"; targetId: number }
   | { type: "respondProposal"; proposalId: number; accept: boolean }
   | { type: "finalizeDeal"; proposalId: number; confirm: boolean }
   | { type: "acknowledgeContact"; otherId: number }
@@ -154,10 +161,14 @@ export function beginTurn(state: GameState): void {
   tickLegends(state, player.id); // retire heroes whose lifespan has elapsed
   tickLegendPassives(state, player); // living heroes' per-turn powers (income, drilling, dread)
   gatherPlayerResources(state, player.id);
+  tickWonders(state, player.id); // active wonder effects (e.g. the Colossus's free warships)
   for (const c of citiesOf(state, player.id)) {
     c.rangedAttackUsed = false;
     processCity(state, c, player);
   }
+  autoManageCities(state, player); // governor mode: opted-in cities manage themselves
+  advanceResearch(state, player); // complete at most one tech from the pooled science
+  advanceCivic(state, player); // and at most one civic from the pooled culture
   ejectTrespassers(state); // bump any unit a freshly-expanded border just enclosed off foreign soil
   applyUnitUpkeep(state, player); // empire-wide unit maintenance after city income
   processTransit(state, player.id); // deliver religious units riding trade routes
@@ -348,7 +359,7 @@ export function applyCommand(
       if (res.ok) {
         // A released craftsman must drop off any Work it was labouring on.
         if (res.releasedId !== undefined) unassignSpecialistEverywhere(state, player.id, res.releasedId);
-        autoAssignCitizens(state, city); // re-staff tiles around the new specialist count
+        autoAssignCitizens(state, city, city.autoMode); // re-staff tiles around the new specialist count
       }
       return res;
     }
@@ -473,6 +484,15 @@ export function applyCommand(
       return ok;
     }
 
+    case "setCityAutoMode": {
+      const city = state.cities.get(cmd.cityId);
+      if (!city) return fail("no such city");
+      if (city.ownerId !== player.id) return fail("not your city");
+      city.autoMode = cmd.mode ?? undefined;
+      autoAssignCitizens(state, city, city.autoMode); // re-skew worked tiles toward the new focus immediately
+      return ok;
+    }
+
     case "setResearch": {
       if (player.researched.has(cmd.techId)) return fail("already researched");
       if (!techUnlocked(player.researched, cmd.techId)) return fail("prereqs not met");
@@ -529,6 +549,15 @@ export function applyCommand(
     case "foundReligion": {
       return foundReligion(state, player.id, cmd.cityId, cmd.name, cmd.beliefs);
     }
+
+    case "upgradeReligion":
+      return upgradeReligion(state, player.id);
+
+    case "pickReligionPerk":
+      return pickReligionPerk(state, player.id, cmd.perkId);
+
+    case "moveHolyCity":
+      return moveHolyCity(state, player.id, cmd.cityId);
 
     case "buyReligiousUnit":
       return buyReligiousUnit(state, player.id, cmd.cityId, cmd.unit);
@@ -654,6 +683,8 @@ export function applyCommand(
       return demandTribute(state, player.id, cmd.targetId, cmd.gold ?? 0, cmd.resource);
     case "proposeDeal":
       return proposeDeal(state, player.id, cmd.targetId, cmd.give, cmd.want);
+    case "cancelSharedVision":
+      return cancelSharedVision(state, player.id, cmd.targetId);
     case "respondProposal":
       return respondProposal(state, player.id, cmd.proposalId, cmd.accept);
     case "finalizeDeal":

@@ -6,11 +6,13 @@ import {
   advanceWorks,
   startWork,
   startWonder,
+  canStartWork,
   canStartWonder,
   nextTierAt,
   workLabourFor,
   workLabourPerTurn,
   workEtaTurns,
+  WONDER_BUILD_TURNS,
 } from "./works";
 import { workerSlots, specialistLabour } from "./specialists";
 import { citiesOf, unitsOf, type City } from "./state";
@@ -28,6 +30,31 @@ function gameWithCity(): { s: ReturnType<typeof createGame>; city: City } {
   const city = citiesOf(s, 0)[0]!;
   city.population = 5; // room for craftsmen + workers
   return { s, city };
+}
+
+/** Two rival players, each with a founded city (player 0's is returned). Used to
+ *  exercise neutral- vs enemy-owned land in the works ownership gate. */
+function gameWith2Cities(): { s: ReturnType<typeof createGame>; city: City } {
+  const s = createGame({ seed: "works-neutral", cols: 44, rows: 30, barbarians: false, humanSlots: 1, playerCount: 2 });
+  beginTurn(s);
+  for (const pid of [0, 1]) {
+    const settler = unitsOf(s, pid).find((u) => u.type === "settler")!;
+    applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+  }
+  const city = citiesOf(s, 0)[0]!;
+  city.population = 5;
+  return { s, city };
+}
+
+/** Push `count` fresh (Lv1) specialists of `type` onto a city, returning their ids. */
+function pushSpecialists(city: City, type: string, count: number, startId: number): number[] {
+  const ids: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const id = startId + i;
+    city.specialists.push({ id, type: type as never, xp: 0, level: 1 });
+    ids.push(id);
+  }
+  return ids;
 }
 
 /** Make tile (col,row) a plain (non-river) grassland tile owned by `city`. */
@@ -136,30 +163,89 @@ describe("specialists & works", () => {
     expect(w2.error).toMatch(/^No /);
   });
 
-  it("refuses to start a wonder when a required craftsman is busy on another work", () => {
+  it("refuses to start a wonder until its WHOLE crew is free (not just one of each)", () => {
     const { s, city } = gameWithCity();
     s.players[0]!.researched.add("masonry");
-    // The Great Pyramid needs a Mason and an Architect — field one of each.
-    city.specialists.push(
-      { id: 101, type: "mason", xp: 0, level: 1 },
-      { id: 102, type: "architect", xp: 0, level: 1 },
-    );
+    s.players[0]!.gold = 1000; // afford the Great Pyramid's gold cost
+    // The Great Pyramid's crew is 11 Masons + 6 Architects — field exactly that.
+    pushSpecialists(city, "mason", 11, 100);
+    pushSpecialists(city, "architect", 6, 200);
     const wonderTile = grasslandTile(s, city, city.col + 1, city.row);
-    // With both crafts idle the wonder may be raised, exactly like a tile improvement.
+    wonderTile.terrain = "desert"; // the Great Pyramid must sit on a desert tile
+    // With the full crew idle the wonder may be raised.
     expect(canStartWonder(s, 0, "great_pyramid", wonderTile.col, wonderTile.row).ok).toBe(true);
 
-    // Put the lone Mason to work on a mine; now there's no free Mason for the wonder.
+    // Put one Mason to work on a mine; now only 10 free Masons remain — short of the 11 the wonder demands.
     const mineTile = grasslandTile(s, city, city.col - 1, city.row);
     mineTile.terrain = "hills";
     const mine = startWork(s, 0, "mine", mineTile.col, mineTile.row);
     expect(mine.ok).toBe(true);
-    expect(assign(s, mine.workId!, 101)).toBe(true);
+    expect(assign(s, mine.workId!, 100)).toBe(true);
 
     const blocked = canStartWonder(s, 0, "great_pyramid", wonderTile.col, wonderTile.row);
     expect(blocked.ok).toBe(false);
-    expect(blocked.error).toMatch(/^No /); // a missing-craftsman block, same as improvements
+    expect(blocked.error).toMatch(/Need 11 Masons \(have 10\)/);
     expect(startWonder(s, 0, "great_pyramid", wonderTile.col, wonderTile.row).ok).toBe(false);
     expect(s.works.some((w) => w.wonderId === "great_pyramid")).toBe(false);
+  });
+
+  it("caps a wonder's crew at its headcount (a mob of extra masons can't join)", () => {
+    const { s, city } = gameWithCity();
+    s.players[0]!.researched.add("masonry");
+    s.players[0]!.gold = 1000;
+    // Field one Mason more than the crew needs (12 vs 11) plus the 6 Architects.
+    const masons = pushSpecialists(city, "mason", 12, 100);
+    pushSpecialists(city, "architect", 6, 200);
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    tile.terrain = "desert";
+    const w = startWonder(s, 0, "great_pyramid", tile.col, tile.row);
+    expect(w.ok, w.error).toBe(true);
+    // The first 11 masons take the job; the 12th is turned away — the crew is full.
+    for (let i = 0; i < 11; i++) expect(assign(s, w.workId!, masons[i]!)).toBe(true);
+    expect(assign(s, w.workId!, masons[11]!)).toBe(false);
+    const work = s.works.find((x) => x.id === w.workId)!;
+    expect(work.assignedSpecialistIds).toHaveLength(11);
+  });
+
+  it("a fully-crewed wonder still takes a long build, not an instant one", () => {
+    const { s, city } = gameWithCity();
+    s.players[0]!.researched.add("masonry");
+    s.players[0]!.gold = 1000;
+    const masons = pushSpecialists(city, "mason", 11, 100);
+    const architects = pushSpecialists(city, "architect", 6, 200);
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    tile.terrain = "desert";
+    const w = startWonder(s, 0, "great_pyramid", tile.col, tile.row);
+    expect(w.ok, w.error).toBe(true);
+    for (const id of [...masons, ...architects]) expect(assign(s, w.workId!, id)).toBe(true);
+
+    // The full fresh crew does NOT finish in a turn or two — construction spans turns.
+    advanceWorks(s, 0);
+    advanceWorks(s, 0);
+    expect(s.completedWonders.includes("great_pyramid")).toBe(false);
+
+    // Left to work, it completes on the order of WONDER_BUILD_TURNS turns (sooner as
+    // the crew levels up mid-build), and never runs away past that budget.
+    let turns = 2;
+    while (!s.completedWonders.includes("great_pyramid") && turns < WONDER_BUILD_TURNS + 2) {
+      advanceWorks(s, 0);
+      turns++;
+    }
+    expect(s.completedWonders.includes("great_pyramid")).toBe(true);
+    expect(turns).toBeGreaterThan(5); // definitively not "instant"
+  });
+
+  it("does not cap a tile work's crew (stacking a distant farm is fine)", () => {
+    const { s, city } = gameWithCity();
+    city.population = 8;
+    for (let i = 0; i < 3; i++)
+      applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const tile = grasslandTile(s, city, city.col + 4, city.row);
+    const w = startWork(s, 0, "farm", tile.col, tile.row);
+    expect(w.ok, w.error).toBe(true);
+    // All three carpenters may pile onto one farm — no per-craft cap on tile works.
+    for (const spec of city.specialists) expect(assign(s, w.workId!, spec.id)).toBe(true);
+    expect(s.works.find((x) => x.id === w.workId)!.assignedSpecialistIds).toHaveLength(3);
   });
 
   it("refuses to start a work whose craft is not yet researched", () => {
@@ -288,6 +374,66 @@ describe("specialists & works", () => {
     // Once researched, the fishery can be built.
     s.players[0]!.researched.add("maritime_foraging");
     expect(startWork(s, 0, "fishery", tile.col, tile.row).ok).toBe(true);
+  });
+
+  it("builds a road/improvement on neutral land outside the borders (ahead of a settler)", () => {
+    const { s, city } = gameWithCity();
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    // An unclaimed grassland tile a couple of hexes past the border.
+    const tile = grasslandTile(s, city, city.col + 3, city.row);
+    tile.ownerCityId = undefined; // neutral — no city owns it yet
+    expect(canStartWork(s, 0, "farm", tile.col, tile.row).ok).toBe(true);
+    const work = startWork(s, 0, "farm", tile.col, tile.row);
+    expect(work.ok, work.error).toBe(true);
+    assign(s, work.workId!, city.specialists[0]!.id);
+    let guard = 0;
+    while (s.works.length > 0 && guard++ < 40) advanceWorks(s, 0);
+    // The improvement is stamped even though the tile is still unclaimed.
+    expect(tile.improvement).toBe("farm");
+    expect(tile.ownerCityId).toBeUndefined();
+  });
+
+  it("keeps a neutral-land work through turns but drops it if an enemy claims the tile", () => {
+    const { s, city } = gameWith2Cities();
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const enemyCity = citiesOf(s, 1)[0]!;
+    // A distant neutral tile so the farm needs several turns of labour.
+    const tile = grasslandTile(s, city, city.col + 4, city.row);
+    tile.ownerCityId = undefined;
+    const work = startWork(s, 0, "farm", tile.col, tile.row);
+    expect(work.ok, work.error).toBe(true);
+    assign(s, work.workId!, city.specialists[0]!.id);
+    advanceWorks(s, 0);
+    expect(s.works.some((w) => w.id === work.workId)).toBe(true); // survives on neutral land
+    // A rival's borders reach the tile → the work is no longer a legal site and is pruned.
+    tile.ownerCityId = enemyCity.id;
+    advanceWorks(s, 0);
+    expect(s.works.some((w) => w.id === work.workId)).toBe(false);
+  });
+
+  it("refuses to build on a tile inside another civilization's territory", () => {
+    const { s, city } = gameWith2Cities();
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const enemyCity = citiesOf(s, 1)[0]!;
+    const tile = grasslandTile(s, city, city.col + 2, city.row);
+    tile.ownerCityId = enemyCity.id; // claimed by the rival
+    const can = canStartWork(s, 0, "farm", tile.col, tile.row);
+    expect(can.ok).toBe(false);
+    expect(can.error).toMatch(/another civilization/);
+  });
+
+  it("keeps defensive structures territory-locked (no walls on neutral land)", () => {
+    const { s, city } = gameWithCity();
+    s.players[0]!.researched.add("masonry");
+    city.specialists.push(
+      { id: 201, type: "mason", xp: 0, level: 1 },
+      { id: 202, type: "engineer", xp: 0, level: 1 },
+    );
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    tile.ownerCityId = undefined; // neutral
+    const can = canStartWork(s, 0, "wall", tile.col, tile.row);
+    expect(can.ok).toBe(false);
+    expect(can.error).toMatch(/your territory/);
   });
 
   it("refuses to train more craftsmen than the city has citizens", () => {

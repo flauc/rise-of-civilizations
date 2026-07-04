@@ -12,6 +12,7 @@ import { moveCost, isPassableLand, isNavalPassable, navalMoveCost, isWaterTerrai
 import type { GameState, Unit } from "./state";
 import { cityAt, areEnemies, playerById, log } from "./state";
 import { UNIT_DEFS, type UnitDef, type TechId } from "./content";
+import { getWonder } from "@roc/data";
 import { foreignTerritoryOwner, atWar, relationBetween } from "./diplomacy";
 import { playerEffects } from "./civs";
 
@@ -83,25 +84,32 @@ export function riverBetween(state: GameState, fromCol: number, fromRow: number,
   return false;
 }
 
-/** True if a road on this tile is carried over its river by a bridge: the tile
- *  has both a road and a river, and its territory owner has Bridge Building. */
-export function tileHasBridge(state: GameState, col: number, row: number): boolean {
+/** True if a road on this tile is carried over its river by a bridge: the tile has
+ *  both a road and a river, and Bridge Building is known. Roads may be used by
+ *  anyone, so the span exists if the tile's territory owner has the tech OR — for a
+ *  neutral or foreign road — the passing army's own civ does (its engineers throw
+ *  the span). Callers that describe a *tile* (rendering, trade connectivity) pass no
+ *  `moverId` and so see only the owner's bridge; movement passes the moving unit's
+ *  owner so every unit gets the road's crossing, even on unclaimed land. */
+export function tileHasBridge(state: GameState, col: number, row: number, moverId?: number): boolean {
   const tile = getTile(state.map, col, row);
   if (!tile?.road || !tile.river) return false;
   const ownerId = tile.ownerCityId !== undefined ? state.cities.get(tile.ownerCityId)?.ownerId : undefined;
-  return ownerId !== undefined && hasTech(state, ownerId, "bridge_building");
+  if (ownerId !== undefined && hasTech(state, ownerId, "bridge_building")) return true;
+  if (moverId !== undefined && hasTech(state, moverId, "bridge_building")) return true;
+  return false;
 }
 
 /** True if the river along the edge between two adjacent road connectors (a road
  *  tile or a city) is spanned by a bridge. Such a crossing neither costs the extra
  *  fording movement nor breaks a city-to-city road connection — but the assault
  *  penalty for it still applies. */
-export function bridgedRiverCrossing(state: GameState, fromCol: number, fromRow: number, toCol: number, toRow: number): boolean {
+export function bridgedRiverCrossing(state: GameState, fromCol: number, fromRow: number, toCol: number, toRow: number, moverId?: number): boolean {
   if (!riverBetween(state, fromCol, fromRow, toCol, toRow)) return false;
   const fromConn = !!getTile(state.map, fromCol, fromRow)?.road || !!cityAt(state, fromCol, fromRow);
   const toConn = !!getTile(state.map, toCol, toRow)?.road || !!cityAt(state, toCol, toRow);
   if (!fromConn || !toConn) return false;
-  return tileHasBridge(state, fromCol, fromRow) || tileHasBridge(state, toCol, toRow);
+  return tileHasBridge(state, fromCol, fromRow, moverId) || tileHasBridge(state, toCol, toRow, moverId);
 }
 
 /** Move cost to enter a graded road tile, by road tier. A road's surface sets the
@@ -239,7 +247,7 @@ export function computeReachable(
       // Fording a river costs an extra movement point (like entering rough terrain),
       // unless a bridge carries the road across it.
       if (!isWaterDomain(unit) && riverBetween(state, cur.col, cur.row, n.col, n.row) &&
-        !bridgedRiverCrossing(state, cur.col, cur.row, n.col, n.row)) enterCost += 1;
+        !bridgedRiverCrossing(state, cur.col, cur.row, n.col, n.row, unit.ownerId)) enterCost += 1;
       const step = curCost + enterCost;
       if (step <= budget && step < (best.get(nk) ?? Infinity)) {
         best.set(nk, step);
@@ -355,7 +363,18 @@ export function ejectTrespassers(state: GameState): void {
   }
 }
 
-export function unitSight(unit: Unit): number {
+/** +N sight granted to a player's naval units by any wonder they've raised
+ *  (the Great Lighthouse). 0 for players with no such wonder. */
+function wonderNavalSightBonus(state: GameState, ownerId: number): number {
+  let bonus = 0;
+  for (const c of state.cities.values()) {
+    if (c.ownerId !== ownerId) continue;
+    for (const wid of c.wonders) bonus += getWonder(wid)?.effect.shipSightBonus ?? 0;
+  }
+  return bonus;
+}
+
+export function unitSight(state: GameState, unit: Unit): number {
   let sight = UNIT_DEFS[unit.type].sight;
   if (unit.promotions.includes("eagle_eye")) sight += 1;
   if (unit.promotions.includes("outrider")) sight += 1;
@@ -369,5 +388,6 @@ export function unitSight(unit: Unit): number {
   if (unit.promotions.includes("explorer")) sight += 2;
   if (unit.promotions.includes("pioneer")) sight += 1;
   if (unit.scouting) sight += 2; // Reconnoiter vision pulse
+  if (isNavalUnit(unit)) sight += wonderNavalSightBonus(state, unit.ownerId);
   return sight;
 }

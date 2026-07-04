@@ -214,6 +214,9 @@ export function emitCityGrew(
   });
 }
 
+/** NOTE: currently unused — the self-alert for recruiting your own Great Person is
+ *  suppressed (see great-people.ts). Kept so the pop-up can be re-enabled by
+ *  restoring the call site. */
 export function emitGreatPersonRecruited(
   state: GameState,
   playerId: number,
@@ -227,6 +230,9 @@ export function emitGreatPersonRecruited(
   });
 }
 
+/** NOTE: currently unused — the self-alert for recruiting your own Legend is
+ *  suppressed (see legends.ts). Kept so the pop-up can be re-enabled by restoring
+ *  the call site. */
 export function emitLegendRecruited(
   state: GameState,
   playerId: number,
@@ -237,6 +243,40 @@ export function emitLegendRecruited(
     playerId,
     message: `The Legend ${legend.name} has joined your cause — ${legend.abilityDesc}`,
     payload: { legendId: legend.id, name: legend.name, type: legend.type },
+  });
+}
+
+/** Broadcast a religion's founding to every OTHER major civ: each rival gets a
+ *  turn-start update naming the founder and the faith. The founder gets no
+ *  self-alert (they just did it) — only the single world-visible log entry, which
+ *  also keeps the log from being spammed with a copy per civ. */
+export function emitReligionFounded(
+  state: GameState,
+  founderId: number,
+  founderName: string,
+  religionName: string,
+  religionId: string,
+  cityName: string,
+  col: number,
+  row: number,
+): void {
+  for (const p of state.players) {
+    if (p.isBarbarian || p.id === founderId) continue; // no self-alert for the founder
+    const id = state.nextTurnUpdateId++;
+    state.turnUpdates.push({
+      id,
+      turn: state.turn,
+      type: "religionFounded",
+      playerId: p.id,
+      message: `${founderName} founded ${religionName}.`,
+      tile: { col, row },
+      payload: { founderId, founderName, religionName, religionId },
+    });
+  }
+  log(state, `${founderName} founded ${religionName} in ${cityName}!`, {
+    actorId: founderId,
+    world: true,
+    tile: { col, row },
   });
 }
 

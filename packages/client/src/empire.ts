@@ -17,6 +17,11 @@ import {
   worksOf,
   worksOfCity,
   workName,
+  specialistNameForDiscipline,
+  wonderStartCost,
+  TECH_DEFS,
+  type Discipline,
+  type TechId,
   currentWorkFor,
   tradeRoutesOf,
   tradeRouteYield,
@@ -24,9 +29,15 @@ import {
   uniqueUnitForCiv,
   type GameState,
   type City,
+  type CityAutoFocus,
 } from "@roc/sim";
 import { WONDER_DEFS, getWonder, getCiv } from "@roc/data";
 import { ASSET_BASE_URL } from "./asset-base";
+
+/** Glyph shown next to a governed city's focus in the Cities list. */
+const GOVERNOR_GLYPH: Record<CityAutoFocus, string> = {
+  growth: "🌾", military: "⚔️", science: "🔬", money: "🪙",
+};
 
 export interface EmpireHandlers {
   onSelectUnit(id: number): void;
@@ -148,6 +159,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
           `<span class="emp-pill">⚒️ ${prod}</span>` +
           (training ? `<span class="emp-pill">⚔️ ${training} training</span>` : "") +
           (works ? `<span class="emp-pill">${works} works</span>` : "") +
+          (c.autoMode ? `<span class="emp-pill" title="Governor mode">${GOVERNOR_GLYPH[c.autoMode]} ${c.autoMode}</span>` : "") +
           `</div>`
         );
       })
@@ -165,12 +177,13 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         const status = u.sleeping ? "💤 Sleeping" : idle ? "Ready" : "Done";
         const color = u.sleeping ? "#7e93a6" : idle ? "#ffd967" : "#7e93a6";
         // Match the map overlay's sprite: legend id, else unique-unit id, else base
-        // type. The glyph stays underneath as a fallback if the image fails to load.
+        // type. On load failure the image is swapped for the glyph — showing the
+        // glyph underneath instead would bleed through transparent PNG regions.
         const imgId = u.legendId ?? uniqueUnitForCiv(civId, u.type)?.id ?? u.type;
         const tokenSrc = `${ASSET_BASE_URL}units/${imgId}.png`;
         return (
           `<div class="emp-row" data-unit="${u.id}">` +
-          `<span class="emp-unit-icon">${d.glyph}<img src="${tokenSrc}" alt="" onerror="this.remove()"></span>` +
+          `<span class="emp-unit-icon"><img src="${tokenSrc}" alt="" onerror="this.replaceWith(document.createTextNode('${d.glyph}'))"></span>` +
           `<div class="grow"><div class="emp-name">${d.name}${u.level > 1 ? ` <span style="color:#ffd967">Lv${u.level}</span>` : ""}</div>` +
           `<div class="emp-sub">(${u.col}, ${u.row}) · moves ${u.movementLeft}/${d.movement}${d.strength > 0 ? ` · HP ${u.hp}/${unitMaxHp(u)}` : ""}</div></div>` +
           `<span class="emp-pill" style="color:${color}">${status}</span>` +
@@ -242,9 +255,16 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     for (const w of WONDER_DEFS) {
       const built = state.completedWonders.includes(w.id);
       const inProg = worksOf(state, viewerId).find((x) => x.wonderId === w.id);
-      const reqStr = Object.entries(w.requirement)
-        .map(([d, n]) => `${d} ${n}`)
+      const reqStr = Object.entries(w.crew)
+        .map(([d, n]) => `${n} ${specialistNameForDiscipline(d as Discipline)}${n === 1 ? "" : "s"}`)
         .join(" · ");
+      const cost = wonderStartCost(w);
+      const costStr = [cost.gold ? `${cost.gold}🪙` : "", cost.faith ? `${cost.faith}☮️` : "", cost.culture ? `${cost.culture}🎭` : ""]
+        .filter(Boolean)
+        .join(" ");
+      const techStr = w.reqTech ? TECH_DEFS[w.reqTech as TechId]?.name ?? w.reqTech : "";
+      const siteStr = w.placement?.site ? `📍 ${w.placement.site}` : "";
+      const gateBits = [techStr ? `🔬 ${techStr}` : "", costStr, siteStr].filter(Boolean).join(" · ");
       let action: string;
       if (built) action = `<span class="emp-pill" style="color:#7ad08a">Built</span>`;
       else if (inProg) {
@@ -260,7 +280,9 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
       html +=
         `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)">` +
         `<div class="grow"><div class="emp-name" style="font-size:14px">${w.name}</div>` +
-        `<div class="emp-sub">${w.desc}</div><div class="emp-sub" style="color:#c9a24a">Needs: ${reqStr}</div></div>${action}</div>`;
+        `<div class="emp-sub">${w.desc}</div><div class="emp-sub" style="color:#c9a24a">Crew: ${reqStr}</div>` +
+        (gateBits ? `<div class="emp-sub" style="color:#9fc3e0">Unlock: ${gateBits}</div>` : "") +
+        `</div>${action}</div>`;
     }
     html += `</div>`;
     return html;
