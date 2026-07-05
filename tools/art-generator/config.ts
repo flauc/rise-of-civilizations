@@ -492,6 +492,8 @@ const EMOJI_ICON_DEFS: readonly (readonly [string, string])[] = [
   ["ic_frown", "a simple worried unhappy face"],
   ["ic_hammer", "a single blacksmith's hammer"],
   ["ic_eye", "a single watching human eye"],
+  ["ic_flag_planted", "a red rectangular flag on a pole planted into the ground, marking a claimed spot"],
+  ["ic_burst", "a stylised explosion burst, a bright impact star"],
 ];
 
 export const EMOJI_ICON_SUBSET: AssetEntry[] = EMOJI_ICON_DEFS.map(([id, description]) => ({

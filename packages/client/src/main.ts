@@ -16,6 +16,9 @@ import {
   unitAt,
   unitsOf,
   workableTiles,
+  expansionCandidates,
+  nextExpansionTile,
+  cityBombardTargets,
   UNIT_DEFS,
   TERRAIN_NAMES,
   isRough,
@@ -115,6 +118,14 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   let peaceAttack = new Set<string>(); // would-declare-war attacks
   let incursion = new Map<string, number>(); // foreign peace tiles -> owner id
   let cityWorkable = new Set<string>();
+  // Border-expansion picker: when set, the player is choosing the selected city's
+  // next-to-claim tile, and `expandCandidates` holds the tiles they can pick from.
+  let expandPickCityId: number | null = null;
+  let expandCandidates = new Set<string>();
+  // City bombardment: when set, the player is aiming the selected city's once-a-turn
+  // bombardment, and `bombardTargets` holds the enemy tiles it can hit.
+  let bombardCityId: number | null = null;
+  let bombardTargets = new Set<string>();
   let visible = new Set<string>();
   let liftFog = false; // God Mode: render the whole map with no fog
   let gameOverShown = false;
@@ -273,11 +284,21 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     pendingAbility = null;
     abilityTargetSet = new Set();
   }
+  function cancelExpandPick(): void {
+    expandPickCityId = null;
+    expandCandidates = new Set();
+  }
+  function cancelBombard(): void {
+    bombardCityId = null;
+    bombardTargets = new Set();
+  }
   function selectUnit(id: number): void {
     selectedUnitId = id;
     selectedCityId = null;
     selectedTile = null;
     cancelAbility();
+    cancelExpandPick();
+    cancelBombard();
     recomputeOverlays();
     needsRedraw = true;
   }
@@ -288,6 +309,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     reachable = new Set();
     attackTargets = new Set();
     cancelAbility();
+    cancelExpandPick();
+    cancelBombard();
     const city = st().cities.get(id);
     cityWorkable = city ? new Set(workableTiles(st(), city).map((t) => `${t.col},${t.row}`)) : new Set();
     needsRedraw = true;
@@ -299,6 +322,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     reachable = new Set();
     attackTargets = new Set();
     cancelAbility();
+    cancelExpandPick();
+    cancelBombard();
     cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
@@ -310,6 +335,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     reachable = new Set();
     attackTargets = new Set();
     cancelAbility();
+    cancelExpandPick();
+    cancelBombard();
     cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
@@ -362,6 +389,50 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onConvertCitizen: (cityId, specialistId, delta) =>
       session.order({ type: "convertCitizen", cityId, specialistId, delta }),
     onSetCityAutoMode: (cityId, mode) => session.order({ type: "setCityAutoMode", cityId, mode }),
+    onPickExpandTile: (cityId) => {
+      // Toggle the border-tile picker: highlight every tile the city could claim next,
+      // then a tap on one sends the override (handled in handleTap).
+      if (expandPickCityId === cityId) {
+        cancelExpandPick();
+      } else {
+        const city = st().cities.get(cityId);
+        if (!city) return;
+        expandPickCityId = cityId;
+        expandCandidates = new Set(expansionCandidates(st(), city).map((t) => `${t.col},${t.row}`));
+        if (expandCandidates.size === 0) {
+          cancelExpandPick();
+          ui.banner("This city has no room left to expand.");
+        } else {
+          ui.banner("Tap a highlighted tile to set where this city grows next.");
+        }
+      }
+      needsRedraw = true;
+    },
+    onCityBombard: (cityId) => {
+      // Toggle the bombardment aimer: highlight every enemy in range, then a tap on
+      // one fires the city's once-a-turn shot (handled in handleTap).
+      if (bombardCityId === cityId) {
+        cancelBombard();
+      } else {
+        const city = st().cities.get(cityId);
+        if (!city) return;
+        if (city.rangedAttackUsed) {
+          ui.banner("This city has already bombarded this turn.");
+          cancelBombard();
+        } else {
+          const targets = cityBombardTargets(st(), city);
+          bombardCityId = cityId;
+          bombardTargets = new Set(targets.map((u) => `${u.col},${u.row}`));
+          if (bombardTargets.size === 0) {
+            cancelBombard();
+            ui.banner("No enemies in range to bombard.");
+          } else {
+            ui.banner("Tap a highlighted enemy to bombard it.");
+          }
+        }
+      }
+      needsRedraw = true;
+    },
     onStartWork: (kind, col, row) => session.order({ type: "startWork", kind, col, row }),
     onStartWonder: (wonderId, col, row) => session.order({ type: "startWonder", wonderId, col, row }),
     onCancelWork: (workId) => session.order({ type: "cancelWork", workId }),
@@ -611,6 +682,32 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       }
       cancelAbility(); // tapping elsewhere cancels targeting
     }
+    // Border-tile picker: a tap on a highlighted candidate sets it as the city's
+    // next claim; a tap anywhere else just cancels the picker.
+    if (expandPickCityId != null) {
+      const cityId = expandPickCityId;
+      const isCandidate = expandCandidates.has(key);
+      cancelExpandPick();
+      if (isCandidate) {
+        session.order({ type: "setExpandTarget", cityId, target: { col: off.col, row: off.row } });
+      }
+      needsRedraw = true;
+      return;
+    }
+
+    // Bombardment aimer: a tap on a highlighted enemy fires the city's shot; a tap
+    // anywhere else just cancels aiming.
+    if (bombardCityId != null) {
+      const cityId = bombardCityId;
+      const isTarget = bombardTargets.has(key);
+      cancelBombard();
+      if (isTarget) {
+        session.order({ type: "cityBombard", cityId, col: off.col, row: off.row });
+      }
+      needsRedraw = true;
+      return;
+    }
+
     const u = unitAt(st(), off.col, off.row);
     const c = cityAt(st(), off.col, off.row);
 
@@ -720,8 +817,16 @@ function startGame(session: Session, setup: GameSetup = {}): void {
 
   function resize(): void {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
-    cssWidth = canvas.clientWidth;
-    cssHeight = canvas.clientHeight;
+    // visualViewport is the source of truth for what's actually visible on
+    // mobile. The 100dvh CSS box can lag the real viewport as the browser
+    // toolbar shows/hides, leaving the canvas shorter than the screen and a
+    // black strip (body bg) at the bottom. Measure the visible viewport and
+    // pin the element's height to it so the two can never disagree.
+    const vv = window.visualViewport;
+    cssWidth = vv ? vv.width : canvas.clientWidth;
+    cssHeight = vv ? vv.height : canvas.clientHeight;
+    canvas.style.width = cssWidth + "px";
+    canvas.style.height = cssHeight + "px";
     canvas.width = Math.round(cssWidth * dpr);
     canvas.height = Math.round(cssHeight * dpr);
     needsRedraw = true;
@@ -835,8 +940,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         reachable,
         attackTargets,
         abilityTargets: abilityTargetSet,
+        bombardTargets,
         cityWorkable,
         cityWorked: selCity ? new Set(selCity.workedTiles) : new Set(),
+        expandCandidates,
+        // Flag where the selected city grows next: the player's chosen tile if any,
+        // otherwise the default nearest tile — so a target is always shown.
+        expandMarker: selCity ? selCity.expandTarget ?? nextExpansionTile(st(), selCity) : null,
         tradeRoutes: st().tradeRoutes,
         works: st()
           .works.filter((w) => w.ownerId === me && w.target)
@@ -901,3 +1011,17 @@ if ("serviceWorker" in navigator && !import.meta.env.DEV) {
       .catch((err) => console.error("Service worker registration failed:", err));
   });
 }
+
+// Lock the installed app to portrait. The manifest `orientation` field covers
+// most Android launches, but the runtime lock backs it up (and is the only
+// hook some browsers honour). It only works in a standalone/fullscreen context,
+// so we retry on the first user gesture too — a plain load may not yet be
+// allowed to lock. Unsupported platforms (notably iOS Safari) simply reject.
+function lockPortrait() {
+  const orientation = screen.orientation as ScreenOrientation & {
+    lock?: (o: "portrait") => Promise<void>;
+  };
+  orientation?.lock?.("portrait").catch(() => {});
+}
+lockPortrait();
+window.addEventListener("pointerdown", lockPortrait, { once: true });

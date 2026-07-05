@@ -25,8 +25,16 @@ export interface OverlayState {
   attackTargets: Set<string>;
   /** Tiles a pending targeted ability can be used against (highlighted distinctly). */
   abilityTargets?: Set<string>;
+  /** Enemy-occupied tiles the selected city can bombard, while aiming its bombardment. */
+  bombardTargets?: Set<string>;
   cityWorkable: Set<string>;
   cityWorked: Set<string>;
+  /** Tiles the selected city could claim next, highlighted while the player is
+   *  choosing its next border tile. */
+  expandCandidates?: Set<string>;
+  /** The tile the selected city will claim next (player-chosen or default) — flagged
+   *  so the player can see where the borders grow before/after overriding it. */
+  expandMarker?: { col: number; row: number } | null;
   /** The viewer's trade routes, drawn as dashed lines between cities. */
   tradeRoutes?: TradeRoute[];
   /** The viewer's in-progress works, drawn as construction sites on their tiles. */
@@ -537,6 +545,7 @@ export function drawOverlay(
   };
   if (o.reachable.size > 0) highlight(o.reachable, "rgba(255,255,255,0.12)", "rgba(255,255,255,0.35)");
   if (o.attackTargets.size > 0) highlight(o.attackTargets, "rgba(224,83,61,0.28)", "rgba(255,90,70,0.9)");
+  if (o.bombardTargets && o.bombardTargets.size > 0) highlight(o.bombardTargets, "rgba(255,140,40,0.30)", "rgba(255,160,60,0.95)");
   if (o.abilityTargets && o.abilityTargets.size > 0) highlight(o.abilityTargets, "rgba(120,200,255,0.30)", "rgba(150,220,255,0.95)");
 
   // ---- city citizen-assignment view ----
@@ -646,54 +655,6 @@ export function drawOverlay(
     }
     const maxHp = cityMaxHp(city);
     if (city.hp < maxHp) drawHpBar(ctx, s.x, s.y + imgSize / 2 + size * 0.12, imgSize, city.hp / maxHp);
-  }
-
-  // ---- worked-tile yield labels (citizen-assignment view) ----
-  // Drawn after the cities so the selected city's name/art never hides them, and
-  // centred in each tile as a colour-coded pill so they read at a glance. Worked
-  // tiles get a gold ring; merely-workable tiles are dimmer.
-  if (o.cityWorkable.size > 0 && size > 15) {
-    const fontSize = Math.max(9, Math.round(size * 0.3));
-    ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
-    ctx.textBaseline = "middle";
-    const gap = fontSize * 0.45;
-    for (const key of o.cityWorkable) {
-      const [col, row] = key.split(",").map(Number) as [number, number];
-      const t = getTile(state.map, col, row);
-      if (!t) continue;
-      const y = ownedTileYields(state, col, row);
-      const segs: { text: string; color: string }[] = [];
-      if (y.food) segs.push({ text: `${y.food}F`, color: "#8ef0a0" });
-      if (y.production) segs.push({ text: `${y.production}P`, color: "#ffb86b" });
-      if (y.gold) segs.push({ text: `${y.gold}G`, color: "#ffd967" });
-      if (y.science) segs.push({ text: `${y.science}S`, color: "#79c0ff" });
-      if (segs.length === 0) continue;
-
-      const s = screen(col, row);
-      const worked = o.cityWorked.has(key);
-      let totalW = 0;
-      for (const seg of segs) totalW += ctx.measureText(seg.text).width;
-      totalW += gap * (segs.length - 1);
-      const boxW = totalW + fontSize * 0.9;
-      const boxH = fontSize + fontSize * 0.6;
-
-      ctx.fillStyle = worked ? "rgba(40,30,5,0.9)" : "rgba(8,12,18,0.82)";
-      ctx.beginPath();
-      ctx.roundRect(s.x - boxW / 2, s.y - boxH / 2, boxW, boxH, boxH / 2);
-      ctx.fill();
-      ctx.lineWidth = Math.max(1, size * 0.035);
-      ctx.strokeStyle = worked ? "#ffd967" : "rgba(255,255,255,0.3)";
-      ctx.stroke();
-
-      ctx.textAlign = "left";
-      let x = s.x - totalW / 2;
-      for (const seg of segs) {
-        ctx.fillStyle = seg.color;
-        ctx.fillText(seg.text, x, s.y);
-        x += ctx.measureText(seg.text).width + gap;
-      }
-    }
-    ctx.textAlign = "center";
   }
 
   // Units.
@@ -819,5 +780,80 @@ export function drawOverlay(
     }
     const unitHpMax = unitMaxHp(unit);
     if (unit.hp < unitHpMax) drawHpBar(ctx, s.x, s.y + half + size * 0.1, half * 1.8, unit.hp / unitHpMax);
+  }
+
+  // ---- worked-tile yield labels (citizen-assignment view) ----
+  // Drawn last — after the cities AND units — so that while managing a city its tile
+  // yields sit on top of any unit standing on those tiles (the yields are the point
+  // of this view). Centred in each tile as a colour-coded pill; worked tiles get a
+  // gold ring, merely-workable tiles are dimmer.
+  if (o.cityWorkable.size > 0 && size > 15) {
+    const fontSize = Math.max(9, Math.round(size * 0.3));
+    ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+    ctx.textBaseline = "middle";
+    const gap = fontSize * 0.45;
+    for (const key of o.cityWorkable) {
+      const [col, row] = key.split(",").map(Number) as [number, number];
+      const t = getTile(state.map, col, row);
+      if (!t) continue;
+      const y = ownedTileYields(state, col, row);
+      const segs: { text: string; color: string }[] = [];
+      if (y.food) segs.push({ text: `${y.food}F`, color: "#8ef0a0" });
+      if (y.production) segs.push({ text: `${y.production}P`, color: "#ffb86b" });
+      if (y.gold) segs.push({ text: `${y.gold}G`, color: "#ffd967" });
+      if (y.science) segs.push({ text: `${y.science}S`, color: "#79c0ff" });
+      if (y.faith) segs.push({ text: `${y.faith}☮`, color: "#d0a3f0" });
+      if (y.culture) segs.push({ text: `${y.culture}C`, color: "#f0a3d0" });
+      if (segs.length === 0) continue;
+
+      const s = screen(col, row);
+      const worked = o.cityWorked.has(key);
+      let totalW = 0;
+      for (const seg of segs) totalW += ctx.measureText(seg.text).width;
+      totalW += gap * (segs.length - 1);
+      const boxW = totalW + fontSize * 0.9;
+      const boxH = fontSize + fontSize * 0.6;
+
+      ctx.fillStyle = worked ? "rgba(40,30,5,0.9)" : "rgba(8,12,18,0.82)";
+      ctx.beginPath();
+      ctx.roundRect(s.x - boxW / 2, s.y - boxH / 2, boxW, boxH, boxH / 2);
+      ctx.fill();
+      ctx.lineWidth = Math.max(1, size * 0.035);
+      ctx.strokeStyle = worked ? "#ffd967" : "rgba(255,255,255,0.3)";
+      ctx.stroke();
+
+      ctx.textAlign = "left";
+      let x = s.x - totalW / 2;
+      for (const seg of segs) {
+        ctx.fillStyle = seg.color;
+        ctx.fillText(seg.text, x, s.y);
+        x += ctx.measureText(seg.text).width + gap;
+      }
+    }
+    ctx.textAlign = "center";
+  }
+
+  // ---- next-border-tile picker ----
+  // While the player is choosing where the city grows next, ring every claimable
+  // tile; always flag the tile that will actually be claimed (chosen or default).
+  if (o.expandCandidates && o.expandCandidates.size > 0) {
+    ctx.save();
+    ctx.setLineDash([size * 0.14, size * 0.1]);
+    ctx.lineWidth = Math.max(1.5, size * 0.05);
+    ctx.strokeStyle = "rgba(255,217,103,0.7)";
+    for (const key of o.expandCandidates) {
+      const [col, row] = key.split(",").map(Number) as [number, number];
+      const s = screen(col, row);
+      hexPath(ctx, s.x, s.y, size * 0.9);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  if (o.expandMarker) {
+    const s = screen(o.expandMarker.col, o.expandMarker.row);
+    ctx.font = `${Math.round(size * 0.5)}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    drawGlyph(ctx, "🚩", s.x, s.y - size * 0.02, Math.round(size * 0.5));
   }
 }

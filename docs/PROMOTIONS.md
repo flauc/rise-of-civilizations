@@ -39,7 +39,7 @@ Promotions are earned when a unit gains enough experience (XP) from combat, clea
 | woodland_warrior | Woodland Warrior | ⚔️ +3 strength in forest/jungle; 🥾 forests cost 1 less movement |
 | charge | Charge | ⚔️ +4 strength on the first attack each turn |
 | toughness | Toughness | ❤️ +15 max HP |
-| discipline | Discipline | ⚔️ +2 strength when adjacent to a friendly unit |
+| discipline | Discipline | ⚔️ +2 strength per friendly unit within 2 tiles (max +8) |
 | formation | Formation | 🛡️ +4 defense vs cavalry attacks |
 | city_assault | City Assault | ⚔️ +4 strength vs cities |
 | brawler | Brawler | 🛡️ +3 strength when defending |
@@ -58,7 +58,7 @@ Promotions are earned when a unit gains enough experience (XP) from combat, clea
 | drill | Drill | ⚔️ +3 when attacking in rough terrain |
 | cover | Cover | 🛡️ +4 defense vs ranged attacks |
 | medic | Medic | ❤️ Heals self +10 and adjacent allies +10 each turn |
-| flanking | Flanking | ⚔️ +2 strength for each adjacent friendly unit (max +6) |
+| flanking | Flanking | ⚔️ +2 strength per friendly unit within 2 tiles (max +8) |
 | mobility | Mobility | 🥾 +1 movement |
 | cavalry_charge | Cavalry Charge | ⚔️ +4 strength on the first attack each turn |
 | trample | Trample | ⚔️ +4 strength vs wounded units |

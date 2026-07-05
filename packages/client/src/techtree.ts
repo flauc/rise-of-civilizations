@@ -15,6 +15,7 @@ import {
   type TechId,
   type UnitTypeId,
 } from "@roc/sim";
+import { WONDER_DEFS } from "@roc/data";
 
 const NODE_W = 184;
 const NODE_H = 92;
@@ -28,11 +29,17 @@ type Status = "done" | "researching" | "queued" | "available" | "locked";
 
 const ALL_TECHS = Object.keys(TECH_DEFS) as TechId[];
 
-function unlocksOf(techId: TechId): { units: string[]; buildings: string[]; systems: string[] } {
-  const units = Object.values(UNIT_DEFS).filter((d) => d.reqTech === techId).map((d) => d.name);
+function unlocksOf(techId: TechId): { units: string[]; buildings: string[]; wonders: string[]; systems: string[] } {
+  // Holy units share a single tech and would flood that node with dozens of names
+  // no one civ ever fields — they're represented by the Religion system entry, so
+  // leave them off the unlock line.
+  const units = Object.values(UNIT_DEFS)
+    .filter((d) => d.reqTech === techId && !d.religionUnit)
+    .map((d) => d.name);
   const buildings = Object.values(BUILDING_DEFS).filter((d) => d.reqTech === techId).map((d) => d.name);
+  const wonders = WONDER_DEFS.filter((w) => w.reqTech === techId).map((w) => w.name);
   const systems = techSystemUnlocks(techId);
-  return { units, buildings, systems };
+  return { units, buildings, wonders, systems };
 }
 
 /** One of the viewing civ's unique features that a tech unlocks. `replacesName`
@@ -198,6 +205,7 @@ export function renderTechTreeInto(
     const parts: string[] = [];
     for (const n of u.units) if (!replaced.has(n)) parts.push(`⚔ ${n}`);
     for (const n of u.buildings) parts.push(`🏛 ${n}`);
+    for (const n of u.wonders) parts.push(`🏆 ${n}`);
     for (const n of u.systems) parts.push(`★ ${n}`);
     for (const c of civ) parts.push(`<span class="tt-civ-unlock">${c.icon} ${c.name}</span>`);
     const unlockLine = parts.length ? `<div class="tt-unlocks">${parts.join(" · ")}</div>` : "";

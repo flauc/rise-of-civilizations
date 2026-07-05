@@ -7,7 +7,7 @@ import {
   UNIT_DEFS,
   TRAINING_BUILDING_DEFS,
   getProjectDef,
-  getCityYields,
+  cityDisplayYields,
   citiesOf,
   unitsOf,
   unitMaxHp,
@@ -132,7 +132,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
   }
 
   const yieldsLine = (state: GameState, c: City): string => {
-    const y = getCityYields(state, c);
+    const y = cityDisplayYields(state, c); // fold in standing-project conversion
     return `🍞${y.food} ⚒️${y.production} 🪙${y.gold} 🔬${y.science} 🎭${y.culture} ☮️${y.faith}`;
   };
 

@@ -9,6 +9,7 @@ import {
   cityMaxHp,
   healAndReset,
   resolveAttack,
+  cityBombard,
   resolveAmbush,
   availablePromotions,
   towerBombardment,
@@ -30,7 +31,7 @@ import {
 } from "./works";
 import { rushCity, rushWork, rushTraining, type RushCurrency } from "./rush";
 import { capitalPopulationBonusFor, BASE_CITY_POPULATION } from "@roc/data";
-import { foundTerritory, expandTerritory } from "./territory";
+import { foundTerritory, expandTerritory, canExpandTo } from "./territory";
 import { onUnitEnter, tickRuins, clearRuin } from "./features";
 import { foundReligion, spreadReligion, buyReligiousUnit, evangelize, purgeHeresy, boardTradeRoute, processTransit, upgradeReligion, pickReligionPerk, moveHolyCity } from "./religion";
 import { trackCircumnavigation } from "./science-victory";
@@ -70,7 +71,7 @@ import {
   nextCityNameForCiv,
   unitDisplayName,
 } from "./civs";
-import { aiTakeTurn, autoManageCities } from "./ai";
+import { aiTakeTurn, autoManageCities, governorPickProduction } from "./ai";
 import { onUnitPromoted, decayGlobalMorale, UPKEEP_MODIFIER_MIN, UPKEEP_MODIFIER_MAX } from "./morale";
 import { UNIT_DEFS, TECH_DEFS, techUnlocked, computeResearchPath, advanceResearchQueue, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId, type UnitTypeId } from "./content";
 import { startTraining, cancelTraining } from "./training";
@@ -78,6 +79,7 @@ import { startTraining, cancelTraining } from "./training";
 export type Command =
   | { type: "move"; unitId: number; col: number; row: number }
   | { type: "attack"; attackerId: number; col: number; row: number }
+  | { type: "cityBombard"; cityId: number; col: number; row: number }
   | { type: "foundCity"; unitId: number }
   | { type: "promote"; unitId: number; promotion: PromotionId }
   | { type: "useAbility"; unitId: number; ability: ActiveAbilityId; col?: number; row?: number }
@@ -96,6 +98,7 @@ export type Command =
   | { type: "rushWork"; workId: number; currency: RushCurrency }
   | { type: "assignCitizen"; cityId: number; col: number; row: number }
   | { type: "setCityAutoMode"; cityId: number; mode: CityAutoFocus | null }
+  | { type: "setExpandTarget"; cityId: number; target: { col: number; row: number } | null }
   | { type: "setResearch"; techId: TechId }
   | { type: "setResearchTarget"; techId: TechId }
   | { type: "setCivic"; civicId: string }
@@ -281,6 +284,12 @@ export function applyCommand(
       if (!unit) return fail("no such unit");
       if (unit.ownerId !== player.id) return fail("not your unit");
       const res = resolveAttack(state, unit, cmd.col, cmd.row);
+      if (res.ok) updateExplored(state, player.id);
+      return res;
+    }
+
+    case "cityBombard": {
+      const res = cityBombard(state, player.id, cmd.cityId, cmd.col, cmd.row);
       if (res.ok) updateExplored(state, player.id);
       return res;
     }
@@ -490,6 +499,22 @@ export function applyCommand(
       if (city.ownerId !== player.id) return fail("not your city");
       city.autoMode = cmd.mode ?? undefined;
       autoAssignCitizens(state, city, city.autoMode); // re-skew worked tiles toward the new focus immediately
+      // Pick production this same turn (if the city isn't already building something).
+      // Other governor actions (works, training) still wait for the normal turn tick.
+      if (city.autoMode) governorPickProduction(state, city, player);
+      return ok;
+    }
+
+    case "setExpandTarget": {
+      const city = state.cities.get(cmd.cityId);
+      if (!city) return fail("no such city");
+      if (city.ownerId !== player.id) return fail("not your city");
+      if (cmd.target === null) {
+        city.expandTarget = undefined;
+        return ok;
+      }
+      if (!canExpandTo(state, city, cmd.target.col, cmd.target.row)) return fail("tile not claimable");
+      city.expandTarget = { col: cmd.target.col, row: cmd.target.row };
       return ok;
     }
 

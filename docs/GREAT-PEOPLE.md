@@ -1,7 +1,7 @@
 # Great People & Legends
 
 > ✅ **Status: IMPLEMENTED (2026-06-21), with simplifications.** Both systems are live in `packages/sim` + `packages/data` with UI, AI, save/load, an in-game wiki category each, and generated portrait art. **What's faithful:** the full named rosters (every figure/hero below exists by name, era, and class/type), the point-pool → recruit → activate flow for Great People, and the faith-recruit → lifespan → aura flow for Legends. **What's simplified (read the per-section "Implementation" notes):**
-> - **Great People effects are per-CLASS, not per-figure** — every Scientist gives the same instant eureka, every General the same army drill, etc. The unique signature in each figure's row is *flavour text*, not a distinct coded effect. All effects are **instant one-shots**; auras, placed improvements (a General's Citadel), unit-attach, and Great Works / tourism are **not** implemented (the Writer/Artist/Musician classes are merged into one **Artist** culture class).
+> - **Great People effects are per-CLASS, not per-figure** — every Scientist gives the same instant eureka, every General the same army drill, etc. The unique signature in each figure's row is *flavour text*, not a distinct coded effect. **Exception: Great Prophets are per-FIGURE (2026-07-05)** — each gives a smaller flat faith burst plus a distinct, historically-themed gift (see §1.6). All effects are **instant one-shots** (a few prophet gifts grant a *timed* empire buff); auras, placed improvements (a General's Citadel), unit-attach, and Great Works / tourism are **not** implemented (the Writer/Artist/Musician classes are merged into one **Artist** culture class).
 > - **Legends are recruited with FAITH** (a rising cost), not the varied per-hero paths (Faith/Culture/Conquest/Wonder/Quest) — those are flavour. Each hero reskins a base unit and carries a flat combat bonus + an adjacent-ally aura + a lifespan; the per-hero **signature active ability** is flavour (the base unit's own abilities apply). The optional **Mythic toggle** is not built.
 >
 > The "Specialists" in `specialists.ts` remain a *separate* system (craftsmen for Public Works — see [SPECIALISTS-AND-WORKS.md](SPECIALISTS-AND-WORKS.md)), unrelated to the Great People here.
@@ -22,7 +22,7 @@ Two related "character" systems:
 - When a pool fills you **recruit the next available figure** for that class (figures unlock roughly in era order; once recruited globally they're gone for that game — competition for the best ones).
 - Activation is either an **instant effect**, a **placed tile improvement** (e.g. a General's Citadel), or **attaching to a unit/city** (passive aura).
 
-> **Implementation (`great-people.ts`, `@roc/data` `GREAT_PEOPLE`).** Eight classes: **General, Admiral, Scientist, Engineer, Merchant, Prophet, Artist, Statesman** — the design's Writers/Artists/Musicians are merged into one **Artist** (culture) class. Per-turn class points come from buildings: Archive/Academy → Scientist; Market/Harbor → Merchant; Harbor/Lighthouse → Admiral; Barracks/Stable → General; Workshop/Forge → Engineer; Shrine/Temple → Prophet; Monument/Amphitheater → Artist; the **capital** (seat of government) → Statesman. The first figure of a class costs **60** points, each later one **+50** (60 → 110 → 160 …). Recruits wait in the 🎖️ panel until **activated** for a one-shot, **per-class** effect (the figure's own row is flavour): Scientist → **+160 science** (eureka); Merchant → **+250 gold**; Engineer → **+150 production** in your best city; Artist → **+150 culture**; Statesman → **+150 culture** (toward civics); Prophet → **+200 faith**; General → a **free promotion to every land military unit** + morale; Admiral → **heal your fleet & army** + morale. Auras, placed improvements, unit-attach, and Great Works/tourism are **not** built. AI activates recruits immediately; an in-game **Wiki → Great People** category and generated portraits (`great-people/<id>.png`) round it out.
+> **Implementation (`great-people.ts`, `@roc/data` `GREAT_PEOPLE`).** Eight classes: **General, Admiral, Scientist, Engineer, Merchant, Prophet, Artist, Statesman** — the design's Writers/Artists/Musicians are merged into one **Artist** (culture) class. Per-turn class points come from buildings: Archive/Academy → Scientist; Market/Harbor → Merchant; Harbor/Lighthouse → Admiral; Barracks/Stable → General; Workshop/Forge → Engineer; Shrine/Temple → Prophet; Monument/Amphitheater → Artist; the **capital** (seat of government) → Statesman. The first figure of a class costs **60** points, each later one **+50** (60 → 110 → 160 …). Recruits wait in the 🎖️ panel until **activated** for a one-shot, **per-class** effect (the figure's own row is flavour): Scientist → **+160 science** (eureka); Merchant → **+250 gold**; Engineer → **+150 production** in your best city; Artist → **+150 culture**; Statesman → **+150 culture** (toward civics); Prophet → **+110 faith PLUS a per-figure gift** (see §1.6 — the one per-figure class); General → a **free promotion to every land military unit** + morale; Admiral → **heal your fleet & army** + morale. Auras, placed improvements, unit-attach, and Great Works/tourism are **not** built. AI activates recruits immediately; an in-game **Wiki → Great People** category and generated portraits (`great-people/<id>.png`) round it out.
 
 > **No double-dipping with Legends (2026-07-03):** a historical person appears in ONE system only. Figures who exist as Legends (Sun Tzu, Hannibal, Julius Caesar, Belisarius, Subutai, Joan of Arc, Zheng He, Yi Sun-sin) were removed from the Great People roster and replaced by era-matched peers (Epaminondas, Pyrrhus, Gaius Marius, Charles Martel, Baibars, du Guesclin, Andrea Doria, Francis Drake).
 
@@ -97,19 +97,19 @@ Two related "character" systems:
 | Wang Anshi | Medieval | Reforms: food/gold from markets empire-wide |
 
 ### 1.6 Great Prophets (found & shape religions)
-*Earned from: Shrine/Temple/Cathedral, Holy Sites, faith. Template: found a religion (choose beliefs) or enhance it.*
+*Earned from: Shrine/Temple/Cathedral, Holy Sites, faith.*
 
-| Figure | Era | Signature effect |
+> **Prophets are the one class with PER-FIGURE effects (2026-07-05).** Every prophet still gives a **flat faith burst — now smaller (+110)** — but layers a distinct, historically-themed **gift** on top (`ProphetGift` in `@roc/data`, resolved in `great-people.ts`). This is the exception to the "effects are per-class" simplification noted at the top of this doc.
+
+| Figure | Era | As-built effect (faith +110, then…) |
 |--------|-----|------------------|
-| Zarathustra | Bronze | Found a religion; faith from fire-temples/light |
-| Confucius | Classical | Found a religion; culture/order beliefs |
-| Laozi | Classical | Found a religion; faith from nature/wonders |
-| Siddhartha Gautama | Classical | Found a religion; amenities/peace beliefs |
-| Adi Shankara | Classical | Enhance religion; science from holy sites |
-| Augustine of Hippo | Medieval | Enhance religion; missionary/apostle strength |
-| Bodhidharma | Medieval | Apostles gain combat; spread along trade |
-| Thomas Aquinas | Medieval | Faith→science; theological-combat bonus |
-| Rumi | Medieval | Spread pressure & culture from religion |
+| Zarathustra | Bronze | **Sacred Fire** — the holy war on the Lie: for 10 turns your units reap +6 faith per kill, +8 empire morale |
+| Confucius | Classical | **Rites in Stone** — raises a Temple at once in your 2 best temple-less cities (else +120 faith) |
+| Laozi | Classical | **The Watercourse Way** — faith flows +25% empire-wide for 10 turns |
+| Siddhartha Gautama | Classical | **Great Compassion** — mends every wounded unit to full health, +12 empire morale |
+| Augustine of Hippo | Medieval | **City of God** — ordains 2 free Missionaries at your holy city and presses the faith into it (+40) |
+| Thomas Aquinas | Medieval | **Summa Theologica** — faith wedded to reason: an instant +150 science |
+| Rumi | Medieval | **Whirling of the Heart** — a +30 pressure surge across every city, +20% culture for 8 turns |
 
 > Religious figures are treated factually as the historical founders/teachers of real traditions, consistent with the religion mechanic. Founding a religion is optional per game.
 
@@ -199,7 +199,7 @@ Heroes are **recruitable, powerful, limited units** central to the game's identi
 ---
 
 ## Implementation notes (as built)
-- **Great person schema** (`@roc/data` `GreatPersonDef`): `{ id, name, cls: GreatPersonClass, era, effect: GreatPersonEffect, desc }`. `effect` is one of eight **class-level** hooks (`eureka | windfall | masterwork | inspiration | revelation | reform | drill | flagship`) resolved in `great-people.ts`; there is no per-figure `kind`/`work` field (all activations are instant).
+- **Great person schema** (`@roc/data` `GreatPersonDef`): `{ id, name, cls: GreatPersonClass, era, effect: GreatPersonEffect, desc, prophetGift? }`. `effect` is one of eight **class-level** hooks (`eureka | windfall | masterwork | inspiration | revelation | reform | drill | flagship`) resolved in `great-people.ts`. The optional **`prophetGift`** (`ProphetGift` union) is the one per-figure field — carried only by Great Prophets, it layers a secondary historically-themed effect (timed buff, temple, missionaries, heal, science, pressure surge) on top of the smaller `revelation` faith burst.
 - **Legend schema** (`@roc/data` `LegendDef`): `{ id, name, era, type, recruitVia, baseType, combatBonus, auraBonus, lifespan, rechargeable, ability, abilityDesc, auraDesc }`. `recruitVia` is flavour; `ability`/`abilityDesc` name the hero's REAL signature power, coded as active kits (`LEGEND_ABILITY_OVERRIDES`, content.ts; resolution in abilities.ts/combat.ts) or passives (`legend-passives.ts` ticks + `legend-effects.ts` presence effects), alongside `baseType` + `combatBonus` + `auraBonus` + `lifespan` + `rechargeable`.
 - **State:** `Player.greatPeoplePoints` / `greatPeopleEarned` / `greatPeople[]` and `GameState.recruitedGreatPeople[]`; `Player.legendsRecruited`, `GameState.legendsEnabled` / `recruitedLegends[]`; a Legend on the map is a `Unit` with `legendId` + `legendExpiresOnTurn`. All serialized for save/load and the multiplayer player-view.
 - **Commands:** `activateGreatPerson { greatPersonId }`, `recruitLegend { legendId, cityId? }`. Accrual/recruitment runs in `beginTurn` (`accrueGreatPeople`), lifespans retire in `beginTurn` (`tickLegends`). Tested in `great-people.test.ts` (12) + `legends.test.ts` (9).

@@ -80,6 +80,14 @@ function adjacentFriendlies(state: GameState, unit: Unit): number {
   return count;
 }
 
+function friendliesWithin(state: GameState, unit: Unit, radius: number): number {
+  let count = 0;
+  for (const u of state.units.values()) {
+    if (u.ownerId === unit.ownerId && u.id !== unit.id && dist(unit, u) <= radius) count++;
+  }
+  return count;
+}
+
 function isWounded(unit: Unit): boolean {
   return unit.hp < unitMaxHp(unit) / 2;
 }
@@ -210,8 +218,8 @@ function attackStrength(
   if (has(unit, "counter_battery") && (defenderCls === "ranged" || defenderCls === "siege")) s += 4;
 
   // Position / support bonuses.
-  if (has(unit, "discipline") && adjacentFriendlies(state, unit) > 0) s += 2;
-  if (has(unit, "flanking")) s += Math.min(6, adjacentFriendlies(state, unit) * 2);
+  if (has(unit, "discipline")) s += 2 * Math.min(4, friendliesWithin(state, unit, 2));
+  if (has(unit, "flanking")) s += 2 * Math.min(4, friendliesWithin(state, unit, 2));
   const tile = getTile(state.map, unit.col, unit.row);
   if (tile) {
     if (has(unit, "elevation") && tile.terrain === "hills") s += 2;
@@ -892,6 +900,65 @@ function defenseStrengthVsBombard(state: GameState, unit: Unit): number {
   if (tile) s += terrainDefense(tile.terrain);
   if (has(unit, "cover")) s += 4;
   return Math.max(1, s) * woundFactor(unit.hp, unitMaxHp(unit));
+}
+
+/** How far a city can throw a bombardment — enough to hit an enemy at its gates
+ *  or one tile beyond. */
+export const CITY_BOMBARD_RANGE = 2;
+
+/** The attack strength a city bombards with: half its defensive strength, so a
+ *  walled, garrisoned, or populous city hits meaningfully harder. */
+export function cityBombardStrength(state: GameState, city: City): number {
+  return Math.max(1, Math.round(cityDefenseStrength(state, city) * 0.5));
+}
+
+/** Enemy units this city could bombard right now (in range and at war). Used by the
+ *  client to offer targets and to enable/disable the bombard button. */
+export function cityBombardTargets(state: GameState, city: City): Unit[] {
+  const owner = playerById(state, city.ownerId);
+  if (!owner) return [];
+  const out: Unit[] = [];
+  for (const u of state.units.values()) {
+    const uo = playerById(state, u.ownerId);
+    if (!uo || !areEnemies(owner, uo)) continue;
+    if (dist({ col: city.col, row: city.row }, u) > CITY_BOMBARD_RANGE) continue;
+    out.push(u);
+  }
+  return out;
+}
+
+/**
+ * Manual city bombardment: one strength-scaled ranged hit per turn on a nearby
+ * enemy unit. Player-triggered only (never automatic) — wired to the cityBombard
+ * command and the bombard button on the city panel. The city takes no retaliation.
+ */
+export function cityBombard(
+  state: GameState,
+  playerId: number,
+  cityId: number,
+  col: number,
+  row: number,
+): { ok: boolean; error?: string } {
+  const city = state.cities.get(cityId);
+  if (!city) return { ok: false, error: "no such city" };
+  if (city.ownerId !== playerId) return { ok: false, error: "not your city" };
+  if (city.rangedAttackUsed) return { ok: false, error: "this city has already bombarded this turn" };
+  const owner = playerById(state, playerId);
+  const target = unitAt(state, col, row);
+  if (!target) return { ok: false, error: "no unit to bombard there" };
+  const to = playerById(state, target.ownerId);
+  if (!owner || !to || !areEnemies(owner, to)) return { ok: false, error: "not an enemy unit" };
+  if (dist({ col: city.col, row: city.row }, target) > CITY_BOMBARD_RANGE) return { ok: false, error: "target out of range" };
+  const dmg = damageFrom(cityBombardStrength(state, city), defenseStrengthVsBombard(state, target));
+  target.hp -= dmg;
+  city.rangedAttackUsed = true;
+  log(state, `${city.name} bombarded ${unitDisplayName(state, target)} for ${dmg}.`, {
+    actorId: playerId,
+    targetIds: [target.ownerId],
+    tile: { col: target.col, row: target.row },
+  });
+  if (target.hp <= 0) killUnit(state, target);
+  return { ok: true };
 }
 
 export function killUnit(state: GameState, unit: Unit): void {

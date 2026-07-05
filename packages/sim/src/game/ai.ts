@@ -30,6 +30,7 @@ import {
   worksOf,
   worksOfCity,
   workDiscipline,
+  workDisciplines,
   canStartWonder,
   assignSpecialist,
   assignedSpecialistIds,
@@ -708,6 +709,28 @@ function aiSettler(state: GameState, unit: Unit, pid: number, plan?: SettlePlan 
   aiExplore(state, unit, pid);
 }
 
+/** Start a tile/defence work only when this city has an idle craftsman for every
+ *  discipline it needs, and pin them to it the instant it's created. This guarantees
+ *  the system never starts an improvement it can't staff right away, and — because
+ *  the freshly assigned craftsmen leave the idle pool immediately — it can't
+ *  over-commit several works to a single specialist within one turn. */
+function startWorkStaffed(state: GameState, city: City, pid: number, kind: string, col: number, row: number): boolean {
+  const assigned = assignedSpecialistIds(state, pid);
+  const picks: number[] = [];
+  for (const disc of workDisciplines(kind)) {
+    const s = city.specialists.find(
+      (sp) => !assigned.has(sp.id) && !picks.includes(sp.id) && SPECIALIST_DEFS[sp.type as SpecialistId]?.discipline === disc,
+    );
+    if (!s) return false; // no free craftsman for this craft — don't start an unstaffable work
+    picks.push(s.id);
+  }
+  if (picks.length === 0) return false; // work resolved to no disciplines (unknown kind)
+  if (!applyCommand(state, { type: "startWork", kind, col, row }, pid).ok) return false;
+  const work = state.works.find((w) => w.ownerId === pid && w.target?.col === col && w.target?.row === row);
+  if (work) for (const id of picks) assignSpecialist(state, pid, work.id, id, true);
+  return true;
+}
+
 /** Train craftsmen and queue public works for one city. */
 function aiManageCity(state: GameState, city: City, player: Player, pid: number): void {
   const unlocked = availableSpecialists(player);
@@ -724,6 +747,9 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
   // engineers scale up with size too so a big civ can gather a full wonder workforce.
   const wantMason = Math.min(4, Math.floor(city.population / 3));
   if (unlocked.includes("carpenter") && countOf("carpenter") < wantCarpenter) wants.push("carpenter");
+  // A surveyor (agrimensor) is what lets a city lay roads — keep one on staff so every
+  // city, whatever its governor focus, can build roads (see the road work below).
+  if (unlocked.includes("agrimensor") && countOf("agrimensor") < 1) wants.push("agrimensor");
   if (unlocked.includes("mason") && countOf("mason") < wantMason) wants.push("mason");
   if (city.population >= 6 && unlocked.includes("engineer") && countOf("engineer") < 1) wants.push("engineer");
   if (city.population >= 7 && unlocked.includes("architect") && countOf("architect") < 1) wants.push("architect");
@@ -745,7 +771,7 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
       for (const n of offsetNeighbors(state.map, city.col, city.row)) {
         const tile = getTile(state.map, n.col, n.row);
         if (!tile || tile.ownerCityId !== city.id || tile.improvement || tile.structure) continue;
-        if (nextTierAt(tile, "tower") && applyCommand(state, { type: "startWork", kind: "tower", col: n.col, row: n.row }, pid).ok) return;
+        if (nextTierAt(tile, "tower") && startWorkStaffed(state, city, pid, "tower", n.col, n.row)) return;
       }
     }
   }
@@ -781,7 +807,7 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
     else if (!kind && haveDiscipline("survey") && player.researched.has("maritime_foraging") && nextTierAt(tile, "fishery"))
       kind = "fishery";
     else if (!kind && haveDiscipline("survey") && nextTierAt(tile, "road")) kind = "road";
-    if (kind && applyCommand(state, { type: "startWork", kind, col, row }, pid).ok) return;
+    if (kind && startWorkStaffed(state, city, pid, kind, col, row)) return;
   }
 }
 
@@ -871,13 +897,16 @@ function autoTrainMilitary(state: GameState, city: City, player: Player): void {
  * focus-specific queue is empty. Military units are only ever trained here
  * when the focus is explicitly "military".
  */
+export function governorPickProduction(state: GameState, city: City, player: Player): void {
+  if (!city.autoMode || city.production) return; // don't override an in-progress build
+  const item = chooseAutoProduction(state, player, city, city.autoMode);
+  if (item) applyCommand(state, { type: "setProduction", cityId: city.id, item }, player.id);
+}
+
 export function autoManageCity(state: GameState, city: City, player: Player): void {
   const focus = city.autoMode;
   if (!focus) return;
-  if (!city.production) {
-    const item = chooseAutoProduction(state, player, city, focus);
-    if (item) applyCommand(state, { type: "setProduction", cityId: city.id, item }, player.id);
-  }
+  governorPickProduction(state, city, player);
   if (focus === "military") autoTrainMilitary(state, city, player);
   aiManageCity(state, city, player, player.id); // generic: specialists, tile works, roads
 }

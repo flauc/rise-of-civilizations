@@ -6,8 +6,8 @@ import { offsetNeighbors } from "./movement";
 import { citiesOf, unitsOf, type GameState } from "./state";
 import { getTile } from "@roc/shared";
 
-function game(): GameState {
-  const s = createGame({ seed: "coastal-test", cols: 40, rows: 28, barbarians: false, humanSlots: 2 });
+function game(civIds?: (string | undefined)[]): GameState {
+  const s = createGame({ seed: "coastal-test", cols: 40, rows: 28, barbarians: false, humanSlots: 2, civIds });
   beginTurn(s);
   return s;
 }
@@ -58,6 +58,28 @@ describe("coastal buildings", () => {
     setCoastal(s, city, true);
     expect(
       applyCommand(s, { type: "setProduction", cityId: city.id, item: { kind: "building", id: "harbor" } }, 0).ok,
+    ).toBe(true);
+  });
+
+  it("offers a coastal-only unique building (Corinth's Diolkos) only in a coastal city", () => {
+    const s = game(["corinth"]);
+    const city = foundCity(s, 0);
+    s.players[0]!.researched.add("the_wheel"); // Diolkos tech gate
+    const diolkosOffered = () =>
+      availableProduction(s, s.players[0]!, city).some(
+        (o) => o.item.kind === "building" && o.item.id === "corinth_diolkos",
+      );
+
+    setCoastal(s, city, false);
+    expect(diolkosOffered()).toBe(false); // landlocked → no Diolkos
+    expect(
+      applyCommand(s, { type: "setProduction", cityId: city.id, item: { kind: "building", id: "corinth_diolkos" } }, 0).ok,
+    ).toBe(false);
+
+    setCoastal(s, city, true);
+    expect(diolkosOffered()).toBe(true); // coastal → Diolkos available
+    expect(
+      applyCommand(s, { type: "setProduction", cityId: city.id, item: { kind: "building", id: "corinth_diolkos" } }, 0).ok,
     ).toBe(true);
   });
 });

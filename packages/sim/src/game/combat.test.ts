@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
-import { beginTurn } from "./commands";
-import { damageFrom, resolveAttack, cityMaxHp, unitMaxHp, availablePromotions } from "./combat";
+import { beginTurn, applyCommand } from "./commands";
+import { damageFrom, resolveAttack, cityMaxHp, unitMaxHp, availablePromotions, cityBombardTargets } from "./combat";
 import { PROMOTION_DEFS } from "./content";
 import { citiesOf, makeUnit, type GameState, type Unit } from "./state";
 
@@ -58,6 +58,41 @@ describe("M2 combat", () => {
     expect(res.ok).toBe(true);
     expect(archer.hp).toBe(hpBefore); // no retaliation
     expect(target.hp).toBeLessThan(100);
+  });
+
+  const makeCity = (state: GameState, ownerId: number, col: number, row: number) => {
+    const id = state.nextEntityId++;
+    const city = {
+      id, ownerId, name: "Bastion", col, row, population: 4,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    state.cities.set(id, city as never);
+    return state.cities.get(id)!;
+  };
+
+  it("a city bombards a nearby enemy once per turn, and refuses a second shot", () => {
+    const state = bareGame();
+    const city = makeCity(state, 0, 10, 8);
+    const enemy = place(state, 1, "warrior", 12, 8); // distance 2 — in range
+    expect(cityBombardTargets(state, city).some((u) => u.id === enemy.id)).toBe(true);
+    const hp0 = enemy.hp;
+    const res = applyCommand(state, { type: "cityBombard", cityId: city.id, col: 12, row: 8 }, 0);
+    expect(res.ok).toBe(true);
+    expect(enemy.hp).toBeLessThan(hp0);
+    expect(city.rangedAttackUsed).toBe(true);
+    // A second bombardment the same turn is refused.
+    expect(applyCommand(state, { type: "cityBombard", cityId: city.id, col: 12, row: 8 }, 0).ok).toBe(false);
+  });
+
+  it("a city cannot bombard out of range or hit a friendly unit", () => {
+    const state = bareGame();
+    const city = makeCity(state, 0, 10, 8);
+    place(state, 1, "warrior", 16, 8); // distance 6 — out of range
+    expect(applyCommand(state, { type: "cityBombard", cityId: city.id, col: 16, row: 8 }, 0).ok).toBe(false);
+    place(state, 0, "warrior", 11, 8); // own unit adjacent
+    expect(applyCommand(state, { type: "cityBombard", cityId: city.id, col: 11, row: 8 }, 0).ok).toBe(false);
+    expect(city.rangedAttackUsed).toBe(false); // nothing fired
   });
 
   it("a melee unit captures a city whose HP is depleted", () => {

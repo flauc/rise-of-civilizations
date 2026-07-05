@@ -42,6 +42,21 @@ describe("governor mode (city auto-management)", () => {
     expect(applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode: "growth" }, 1).ok).toBe(false);
   });
 
+  it("assigning a governor picks production that same turn (nothing was building)", () => {
+    const { s, city } = foundedGame();
+    city.production = null;
+    applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode: "growth" });
+    expect(city.production).not.toBeNull(); // chosen immediately, not next turn
+  });
+
+  it("assigning a governor never overrides an in-progress build", () => {
+    const { s, city } = foundedGame();
+    const existing = { kind: "building", id: "monument" } as const;
+    city.production = existing;
+    applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode: "growth" });
+    expect(city.production).toEqual(existing); // left untouched
+  });
+
   it("a growth-focus city queues its focus building once its tech is known", () => {
     const { s, city } = foundedGame();
     const player = playerById(s, 0)!;

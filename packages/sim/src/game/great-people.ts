@@ -12,11 +12,13 @@ import {
   GREAT_PERSON_CLASSES,
   getGreatPerson,
   greatPeopleOfClass,
+  type CivEffects,
   type GreatPersonClass,
   type GreatPersonDef,
+  type ProphetGift,
 } from "@roc/data";
 import type { City, GameState, Player } from "./state";
-import { citiesOf, log, playerById, unitsOf } from "./state";
+import { citiesOf, log, makeUnit, playerById, unitsOf } from "./state";
 import { civicsUnlocked } from "./civs";
 import { BUILDING_DEFS, UNIT_DEFS, isMilitary, isNaval, type BuildingId, type TrainingClass } from "./content";
 import { unitMaxHp } from "./combat";
@@ -168,7 +170,7 @@ const EUREKA_SCIENCE = 160;
 const WINDFALL_GOLD = 250;
 const MASTERWORK_PRODUCTION = 150;
 const INSPIRATION_CULTURE = 150;
-const REVELATION_FAITH = 200;
+const REVELATION_FAITH = 110; // smaller than of old — every Great Prophet layers a unique gift on top
 const REFORM_CULTURE = 150;
 const GP_MORALE_LIFT = 12;
 
@@ -177,6 +179,173 @@ function liftGlobalMorale(state: GameState, player: Player, by: number): void {
   player.globalMorale = Math.min(GLOBAL_MORALE_MAX, (player.globalMorale ?? 50) + by);
   recordMoraleEvent(state, player.id, before, "A Great Person inspired the empire");
   recordMoraleGain(state, player.id);
+}
+
+// ---- Great Prophet secondary gifts ----------------------------------------
+// Each prophet layers a distinct, historically-themed effect on the (smaller)
+// faith burst. Applying mutates state; describing must MIRROR it without
+// mutating (for the confirmation dialog) — keep the two in sync.
+
+/** How long a prophet's timed empire buff lasts is carried in the gift itself. */
+function addProphetModifier(state: GameState, player: Player, source: string, effect: Partial<CivEffects>, turns: number): void {
+  (player.modifiers ??= []).push({ source, effect, expiresOnTurn: state.turn + turns });
+}
+
+/** The religion whose seat best receives a prophet's blessing: the founder's holy
+ *  city if any, else the capital, else the first city. */
+function bestFaithCity(state: GameState, player: Player): City | undefined {
+  const cities = citiesOf(state, player.id);
+  if (cities.length === 0) return undefined;
+  if (player.foundedReligionId) {
+    const rel = state.religions.find((r) => r.id === player.foundedReligionId);
+    const holy = rel ? cities.find((c) => c.id === rel.holyCityId) : undefined;
+    if (holy) return holy;
+  }
+  return cities.find((c) => c.isCapital) ?? cities[0];
+}
+
+/** The faith a prophet's pressure should reinforce: the founder's own religion,
+ *  else whatever faith their cities already lean toward. */
+function playerFaithId(state: GameState, player: Player): string | undefined {
+  if (player.foundedReligionId) return player.foundedReligionId;
+  for (const c of citiesOf(state, player.id)) if (c.religion) return c.religion;
+  return undefined;
+}
+
+function addFaithPressure(city: City, relId: string, amount: number): void {
+  (city.religionPressure ??= {})[relId] = (city.religionPressure[relId] ?? 0) + amount;
+}
+
+/** The (temple-less) cities Confucius would endow, best first — non-mutating. */
+function templeTargets(state: GameState, player: Player, count: number): City[] {
+  return citiesOf(state, player.id)
+    .filter((c) => !c.buildings.includes("temple"))
+    .sort((a, b) => b.population - a.population)
+    .slice(0, count);
+}
+
+/** English list of city names ("A", "A and B", "A, B, and C"). */
+function listCities(cities: City[]): string {
+  const names = cities.map((c) => c.name);
+  if (names.length <= 1) return names[0] ?? "your cities";
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  return `${names.slice(0, -1).join(", ")}, and ${names[names.length - 1]}`;
+}
+
+/** Apply a prophet's secondary gift, mutating state. Returns a short summary. */
+function applyProphetGift(state: GameState, player: Player, gift: ProphetGift): string {
+  switch (gift.kind) {
+    case "zeal": {
+      addProphetModifier(state, player, "Sacred Fire", { faithOnKill: gift.faithOnKill }, gift.turns);
+      liftGlobalMorale(state, player, gift.morale);
+      return `your warriors reap +${gift.faithOnKill} faith per kill for ${gift.turns} turns`;
+    }
+    case "temples": {
+      const targets = templeTargets(state, player, gift.count);
+      if (targets.length === 0) {
+        player.faith += gift.faithIfNone;
+        return `+${gift.faithIfNone} more faith (your cities already keep temples)`;
+      }
+      for (const c of targets) c.buildings.push("temple");
+      return `a Temple rises in ${listCities(targets)}`;
+    }
+    case "faithFlow": {
+      addProphetModifier(state, player, "The Watercourse Way", { yieldPercent: { faith: gift.faithPercent } }, gift.turns);
+      return `+${gift.faithPercent}% faith empire-wide for ${gift.turns} turns`;
+    }
+    case "compassion": {
+      let n = 0;
+      for (const u of unitsOf(state, player.id)) {
+        const full = unitMaxHp(u);
+        if (u.hp < full) {
+          u.hp = full;
+          n += 1;
+        }
+      }
+      liftGlobalMorale(state, player, gift.morale);
+      return n > 0 ? `heals ${n} wounded unit${n === 1 ? "" : "s"} and heartens the realm` : "heartens the realm";
+    }
+    case "mission": {
+      const city = bestFaithCity(state, player);
+      let made = 0;
+      if (city) {
+        for (let i = 0; i < gift.missionaries; i++) {
+          const id = state.nextEntityId++;
+          const unit = makeUnit(id, player.id, "missionary", city.col, city.row, 0, 100);
+          unit.religiousCharges = UNIT_DEFS.missionary.religiousCharges ?? 3;
+          state.units.set(id, unit);
+          made += 1;
+        }
+        const relId = playerFaithId(state, player);
+        if (relId) addFaithPressure(city, relId, gift.pressure);
+      }
+      return made > 0 ? `ordains ${made} Missionar${made === 1 ? "y" : "ies"} in ${city!.name}` : "calls the faithful";
+    }
+    case "scholastic": {
+      player.scienceProgress += gift.science;
+      return `+${gift.science} science`;
+    }
+    case "revival": {
+      const relId = playerFaithId(state, player);
+      let n = 0;
+      if (relId) {
+        for (const c of citiesOf(state, player.id)) {
+          addFaithPressure(c, relId, gift.pressure);
+          n += 1;
+        }
+      }
+      addProphetModifier(state, player, "Whirling of the Heart", { yieldPercent: { culture: gift.culturePercent } }, gift.turns);
+      const surge = n > 0 ? `a surge of devotion across ${n} cit${n === 1 ? "y" : "ies"} and ` : "";
+      return `${surge}+${gift.culturePercent}% culture for ${gift.turns} turns`;
+    }
+  }
+}
+
+/** Describe a prophet's gift WITHOUT mutating — mirrors applyProphetGift. */
+function describeProphetGift(state: GameState, player: Player, gift: ProphetGift): { summary: string; detail: string } {
+  switch (gift.kind) {
+    case "zeal":
+      return {
+        summary: `+${gift.faithOnKill} faith per kill`,
+        detail: `For ${gift.turns} turns your units reap +${gift.faithOnKill} faith on every kill and the empire's morale lifts by +${gift.morale} — the holy war on the Lie.`,
+      };
+    case "temples": {
+      const targets = templeTargets(state, player, gift.count);
+      return targets.length > 0
+        ? { summary: `${targets.length} free Temple${targets.length === 1 ? "" : "s"}`, detail: `Raises a Temple at once in ${listCities(targets)}.` }
+        : { summary: `+${gift.faithIfNone} faith`, detail: `Your cities already keep temples, so his teaching yields +${gift.faithIfNone} more faith instead.` };
+    }
+    case "faithFlow":
+      return {
+        summary: `+${gift.faithPercent}% faith for ${gift.turns} turns`,
+        detail: `Faith flows effortlessly: +${gift.faithPercent}% faith empire-wide for ${gift.turns} turns.`,
+      };
+    case "compassion": {
+      const n = woundedCount(state, player.id);
+      return {
+        summary: n > 0 ? `heal ${n} unit${n === 1 ? "" : "s"}` : "hearten the realm",
+        detail:
+          (n > 0 ? `Mends all ${n} of your wounded units to full health` : `Heartens the empire (no units are wounded right now)`) +
+          ` and lifts morale by +${gift.morale}.`,
+      };
+    }
+    case "mission": {
+      const where = bestFaithCity(state, player)?.name ?? "your holy city";
+      return {
+        summary: `${gift.missionaries} free Missionaries`,
+        detail: `Ordains ${gift.missionaries} Missionaries in ${where} and presses the faith (+${gift.pressure} pressure) into it.`,
+      };
+    }
+    case "scholastic":
+      return { summary: `+${gift.science} science`, detail: `Faith wedded to reason grants an instant +${gift.science} science.` };
+    case "revival": {
+      const n = citiesOf(state, player.id).length;
+      return {
+        summary: `pressure surge · +${gift.culturePercent}% culture`,
+        detail: `A surge of +${gift.pressure} religious pressure across your ${n} cit${n === 1 ? "y" : "ies"}, and +${gift.culturePercent}% culture for ${gift.turns} turns.`,
+      };
+    }
+  }
 }
 
 /** Apply a figure's instant effect. Returns a short human-readable summary. */
@@ -209,6 +378,10 @@ function applyGreatPersonEffect(state: GameState, player: Player, def: GreatPers
     }
     case "revelation": {
       player.faith += REVELATION_FAITH;
+      if (def.prophetGift) {
+        const extra = applyProphetGift(state, player, def.prophetGift);
+        return `+${REVELATION_FAITH} faith, and ${extra}`;
+      }
       return `+${REVELATION_FAITH} faith`;
     }
     case "reform": {
@@ -302,11 +475,14 @@ export function previewGreatPersonEffect(
         summary: `+${INSPIRATION_CULTURE} culture`,
         detail: `Inspires your people with +${INSPIRATION_CULTURE} culture.`,
       };
-    case "revelation":
-      return {
-        summary: `+${REVELATION_FAITH} faith`,
-        detail: `Sparks a revelation worth +${REVELATION_FAITH} faith, toward founding or spreading a religion.`,
-      };
+    case "revelation": {
+      const base = `Sparks a revelation worth +${REVELATION_FAITH} faith, toward founding or spreading a religion.`;
+      if (def.prophetGift) {
+        const gd = describeProphetGift(state, player, def.prophetGift);
+        return { summary: `+${REVELATION_FAITH} faith · ${gd.summary}`, detail: `${base} ${gd.detail}` };
+      }
+      return { summary: `+${REVELATION_FAITH} faith`, detail: base };
+    }
     case "reform":
       return {
         summary: `+${REFORM_CULTURE} culture`,

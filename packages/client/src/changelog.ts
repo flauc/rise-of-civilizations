@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.4.0";
+export const CURRENT_VERSION = "0.4.1";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,84 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.4.1",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Walls that strike back",
+        desc:
+          "Your cities can now rain fire on an enemy within two tiles, once per turn. Aim it from the new bombard button, tap a highlighted foe, and the shot lands with no risk of return fire — and its strength scales with the city's defenses, so a well-fortified capital is a threat all on its own.",
+      },
+      {
+        tag: "New",
+        title: "Choose where your borders grow",
+        desc:
+          "A city no longer always claims the nearest tile as it expands. Plant a flag on any claimable tile and the city will reach for it next; borders now only grow into ground that touches land you already hold, so your realm spreads the way you intend it to.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Great Prophets each bring their own gift",
+        desc:
+          "Every Great Prophet now carries a secondary gift drawn from history alongside the faith they reveal — Zarathustra's Sacred Fire turns kills into faith and lifts morale, Confucius raises temples in your best temple-less cities, Laozi swells faith across the whole empire, Siddhartha heals every wounded unit, Augustine ordains free missionaries at the holy city, Aquinas forges faith into a burst of science, and Rumi sends a wave of pressure and culture through every city. The plain faith reward is a little smaller now to make room for these.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Governors get to work at once",
+        desc:
+          "Hand a city to a governor and it now chooses what to build that very turn instead of idling until the next — so a freshly appointed governor never wastes the turn you gave it.",
+      },
+      {
+        tag: "Balance",
+        title: "Sea-born wonders need the sea",
+        desc:
+          "A handful of civilizations' unique buildings — Carthage and Phoenicia's trade houses, Portugal's feitoria, Corinth's Diolkos, and the harbor works of Venice, Majapahit, the Swahili and Eretria — now require a coastal city, so their maritime bonuses only rise where they truly belong.",
+      },
+      {
+        tag: "Balance",
+        title: "Civics cost more as your culture deepens",
+        desc:
+          "The price of adopting civics has risen across the board, and now climbs a further 12% for every civic you've already taken — so a runaway culture lead no longer sweeps the whole tree in a handful of turns.",
+      },
+      {
+        tag: "Balance",
+        title: "Formations reach farther",
+        desc:
+          "Discipline and Flanking now count every friendly unit within two tiles rather than only those pressed right alongside, each adding +2 strength up to +8 — so holding a broad line, not just a tight knot, is what wins the melee.",
+      },
+      {
+        tag: "UI",
+        title: "The whole race, on the leaderboard",
+        desc:
+          "Your progress toward every enabled victory condition now sits right under the standings on the leaderboard, so you can read how close each rival is to winning at a glance, without opening a separate panel.",
+      },
+      {
+        tag: "UI",
+        title: "Wonders on the tech tree",
+        desc:
+          "The tech tree now marks which wonders each technology unlocks, alongside its units and buildings — while the long rosters of holy units no longer flood the unlock lines.",
+      },
+      {
+        tag: "UI",
+        title: "Faith and culture on every tile",
+        desc:
+          "When you assign citizens, worked tiles now show their faith and culture yields too, not just food, production, gold and science — and the labels always sit clear of whatever unit is standing on the tile.",
+      },
+      {
+        tag: "UI",
+        title: "The lobby remembers your last game",
+        desc:
+          "Setting up a new single-player game now starts from your last one — same civilization, colour, map, opponents and barbarian level — so you can jump back in with a single click.",
+      },
+      {
+        tag: "Fix",
+        title: "Steadier on mobile",
+        desc:
+          "The map now pins cleanly to the visible screen as the browser's bars slide in and out, banishing the black strips along the edges, and the game holds to portrait on phones.",
+      },
+    ],
+  },
   {
     version: "0.4.0",
     date: "July 2026",

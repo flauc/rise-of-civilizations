@@ -16,6 +16,7 @@ import {
   availableTechs,
   unlockedPolicies,
   getCivic,
+  civicCost,
   getGovernment,
   getPolicy,
   BELIEFS,
@@ -73,6 +74,7 @@ import {
   citiesOf,
   unitsOf,
   cityDefenseStrength,
+  cityBombardTargets,
   cityMaxHp,
   foodToGrow,
   cityFoodGrowth,
@@ -88,6 +90,7 @@ import {
   unitMovement,
   getCiv,
   getCityYields,
+  cityDisplayYields,
   territorySize,
   BUILDING_DEFS,
   TRAINING_BUILDING_DEFS,
@@ -243,6 +246,8 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
   if (y.production) lines.push({ kind: "good", text: `+${y.production} production` });
   if (y.gold) lines.push({ kind: "good", text: `+${y.gold} gold` });
   if (y.science) lines.push({ kind: "good", text: `+${y.science} science` });
+  if (y.faith) lines.push({ kind: "good", text: `+${y.faith} faith` });
+  if (y.culture) lines.push({ kind: "good", text: `+${y.culture} culture` });
   // Named trait attribution: which perk contributes what to this tile's yields.
   if (report.sources.length) {
     if (report.preview) lines.push({ kind: "neutral", text: "Once part of your empire, your traits add:" });
@@ -339,6 +344,10 @@ export interface UIHandlers {
   onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
   /** Toggle a city's governor mode (auto-manage toward a focus); null = manual. */
   onSetCityAutoMode(cityId: number, mode: CityAutoFocus | null): void;
+  /** Enter the picker to choose which tile the city claims next as it grows. */
+  onPickExpandTile(cityId: number): void;
+  /** Enter the aimer to fire the city's once-a-turn bombardment at a nearby enemy. */
+  onCityBombard(cityId: number): void;
   onStartWork(kind: string, col: number, row: number): void;
   onStartWonder(wonderId: string, col: number, row: number): void;
   onCancelWork(workId: number): void;
@@ -506,6 +515,7 @@ function rushButtonsHtml(
   dataKey: "rush-prod" | "rush-work",
   id: number,
   costFor: (currency: RushCurrency, surcharge: number) => number | null,
+  compact = false,
 ): string {
   const player = state.players.find((p) => p.id === viewerId);
   if (!player) return "";
@@ -516,10 +526,14 @@ function rushButtonsHtml(
       if (cost === null) return "";
       const can = rushPool(player, cur) >= cost;
       const dis = can ? "" : ` disabled style="opacity:.5;cursor:not-allowed" title="Need ${cost} ${cur}"`;
-      return `<button class="btn" data-${dataKey}="${id}" data-rush-cur="${cur}"${dis}>⚡ ${RUSH_GLYPH[cur]} ${cost}</button>`;
+      const cls = compact ? "btn rush-mini" : "btn";
+      return `<button class="${cls}" data-${dataKey}="${id}" data-rush-cur="${cur}"${dis} title="Rush with ${cur}">⚡ ${RUSH_GLYPH[cur]} ${cost}</button>`;
     })
     .filter(Boolean);
   if (!btns.length) return "";
+  // Compact form (used inline beside the build progress) drops the section header
+  // and renders as a tight button cluster; the full form keeps its own "Rush" row.
+  if (compact) return `<span class="rush-inline">${btns.join("")}</span>`;
   return `<div class="csub">Rush</div><div class="row" style="flex-wrap:wrap;gap:6px">${btns.join("")}</div>`;
 }
 
@@ -553,7 +567,6 @@ export function createUI(handlers: UIHandlers): UI {
   const techtree = div("techtree", "panel hidden");
   const civics = div("civics", "panel hidden");
   const religionPanel = div("religion", "panel hidden");
-  const victoryPanel = div("victory", "panel hidden");
   const greatPeoplePanel = div("great-people", "panel hidden");
   const legendsPanel = div("legends", "panel hidden");
   const production = div("production", "panel hidden");
@@ -720,9 +733,33 @@ export function createUI(handlers: UIHandlers): UI {
       state.turnLimit > 0
         ? `Turn ${state.turn} of ${state.turnLimit} · highest score wins if the turn limit is reached`
         : `Turn ${state.turn} · no turn limit — play until a decisive victory`;
+
+    // Your standing on each enabled win condition, folded into the leaderboard so
+    // players see standings and victory progress side by side in one place.
+    const vic = viewerId >= 0 ? victoryProgress(state, viewerId) : [];
+    const vicBody = vic
+      .map((e) => {
+        const m = VICTORY_META[e.kind] ?? { icon: "•", name: e.kind, color: "#cdbf9f" };
+        const pct = Math.round(Math.min(1, Math.max(0, e.progress)) * 100);
+        const dim = e.enabled ? "" : "opacity:0.45";
+        const off = e.enabled ? ` <span class="lb-sub">(disabled)</span>` : "";
+        return (
+          `<div class="lb-vic-row" style="${dim}">` +
+          `<div class="lb-vic-head"><b>${m.icon} ${m.name}${off}</b><span class="lb-sub">${pct}%</span></div>` +
+          `<div class="bar"><i style="width:${pct}%;background:${m.color}"></i></div>` +
+          `<div class="lb-sub">${escapeHtml(e.detail)}</div>` +
+          `</div>`
+        );
+      })
+      .join("");
+    const vicSection = vicBody
+      ? `<div class="lb-vic-title">🏆 Your Victory Progress</div><div class="lb-vic">${vicBody}</div>`
+      : "";
+
     leaderboardContent.innerHTML =
       `<div class="lb-caption">${turnCaption}</div>` +
       `<div class="lb-list">${body}</div>` +
+      vicSection +
       `<div class="lb-legend">🏛️ Cities · 👥 Population · 🔬 Technology · 📜 Civics · 🛡️ Units · 🪙 Gold · ⚔️ Battles won · 🔥 Cities conquered</div>`;
     // The civ Encyclopedia buttons close the leaderboard so the wiki opens cleanly on top.
     leaderboardContent.querySelectorAll<HTMLButtonElement>("[data-wiki-open]").forEach((el) =>
@@ -914,7 +951,6 @@ export function createUI(handlers: UIHandlers): UI {
   let techtreeOpen = false;
   let civicsOpen = false;
   let religionOpen = false;
-  let victoryOpen = false;
   let greatPeopleOpen = false;
   let legendsOpen = false;
   let productionOpen = false;
@@ -970,6 +1006,9 @@ export function createUI(handlers: UIHandlers): UI {
   let unitPanelUnitId: number | null = null;
   let cityPanelExpanded = false;
   let cityPanelCityId: number | null = null;
+  // The governor picker collapses to a single chip on the stat line; this tracks
+  // whether the full mode picker is expanded below it. Reset when the city changes.
+  let governorPickerOpen = false;
   let tilePanelExpanded = false;
   let tilePanelKey: string | null = null;
   const isMobile = (): boolean => window.matchMedia("(max-width: 640px)").matches;
@@ -1419,23 +1458,26 @@ export function createUI(handlers: UIHandlers): UI {
   const renderTopbar = (state: GameState): void => {
     const player = state.players[state.currentPlayerIndex]!;
     const viewerId = lastViewerId >= 0 ? lastViewerId : player.id;
+    // Display yields fold in standing-project conversion (Coinage → gold, etc.), so
+    // the per-turn numbers on the top bar match what actually hits each pool.
     const sci = citiesOf(state, player.id).reduce(
-      (n, c) => n + getCityYields(state, c).science,
+      (n, c) => n + cityDisplayYields(state, c).science,
       0,
     );
-    const gld = citiesOf(state, player.id).reduce((n, c) => n + getCityYields(state, c).gold, 0);
+    const gld = citiesOf(state, player.id).reduce((n, c) => n + cityDisplayYields(state, c).gold, 0);
     const upkeep = militaryUpkeepTotal(state, player); // includes the military-pay minimum
     const netGold = gld - upkeep;
     const goldSign = netGold >= 0 ? "+" : "−";
     const goldClass = netGold >= 0 ? "color:#ffd700" : "color:#ff8a8a";
-    const fth = citiesOf(state, player.id).reduce((n, c) => n + getCityYields(state, c).faith, 0);
+    const fth = citiesOf(state, player.id).reduce((n, c) => n + cityDisplayYields(state, c).faith, 0);
     const researchingDef = player.researching ? TECH_DEFS[player.researching] : null;
     const researchPct = researchingDef
       ? Math.min(100, (player.scienceProgress / researchingDef.cost) * 100)
       : 0;
-    const cul = citiesOf(state, player.id).reduce((n, c) => n + getCityYields(state, c).culture, 0);
+    const cul = citiesOf(state, player.id).reduce((n, c) => n + cityDisplayYields(state, c).culture, 0);
     const civicDef = getCivic(player.researchingCivic ?? undefined);
-    const civicPct = civicDef ? Math.min(100, (player.cultureProgress / civicDef.cost) * 100) : 0;
+    const civicCurrentCost = civicDef ? civicCost(civicDef, player.civicsResearched.size) : 0;
+    const civicPct = civicCurrentCost ? Math.min(100, (player.cultureProgress / civicCurrentCost) * 100) : 0;
     const gov = getGovernment(player.government);
     const civ = getCiv(player.civId);
     const rName = researchingDef ? researchingDef.name : "Choose…";
@@ -1514,7 +1556,6 @@ export function createUI(handlers: UIHandlers): UI {
       researchOpen = !researchOpen;
       civicsOpen = false;
       religionOpen = false;
-      victoryOpen = false;
       if (opening) {
         closeSideSheets();
         menuOpen = false;
@@ -1523,7 +1564,6 @@ export function createUI(handlers: UIHandlers): UI {
       renderResearch(state);
       renderCivics(state);
       renderReligion(state);
-      renderVictory(state);
     });
     if (showCivics) {
       topbar.querySelector<HTMLButtonElement>("#civics-btn")!.addEventListener("click", () => {
@@ -1531,7 +1571,6 @@ export function createUI(handlers: UIHandlers): UI {
         civicsOpen = !civicsOpen;
         researchOpen = false;
         religionOpen = false;
-        victoryOpen = false;
         if (opening) {
           closeSideSheets();
           menuOpen = false;
@@ -1540,7 +1579,6 @@ export function createUI(handlers: UIHandlers): UI {
         renderCivics(state);
         renderResearch(state);
         renderReligion(state);
-        renderVictory(state);
       });
     }
     if (showReligion) {
@@ -1549,7 +1587,6 @@ export function createUI(handlers: UIHandlers): UI {
         religionOpen = !religionOpen;
         researchOpen = false;
         civicsOpen = false;
-        victoryOpen = false;
         if (opening) {
           closeSideSheets();
           menuOpen = false;
@@ -1558,7 +1595,6 @@ export function createUI(handlers: UIHandlers): UI {
         renderReligion(state);
         renderResearch(state);
         renderCivics(state);
-        renderVictory(state);
       });
     }
     topbar.querySelector<HTMLButtonElement>("#great-people-btn")!.addEventListener("click", () => {
@@ -1691,25 +1727,6 @@ export function createUI(handlers: UIHandlers): UI {
     });
   };
 
-  // Victory progress lives in the Game Menu (both mobile and desktop). Opening it
-  // closes the menu and any other exclusive side sheet, mirroring the topbar pills.
-  const openVictory = (state: GameState): void => {
-    const opening = !victoryOpen;
-    victoryOpen = !victoryOpen;
-    researchOpen = false;
-    civicsOpen = false;
-    religionOpen = false;
-    if (opening) {
-      closeSideSheets();
-      menuOpen = false;
-      renderMenu(state);
-    }
-    renderVictory(state);
-    renderResearch(state);
-    renderCivics(state);
-    renderReligion(state);
-  };
-
   const renderMenu = (state: GameState): void => {
     saveModal.classList.toggle("hidden", !menuOpen);
     if (!menuOpen) return;
@@ -1752,7 +1769,6 @@ export function createUI(handlers: UIHandlers): UI {
         `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
         `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
         `<button class="btn primary" id="menu-save">Save Game</button>` +
-        `<button class="btn" id="menu-victory">🏆 Victory Progress</button>` +
         `<button class="btn" id="menu-settings">Settings</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki</button>` +
         `<button class="btn" id="menu-leaderboard">Leaderboard</button>` +
@@ -1779,9 +1795,6 @@ export function createUI(handlers: UIHandlers): UI {
       saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
         menuOpen = false;
         renderMenu(state);
-      });
-      saveModal.querySelector<HTMLButtonElement>("#menu-victory")!.addEventListener("click", () => {
-        openVictory(state);
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
         settingsOpen = true;
@@ -1975,11 +1988,11 @@ export function createUI(handlers: UIHandlers): UI {
 
     const cityRows = myCities
       .map((city) => {
-        const y = getCityYields(state, city);
+        const y = cityDisplayYields(state, city);
         return `<div class="gold-row"><span>${escapeHtml(city.name)}${city.isCapital ? " ★" : ""}</span><span class="gold-amount gold-positive">+${y.gold}</span></div>`;
       })
       .join("");
-    const totalCityGold = myCities.reduce((n, c) => n + getCityYields(state, c).gold, 0);
+    const totalCityGold = myCities.reduce((n, c) => n + cityDisplayYields(state, c).gold, 0);
 
     const unitRows = myUnits
       .map((unit) => {
@@ -2204,7 +2217,7 @@ export function createUI(handlers: UIHandlers): UI {
               `<div class="tech" data-civic="${id}"><div style="flex:1">` +
               `<div><b>${d.name}</b></div>` +
               (unlocks.length ? `<div class="sub">${unlocks.join(" · ")}</div>` : "") +
-              `</div><span class="cost">${d.cost}🎭</span></div>`
+              `</div><span class="cost">${civicCost(d, player.civicsResearched.size)}🎭</span></div>`
             );
           })
           .join("")
@@ -2297,14 +2310,12 @@ export function createUI(handlers: UIHandlers): UI {
     html += `<div class="production-list">`;
     html += shown
       .map((o) => {
-        let glyph: string;
         let desc: string;
         let meta: string;
         let cost: string;
         let dataAttrs: string;
         if (o.item.kind === "project") {
           const def = getProjectDef(o.item.id);
-          glyph = def?.glyph ?? "♻️";
           desc = def?.desc ?? "";
           meta = "· ongoing";
           cost = "∞";
@@ -2312,21 +2323,19 @@ export function createUI(handlers: UIHandlers): UI {
         } else if (o.item.kind === "trainingBuilding") {
           const fam = TRAINING_BUILDING_DEFS[o.item.family];
           const t = trainingTier(o.item.family, o.item.tier);
-          glyph = trainingIconImg(o.item.family, fam.glyph, 30);
           desc = `Trains ${fam.classes.join("/")} units · ${t.slots} slot${t.slots === 1 ? "" : "s"} · +${t.moraleBonus} morale · +${t.xp} XP`;
           meta = `· ${turns(o.cost)} turns`;
           cost = `${o.cost}⚒️`;
           dataAttrs = `data-kind="trainingBuilding" data-family="${o.item.family}" data-tier="${o.item.tier}"`;
         } else {
-          glyph = "🏛";
           desc = buildingInfo(o.item.id);
           meta = `· ${turns(o.cost)} turns`;
           cost = `${o.cost}⚒️`;
           dataAttrs = `data-kind="building" data-id="${o.item.id}"`;
         }
+        // No leading icon — the names read as a clean left-aligned column.
         return (
           `<div class="pcard" ${dataAttrs}>` +
-          `<span class="pglyph">${glyph}</span>` +
           `<div style="flex:1"><div><b>${o.name}</b> <span class="sub">${meta}</span></div>` +
           `<div class="sub">${desc}</div></div>` +
           `<span class="cost">${cost}</span></div>`
@@ -2455,9 +2464,11 @@ export function createUI(handlers: UIHandlers): UI {
       const title =
         (can.ok ? `Train ${name} — ${t} turns, costs 1 citizen` : can.error ?? "") +
         (kit ? `\n${kit.abilityName}: ${kit.desc}` : "");
+      // No leading glyph — unit glyphs are a mix of emoji and bare letters ("S", "C"),
+      // which read as clutter and misalign; lead straight with the name instead.
       return (
         `<button class="btn" data-train="${type}" title="${escapeHtml(title)}"${can.ok ? "" : " disabled"}>` +
-        `${UNIT_DEFS[type].glyph} ${escapeHtml(name)} <span class="sub">${t}t</span></button>`
+        `${escapeHtml(name)} <span class="sub">${t}t</span></button>`
       );
     };
 
@@ -2465,13 +2476,10 @@ export function createUI(handlers: UIHandlers): UI {
     const sections: string[] = [];
     for (const fam of families) {
       const tier = city.training[fam] ?? 0;
+      // Skip families the city hasn't built yet — they belong in Construction, and
+      // listing them here only clutters the pick-a-unit view.
+      if (tier <= 0) continue;
       const def = TRAINING_BUILDING_DEFS[fam];
-      if (tier <= 0) {
-        sections.push(
-          `<div class="csub" style="margin-top:10px">${trainingIconImg(fam, def.glyph, 20)} ${def.name} <span class="sub">— not built (raise it in Construction)</span></div>`,
-        );
-        continue;
-      }
       const slots = trainSlots(state, city, fam);
       const inUse = city.trainingQueue.filter((o) => trainingClassFor(o.unit) === fam && !UNIT_DEFS[o.unit].religionUnit).length;
       // Religion units train from the Temple (own section below), never the family.
@@ -2594,6 +2602,20 @@ export function createUI(handlers: UIHandlers): UI {
       });
       return;
     }
+
+    // Faith income breakdown — the same per-city rundown the treasury (gold) dialog
+    // gives, so it's clear where each turn's faith actually comes from.
+    const faithCities = citiesOf(state, player.id);
+    const faithRows = faithCities
+      .map((c) => {
+        const f = cityDisplayYields(state, c).faith;
+        return `<div class="gold-row"><span>${escapeHtml(c.name)}${c.isCapital ? " ★" : ""}</span><span class="gold-amount gold-positive">+${f}</span></div>`;
+      })
+      .join("");
+    const totalFaith = faithCities.reduce((n, c) => n + cityDisplayYields(state, c).faith, 0);
+    html += `<div class="gold-section"><div class="gold-section-title">Faith / turn</div>`;
+    html += faithRows || `<div class="gold-row"><span class="sub">No cities producing faith yet — build Shrines and Temples.</span><span class="gold-amount">0</span></div>`;
+    html += `<div class="gold-total"><span>Total faith</span><span class="gold-amount gold-positive">+${totalFaith}</span></div></div>`;
 
     if (myRel) {
       const holy = state.cities.get(myRel.holyCityId);
@@ -2818,35 +2840,6 @@ export function createUI(handlers: UIHandlers): UI {
     economic: { icon: "🪙", name: "Economic", color: "#e0b53d" },
     score: { icon: "🏆", name: "Score", color: "#cdbf9f" },
     extinction: { icon: "☠️", name: "Extinction", color: "#9aa0a6" },
-  };
-
-  const renderVictory = (state: GameState): void => {
-    victoryPanel.classList.toggle("hidden", !victoryOpen);
-    if (!victoryOpen) return;
-    const viewer = state.players[state.currentPlayerIndex]!;
-    const entries = victoryProgress(state, viewer.id);
-    let html = `<button class="cclose" id="vicclose">✕</button><div class="ctitle">🏆 Victory Progress</div>`;
-    html += `<div class="csub">Your standing on each enabled win condition.</div>`;
-    html += entries
-      .map((e) => {
-        const m = VICTORY_META[e.kind] ?? { icon: "•", name: e.kind, color: "#cdbf9f" };
-        const pct = Math.round(Math.min(1, Math.max(0, e.progress)) * 100);
-        const dim = e.enabled ? "" : "opacity:0.45";
-        const off = e.enabled ? "" : ` <span class="sub">(disabled)</span>`;
-        return (
-          `<div style="margin-top:10px;${dim}">` +
-          `<div style="display:flex;justify-content:space-between"><b>${m.icon} ${m.name}${off}</b><span class="sub">${pct}%</span></div>` +
-          `<div class="bar"><i style="width:${pct}%;background:${m.color}"></i></div>` +
-          `<div class="sub">${escapeHtml(e.detail)}</div>` +
-          `</div>`
-        );
-      })
-      .join("");
-    victoryPanel.innerHTML = html;
-    victoryPanel.querySelector<HTMLButtonElement>("#vicclose")!.addEventListener("click", () => {
-      victoryOpen = false;
-      victoryPanel.classList.add("hidden");
-    });
   };
 
   const renderGreatPeople = (state: GameState): void => {
@@ -3578,10 +3571,12 @@ export function createUI(handlers: UIHandlers): UI {
         }
       }
       // World wonders are tile-targeted too: offer any that can be raised on this
-      // clear, owned tile. Buildable ones are active buttons (with their one-time
-      // cost); wonders gated by a missing tech, crew, or resource show as locked with
-      // the reason, so the player knows what to work toward. Wonders stay
-      // territory-locked, so they never appear on neutral land.
+      // clear, owned tile. Only wonders whose tech is already researched appear here
+      // (the research tree shows which tech unlocks each wonder); buildable ones are
+      // active buttons (with their one-time cost), while those still gated by crew or
+      // resources show as locked with the reason. Wonders stay territory-locked, so
+      // they never appear on neutral land.
+      const researched = vplayer?.researched;
       const costLabel = (w: (typeof WONDER_DEFS)[number]): string => {
         const c = wonderStartCost(w);
         const bits = [c.gold ? `${c.gold}🪙` : "", c.faith ? `${c.faith}☮️` : "", c.culture ? `${c.culture}🎭` : ""].filter(Boolean);
@@ -3593,6 +3588,7 @@ export function createUI(handlers: UIHandlers): UI {
         !!err && /^(requires|costs|Need |No )/.test(err);
       const wonderBtns = (ownsTile ? WONDER_DEFS : [])
         .filter((w) => !state.completedWonders.includes(w.id))
+        .filter((w) => !w.reqTech || (researched?.has(w.reqTech as TechId) ?? false))
         .map((w) => {
           const can = canStartWonder(state, viewerId, w.id, tile.col, tile.row);
           if (can.ok) {
@@ -3804,10 +3800,14 @@ export function createUI(handlers: UIHandlers): UI {
     if (city.id !== cityPanelCityId) {
       cityPanelCityId = city.id;
       cityPanelExpanded = !isMobile();
+      governorPickerOpen = false;
     }
     const player = state.players.find((p) => p.id === city.ownerId)!;
     const cityViewer = lastViewerId >= 0 ? lastViewerId : city.ownerId;
     const y = getCityYields(state, city);
+    // For the summary bar: fold in standing-project conversion so gold/science/etc.
+    // reflect what the city actually banks (a Coinage city shows its gold, not raw ⚒️).
+    const yd = cityDisplayYields(state, city);
     const need = foodToGrow(city.population);
     const options = availableProduction(state, player, city);
     const curName = city.production ? prodName(city.production, player.civId) : "— nothing —";
@@ -3840,9 +3840,26 @@ export function createUI(handlers: UIHandlers): UI {
     const specCount = city.specialists.length;
     const worksCount = worksOfCity(state, city.id).length;
 
-    const governorRow =
-      city.ownerId === cityViewer
-        ? `<div class="csub">Governor</div><div class="gov-row">` +
+    // Governor collapses to a compact chip tucked at the right of the stat line; it
+    // shows the active mode and, when tapped, expands the full mode picker below.
+    const isOwner = city.ownerId === cityViewer;
+    const govMode = GOVERNOR_MODES.find((g) => (g.mode ?? null) === (city.autoMode ?? null)) ?? GOVERNOR_MODES[0]!;
+    const govChip = isOwner
+      ? `<button class="gov-chip${city.autoMode ? " active" : ""}" id="gov-chip" aria-expanded="${governorPickerOpen}" title="Governor — ${escapeHtml(govMode.title)}"><span class="gi">${govMode.icon}</span>${govMode.label}<span class="gov-caret">${governorPickerOpen ? "▴" : "▾"}</span></button>`
+      : "";
+    // Flag button: pick which tile the city claims next as it grows (default = nearest).
+    const expandBtn = isOwner
+      ? `<button class="mini-btn${city.expandTarget ? " active" : ""}" id="pick-expand" title="Choose which tile this city expands to next">🚩</button>`
+      : "";
+    // Bombard button: only shown when an enemy is actually in range, greyed once the
+    // city has fired this turn (one shot per turn). Manual — never auto-fires.
+    const canBombardNow = isOwner && cityBombardTargets(state, city).length > 0;
+    const bombardBtn = canBombardNow
+      ? `<button class="mini-btn${city.rangedAttackUsed ? "" : " bombard-ready"}" id="city-bombard"${city.rangedAttackUsed ? " disabled" : ""} title="${city.rangedAttackUsed ? "Already bombarded this turn" : "Bombard a nearby enemy (once per turn)"}">💥</button>`
+      : "";
+    const governorPicker =
+      isOwner && governorPickerOpen
+        ? `<div class="gov-row">` +
           GOVERNOR_MODES.map(
             (g) =>
               `<button class="gov-btn${(city.autoMode ?? null) === g.mode ? " active" : ""}" data-gov-mode="${g.mode ?? ""}" title="${g.title}" aria-pressed="${(city.autoMode ?? null) === g.mode}"><span class="gi">${g.icon}</span>${g.label}</button>`,
@@ -3852,11 +3869,13 @@ export function createUI(handlers: UIHandlers): UI {
         : "";
 
     const detail =
-      `<div class="cline">` +
-      `🛡️ ${cityDefenseStrength(state, city)} · ❤️ ${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)} · ⬣ ${territorySize(state, city)}` +
+      `<div class="cline cline-hdr">` +
+      `<span>🛡️ ${cityDefenseStrength(state, city)} · ❤️ ${Math.max(0, Math.floor(city.hp))}/${cityMaxHp(city)} · ⬣ ${territorySize(state, city)}` +
       (city.religion ? ` · ☮️ ${religionById(state, city.religion)?.name ?? ""}` : "") +
+      `</span>` +
+      `<span class="cline-actions">${bombardBtn}${expandBtn}${govChip}</span>` +
       `</div>` +
-      governorRow +
+      governorPicker +
       // growth
       `<div class="cline" style="color:var(--parchment)">Growth ${Math.floor(city.foodStored)}/${need} ` +
       (buildingSettler
@@ -3866,20 +3885,26 @@ export function createUI(handlers: UIHandlers): UI {
           : `<span style="color:#d98a8a">(stalled)</span>`) +
       (buildingSettler ? "" : luxuryBadge) +
       `<div class="bar"><i style="width:${foodPct}%"></i></div></div>` +
-      // production
+      // production — the rush buttons sit on the same row as the build progress
       (city.production?.kind === "project"
         ? (() => {
             const def = getProjectDef(city.production.id);
             const perTurnOut = Math.floor(y.production * (def?.ratio ?? 1));
             return `<div class="cline" style="color:var(--parchment)">Project: <b>${curName}</b> <span style="color:#9fc0dc">(+${perTurnOut}${def?.glyph ?? ""}/turn)</span></div>`;
           })()
-        : `<div class="cline" style="color:var(--parchment)">Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}<div class="bar"><i style="width:${prodPct}%"></i></div></div>`) +
-      (city.ownerId === cityViewer
-        ? rushButtonsHtml(state, cityViewer, "rush-prod", city.id, (cur, sur) => cityRushCost(city, cur, sur))
-        : "") +
-      `<button class="btn csheet-btn" id="open-prod">🔨 Construction <span class="sub">${options.length} ▸</span></button>` +
-      `<button class="btn csheet-btn" id="open-train">⚔️ Train Units <span class="sub">${freeCitizens(city)} free${city.trainingQueue.length ? ` · ${city.trainingQueue.length} training` : ""} ▸</span></button>` +
-      `<button class="btn csheet-btn" id="open-spec">🛠️ Specialists <span class="sub">${specCount} trained · ${free} free${worksCount ? ` · ${worksCount} works` : ""} ▸</span></button>` +
+        : (() => {
+            const rush = isOwner
+              ? rushButtonsHtml(state, cityViewer, "rush-prod", city.id, (cur, sur) => cityRushCost(city, cur, sur), true)
+              : "";
+            return (
+              `<div class="cline" style="color:var(--parchment)">` +
+              `<div class="build-row"><span>Building <b>${curName}</b> ${curCost ? `${Math.floor(city.productionStored)}/${curCost}` : ""}</span>${rush}</div>` +
+              `<div class="bar"><i style="width:${prodPct}%"></i></div></div>`
+            );
+          })()) +
+      `<button class="btn csheet-btn" id="open-prod"><span class="cs-l"><span class="ci">🔨</span>Construction</span><span class="sub">${options.length} ▸</span></button>` +
+      `<button class="btn csheet-btn" id="open-train"><span class="cs-l"><span class="ci">⚔️</span>Train Units</span><span class="sub">${freeCitizens(city)} free${city.trainingQueue.length ? ` · ${city.trainingQueue.length} training` : ""} ▸</span></button>` +
+      `<button class="btn csheet-btn" id="open-spec"><span class="cs-l"><span class="ci">🛠️</span>Specialists</span><span class="sub">${specCount} trained · ${free} free${worksCount ? ` · ${worksCount} works` : ""} ▸</span></button>` +
       (() => {
         const routes = tradeRoutesFrom(state, city.id);
         if (!routes.length) return "";
@@ -3896,7 +3921,7 @@ export function createUI(handlers: UIHandlers): UI {
       summaryBar({
         icon: city.isCapital ? "★" : "🏙️",
         name: "",
-        stats: `👥 ${city.population} · 🍞 ${y.food} · ⚒️ ${y.production} · 🪙 ${y.gold} · 🔬 ${y.science}`,
+        stats: `👥 ${city.population} · 🍞 ${yd.food} · ⚒️ ${yd.production} · 🪙 ${yd.gold} · 🔬 ${yd.science}`,
         closeId: "cclose",
       }) +
       `<div class="ip-detail">${detail}</div>`;
@@ -3925,10 +3950,21 @@ export function createUI(handlers: UIHandlers): UI {
         handlers.onRushProduction(Number(el.dataset.rushProd), el.dataset.rushCur as RushCurrency),
       ),
     );
+    cityPanel.querySelector<HTMLButtonElement>("#gov-chip")?.addEventListener("click", () => {
+      governorPickerOpen = !governorPickerOpen;
+      renderCityPanel(state, city);
+    });
+    cityPanel.querySelector<HTMLButtonElement>("#pick-expand")?.addEventListener("click", () => {
+      handlers.onPickExpandTile(city.id);
+    });
+    cityPanel.querySelector<HTMLButtonElement>("#city-bombard")?.addEventListener("click", () => {
+      handlers.onCityBombard(city.id);
+    });
     cityPanel.querySelectorAll<HTMLButtonElement>("[data-gov-mode]").forEach((el) =>
-      el.addEventListener("click", () =>
-        handlers.onSetCityAutoMode(city.id, (el.dataset.govMode || null) as CityAutoFocus | null),
-      ),
+      el.addEventListener("click", () => {
+        governorPickerOpen = false;
+        handlers.onSetCityAutoMode(city.id, (el.dataset.govMode || null) as CityAutoFocus | null);
+      }),
     );
     cityPanel.querySelector<HTMLButtonElement>("#open-train")!.addEventListener("click", () => {
       trainCityId = city.id;
@@ -4026,7 +4062,6 @@ export function createUI(handlers: UIHandlers): UI {
       renderTechTree(view.state);
       renderCivics(view.state);
       renderReligion(view.state);
-      renderVictory(view.state);
       renderGreatPeople(view.state);
       renderLegends(view.state);
       renderProduction(view.state);

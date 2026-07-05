@@ -260,10 +260,72 @@ function escapeHtml(text: string): string {
 // The unique-unit block + detail dialog live in ./unique-unit so the lobby and
 // the in-game wiki Civilizations page render the exact same thing.
 
+/** The single-player setup, persisted so the next new game defaults to it. */
+type SpSetup = MenuState["sp"];
+
+const SP_SETUP_KEY = "roc:sp-setup";
+const BARB_LEVELS: BarbLevel[] = ["none", "minimal", "low", "normal", "high"];
+
+/** Persist the single-player setup so the next new game starts from it. */
+function saveSpSetup(sp: SpSetup): void {
+  try {
+    localStorage.setItem(SP_SETUP_KEY, JSON.stringify(sp));
+  } catch {
+    // Ignore write failures (quota, private mode); the game still starts.
+  }
+}
+
+/**
+ * Load the last single-player setup, merged over `defaults` field-by-field. A
+ * corrupt or partial record — or a civ/option that no longer exists — falls back
+ * to the default for that field rather than breaking the lobby.
+ */
+function loadSpSetup(defaults: SpSetup): SpSetup {
+  let saved: Partial<SpSetup> | null = null;
+  try {
+    const raw = localStorage.getItem(SP_SETUP_KEY);
+    if (raw) saved = JSON.parse(raw) as Partial<SpSetup>;
+  } catch {
+    // Corrupt JSON or unavailable storage → fall back to defaults.
+  }
+  if (!saved) return defaults;
+
+  const isColor = (c: unknown): c is string =>
+    typeof c === "string" && (PLAYER_COLORS as readonly string[]).includes(c);
+  const isCiv = (id: unknown): id is string =>
+    typeof id === "string" && CIVILIZATIONS.some((c) => c.id === id);
+
+  const out: SpSetup = { ...defaults };
+  if (isCiv(saved.civId)) out.civId = saved.civId;
+  if (isColor(saved.color)) out.color = saved.color;
+  if (typeof saved.mapSize === "string" && saved.mapSize in MAP_DIMENSIONS) out.mapSize = saved.mapSize;
+  if (MAP_TYPE_OPTIONS.some((o) => o.value === saved!.mapType)) out.mapType = saved.mapType!;
+  if (Array.isArray(saved.ais)) {
+    out.ais = saved.ais
+      .filter(
+        (a): a is AiConfig =>
+          !!a && (a.civId === RANDOM_CIV || isCiv(a.civId)) && isColor(a.color),
+      )
+      .slice(0, MAX_AI)
+      .map((a) => ({ civId: a.civId, color: a.color }));
+  }
+  if (BARB_LEVELS.includes(saved.barbarians as BarbLevel)) out.barbarians = saved.barbarians!;
+  if (typeof saved.naturalWonders === "boolean") out.naturalWonders = saved.naturalWonders;
+  if (typeof saved.legends === "boolean") out.legends = saved.legends;
+  if (GOLD_OPTIONS.some((o) => o.value === saved!.startingGold)) out.startingGold = saved.startingGold!;
+  if (TURN_LIMIT_OPTIONS.some((o) => o.value === saved!.turnLimit)) out.turnLimit = saved.turnLimit!;
+  if (Array.isArray(saved.enabledVictories)) {
+    out.enabledVictories = TOGGLEABLE_VICTORIES.filter((v) =>
+      (saved!.enabledVictories as VictoryKind[]).includes(v),
+    );
+  }
+  return out;
+}
+
 export function createLobby(onStart: (session: Session, setup?: GameSetup) => void): void {
   const state: MenuState = {
     screen: "start",
-    sp: {
+    sp: loadSpSetup({
       civId: CIVS_BY_NAME[0]!.id,
       color: PLAYER_COLORS[0]!,
       mapSize: "medium",
@@ -275,7 +337,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       startingGold: "balanced",
       turnLimit: DEFAULT_TURN_LIMIT,
       enabledVictories: [...TOGGLEABLE_VICTORIES],
-    },
+    }),
     mp: {
       url: DEFAULT_WS,
       handle: "",
@@ -1005,7 +1067,15 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       const spLegends = $select("#sp-legends").value === "on";
       const spTurnLimit = Number($select("#sp-turnlimit").value);
       const spVictories = readVictoryChecklist("sp-victories");
+      // Sync the DOM-read options back into state.sp (civ/color/mapType/ais/gold
+      // already live there), then persist so the next new game defaults to it.
+      state.sp.mapSize = spMapSize;
+      state.sp.barbarians = spBarb;
+      state.sp.naturalWonders = spWonders;
+      state.sp.legends = spLegends;
+      state.sp.turnLimit = spTurnLimit;
       state.sp.enabledVictories = spVictories;
+      saveSpSetup(state.sp);
       const spAiCivIds = state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId));
       onStart(
         new LocalSession({

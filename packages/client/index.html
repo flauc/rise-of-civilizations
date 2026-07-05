@@ -468,9 +468,43 @@
         gap: 8px;
         text-align: left;
       }
+      /* Left group: a fixed-width icon cell keeps every label's text starting at the
+         same x, so "Construction / Train Units / Specialists" line up in a column. */
+      .csheet-btn .cs-l {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+      .csheet-btn .ci {
+        flex: 0 0 1.35em;
+        text-align: center;
+        font-size: 15px;
+      }
       .csheet-btn .sub {
         font-weight: 400;
         color: #cfe3f7;
+        flex: 0 0 auto;
+      }
+      /* Build-progress line with rush buttons tucked to the right of the label. */
+      .build-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .build-row > span:first-child {
+        min-width: 0;
+      }
+      .rush-inline {
+        display: inline-flex;
+        gap: 4px;
+        flex: 0 0 auto;
+      }
+      .rush-mini {
+        padding: 3px 7px;
+        font-size: 11px;
+        white-space: nowrap;
       }
       /* Tab bar for the construction dialog */
       .ptabs {
@@ -647,17 +681,6 @@
         background: rgba(201, 162, 39, 0.1);
         border-color: var(--accent);
       }
-      .pglyph {
-        flex: none;
-        width: 30px;
-        height: 30px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 700;
-        background: rgba(201, 162, 39, 0.12);
-        border-radius: 8px;
-      }
       .locked-note {
         margin-top: 10px;
         padding: 10px 12px;
@@ -808,6 +831,96 @@
       }
       #civics .row {
         gap: 6px;
+      }
+      /* Stat line that carries the governor chip on its right edge. */
+      .cline-hdr {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .cline-hdr > span:first-child {
+        min-width: 0;
+      }
+      .cline-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: 0 0 auto;
+      }
+      /* Small round icon button on the stat line (e.g. the expand-tile flag). */
+      .mini-btn {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 3px 7px;
+        border: 1px solid var(--edge);
+        border-radius: 999px;
+        background: rgba(201, 162, 39, 0.06);
+        color: var(--parchment-dim);
+        font: inherit;
+        font-size: 12px;
+        line-height: 1;
+        cursor: pointer;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+      }
+      .mini-btn:hover {
+        border-color: var(--accent);
+        color: var(--parchment);
+      }
+      .mini-btn.active {
+        background: rgba(201, 162, 39, 0.18);
+        border-color: var(--accent);
+        color: var(--parchment);
+      }
+      /* Bombard button pulses subtly when a shot is available this turn. */
+      .mini-btn.bombard-ready {
+        border-color: #e0763d;
+        background: rgba(224, 118, 61, 0.16);
+      }
+      .mini-btn.bombard-ready:hover {
+        border-color: #ff8a4a;
+        background: rgba(224, 118, 61, 0.28);
+      }
+      .mini-btn[disabled] {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      /* Collapsed governor control: a single pill showing the active mode; tapping it
+         expands the full picker (.gov-row) below. Keeps the panel compact by default. */
+      .gov-chip {
+        flex: 0 0 auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 8px;
+        border: 1px solid var(--edge);
+        border-radius: 999px;
+        background: rgba(201, 162, 39, 0.06);
+        color: var(--parchment-dim);
+        font: inherit;
+        font-size: 11px;
+        line-height: 1;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+      }
+      .gov-chip .gi {
+        font-size: 13px;
+      }
+      .gov-chip .gov-caret {
+        color: var(--parchment-dim);
+        font-size: 9px;
+      }
+      .gov-chip:hover {
+        border-color: var(--accent);
+        color: var(--parchment);
+      }
+      .gov-chip.active {
+        background: rgba(201, 162, 39, 0.18);
+        border-color: var(--accent);
+        color: var(--parchment);
       }
       /* Governor (city auto-mode) picker: a compact 5-across segmented control
          that stays one tidy row on both the 300px desktop panel and the
@@ -1245,6 +1358,23 @@
         color: #9fc0dc;
         margin-top: 12px;
         text-align: center;
+      }
+      .lb-vic-title {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--edge);
+        font-weight: 700;
+        color: var(--parchment);
+      }
+      .lb-vic {
+        margin-top: 6px;
+      }
+      .lb-vic-row {
+        margin-top: 10px;
+      }
+      .lb-vic-head {
+        display: flex;
+        justify-content: space-between;
       }
       #leaderboard-dialog .btn {
         margin-top: 14px;

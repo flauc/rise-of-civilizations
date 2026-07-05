@@ -41,6 +41,7 @@ export const EMOJI_ICON: Record<string, string> = {
   "🔓": "ic_unlock", "☠": "ic_skull", "⚓": "ic_anchor", "🏃": "ic_runner",
   "⚑": "ic_flag", "🔫": "ic_musket", "🔄": "ic_refresh", "☩": "ic_cross_ornate",
   "😊": "ic_smile", "😟": "ic_frown", "🔨": "ic_hammer", "👁": "ic_eye",
+  "🚩": "ic_flag_planted", "💥": "ic_burst",
 };
 
 const iconUrl = (id: string): string => `${ASSET_BASE_URL}icons/${id}.png`;

@@ -2200,6 +2200,8 @@ export interface UniqueInfraDef {
   terrain?: string[];
   /** Specialist craft that builds the improvement (improvements only). */
   discipline?: "carpentry" | "masonry" | "survey";
+  /** Buildings only: may only be constructed in a coastal city (adjacent to ocean/lake). */
+  requiresCoastal?: boolean;
 }
 
 type InfraOverride = Partial<Omit<UniqueInfraDef, "id" | "civId" | "name">>;
@@ -2232,17 +2234,27 @@ const INFRA_OVERRIDES: Record<string, InfraOverride> = {
   // ---- flagship buildings with rich empire-wide effects (reqTech: INFRA_REQ_TECH) --
   babylon: { yields: { science: 1 }, effects: { yieldPercent: { science: 5 } }, desc: "Unique building — +1 science here and +5% science empire-wide." },
   han_china: { yields: { culture: 1 }, effects: { yieldPercent: { production: 5 } }, desc: "Unique building — +1 culture here and +5% production empire-wide." },
-  carthage: { yields: { gold: 2 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +2 gold and naval units +1 movement empire-wide." },
-  phoenicia: { yields: { gold: 3 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +3 gold and naval units +1 movement empire-wide." },
+  carthage: { requiresCoastal: true, yields: { gold: 2 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +2 gold and naval units +1 movement empire-wide (coastal cities only)." },
+  phoenicia: { requiresCoastal: true, yields: { gold: 3 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +3 gold and naval units +1 movement empire-wide (coastal cities only)." },
   elam: { yields: { faith: 2, science: 1 }, effects: { yieldPercent: { science: 5 } }, desc: "Unique building — +2 faith, +1 science, and +5% science empire-wide." },
   hittites: { yields: { production: 2 }, effects: { unitClassCombat: { melee: 1 } }, desc: "Unique building — +2 production and melee units +1 strength empire-wide." },
   median_empire: { yields: { production: 2 }, effects: { unitClassCombat: { cavalry: 1 } }, desc: "Unique building — +2 production and cavalry units +1 strength empire-wide." },
   greco_bactria: { yields: { science: 2, culture: 1 }, effects: { yieldPercent: { science: 5 } }, desc: "Unique building — +2 science, +1 culture, and +5% science empire-wide." },
-  portugal: { yields: { gold: 3 }, effects: { tradeRouteGoldBonus: 2 }, desc: "Unique building — +3 gold and +2 gold per trade route empire-wide." },
+  portugal: { requiresCoastal: true, yields: { gold: 3 }, effects: { tradeRouteGoldBonus: 2 }, desc: "Unique building — +3 gold and +2 gold per trade route empire-wide (coastal cities only)." },
   sparta: { yields: { production: 2 }, desc: "Unique building — +2 production." },
   rome: { yields: { culture: 1, food: 1 }, effects: { yieldPercent: { culture: 10 } }, desc: "Unique building — +1 culture, +1 food, and +10% culture empire-wide." },
   greece: { yields: { culture: 2, science: 1 }, desc: "Unique building — +2 culture and +1 science." },
   norse: { yields: { faith: 2, culture: 1 }, desc: "Unique building — +2 faith and +1 culture." },
+
+  // ---- coastal-only buildings (harbours, shipyards, sea-trade posts) ------
+  // These are maritime structures that only make sense in a city on the water,
+  // so they may only be built in a coastal city (adjacent to ocean/lake). Their
+  // default themed yields/desc are kept — only the coastal gate is added.
+  corinth: { requiresCoastal: true },       // Diolkos — ship-hauling trackway between two seas
+  venice: { requiresCoastal: true },        // Arsenale — the great naval shipyard
+  majapahit: { requiresCoastal: true },     // Harbor-Temple — the archipelago's sea gate
+  swahili: { requiresCoastal: true },       // Husuni Kubwa — the Kilwa island trade palace
+  eretria: { requiresCoastal: true },       // Emporion — the Euboean maritime trading colony
 };
 
 /** Slugify a name into a stable art/lookup id (matches the unique-unit scheme). */
@@ -2287,6 +2299,7 @@ function describeInfra(def: UniqueInfraDef): string {
   }
   let s = `Unique building — ${ys || "no base yields"}`;
   if (def.effects) s += ", plus empire bonuses while standing";
+  if (def.requiresCoastal) s += " (coastal cities only)";
   return s + ".";
 }
 
@@ -2451,6 +2464,7 @@ export const UNIQUE_INFRA: UniqueInfraDef[] = CIVILIZATIONS.map((civ) => {
     effects: o.effects,
     terrain: o.terrain ?? (kind === "improvement" ? ["grassland", "plains"] : undefined),
     discipline: o.discipline ?? (kind === "improvement" ? "carpentry" : undefined),
+    requiresCoastal: o.requiresCoastal,
     art: o.art ?? `${name}, the unique ${kind === "improvement" ? "tile improvement" : "building"} of ${civ.name}`,
     desc: "",
   };
@@ -2487,19 +2501,34 @@ export const UNIQUE_INFRA_BUILDINGS: UniqueInfraDef[] = UNIQUE_INFRA.filter((u) 
 // Civics tree, governments and policies (the culture-funded parallel tree).
 // ===========================================================================
 
+// Base culture costs. The *effective* cost climbs with each civic already
+// adopted (see CIVIC_COST_ESCALATION / civicCost) so the short tree can't be
+// cleared in a handful of turns by an empire's passive culture trickle.
 export const CIVICS: CivicDef[] = [
   { id: "code_of_laws", name: "Code of Laws", cost: 0, prereqs: [], unlocksGovernment: "chiefdom", unlocksPolicy: "discipline" },
-  { id: "craftsmanship", name: "Craftsmanship", cost: 25, prereqs: ["code_of_laws"], unlocksPolicy: "urban_planning" },
-  { id: "military_tradition", name: "Military Tradition", cost: 30, prereqs: ["code_of_laws"], unlocksPolicy: "maneuver" },
-  { id: "mysticism", name: "Mysticism", cost: 25, prereqs: ["code_of_laws"], unlocksPolicy: "god_king" },
-  { id: "early_empire", name: "Early Empire", cost: 45, prereqs: ["craftsmanship"], unlocksGovernment: "despotism" },
-  { id: "drama_poetry", name: "Drama & Poetry", cost: 50, prereqs: ["mysticism"], unlocksPolicy: "literary_tradition" },
-  { id: "recorded_history", name: "Recorded History", cost: 55, prereqs: ["early_empire"], unlocksPolicy: "natural_philosophy" },
-  { id: "trade_routes", name: "Trade", cost: 50, prereqs: ["early_empire"], unlocksPolicy: "caravans" },
-  { id: "political_philosophy", name: "Political Philosophy", cost: 80, prereqs: ["recorded_history"], unlocksGovernment: "classical_republic" },
-  { id: "military_training", name: "Military Training", cost: 70, prereqs: ["military_tradition", "early_empire"], unlocksGovernment: "oligarchy" },
-  { id: "statecraft", name: "Statecraft", cost: 75, prereqs: ["political_philosophy"], unlocksGovernment: "monarchy" },
+  { id: "craftsmanship", name: "Craftsmanship", cost: 60, prereqs: ["code_of_laws"], unlocksPolicy: "urban_planning" },
+  { id: "military_tradition", name: "Military Tradition", cost: 70, prereqs: ["code_of_laws"], unlocksPolicy: "maneuver" },
+  { id: "mysticism", name: "Mysticism", cost: 60, prereqs: ["code_of_laws"], unlocksPolicy: "god_king" },
+  { id: "early_empire", name: "Early Empire", cost: 110, prereqs: ["craftsmanship"], unlocksGovernment: "despotism" },
+  { id: "drama_poetry", name: "Drama & Poetry", cost: 120, prereqs: ["mysticism"], unlocksPolicy: "literary_tradition" },
+  { id: "recorded_history", name: "Recorded History", cost: 130, prereqs: ["early_empire"], unlocksPolicy: "natural_philosophy" },
+  { id: "trade_routes", name: "Trade", cost: 120, prereqs: ["early_empire"], unlocksPolicy: "caravans" },
+  { id: "political_philosophy", name: "Political Philosophy", cost: 190, prereqs: ["recorded_history"], unlocksGovernment: "classical_republic" },
+  { id: "military_training", name: "Military Training", cost: 165, prereqs: ["military_tradition", "early_empire"], unlocksGovernment: "oligarchy" },
+  { id: "statecraft", name: "Statecraft", cost: 180, prereqs: ["political_philosophy"], unlocksGovernment: "monarchy" },
 ];
+
+/** Each civic already adopted raises the culture cost of the next by this
+ *  fraction of its base cost (Civ-style escalation), so late civics stay
+ *  meaningful instead of falling for free out of a culture surplus. */
+export const CIVIC_COST_ESCALATION = 0.12;
+
+/** Effective culture cost of a civic given how many the player has already
+ *  adopted. Used by the sim (to charge culture) and the client (to display the
+ *  cost and progress) so both agree on the escalated price. */
+export function civicCost(def: CivicDef, adoptedCount: number): number {
+  return Math.round(def.cost * (1 + CIVIC_COST_ESCALATION * Math.max(0, adoptedCount)));
+}
 
 export const GOVERNMENTS: GovernmentDef[] = [
   { id: "chiefdom", name: "Chiefdom", desc: "The starting government. 2 policy slots.", slots: 2, effects: {} },
@@ -3312,6 +3341,28 @@ export type GreatPersonEffect =
 
 export type GreatPersonEra = "Bronze" | "Classical" | "Medieval" | "Exploration";
 
+/**
+ * A Great Prophet's SECONDARY gift, layered on top of a (smaller) faith burst so
+ * each prophet plays differently and echoes the historical figure. The flat faith
+ * still comes from the `revelation` effect; this adds the flavour. Interpreted in
+ * `packages/sim/great-people.ts`; all magnitudes live here.
+ */
+export type ProphetGift =
+  /** Zarathustra — the holy war on the Lie: faith on every kill + a morale lift, for a time. */
+  | { kind: "zeal"; turns: number; faithOnKill: number; morale: number }
+  /** Confucius — raises a Temple at once in up to `count` of your best temple-less cities. */
+  | { kind: "temples"; count: number; faithIfNone: number }
+  /** Laozi — the Watercourse Way: +`faithPercent`% faith empire-wide for `turns` turns. */
+  | { kind: "faithFlow"; turns: number; faithPercent: number }
+  /** Siddhartha — great compassion: heals all your wounded units + a morale lift. */
+  | { kind: "compassion"; morale: number }
+  /** Augustine — the City of God: ordains `missionaries` free Missionaries and presses the faith. */
+  | { kind: "mission"; missionaries: number; pressure: number }
+  /** Aquinas — faith wedded to reason: an instant burst of science. */
+  | { kind: "scholastic"; science: number }
+  /** Rumi — the whirling: a pressure surge across all your cities + timed culture. */
+  | { kind: "revival"; pressure: number; turns: number; culturePercent: number };
+
 export interface GreatPersonDef {
   id: string;
   name: string;
@@ -3320,6 +3371,8 @@ export interface GreatPersonDef {
   effect: GreatPersonEffect;
   /** Signature-effect flavour, shown in the UI. */
   desc: string;
+  /** Great Prophets only: the historically-themed secondary gift (see ProphetGift). */
+  prophetGift?: ProphetGift;
 }
 
 const GP = (
@@ -3329,7 +3382,8 @@ const GP = (
   era: GreatPersonEra,
   effect: GreatPersonEffect,
   desc: string,
-): GreatPersonDef => ({ id, name, cls, era, effect, desc });
+  prophetGift?: ProphetGift,
+): GreatPersonDef => ({ id, name, cls, era, effect, desc, ...(prophetGift ? { prophetGift } : {}) });
 
 /** Display metadata per class (glyph + the point-pool's name). */
 export const GREAT_PERSON_CLASS_INFO: Record<GreatPersonClass, { name: string; glyph: string }> = {
@@ -3398,13 +3452,13 @@ export const GREAT_PEOPLE: GreatPersonDef[] = [
   GP("fugger", "Jakob Fugger", "merchant", "Exploration", "windfall", "Richest man of his age: a huge windfall of gold flows to your treasury."),
 
   // ---- Great Prophets ----------------------------------------------------
-  GP("zarathustra", "Zarathustra", "prophet", "Bronze", "revelation", "Prophet of the sacred fire: a burst of faith toward a religion."),
-  GP("confucius", "Confucius", "prophet", "Classical", "revelation", "The Great Sage: a burst of faith toward a religion."),
-  GP("laozi", "Laozi", "prophet", "Classical", "revelation", "Sage of the Way: a burst of faith toward a religion."),
-  GP("siddhartha", "Siddhartha Gautama", "prophet", "Classical", "revelation", "The Awakened One: a burst of faith toward a religion."),
-  GP("augustine", "Augustine of Hippo", "prophet", "Medieval", "revelation", "Great theologian: a burst of faith toward a religion."),
-  GP("aquinas", "Thomas Aquinas", "prophet", "Medieval", "revelation", "The Angelic Doctor: a great burst of faith toward a religion."),
-  GP("rumi", "Rumi", "prophet", "Medieval", "revelation", "Mystic poet: a burst of faith toward a religion."),
+  GP("zarathustra", "Zarathustra", "prophet", "Bronze", "revelation", "Prophet of the sacred fire: faith, and a holy war on the Lie — your kills reap faith for a time.", { kind: "zeal", turns: 10, faithOnKill: 6, morale: 8 }),
+  GP("confucius", "Confucius", "prophet", "Classical", "revelation", "The Great Sage: faith, and the rites made stone — a Temple rises at once in your greatest cities.", { kind: "temples", count: 2, faithIfNone: 120 }),
+  GP("laozi", "Laozi", "prophet", "Classical", "revelation", "Sage of the Way: faith, and the Watercourse Way — faith flows effortlessly across the empire for a time.", { kind: "faithFlow", turns: 10, faithPercent: 25 }),
+  GP("siddhartha", "Siddhartha Gautama", "prophet", "Classical", "revelation", "The Awakened One: faith, and great compassion — every wounded soul in your armies is mended and the realm is heartened.", { kind: "compassion", morale: 12 }),
+  GP("augustine", "Augustine of Hippo", "prophet", "Medieval", "revelation", "Great theologian: faith, and the City of God — free Missionaries are ordained to carry the word outward.", { kind: "mission", missionaries: 2, pressure: 40 }),
+  GP("aquinas", "Thomas Aquinas", "prophet", "Medieval", "revelation", "The Angelic Doctor: faith wedded to reason — a burst of faith AND an instant flowering of science.", { kind: "scholastic", science: 150 }),
+  GP("rumi", "Rumi", "prophet", "Medieval", "revelation", "Mystic poet: faith, and the whirling — a surge of devotion sweeps every city and culture blooms for a time.", { kind: "revival", pressure: 30, turns: 8, culturePercent: 20 }),
 
   // ---- Great Artists (writers / artists / musicians) ---------------------
   GP("homer", "Homer", "artist", "Classical", "inspiration", "Father of epic poetry: a burst of culture inspires your empire."),

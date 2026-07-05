@@ -70,6 +70,7 @@ import {
   type CivLocation,
   type GreatPersonClass,
   type LegendType,
+  type ProphetGift,
 } from "@roc/data";
 import type { TerrainType, Unit } from "@roc/sim";
 import { geoNaturalEarth1, geoPath } from "d3-geo";
@@ -534,10 +535,32 @@ const GP_EFFECT_TEXT: Record<GreatPersonClass, string> = {
   scientist: "A burst of science (a eureka) that speeds your current research.",
   engineer: "A surge of production in your best city, hurrying its current build.",
   merchant: "A windfall of gold straight to your treasury.",
-  prophet: "A burst of faith toward founding or spreading a religion.",
+  prophet: "A burst of faith (+110) toward founding or spreading a religion — plus a distinct gift unique to each prophet (see the figures below).",
   artist: "A burst of culture that inspires your empire.",
   statesman: "A burst of culture that speeds your civic reforms.",
 };
+
+/** Plain-English description of a Great Prophet's per-figure secondary gift.
+ *  Prophets are the one class with a distinct effect per figure (@roc/data
+ *  ProphetGift); this mirrors sim great-people.ts describeProphetGift, state-free. */
+function prophetGiftText(gift: ProphetGift): string {
+  switch (gift.kind) {
+    case "zeal":
+      return `for ${gift.turns} turns your units reap +${gift.faithOnKill} faith on every kill, and empire morale lifts by +${gift.morale} — the holy war on the Lie`;
+    case "temples":
+      return `a Temple rises at once in up to ${gift.count} of your best temple-less cities (or +${gift.faithIfNone} more faith if none need one)`;
+    case "faithFlow":
+      return `faith flows +${gift.faithPercent}% empire-wide for ${gift.turns} turns`;
+    case "compassion":
+      return `every wounded unit in your armies is mended to full health, and empire morale lifts by +${gift.morale}`;
+    case "mission":
+      return `${gift.missionaries} free Missionaries are ordained at your holy city, and the faith is pressed (+${gift.pressure}) into it`;
+    case "scholastic":
+      return `an instant +${gift.science} science — faith wedded to reason`;
+    case "revival":
+      return `a +${gift.pressure} religious-pressure surge sweeps every one of your cities, and culture blooms +${gift.culturePercent}% for ${gift.turns} turns`;
+  }
+}
 
 /** Buildings (and the capital) that feed each class's point pool. */
 const GP_SOURCE_TEXT: Record<GreatPersonClass, string> = {
@@ -1233,10 +1256,14 @@ function renderGreatPersonDetail(id: string): string {
   if (!g) return detailNotFound();
   const info = GREAT_PERSON_CLASS_INFO[g.cls];
   const src = `${ASSET_BASE_URL}great-people/${g.id}.png`;
+  const activated =
+    g.cls === "prophet" && g.prophetGift
+      ? `<p>A burst of <b>+110 faith</b> toward founding or spreading a religion — and then ${escapeHtml(prophetGiftText(g.prophetGift))}.</p>`
+      : `<p>${escapeHtml(GP_EFFECT_TEXT[g.cls])}</p>`;
   return (
     detailHead(src, g.name, `${info.glyph} ${escapeHtml(info.name)} · ${escapeHtml(g.era)} era`) +
     section("Signature", `<p>${escapeHtml(g.desc)}</p>`) +
-    section("When activated", `<p>${escapeHtml(GP_EFFECT_TEXT[g.cls])}</p>`) +
+    section("When activated", activated) +
     historyBlock("History", greatPersonHistory(id))
   );
 }

@@ -7,7 +7,7 @@ import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources
 import { naturalWonderYields, naturalWonderCulture } from "./natural-wonders";
 import { expandTerritory } from "./territory";
 import { getWonder, uniqueBuildingForCiv, type CivEffects } from "@roc/data";
-import { civEffectsOf, cityEffects, getCivic, effectSources, cityEffectSources, type EffectSource } from "./civs";
+import { civEffectsOf, cityEffects, getCivic, civicCost, effectSources, cityEffectSources, type EffectSource } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
@@ -381,6 +381,24 @@ export function getCityYields(state: GameState, city: City): CityYields {
   return { food, production, gold, science, culture, faith };
 }
 
+/** City yields as they should be *displayed* to the player. A standing project
+ *  (Coinage, Scholarship, …) converts the city's production into its output pool
+ *  every turn (see processCity), so fold that into the shown numbers — the output
+ *  pool goes up and production goes down. Use this for income/top-bar readouts;
+ *  use getCityYields for the raw tile/building yields the sim runs on. */
+export function cityDisplayYields(state: GameState, city: City): CityYields {
+  const y = getCityYields(state, city);
+  if (city.production?.kind === "project") {
+    const def = PROJECT_DEFS[city.production.id as keyof typeof PROJECT_DEFS];
+    if (def) {
+      const converted = Math.floor(y.production * def.ratio);
+      y[def.output] += converted;
+      y.production = Math.max(0, y.production - Math.ceil(converted / def.ratio));
+    }
+  }
+  return y;
+}
+
 /** Merge two CivEffects objects into a single object. */
 function mergeCivEffects(a: CivEffects, b: CivEffects): CivEffects {
   const out: CivEffects = { ...a };
@@ -707,8 +725,10 @@ export function advanceResearch(state: GameState, owner: Player): void {
 export function advanceCivic(state: GameState, owner: Player): void {
   if (!owner.researchingCivic) return;
   const def = getCivic(owner.researchingCivic);
-  if (!def || owner.cultureProgress < def.cost) return;
-  owner.cultureProgress -= def.cost;
+  if (!def) return;
+  const cost = civicCost(def, owner.civicsResearched.size);
+  if (owner.cultureProgress < cost) return;
+  owner.cultureProgress -= cost;
   owner.civicsResearched.add(owner.researchingCivic);
   log(state, `${owner.name} adopted ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
   emitCivicComplete(state, owner.id, def.name);
@@ -808,7 +828,7 @@ export function availableProduction(state: GameState, player: Player, city: City
   // The civ's unique building (an extra building, offered only to this civ once
   // its tech is known and it hasn't already been built here).
   const ub = uniqueBuildingForCiv(player.civId);
-  if (ub && player.researched.has(ub.reqTech as TechId) && !city.buildings.includes(ub.id)) {
+  if (ub && player.researched.has(ub.reqTech as TechId) && !city.buildings.includes(ub.id) && (!ub.requiresCoastal || coastal)) {
     out.push({ item: { kind: "building", id: ub.id }, name: ub.name, cost: ub.cost });
   }
   // Standing conversion projects (Coinage always; the rest gated by tech). These

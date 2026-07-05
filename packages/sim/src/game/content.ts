@@ -4,7 +4,7 @@
 // Units are numerous and role-rich: many are available from the start, others
 // are unlocked by specific technologies.
 
-import { UNIQUE_INFRA_BUILDINGS } from "@roc/data";
+import { UNIQUE_INFRA_BUILDINGS, WONDER_DEFS } from "@roc/data";
 
 export type UnitTypeId =
   // civilian
@@ -1253,8 +1253,11 @@ export function techSystemUnlocks(techId: TechId): string[] {
 /** Names of everything a tech unlocks — units, buildings, and mechanics (for the research picker). */
 export function techUnlocks(techId: TechId): string[] {
   const out: string[] = [];
-  for (const d of Object.values(UNIT_DEFS)) if (d.reqTech === techId) out.push(d.name);
+  // Holy units share one tech and would flood the list with dozens of names no
+  // single civ ever fields — the Religion system entry stands in for them.
+  for (const d of Object.values(UNIT_DEFS)) if (d.reqTech === techId && !d.religionUnit) out.push(d.name);
   for (const d of Object.values(BUILDING_DEFS)) if (d.reqTech === techId) out.push(d.name);
+  for (const w of WONDER_DEFS) if (w.reqTech === techId) out.push(w.name);
   // Training-building tiers gated by this tech.
   for (const fam of TRAINING_CLASSES) {
     for (const t of TRAINING_BUILDING_DEFS[fam].tiers) {
@@ -1393,7 +1396,7 @@ export const PROMOTION_DEFS: Record<PromotionId, PromotionDef> = {
   woodland_warrior: { id: "woodland_warrior", name: "Woodland Warrior", desc: "+3 strength in forest/jungle; forests cost 1 less movement" , tier: 2 },
   charge: { id: "charge", name: "Charge", desc: "+4 strength on the first attack each turn" , tier: 2 },
   toughness: { id: "toughness", name: "Toughness", desc: "+15 max HP" , tier: 2 },
-  discipline: { id: "discipline", name: "Discipline", desc: "+2 strength when adjacent to a friendly unit" , tier: 2 },
+  discipline: { id: "discipline", name: "Discipline", desc: "+2 strength per friendly unit within 2 tiles (max +8)" , tier: 2 },
   formation: { id: "formation", name: "Formation", desc: "+4 defense vs cavalry attacks" , tier: 2 },
   city_assault: { id: "city_assault", name: "City Assault", desc: "+4 strength vs cities" , tier: 3 },
   brawler: { id: "brawler", name: "Brawler", desc: "+3 strength when defending" , tier: 2 },
@@ -1405,7 +1408,7 @@ export const PROMOTION_DEFS: Record<PromotionId, PromotionDef> = {
   pathfinder: { id: "pathfinder", name: "Pathfinder", desc: "Roads cost no movement; hills cost 1 less movement" , tier: 2 },
 
   // cavalry
-  flanking: { id: "flanking", name: "Flanking", desc: "+2 strength per adjacent friendly unit (max +6)" , tier: 2 },
+  flanking: { id: "flanking", name: "Flanking", desc: "+2 strength per friendly unit within 2 tiles (max +8)" , tier: 2 },
   mobility: { id: "mobility", name: "Mobility", desc: "+1 movement" , tier: 2 },
   cavalry_charge: { id: "cavalry_charge", name: "Cavalry Charge", desc: "+4 strength on the first attack each turn" , tier: 2 },
   trample: { id: "trample", name: "Trample", desc: "+4 strength vs wounded units" , tier: 2 },

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
-import { territorySize, expandTerritory } from "./territory";
+import { territorySize, expandTerritory, expansionCandidates, canExpandTo, cityTerritory } from "./territory";
 import { ejectTrespassers, offsetNeighbors } from "./movement";
 import { isPassableLand, isWaterTerrain } from "./terrain";
 import { citiesOf, makeUnit, unitsOf } from "./state";
@@ -33,6 +33,60 @@ describe("territory", () => {
     const before = territorySize(state, city);
     expandTerritory(state, city, 3);
     expect(territorySize(state, city)).toBeGreaterThan(before);
+  });
+
+  it("claims the player's chosen tile first when growing, then reverts to auto", () => {
+    const state = createGame({ seed: "terr-pick", cols: 40, rows: 28, barbarians: false });
+    beginTurn(state);
+    const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    const city = citiesOf(state, 0)[0]!;
+    // Pick a claimable tile that is NOT the nearest (so the override is observable).
+    const cands = expansionCandidates(state, city);
+    expect(cands.length).toBeGreaterThan(0);
+    const target = cands[cands.length - 1]!;
+    expect(canExpandTo(state, city, target.col, target.row)).toBe(true);
+    applyCommand(state, { type: "setExpandTarget", cityId: city.id, target });
+    expect(city.expandTarget).toEqual(target);
+
+    expandTerritory(state, city, 1);
+    // The chosen tile is now owned, and the target is consumed (back to auto).
+    expect(getTile(state.map, target.col, target.row)!.ownerCityId).toBe(city.id);
+    expect(city.expandTarget).toBeUndefined();
+  });
+
+  it("rejects an unclaimable expand target and clears one via setExpandTarget", () => {
+    const state = createGame({ seed: "terr-pick2", cols: 40, rows: 28, barbarians: false });
+    beginTurn(state);
+    const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    const city = citiesOf(state, 0)[0]!;
+    // The city centre is already owned, so it can never be an expand target.
+    const bad = applyCommand(state, { type: "setExpandTarget", cityId: city.id, target: { col: city.col, row: city.row } });
+    expect(bad.ok).toBe(false);
+    // Setting then clearing leaves no target.
+    const target = expansionCandidates(state, city)[0]!;
+    applyCommand(state, { type: "setExpandTarget", cityId: city.id, target });
+    expect(city.expandTarget).toEqual(target);
+    applyCommand(state, { type: "setExpandTarget", cityId: city.id, target: null });
+    expect(city.expandTarget).toBeUndefined();
+  });
+
+  it("only offers expansion tiles adjacent to a tile the city already owns", () => {
+    const state = createGame({ seed: "terr-adj", cols: 40, rows: 28, barbarians: false });
+    beginTurn(state);
+    const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    const city = citiesOf(state, 0)[0]!;
+    const owned = new Set(cityTerritory(state, city).map((t) => `${t.col},${t.row}`));
+    const cands = expansionCandidates(state, city);
+    expect(cands.length).toBeGreaterThan(0);
+    for (const c of cands) {
+      const touchesOwned = offsetNeighbors(state.map, c.col, c.row).some((n) => owned.has(`${n.col},${n.row}`));
+      expect(touchesOwned).toBe(true);
+    }
+    // A far, unowned tile that touches nothing this city owns is never claimable.
+    expect(canExpandTo(state, city, city.col + 6, city.row)).toBe(false);
   });
 
   it("escorts a foreign unit off land a border expanded around it (no open borders)", () => {

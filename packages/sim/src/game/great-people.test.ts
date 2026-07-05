@@ -172,6 +172,76 @@ describe("great people: activation", () => {
   });
 });
 
+describe("great prophets: faith burst + secondary gift", () => {
+  it("every prophet gives a smaller faith burst than of old, plus a unique gift", () => {
+    for (const g of GREAT_PEOPLE.filter((p) => p.cls === "prophet")) {
+      expect(g.effect).toBe("revelation");
+      expect(g.prophetGift, `${g.name} should carry a secondary gift`).toBeTruthy();
+    }
+  });
+
+  it("Zarathustra grants a timed faith-on-kill fervour on top of faith", () => {
+    const state = newGame();
+    const player = playerById(state, 0)!;
+    addCity(state, 0, ["shrine"], true);
+    player.greatPeople = ["zarathustra"];
+    const faithBefore = player.faith;
+    activateGreatPerson(state, player, "zarathustra");
+    expect(player.faith).toBe(faithBefore + 110);
+    const mod = player.modifiers.find((m) => m.effect.faithOnKill);
+    expect(mod?.effect.faithOnKill).toBe(6);
+    expect(mod?.expiresOnTurn).toBe(state.turn + 10);
+  });
+
+  it("Confucius raises a Temple in temple-less cities", () => {
+    const state = newGame();
+    const player = playerById(state, 0)!;
+    const a = addCity(state, 0, [], true);
+    a.population = 5;
+    const b = addCity(state, 0, [], false);
+    b.population = 3;
+    const c = addCity(state, 0, ["temple"], false); // already has one — untouched
+    player.greatPeople = ["confucius"];
+    activateGreatPerson(state, player, "confucius");
+    expect(a.buildings).toContain("temple");
+    expect(b.buildings).toContain("temple");
+    expect(c.buildings.filter((x) => x === "temple")).toHaveLength(1);
+  });
+
+  it("Siddhartha mends every wounded unit to full", () => {
+    const state = newGame();
+    const player = playerById(state, 0)!;
+    addCity(state, 0, [], true);
+    const wounded = unitsOf(state, 0)[0]!;
+    wounded.hp = 30;
+    player.greatPeople = ["siddhartha"];
+    activateGreatPerson(state, player, "siddhartha");
+    expect(wounded.hp).toBeGreaterThan(30);
+  });
+
+  it("Augustine ordains free Missionaries", () => {
+    const state = newGame();
+    const player = playerById(state, 0)!;
+    addCity(state, 0, [], true);
+    const before = unitsOf(state, 0).filter((u) => u.type === "missionary").length;
+    player.greatPeople = ["augustine"];
+    activateGreatPerson(state, player, "augustine");
+    const after = unitsOf(state, 0).filter((u) => u.type === "missionary").length;
+    expect(after).toBe(before + 2);
+  });
+
+  it("Aquinas grants faith AND a science burst", () => {
+    const state = newGame();
+    const player = playerById(state, 0)!;
+    const faithBefore = player.faith;
+    const sciBefore = player.scienceProgress;
+    player.greatPeople = ["aquinas"];
+    activateGreatPerson(state, player, "aquinas");
+    expect(player.faith).toBe(faithBefore + 110);
+    expect(player.scienceProgress).toBe(sciBefore + 150);
+  });
+});
+
 describe("great people vs legends: no double-dipping", () => {
   it("no historical person appears in both rosters", () => {
     // A person lives in ONE system: either a Great Person or a Legend, never

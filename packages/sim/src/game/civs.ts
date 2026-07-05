@@ -8,6 +8,7 @@ import {
   GOVERNMENTS,
   getCiv,
   getCivic,
+  civicCost,
   getGovernment,
   getPolicy,
   getBelief,
@@ -37,7 +38,7 @@ import { legendEmpireEffects, legendGarrisonEffects } from "./legend-effects";
 import type { GameState, Player, Unit, City } from "./state";
 import { playerById, citiesOf } from "./state";
 
-export { CIVILIZATIONS, getCiv, CIVICS, GOVERNMENTS, getCivic, getGovernment, getPolicy, nextCityNameForCiv };
+export { CIVILIZATIONS, getCiv, CIVICS, GOVERNMENTS, getCivic, civicCost, getGovernment, getPolicy, nextCityNameForCiv };
 export { UNIQUE_UNITS, UNIQUE_UNIT_IDS, uniqueUnitForCiv, getUniqueUnit };
 export { UNIQUE_INFRA, UNIQUE_IMPROVEMENTS, uniqueInfraForCiv, uniqueBuildingForCiv, uniqueImprovementForCiv, getUniqueInfra };
 export type { CivDef, CivEffects, CivicDef, GovernmentDef, UniqueUnitDef, UniqueInfraDef };

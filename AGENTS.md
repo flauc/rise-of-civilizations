@@ -247,7 +247,33 @@ bun run tools/art-generator/generate.ts --subset village-rewards
 # Generate barbarian camp cleared illustration and copy it to the client
 bun run tools/art-generator/generate.ts --barbarian-reward barb_camp_cleared
 # (then copy assets/generated/barbarian_rewards/*.png to packages/client/public/barbarian-rewards/)
+
+# Generate the whole emoji-icon set (the hand-painted PNGs that replace UI emoji)
+bun run tools/art-generator/generate.ts --subset emoji-icons
+# Or generate a single new emoji icon (cheaper — regenerate only what you added)
+bun run tools/art-generator/generate.ts --emoji-icon ic_flag_planted
+# (then copy assets/generated/icons/*.png to packages/client/public/icons/)
 ```
+
+### Adding a new emoji to the UI (IMPORTANT)
+
+The UI is authored with emoji (🪙, ⚔, 🔬 …), but every emoji is swapped at runtime
+for a hand-painted PNG by the emoji→icon bridge in `packages/client/src/icons.ts`
+(DOM via the patched `innerHTML` setter, canvas via `drawGlyph`). **Any emoji not
+registered in that bridge renders as the raw system emoji, which looks out of place
+next to the generated icons.** So whenever you introduce a *new* emoji anywhere in the
+client UI you MUST:
+
+1. Add it to `EMOJI_ICON` in `packages/client/src/icons.ts` (`"🚩": "ic_flag_planted"`).
+2. Add a matching `[id, description]` entry to `EMOJI_ICON_DEFS` in
+   `tools/art-generator/config.ts` (the `id` must equal the value side above).
+3. Generate the PNG and copy it in:
+   `bun run tools/art-generator/generate.ts --emoji-icon <id>` then copy
+   `assets/generated/icons/<id>.png` to `packages/client/public/icons/`.
+
+Until the PNG exists the bridge is self-healing (it falls back to the emoji), so the
+code is safe to ship, but the icon looks unfinished — don't consider a new emoji done
+until its icon is generated. Prefer reusing an already-registered emoji when one fits.
 
 Leader portraits are generated as a `leader` asset subset and copied from
 `assets/generated/leaders/` to `packages/client/public/leaders/` so the Start
@@ -275,3 +301,4 @@ It requires `GEMINI_API_KEY` and ImageMagick (`magick`). See
 - `shared` and `sim` must not import Node/Bun/DOM modules. If you need crypto, timers, or storage, do it in the client or server package.
 - Civilization definitions (including civilization-specific city names) live in `packages/data/src/index.ts`. Unit/tech/building content is still defined in `packages/sim/src/game/content.ts`.
 - `tools/geodata-poc` has its own `package.json` and `node_modules`; it is not part of the Bun workspace and uses npm.
+- Never introduce a new emoji in the client UI without registering it in the emoji→icon bridge and generating its PNG — see "Adding a new emoji to the UI" under Art generation. An unregistered emoji renders as the raw system glyph, inconsistent with the generated icon set.

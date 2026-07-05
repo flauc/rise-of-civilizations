@@ -2,7 +2,7 @@
 // expands it outward as its population grows. Worked tiles must lie inside a
 // city's territory (see economy.ts), so borders drive the economy too.
 
-import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
+import { axialDistance, axialNeighbors, axialToOffset, getTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City } from "./state";
 import { cityAt } from "./state";
 
@@ -37,26 +37,63 @@ export function foundTerritory(state: GameState, city: City): void {
   });
 }
 
-/** Claim the nearest unowned tile within range — called when the city grows. */
-export function expandTerritory(state: GameState, city: City, count = 1): void {
+/** Can this city claim (col,row) next? It must be unowned, not another city, within
+ *  the max radius, AND immediately adjacent to a tile the city already owns — borders
+ *  only ever grow outward from their own edge, never jumping across a gap. */
+export function canExpandTo(state: GameState, city: City, col: number, row: number): boolean {
+  const tile = getTile(state.map, col, row);
+  if (!tile || tile.ownerCityId !== undefined) return false;
+  if (cityAt(state, col, row)) return false; // don't swallow another city's tile
+  const axial = offsetToAxial({ col, row });
   const center = offsetToAxial({ col: city.col, row: city.row });
+  if (axialDistance(center, axial) > MAX_RADIUS) return false;
+  // Must touch an already-owned tile of this city (contiguous growth only).
+  for (const n of axialNeighbors(axial)) {
+    const o = axialToOffset(n);
+    if (getTile(state.map, o.col, o.row)?.ownerCityId === city.id) return true;
+  }
+  return false;
+}
+
+/** Every tile the city could claim next (unowned, in range) — for the picker UI. */
+export function expansionCandidates(state: GameState, city: City): { col: number; row: number }[] {
+  const out: { col: number; row: number }[] = [];
+  forEachInRadius(state, city.col, city.row, MAX_RADIUS, (col, row) => {
+    if (canExpandTo(state, city, col, row)) out.push({ col, row });
+  });
+  return out;
+}
+
+/** The tile the city would claim next by default: the nearest unowned tile in range. */
+export function nextExpansionTile(state: GameState, city: City): { col: number; row: number } | null {
+  const center = offsetToAxial({ col: city.col, row: city.row });
+  let best: { col: number; row: number } | null = null;
+  let bestD = Infinity;
+  forEachInRadius(state, city.col, city.row, MAX_RADIUS, (col, row) => {
+    if (!canExpandTo(state, city, col, row)) return;
+    const d = axialDistance(center, offsetToAxial({ col, row }));
+    if (d < bestD) {
+      bestD = d;
+      best = { col, row };
+    }
+  });
+  return best;
+}
+
+/** Claim a tile within range when the city grows. Honours the player's chosen
+ *  `expandTarget` when it's still claimable, otherwise takes the nearest tile. */
+export function expandTerritory(state: GameState, city: City, count = 1): void {
   for (let n = 0; n < count; n++) {
-    let bestCol = -1;
-    let bestRow = -1;
-    let bestD = Infinity;
-    forEachInRadius(state, city.col, city.row, MAX_RADIUS, (col, row) => {
-      const tile = getTile(state.map, col, row);
-      if (!tile || tile.ownerCityId !== undefined) return;
-      if (cityAt(state, col, row)) return; // don't swallow another city's tile
-      const d = axialDistance(center, offsetToAxial({ col, row }));
-      if (d <= MAX_RADIUS && d < bestD) {
-        bestD = d;
-        bestCol = col;
-        bestRow = row;
-      }
-    });
-    if (bestCol < 0) return; // nothing left to claim
-    claim(state, city, bestCol, bestRow);
+    const pick = city.expandTarget;
+    if (pick && canExpandTo(state, city, pick.col, pick.row)) {
+      claim(state, city, pick.col, pick.row);
+      city.expandTarget = undefined; // consumed — fall back to auto for the next grow
+      continue;
+    }
+    if (pick) city.expandTarget = undefined; // stale pick (now owned/out of range) — drop it
+    const next = nextExpansionTile(state, city);
+    if (!next) return; // nothing left to claim
+    claim(state, city, next.col, next.row);
   }
 }
 

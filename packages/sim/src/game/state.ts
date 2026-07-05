@@ -154,6 +154,10 @@ export interface City {
    *  (military only) training units toward the given focus, falling back to
    *  generic development otherwise. Undefined = fully manual (default). */
   autoMode?: CityAutoFocus;
+  /** Player-chosen tile to claim next when the borders grow. Cleared once claimed
+   *  (or discarded if it becomes unreachable/owned). Undefined = auto-pick the
+   *  nearest unowned tile, the default behaviour. See territory.ts expandTerritory. */
+  expandTarget?: { col: number; row: number };
   /** Dominant religion id in this city (undefined = none). Derived cache of the
    *  max-pressure religion in `religionPressure`, recomputed each spread tick. */
   religion?: string;
