@@ -20,7 +20,7 @@ import { isMilitary, type UnitTypeId } from "./content";
 import { unitMaxHp } from "./combat";
 import { hasMorale, onBarbCampCleared, onUnitPromoted, onVillageGlobalMorale, onVillageUnitMorale, startingUnitMorale } from "./morale";
 import { availableTechs, autoAssignCitizens } from "./economy";
-import { getCivic, unitDisplayName } from "./civs";
+import { getGovernment, unitDisplayName } from "./civs";
 import { expandTerritory } from "./territory";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
@@ -120,7 +120,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
   const barbId = barbarianId(state);
 
   // Weighted reward table (negative outcome is rare). A civic boost is only
-  // offered to civs that have engaged the culture tree (researchingCivic set);
+  // offered to civs that have engaged the culture tree (researchingGovernment set);
   // when they have not, that band falls through to the next eligible reward.
   const roll = rng.next();
   if (roll < 0.18 && techs.length > 0) {
@@ -192,12 +192,12 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       tile: { col: unit.col, row: unit.row },
       reward: "faith",
     });
-  } else if (roll < 0.82 && player.researchingCivic) {
-    // Village elders share their customs — progress toward the current civic.
+  } else if (roll < 0.82 && player.researchingGovernment) {
+    // Village elders share their customs — progress toward the current government.
     const culture = 30 + Math.floor(rng.next() * 30);
     player.cultureProgress += culture;
-    const civicName = getCivic(player.researchingCivic)?.name ?? "their customs";
-    log(state, `Village elders taught ${player.name} the ways of ${civicName}.`, {
+    const govName = getGovernment(player.researchingGovernment)?.name ?? "their customs";
+    log(state, `Village elders taught ${player.name} the ways of ${govName}.`, {
       actorId: player.id,
       targetIds: [player.id],
       tile: { col: unit.col, row: unit.row },

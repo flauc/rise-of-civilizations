@@ -170,12 +170,12 @@ describe("map features", () => {
     const unit = firstUnit(state, 0);
     const player = state.players[0]!;
 
-    // No civic in progress: the civic band must never be handed out.
-    player.researchingCivic = null;
+    // No government in progress: the civic band must never be handed out.
+    player.researchingGovernment = null;
     expect(sampleVillageRewards(state, unit, player).has("civic")).toBe(false);
 
-    // Now researching a civic: the boost becomes possible and adds culture progress.
-    player.researchingCivic = "code_of_laws";
+    // Now researching a government: the boost becomes possible and adds culture progress.
+    player.researchingGovernment = "despotism";
     const cultureBefore = player.cultureProgress;
     const rewards = sampleVillageRewards(state, unit, player);
     expect(rewards.has("civic")).toBe(true);

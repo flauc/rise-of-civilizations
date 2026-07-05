@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.4.1";
+export const CURRENT_VERSION = "0.5.0";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,48 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.5.0",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "A tree of governments",
+        desc:
+          "Governments are no longer a simple ladder of ever-better upgrades. They now form a branching tree you research with culture — the same way you research technology with science — spreading across three lineages: Authority, Assembly and Faith. Despotism and Tyranny rule by force; Councils and Republics by the citizenry; Priest-Kingships and Theocracies by the gods. Each carries its own strengths and a real weakness, and the government you hold decides which civics you may enact — so your form of rule is the spine of your whole strategy, not just a count of slots.",
+      },
+      {
+        tag: "New",
+        title: "Civics are bargains, not bonuses",
+        desc:
+          "Every civic now carries a cost as well as a gift. Standing Army makes every soldier fiercer but drains your treasury to feed them; Open Markets pours gold in peacetime but chokes in war; Border Wardens harden your troops at home yet leave them weaker abroad. Buy civics with your culture, slot the ones your government allows, and swap them as the war turns — the right civics for a marching empire are the wrong ones for a peaceful one.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Revolutions cost blood",
+        desc:
+          "Changing government is no longer free. Your first is a celebration, and stepping deeper within the same lineage brings only a brief unrest — but abandoning your lineage for another is a revolution: three turns of turmoil in which every city's output falls by a quarter and your slotted civics fall dormant. Choose your path with care; you can't turn on a coin.",
+      },
+      {
+        tag: "Balance",
+        title: "A new order, weighed and measured",
+        desc:
+          "Forty-three civics and fifteen governments arrive fully costed against one another, tier by tier, so no single card or constitution towers over its peers. Powers that only bite in certain moments — at war, on home soil, or against another faith — are priced for how often they truly matter, and every con is a genuine sacrifice rather than a token.",
+      },
+      {
+        tag: "UI",
+        title: "Know your government",
+        desc:
+          "A rebuilt Governments & Civics panel lays the whole tree bare: research the next form of rule, switch with a clear warning of the unrest it will cost, and slot your civics with their upsides in green and their costs in red. The in-game encyclopedia gains full Governments and Civics pages, every entry's trade-offs spelled out.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Rivals rule with intent",
+        desc:
+          "Rival empires now navigate the new tree with a mind of their own — warlords drive down the Authority line, builders and scholars toward the Assembly, the devout toward Faith — researching governments, adopting the civics that suit their temperament, and weighing whether a revolution is worth its unrest before they ever commit to one.",
+      },
+    ],
+  },
   {
     version: "0.4.1",
     date: "July 2026",

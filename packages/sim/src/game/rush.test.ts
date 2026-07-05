@@ -44,8 +44,9 @@ describe("rush production", () => {
     const { s } = gameWithCity();
     expect(rushCurrencies(s, 0)).toEqual(["gold"]);
 
-    // A civics policy unlocks culture rushing.
-    playerById(s, 0)!.policies.push("corvee");
+    // A slotted civic (Corvée) unlocks culture rushing.
+    playerById(s, 0)!.civicsAdopted.add("corvee_labor");
+    playerById(s, 0)!.slottedCivics.push("corvee_labor");
     expect(rushCurrencies(s, 0)).toContain("culture");
 
     // A founded religion with the belief unlocks faith rushing.

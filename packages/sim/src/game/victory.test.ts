@@ -105,7 +105,7 @@ describe("victory", () => {
     const state = createGame({ seed: "vic-civics", cols: 36, rows: 24, barbarians: false });
     const before = scoreBreakdown(state, 0);
     const player = state.players.find((p) => p.id === 0)!;
-    player.civicsResearched.add("code_of_laws");
+    player.civicsAdopted.add("festivals");
     const after = scoreBreakdown(state, 0);
     expect(after.civics - before.civics).toBe(SCORE_WEIGHTS.civic);
   });

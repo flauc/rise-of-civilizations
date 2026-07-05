@@ -5,6 +5,7 @@ A turn-based 4X strategy game (a "Civilization" clone) spanning the **Ancient Er
 ### Design docs
 - **[CIVILIZATIONS.md](CIVILIZATIONS.md)** — full 70+ civ roster (leader, ability, unique unit/infrastructure, bias). Proposed new civs in **[CIVILIZATIONS-EXPANSION.md](CIVILIZATIONS-EXPANSION.md)**.
 - **[TECHNOLOGIES.md](TECHNOLOGIES.md)** — the 85-tech science tree (prereqs, unlocks, eurekas) + civics summary.
+- **[CIVICS-AND-GOVERNMENTS.md](CIVICS-AND-GOVERNMENTS.md)** — the civics/government overhaul: a branching government tree + civics as expensive pros-and-cons cards (design, replaces the shipped flat civics/policies).
 - **[RESOURCES-AND-AMENITIES.md](RESOURCES-AND-AMENITIES.md)** — natural resources (bonus, luxury, strategic), tile yields, and unit/building requirements.
 - **[GREAT-PEOPLE.md](GREAT-PEOPLE.md)** — Great People rosters by class + the Legends (heroes) roster.
 - **[PROMOTIONS.md](PROMOTIONS.md)** — the XP-earned, always-on promotion trees per unit class.

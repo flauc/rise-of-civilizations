@@ -1,13 +1,14 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City, Player, Unit, CityAutoFocus } from "./state";
 import { areEnemies, cityAt, log, makeUnit, playerById, unitAt, unitsOf } from "./state";
+import { isAtWarWithMajor } from "./diplomacy";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, isForestTerrain, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
 import { naturalWonderYields, naturalWonderCulture } from "./natural-wonders";
 import { expandTerritory } from "./territory";
 import { getWonder, uniqueBuildingForCiv, type CivEffects } from "@roc/data";
-import { civEffectsOf, cityEffects, getCivic, civicCost, effectSources, cityEffectSources, type EffectSource } from "./civs";
+import { civEffectsOf, cityEffects, getGovernment, effectSources, cityEffectSources, type EffectSource } from "./civs";
 import { cityTradeYields } from "./trade";
 import { workerSlots } from "./specialists";
 import { cityMaxHp } from "./combat";
@@ -16,7 +17,7 @@ import { advanceTraining } from "./training";
 import { offsetNeighbors, isCoastalLand } from "./movement";
 import {
   emitCityGrew,
-  emitCivicComplete,
+  emitGovernmentComplete,
   emitProductionComplete,
   emitResearchComplete,
   emitTreasuryExhausted,
@@ -364,15 +365,39 @@ export function getCityYields(state: GameState, city: City): CityYields {
   for (const id of empireWonders) applyW(getWonder(id)?.effect.yieldPerCity);
   for (const id of city.wonders) applyW(getWonder(id)?.effect.yieldHostCity);
 
-  // Civ / government / policy / leader-ability yield bonuses (percentage).
-  const pct = eff.yieldPercent;
-  if (pct) {
+  // Civ / government / policy / civic / leader-ability yield bonuses (percentage).
+  // Civics layer CONDITIONAL percentages on top of yieldPercent: while at war with
+  // (or at peace from) a major civ, and a capital-only boost (docs/CIVICS §4).
+  const owner = playerById(state, city.ownerId);
+  const pct: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number } = { ...(eff.yieldPercent ?? {}) };
+  const addPct = (src: typeof pct | undefined): void => {
+    if (!src) return;
+    for (const k of ["food", "production", "gold", "science", "culture", "faith"] as const) {
+      if (src[k]) pct[k] = (pct[k] ?? 0) + src[k]!;
+    }
+  };
+  if (owner && !owner.isBarbarian) {
+    if (isAtWarWithMajor(state, owner)) addPct(eff.warYieldPercent);
+    else addPct(eff.peaceYieldPercent);
+  }
+  if (city.isCapital) addPct(eff.capitalYieldPercent);
+  if (Object.keys(pct).length > 0) {
     food = Math.floor(food * (1 + (pct.food ?? 0) / 100));
     production = Math.floor(production * (1 + (pct.production ?? 0) / 100));
     gold = Math.floor(gold * (1 + (pct.gold ?? 0) / 100));
     science = Math.floor(science * (1 + (pct.science ?? 0) / 100));
     culture = Math.floor(culture * (1 + (pct.culture ?? 0) / 100));
     faith = Math.floor(faith * (1 + (pct.faith ?? 0) / 100));
+  }
+  // Revolution unrest: a government switch costs −25% on every yield until it
+  // settles (docs/CIVICS §2.4).
+  if (owner && owner.unrestTurns > 0) {
+    food = Math.floor(food * 0.75);
+    production = Math.floor(production * 0.75);
+    gold = Math.floor(gold * 0.75);
+    science = Math.floor(science * 0.75);
+    culture = Math.floor(culture * 0.75);
+    faith = Math.floor(faith * 0.75);
   }
   // Non-desert city food penalty/bonus.
   if (centerTile?.terrain !== "desert" && eff.nonDesertCityFoodPercent) {
@@ -719,20 +744,21 @@ export function advanceResearch(state: GameState, owner: Player): void {
   advanceResearchQueue(owner);
 }
 
-/** Complete at most one civic from the empire's accumulated culture. Called once
- *  per player per turn (after every city has added its culture) so a large culture
- *  surplus adopts only a single civic, carrying the remainder into the next. */
-export function advanceCivic(state: GameState, owner: Player): void {
-  if (!owner.researchingCivic) return;
-  const def = getCivic(owner.researchingCivic);
+/** Complete at most one GOVERNMENT node from the empire's accumulated culture.
+ *  Called once per player per turn (after every city has added its culture) so a
+ *  large culture surplus researches only a single government, carrying the
+ *  remainder into the next. Researching a government does NOT switch to it (see
+ *  the setGovernment command). Costs are flat (no escalation). */
+export function advanceGovernment(state: GameState, owner: Player): void {
+  if (!owner.researchingGovernment) return;
+  const def = getGovernment(owner.researchingGovernment);
   if (!def) return;
-  const cost = civicCost(def, owner.civicsResearched.size);
-  if (owner.cultureProgress < cost) return;
-  owner.cultureProgress -= cost;
-  owner.civicsResearched.add(owner.researchingCivic);
-  log(state, `${owner.name} adopted ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
-  emitCivicComplete(state, owner.id, def.name);
-  owner.researchingCivic = null;
+  if (owner.cultureProgress < def.cost) return;
+  owner.cultureProgress -= def.cost;
+  owner.governmentsResearched.add(owner.researchingGovernment);
+  log(state, `${owner.name} developed the ${def.name} form of government.`, { actorId: owner.id, targetIds: [owner.id] });
+  emitGovernmentComplete(state, owner.id, def.name);
+  owner.researchingGovernment = null;
 }
 
 /** Per-unit gold upkeep, modified by the owner's militaryMaintenanceCostMultiplier
@@ -741,7 +767,10 @@ export function unitUpkeep(state: GameState, unit: Unit): number {
   if (unit.freeUpkeep) return 0; // gifted units (e.g. the Colossus's warships) cost nothing to maintain
   const base = UNIT_DEFS[unit.type].upkeep ?? 0;
   if (base <= 0) return 0;
-  const mult = civEffectsOf(state, unit.ownerId).militaryMaintenanceCostMultiplier ?? 1;
+  const eff = civEffectsOf(state, unit.ownerId);
+  // Civics: a unit garrisoned in one of its owner's cities is fed by that city (Royal Garrisons).
+  if (eff.garrisonFreeUpkeep && cityAt(state, unit.col, unit.row)?.ownerId === unit.ownerId) return 0;
+  const mult = (eff.militaryMaintenanceCostMultiplier ?? 1) * (1 + (eff.unitUpkeepPercent ?? 0) / 100);
   const payMult = upkeepGoldMultiplier(playerById(state, unit.ownerId));
   return Math.round(base * mult * payMult);
 }

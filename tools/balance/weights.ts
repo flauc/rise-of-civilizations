@@ -121,6 +121,35 @@ export const PTS = {
 } as const;
 
 // ---------------------------------------------------------------------------
+// Civics & governments (docs/CIVICS-AND-GOVERNMENTS.md §9). Conditional effects
+// are worth a fraction of face value; cons are negative values that subtract.
+// ---------------------------------------------------------------------------
+
+/** A benefit gated on a game state is discounted to its expected value. */
+export const CONDITIONAL_DISCOUNT = {
+  warOrPeace: 0.6, // ⚔ at war / ☮ at peace
+  homeOrForeign: 0.7, // 🏠 in / out of home territory
+  religion: 0.5, // your-vs-their-faith gated
+  capital: 0.4, // capital-only (one city of several)
+} as const;
+
+/** Points for the conditional & M-C1 combat/utility fields the civic catalogue uses. */
+export const CIVIC_PTS = {
+  allUnitCombat: 8, // hits every unit, always on
+  homeCombat: 5, // × homeOrForeign
+  foreignCombat: 5, // × homeOrForeign
+  combatVsOtherReligion: 5, // × religion
+  cityDefenseBonus: 2, // defensive, situational
+  cultureOnKill: 1.5, // per point, per kill
+  faithOnKill: 1.5,
+  enemyReligionPressurePercent: 0.1, // per −1% (suppression is a benefit)
+  garrisonFreeUpkeep: 5,
+  homeHealBonus: 0.9, // × homeOrForeign
+  convertOnCapture: 6, // × religion
+  unitUpkeepPct: 0.3, // per −1% (cheaper = good)
+} as const;
+
+// ---------------------------------------------------------------------------
 // Unique unit — flat combat bonus + bespoke active ability, timed to the base
 // unit it replaces (a Classical UU is worth less than an Ancient one).
 // ---------------------------------------------------------------------------

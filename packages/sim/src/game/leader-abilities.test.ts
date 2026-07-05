@@ -114,7 +114,7 @@ describe("leader abilities — morale & great people", () => {
     const state = createGame({ seed: "la-france", cols: 30, rows: 20, barbarians: false, civIds: ["france"] });
     foundCapital(state);
     const p = player0(state);
-    p.civicsResearched.add("mysticism");
+    p.governmentsResearched.add("despotism"); // a tier-1 government unlocks the ability
     const warrior = unitsOf(state, 0).find((u) => u.type === "warrior")!;
     const beforeGlobal = p.globalMorale;
     const beforeUnit = warrior.morale ?? 100;
@@ -128,7 +128,7 @@ describe("leader abilities — morale & great people", () => {
     const state = createGame({ seed: "la-maurya", cols: 30, rows: 20, barbarians: false, civIds: ["maurya"] });
     foundCapital(state);
     const p = player0(state);
-    p.civicsResearched.add("mysticism");
+    p.governmentsResearched.add("despotism"); // a tier-1 government unlocks the ability
     const warrior = unitsOf(state, 0).find((u) => u.type === "warrior")!;
     const before = warrior.morale ?? 100;
 

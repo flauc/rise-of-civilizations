@@ -6,7 +6,22 @@ import type { GameState, Player, City } from "./state";
 import { citiesOf, log, makeUnit, unitAt, unitsOf } from "./state";
 import { offsetNeighbors, isCoastalLand } from "./movement";
 import { UNIT_DEFS, TECH_DEFS, type TechId, type UnitTypeId } from "./content";
-import { getCivic } from "./civs";
+import { getCivic, getGovernment, governmentTier } from "./civs";
+
+/** Legacy leader-ability civic gates map onto the government tree: each old civic
+ *  id requires reaching at least this government tier (docs/CIVICS migration). */
+const LEGACY_CIVIC_UNLOCK_TIER: Record<string, number> = {
+  mysticism: 1, military_tradition: 1,
+  trade_routes: 2, military_training: 2, political_philosophy: 2,
+  statecraft: 3,
+};
+
+/** Highest government tier the player has researched (0 if only Chiefdom). */
+function maxGovernmentTier(player: Player): number {
+  let max = 0;
+  for (const g of player.governmentsResearched) max = Math.max(max, governmentTier(g));
+  return max;
+}
 import {
   startingUnitMorale,
   adjustGlobalMorale,
@@ -37,7 +52,7 @@ const fail = (error: string): LeaderAbilityResult => ({ ok: false, error });
 
 export function leaderAbilityUnlocked(state: GameState, player: Player, def: LeaderAbilityDef): boolean {
   if (def.unlock.kind === "tech") return player.researched.has(def.unlock.id);
-  return player.civicsResearched.has(def.unlock.id);
+  return maxGovernmentTier(player) >= (LEGACY_CIVIC_UNLOCK_TIER[def.unlock.id] ?? 1);
 }
 
 export function leaderAbilityCooldownRemaining(state: GameState, player: Player, def: LeaderAbilityDef): number {
@@ -148,13 +163,13 @@ function citiesExceptWhere(state: GameState, player: Player, predicate: (c: City
 }
 
 function finishCurrentCivic(state: GameState, player: Player): void {
-  if (!player.researchingCivic) return;
-  const def = getCivic(player.researchingCivic);
+  // Culture now funds the government tree; a leader can rush the current node.
+  if (!player.researchingGovernment) return;
+  const def = getGovernment(player.researchingGovernment);
   if (!def) return;
-  player.cultureProgress = def.cost;
-  player.civicsResearched.add(player.researchingCivic);
-  log(state, `${player.name} completed ${def.name} through a leader ability.`, { actorId: player.id, targetIds: [player.id] });
-  player.researchingCivic = null;
+  player.governmentsResearched.add(player.researchingGovernment);
+  log(state, `${player.name} completed the ${def.name} form of government through a leader ability.`, { actorId: player.id, targetIds: [player.id] });
+  player.researchingGovernment = null;
 }
 
 function stealRandomTech(state: GameState, player: Player): void {
@@ -1998,10 +2013,11 @@ export function getLeaderAbilityForCiv(civId: string): LeaderAbilityDef | undefi
   return LEADER_ABILITIES[civId];
 }
 
-/** Display name of the tech or civic that unlocks a leader ability. */
+/** Display name of the tech or government tier that unlocks a leader ability. */
 export function leaderAbilityUnlockLabel(def: LeaderAbilityDef): string {
   if (def.unlock.kind === "tech") return TECH_DEFS[def.unlock.id].name;
-  return getCivic(def.unlock.id)?.name ?? def.unlock.id;
+  const tier = LEGACY_CIVIC_UNLOCK_TIER[def.unlock.id] ?? 1;
+  return `Tier ${tier} government`;
 }
 
 export function canUseLeaderAbility(state: GameState, player: Player): LeaderAbilityResult {

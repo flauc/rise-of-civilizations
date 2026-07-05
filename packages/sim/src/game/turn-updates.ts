@@ -88,6 +88,15 @@ export function emitCivicComplete(state: GameState, playerId: number, civicName:
   });
 }
 
+export function emitGovernmentComplete(state: GameState, playerId: number, governmentName: string): void {
+  emitTurnUpdate(state, {
+    type: "governmentComplete",
+    playerId,
+    message: `${governmentName} researched.`,
+    payload: { governmentName },
+  });
+}
+
 export function emitImprovementComplete(
   state: GameState,
   playerId: number,

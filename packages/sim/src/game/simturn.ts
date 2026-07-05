@@ -9,7 +9,7 @@
 import type { GameState } from "./state";
 import { unitMovement } from "./civs";
 import { healAndReset, towerBombardment } from "./combat";
-import { processCity, advanceResearch, advanceCivic, applyUnitUpkeep } from "./economy";
+import { processCity, advanceResearch, advanceGovernment, applyUnitUpkeep } from "./economy";
 import { barbarianTurn } from "./barbarians";
 import { updateExplored } from "./visibility";
 import { applyVictoryCheck } from "./victory";
@@ -71,7 +71,8 @@ export function resolveSimultaneousTurn(state: GameState): void {
     }
     autoManageCities(state, p); // governor mode: opted-in cities manage themselves
     advanceResearch(state, p); // complete at most one tech from the pooled science
-    advanceCivic(state, p); // and at most one civic from the pooled culture
+    advanceGovernment(state, p); // and at most one government node from the pooled culture
+    if (p.unrestTurns > 0) { p.unrestTurns -= 1; if (p.unrestTurns === 0) p.unrestEndedTurn = state.turn + 1; }
     applyUnitUpkeep(state, p); // empire-wide unit maintenance after city income
     advanceWorks(state, p.id); // specialists labour on public works
   }

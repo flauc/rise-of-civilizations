@@ -1,10 +1,10 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
-import type { City, GameState, ProductionItem } from "./state";
+import type { City, GameState, Player, ProductionItem } from "./state";
 import { cityAt, currentPlayer, log, playerById, unitsOf, citiesOf, unitAt, areEnemies } from "./state";
 import { isPassableLand, isWaterTerrain } from "./terrain";
 import { computeReachable, isCoastalLand, isCoastalWater, isNavalUnit, isWaterDomain, ejectTrespassers } from "./movement";
 import { updateExplored } from "./visibility";
-import { processCity, advanceResearch, advanceCivic, availableProduction, autoAssignCitizens, toggleCitizen, applyUnitUpkeep } from "./economy";
+import { processCity, advanceResearch, advanceGovernment, availableProduction, autoAssignCitizens, toggleCitizen, applyUnitUpkeep } from "./economy";
 import {
   cityMaxHp,
   healAndReset,
@@ -62,12 +62,14 @@ import { gatherPlayerResources } from "./resources";
 import {
   civEffectsOf,
   unitMovement,
-  civicUnlocked,
   civicsUnlocked,
-  availableGovernments,
-  unlockedPolicies,
+  researchableGovernmentsFor,
+  switchableGovernments,
+  civicSlotCapacity,
   getCivic,
   getGovernment,
+  civicCost,
+  civicLegal,
   nextCityNameForCiv,
   unitDisplayName,
 } from "./civs";
@@ -75,6 +77,50 @@ import { aiTakeTurn, autoManageCities, governorPickProduction } from "./ai";
 import { onUnitPromoted, decayGlobalMorale, UPKEEP_MODIFIER_MIN, UPKEEP_MODIFIER_MAX } from "./morale";
 import { UNIT_DEFS, TECH_DEFS, techUnlocked, computeResearchPath, advanceResearchQueue, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId, type UnitTypeId } from "./content";
 import { startTraining, cancelTraining } from "./training";
+
+/** Turns before a player may switch government again (docs/CIVICS §2.4). */
+const GOVERNMENT_SWITCH_COOLDOWN = 10;
+
+/** A window in which civic swaps are free: the turn a civic was adopted, or the
+ *  player's first turn after post-revolution unrest ends (docs/CIVICS §3.2). */
+function inFreeReslotWindow(state: GameState, player: Player): boolean {
+  return (player.lastCivicAdoptedTurn ?? -Infinity) === state.turn
+    || (player.unrestEndedTurn ?? -Infinity) === state.turn;
+}
+
+/** Switch to an already-researched government, paying its unrest cost and
+ *  re-validating slotted civics (docs/CIVICS §2.4). First adoption from Chiefdom
+ *  is free; a same-lineage step costs 1 turn of unrest; an off-lineage revolution
+ *  costs 3. Civics no longer legal auto-unslot; the rest are trimmed to the new
+ *  slot count (they stay adopted, and lie dormant until unrest ends). */
+function switchGovernment(state: GameState, player: Player, targetId: string): void {
+  const from = getGovernment(player.government);
+  const to = getGovernment(targetId)!;
+  let unrest: number;
+  if (player.government === "chiefdom") unrest = 0;
+  else if (from && from.branch.some((b) => to.branch.includes(b))) unrest = 1;
+  else unrest = 3;
+  player.government = targetId;
+  player.governmentChangedTurn = state.turn;
+  player.unrestTurns = unrest;
+  player.slottedCivics = player.slottedCivics.filter((id) => civicLegal(targetId, id));
+  const cap = civicSlotCapacity(player);
+  if (player.slottedCivics.length > cap) player.slottedCivics = player.slottedCivics.slice(0, cap);
+  if (unrest > 0) {
+    log(state, `${player.name} embraced ${to.name} — ${unrest} turn${unrest > 1 ? "s" : ""} of unrest grip the realm.`, { actorId: player.id, targetIds: [player.id] });
+  } else {
+    log(state, `${player.name} established its first government: ${to.name}.`, { actorId: player.id, targetIds: [player.id] });
+  }
+}
+
+/** Wind down unrest by one turn; the turn it hits zero opens a free re-slot
+ *  window on the player's next turn (docs/CIVICS §2.4). */
+function tickUnrest(state: GameState, player: Player): void {
+  if (player.unrestTurns > 0) {
+    player.unrestTurns -= 1;
+    if (player.unrestTurns === 0) player.unrestEndedTurn = state.turn + 1;
+  }
+}
 
 export type Command =
   | { type: "move"; unitId: number; col: number; row: number }
@@ -101,9 +147,11 @@ export type Command =
   | { type: "setExpandTarget"; cityId: number; target: { col: number; row: number } | null }
   | { type: "setResearch"; techId: TechId }
   | { type: "setResearchTarget"; techId: TechId }
-  | { type: "setCivic"; civicId: string }
+  | { type: "setResearchGovernment"; governmentId: string }
   | { type: "setGovernment"; governmentId: string }
-  | { type: "togglePolicy"; policyId: string }
+  | { type: "adoptCivic"; civicId: string }
+  | { type: "slotCivic"; civicId: string }
+  | { type: "unslotCivic"; civicId: string }
   | { type: "foundReligion"; cityId: number; name: string; beliefs: string[] }
   | { type: "buyReligiousUnit"; cityId: number; unit: UnitTypeId }
   | { type: "evangelize"; unitId: number; cityId: number }
@@ -171,7 +219,8 @@ export function beginTurn(state: GameState): void {
   }
   autoManageCities(state, player); // governor mode: opted-in cities manage themselves
   advanceResearch(state, player); // complete at most one tech from the pooled science
-  advanceCivic(state, player); // and at most one civic from the pooled culture
+  advanceGovernment(state, player); // and at most one government node from the pooled culture
+  tickUnrest(state, player); // wind down post-revolution unrest (opens a free re-slot window)
   ejectTrespassers(state); // bump any unit a freshly-expanded border just enclosed off foreign soil
   applyUnitUpkeep(state, player); // empire-wide unit maintenance after city income
   processTransit(state, player.id); // deliver religious units riding trade routes
@@ -537,13 +586,13 @@ export function applyCommand(
       return ok;
     }
 
-    case "setCivic": {
-      if (!civicsUnlocked(player)) return fail("civics not unlocked yet");
-      if (player.civicsResearched.has(cmd.civicId)) return fail("already adopted");
-      if (!civicUnlocked(player.civicsResearched, cmd.civicId)) return fail("prereqs not met");
-      const def = getCivic(cmd.civicId);
-      if (!def) return fail("no such civic");
-      player.researchingCivic = cmd.civicId;
+    case "setResearchGovernment": {
+      if (!civicsUnlocked(player)) return fail("government tree not unlocked yet");
+      const def = getGovernment(cmd.governmentId);
+      if (!def) return fail("no such government");
+      if (player.governmentsResearched.has(cmd.governmentId)) return fail("already researched");
+      if (!researchableGovernmentsFor(player).includes(cmd.governmentId)) return fail("prereqs not met");
+      player.researchingGovernment = cmd.governmentId;
       log(state, `${player.name} is developing ${def.name}.`, { actorId: player.id, targetIds: [player.id] });
       return ok;
     }
@@ -551,23 +600,51 @@ export function applyCommand(
     case "setGovernment": {
       const gov = getGovernment(cmd.governmentId);
       if (!gov) return fail("no such government");
-      if (!availableGovernments(player).includes(cmd.governmentId)) return fail("government not unlocked");
-      player.government = cmd.governmentId;
-      if (player.policies.length > gov.slots) player.policies = player.policies.slice(0, gov.slots);
-      log(state, `${player.name} adopted ${gov.name}.`, { actorId: player.id, targetIds: [player.id] });
+      if (cmd.governmentId === player.government) return fail("already governing this way");
+      if (!switchableGovernments(player).includes(cmd.governmentId)) return fail("government not researched");
+      if (state.turn - player.governmentChangedTurn < GOVERNMENT_SWITCH_COOLDOWN) return fail("too soon since the last change");
+      switchGovernment(state, player, cmd.governmentId);
       return ok;
     }
 
-    case "togglePolicy": {
-      const idx = player.policies.indexOf(cmd.policyId);
-      if (idx >= 0) {
-        player.policies.splice(idx, 1);
-        return ok;
+    case "adoptCivic": {
+      if (!civicsUnlocked(player)) return fail("civics not unlocked yet");
+      const def = getCivic(cmd.civicId);
+      if (!def) return fail("no such civic");
+      if (player.civicsAdopted.has(cmd.civicId)) return fail("already adopted");
+      if (!civicLegal(player.government, cmd.civicId)) return fail("not legal under your government");
+      if ((player.lastCivicAdoptedTurn ?? -Infinity) === state.turn) return fail("only one civic may be adopted per turn");
+      const cost = civicCost(def, player.civicsAdopted.size);
+      if (player.cultureProgress < cost) return fail("not enough culture");
+      player.cultureProgress -= cost;
+      player.civicsAdopted.add(cmd.civicId);
+      player.lastCivicAdoptedTurn = state.turn;
+      // A newly adopted civic slots for free if there is room.
+      if (player.slottedCivics.length < civicSlotCapacity(player)) player.slottedCivics.push(cmd.civicId);
+      log(state, `${player.name} adopted the ${def.name} civic.`, { actorId: player.id, targetIds: [player.id] });
+      return ok;
+    }
+
+    case "slotCivic": {
+      if (!player.civicsAdopted.has(cmd.civicId)) return fail("civic not adopted");
+      if (player.slottedCivics.includes(cmd.civicId)) return fail("already slotted");
+      if (!civicLegal(player.government, cmd.civicId)) return fail("not legal under your government");
+      if (player.slottedCivics.length >= civicSlotCapacity(player)) return fail("no free civic slots");
+      player.slottedCivics.push(cmd.civicId);
+      return ok;
+    }
+
+    case "unslotCivic": {
+      const idx = player.slottedCivics.indexOf(cmd.civicId);
+      if (idx < 0) return fail("civic not slotted");
+      // Swapping a civic out costs 10% of its base tier cost — unless this is a
+      // free re-slot window (the turn you adopt, or the turn unrest ends).
+      if (!inFreeReslotWindow(state, player)) {
+        const fee = Math.round((getCivic(cmd.civicId)?.cost ?? 0) * 0.1);
+        if (player.cultureProgress < fee) return fail("not enough culture for the swap fee");
+        player.cultureProgress -= fee;
       }
-      const slots = getGovernment(player.government)?.slots ?? 0;
-      if (!unlockedPolicies(player).includes(cmd.policyId)) return fail("policy not unlocked");
-      if (player.policies.length >= slots) return fail("no free policy slots");
-      player.policies.push(cmd.policyId);
+      player.slottedCivics.splice(idx, 1);
       return ok;
     }
 

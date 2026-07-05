@@ -14,7 +14,7 @@ import { computeAttackTargets, unitMaxHp } from "./combat";
 import { abilityTargets, canUseAbility, unitAbilities } from "./abilities";
 import { religionUnitKit, religionInstanceForDefId, cityMajorityFaith } from "./religion-units";
 import { availableProduction, availableTechs, workableTiles } from "./economy";
-import { availableCivics, availableGovernments, unlockedPolicies, getGovernment } from "./civs";
+import { adoptableCivics, researchableGovernmentsFor, switchableGovernments, slottableCivics, civicSlotCapacity, getCivic, getGovernment, governmentTier, CIVICS, civicLegal } from "./civs";
 import { canFoundReligion, availableReligionNames, buyReligiousUnit, religiousUnitCost, availablePerks, canUpgradeReligion, nextTierRequirement, takenPerkIds } from "./religion";
 import { availableLegends, canRecruitLegend } from "./legends";
 import { canUseLeaderAbility } from "./leader-abilities";
@@ -23,7 +23,7 @@ import { aiConsiderDiplomacy, atWar, personalityOf, proposeDeal, relationBetween
 import { availablePromotions } from "./combat";
 import { rushCurrencies, canRushWork, canRushTraining, canRushCity, type RushCurrency } from "./rush";
 import { availableTraining } from "./training";
-import { BELIEFS, WONDER_DEFS, getPolicy, type DiploPersonality } from "@roc/data";
+import { BELIEFS, WONDER_DEFS, type CivEffects, type DiploPersonality } from "@roc/data";
 import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
 import {
   nextTierAt,
@@ -96,29 +96,87 @@ function pickTech(techs: TechId[], p: DiploPersonality, atWarNow: boolean): Tech
 }
 
 /** Crude classification of a policy/belief effect bag for personality weighting. */
-function effectScore(effects: Record<string, unknown> | undefined, p: DiploPersonality, atWarNow: boolean): number {
-  if (!effects) return 1;
-  const e = effects as Record<string, unknown>;
-  const s = JSON.stringify(e);
-  const martial = e.unitClassCombat !== undefined || e.cavalryMovementBonus !== undefined;
-  const rushPerk = e.rushWithFaith === true || e.rushWithCulture === true;
+/** A personality- and war-state-weighted score for a bundle of effects. Cons are
+ *  negative values in the same object and subtract naturally; conditional fields
+ *  (war/peace/capital/home/religion) are discounted to their expected value the way
+ *  the balance scorer does (docs/CIVICS §7.4, §9). Used to rank civics, governments,
+ *  and religion perks alike. */
+function effectScore(effects: CivEffects | undefined, p: DiploPersonality, atWarNow: boolean): number {
+  if (!effects) return 0;
+  const e = effects;
   const warMinded = atWarNow || p.aggression > 0.6;
-  let v = 1;
-  if (rushPerk) v += 2; // rushing is broadly powerful
-  if (martial) v += warMinded ? 3 : 0.5;
-  if (/yieldPercent/.test(s)) {
-    if (/science/.test(s)) v += warMinded ? 1 : 2.5;
-    if (/gold/.test(s)) v += p.greed > 0.6 ? 2.5 : 1;
-    if (/food|production/.test(s)) v += 2;
-  }
+  let v = 0;
+  // ~0.1 pt per 1% of a weighted yield (science cheap in war, gold prized by the greedy).
+  const yieldW = (k: string): number =>
+    k === "science" ? (warMinded ? 0.6 : 1.4)
+    : k === "gold" ? (p.greed > 0.6 ? 1.4 : 1)
+    : k === "production" || k === "food" ? 1.2
+    : k === "culture" ? 1.1
+    : 1;
+  const yields = (obj: Record<string, number | undefined> | undefined, disc: number): void => {
+    if (!obj) return;
+    for (const [k, val] of Object.entries(obj)) if (val) v += val * yieldW(k) * 0.1 * disc;
+  };
+  yields(e.yieldPercent, 1);
+  yields(e.warYieldPercent, warMinded ? 0.6 : 0.15); // only worth it if you fight
+  yields(e.peaceYieldPercent, warMinded ? 0.15 : 0.6);
+  yields(e.capitalYieldPercent, 0.35); // one city out of many
+  const combat = (n: number, disc = 1): void => { v += (warMinded ? 3 : 0.8) * n * 0.5 * disc; };
+  if (e.allUnitCombat) combat(e.allUnitCombat);
+  if (e.homeCombat) combat(e.homeCombat, 0.7);
+  if (e.foreignCombat) combat(e.foreignCombat, warMinded ? 0.7 : 0.3);
+  if (e.combatVsOtherReligion) combat(e.combatVsOtherReligion, 0.5);
+  if (e.unitClassCombat) for (const val of Object.values(e.unitClassCombat)) combat(val, 0.6);
+  if (e.meleeVsCityBonus) combat(e.meleeVsCityBonus, 0.5);
+  if (e.cityDefenseBonus) v += e.cityDefenseBonus * 0.3;
+  if (e.trainTimePercent) v += -e.trainTimePercent * (warMinded ? 0.06 : 0.02); // faster = good
+  if (e.unitUpkeepPercent) v += -e.unitUpkeepPercent * 0.03; // cheaper = good
+  if (e.militaryMaintenanceCostMultiplier) v += -(e.militaryMaintenanceCostMultiplier - 1) * 3;
+  if (e.raidGoldPercent) v += e.raidGoldPercent * (warMinded ? 0.02 : 0.005);
+  if (e.coastalRaidGoldPercent) v += e.coastalRaidGoldPercent * (warMinded ? 0.015 : 0.004);
+  if (e.raidSciencePercent) v += e.raidSciencePercent * (warMinded ? 0.01 : 0.003);
+  if (e.rushWithFaith || e.rushWithCulture) v += 2; // rushing is broadly powerful
+  if (e.garrisonFreeUpkeep) v += 1;
+  if (e.convertOnCapture) v += warMinded ? 1.5 : 0.3;
+  if (e.tradeRouteCapacityBonus) v += e.tradeRouteCapacityBonus * (p.greed > 0.6 ? 1.2 : 0.8);
+  if (e.tradeRouteGoldBonus) v += e.tradeRouteGoldBonus * 0.4;
+  if (e.tradeRouteFaithBonus) v += e.tradeRouteFaithBonus * 0.3;
+  if (e.enemyReligionPressurePercent) v += -e.enemyReligionPressurePercent * 0.02;
+  if (e.startMoraleBonus) v += e.startMoraleBonus * 0.05;
+  if (e.startXpBonus) v += e.startXpBonus * 0.05;
+  if (e.trainingSlotsBonus) v += e.trainingSlotsBonus * (warMinded ? 1.5 : 0.6);
+  if (e.cavalryMovementBonus) v += e.cavalryMovementBonus * (warMinded ? 1 : 0.4);
+  if (e.navalMovementBonus) v += e.navalMovementBonus * 0.4;
+  if (e.farmTileFoodBonus) v += e.farmTileFoodBonus * 1.2;
+  if (e.faithOnKill) v += e.faithOnKill * (warMinded ? 0.5 : 0.2);
+  if (e.cultureOnKill) v += e.cultureOnKill * (warMinded ? 0.5 : 0.2);
+  if (e.homeHealBonus) v += e.homeHealBonus * 0.15;
+  if (e.mountedHealPerTurn) v += e.mountedHealPerTurn * 0.1;
+  if (e.ignoreRoughTerrain) v += warMinded ? 1 : 0.4;
   return v;
 }
 
-/** Order unlocked policies so the most useful fill the government's limited slots. */
-function rankPolicies(ids: string[], p: DiploPersonality, atWarNow: boolean): string[] {
+/** The value of holding a government: its own effects (doubled — always on) plus
+ *  the best `slots` civics from its legal pool (docs/CIVICS §7.1). Higher-tier
+ *  governments naturally win via more slots and stronger effects, but personality
+ *  steers which lineage wins a tie. */
+function governmentValue(govId: string, p: DiploPersonality, atWarNow: boolean): number {
+  const g = getGovernment(govId);
+  if (!g) return 0;
+  let v = effectScore(g.effects, p, atWarNow) * 2;
+  const pool = CIVICS.filter((c) => civicLegal(govId, c.id))
+    .map((c) => effectScore(c.effects, p, atWarNow))
+    .sort((a, b) => b - a)
+    .slice(0, g.slots);
+  for (const s of pool) v += Math.max(0, s);
+  return v;
+}
+
+/** Order civics so the most useful fill the government's limited slots. */
+function rankCivics(ids: string[], p: DiploPersonality, atWarNow: boolean): string[] {
   return [...ids].sort((a, b) =>
-    effectScore(getPolicy(b)?.effects as Record<string, unknown>, p, atWarNow) -
-    effectScore(getPolicy(a)?.effects as Record<string, unknown>, p, atWarNow));
+    effectScore(getCivic(b)?.effects as CivEffects, p, atWarNow) -
+    effectScore(getCivic(a)?.effects as CivEffects, p, atWarNow));
 }
 
 /** The founding perk pick: the best-scoring TIER-1 perk no other faith claimed. */
@@ -126,7 +184,7 @@ function pickBeliefs(state: GameState, p: DiploPersonality): string[] {
   const taken = takenPerkIds(state);
   return BELIEFS
     .filter((b) => b.tier === 1 && !taken.has(b.id))
-    .sort((a, b) => effectScore(b.effects as Record<string, unknown>, p, false) - effectScore(a.effects as Record<string, unknown>, p, false))
+    .sort((a, b) => effectScore(b.effects as CivEffects, p, false) - effectScore(a.effects as CivEffects, p, false))
     .slice(0, 1)
     .map((b) => b.id);
 }
@@ -134,7 +192,7 @@ function pickBeliefs(state: GameState, p: DiploPersonality): string[] {
 /** Available religion perks ranked to the civ's temperament, best first. */
 function rankPerks(perks: { id: string; effects: unknown }[], p: DiploPersonality): string[] {
   return [...perks]
-    .sort((a, b) => effectScore(b.effects as Record<string, unknown>, p, false) - effectScore(a.effects as Record<string, unknown>, p, false))
+    .sort((a, b) => effectScore(b.effects as CivEffects, p, false) - effectScore(a.effects as CivEffects, p, false))
     .map((b) => b.id);
 }
 
@@ -1776,20 +1834,41 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     }
   }
 
-  // Civics: develop the next civic, adopt the best government, slot all policies.
-  if (!player.researchingCivic) {
-    const civics = availableCivics(player);
-    if (civics.length > 0) applyCommand(state, { type: "setCivic", civicId: civics[0]! }, playerId);
+  // Government tree: research the node with the best value for this personality
+  // (its effects + the best civics it would unlock). Research is free of unrest,
+  // so it is fine to research wide and hold one (docs/CIVICS §7.1, §7.3).
+  if (!player.researchingGovernment) {
+    const pick = researchableGovernmentsFor(player)
+      .sort((a, b) => governmentValue(b, p, atWarNow) - governmentValue(a, p, atWarNow))[0];
+    if (pick) applyCommand(state, { type: "setResearchGovernment", governmentId: pick }, playerId);
   }
-  const bestGov = availableGovernments(player)
-    .map((g) => getGovernment(g)!)
-    .sort((a, b) => b.slots - a.slots)[0];
-  if (bestGov && bestGov.id !== player.government) {
-    applyCommand(state, { type: "setGovernment", governmentId: bestGov.id }, playerId);
+  // Switch to the best-value researched government, but weigh the unrest cost of a
+  // revolution and never revolt mid-war unless the target is war-leaning (§7.2).
+  {
+    const cur = getGovernment(player.government);
+    const curValue = governmentValue(player.government, p, atWarNow);
+    const best = switchableGovernments(player)
+      .filter((id) => id !== player.government)
+      .sort((a, b) => governmentValue(b, p, atWarNow) - governmentValue(a, p, atWarNow))[0];
+    const target = best ? getGovernment(best) : undefined;
+    if (target) {
+      const sharesBranch = cur ? cur.branch.some((br) => target.branch.includes(br)) : false;
+      const unrest = player.government === "chiefdom" ? 0 : sharesBranch ? 1 : 3;
+      const gain = governmentValue(best!, p, atWarNow) - curValue;
+      // Each unrest turn ≈ 2 points of foregone value; only switch if the gain clears it.
+      const worthIt = gain > unrest * 2;
+      const warBlocks = atWarNow && unrest > 0 && !target.branch.includes("authority");
+      if (worthIt && !warBlocks) applyCommand(state, { type: "setGovernment", governmentId: best! }, playerId);
+    }
   }
-  // Slot policies best-first so the most useful fill the government's limited slots.
-  for (const pol of rankPolicies(unlockedPolicies(player), p, atWarNow)) {
-    if (!player.policies.includes(pol)) applyCommand(state, { type: "togglePolicy", policyId: pol }, playerId);
+  // Adopt the best affordable legal civic (one adoption per turn).
+  for (const cid of rankCivics(adoptableCivics(player), p, atWarNow)) {
+    if (applyCommand(state, { type: "adoptCivic", civicId: cid }, playerId).ok) break;
+  }
+  // Slot adopted civics best-first into any free slots.
+  for (const cid of rankCivics(slottableCivics(player), p, atWarNow)) {
+    if (player.slottedCivics.length >= civicSlotCapacity(player)) break;
+    applyCommand(state, { type: "slotCivic", civicId: cid }, playerId);
   }
 
   // Recruit a Legend when faith allows — prefer a land hero, else any available.

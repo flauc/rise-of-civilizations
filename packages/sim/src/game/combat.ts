@@ -25,6 +25,27 @@ import { changeUnitMorale, moraleAttackMultiplier, moraleDefenseMultiplier, onEn
 import { cityMajorityFaith, religionInstanceForDefId, religionUnitCombatBonus, religionUnitKit, unitPassive } from "./religion-units";
 import { onUnitEnter, leaveRuin } from "./features";
 import { grantLegendDeathFaith } from "./works";
+import { tileOwnerId } from "./territory";
+import { playerReligionId, convertCityToPlayerReligion } from "./religion";
+
+/** Flat combat-strength from civics/governments that depend on *where* the unit
+ *  fights and *whom* it fights (docs/CIVICS-AND-GOVERNMENTS.md §4): a home/foreign
+ *  territory bonus, an all-units bonus, and a bonus vs civs of another religion.
+ *  `opponent` is the other combatant (the defender when attacking, the attacker
+ *  when defending). */
+function conditionalCombatBonus(state: GameState, unit: Unit, opponent: Unit): number {
+  const eff = playerEffects(state, unit.ownerId);
+  let b = eff.allUnitCombat ?? 0;
+  const atHome = tileOwnerId(state, unit.col, unit.row) === unit.ownerId;
+  b += atHome ? (eff.homeCombat ?? 0) : (eff.foreignCombat ?? 0);
+  if (eff.combatVsOtherReligion) {
+    const mine = playerReligionId(state, unit.ownerId);
+    // You must hold a faith of your own; the foe counts as "other-religion" if
+    // theirs differs (including having none — e.g. barbarians).
+    if (mine && playerReligionId(state, opponent.ownerId) !== mine) b += eff.combatVsOtherReligion;
+  }
+  return b;
+}
 
 /** Fire Lance fires off the unit's melee strength plus this, so the ranged shot
  *  lands slightly harder than a regular thrust (and takes no retaliation). */
@@ -111,6 +132,7 @@ function attackStrength(
   if (ranged && ability === "howdah_volley") s = Math.max(4, def.strength - 4) * levelMultiplier(unit);
   if (ranged && ability === "double_ballista") s = Math.max(4, def.strength - 2) * levelMultiplier(unit);
   s += civCombatBonus(state, unit);
+  s += conditionalCombatBonus(state, unit, defender); // civics: home/foreign/all-unit/other-religion
   s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
   s += religionUnitCombatBonus(state, unit); // faith-tier strength + religious auras
   if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) s -= unit.cursedPenalty ?? 3;
@@ -319,6 +341,7 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   if (unit.exposedUntilTurn !== undefined && state.turn <= unit.exposedUntilTurn) s -= 4;
 
   s += civCombatBonus(state, unit);
+  s += conditionalCombatBonus(state, unit, attacker); // civics: home/foreign/all-unit/other-religion
   s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
   s += religionUnitCombatBonus(state, unit); // faith-tier strength + religious auras
   if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) s -= unit.cursedPenalty ?? 3;
@@ -448,6 +471,7 @@ export function cityDefenseStrength(state: GameState, city: City): number {
   const barracksTier = city.training.barracks ?? 0;
   if (barracksTier > 0) s += trainingTier("barracks", barracksTier).defense ?? 0;
   if (tile) s += terrainDefense(tile.terrain);
+  s += playerEffects(state, city.ownerId).cityDefenseBonus ?? 0; // civics: Royal Garrisons, Divine Right
   // Strongest garrison lends some strength.
   const garrison = unitAt(state, city.col, city.row);
   if (garrison && garrison.ownerId === city.ownerId) {
@@ -596,6 +620,8 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
   attacker.row = city.row;
   const taker = playerById(state, attacker.ownerId);
   if (taker) taker.citiesCaptured = (taker.citiesCaptured ?? 0) + 1;
+  // Civics: a captured city may immediately adopt the conqueror's faith (Holy Conquest).
+  if (eff.convertOnCapture) convertCityToPlayerReligion(state, city, attacker.ownerId);
   log(state, `${taker?.name ?? "Someone"} captured ${city.name}${oldOwner ? ` from ${oldOwner.name}` : ""}.`, {
     actorId: attacker.ownerId,
     targetIds: oldOwner ? [oldOwner.id] : undefined,
@@ -1198,6 +1224,7 @@ export function healAndReset(state: GameState, player: Player): void {
     if (has(u, "swift_healer")) heal += 5;
     if (has(u, "survivalist")) heal += 8;
     heal += eff.unitHealPerTurn ?? 0;
+    if ((eff.homeHealBonus ?? 0) !== 0 && tileOwnerId(state, u.col, u.row) === player.id) heal += eff.homeHealBonus!;
     if (cls === "cavalry") heal += eff.mountedHealPerTurn ?? 0;
     u.hp = Math.min(unitMaxHp(u), u.hp + heal);
     if (u.promotions.includes("medic")) {
@@ -1233,10 +1260,14 @@ export function healAndReset(state: GameState, player: Player): void {
 function harvestFaithOnKill(state: GameState, killer: Unit): void {
   const owner = playerById(state, killer.ownerId);
   if (!owner || owner.isBarbarian) return;
-  let faith = playerEffects(state, owner.id).faithOnKill ?? 0;
+  const eff = playerEffects(state, owner.id);
+  let faith = eff.faithOnKill ?? 0;
   const kit = religionUnitKit(killer.type);
   if (kit?.passives.faithOnKillSelf) faith += unitPassive(state, killer, kit, kit.passives.faithOnKillSelf);
   if (faith > 0) owner.faith += faith;
+  // Civics: culture harvested per kill (Spoils of War, Holy War).
+  const culture = eff.cultureOnKill ?? 0;
+  if (culture > 0) owner.cultureProgress += culture;
 }
 
 /** Death rites around a falling unit: mortuary kits harvest faith from ANY

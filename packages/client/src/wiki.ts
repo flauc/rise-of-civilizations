@@ -44,6 +44,7 @@ import {
   WONDER_DEFS,
   MASTER_CRAFTSMEN,
   getCiv,
+  getGovernment,
   getUniqueUnit,
   getGreatPerson,
   getLegend,
@@ -67,6 +68,9 @@ import {
   BELIEFS,
   RELIGION_TIERS,
   MOVE_HOLY_CITY_COST,
+  GOVERNMENTS,
+  CIVICS,
+  type CivEffects,
   type CivLocation,
   type GreatPersonClass,
   type LegendType,
@@ -90,6 +94,8 @@ export type WikiCategory =
   | "legends"
   | "cities"
   | "religion"
+  | "governments"
+  | "civics"
   | "victory";
 
 interface CategoryDef {
@@ -109,6 +115,8 @@ const CATEGORIES: CategoryDef[] = [
   { id: "legends", name: "Legends" },
   { id: "cities", name: "Cities" },
   { id: "religion", name: "Religion" },
+  { id: "governments", name: "Governments" },
+  { id: "civics", name: "Civics" },
   { id: "victory", name: "Victory" },
 ];
 
@@ -1388,6 +1396,147 @@ const DETAIL_RENDERERS: Record<WikiNav["kind"], (id: string) => string> = {
   religion: renderReligionDetail,
 };
 
+// ---- Governments & Civics ------------------------------------------------
+
+const WIKI_GOV_STYLE = `<style>
+.wiki-gc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;margin:8px 0 20px}
+.wiki-gc-card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px 14px}
+.wiki-gc-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.wiki-gc-name{font-weight:700;font-size:15px;color:#e6d2b8}
+.wiki-gc-cost{font-size:12px;color:#ffd967;white-space:nowrap}
+.wiki-gc-meta{font-size:11px;color:#8a93a0;margin:2px 0 6px;text-transform:capitalize}
+.wiki-gc-badges{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.wiki-gc-pro{color:#7ee787;font-size:12px}
+.wiki-gc-con{color:#ff8a8a;font-size:12px}
+</style>`;
+
+type EffectBadge = { text: string; good: boolean };
+const sgn = (n: number): string => (n > 0 ? `+${n}` : `${n}`);
+const YIELD_NAME: Record<string, string> = { food: "food", production: "production", gold: "gold", science: "science", culture: "culture", faith: "faith" };
+
+function pctYieldBadges(obj: Record<string, number | undefined>, suffix: string): EffectBadge[] {
+  const out: EffectBadge[] = [];
+  for (const [k, v] of Object.entries(obj)) {
+    if (v) out.push({ text: `${sgn(v)}% ${YIELD_NAME[k] ?? k}${suffix}`, good: v > 0 });
+  }
+  return out;
+}
+
+/** Render a government/civic's effects as coloured pro (green) / con (red) badges. */
+function effectBadges(e: CivEffects | undefined): EffectBadge[] {
+  if (!e) return [];
+  const b: EffectBadge[] = [];
+  if (e.yieldPercent) b.push(...pctYieldBadges(e.yieldPercent, ""));
+  if (e.warYieldPercent) b.push(...pctYieldBadges(e.warYieldPercent, " ⚔ at war"));
+  if (e.peaceYieldPercent) b.push(...pctYieldBadges(e.peaceYieldPercent, " ☮ at peace"));
+  if (e.capitalYieldPercent) b.push(...pctYieldBadges(e.capitalYieldPercent, " 🏛 capital"));
+  if (e.allUnitCombat) b.push({ text: `${sgn(e.allUnitCombat)} combat, all units`, good: e.allUnitCombat > 0 });
+  if (e.homeCombat) b.push({ text: `${sgn(e.homeCombat)} combat 🏠 in home territory`, good: e.homeCombat > 0 });
+  if (e.foreignCombat) b.push({ text: `${sgn(e.foreignCombat)} combat outside home`, good: e.foreignCombat > 0 });
+  if (e.combatVsOtherReligion) b.push({ text: `${sgn(e.combatVsOtherReligion)} combat vs other-religion civs`, good: e.combatVsOtherReligion > 0 });
+  if (e.unitClassCombat) for (const [cls, v] of Object.entries(e.unitClassCombat)) if (v) b.push({ text: `${sgn(v)} ${cls.replace("_", " ")} combat`, good: v > 0 });
+  if (e.meleeVsCityBonus) b.push({ text: `${sgn(e.meleeVsCityBonus)} melee combat vs cities`, good: e.meleeVsCityBonus > 0 });
+  if (e.cityDefenseBonus) b.push({ text: `${sgn(e.cityDefenseBonus)} city defense`, good: e.cityDefenseBonus > 0 });
+  if (e.trainTimePercent) b.push({ text: `${sgn(e.trainTimePercent)}% train time`, good: e.trainTimePercent < 0 });
+  if (e.unitUpkeepPercent) b.push({ text: `${sgn(e.unitUpkeepPercent)}% unit upkeep`, good: e.unitUpkeepPercent < 0 });
+  if (e.trainingSlotsBonus) b.push({ text: `${sgn(e.trainingSlotsBonus)} training slot`, good: e.trainingSlotsBonus > 0 });
+  if (e.startMoraleBonus) b.push({ text: `${sgn(e.startMoraleBonus)} starting morale`, good: e.startMoraleBonus > 0 });
+  if (e.startXpBonus) b.push({ text: `${sgn(e.startXpBonus)} starting XP`, good: e.startXpBonus > 0 });
+  if (e.cavalryMovementBonus) b.push({ text: `${sgn(e.cavalryMovementBonus)} cavalry movement`, good: e.cavalryMovementBonus > 0 });
+  if (e.navalMovementBonus) b.push({ text: `${sgn(e.navalMovementBonus)} naval movement`, good: e.navalMovementBonus > 0 });
+  if (e.tradeRouteCapacityBonus) b.push({ text: `${sgn(e.tradeRouteCapacityBonus)} trade route capacity`, good: e.tradeRouteCapacityBonus > 0 });
+  if (e.tradeRouteGoldBonus) b.push({ text: `${sgn(e.tradeRouteGoldBonus)} gold per trade route`, good: e.tradeRouteGoldBonus > 0 });
+  if (e.tradeRouteFaithBonus) b.push({ text: `${sgn(e.tradeRouteFaithBonus)} faith per trade route`, good: e.tradeRouteFaithBonus > 0 });
+  if (e.raidGoldPercent) b.push({ text: `${sgn(e.raidGoldPercent)}% raid gold`, good: e.raidGoldPercent > 0 });
+  if (e.coastalRaidGoldPercent) b.push({ text: `${sgn(e.coastalRaidGoldPercent)}% coastal raid gold`, good: e.coastalRaidGoldPercent > 0 });
+  if (e.raidSciencePercent) b.push({ text: `${sgn(e.raidSciencePercent)}% raid science`, good: e.raidSciencePercent > 0 });
+  if (e.cultureOnKill) b.push({ text: `${sgn(e.cultureOnKill)} culture per kill`, good: e.cultureOnKill > 0 });
+  if (e.faithOnKill) b.push({ text: `${sgn(e.faithOnKill)} faith per kill`, good: e.faithOnKill > 0 });
+  if (e.farmTileFoodBonus) b.push({ text: `${sgn(e.farmTileFoodBonus)} food per farm`, good: e.farmTileFoodBonus > 0 });
+  if (e.mountedHealPerTurn) b.push({ text: `${sgn(e.mountedHealPerTurn)} cavalry HP/turn`, good: e.mountedHealPerTurn > 0 });
+  if (e.homeHealBonus) b.push({ text: `${sgn(e.homeHealBonus)} HP/turn 🏠 in home territory`, good: e.homeHealBonus > 0 });
+  if (e.enemyReligionPressurePercent) b.push({ text: `${sgn(e.enemyReligionPressurePercent)}% rival religion pressure`, good: e.enemyReligionPressurePercent < 0 });
+  if (e.rushWithFaith) b.push({ text: "faith can rush production", good: true });
+  if (e.rushWithCulture) b.push({ text: "culture can rush production", good: true });
+  if (e.garrisonFreeUpkeep) b.push({ text: "garrisoned units cost no upkeep", good: true });
+  if (e.convertOnCapture) b.push({ text: "captured cities convert to your faith", good: true });
+  if (e.ignoreRoughTerrain) b.push({ text: "units ignore rough terrain", good: true });
+  return b;
+}
+
+function badgesHtml(e: CivEffects | undefined): string {
+  const badges = effectBadges(e);
+  if (!badges.length) return "";
+  return `<div class="wiki-gc-badges">${badges.map((x) => `<span class="${x.good ? "wiki-gc-pro" : "wiki-gc-con"}">${x.good ? "▲" : "▼"} ${escapeHtml(x.text)}</span>`).join("")}</div>`;
+}
+
+function renderGovernments(): string {
+  const intro =
+    `<p>Your <b>government</b> is the spine of your culture strategy. Research governments with culture (like techs with science) along three lineages — ` +
+    `<b>Authority</b>, <b>Assembly</b> and <b>Faith</b> — and the one you <i>hold</i> decides which civics you may slot. Every government past Chiefdom carries a con as well as pros. ` +
+    `Switching lineage triggers a <b>revolution</b>: 3 turns of unrest (−25% yields, civics dormant); a same-lineage step costs 1 turn; your first government is free.</p>` +
+    `<p>Slots by tier — T0: 2, T1: 3, T2: 4, T3: 5, T4: 6.</p>`;
+  let body = `<div class="wiki-lore">${intro}</div>`;
+  for (let tier = 0; tier <= 4; tier++) {
+    const govs = GOVERNMENTS.filter((g) => g.tier === tier);
+    if (!govs.length) continue;
+    const cards = govs
+      .map((g) => {
+        const branch = g.branch.length ? g.branch.join(" / ") : "—";
+        const cost = g.cost > 0 ? `${g.cost}🎭` : "free";
+        const excl = g.exclusiveCivics.length ? `<div class="wiki-gc-meta">Unlocks exclusive civic: <b>${g.exclusiveCivics.map((id) => escapeHtml(getCivicName(id))).join(", ")}</b></div>` : "";
+        return (
+          `<div class="wiki-gc-card">` +
+          `<div class="wiki-gc-head"><span class="wiki-gc-name">${escapeHtml(g.name)}</span><span class="wiki-gc-cost">${cost}</span></div>` +
+          `<div class="wiki-gc-meta">${branch} · ${g.slots} civic slots</div>` +
+          `<div class="wiki-card-body">${escapeHtml(g.desc)}</div>` +
+          badgesHtml(g.effects) + excl +
+          `</div>`
+        );
+      })
+      .join("");
+    body += `<div class="wiki-region-title">Tier ${tier}${tier === 0 ? " — Start" : ""}</div><div class="wiki-gc-grid">${cards}</div>`;
+  }
+  return WIKI_GOV_STYLE + section("Governments", body);
+}
+
+function getCivicName(id: string): string {
+  return CIVICS.find((c) => c.id === id)?.name ?? id;
+}
+
+function renderCivics(): string {
+  const intro =
+    `<p><b>Civics</b> are slottable cards bought instantly from your culture pool (one adoption per turn; each adoption makes the next cost 15% more). ` +
+    `Only <b>slotted</b> civics do anything — capacity comes from your current government. Each civic is a bargain, not a bonus: the pros outweigh the cons, ` +
+    `but the con is real. A civic is legal only if its branch is neutral, matches your government's lineage, or is that government's exclusive — and its tier ≤ your government's tier.</p>`;
+  const groups: { key: string; title: string }[] = [
+    { key: "neutral", title: "Neutral — legal under every government" },
+    { key: "authority", title: "Authority branch" },
+    { key: "assembly", title: "Assembly branch" },
+    { key: "faith", title: "Faith branch" },
+    { key: "exclusive", title: "Government exclusives" },
+  ];
+  let body = `<div class="wiki-lore">${intro}</div>`;
+  for (const g of groups) {
+    const civics = CIVICS.filter((c) => c.branch === g.key).sort((a, b) => a.tier - b.tier);
+    if (!civics.length) continue;
+    const cards = civics
+      .map((c) => {
+        const excl = c.government ? `<div class="wiki-gc-meta">Only under: <b>${escapeHtml(getGovernment(c.government)?.name ?? c.government)}</b></div>` : "";
+        return (
+          `<div class="wiki-gc-card">` +
+          `<div class="wiki-gc-head"><span class="wiki-gc-name">${escapeHtml(c.name)}</span><span class="wiki-gc-cost">${c.cost}🎭</span></div>` +
+          `<div class="wiki-gc-meta">Tier ${c.tier}${c.branch !== "exclusive" ? ` · ${c.branch}` : ""}</div>` +
+          excl + badgesHtml(c.effects) +
+          `</div>`
+        );
+      })
+      .join("");
+    body += `<div class="wiki-region-title">${escapeHtml(g.title)}</div><div class="wiki-gc-grid">${cards}</div>`;
+  }
+  return WIKI_GOV_STYLE + section("Civics", body);
+}
+
 const RENDERERS: Record<WikiCategory, () => string> = {
   civilizations: renderCivilizations,
   units: renderUnits,
@@ -1400,6 +1549,8 @@ const RENDERERS: Record<WikiCategory, () => string> = {
   legends: renderLegends,
   cities: renderCities,
   religion: renderReligion,
+  governments: renderGovernments,
+  civics: renderCivics,
   victory: renderVictory,
 };
 

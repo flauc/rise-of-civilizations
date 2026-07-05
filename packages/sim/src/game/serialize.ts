@@ -76,10 +76,13 @@ export interface PlayerView {
     researchQueue: TechId[];
     researched: TechId[];
     cultureProgress: number;
-    researchingCivic: string | null;
-    civicsResearched: string[];
+    researchingGovernment: string | null;
+    governmentsResearched: string[];
+    civicsAdopted: string[];
+    slottedCivics: string[];
+    unrestTurns: number;
+    governmentChangedTurn: number;
     government: string;
-    policies: string[];
     faith: number;
     foundedReligionId?: string;
     resources: Record<string, number>;
@@ -244,10 +247,13 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
       researchQueue: me?.researchQueue ?? [],
       researched: me ? [...me.researched] : [],
       cultureProgress: me?.cultureProgress ?? 0,
-      researchingCivic: me?.researchingCivic ?? null,
-      civicsResearched: me ? [...me.civicsResearched] : [],
+      researchingGovernment: me?.researchingGovernment ?? null,
+      governmentsResearched: me ? [...me.governmentsResearched] : ["chiefdom"],
+      civicsAdopted: me ? [...me.civicsAdopted] : [],
+      slottedCivics: me ? [...me.slottedCivics] : [],
+      unrestTurns: me?.unrestTurns ?? 0,
+      governmentChangedTurn: me?.governmentChangedTurn ?? -Infinity,
       government: me?.government ?? "chiefdom",
-      policies: me ? [...me.policies] : [],
       faith: me?.faith ?? 0,
       foundedReligionId: me?.foundedReligionId,
       resources: me?.resources ?? {},
@@ -329,9 +335,10 @@ export interface SerializedState {
   turnUpdates: TurnUpdateEvent[];
   nextTurnUpdateId: number;
   players: Array<
-    Omit<GameState["players"][number], "researched" | "civicsResearched" | "explored"> & {
+    Omit<GameState["players"][number], "researched" | "governmentsResearched" | "civicsAdopted" | "explored"> & {
       researched: string[];
-      civicsResearched: string[];
+      governmentsResearched: string[];
+      civicsAdopted: string[];
       explored: string[];
     }
   >;
@@ -372,7 +379,8 @@ export function serializeState(state: GameState): SerializedState {
     players: state.players.map((p) => ({
       ...p,
       researched: [...p.researched],
-      civicsResearched: [...p.civicsResearched],
+      governmentsResearched: [...p.governmentsResearched],
+      civicsAdopted: [...p.civicsAdopted],
       explored: [...p.explored],
     })),
     units: [...state.units.values()],
@@ -434,8 +442,12 @@ export function deserializeState(s: SerializedState): GameState {
       legendsRecruited: p.legendsRecruited ?? 0,
       battlesWon: p.battlesWon ?? 0,
       citiesCaptured: p.citiesCaptured ?? 0,
+      slottedCivics: p.slottedCivics ?? [],
+      unrestTurns: p.unrestTurns ?? 0,
+      governmentChangedTurn: p.governmentChangedTurn ?? -Infinity,
       researched: new Set(Array.isArray(p.researched) ? (p.researched as TechId[]) : []),
-      civicsResearched: new Set(Array.isArray(p.civicsResearched) ? p.civicsResearched : []),
+      governmentsResearched: new Set(Array.isArray(p.governmentsResearched) ? p.governmentsResearched : ["chiefdom"]),
+      civicsAdopted: new Set(Array.isArray(p.civicsAdopted) ? p.civicsAdopted : []),
       explored: new Set(Array.isArray(p.explored) ? p.explored : []),
     })),
     units: new Map(s.units.map((u) => [u.id, u])),

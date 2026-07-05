@@ -45,6 +45,10 @@ export interface CivEffects {
   mountedHealPerTurn?: number;
   /** Multiplier to military unit maintenance (1.5 = +50%). Not yet consumed. */
   militaryMaintenanceCostMultiplier?: number;
+  /** Additive percentage change to unit upkeep, composed across all sources
+   *  (+40 = ×1.4, −30 = ×0.7). Stacks additively, unlike the raw multiplier above,
+   *  so several civics/governments can layer upkeep modifiers sanely. */
+  unitUpkeepPercent?: number;
   /** Extra gold per trade route. */
   tradeRouteGoldBonus?: number;
   /** Extra faith per trade route. */
@@ -117,6 +121,34 @@ export interface CivEffects {
   /** Training-building families a city is founded already owning at tier 1
    *  (e.g. ["barracks"] for a martial civ). */
   freeTrainingFamilies?: TrainingClassId[];
+  // ---- civics & governments conditional effects (docs/CIVICS-AND-GOVERNMENTS.md §4) ----
+  /** Percentage yield bonus added to yieldPercent ONLY while at war with ≥1 major civ. */
+  warYieldPercent?: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
+  /** Percentage yield bonus added to yieldPercent ONLY while at peace with all majors. */
+  peaceYieldPercent?: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
+  /** Percentage yield bonus applied to the capital city only. */
+  capitalYieldPercent?: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
+  /** Flat combat-strength bonus for a unit standing on a tile its owner owns (home territory). */
+  homeCombat?: number;
+  /** Flat combat-strength bonus for a unit on any tile NOT owned by its owner
+   *  (enemy, ally, and neutral wilderness alike — so it works vs barbarians). */
+  foreignCombat?: number;
+  /** Flat combat-strength bonus for ALL of a player's units, regardless of class. */
+  allUnitCombat?: number;
+  /** Flat combat-strength bonus vs units of a civ whose national religion differs from yours. */
+  combatVsOtherReligion?: number;
+  /** Culture gained each time one of your units kills an enemy unit (mirror of faithOnKill). */
+  cultureOnKill?: number;
+  /** Percentage scaling of RIVAL religions' pressure gain in your cities (−50 = halved). */
+  enemyReligionPressurePercent?: number;
+  /** Flat combat-strength bonus for a city when it defends. */
+  cityDefenseBonus?: number;
+  /** Garrisoned units (standing in one of the owner's cities) cost no gold upkeep. */
+  garrisonFreeUpkeep?: boolean;
+  /** Extra HP/turn healing for units inside their owner's territory (beside unitHealPerTurn). */
+  homeHealBonus?: number;
+  /** Cities captured by this player immediately convert to the player's national religion. */
+  convertOnCapture?: boolean;
 }
 
 /** Unit-training building family id (mirrors sim content.ts TrainingClass; kept as a
@@ -212,33 +244,43 @@ export function capitalPopulationBonusFor(civId: string | undefined): number {
   return civ?.capitalPopulationBonus ?? 0;
 }
 
-export interface CivicDef {
-  id: string;
-  name: string;
-  cost: number; // culture
-  prereqs: string[];
-  /** Government this civic unlocks (optional). */
-  unlocksGovernment?: string;
-  /** Policy card this civic unlocks (optional). */
-  unlocksPolicy?: string;
-}
+/** The three government lineages. A civic is legal under a government if the
+ *  civic's branch is `neutral`, matches one of the government's branches, or is
+ *  that government's `exclusive`. */
+export type Branch = "authority" | "assembly" | "faith";
 
 export interface GovernmentDef {
   id: string;
   name: string;
   desc: string;
-  /** Civic required to adopt it (absent = available from the start). */
-  reqCivic?: string;
-  /** Number of policy-card slots. */
+  /** Tree depth 0–4 (T0 Chiefdom … T4 Exploration era). Also indexes slot count. */
+  tier: number;
+  /** Lineage(s). Empty for Chiefdom; Oligarchy is a two-branch hybrid. */
+  branch: Branch[];
+  /** Culture cost to research this node (flat — escalation lives on civics). */
+  cost: number;
+  /** OR-semantics prereqs: any listed government being researched unlocks this. */
+  prereqGovernments: string[];
+  /** Civic slots this government grants (by tier). */
   slots: number;
+  /** Civic ids legal ONLY while holding this government. */
+  exclusiveCivics: string[];
   effects: CivEffects;
 }
 
-export interface PolicyDef {
+export interface CivicDef {
   id: string;
   name: string;
   desc: string;
+  /** Tier 1–4; must be ≤ the current government's tier to be legal. */
+  tier: number;
+  /** `neutral` (legal anywhere), a lineage, or `exclusive` (needs `government`). */
+  branch: "neutral" | Branch | "exclusive";
+  /** Base culture cost before per-adoption escalation (see civicCost). */
+  cost: number;
   effects: CivEffects;
+  /** For `exclusive` civics: the government that unlocks it. */
+  government?: string;
 }
 
 /** Fallback pool used when a civilization has no city names or has exhausted them. */
@@ -2498,64 +2540,143 @@ export const UNIQUE_IMPROVEMENTS: UniqueInfraDef[] = UNIQUE_INFRA.filter((u) => 
 export const UNIQUE_INFRA_BUILDINGS: UniqueInfraDef[] = UNIQUE_INFRA.filter((u) => u.kind === "building");
 
 // ===========================================================================
-// Civics tree, governments and policies (the culture-funded parallel tree).
+// Governments & civics (the culture-funded parallel tree).
+// docs/CIVICS-AND-GOVERNMENTS.md — a branching GOVERNMENT tree (researched with
+// culture, like techs) determines which slottable CIVIC cards you may adopt.
+// Every government and civic carries pros AND cons (cons = negative values in
+// the same effects object). Numbers are intent; tune in M-C5 via `bun run balance`.
 // ===========================================================================
 
-// Base culture costs. The *effective* cost climbs with each civic already
-// adopted (see CIVIC_COST_ESCALATION / civicCost) so the short tree can't be
-// cleared in a handful of turns by an empire's passive culture trickle.
+/** Slots each government tier grants (T0 Chiefdom … T4 Exploration era). */
+export const GOVERNMENT_SLOTS_BY_TIER = [2, 3, 4, 5, 6] as const;
+
+/** A percentage bonus applied uniformly to every yield. */
+const pctAll = (n: number) => ({ food: n, production: n, gold: n, science: n, culture: n, faith: n });
+
+export const GOVERNMENTS: GovernmentDef[] = [
+  { id: "chiefdom", name: "Chiefdom", desc: "The tribe's starting order — no lineage, no bonus, no cost.", tier: 0, branch: [], cost: 0, prereqGovernments: [], slots: 2, exclusiveCivics: [], effects: {} },
+  // ---- Tier 1 (Bronze) --------------------------------------------------
+  { id: "despotism", name: "Despotism", desc: "A strongman's rule. +12% production, −5% science.", tier: 1, branch: ["authority"], cost: 90, prereqGovernments: ["chiefdom"], slots: 3, exclusiveCivics: [], effects: { yieldPercent: { production: 12, science: -5 } } },
+  { id: "council_of_elders", name: "Council of Elders", desc: "Rule by the wise. +10% culture, +5% food, −5% production.", tier: 1, branch: ["assembly"], cost: 90, prereqGovernments: ["chiefdom"], slots: 3, exclusiveCivics: [], effects: { yieldPercent: { culture: 10, food: 5, production: -5 } } },
+  { id: "priest_kingship", name: "Priest-Kingship", desc: "The ruler speaks for the gods. +20% faith, −5% science.", tier: 1, branch: ["faith"], cost: 90, prereqGovernments: ["chiefdom"], slots: 3, exclusiveCivics: [], effects: { yieldPercent: { faith: 20, science: -5 } } },
+  // ---- Tier 2 (Classical) ----------------------------------------------
+  { id: "tyranny", name: "Tyranny", desc: "Rule by fear. All units +2 combat, −25% train time, −10% culture.", tier: 2, branch: ["authority"], cost: 260, prereqGovernments: ["despotism"], slots: 4, exclusiveCivics: [], effects: { allUnitCombat: 2, trainTimePercent: -25, yieldPercent: { culture: -10 } } },
+  { id: "oligarchy", name: "Oligarchy", desc: "The propertied few. Melee & cavalry +2 combat, +10% gold, −5% science.", tier: 2, branch: ["authority", "assembly"], cost: 260, prereqGovernments: ["despotism", "council_of_elders"], slots: 4, exclusiveCivics: [], effects: { unitClassCombat: { melee: 2, cavalry: 2 }, yieldPercent: { gold: 10, science: -5 } } },
+  { id: "classical_republic", name: "Classical Republic", desc: "Citizens govern. +18% science, +10% culture; units −2 combat outside home.", tier: 2, branch: ["assembly"], cost: 260, prereqGovernments: ["council_of_elders"], slots: 4, exclusiveCivics: [], effects: { yieldPercent: { science: 18, culture: 10 }, foreignCombat: -2 } },
+  { id: "temple_state", name: "Temple State", desc: "The temple is the state. +30% faith, +10% culture, −10% gold.", tier: 2, branch: ["faith"], cost: 260, prereqGovernments: ["priest_kingship"], slots: 4, exclusiveCivics: [], effects: { yieldPercent: { faith: 30, culture: 10, gold: -10 } } },
+  // ---- Tier 3 (Medieval) -----------------------------------------------
+  { id: "steppe_khanate", name: "Steppe Khanate", desc: "The horde. Cavalry +3 combat & +1 movement, +100% raid gold, −10% science.", tier: 3, branch: ["authority"], cost: 700, prereqGovernments: ["tyranny"], slots: 5, exclusiveCivics: ["horse_lords"], effects: { unitClassCombat: { cavalry: 3 }, cavalryMovementBonus: 1, raidGoldPercent: 100, yieldPercent: { science: -10 } } },
+  { id: "feudal_monarchy", name: "Feudal Monarchy", desc: "Lords and vassals. +15% production, cavalry +3 combat, unit upkeep ×1.15.", tier: 3, branch: ["authority"], cost: 700, prereqGovernments: ["tyranny", "oligarchy"], slots: 5, exclusiveCivics: ["knightly_orders"], effects: { yieldPercent: { production: 15 }, unitClassCombat: { cavalry: 3 }, unitUpkeepPercent: 15 } },
+  { id: "merchant_republic", name: "Merchant Republic", desc: "Rule by commerce. +28% gold, +1 trade route, −10% production.", tier: 3, branch: ["assembly"], cost: 700, prereqGovernments: ["classical_republic", "oligarchy"], slots: 5, exclusiveCivics: ["letters_of_marque"], effects: { yieldPercent: { gold: 28, production: -10 }, tradeRouteCapacityBonus: 1 } },
+  { id: "theocracy", name: "Theocracy", desc: "God's law is law. +35% faith, +10% culture, −10% science.", tier: 3, branch: ["faith"], cost: 700, prereqGovernments: ["temple_state"], slots: 5, exclusiveCivics: ["state_church"], effects: { yieldPercent: { faith: 35, culture: 10, science: -10 } } },
+  // ---- Tier 4 (Exploration) --------------------------------------------
+  { id: "absolute_monarchy", name: "Absolute Monarchy", desc: "L'état, c'est moi. +15% production, +15% gold, all units +2 combat, −10% culture.", tier: 4, branch: ["authority"], cost: 1400, prereqGovernments: ["feudal_monarchy"], slots: 6, exclusiveCivics: ["divine_right"], effects: { yieldPercent: { production: 15, gold: 15, culture: -10 }, allUnitCombat: 2 } },
+  { id: "trade_league", name: "Trade League", desc: "A merchant hegemony. +28% gold, +2 trade routes, unit upkeep ×1.25.", tier: 4, branch: ["assembly"], cost: 1400, prereqGovernments: ["merchant_republic"], slots: 6, exclusiveCivics: ["banking_houses"], effects: { yieldPercent: { gold: 28 }, tradeRouteCapacityBonus: 2, unitUpkeepPercent: 25 } },
+  { id: "divine_mandate", name: "Divine Mandate", desc: "Conquest in the god's name. +35% faith, +15% gold, +4 combat vs other-religion civs, −10% science.", tier: 4, branch: ["faith"], cost: 1400, prereqGovernments: ["theocracy"], slots: 6, exclusiveCivics: ["holy_conquest"], effects: { yieldPercent: { faith: 35, gold: 15, science: -10 }, combatVsOtherReligion: 4 } },
+];
+
+/** Base culture costs by tier (before per-adoption escalation). */
+export const CIVIC_TIER_COST = { 1: 100, 2: 220, 3: 480, 4: 900 } as const;
+
 export const CIVICS: CivicDef[] = [
-  { id: "code_of_laws", name: "Code of Laws", cost: 0, prereqs: [], unlocksGovernment: "chiefdom", unlocksPolicy: "discipline" },
-  { id: "craftsmanship", name: "Craftsmanship", cost: 60, prereqs: ["code_of_laws"], unlocksPolicy: "urban_planning" },
-  { id: "military_tradition", name: "Military Tradition", cost: 70, prereqs: ["code_of_laws"], unlocksPolicy: "maneuver" },
-  { id: "mysticism", name: "Mysticism", cost: 60, prereqs: ["code_of_laws"], unlocksPolicy: "god_king" },
-  { id: "early_empire", name: "Early Empire", cost: 110, prereqs: ["craftsmanship"], unlocksGovernment: "despotism" },
-  { id: "drama_poetry", name: "Drama & Poetry", cost: 120, prereqs: ["mysticism"], unlocksPolicy: "literary_tradition" },
-  { id: "recorded_history", name: "Recorded History", cost: 130, prereqs: ["early_empire"], unlocksPolicy: "natural_philosophy" },
-  { id: "trade_routes", name: "Trade", cost: 120, prereqs: ["early_empire"], unlocksPolicy: "caravans" },
-  { id: "political_philosophy", name: "Political Philosophy", cost: 190, prereqs: ["recorded_history"], unlocksGovernment: "classical_republic" },
-  { id: "military_training", name: "Military Training", cost: 165, prereqs: ["military_tradition", "early_empire"], unlocksGovernment: "oligarchy" },
-  { id: "statecraft", name: "Statecraft", cost: 180, prereqs: ["political_philosophy"], unlocksGovernment: "monarchy" },
+  // ---- Neutral (legal under every government) ---------------------------
+  { id: "festivals", name: "Festivals", desc: "Feast days lift the people. +18% culture, −5% production.", tier: 1, branch: "neutral", cost: 100, effects: { yieldPercent: { culture: 18, production: -5 } } },
+  { id: "corvee_labor", name: "Corvée", desc: "Draft labour raises great works. +10% production, culture can rush production, −5% food.", tier: 1, branch: "neutral", cost: 100, effects: { yieldPercent: { production: 10, food: -5 }, rushWithCulture: true } },
+  { id: "militia_levies", name: "Militia Levies", desc: "A cheap citizen army. Unit upkeep ×0.7, −20% train time, all units −1 combat.", tier: 1, branch: "neutral", cost: 100, effects: { unitUpkeepPercent: -30, trainTimePercent: -20, allUnitCombat: -1 } },
+  { id: "discipline", name: "Discipline", desc: "Drill and order. Melee +3 combat, +10% train time.", tier: 1, branch: "neutral", cost: 100, effects: { unitClassCombat: { melee: 3 }, trainTimePercent: 10 } },
+  { id: "standing_army", name: "Standing Army", desc: "A professional force. All units +3 combat, unit upkeep ×1.4.", tier: 2, branch: "neutral", cost: 220, effects: { allUnitCombat: 3, unitUpkeepPercent: 40 } },
+  { id: "open_markets", name: "Open Markets", desc: "Trade thrives in peace. +30% gold at peace, −10% gold at war.", tier: 2, branch: "neutral", cost: 220, effects: { peaceYieldPercent: { gold: 30 }, warYieldPercent: { gold: -10 } } },
+  { id: "war_footing", name: "War Footing", desc: "The economy bends to the front. +20% production at war, cheaper upkeep, −5% gold.", tier: 2, branch: "neutral", cost: 220, effects: { warYieldPercent: { production: 20 }, unitUpkeepPercent: -15, yieldPercent: { gold: -5 } } },
+  { id: "scholar_patronage", name: "Scholar Patronage", desc: "Patrons fund the learned. +20% science, −8% gold.", tier: 2, branch: "neutral", cost: 220, effects: { yieldPercent: { science: 20, gold: -8 } } },
+  { id: "border_wardens", name: "Border Wardens", desc: "Defenders of the homeland. +5 combat in home territory, −2 outside it.", tier: 2, branch: "neutral", cost: 220, effects: { homeCombat: 5, foreignCombat: -2 } },
+  { id: "expeditionary_zeal", name: "Expeditionary Zeal", desc: "Bred for the campaign abroad. +5 combat outside home, −2 at home.", tier: 2, branch: "neutral", cost: 220, effects: { foreignCombat: 5, homeCombat: -2 } },
+  { id: "naval_tradition", name: "Naval Tradition", desc: "A seafaring people. Naval +2 combat & +1 movement, −10% production.", tier: 2, branch: "neutral", cost: 220, effects: { unitClassCombat: { naval_melee: 2, naval_ranged: 2 }, navalMovementBonus: 1, yieldPercent: { production: -10 } } },
+  { id: "centralization", name: "Centralization", desc: "All roads lead to the capital. Capital +12% all yields, −5% gold empire-wide.", tier: 3, branch: "neutral", cost: 480, effects: { capitalYieldPercent: pctAll(12), yieldPercent: { gold: -5 } } },
+  // ---- Authority branch -------------------------------------------------
+  { id: "warrior_aristocracy", name: "Warrior Aristocracy", desc: "A caste of warriors. Melee & cavalry +2 combat, −10% science.", tier: 1, branch: "authority", cost: 100, effects: { unitClassCombat: { melee: 2, cavalry: 2 }, yieldPercent: { science: -10 } } },
+  { id: "spoils_of_war", name: "Spoils of War", desc: "War pays for itself. +70% raid gold, +3 culture per kill, −5% gold at peace.", tier: 1, branch: "authority", cost: 100, effects: { raidGoldPercent: 70, cultureOnKill: 3, peaceYieldPercent: { gold: -5 } } },
+  { id: "conscription", name: "Conscription", desc: "The levy en masse. −20% train time, +1 training slot, new units −10 XP.", tier: 2, branch: "authority", cost: 220, effects: { trainTimePercent: -20, trainingSlotsBonus: 1, startXpBonus: -10 } },
+  { id: "iron_discipline", name: "Iron Discipline", desc: "Hardened by the lash. +20 starting morale, +10 HP/turn healing at home, −5% culture.", tier: 2, branch: "authority", cost: 220, effects: { startMoraleBonus: 20, homeHealBonus: 10, yieldPercent: { culture: -5 } } },
+  { id: "serfdom", name: "Serfdom", desc: "The land is worked by the bound. Farms +1 food, +12% production, −5% culture.", tier: 2, branch: "authority", cost: 220, effects: { farmTileFoodBonus: 1, yieldPercent: { production: 12, culture: -5 } } },
+  { id: "royal_garrisons", name: "Royal Garrisons", desc: "The king's soldiers hold every wall. Cities +9 defense, garrisoned units free upkeep, −5% gold.", tier: 3, branch: "authority", cost: 480, effects: { cityDefenseBonus: 9, garrisonFreeUpkeep: true, yieldPercent: { gold: -5 } } },
+  { id: "military_state", name: "Military State", desc: "The nation in arms. +40% production at war, cheaper upkeep, −10% science.", tier: 3, branch: "authority", cost: 480, effects: { warYieldPercent: { production: 40 }, unitUpkeepPercent: -20, yieldPercent: { science: -10 } } },
+  { id: "total_war", name: "Total War", desc: "No quarter, no restraint. Melee +5 vs cities, +50% raid science, −10% gold at war.", tier: 3, branch: "authority", cost: 480, effects: { meleeVsCityBonus: 5, raidSciencePercent: 50, warYieldPercent: { gold: -10 } } },
+  // ---- Assembly branch --------------------------------------------------
+  { id: "public_assembly", name: "Public Assembly", desc: "The people deliberate. +12% science, +5% culture, −5% production.", tier: 1, branch: "assembly", cost: 100, effects: { yieldPercent: { science: 12, culture: 5, production: -5 } } },
+  { id: "civic_pride", name: "Civic Pride", desc: "Love of the city. +10% culture, +10% food, −5% gold.", tier: 1, branch: "assembly", cost: 100, effects: { yieldPercent: { culture: 10, food: 10, gold: -5 } } },
+  { id: "free_artisans", name: "Free Artisans", desc: "Guilds of free craftsmen. +12% production, +8% gold, unit upkeep ×1.2.", tier: 2, branch: "assembly", cost: 220, effects: { yieldPercent: { production: 12, gold: 8 }, unitUpkeepPercent: 20 } },
+  { id: "citizen_militia", name: "Citizen Militia", desc: "Free citizens defend their homes. +5 combat at home & cheaper upkeep, −3 combat outside home.", tier: 2, branch: "assembly", cost: 220, effects: { homeCombat: 5, unitUpkeepPercent: -20, foreignCombat: -3 } },
+  { id: "merchant_guilds", name: "Merchant Guilds", desc: "The guilds run the roads. +3 gold per trade route, +1 route, −5% production.", tier: 2, branch: "assembly", cost: 220, effects: { tradeRouteGoldBonus: 3, tradeRouteCapacityBonus: 1, yieldPercent: { production: -5 } } },
+  { id: "natural_philosophy", name: "Natural Philosophy", desc: "Reason over revelation. +25% science, −10% faith.", tier: 3, branch: "assembly", cost: 480, effects: { yieldPercent: { science: 25, faith: -10 } } },
+  { id: "rule_of_law", name: "Rule of Law", desc: "Order rewards the peaceful. +15% all yields at peace, −10% all yields at war.", tier: 3, branch: "assembly", cost: 480, effects: { peaceYieldPercent: pctAll(15), warYieldPercent: pctAll(-10) } },
+  { id: "patronage_of_arts", name: "Patronage of the Arts", desc: "The state funds beauty. +25% culture, +10% gold, −10% production.", tier: 3, branch: "assembly", cost: 480, effects: { yieldPercent: { culture: 25, gold: 10, production: -10 } } },
+  // ---- Faith branch -----------------------------------------------------
+  { id: "ancestor_worship", name: "Ancestor Worship", desc: "The forebears watch over us. +10% culture, +10% faith, −5% gold.", tier: 1, branch: "faith", cost: 100, effects: { yieldPercent: { culture: 10, faith: 10, gold: -5 } } },
+  { id: "divine_kingship", name: "Divine Kingship", desc: "The king is a god. +15% faith, +5% production, −5% science.", tier: 1, branch: "faith", cost: 100, effects: { yieldPercent: { faith: 15, production: 5, science: -5 } } },
+  { id: "temple_economy", name: "Temple Economy", desc: "The temple is the treasury. +10% gold, +10% faith, −5% science.", tier: 2, branch: "faith", cost: 220, effects: { yieldPercent: { gold: 10, faith: 10, science: -5 } } },
+  { id: "pilgrimage", name: "Pilgrimage", desc: "The faithful travel far. +18% faith, +2 faith per trade route, −5% gold.", tier: 2, branch: "faith", cost: 220, effects: { yieldPercent: { faith: 18, gold: -5 }, tradeRouteFaithBonus: 2 } },
+  { id: "monastic_orders", name: "Monastic Orders", desc: "Monks keep the learning. +18% science, +15% faith, −10% gold.", tier: 3, branch: "faith", cost: 480, effects: { yieldPercent: { science: 18, faith: 15, gold: -10 } } },
+  { id: "theocratic_levies", name: "Theocratic Levies", desc: "Warriors of the faith. Faith can rush units, +12 starting morale, +12% faith, +10% train time.", tier: 3, branch: "faith", cost: 480, effects: { rushWithFaith: true, startMoraleBonus: 12, yieldPercent: { faith: 12 }, trainTimePercent: 10 } },
+  { id: "holy_war", name: "Holy War", desc: "Smite the unbeliever. +6 combat vs other-religion civs, +4 faith per kill, +10% faith, −10% science.", tier: 3, branch: "faith", cost: 480, effects: { combatVsOtherReligion: 6, faithOnKill: 4, yieldPercent: { faith: 10, science: -10 } } },
+  { id: "inquisition", name: "Inquisition", desc: "Root out heresy. Rival religion pressure −60% in your cities, +18% faith, +10% gold, −10% science.", tier: 4, branch: "faith", cost: 900, effects: { enemyReligionPressurePercent: -60, yieldPercent: { faith: 18, gold: 10, science: -10 } } },
+  // ---- Government exclusives (legal only under their government) ----------
+  { id: "knightly_orders", name: "Knightly Orders", desc: "The mounted chivalry. Cavalry +5 combat & +10 HP/turn, cavalry upkeep ×1.5.", tier: 3, branch: "exclusive", government: "feudal_monarchy", cost: 480, effects: { unitClassCombat: { cavalry: 5 }, mountedHealPerTurn: 10, unitUpkeepPercent: 50 } },
+  { id: "horse_lords", name: "Horse Lords", desc: "Born in the saddle. Cavalry +3 combat & +1 movement, units ignore rough terrain, −10% science.", tier: 3, branch: "exclusive", government: "steppe_khanate", cost: 480, effects: { unitClassCombat: { cavalry: 3 }, cavalryMovementBonus: 1, ignoreRoughTerrain: true, yieldPercent: { science: -10 } } },
+  { id: "letters_of_marque", name: "Letters of Marque", desc: "State-sanctioned piracy. Naval +2 combat, +50% coastal raid gold, −5% gold at peace.", tier: 3, branch: "exclusive", government: "merchant_republic", cost: 480, effects: { unitClassCombat: { naval_melee: 2, naval_ranged: 2 }, coastalRaidGoldPercent: 50, peaceYieldPercent: { gold: -5 } } },
+  { id: "state_church", name: "State Church", desc: "One faith, one realm. +20% faith, +10% culture, −5% gold.", tier: 3, branch: "exclusive", government: "theocracy", cost: 480, effects: { yieldPercent: { faith: 20, culture: 10, gold: -5 } } },
+  { id: "divine_right", name: "Divine Right", desc: "The crown by God's grace. Capital +10% all yields, cities +6 defense, −10% culture.", tier: 4, branch: "exclusive", government: "absolute_monarchy", cost: 900, effects: { capitalYieldPercent: pctAll(10), cityDefenseBonus: 6, yieldPercent: { culture: -10 } } },
+  { id: "banking_houses", name: "Banking Houses", desc: "Financiers to kings. +25% gold, +3 gold per trade route, all units −2 combat.", tier: 4, branch: "exclusive", government: "trade_league", cost: 900, effects: { yieldPercent: { gold: 25 }, tradeRouteGoldBonus: 3, allUnitCombat: -2 } },
+  { id: "holy_conquest", name: "Holy Conquest", desc: "Convert by the sword. +8 combat vs other-religion civs, captured cities convert, +10% faith, −10% gold.", tier: 4, branch: "exclusive", government: "divine_mandate", cost: 900, effects: { combatVsOtherReligion: 8, convertOnCapture: true, yieldPercent: { faith: 10, gold: -10 } } },
 ];
 
 /** Each civic already adopted raises the culture cost of the next by this
- *  fraction of its base cost (Civ-style escalation), so late civics stay
- *  meaningful instead of falling for free out of a culture surplus. */
-export const CIVIC_COST_ESCALATION = 0.12;
+ *  fraction of its cost, COMPOUNDING (Civ-style), so a completionist can never
+ *  afford everything (docs/CIVICS §3.1 / §6). */
+export const CIVIC_COST_ESCALATION = 0.15;
 
 /** Effective culture cost of a civic given how many the player has already
- *  adopted. Used by the sim (to charge culture) and the client (to display the
- *  cost and progress) so both agree on the escalated price. */
+ *  adopted: base × 1.15^adopted. Shared by sim (charging) and client (display). */
 export function civicCost(def: CivicDef, adoptedCount: number): number {
-  return Math.round(def.cost * (1 + CIVIC_COST_ESCALATION * Math.max(0, adoptedCount)));
+  return Math.round(def.cost * Math.pow(1 + CIVIC_COST_ESCALATION, Math.max(0, adoptedCount)));
 }
-
-export const GOVERNMENTS: GovernmentDef[] = [
-  { id: "chiefdom", name: "Chiefdom", desc: "The starting government. 2 policy slots.", slots: 2, effects: {} },
-  { id: "despotism", name: "Despotism", desc: "+10% production. 3 policy slots.", reqCivic: "early_empire", slots: 3, effects: { yieldPercent: { production: 10 } } },
-  { id: "oligarchy", name: "Oligarchy", desc: "Melee & cavalry +2 combat. 4 policy slots.", reqCivic: "military_training", slots: 4, effects: { unitClassCombat: { melee: 2, cavalry: 2 } } },
-  { id: "classical_republic", name: "Classical Republic", desc: "+15% science. 4 policy slots.", reqCivic: "political_philosophy", slots: 4, effects: { yieldPercent: { science: 15 } } },
-  { id: "monarchy", name: "Monarchy", desc: "+10% production and +10% gold. 5 policy slots.", reqCivic: "statecraft", slots: 5, effects: { yieldPercent: { production: 10, gold: 10 } } },
-];
-
-export const POLICIES: PolicyDef[] = [
-  { id: "discipline", name: "Discipline", desc: "Melee units +2 combat.", effects: { unitClassCombat: { melee: 2 } } },
-  { id: "maneuver", name: "Maneuver", desc: "Cavalry +1 movement.", effects: { cavalryMovementBonus: 1 } },
-  { id: "urban_planning", name: "Urban Planning", desc: "+15% production.", effects: { yieldPercent: { production: 15 } } },
-  { id: "god_king", name: "God King", desc: "+15% gold.", effects: { yieldPercent: { gold: 15 } } },
-  { id: "literary_tradition", name: "Literary Tradition", desc: "+10% science.", effects: { yieldPercent: { science: 10 } } },
-  { id: "natural_philosophy", name: "Natural Philosophy", desc: "+20% science.", effects: { yieldPercent: { science: 20 } } },
-  { id: "caravans", name: "Caravans", desc: "+20% gold.", effects: { yieldPercent: { gold: 20 } } },
-  { id: "corvee", name: "Corvée", desc: "Culture can rush production (units, buildings, and tile works).", effects: { rushWithCulture: true } },
-];
 
 const CIVIC_BY_ID = new Map(CIVICS.map((c) => [c.id, c]));
 const GOV_BY_ID = new Map(GOVERNMENTS.map((g) => [g.id, g]));
-const POLICY_BY_ID = new Map(POLICIES.map((p) => [p.id, p]));
 
 export const getCivic = (id: string | undefined) => (id ? CIVIC_BY_ID.get(id) : undefined);
 export const getGovernment = (id: string | undefined) => (id ? GOV_BY_ID.get(id) : undefined);
-export const getPolicy = (id: string | undefined) => (id ? POLICY_BY_ID.get(id) : undefined);
+
+/** A government's tier (0 for Chiefdom / unknown). */
+export function governmentTier(id: string | undefined): number {
+  return getGovernment(id)?.tier ?? 0;
+}
+
+/** Civic slots a government grants (its own `slots`, i.e. by tier). */
+export function governmentSlots(id: string | undefined): number {
+  return getGovernment(id)?.slots ?? GOVERNMENT_SLOTS_BY_TIER[0];
+}
+
+/** Whether `civicId` may be adopted/slotted under `governmentId` (docs/CIVICS §3.3):
+ *  its branch is neutral, matches one of the government's branches, or it is that
+ *  government's exclusive; AND its tier ≤ the government's tier. */
+export function civicLegal(governmentId: string | undefined, civicId: string | undefined): boolean {
+  const gov = getGovernment(governmentId);
+  const civic = getCivic(civicId);
+  if (!gov || !civic) return false;
+  if (civic.tier > gov.tier) return false;
+  if (civic.branch === "neutral") return true;
+  if (civic.branch === "exclusive") return civic.government === gov.id;
+  return gov.branch.includes(civic.branch);
+}
+
+/** Governments whose prereqs `researched` satisfies (OR-semantics) and that are
+ *  not yet researched — the nodes a player may research next. Chiefdom is always
+ *  known. */
+export function researchableGovernments(researched: ReadonlySet<string>): string[] {
+  return GOVERNMENTS.filter(
+    (g) => g.id !== "chiefdom" && !researched.has(g.id) && g.prereqGovernments.some((p) => researched.has(p)),
+  ).map((g) => g.id);
+}
 
 // ===========================================================================
 // Religion: beliefs (chosen when founding) and a pool of religion names.

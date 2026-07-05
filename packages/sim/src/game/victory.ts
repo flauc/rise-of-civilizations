@@ -55,7 +55,9 @@ export function scoreBreakdown(state: GameState, playerId: number): ScoreBreakdo
   const pop = cities.reduce((n, c) => n + c.population, 0);
   const player = state.players.find((p) => p.id === playerId);
   const techCount = player ? player.researched.size : 0;
-  const civicCount = player ? player.civicsResearched.size : 0;
+  // "Civic" score now counts adopted civics + researched governments (minus the
+  // free Chiefdom node) — the culture-tree progress a player has amassed.
+  const civicCount = player ? player.civicsAdopted.size + Math.max(0, player.governmentsResearched.size - 1) : 0;
   const unitCount = unitsOf(state, playerId).length;
   const gold = player?.gold ?? 0;
 

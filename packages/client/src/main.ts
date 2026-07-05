@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import {
-  availableCivics,
+  researchableGovernmentsFor,
   availableTechs,
   canFoundReligion,
   cityAt,
@@ -472,9 +472,11 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onRushTraining: (cityId, orderId, currency) => session.order({ type: "rushTraining", cityId, orderId, currency }),
     onSetResearch: (techId) => session.order({ type: "setResearch", techId }),
     onSetResearchTarget: (techId) => session.order({ type: "setResearchTarget", techId }),
-    onSetCivic: (civicId) => session.order({ type: "setCivic", civicId }),
+    onResearchGovernment: (governmentId) => session.order({ type: "setResearchGovernment", governmentId }),
     onSetGovernment: (governmentId) => session.order({ type: "setGovernment", governmentId }),
-    onTogglePolicy: (policyId) => session.order({ type: "togglePolicy", policyId }),
+    onAdoptCivic: (civicId) => session.order({ type: "adoptCivic", civicId }),
+    onSlotCivic: (civicId) => session.order({ type: "slotCivic", civicId }),
+    onUnslotCivic: (civicId) => session.order({ type: "unslotCivic", civicId }),
     onFoundReligion: (cityId, name, beliefs) => session.order({ type: "foundReligion", cityId, name, beliefs }),
     onUpgradeReligion: () => session.order({ type: "upgradeReligion" }),
     onPickReligionPerk: (perkId) => session.order({ type: "pickReligionPerk", perkId }),
@@ -626,8 +628,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     if (player && player.researching == null && availableTechs(player).length > 0) {
       return { kind: "research", label: "🔬 Choose Research" };
     }
-    if (player && player.researchingCivic == null && availableCivics(player).length > 0) {
-      return { kind: "civic", label: "🎭 Choose Civic" };
+    if (player && player.researchingGovernment == null && researchableGovernmentsFor(player).length > 0) {
+      return { kind: "civic", label: "🏛️ Choose Government" };
     }
     if (canFoundReligion(st(), me)) {
       return { kind: "religion", label: "☮️ Found Religion" };

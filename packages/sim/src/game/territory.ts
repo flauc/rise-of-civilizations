@@ -15,6 +15,15 @@ function claim(state: GameState, city: City, col: number, row: number): boolean 
   return true;
 }
 
+/** The player id that owns the tile at (col,row) via its controlling city, or
+ *  undefined for unclaimed wilderness. "Home territory" for a unit means this
+ *  equals the unit's owner id (docs/CIVICS-AND-GOVERNMENTS.md §4). */
+export function tileOwnerId(state: GameState, col: number, row: number): number | undefined {
+  const cityId = getTile(state.map, col, row)?.ownerCityId;
+  if (cityId === undefined) return undefined;
+  return state.cities.get(cityId)?.ownerId;
+}
+
 /** All tiles currently in a city's territory. */
 export function cityTerritory(state: GameState, city: City): { col: number; row: number }[] {
   const out: { col: number; row: number }[] = [];

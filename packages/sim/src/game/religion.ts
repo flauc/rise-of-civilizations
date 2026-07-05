@@ -14,6 +14,7 @@ import type { City, GameState, Religion, Unit } from "./state";
 import { citiesOf, cityAt, log, makeUnit, playerById } from "./state";
 import { emitReligionFounded } from "./turn-updates";
 import { tradeRouteYield } from "./trade";
+import { playerEffects } from "./civs";
 
 export { BELIEFS, getBelief, RELIGION_TIERS, MAX_RELIGION_TIER, MOVE_HOLY_CITY_COST };
 export type { BeliefDef } from "@roc/data";
@@ -180,6 +181,20 @@ export function spreadReligion(state: GameState): void {
   const cities = [...state.cities.values()];
   const d = (a: City, b: City) => axialDistance(offsetToAxial(a), offsetToAxial(b));
 
+  // Some empires suppress RIVAL faiths (the Inquisition civic scales incoming
+  // rival pressure). Resolve each city owner's suppression + national faith once.
+  const ownerSuppression = new Map<number, { pct: number; rel: string | undefined }>();
+  const rivalScale = (city: City, rel: string): number => {
+    let mod = ownerSuppression.get(city.ownerId);
+    if (mod === undefined) {
+      const eff = playerEffects(state, city.ownerId);
+      mod = { pct: eff.enemyReligionPressurePercent ?? 0, rel: playerReligionId(state, city.ownerId) };
+      ownerSuppression.set(city.ownerId, mod);
+    }
+    if (mod.pct === 0 || !mod.rel || rel === mod.rel) return 1;
+    return Math.max(0, 1 + mod.pct / 100);
+  };
+
   // 1. Decay existing pressure so old conversions fade without reinforcement.
   for (const c of cities) {
     if (!c.religionPressure) continue;
@@ -198,7 +213,7 @@ export function spreadReligion(state: GameState): void {
     for (const target of cities) {
       const dist = d(target, src);
       if (dist > SPREAD_RANGE) continue;
-      addPressure(target, rel, (emit * (SPREAD_RANGE - dist + 1)) / SPREAD_RANGE);
+      addPressure(target, rel, ((emit * (SPREAD_RANGE - dist + 1)) / SPREAD_RANGE) * rivalScale(target, rel));
     }
   }
 
@@ -211,8 +226,8 @@ export function spreadReligion(state: GameState): void {
     const strength = tradeRouteYield(state, route).gold * RELIGION_TRADE_FACTOR;
     const fromRel = dominantReligion(from);
     const toRel = dominantReligion(to);
-    if (fromRel) addPressure(to, fromRel, strength);
-    if (toRel) addPressure(from, toRel, strength);
+    if (fromRel) addPressure(to, fromRel, strength * rivalScale(to, fromRel));
+    if (toRel) addPressure(from, toRel, strength * rivalScale(from, toRel));
   }
 
   // 4. Holy cities are unshakeably anchored to their own faith.
@@ -269,8 +284,10 @@ export function buyReligiousUnit(
   return { ok: true, unitId: id };
 }
 
-/** The religion a player's missionary/apostle spreads (founded, else their capital's). */
-function spreadFaithOf(state: GameState, playerId: number): string | undefined {
+/** A player's national religion: the one they founded, else whatever faith their
+ *  cities predominantly follow. Drives missionary spread AND religion-conditional
+ *  civics/governments (combatVsOtherReligion, convertOnCapture). */
+export function playerReligionId(state: GameState, playerId: number): string | undefined {
   const founded = playerById(state, playerId)?.foundedReligionId;
   if (founded) return founded;
   // Fall back to whatever faith the player's cities predominantly follow.
@@ -279,6 +296,27 @@ function spreadFaithOf(state: GameState, playerId: number): string | undefined {
     if (rel) return rel;
   }
   return undefined;
+}
+
+/** The religion a player's missionary/apostle spreads. */
+const spreadFaithOf = playerReligionId;
+
+/** Flood `city` with `playerId`'s national religion so it becomes the strict
+ *  pressure majority (the `convertOnCapture` civic effect). No-op if the player
+ *  has no religion. Deterministic: adds exactly enough pressure to overtake every
+ *  rival faith already present. Returns whether a conversion happened. */
+export function convertCityToPlayerReligion(state: GameState, city: City, playerId: number): boolean {
+  const rel = playerReligionId(state, playerId);
+  if (!rel) return false;
+  let others = 0;
+  if (city.religionPressure) {
+    for (const [r, amt] of Object.entries(city.religionPressure)) if (r !== rel) others += amt;
+  }
+  const target = Math.max(CONVERSION_PRESSURE, others * 2 + 1);
+  const current = city.religionPressure?.[rel] ?? 0;
+  if (current < target) addPressure(city, rel, target - current);
+  city.religion = dominantReligion(city);
+  return true;
 }
 
 function hasAnyReligion(state: GameState, playerId: number): boolean {

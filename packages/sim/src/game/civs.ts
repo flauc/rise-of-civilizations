@@ -10,7 +10,10 @@ import {
   getCivic,
   civicCost,
   getGovernment,
-  getPolicy,
+  governmentTier,
+  governmentSlots,
+  civicLegal,
+  researchableGovernments,
   getBelief,
   nextCityNameForCiv,
   UNIQUE_UNITS,
@@ -38,7 +41,7 @@ import { legendEmpireEffects, legendGarrisonEffects } from "./legend-effects";
 import type { GameState, Player, Unit, City } from "./state";
 import { playerById, citiesOf } from "./state";
 
-export { CIVILIZATIONS, getCiv, CIVICS, GOVERNMENTS, getCivic, civicCost, getGovernment, getPolicy, nextCityNameForCiv };
+export { CIVILIZATIONS, getCiv, CIVICS, GOVERNMENTS, getCivic, civicCost, getGovernment, governmentTier, governmentSlots, civicLegal, nextCityNameForCiv };
 export { UNIQUE_UNITS, UNIQUE_UNIT_IDS, uniqueUnitForCiv, getUniqueUnit };
 export { UNIQUE_INFRA, UNIQUE_IMPROVEMENTS, uniqueInfraForCiv, uniqueBuildingForCiv, uniqueImprovementForCiv, getUniqueInfra };
 export type { CivDef, CivEffects, CivicDef, GovernmentDef, UniqueUnitDef, UniqueInfraDef };
@@ -120,6 +123,7 @@ function mergeInto(acc: CivEffects, e: CivEffects | undefined): void {
   if (e.unitHealPerTurn) acc.unitHealPerTurn = (acc.unitHealPerTurn ?? 0) + e.unitHealPerTurn;
   if (e.mountedHealPerTurn) acc.mountedHealPerTurn = (acc.mountedHealPerTurn ?? 0) + e.mountedHealPerTurn;
   if (e.militaryMaintenanceCostMultiplier) acc.militaryMaintenanceCostMultiplier = (acc.militaryMaintenanceCostMultiplier ?? 0) + e.militaryMaintenanceCostMultiplier;
+  if (e.unitUpkeepPercent) acc.unitUpkeepPercent = (acc.unitUpkeepPercent ?? 0) + e.unitUpkeepPercent;
   if (e.tradeRouteGoldBonus) acc.tradeRouteGoldBonus = (acc.tradeRouteGoldBonus ?? 0) + e.tradeRouteGoldBonus;
   if (e.tradeRouteFaithBonus) acc.tradeRouteFaithBonus = (acc.tradeRouteFaithBonus ?? 0) + e.tradeRouteFaithBonus;
   if (e.tradeRouteCapacityBonus) acc.tradeRouteCapacityBonus = (acc.tradeRouteCapacityBonus ?? 0) + e.tradeRouteCapacityBonus;
@@ -158,6 +162,25 @@ function mergeInto(acc: CivEffects, e: CivEffects | undefined): void {
   // Founding bonuses come from the civ only (not merged additively).
   if (e.newCityFreeBuilding && !acc.newCityFreeBuilding) acc.newCityFreeBuilding = e.newCityFreeBuilding;
   if (e.newCityExtraPopulation) acc.newCityExtraPopulation = (acc.newCityExtraPopulation ?? 0) + e.newCityExtraPopulation;
+  // Civics & governments conditional effects (docs/CIVICS-AND-GOVERNMENTS.md §4).
+  for (const k of ["warYieldPercent", "peaceYieldPercent", "capitalYieldPercent"] as const) {
+    if (e[k]) {
+      acc[k] ??= {};
+      for (const y of ["food", "production", "gold", "science", "culture", "faith"] as const) {
+        if (e[k]![y]) acc[k]![y] = (acc[k]![y] ?? 0) + e[k]![y]!;
+      }
+    }
+  }
+  if (e.homeCombat) acc.homeCombat = (acc.homeCombat ?? 0) + e.homeCombat;
+  if (e.foreignCombat) acc.foreignCombat = (acc.foreignCombat ?? 0) + e.foreignCombat;
+  if (e.allUnitCombat) acc.allUnitCombat = (acc.allUnitCombat ?? 0) + e.allUnitCombat;
+  if (e.combatVsOtherReligion) acc.combatVsOtherReligion = (acc.combatVsOtherReligion ?? 0) + e.combatVsOtherReligion;
+  if (e.cultureOnKill) acc.cultureOnKill = (acc.cultureOnKill ?? 0) + e.cultureOnKill;
+  if (e.enemyReligionPressurePercent) acc.enemyReligionPressurePercent = (acc.enemyReligionPressurePercent ?? 0) + e.enemyReligionPressurePercent;
+  if (e.cityDefenseBonus) acc.cityDefenseBonus = (acc.cityDefenseBonus ?? 0) + e.cityDefenseBonus;
+  if (e.homeHealBonus) acc.homeHealBonus = (acc.homeHealBonus ?? 0) + e.homeHealBonus;
+  if (e.garrisonFreeUpkeep) acc.garrisonFreeUpkeep = true;
+  if (e.convertOnCapture) acc.convertOnCapture = true;
 }
 
 /** All active bonuses for a player: civ ability + government + policy cards + leader-ability modifiers. */
@@ -167,7 +190,11 @@ export function playerEffects(state: GameState, playerId: number): CivEffects {
   if (!p) return acc;
   mergeInto(acc, getCiv(p.civId)?.effects);
   mergeInto(acc, getGovernment(p.government)?.effects);
-  for (const policyId of p.policies) mergeInto(acc, getPolicy(policyId)?.effects);
+  // Slotted civics contribute only while NOT in unrest (a government switch empties
+  // the slots for its duration — docs/CIVICS §2.4).
+  if (p.unrestTurns <= 0) {
+    for (const civicId of p.slottedCivics) mergeInto(acc, getCivic(civicId)?.effects);
+  }
   // Civ-unique buildings raised anywhere in the empire contribute their
   // empire-wide effects — once each, no matter how many cities built them.
   const seenInfra = new Set<string>();
@@ -247,9 +274,11 @@ export function effectSources(state: GameState, playerId: number): EffectSource[
   push(civ?.abilityName ?? civ?.name, civ?.effects);
   const gov = getGovernment(p.government);
   push(gov?.name, gov?.effects);
-  for (const policyId of p.policies) {
-    const pol = getPolicy(policyId);
-    push(pol?.name, pol?.effects);
+  if (p.unrestTurns <= 0) {
+    for (const civicId of p.slottedCivics) {
+      const civic = getCivic(civicId);
+      push(civic?.name, civic?.effects);
+    }
   }
   const seenInfra = new Set<string>();
   for (const c of citiesOf(state, playerId)) {
@@ -322,33 +351,40 @@ export function civCombatBonus(state: GameState, unit: Unit): number {
   return bonus;
 }
 
-// ---- civics tree ---------------------------------------------------------
+// ---- government tree & civics --------------------------------------------
 
-/** Civics become available only after researching this technology. */
+/** The government tree (and civic adoption) opens only after this technology. */
 export function civicsUnlocked(player: Player): boolean {
   return player.researched.has(CIVICS_REQUIRED_TECH);
 }
 
-export function civicUnlocked(researched: ReadonlySet<string>, civicId: string): boolean {
-  return (getCivic(civicId)?.prereqs ?? []).every((p) => researched.has(p));
-}
-
-export function availableCivics(player: Player): string[] {
+/** Government nodes the player may research next: prereqs met (OR-semantics),
+ *  not yet researched, and the tree is unlocked (Writing). */
+export function researchableGovernmentsFor(player: Player): string[] {
   if (!civicsUnlocked(player)) return [];
-  return CIVICS.filter((c) => !player.civicsResearched.has(c.id) && civicUnlocked(player.civicsResearched, c.id)).map((c) => c.id);
+  return researchableGovernments(player.governmentsResearched);
 }
 
-/** Governments the player may currently adopt (their required civic is known). */
-export function availableGovernments(player: Player): string[] {
-  return GOVERNMENTS.filter((g) => !g.reqCivic || player.civicsResearched.has(g.reqCivic)).map((g) => g.id);
+/** Governments the player may switch TO right now: Chiefdom, plus any they have
+ *  already researched. (Researching a node does not adopt it; see setGovernment.) */
+export function switchableGovernments(player: Player): string[] {
+  return GOVERNMENTS.filter((g) => g.id === "chiefdom" || player.governmentsResearched.has(g.id)).map((g) => g.id);
 }
 
-/** Policy cards the player has unlocked (via researched civics). */
-export function unlockedPolicies(player: Player): string[] {
-  const out: string[] = [];
-  for (const id of player.civicsResearched) {
-    const pol = getCivic(id)?.unlocksPolicy;
-    if (pol) out.push(pol);
-  }
-  return out;
+/** Civics the player may currently ADOPT: tree unlocked, not already adopted,
+ *  and legal under their current government (branch + tier). */
+export function adoptableCivics(player: Player): string[] {
+  if (!civicsUnlocked(player)) return [];
+  return CIVICS.filter((c) => !player.civicsAdopted.has(c.id) && civicLegal(player.government, c.id)).map((c) => c.id);
+}
+
+/** Adopted civics the player may currently SLOT (legal under their government
+ *  and not already slotted). */
+export function slottableCivics(player: Player): string[] {
+  return [...player.civicsAdopted].filter((id) => !player.slottedCivics.includes(id) && civicLegal(player.government, id));
+}
+
+/** Civic slot capacity from the player's current government. */
+export function civicSlotCapacity(player: Player): number {
+  return governmentSlots(player.government);
 }

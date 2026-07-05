@@ -238,9 +238,26 @@ export interface Player {
   /** Techs waiting to be researched after the current one (target-path queue). */
   researchQueue: TechId[];
   scienceProgress: number;
-  // Civics / government (culture tree)
-  civicsResearched: Set<string>;
-  researchingCivic: string | null;
+  // Governments & civics (culture tree — docs/CIVICS-AND-GOVERNMENTS.md)
+  /** Government nodes researched with culture (Chiefdom is always present). */
+  governmentsResearched: Set<string>;
+  /** Government node currently being researched from the culture pool, if any. */
+  researchingGovernment: string | null;
+  /** Civics permanently unlocked (bought instantly from the culture pool). */
+  civicsAdopted: Set<string>;
+  /** Civic ids currently slotted (only these contribute effects; capacity =
+   *  current government's slots). */
+  slottedCivics: string[];
+  /** Turns of unrest remaining after a government switch (yields −25%, slots
+   *  emptied). 0 = none. */
+  unrestTurns: number;
+  /** Turn the player last switched government (10-turn switch cooldown). */
+  governmentChangedTurn: number;
+  /** Turn a civic was last adopted (enforces one adoption/turn; opens a free
+   *  re-slot window that turn). Absent = never. */
+  lastCivicAdoptedTurn?: number;
+  /** Turn a free re-slot window opens after unrest ends. Absent = none. */
+  unrestEndedTurn?: number;
   cultureProgress: number;
   /** Total culture this civ has ever produced — its cultural "weight" that rivals'
    *  tourism must overcome for a Culture victory. Absent on legacy saves (=0). */
@@ -248,9 +265,8 @@ export interface Player {
   /** Accumulated tourism/influence this civ has exerted over each rival (by id).
    *  You are "influential" over a rival once this exceeds their cultureLifetime. */
   influenceOver?: Record<number, number>;
+  /** The government currently held (drives which civics are legal). */
   government: string;
-  /** Active policy-card ids (capped at the government's slot count). */
-  policies: string[];
   // Religion
   faith: number;
   /** Religion id this player founded (if any). */
@@ -537,6 +553,7 @@ export type TurnUpdateType =
   | "unitTrained"
   | "researchComplete"
   | "civicComplete"
+  | "governmentComplete"
   | "improvementComplete"
   | "wonderComplete"
   | "tradeRouteEstablished"

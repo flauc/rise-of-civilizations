@@ -9,16 +9,18 @@ import type { CheatAction } from "./god-mode";
 import { getSettings, updateSettings, type TurnUpdateView } from "./settings";
 import { selectTurnUpdates } from "./turn-update-batch";
 import {
-  availableCivics,
-  availableGovernments,
+  researchableGovernmentsFor,
+  switchableGovernments,
+  adoptableCivics,
+  slottableCivics,
+  civicSlotCapacity,
   availableProduction,
   availablePromotions,
   availableTechs,
-  unlockedPolicies,
   getCivic,
   civicCost,
   getGovernment,
-  getPolicy,
+  governmentTier,
   BELIEFS,
   getBelief,
   religionById,
@@ -377,9 +379,11 @@ export interface UIHandlers {
   onRushTraining(cityId: number, orderId: number, currency: RushCurrency): void;
   onSetResearch(techId: TechId): void;
   onSetResearchTarget(techId: TechId): void;
-  onSetCivic(civicId: string): void;
+  onResearchGovernment(governmentId: string): void;
   onSetGovernment(governmentId: string): void;
-  onTogglePolicy(policyId: string): void;
+  onAdoptCivic(civicId: string): void;
+  onSlotCivic(civicId: string): void;
+  onUnslotCivic(civicId: string): void;
   onFoundReligion(cityId: number, name: string, beliefs: string[]): void;
   /** Raise the player's founded religion one tier (faith + follower-city gated). */
   onUpgradeReligion(): void;
@@ -1475,13 +1479,13 @@ export function createUI(handlers: UIHandlers): UI {
       ? Math.min(100, (player.scienceProgress / researchingDef.cost) * 100)
       : 0;
     const cul = citiesOf(state, player.id).reduce((n, c) => n + cityDisplayYields(state, c).culture, 0);
-    const civicDef = getCivic(player.researchingCivic ?? undefined);
-    const civicCurrentCost = civicDef ? civicCost(civicDef, player.civicsResearched.size) : 0;
-    const civicPct = civicCurrentCost ? Math.min(100, (player.cultureProgress / civicCurrentCost) * 100) : 0;
+    const govResDef = getGovernment(player.researchingGovernment ?? undefined);
+    const govResCost = govResDef ? govResDef.cost : 0;
+    const civicPct = govResCost ? Math.min(100, (player.cultureProgress / govResCost) * 100) : 0;
     const gov = getGovernment(player.government);
     const civ = getCiv(player.civId);
     const rName = researchingDef ? researchingDef.name : "Choose…";
-    const cName = civicDef ? civicDef.name : "Choose…";
+    const cName = govResDef ? govResDef.name : (gov?.name ?? "Choose…");
     const civTitle = civ ? `${civ.name} — ${civ.abilityName}: ${civ.abilityDesc}` : "";
     const showCivics = civicsUnlocked(player);
     const showReligion = religionUnlocked(state, player.id);
@@ -2186,17 +2190,14 @@ export function createUI(handlers: UIHandlers): UI {
     if (!civicsOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const gov = getGovernment(player.government);
-    const slots = gov?.slots ?? 0;
-    const civicList = availableCivics(player);
-    const govList = availableGovernments(player);
-    const policyList = unlockedPolicies(player);
+    const capacity = civicSlotCapacity(player);
 
     let html =
-      `<div class="row" style="justify-content:space-between"><b>Civics & Government</b><button class="btn" id="vclose">✕</button></div>`;
+      `<div class="row" style="justify-content:space-between"><b>Governments & Civics</b><button class="btn" id="vclose">✕</button></div>`;
 
     if (!civicsUnlocked(player)) {
       html +=
-        `<div class="locked-note">🔒 Civics unlock after researching <b>${TECH_DEFS[CIVICS_REQUIRED_TECH].name}</b>.</div>`;
+        `<div class="locked-note">🔒 The government tree unlocks after researching <b>${TECH_DEFS[CIVICS_REQUIRED_TECH].name}</b>.</div>`;
       civics.innerHTML = html;
       civics.querySelector<HTMLButtonElement>("#vclose")!.addEventListener("click", () => {
         civicsOpen = false;
@@ -2205,67 +2206,128 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
 
-    html += `<div class="csub">Develop a civic</div>`;
-    html += civicList.length
-      ? civicList
+    // Split a civic's effects into pro (green) and con (red) blurbs by sign.
+    const effectBadges = (id: string): string => {
+      const d = getCivic(id);
+      return d ? `<div class="sub">${d.desc}</div>` : "";
+    };
+
+    // ---- current government + unrest -------------------------------------
+    html += `<div class="csub">Government — <b style="color:#fff">${gov?.name ?? "—"}</b> <span style="color:#9fc0dc">(Tier ${governmentTier(player.government)})</span></div>`;
+    if (player.unrestTurns > 0) {
+      html += `<div class="locked-note">⚠ Unrest: ${player.unrestTurns} turn${player.unrestTurns > 1 ? "s" : ""} — all yields −25% and civics are dormant.</div>`;
+    }
+
+    // ---- research the next government node --------------------------------
+    const researchable = researchableGovernmentsFor(player);
+    html += `<div class="csub">Research a government</div>`;
+    if (player.researchingGovernment) {
+      const rg = getGovernment(player.researchingGovernment)!;
+      const pct = Math.min(100, Math.round((player.cultureProgress / Math.max(1, rg.cost)) * 100));
+      html += `<div class="tech" style="border-color:#ffd967"><div style="flex:1"><b>Researching ${rg.name}</b><div class="sub">${player.cultureProgress}/${rg.cost}🎭 (${pct}%)</div></div></div>`;
+    }
+    html += researchable.length
+      ? researchable
+          .map((id) => {
+            const g = getGovernment(id)!;
+            return (
+              `<div class="tech" data-research-gov="${id}"><div style="flex:1">` +
+              `<div><b>${g.name}</b> <span class="sub">T${g.tier} · ${g.branch.join("/") || "—"}</span></div>` +
+              `<div class="sub">${g.desc}</div></div><span class="cost">${g.cost}🎭</span></div>`
+            );
+          })
+          .join("")
+      : `<div style="color:#9fc0dc;font-size:12px">No new governments to research.</div>`;
+
+    // ---- switch to a researched government --------------------------------
+    const switchable = switchableGovernments(player).filter((id) => id !== player.government);
+    if (switchable.length) {
+      html += `<div class="csub">Switch government <span style="color:#9fc0dc">(costs unrest)</span></div>`;
+      html += switchable
+        .map((id) => {
+          const g = getGovernment(id)!;
+          const shares = gov ? gov.branch.some((b) => g.branch.includes(b)) : false;
+          const cost = player.government === "chiefdom" ? "free" : shares ? "1 turn unrest" : "revolution: 3 turns";
+          return (
+            `<div class="tech" data-switch-gov="${id}"><div style="flex:1"><b>${g.name}</b>` +
+            `<div class="sub">${g.desc}</div></div><span class="cost">${cost}</span></div>`
+          );
+        })
+        .join("");
+    }
+
+    // ---- slotted civics ---------------------------------------------------
+    html += `<div class="csub">Civics <span style="color:#9fc0dc">(${player.slottedCivics.length}/${capacity} slots)</span></div>`;
+    html += player.slottedCivics.length
+      ? player.slottedCivics
+          .map((id) => {
+            const d = getCivic(id);
+            return (
+              `<div class="tech" style="border-color:#ffd967;background:#27331d"><div style="flex:1">` +
+              `<b>${d?.name ?? id}</b>${effectBadges(id)}</div>` +
+              `<button class="btn" data-unslot="${id}">Unslot</button></div>`
+            );
+          })
+          .join("")
+      : `<div style="color:#9fc0dc;font-size:12px">No civics slotted.</div>`;
+
+    // ---- adopt a new civic ------------------------------------------------
+    const adoptable = adoptableCivics(player);
+    html += `<div class="csub">Adopt a civic <span style="color:#9fc0dc">(one per turn)</span></div>`;
+    html += adoptable.length
+      ? adoptable
           .map((id) => {
             const d = getCivic(id)!;
-            const unlocks: string[] = [];
-            if (d.unlocksGovernment) unlocks.push(`Gov: ${getGovernment(d.unlocksGovernment)?.name}`);
-            if (d.unlocksPolicy) unlocks.push(`Policy: ${getPolicy(d.unlocksPolicy)?.name}`);
+            const cost = civicCost(d, player.civicsAdopted.size);
             return (
-              `<div class="tech" data-civic="${id}"><div style="flex:1">` +
-              `<div><b>${d.name}</b></div>` +
-              (unlocks.length ? `<div class="sub">${unlocks.join(" · ")}</div>` : "") +
-              `</div><span class="cost">${civicCost(d, player.civicsResearched.size)}🎭</span></div>`
+              `<div class="tech" data-adopt="${id}"><div style="flex:1">` +
+              `<div><b>${d.name}</b> <span class="sub">T${d.tier} · ${d.branch}</span></div>${effectBadges(id)}` +
+              `</div><span class="cost">${cost}🎭</span></div>`
             );
           })
           .join("")
-      : `<div style="color:#9fc0dc;font-size:12px">No new civics available yet.</div>`;
+      : `<div style="color:#9fc0dc;font-size:12px">No new civics available under this government.</div>`;
 
-    html += `<div class="csub">Government — <b style="color:#fff">${gov?.name ?? "—"}</b></div>`;
-    html += govList
-      .map((id) => {
-        const g = getGovernment(id)!;
-        const active = id === player.government;
-        return (
-          `<div class="tech" data-gov="${id}" style="${active ? "border-color:#ffd967;background:#27331d" : ""}">` +
-          `<div style="flex:1"><b>${g.name}</b><div class="sub">${g.desc}</div></div>${active ? "✓" : ""}</div>`
-        );
-      })
-      .join("");
-
-    html += `<div class="csub">Policies <span style="color:#9fc0dc">(${player.policies.length}/${slots} slots)</span></div>`;
-    html += policyList.length
-      ? policyList
-          .map((id) => {
-            const p = getPolicy(id)!;
-            const active = player.policies.includes(id);
-            return (
-              `<div class="tech" data-policy="${id}" style="${active ? "border-color:#ffd967;background:#27331d" : ""}">` +
-              `<div style="flex:1"><b>${p.name}</b><div class="sub">${p.desc}</div></div>${active ? "✓" : ""}</div>`
-            );
-          })
-          .join("")
-      : `<div style="color:#9fc0dc;font-size:12px">Unlock policies by developing civics.</div>`;
+    // ---- re-slot an already-adopted civic --------------------------------
+    const slottable = slottableCivics(player);
+    if (slottable.length) {
+      html += `<div class="csub">Slot an adopted civic</div>`;
+      html += slottable
+        .map((id) => {
+          const d = getCivic(id)!;
+          const full = player.slottedCivics.length >= capacity;
+          return (
+            `<div class="tech" ${full ? "" : `data-slot="${id}"`} style="${full ? "opacity:0.5" : ""}">` +
+            `<div style="flex:1"><b>${d.name}</b>${effectBadges(id)}</div>` +
+            `<span class="cost">${full ? "slots full" : "slot"}</span></div>`
+          );
+        })
+        .join("");
+    }
 
     civics.innerHTML = html;
     civics.querySelector<HTMLButtonElement>("#vclose")!.addEventListener("click", () => {
       civicsOpen = false;
       civics.classList.add("hidden");
     });
-    civics.querySelectorAll<HTMLDivElement>("[data-civic]").forEach((el) =>
+    civics.querySelectorAll<HTMLDivElement>("[data-research-gov]").forEach((el) =>
       el.addEventListener("click", () => {
-        handlers.onSetCivic(el.dataset.civic!);
+        handlers.onResearchGovernment(el.dataset.researchGov!);
         civicsOpen = false;
         civics.classList.add("hidden");
       }),
     );
-    civics.querySelectorAll<HTMLDivElement>("[data-gov]").forEach((el) =>
-      el.addEventListener("click", () => handlers.onSetGovernment(el.dataset.gov!)),
+    civics.querySelectorAll<HTMLDivElement>("[data-switch-gov]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onSetGovernment(el.dataset.switchGov!)),
     );
-    civics.querySelectorAll<HTMLDivElement>("[data-policy]").forEach((el) =>
-      el.addEventListener("click", () => handlers.onTogglePolicy(el.dataset.policy!)),
+    civics.querySelectorAll<HTMLDivElement>("[data-adopt]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onAdoptCivic(el.dataset.adopt!)),
+    );
+    civics.querySelectorAll<HTMLDivElement>("[data-slot]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onSlotCivic(el.dataset.slot!)),
+    );
+    civics.querySelectorAll<HTMLButtonElement>("[data-unslot]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onUnslotCivic(el.dataset.unslot!)),
     );
   };
 

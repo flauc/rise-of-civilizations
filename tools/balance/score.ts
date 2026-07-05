@@ -12,12 +12,15 @@
 import {
   CIVILIZATIONS,
   CIVICS,
+  GOVERNMENTS,
   uniqueInfraForCiv,
   startingUnitsFor,
   capitalPopulationBonusFor,
   DEFAULT_STARTING_UNITS,
   type CivDef,
   type CivEffects,
+  type CivicDef,
+  type GovernmentDef,
 } from "@roc/data";
 import {
   UNIT_DEFS,
@@ -49,6 +52,8 @@ import {
   frequencyFactor,
   OUTLIER_BAND,
   TARGET_TOTAL,
+  CONDITIONAL_DISCOUNT,
+  CIVIC_PTS,
   type Era,
 } from "./weights";
 
@@ -57,7 +62,9 @@ import {
 // ---------------------------------------------------------------------------
 
 const CIVIC_COST = new Map(CIVICS.map((c) => [c.id, c.cost]));
-const CIVIC_PRE = new Map(CIVICS.map((c) => [c.id, c.prereqs]));
+// Civics no longer form a prereq tree (they gate on government branch/tier now);
+// treat each as standalone for the timing model. Full integration lands in M-C5.
+const CIVIC_PRE = new Map<string, readonly string[]>(CIVICS.map((c) => [c.id, [] as string[]]));
 
 const cumCostMemo = new Map<string, number>();
 /** Cumulative cost of a tech OR civic id: its own cost + all prerequisites'. */
@@ -156,6 +163,28 @@ function scoreEffects(e: CivEffects | undefined): number {
   s += (e.startXpBonus ?? 0) * PTS.startXp;
   s += (e.trainingSlotsBonus ?? 0) * PTS.trainingSlots;
   s += (e.freeTrainingFamilies?.length ?? 0) * PTS.freeTrainingFamily;
+  // ---- civics & governments: conditional + M-C1 fields (docs/CIVICS §9) ----
+  const cy = (obj: Parameters<typeof sumYields>[0], disc: number): number => {
+    if (!obj) return 0;
+    let t = 0;
+    for (const k of ["food", "production", "gold", "science", "culture", "faith"] as const) t += (obj[k] ?? 0) * YIELD_PCT_PTS[k];
+    return t * disc;
+  };
+  s += cy(e.warYieldPercent, CONDITIONAL_DISCOUNT.warOrPeace);
+  s += cy(e.peaceYieldPercent, CONDITIONAL_DISCOUNT.warOrPeace);
+  s += cy(e.capitalYieldPercent, CONDITIONAL_DISCOUNT.capital);
+  s += (e.allUnitCombat ?? 0) * CIVIC_PTS.allUnitCombat;
+  s += (e.homeCombat ?? 0) * CIVIC_PTS.homeCombat * CONDITIONAL_DISCOUNT.homeOrForeign;
+  s += (e.foreignCombat ?? 0) * CIVIC_PTS.foreignCombat * CONDITIONAL_DISCOUNT.homeOrForeign;
+  s += (e.combatVsOtherReligion ?? 0) * CIVIC_PTS.combatVsOtherReligion * CONDITIONAL_DISCOUNT.religion;
+  s += (e.cityDefenseBonus ?? 0) * CIVIC_PTS.cityDefenseBonus;
+  s += (e.cultureOnKill ?? 0) * CIVIC_PTS.cultureOnKill;
+  s += (e.faithOnKill ?? 0) * CIVIC_PTS.faithOnKill;
+  s += (e.enemyReligionPressurePercent ?? 0) * -CIVIC_PTS.enemyReligionPressurePercent; // −50% → +5
+  if (e.garrisonFreeUpkeep) s += CIVIC_PTS.garrisonFreeUpkeep;
+  s += (e.homeHealBonus ?? 0) * CIVIC_PTS.homeHealBonus * CONDITIONAL_DISCOUNT.homeOrForeign;
+  if (e.convertOnCapture) s += CIVIC_PTS.convertOnCapture * CONDITIONAL_DISCOUNT.religion;
+  s += (e.unitUpkeepPercent ?? 0) * -CIVIC_PTS.unitUpkeepPct; // +40% upkeep → −12
   return s;
 }
 
@@ -249,8 +278,45 @@ const r1 = (n: number) => n.toFixed(1);
 const pad = (s: string, n: number) => s.padEnd(n);
 const padL = (s: string, n: number) => s.padStart(n);
 
+// ---------------------------------------------------------------------------
+// Civics & governments balance report (docs/CIVICS-AND-GOVERNMENTS.md §9).
+// Each is scored on raw effect magnitude (conditional effects auto-discounted in
+// scoreEffects); we then check that entries within a tier land in an acceptance
+// band around that tier's mean — ±20% for civics, ±15% for governments.
+// ---------------------------------------------------------------------------
+
+function reportTierGroup<T extends { name: string; tier: number; effects: CivEffects }>(
+  label: string,
+  items: T[],
+  bandPct: number,
+  extra: (x: T) => string,
+): void {
+  const byTier = new Map<number, T[]>();
+  for (const it of items) (byTier.get(it.tier) ?? byTier.set(it.tier, []).get(it.tier)!).push(it);
+  console.log(`\n  ${label} — acceptance band ±${Math.round(bandPct * 100)}% of the tier mean\n`);
+  for (const tier of [...byTier.keys()].sort((a, b) => a - b)) {
+    const group = byTier.get(tier)!.map((it) => ({ it, score: scoreEffects(it.effects) }));
+    const mean = group.reduce((a, g) => a + g.score, 0) / group.length;
+    const lo = mean * (1 - bandPct), hi = mean * (1 + bandPct);
+    console.log(`  Tier ${tier}  (mean ${r1(mean)} · ${group.length} entries)`);
+    group.sort((a, b) => b.score - a.score);
+    for (const { it, score } of group) {
+      const flag = score < lo ? "⤢ weak" : score > hi ? "⤡ strong" : "✓";
+      console.log(`    ${pad(it.name, 24)}${padL(r1(score), 7)}   ${pad(flag, 8)} ${extra(it)}`);
+    }
+    console.log("");
+  }
+}
+
+function civicsReport(): void {
+  console.log(`\n  Civics & Governments Balance (raw magnitude; conditional effects discounted)`);
+  reportTierGroup<GovernmentDef>("Governments", GOVERNMENTS.filter((g) => g.tier > 0), 0.15, (g) => `${g.branch.join("/") || "—"} · ${g.slots} slots · ${g.cost}🎭`);
+  reportTierGroup<CivicDef>("Civics", CIVICS as CivicDef[], 0.20, (c) => `${c.branch}${c.government ? ` (${c.government})` : ""} · ${c.cost}🎭`);
+}
+
 function main() {
   const args = process.argv.slice(2);
+  if (args.includes("--civics")) return civicsReport();
   const scores = CIVILIZATIONS.map(scoreCiv).sort((a, b) => b.total - a.total);
 
   const csv = args.includes("--csv");

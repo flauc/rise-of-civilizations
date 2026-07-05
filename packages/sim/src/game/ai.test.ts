@@ -128,6 +128,34 @@ describe("AI opponent", () => {
     expect(s.players[1]!.researched.size).toBeGreaterThan(2); // and keeps developing
   });
 
+  it("researches governments and adopts a real one once the culture tree opens", () => {
+    const s = createGame({ seed: "ai-gov", cols: 44, rows: 30, barbarians: false, humanSlots: 1, playerCount: 3 });
+    beginTurn(s);
+    let guard = 0;
+    while (citiesOf(s, 1).length === 0 && guard++ < 25) applyCommand(s, { type: "endTurn" });
+    s.players[1]!.researched.add("writing"); // open the tree
+    s.players[1]!.cultureProgress += 2000; // and give it culture to spend
+    for (let i = 0; i < 40; i++) applyCommand(s, { type: "endTurn" });
+    const p = s.players[1]!;
+    expect(p.governmentsResearched.size).toBeGreaterThan(1); // researched beyond Chiefdom
+    expect(p.government).not.toBe("chiefdom"); // and switched into a real government
+  });
+
+  it("makes deterministic government/civic choices for a given seed", () => {
+    const run = () => {
+      const s = createGame({ seed: "ai-gov-det", cols: 44, rows: 30, barbarians: false, humanSlots: 1, playerCount: 3 });
+      beginTurn(s);
+      let g = 0;
+      while (citiesOf(s, 1).length === 0 && g++ < 25) applyCommand(s, { type: "endTurn" });
+      s.players[1]!.researched.add("writing");
+      s.players[1]!.cultureProgress += 2000;
+      for (let i = 0; i < 40; i++) applyCommand(s, { type: "endTurn" });
+      const p = s.players[1]!;
+      return { gov: p.government, researched: [...p.governmentsResearched].sort(), slotted: [...p.slottedCivics].sort() };
+    };
+    expect(run()).toEqual(run());
+  });
+
   it("develops its economy in simultaneous (multiplayer) play, not just hotseat", () => {
     // Regression: resolveSimultaneousTurn once ran processCity/advanceWorks for
     // humans only, so AI civs in multiplayer issued orders but never accumulated

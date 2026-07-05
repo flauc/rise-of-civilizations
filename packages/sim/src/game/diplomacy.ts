@@ -133,6 +133,17 @@ export function atPeace(state: GameState, a: number, b: number): boolean {
   return relationBetween(state, a, b)?.status === "peace";
 }
 
+/** True if `player` is at war with at least one MAJOR civ (barbarians never count).
+ *  This is the definition used by war/peace-conditional civics (docs/CIVICS §4):
+ *  a barbarian incursion does not flip an empire onto a "war footing". */
+export function isAtWarWithMajor(state: GameState, player: Player): boolean {
+  for (const id of player.atWar) {
+    const other = playerById(state, id);
+    if (other && !other.isBarbarian) return true;
+  }
+  return false;
+}
+
 function attitudeRec(state: GameState, from: number, to: number): Attitude {
   let at = state.attitudes.find((x) => x.from === from && x.to === to);
   if (!at) {

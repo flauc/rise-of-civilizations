@@ -70,7 +70,8 @@ describe("serialize round-trip", () => {
       const p = state.players[i]!;
       const rp = restored.players[i]!;
       expect([...rp.researched].sort()).toEqual([...p.researched].sort());
-      expect([...rp.civicsResearched].sort()).toEqual([...p.civicsResearched].sort());
+      expect([...rp.governmentsResearched].sort()).toEqual([...p.governmentsResearched].sort());
+      expect([...rp.civicsAdopted].sort()).toEqual([...p.civicsAdopted].sort());
       expect([...rp.explored].sort()).toEqual([...p.explored].sort());
     }
   });
@@ -101,17 +102,19 @@ describe("serialize round-trip", () => {
   it("tolerates legacy saves where Set fields were serialized as empty objects", () => {
     const state = createGame({ seed: "legacy", cols: 30, rows: 20, playerCount: 2, humanSlots: 1 });
     const serialized = serializeState(state);
-    // Simulate an old save where civicsResearched (and possibly others) became `{}`.
+    // Simulate an old save where Set fields (governmentsResearched, …) became `{}`.
     const legacy = JSON.parse(JSON.stringify(serialized)) as SerializedState;
     for (const p of legacy.players) {
-      p.civicsResearched = {} as unknown as string[];
+      p.governmentsResearched = {} as unknown as string[];
+      p.civicsAdopted = {} as unknown as string[];
       p.researched = {} as unknown as string[];
       p.explored = {} as unknown as string[];
     }
     expect(() => deserializeState(legacy)).not.toThrow();
     const restored = deserializeState(legacy);
     for (const p of restored.players) {
-      expect(p.civicsResearched).toBeInstanceOf(Set);
+      expect(p.governmentsResearched).toBeInstanceOf(Set);
+      expect(p.civicsAdopted).toBeInstanceOf(Set);
       expect(p.researched).toBeInstanceOf(Set);
       expect(p.explored).toBeInstanceOf(Set);
     }
