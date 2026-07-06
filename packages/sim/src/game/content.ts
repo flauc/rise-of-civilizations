@@ -210,7 +210,7 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
   skirmish: A({ id: "skirmish", name: "Skirmish", verb: "Skirmish", glyph: "🏹", kind: "targeted", cooldown: 0, desc: "Shoot a target, then fall back one tile — if you didn't move first and aren't pinned." }),
   sunder: A({ id: "sunder", name: "Sunder", verb: "Sunder", glyph: "🔨", kind: "targeted", cooldown: 0, desc: "A crushing blow: lighter damage but the target loses 25% defense until its next turn." }),
   pierce: A({ id: "pierce", name: "Pierce", verb: "Pierce", glyph: "🎯", kind: "targeted", cooldown: 0, desc: "Armor-piercing bolt: ignores 6 points of the target's defense. Reduced range this shot." }),
-  harry: A({ id: "harry", name: "Harry", verb: "Harry", glyph: "🐕", kind: "targeted", cooldown: 0, desc: "Low-damage strike that pins the target — it cannot move on its next turn." }),
+  harry: A({ id: "harry", name: "Harry", verb: "Harry", glyph: "🪤", kind: "targeted", cooldown: 0, desc: "Low-damage strike that pins the target — it cannot move on its next turn." }),
   reconnoiter: A({ id: "reconnoiter", name: "Reconnoiter", verb: "Scout Ahead", glyph: "🔭", kind: "self", cooldown: 0, desc: "Forfeit the turn for a vision pulse: +2 sight until your next turn, and reveal hidden enemy units in sight." }),
   hide: A({ id: "hide", name: "Hide", verb: "Hide", glyph: "🌲 ", kind: "self", cooldown: 0, desc: "Conceal in cover (needs ≥1 movement, forfeits the rest). Invisible to enemies until you act or are discovered. An enemy stepping onto you is ambushed; breaking cover near foes grants an ambush attack bonus." }),
   // civ-unique / enhanced (docs/UNIT-ABILITIES.md §8)

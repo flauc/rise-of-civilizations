@@ -2238,6 +2238,11 @@ export interface UniqueInfraDef {
   yields: CityYieldBonus;
   /** Empire-wide bonuses applied while the owner has built this (buildings only). */
   effects?: CivEffects;
+  /** Caps on the STACKING of `effects` across copies (buildings only). Each copy
+   *  raised in a different city adds another `effects`; the running total for any
+   *  field named here is clamped to the cap value. Fields absent from `effectsCap`
+   *  do NOT stack — they apply once, no matter how many copies stand. */
+  effectsCap?: CivEffects;
   /** Terrains the improvement may be built on (improvements only). */
   terrain?: string[];
   /** Specialist craft that builds the improvement (improvements only). */
@@ -2275,16 +2280,16 @@ const INFRA_OVERRIDES: Record<string, InfraOverride> = {
 
   // ---- flagship buildings with rich empire-wide effects (reqTech: INFRA_REQ_TECH) --
   babylon: { yields: { science: 1 }, effects: { yieldPercent: { science: 5 } }, desc: "Unique building — +1 science here and +5% science empire-wide." },
-  han_china: { yields: { culture: 1 }, effects: { yieldPercent: { production: 5 } }, desc: "Unique building — +1 culture here and +5% production empire-wide." },
+  han_china: { yields: { culture: 1 }, effects: { yieldPercent: { production: 5 } }, effectsCap: { yieldPercent: { production: 50 } }, desc: "Unique building — +1 culture here and +5% production empire-wide per Great Wall, up to +50%." },
   carthage: { requiresCoastal: true, yields: { gold: 2 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +2 gold and naval units +1 movement empire-wide (coastal cities only)." },
-  phoenicia: { requiresCoastal: true, yields: { gold: 3 }, effects: { navalMovementBonus: 1 }, desc: "Unique building — +3 gold and naval units +1 movement empire-wide (coastal cities only)." },
+  phoenicia: { requiresCoastal: true, yields: { gold: 3 }, effects: { navalMovementBonus: 1 }, effectsCap: { navalMovementBonus: 3 }, desc: "Unique building — +3 gold and naval units +1 movement empire-wide per Cothon, up to +3 (coastal cities only)." },
   elam: { yields: { faith: 2, science: 1 }, effects: { yieldPercent: { science: 5 } }, desc: "Unique building — +2 faith, +1 science, and +5% science empire-wide." },
-  hittites: { yields: { production: 2 }, effects: { unitClassCombat: { melee: 1 } }, desc: "Unique building — +2 production and melee units +1 strength empire-wide." },
-  median_empire: { yields: { production: 2 }, effects: { unitClassCombat: { cavalry: 1 } }, desc: "Unique building — +2 production and cavalry units +1 strength empire-wide." },
+  hittites: { yields: { production: 2 }, effects: { unitClassCombat: { melee: 1 } }, effectsCap: { unitClassCombat: { melee: 4 } }, desc: "Unique building — +2 production and melee units +1 strength empire-wide per Storm Temple, up to +4." },
+  median_empire: { yields: { production: 2 }, effects: { unitClassCombat: { cavalry: 1 } }, effectsCap: { unitClassCombat: { cavalry: 4 } }, desc: "Unique building — +2 production and cavalry units +1 strength empire-wide per Royal Stable, up to +4." },
   greco_bactria: { yields: { science: 2, culture: 1 }, effects: { yieldPercent: { science: 5 } }, desc: "Unique building — +2 science, +1 culture, and +5% science empire-wide." },
-  portugal: { requiresCoastal: true, yields: { gold: 3 }, effects: { tradeRouteGoldBonus: 2 }, desc: "Unique building — +3 gold and +2 gold per trade route empire-wide (coastal cities only)." },
+  portugal: { requiresCoastal: true, yields: { gold: 3 }, effects: { tradeRouteGoldBonus: 2 }, effectsCap: { tradeRouteGoldBonus: 10 }, desc: "Unique building — +3 gold and +2 gold per trade route empire-wide per Feitoria, up to +10 (coastal cities only)." },
   sparta: { yields: { production: 2 }, desc: "Unique building — +2 production." },
-  rome: { yields: { culture: 1, food: 1 }, effects: { yieldPercent: { culture: 10 } }, desc: "Unique building — +1 culture, +1 food, and +10% culture empire-wide." },
+  rome: { yields: { culture: 1, food: 1 }, effects: { yieldPercent: { culture: 10 } }, effectsCap: { yieldPercent: { culture: 50 } }, desc: "Unique building — +1 culture, +1 food, and +10% culture empire-wide per Roman Bath, up to +50%." },
   greece: { yields: { culture: 2, science: 1 }, desc: "Unique building — +2 culture and +1 science." },
   norse: { yields: { faith: 2, culture: 1 }, desc: "Unique building — +2 faith and +1 culture." },
 
@@ -2504,6 +2509,7 @@ export const UNIQUE_INFRA: UniqueInfraDef[] = CIVILIZATIONS.map((civ) => {
     cost: o.cost ?? 30,
     yields: o.yields ?? (kind === "building" ? themeBuildingYields(civ) : { food: 1 }),
     effects: o.effects,
+    effectsCap: o.effectsCap,
     terrain: o.terrain ?? (kind === "improvement" ? ["grassland", "plains"] : undefined),
     discipline: o.discipline ?? (kind === "improvement" ? "carpentry" : undefined),
     requiresCoastal: o.requiresCoastal,
@@ -3230,6 +3236,15 @@ export interface NaturalWonderDef {
   tileYields: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
   /** One-time reward to the first civ to sight this wonder. */
   discoveryBonus: NaturalWonderBonus;
+  /** Coastline wonders (sea cliffs, headlands): placed only on a LAND tile that
+   *  borders ocean/coast, so the neighbouring sea renders the shoreline against the
+   *  cliff. The art is the cliff alone with no baked-in water (see placement). */
+  coastal?: boolean;
+  /** Front-facing coastal cliff (e.g. White Cliffs of Dover): a grassland tile whose
+   *  cliff is painted on the two LOWER/front hex edges. Placed only where BOTH of
+   *  those front neighbours (SW and SE) are sea, so the fixed art already faces the
+   *  water without needing any sprite rotation. Implies `coastal`. */
+  coastalFront?: boolean;
 }
 
 const NW = (d: NaturalWonderDef): NaturalWonderDef => d;
@@ -3260,8 +3275,8 @@ export const NATURAL_WONDER_DEFS: NaturalWonderDef[] = [
   // ---- coasts, reefs & islands (gold / science) ---------------------------
   NW({ id: "great_barrier_reef", name: "Great Barrier Reef", desc: "The largest living structure on Earth.", validTerrain: ["coast"], tileYields: { food: 3, gold: 2, science: 1 }, discoveryBonus: { gold: 80, science: 60 } }),
   NW({ id: "galapagos_islands", name: "Galápagos Islands", desc: "Isolated isles teeming with singular life.", validTerrain: ["coast"], tileYields: { science: 3, food: 1 }, discoveryBonus: { science: 90, freeTech: true } }),
-  NW({ id: "cliffs_of_dover", name: "White Cliffs of Dover", desc: "Gleaming chalk cliffs facing the sea.", validTerrain: ["coast", "hills"], tileYields: { gold: 3, culture: 1 }, discoveryBonus: { gold: 70, culture: 30 } }),
-  NW({ id: "giants_causeway", name: "Giant's Causeway", desc: "Interlocking basalt columns marching into the sea.", validTerrain: ["coast", "hills"], tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 40 } }),
+  NW({ id: "cliffs_of_dover", name: "White Cliffs of Dover", desc: "Gleaming chalk cliffs facing the sea.", validTerrain: ["grassland", "plains", "hills"], coastalFront: true, tileYields: { gold: 3, culture: 1 }, discoveryBonus: { gold: 70, culture: 30 } }),
+  NW({ id: "giants_causeway", name: "Giant's Causeway", desc: "Interlocking basalt columns marching into the sea.", validTerrain: ["hills", "grassland", "plains"], coastal: true, tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 40 } }),
 
   // ---- lakes & waterfalls (food / culture / gold) -------------------------
   NW({ id: "dead_sea", name: "Dead Sea", desc: "The lowest, saltiest water on the planet.", validTerrain: ["lake"], tileYields: { gold: 3, faith: 1 }, discoveryBonus: { gold: 90, faith: 30 } }),

@@ -7,7 +7,7 @@
 
 import { join } from "node:path";
 import { CIVILIZATIONS, WONDER_DEFS, UNIQUE_UNITS, UNIQUE_INFRA, NATURAL_WONDER_DEFS, GREAT_PEOPLE, GREAT_PERSON_CLASS_INFO, LEGENDS, RELIGIONS, RELIGION_KITS } from "@roc/data";
-import { RESOURCE_DEFS, IMPROVEMENT_DEFS, UNIT_DEFS } from "@roc/sim";
+import { RESOURCE_DEFS, IMPROVEMENT_DEFS, UNIT_DEFS, ACTIVE_ABILITY_DEFS, type ActiveAbilityId } from "@roc/sim";
 
 export interface TargetSize {
   readonly width: number;
@@ -21,12 +21,25 @@ export interface AssetEntry {
   readonly aspectRatio: string;
   readonly size: TargetSize;
   readonly referenceTile?: string;
-  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "construction" | "ui" | "icon" | "emoji_icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder" | "wonder_tile" | "great_person" | "legend" | "religion" | "religion_icon";
+  readonly category: "tile" | "unit" | "building" | "leader" | "road" | "river" | "resource" | "improvement" | "construction" | "ui" | "icon" | "emoji_icon" | "ability_icon" | "village_reward" | "barbarian_reward" | "age" | "pillar" | "hero" | "turn_update" | "natural_wonder" | "wonder_tile" | "great_person" | "legend" | "religion" | "religion_icon";
   /** Tall natural wonders (peaks, spires, tepuis) whose summit should rise ABOVE
    *  the hex footprint and overhang the tiles above — like the hand-painted
    *  hex-terrain/mountains.png. Generated on a flat magenta chroma-key backdrop
    *  and post-processed so only the base is clipped to the hex (see generate.ts). */
+  /** Token glyphs whose subject contains NO intended white (e.g. a bronze/rope
+   *  symbol): any white — including pockets fully enclosed by the art, like the
+   *  gap inside a rope loop — is background and should be made transparent. The
+   *  default token pipeline only removes border-connected white to protect white
+   *  robes/shields, which leaves enclosed pockets opaque; set this to strip them. */
+  readonly solidGlyph?: boolean;
   readonly overhang?: boolean;
+  /** Wide natural wonders (canyons, valleys, broad waterfalls) that are generated
+   *  with the same magenta chroma-key + rich landmark prompt as `overhang` wonders,
+   *  but whose painted mass fills the FULL width of the frame. Their peak still
+   *  overhangs the tiles above, but the open-top mask TAPERS inward as it rises so
+   *  the wide left/right edges can't jut sideways above the tile's upper hex edges
+   *  (see taperedTopHexMaskPath in generate.ts). Set together with `overhang: true`. */
+  readonly taperOverhang?: boolean;
   /** Flat natural wonders (lakes, reefs, deserts, salt flats, wetlands, falls)
    *  that fully FILL a single hex tile with no overhang. Generated 1:1 with the
    *  content encapsulated and resolving at every edge, then placed into the bottom
@@ -506,6 +519,29 @@ export const EMOJI_ICON_SUBSET: AssetEntry[] = EMOJI_ICON_DEFS.map(([id, descrip
   referenceTile: DEFAULT_REFERENCE_TILE,
 }));
 
+// Optional per-ability icons (docs/UNIT-ABILITIES.md §10.1). Each `id` MUST be an
+// ActiveAbilityId; the client loads it from `<asset base>/abilities/<id>.png` and
+// falls back to the ability's emoji glyph when the file is absent. Add entries
+// here incrementally — only listed abilities are generated.
+const ABILITY_ICON_ART: Readonly<Partial<Record<ActiveAbilityId, string>>> = {
+  harry: "a primitive hunter's rope snare: a loop of braided rawhide cord cinched tight into a noose around a short wooden stake driven into the ground, the kind used to catch and hold prey — rough natural fibers and plain wood only, absolutely NO metal, NO teeth, NO springs, NO machinery",
+};
+
+export const ABILITY_ICON_SUBSET: AssetEntry[] = (
+  Object.entries(ABILITY_ICON_ART) as [ActiveAbilityId, string][]
+).map(([id, description]) => ({
+  id,
+  name: ACTIVE_ABILITY_DEFS[id].name,
+  description,
+  aspectRatio: "1:1" as const,
+  size: { width: 128, height: 128 },
+  category: "ability_icon" as const,
+  referenceTile: DEFAULT_REFERENCE_TILE,
+  // Ability icons are single bronze/wood/rope objects with no intended white, so
+  // enclosed background pockets (e.g. inside a snare loop) must be stripped too.
+  solidGlyph: true,
+}));
+
 export const TURN_UPDATE_SUBSET: AssetEntry[] = [
   {
     id: "unitDied",
@@ -952,13 +988,41 @@ export const OVERHANG_NATURAL_WONDER_IDS = new Set<string>([
   "uluru",
   "table_mountain",
   "cappadocia",
-  "giants_causeway",
   "iguazu_falls",
   "zhangye_danxia",
   "grand_canyon",
   "victoria_falls",
   "yosemite",
 ]);
+
+// Overhang wonders that are too WIDE to overhang cleanly: their painted mass fills
+// the full frame width, so a full-width open top leaves the left/right edges jutting
+// sideways above the tile. These still use the rich magenta chroma-key generation and
+// still let their peak overhang, but with a TAPERED open top so only a central peak
+// rises past the tile and the wide sides are clipped to the hex silhouette.
+export const TAPER_OVERHANG_NATURAL_WONDER_IDS = new Set<string>([
+  "grand_canyon",
+  "iguazu_falls",
+  "victoria_falls",
+  "yosemite",
+]);
+
+// Coastal sea-cliff headlands rendered as a REGULAR full-hex terrain tile (no
+// overhang, no peak): the cliff fills the 256×256 hex footprint as dry land with
+// NO baked-in sea. Placed on a land tile bordering ocean (see the `coastal` flag in
+// the wonder def), so the neighbouring sea tile paints the shoreline against it.
+// Front-facing coastal cliff tiles: a grassland tile whose cliff is painted only on
+// the two LOWER/front hex edges (the bottom V). Placed so those front edges face the
+// sea (see the `coastalFront` flag), so no sprite rotation is needed. The art has NO
+// baked-in water — the sea is the neighbouring tile. Uses the coastal-cliff prompt.
+export const COASTAL_CLIFF_NATURAL_WONDER_IDS = new Set<string>([
+  "cliffs_of_dover",
+]);
+
+export const COASTAL_CLIFF_NATURAL_WONDER_ART: Record<string, string> = {
+  cliffs_of_dover:
+    "the WHITE CLIFFS OF DOVER: gleaming pure-WHITE CHALK sea-cliffs — a sheer, fluted vertical white chalk cliff face, brilliant snow-white stone subtly streaked with pale grey and a few dark flint bands, beneath a flat green grassy clifftop",
+};
 
 // Visual identity for overhang wonders. These replace the short gameplay flavour
 // text with a vivid, instantly-recognizable description so each peak reads as a
@@ -984,8 +1048,6 @@ export const OVERHANG_NATURAL_WONDER_ART: Record<string, string> = {
     "TABLE MOUNTAIN: a vast flat-topped sandstone massif with a perfectly LEVEL, broad horizontal summit plateau like a tabletop, framed by sheer vertical cliff faces and fluted rock buttresses, with a thin white 'tablecloth' of cloud spilling gently over the flat front edge. Tan-grey weathered rock with green fynbos scrub on the lower slopes, rising above a coastal plain. It is NOT a pointed peak — its defining feature is the long, dead-flat, horizontal tabletop summit, utterly unlike an ordinary mountain",
   cappadocia:
     "CAPPADOCIA: a clustered grove of tall, slender FAIRY CHIMNEYS (hoodoos) — pale cream and soft-ochre tufa rock cones rising side by side, each tapering spire crowned with a darker, harder mushroom-like boulder cap, and many pierced with small carved cave openings, windows, and doorways of ancient cave dwellings. They rise together from a soft warm valley floor in golden desert light. The defining feature is the forest of cone-capped rock spires, utterly unlike an ordinary mountain",
-  giants_causeway:
-    "the GIANT'S CAUSEWAY: a dense cluster of interlocking dark basalt columns — thousands of tightly-packed vertical HEXAGONAL stone pillars of stepped, varying heights forming a honeycomb staircase that rises into a low rocky headland in the middle and marches down into the foaming sea on either side. Grey-black volcanic basalt with mossy green tops, white waves breaking against the lowest columns. The defining feature is the geometric hexagonal columnar rock, utterly unlike an ordinary mountain",
   iguazu_falls:
     "IGUAZÚ FALLS: a vast horseshoe-shaped curtain of thundering white waterfalls plunging over a curved cliff edge that is crowned with dense emerald jungle canopy rising highest in the middle, billowing white mist boiling up from the churning pools below, lush tropical rainforest framing the gorge. The defining feature is the wide horseshoe of cascading jungle waterfalls, utterly unlike an ordinary mountain",
   zhangye_danxia:
@@ -1006,7 +1068,7 @@ export const OVERHANG_NATURAL_WONDER_ART: Record<string, string> = {
 export const FLAT_NATURAL_WONDER_IDS = new Set<string>([
   "niagara_falls",
   "amazon_rainforest",
-  "cliffs_of_dover",
+  "giants_causeway",
   "dead_sea",
   "eye_of_the_sahara",
   "galapagos_islands",
@@ -1026,10 +1088,10 @@ export const FLAT_NATURAL_WONDER_IDS = new Set<string>([
 export const FLAT_NATURAL_WONDER_ART: Record<string, string> = {
   niagara_falls:
     "NIAGARA FALLS seen straight down from directly overhead: the curving horseshoe brink where turquoise-green river water pours over the cliff edge into a ring of churning white foam and mist, the wide calm blue river above and the frothing plunge pool below — an aerial map view of the falls, NO horizon, NO sky",
+  giants_causeway:
+    "the GIANT'S CAUSEWAY seen straight down from directly overhead: a tight honeycomb mosaic of interlocking HEXAGONAL basalt column tops in weathered grey-black stone, the many-sided polygonal column-tops fitting together like paving stones at slightly varying heights, with mossy green growth and dark cracks between them — a flat aerial map view of the columnar rock, NO sea, NO water, NO waves, NO horizon, NO sky",
   amazon_rainforest:
     "the AMAZON RAINFOREST seen straight down from directly overhead: an unbroken aerial carpet of lush emerald treetops with subtle tonal variation, a muddy-brown river winding across, a few clustered taller emergent crowns — dense canopy seen from directly above",
-  cliffs_of_dover:
-    "the WHITE CLIFFS OF DOVER seen straight down from directly overhead: a bright white chalk coastline edge where green grassy clifftops meet deep blue-green sea, white surf tracing the shore and pale chalk shallows — an aerial map of the coastline",
   dead_sea:
     "the DEAD SEA seen straight down from directly overhead: turquoise mineral-rich hypersaline water with swirling white salt patterns, a pale salt-crusted shoreline and arid tan banks — a flat aerial view of the still salt water",
   eye_of_the_sahara:
@@ -1071,6 +1133,7 @@ export const NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.map((w) =
     category: "natural_wonder" as const,
     referenceTile: DEFAULT_REFERENCE_TILE,
     overhang: OVERHANG_NATURAL_WONDER_IDS.has(w.id),
+    taperOverhang: TAPER_OVERHANG_NATURAL_WONDER_IDS.has(w.id),
     encapsulated,
   };
 });
@@ -1180,7 +1243,7 @@ export const RELIGION_ICON_SUBSET: AssetEntry[] = RELIGIONS.map((r) => ({
 }));
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...UNIQUE_INFRA_SUBSET, ...IMPROVEMENT_SUBSET, ...CONSTRUCTION_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...EMOJI_ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET, ...RELIGION_SUBSET, ...RELIGION_ICON_SUBSET, ...RELIGION_UNIT_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...UNIQUE_INFRA_SUBSET, ...IMPROVEMENT_SUBSET, ...CONSTRUCTION_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...EMOJI_ICON_SUBSET, ...ABILITY_ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET, ...RELIGION_SUBSET, ...RELIGION_ICON_SUBSET, ...RELIGION_UNIT_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {
@@ -1287,6 +1350,14 @@ export function promptFor(entry: AssetEntry): string {
     }
     return `Create a small standalone map improvement icon for an ancient turn-based strategy game. Subject: ${entry.name} — ${entry.description}. Match the painted, slightly stylized look of the attached hex tile reference. Render the subject from a three-quarter or near-top-down view, centered, as an isolated improvement on a clean solid white background. Keep it compact so it reads as a tile overlay. No text, no UI, no border, no ground plane, no terrain, no grass, no dirt, no base platform, and no cast shadow underneath. The improvement should float cleanly on the white background with nothing else in the frame.`;
   }
+  if (entry.category === "natural_wonder" && COASTAL_CLIFF_NATURAL_WONDER_IDS.has(entry.id)) {
+    const subject = COASTAL_CLIFF_NATURAL_WONDER_ART[entry.id] ?? entry.description;
+    return `Create a flat 2D hand-painted hexagonal strategy game map tile of a GRASSLAND CLIFFTOP that drops into a sea-cliff along its FRONT edge: ${subject}. Composition: the BACK and upper part of the hex is a flat green grassy clifftop meadow (ordinary grassland, like the reference), and along the two LOWER/front edges of the hex — the two edges that meet at the bottom point of the hex — the land SHEARS OFF into a sheer cliff face, so the front-lower band of the tile is the cliff and the rest is grass. The grass ends in a clean edge at the clifftop where the cliff face begins. Match the visual style of the attached reference tile: slightly stylized, saturated but natural colors, framed inside a vertical 2:3 pointy-top hex, same hex footprint as the reference. CRITICAL: this is a DRY LAND tile — absolutely NO sea, NO ocean, NO water, NO waves, NO surf, NO foam, NO beach, and NO open sky or horizon anywhere; the grass and cliff fill the whole tile edge to edge and the sea is drawn separately by the game on the neighbouring tile below the front edge. Do NOT include roads, paths, houses, huts, fences, farms, units, boats, ships, text, labels, or any man-made structures. Render as a flat 2D illustration with no 3D perspective shifts; the artwork must be fully self-contained and look correct in isolation, with nothing continuing off the tile edges. Preserve the soft shadow along the bottom edges of the hex, similar to the reference tile.`;
+  }
+  if (entry.category === "natural_wonder" && entry.overhang && entry.taperOverhang) {
+    const subject = OVERHANG_NATURAL_WONDER_ART[entry.id] ?? entry.description;
+    return `Create a single tall hand-painted sprite of a UNIQUE, legendary NATURAL WONDER for an ancient turn-based strategy hex map: ${subject}. This is a famous one-of-a-kind landmark, so it must be instantly recognizable and clearly GRANDER and more dramatic than ordinary terrain — exaggerate its distinctive silhouette, scale, color, and character so a player can tell at a glance it is "${entry.name}". COMPOSITION (critical): paint ONE formation shaped like a TALL, roughly PYRAMIDAL PEAK — HORIZONTALLY CENTERED and bilaterally SYMMETRIC, WIDEST at the base and steadily NARROWING as it rises to a single high summit near the TOP-CENTER of the image, exactly like the silhouette of a lone mountain. The bottom is completely FILLED across its full width by the landmark's own solid mass (rock, water, mist, ice, sand, or vegetation as naturally belongs to it), but as it climbs, both sides must slope distinctly INWARD so the formation tapers to a peak — the UPPER-LEFT and UPPER-RIGHT corners of the image must be open sky, NOT landmark. Gather the landmark's most iconic feature at this central rising summit so the eye reads a single tall centered mass, never a flat wall spanning the whole width. Every edge, ridge, slope, cliff and rock face must clearly RESOLVE and END within the frame — never abruptly cropped, sliced, or jammed flat against the left or right edge. View it straight-on from a slightly elevated angle as a flat 2D illustration with no 3D camera perspective; slightly stylized, saturated but natural colors, readable at small sizes, matching the painted look of the attached reference tile. Do NOT draw any hexagon outline, tile border, frame, dark outline, or hard shadow line — the landmark should simply fill to the lower edges naturally (the hex tile footprint is applied afterwards). CRITICAL BACKGROUND RULE: ALL of the sky — the entire area ABOVE the summit and to BOTH sides of the tapering upper portion, including the WHOLE upper-left and upper-right corners of the image — must be filled with a single FLAT, SOLID, UNIFORM pure magenta color (hex #FF00FF, RGB 255,0,255); only the central lower mass of the landmark is NOT magenta. The magenta must be perfectly flat with NO gradient, NO clouds, NO haze, NO glow, NO atmosphere, and NO shading — a plain chroma-key backdrop so it can be removed cleanly. Do NOT use any magenta, pink, or purple anywhere on the landmark itself. No roads, no buildings, no people, no text, no labels.`;
+  }
   if (entry.category === "natural_wonder" && entry.overhang) {
     const subject = OVERHANG_NATURAL_WONDER_ART[entry.id] ?? entry.description;
     return `Create a single tall hand-painted sprite of a UNIQUE, legendary NATURAL WONDER for an ancient turn-based strategy hex map: ${subject}. This is a famous one-of-a-kind landmark, so it must be instantly recognizable and clearly GRANDER and more dramatic than ordinary terrain — exaggerate its distinctive silhouette, scale, color, and character so a player can tell at a glance it is "${entry.name}". Paint ONE formation that is HORIZONTALLY CENTERED and roughly bilaterally SYMMETRIC, with its highest point directly above the horizontal center of the image and its greatest mass in the middle. Its base must settle evenly into the lower half on BOTH sides so the left and right are balanced and matching, and every edge, ridge, slope, and rock face must clearly RESOLVE and END within the frame — never abruptly cropped, sliced, or jammed flat against the left or right edge. The lower half is completely FILLED with the landmark's own solid mass — rock, and whatever snow, ice, sand, vegetation, or water naturally belongs to it — reaching the LEFT, RIGHT, and BOTTOM edges so there are no transparent gaps. View it straight-on from a slightly elevated angle as a flat 2D illustration with no 3D camera perspective; slightly stylized, saturated but natural colors, readable at small sizes, matching the painted look of the attached reference tile. Do NOT draw any hexagon outline, tile border, frame, dark outline, or hard shadow line — the landmark should simply fill to the edges naturally (the hex tile footprint is applied afterwards). CRITICAL BACKGROUND RULE: ONLY the sky — the area around and ABOVE the top of the landmark and to either side of its upper portion — must be filled with a single FLAT, SOLID, UNIFORM pure magenta color (hex #FF00FF, RGB 255,0,255); the bottom and lower sides are entirely filled by the landmark, NOT magenta. The magenta sky must be perfectly flat with NO gradient, NO clouds, NO haze, NO glow, NO atmosphere, and NO shading — a plain chroma-key backdrop so it can be removed cleanly. Do NOT use any magenta, pink, or purple anywhere on the landmark itself. No roads, no buildings, no people, no text, no labels.`;
@@ -1309,6 +1380,9 @@ export function promptFor(entry: AssetEntry): string {
   }
   if (entry.category === "emoji_icon") {
     return `Create a single small hand-painted UI glyph icon for an ancient turn-based strategy game, replacing an emoji. Subject: ${entry.description}. Render ONE bold, simple, instantly-recognizable symbol, centered and filling most of the frame, as an isolated icon on a clean solid pure-white background. Match the game's painted, slightly stylized look with warm bronze/gold/stone tones and clear readable shapes — it must read at very small sizes (down to ~16px) like a crisp toolbar glyph. Keep it a flat near-front view of just the object/symbol. NO scene, NO landscape, NO background objects, NO people (unless the subject is a person/figure), NO text, NO letters, NO numbers, NO UI panel, NO border, NO frame, NO drop shadow, and NO ground plane. Everything except the glyph must be clean solid white so the background can be removed cleanly.`;
+  }
+  if (entry.category === "ability_icon") {
+    return `Create a single small hand-painted combat-ability icon for an ancient turn-based strategy game, shown on a small action button. Subject: ${entry.description}. Render ONE bold, simple, instantly-recognizable symbol, centered and filling most of the frame, as an isolated icon on a clean solid pure-white background. Match the game's painted, slightly stylized look with warm bronze/gold/stone/iron tones and clear readable shapes — it must read at very small sizes (down to ~16px) like a crisp toolbar glyph. Keep it a flat near-front view of just the object/symbol. NO scene, NO landscape, NO background objects, NO people, NO animals, NO text, NO letters, NO numbers, NO UI panel, NO border, NO frame, NO drop shadow, and NO ground plane. Everything except the glyph must be clean solid white so the background can be removed cleanly.`;
   }
   if (entry.category === "religion") {
     return `Create a stylized hand-painted devotional illustration of the world religion "${entry.name}" for an ancient turn-based strategy game called "Rise of Civilizations". Subject: ${entry.description}. Match the painted, slightly stylized look of the attached reference tile; use it only as a style reference and ignore its hexagonal shape. Render a centered, reverent scene that captures the sacred architecture, symbols and mood of the faith, set against a soft painted background. Depict places, symbols and objects — NOT a portrait of a single deity's face filling the frame. Be respectful and historically grounded; NO gore, NO blood, NO violence. NO text, NO letters, NO numbers, NO symbols-as-writing, NO UI elements, NO border, NO frame, NO modern objects, and NO cast shadow. Keep the composition clear and readable at small sizes.`;

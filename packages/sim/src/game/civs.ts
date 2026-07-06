@@ -183,6 +183,49 @@ function mergeInto(acc: CivEffects, e: CivEffects | undefined): void {
   if (e.convertOnCapture) acc.convertOnCapture = true;
 }
 
+const YIELD_KEYS = ["food", "production", "gold", "science", "culture", "faith"] as const;
+
+/** The empire-wide effects a unique building contributes given how many copies stand.
+ *  Buildings with no `effectsCap` apply their effects ONCE (the classic rule), no
+ *  matter how many cities built them. Buildings WITH a cap stack each copy's effect
+ *  (base × count) and clamp every capped field to its cap. */
+function infraContribution(inf: UniqueInfraDef, count: number): CivEffects | undefined {
+  const base = inf.effects;
+  if (!base) return undefined;
+  const cap = inf.effectsCap;
+  if (!cap) return base; // uncapped → once-only, count ignored
+  const out: CivEffects = {};
+  if (base.yieldPercent) {
+    out.yieldPercent = {};
+    for (const k of YIELD_KEYS) {
+      const v = base.yieldPercent[k];
+      if (v) out.yieldPercent[k] = Math.min(v * count, cap.yieldPercent?.[k] ?? Infinity);
+    }
+  }
+  if (base.unitClassCombat) {
+    out.unitClassCombat = {};
+    for (const [cls, v] of Object.entries(base.unitClassCombat)) {
+      out.unitClassCombat[cls] = Math.min(v * count, cap.unitClassCombat?.[cls] ?? Infinity);
+    }
+  }
+  for (const k of ["navalMovementBonus", "cavalryMovementBonus", "landMovementBonus", "tradeRouteGoldBonus"] as const) {
+    const v = base[k];
+    if (v) out[k] = Math.min(v * count, cap[k] ?? Infinity);
+  }
+  return out;
+}
+
+/** Count of each unique-building id standing across a player's empire. */
+function infraCounts(state: GameState, playerId: number): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const c of citiesOf(state, playerId)) {
+    for (const b of c.buildings) {
+      if (getUniqueInfra(b)?.effects) counts.set(b, (counts.get(b) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
 /** All active bonuses for a player: civ ability + government + policy cards + leader-ability modifiers. */
 export function playerEffects(state: GameState, playerId: number): CivEffects {
   const p = playerById(state, playerId);
@@ -195,16 +238,11 @@ export function playerEffects(state: GameState, playerId: number): CivEffects {
   if (p.unrestTurns <= 0) {
     for (const civicId of p.slottedCivics) mergeInto(acc, getCivic(civicId)?.effects);
   }
-  // Civ-unique buildings raised anywhere in the empire contribute their
-  // empire-wide effects — once each, no matter how many cities built them.
-  const seenInfra = new Set<string>();
-  for (const c of citiesOf(state, playerId)) {
-    for (const b of c.buildings) {
-      if (seenInfra.has(b)) continue;
-      seenInfra.add(b);
-      const inf = getUniqueInfra(b);
-      if (inf?.effects) mergeInto(acc, inf.effects);
-    }
+  // Civ-unique buildings raised anywhere in the empire contribute their empire-wide
+  // effects. Most apply once, no matter how many cities built them; those with an
+  // effectsCap stack per copy (base × count) up to the cap (see infraContribution).
+  for (const [b, count] of infraCounts(state, playerId)) {
+    mergeInto(acc, infraContribution(getUniqueInfra(b)!, count));
   }
   // The founder's religion applies to their empire: its historically-fitting
   // PRESET benefit (see @roc/data RELIGION_KITS) plus every perk it has picked.
@@ -280,14 +318,9 @@ export function effectSources(state: GameState, playerId: number): EffectSource[
       push(civic?.name, civic?.effects);
     }
   }
-  const seenInfra = new Set<string>();
-  for (const c of citiesOf(state, playerId)) {
-    for (const b of c.buildings) {
-      if (seenInfra.has(b)) continue;
-      seenInfra.add(b);
-      const inf = getUniqueInfra(b);
-      push(inf?.name, inf?.effects);
-    }
+  for (const [b, count] of infraCounts(state, playerId)) {
+    const inf = getUniqueInfra(b)!;
+    push(inf.name, infraContribution(inf, count));
   }
   const religion = p.foundedReligionId ? state.religions.find((r) => r.id === p.foundedReligionId) : undefined;
   if (religion) {

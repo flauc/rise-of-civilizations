@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.5.0";
+export const CURRENT_VERSION = "0.5.1";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,30 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.5.1",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "Gameplay",
+        title: "Great works, built again and again",
+        desc:
+          "A handful of the mightiest civ-unique buildings no longer count just once. Raise the Great Wall in a second city and its empire-wide bonus stacks with the first — and so it goes for the Roman Bath, the Cothon, the Storm Temple, the Royal Stable and the Feitoria. Each new copy adds its gift again, up to a generous ceiling, so an empire that commits to its signature building is rewarded for building it far and wide.",
+      },
+      {
+        tag: "UI",
+        title: "Cliffs that face the sea",
+        desc:
+          "The White Cliffs of Dover and the Giant's Causeway now stand where they belong — along the shoreline, their rock dropping straight into open water instead of floating inland. Several of the grandest wonders were repainted too: the Grand Canyon, Iguazú Falls, Victoria Falls and Yosemite now sit cleanly on the map, their sweeping breadth no longer spilling past the edges of their tile.",
+      },
+      {
+        tag: "UI",
+        title: "See what a tile still needs",
+        desc:
+          "When you can't yet develop a tile or raise a wonder, the option no longer simply vanishes. Locked improvements and world wonders now appear greyed out with the reason spelled out beneath them — the tech to research, the specialist to train, the resource to secure — so you always know what stands between you and the work.",
+      },
+    ],
+  },
   {
     version: "0.5.0",
     date: "July 2026",

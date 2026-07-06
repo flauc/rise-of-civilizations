@@ -5,7 +5,7 @@
 // also yields strong bonus output; and the first civ to have sighted EVERY
 // natural wonder earns a grand reward. All placement is deterministic (seeded).
 
-import { axialDistance, getTile, hashSeed, offsetToAxial, type Tile } from "@roc/shared";
+import { axialDistance, axialNeighbor, axialToOffset, getTile, hashSeed, offsetToAxial, type Tile } from "@roc/shared";
 import {
   ALL_NATURAL_WONDERS_BONUS,
   NATURAL_WONDER_DEFS,
@@ -174,6 +174,30 @@ export function placeNaturalWonders(
 
   const occupied = (t: Tile): boolean =>
     !!t.naturalWonder || !!t.feature || !!t.resource || t.ownerCityId !== undefined;
+  // Coastline wonders (sea cliffs) must sit on a LAND tile that borders open water,
+  // so the neighbouring sea paints the shoreline against the cliff.
+  const isSea = (col: number, row: number): boolean => {
+    const n = getTile(map, col, row);
+    return !!n && (n.terrain === "ocean" || n.terrain === "coast");
+  };
+  const bordersSea = (col: number, row: number): boolean => {
+    const here = offsetToAxial({ col, row });
+    for (let d = 0; d < 6; d++) {
+      const nb = axialToOffset(axialNeighbor(here, d));
+      if (isSea(nb.col, nb.row)) return true;
+    }
+    return false;
+  };
+  // Front-facing cliff (Dover): both LOWER hex edges — SW (dir 4) and SE (dir 5),
+  // the two edges meeting at the bottom vertex — must be open sea, so the fixed
+  // "cliff on the front edges" art already points at the water.
+  const frontFacesSea = (col: number, row: number): boolean => {
+    const here = offsetToAxial({ col, row });
+    return [4, 5].every((d) => {
+      const nb = axialToOffset(axialNeighbor(here, d));
+      return isSea(nb.col, nb.row);
+    });
+  };
   const farFromStarts = (col: number, row: number): boolean =>
     starts.every((s) => !s || axialDistance(offsetToAxial(s), offsetToAxial({ col, row })) >= 6);
   const tooClose = (col: number, row: number): boolean =>
@@ -185,6 +209,11 @@ export function placeNaturalWonders(
     for (const t of map.tiles) {
       // Never place a wonder on a river tile or an occupied/invalid tile.
       if (occupied(t) || t.river || !def.validTerrain.includes(t.terrain)) continue;
+      // Coastline wonders additionally require adjacent sea. Front-facing cliffs
+      // need their two lower edges on the water; others just need any sea neighbour.
+      if (def.coastalFront) {
+        if (!frontFacesSea(t.col, t.row)) continue;
+      } else if (def.coastal && !bordersSea(t.col, t.row)) continue;
       if (!farFromStarts(t.col, t.row)) continue;
       if (unitAt(state, t.col, t.row)) continue;
       candidates.push({ col: t.col, row: t.row, key: hashSeed(`nw:${def.id}:${t.col},${t.row}:${seed}`) });

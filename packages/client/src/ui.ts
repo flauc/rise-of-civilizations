@@ -3572,7 +3572,6 @@ export function createUI(handlers: UIHandlers): UI {
     if (existing) {
       html += constructionSection(state, existing, viewerId);
     } else if (canDevelop) {
-      let needHint = "";
       // Offer the viewer civ's unique tile improvement alongside the base works.
       const vplayer = state.players.find((p) => p.id === viewerId);
       const uimp = uniqueImprovementForCiv(vplayer?.civId);
@@ -3603,29 +3602,31 @@ export function createUI(handlers: UIHandlers): UI {
         return `<span class="imp-prev">${txt}</span>`;
       };
       const workBtn = (k: string, tier: number, verb: string, locked?: string): string => {
-        const label = `<span class="imp-name">${verb}${workName(k, tier)}${locked ? " 🔒" : ""}</span>${workPreview(k, tier)}`;
+        // A locked option shows exactly what's missing in place of its yield preview,
+        // so the player knows the improvement exists and how to unlock it.
+        const detail = locked ? `<span class="imp-prev">${escapeHtml(locked)}</span>` : workPreview(k, tier);
+        const label = `<span class="imp-name">${verb}${workName(k, tier)}${locked ? " 🔒" : ""}</span>${detail}`;
         if (locked) {
-          return `<button class="btn imp-btn" disabled title="${locked}" style="opacity:.5;cursor:not-allowed">${label}</button>`;
+          return `<button class="btn imp-btn" disabled title="${escapeHtml(locked)}" style="opacity:.5;cursor:not-allowed">${label}</button>`;
         }
         return `<button class="btn imp-btn" data-work="${k}">${label}</button>`;
       };
+      // Gating blockers (missing tech, research, or an available specialist) are things
+      // the player can work towards, so surface them as locked buttons with the reason.
+      // Pure tile-site problems (wrong territory, already worked, wrong terrain) stay
+      // hidden — they'd only add noise the player can't act on for this tile.
+      const isImpGateReason = (err: string | undefined): boolean => !!err && /^(requires |Research |No )/.test(err);
       const btns = kinds.map((k) => {
         const tier = nextTierAt(tile, k);
         if (tier === null) return "";
         const verb = tier > 1 ? "Upgrade → " : "";
         const can = canStartWork(state, viewerId, k, tile.col, tile.row);
         if (can.ok) return workBtn(k, tier, verb);
-        // A missing-craftsman block is shown as a locked button so the player
-        // knows the option exists but needs the right specialist first.
-        if (can.error && can.error.startsWith("No ")) {
-          needHint = can.error;
-          return workBtn(k, tier, verb, can.error);
-        }
+        if (isImpGateReason(can.error)) return workBtn(k, tier, verb, can.error);
         return "";
       }).filter(Boolean);
       if (btns.length) {
         html += `<div class="csub">Develop</div><div class="row" style="flex-wrap:wrap;gap:6px">${btns.join("")}</div>`;
-        if (needHint) html += `<div class="sub" style="margin-top:4px;color:#e0b07d">🔒 ${needHint}.</div>`;
         // On neutral land the improvement is built but yields nothing until a city's
         // borders reach the tile — make that expectation explicit.
         if (neutralTile) {
@@ -3639,26 +3640,32 @@ export function createUI(handlers: UIHandlers): UI {
       // resources show as locked with the reason. Wonders stay territory-locked, so
       // they never appear on neutral land.
       const researched = vplayer?.researched;
-      const costLabel = (w: (typeof WONDER_DEFS)[number]): string => {
+      const costText = (w: (typeof WONDER_DEFS)[number]): string => {
         const c = wonderStartCost(w);
         const bits = [c.gold ? `${c.gold}🪙` : "", c.faith ? `${c.faith}☮️` : "", c.culture ? `${c.culture}🎭` : ""].filter(Boolean);
-        return bits.length ? ` · ${bits.join(" ")}` : "";
+        return bits.join(" ");
       };
       // Only surface a locked entry for a *gating* reason (tech/crew/resource), not a
       // tile-site problem (which would spam every wonder with the same message).
       const isGateReason = (err: string | undefined): boolean =>
         !!err && /^(requires|costs|Need |No )/.test(err);
+      // Wonders share the tile-improvement button style: name on top, a detail line
+      // (one-time cost when buildable, or the missing requirement when locked) beneath.
+      const wonderBtn = (w: (typeof WONDER_DEFS)[number], locked?: string): string => {
+        const detail = locked ? escapeHtml(locked) : costText(w) || "🏛️ world wonder";
+        const label = `<span class="imp-name">🏛️ ${escapeHtml(w.name)}${locked ? " 🔒" : ""}</span><span class="imp-prev">${detail}</span>`;
+        if (locked) {
+          return `<button class="btn imp-btn" disabled title="${escapeHtml(w.desc)}\n\n${escapeHtml(locked)}" style="opacity:.5;cursor:not-allowed">${label}</button>`;
+        }
+        return `<button class="btn imp-btn" data-wonder="${w.id}" title="${escapeHtml(w.desc)}">${label}</button>`;
+      };
       const wonderBtns = (ownsTile ? WONDER_DEFS : [])
         .filter((w) => !state.completedWonders.includes(w.id))
         .filter((w) => !w.reqTech || (researched?.has(w.reqTech as TechId) ?? false))
         .map((w) => {
           const can = canStartWonder(state, viewerId, w.id, tile.col, tile.row);
-          if (can.ok) {
-            return `<button class="btn" data-wonder="${w.id}" title="${escapeHtml(w.desc)}">🏛️ ${escapeHtml(w.name)}${costLabel(w)}</button>`;
-          }
-          if (isGateReason(can.error)) {
-            return `<button class="btn" disabled title="${escapeHtml(w.desc)}\n\n${escapeHtml(can.error!)}">🔒 ${escapeHtml(w.name)} — ${escapeHtml(can.error!)}</button>`;
-          }
+          if (can.ok) return wonderBtn(w);
+          if (isGateReason(can.error)) return wonderBtn(w, can.error);
           return "";
         })
         .filter(Boolean);

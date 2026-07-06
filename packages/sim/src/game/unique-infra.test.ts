@@ -52,6 +52,38 @@ describe("unique infrastructure", () => {
     expect(after).toBe(before + 1);
   });
 
+  it("stacks a capped unique building's empire-wide effect per copy, up to its cap", () => {
+    const s = game();
+    s.players[0]!.civId = "hittites"; // Storm Temple → +1 melee per copy, capped at +4
+    const city = foundCity(s, 0);
+    const ub = uniqueBuildingForCiv("hittites")!;
+    const melee = () => playerEffects(s, 0).unitClassCombat?.melee ?? 0;
+    const base = melee(); // the Hittite civ ability's own melee bonus, before any building
+
+    // Each copy (raised in a different city) adds +1 on top of the baseline...
+    for (let n = 1; n <= 4; n++) {
+      const c = citiesOf(s, 0)[n - 1] ?? city;
+      c.buildings.push(ub.id);
+      expect(melee()).toBe(base + n);
+    }
+    // ...but past the cap of 4, extra copies grant nothing more.
+    city.buildings.push(ub.id, ub.id);
+    expect(melee()).toBe(base + 4);
+  });
+
+  it("keeps an UNCAPPED unique building's effect once, no matter how many copies", () => {
+    const s = game();
+    s.players[0]!.civId = "carthage"; // Cothon → naval +1 movement, no effectsCap
+    const city = foundCity(s, 0);
+    const ub = uniqueBuildingForCiv("carthage")!;
+    const nav = () => playerEffects(s, 0).navalMovementBonus ?? 0;
+
+    city.buildings.push(ub.id);
+    expect(nav()).toBe(1);
+    city.buildings.push(ub.id, ub.id); // still just +1 — uncapped effects don't stack
+    expect(nav()).toBe(1);
+  });
+
   it("recognizes a civ's unique IMPROVEMENT kind with its worked yields and placement", () => {
     const s = game();
     const imp = uniqueImprovementForCiv("inca")!; // Terrace Farm

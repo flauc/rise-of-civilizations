@@ -50,6 +50,7 @@ import {
   UI_SUBSET,
   ICON_SUBSET,
   EMOJI_ICON_SUBSET,
+  ABILITY_ICON_SUBSET,
   VILLAGE_REWARD_SUBSET,
   BARBARIAN_REWARD_SUBSET,
   AGE_SUBSET,
@@ -295,6 +296,13 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--ability-icon": {
+        const id = next();
+        const e = ABILITY_ICON_SUBSET.find((x) => x.id === id);
+        if (!e) fail(`Unknown ability icon: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--village-reward": {
         const id = next();
         const e = findEntry(id);
@@ -367,6 +375,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "ui") entries.push(...UI_SUBSET);
         else if (name === "icons") entries.push(...ICON_SUBSET);
         else if (name === "emoji-icons") entries.push(...EMOJI_ICON_SUBSET);
+        else if (name === "ability-icons") entries.push(...ABILITY_ICON_SUBSET);
         else if (name === "village-rewards") entries.push(...VILLAGE_REWARD_SUBSET);
         else if (name === "barbarian-rewards") entries.push(...BARBARIAN_REWARD_SUBSET);
         else if (name === "ages") entries.push(...AGE_SUBSET);
@@ -595,6 +604,31 @@ async function openTopHexMaskPath(width: number, height: number, outPath: string
   ]);
 }
 
+async function taperedTopHexMaskPath(width: number, height: number, outPath: string): Promise<void> {
+  // Like openTopHexMaskPath, but the open region above the hex TAPERS inward as it
+  // rises instead of being a full-width rectangle: from the two upper hex vertices
+  // it slants in to a narrower opening at the very top. This still lets a central
+  // peak overhang the tiles above (like mountains.png), but clips the LEFT/RIGHT
+  // edges so WIDE wonders (canyons, valleys, broad falls) whose paint fills the
+  // whole frame width can't jut sideways above the tile. Narrow, centered peaks are
+  // unaffected — their upper corners are transparent sky anyway.
+  const cx = width / 2;
+  const topY = height - width;
+  const quarter = width / 4;
+  const threeQuarter = (3 * width) / 4;
+  const upperVertexY = topY + quarter; // y of the upper-left / upper-right hex vertices
+  const inset = Math.round((width * 5) / 16); // top opening = 3/8 width, centered (80px @ 256)
+  // Tapered open-top hex: slant from each upper vertex up to an inset point on the
+  // top edge, then straight down the hex sides and bottom V.
+  const polygon = `${inset},0 ${width - inset},0 ${width},${upperVertexY} ${width},${topY + threeQuarter} ${cx},${height} 0,${topY + threeQuarter} 0,${upperVertexY}`;
+  await runCmd("magick", [
+    "-size", `${width}x${height}`, "xc:black",
+    "-fill", "white",
+    "-draw", `polygon ${polygon}`,
+    outPath,
+  ]);
+}
+
 async function lowerEdgeShadowAmountPath(width: number, height: number, outPath: string): Promise<void> {
   // Build a soft grayscale "shadow amount" map (≈0 in the interior, rising toward
   // the hex's LOWER edges) used to gently darken the base so the landmark reads as
@@ -654,10 +688,17 @@ async function postProcessOverhangTile(rawPath: string, outPath: string, entry: 
   await lowerEdgeShadowAmountPath(entry.size.width, entry.size.height, shadowPath);
   await runCmd("magick", [cleanRgbPath, "(", shadowPath, "-negate", ")", "-compose", "Multiply", "-composite", shadedRgbPath]);
 
-  // 5. Intersect the keyed alpha with an open-top hex mask so the base is clipped
-  //    symmetrically to the hex while the peak above the hex is preserved.
-  //    final alpha = keyedAlpha × hexMask.
-  await openTopHexMaskPath(entry.size.width, entry.size.height, maskPath);
+  // 5. Intersect the keyed alpha with the hex mask so the base is clipped to the hex
+  //    while the peak above it is preserved. Narrow, centered peaks use the full
+  //    OPEN-top mask so the summit can overhang the tiles above at any width. Wide
+  //    wonders (canyons, valleys, broad falls) whose mass fills the full frame width
+  //    use the TAPERED open top so the peak still overhangs but the left/right edges
+  //    can't jut sideways above the tile. final alpha = keyedAlpha × hexMask.
+  if (entry.taperOverhang) {
+    await taperedTopHexMaskPath(entry.size.width, entry.size.height, maskPath);
+  } else {
+    await openTopHexMaskPath(entry.size.width, entry.size.height, maskPath);
+  }
   await runCmd("magick", [keyedPath, "-alpha", "extract", keyedAlphaPath]);
   await runCmd("magick", [keyedAlphaPath, maskPath, "-compose", "Multiply", "-composite", finalAlphaPath]);
   await runCmd("magick", [shadedRgbPath, finalAlphaPath, "-compose", "CopyOpacity", "-composite", "-define", "png:color-type=6", outPath]);
@@ -801,6 +842,22 @@ async function postProcessToken(rawPath: string, outPath: string, entry: AssetEn
     "png:color-type=6",
     cleaned,
   ]);
+
+  // Step 1b: for solid glyphs (no intended white), also strip white pockets fully
+  // enclosed by the art — the border flood-fill above can't reach them. Safe here
+  // only because the subject itself contains no white to punch through.
+  if (entry.solidGlyph) {
+    await runCmd("magick", [
+      cleaned,
+      "-fuzz",
+      "18%",
+      "-transparent",
+      "white",
+      "-define",
+      "png:color-type=6",
+      cleaned,
+    ]);
+  }
 
   // Step 2: keep the full-size, background-removed art alongside the token so
   // the wiki (and any hi-res use) can show big crisp images. units → units-full.
@@ -977,6 +1034,7 @@ async function processEntry(entry: AssetEntry, options: Options, magickAvailable
     entry.category === "religion_icon" ? "religion-icons" :
     entry.category === "ui" ? "ui" :
     entry.category === "emoji_icon" ? "icons" :
+    entry.category === "ability_icon" ? "abilities" :
     `${entry.category}s`;
   const rawDir = join(options.outDir, "raw", categoryDir);
   const finalDir = join(options.outDir, categoryDir);

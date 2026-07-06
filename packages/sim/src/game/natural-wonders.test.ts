@@ -10,8 +10,8 @@ import {
 } from "./natural-wonders";
 import { getCityYields } from "./economy";
 import { citiesOf, unitsOf } from "./state";
-import { getTile } from "@roc/shared";
-import { getNaturalWonder, NATURAL_WONDER_IDS } from "@roc/data";
+import { getTile, offsetToAxial, axialNeighbor, axialToOffset } from "@roc/shared";
+import { getNaturalWonder, NATURAL_WONDER_DEFS, NATURAL_WONDER_IDS } from "@roc/data";
 
 function foundCapital(state: ReturnType<typeof createGame>) {
   const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
@@ -149,5 +149,45 @@ describe("natural wonders", () => {
     for (const id of state.naturalWonderIds) {
       expect(NATURAL_WONDER_IDS).toContain(id);
     }
+  });
+
+  it("places coastal cliff wonders on land, with the required edges facing the sea", () => {
+    const coastalIds = NATURAL_WONDER_DEFS.filter((d) => d.coastal || d.coastalFront).map((d) => d.id);
+    expect(coastalIds.length).toBeGreaterThan(0);
+    const isSea = (state: ReturnType<typeof createGame>, col: number, row: number): boolean => {
+      const n = getTile(state.map, col, row);
+      return !!n && (n.terrain === "ocean" || n.terrain === "coast");
+    };
+    let sawAny = false;
+    // Scan many seeds so the (random-subset) coastal wonders actually land.
+    const seeds = Array.from({ length: 24 }, (_, i) => `coast-${i}`);
+    for (const seed of seeds) {
+      const state = createGame({ seed, cols: 48, rows: 32, barbarians: false, naturalWonders: true });
+      for (const t of state.map.tiles) {
+        if (!t.naturalWonder || !coastalIds.includes(t.naturalWonder)) continue;
+        const def = getNaturalWonder(t.naturalWonder)!;
+        sawAny = true;
+        // Never on a water tile.
+        expect(["ocean", "coast", "lake"]).not.toContain(t.terrain);
+        const here = offsetToAxial({ col: t.col, row: t.row });
+        if (def.coastalFront) {
+          // Both front edges (SW=4, SE=5) must be sea so the fixed art faces water.
+          for (const d of [4, 5]) {
+            const nb = axialToOffset(axialNeighbor(here, d));
+            expect(isSea(state, nb.col, nb.row)).toBe(true);
+          }
+        } else {
+          // At least one sea neighbour so the shoreline renders against the cliff.
+          const anySea = [0, 1, 2, 3, 4, 5].some((d) => {
+            const nb = axialToOffset(axialNeighbor(here, d));
+            return isSea(state, nb.col, nb.row);
+          });
+          expect(anySea).toBe(true);
+        }
+      }
+    }
+    // Across all sampled seeds at least one coastal cliff wonder was placed and met
+    // its rule (the invariant above is what matters; this guards against a no-op).
+    expect(sawAny).toBe(true);
   });
 });
