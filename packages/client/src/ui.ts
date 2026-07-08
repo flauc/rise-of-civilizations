@@ -176,6 +176,10 @@ import {
   type FeatureRewardType,
   type ActiveAbilityId,
   uniqueUnitForCiv,
+  getLeaderAbilityForCiv,
+  leaderAbilityUnlocked,
+  leaderAbilityCooldownRemaining,
+  leaderAbilityUnlockLabel,
   type PromotionId,
   type TechId,
   type Unit,
@@ -429,6 +433,8 @@ export interface UIHandlers {
   onBoardTradeRoute(unitId: number, routeId: number): void;
   onActivateGreatPerson(greatPersonId: string): void;
   onRecruitLegend(legendId: string): void;
+  /** Fire the civ's active leader ability (cooldown/unlock gated server-side). */
+  onUseLeaderAbility(): void;
   onEstablishTrade(destCityId: number): void;
   onBribeBarbarian(unitId: number): void;
   onRecruitBarbarian(unitId: number): void;
@@ -752,6 +758,66 @@ export function createUI(handlers: UIHandlers): UI {
     if (id) handlers.onActivateGreatPerson(id);
   });
 
+  // Leader-ability info/confirm dialog: opened from the badge on the leader
+  // portrait. Always explains the ability; the Use button is enabled only when
+  // the ability is unlocked and off cooldown.
+  const leaderAbilityOverlay = div("leader-ability-overlay", "");
+  const leaderAbilityDialog = div("leader-ability-dialog", "");
+  leaderAbilityDialog.innerHTML =
+    `<img class="la-dialog-art" id="la-dialog-art" src="" alt="" />` +
+    `<div class="la-dialog-title" id="la-dialog-title"></div>` +
+    `<div class="la-dialog-sub" id="la-dialog-sub"></div>` +
+    `<div class="la-dialog-msg" id="la-dialog-msg"></div>` +
+    `<div class="la-dialog-actions">` +
+    `<button class="btn" id="la-dialog-cancel">Close</button>` +
+    `<button class="btn primary" id="la-dialog-confirm">Use ability</button></div>`;
+  const laDialogArt = leaderAbilityDialog.querySelector<HTMLImageElement>("#la-dialog-art")!;
+  const laDialogTitle = leaderAbilityDialog.querySelector<HTMLDivElement>("#la-dialog-title")!;
+  const laDialogSub = leaderAbilityDialog.querySelector<HTMLDivElement>("#la-dialog-sub")!;
+  const laDialogMsg = leaderAbilityDialog.querySelector<HTMLDivElement>("#la-dialog-msg")!;
+  const laDialogCancel = leaderAbilityDialog.querySelector<HTMLButtonElement>("#la-dialog-cancel")!;
+  const laDialogConfirm = leaderAbilityDialog.querySelector<HTMLButtonElement>("#la-dialog-confirm")!;
+  laDialogArt.onerror = () => {
+    laDialogArt.style.display = "none";
+  };
+  const hideLeaderAbility = (): void => {
+    leaderAbilityOverlay.classList.remove("show");
+    leaderAbilityDialog.classList.remove("show");
+  };
+  const showLeaderAbility = (state: GameState): void => {
+    const player = state.players[state.currentPlayerIndex]!;
+    const def = getLeaderAbilityForCiv(player.civId ?? "");
+    if (!def) return;
+    const civ = getCiv(player.civId);
+    const unlocked = leaderAbilityUnlocked(state, player, def);
+    const cooldown = leaderAbilityCooldownRemaining(state, player, def);
+    const ready = unlocked && cooldown === 0;
+    laDialogArt.style.display = "";
+    laDialogArt.src = civ ? `${ASSET_BASE_URL}leaders/${civ.id}.png` : "";
+    laDialogTitle.textContent = `✦ ${def.name}`;
+    laDialogSub.textContent = civ ? `${civ.name} · Leader Ability` : "Leader Ability";
+    const status = ready
+      ? `<div class="la-dialog-ready">✓ Ready to use.</div>`
+      : !unlocked
+        ? `<div class="la-dialog-lock">🔒 Unlocks with ${escapeHtml(leaderAbilityUnlockLabel(def))}.</div>`
+        : `<div class="la-dialog-lock">⏳ On cooldown — ${cooldown} turn${cooldown > 1 ? "s" : ""} remaining.</div>`;
+    laDialogMsg.innerHTML =
+      `<div class="la-dialog-effect">${escapeHtml(def.desc)}</div>` +
+      `<div class="la-dialog-foot">${def.cooldown}-turn cooldown</div>` +
+      status;
+    laDialogConfirm.disabled = !ready;
+    laDialogConfirm.textContent = ready ? "Use ability" : !unlocked ? "Locked" : "On cooldown";
+    leaderAbilityOverlay.classList.add("show");
+    leaderAbilityDialog.classList.add("show");
+  };
+  laDialogCancel.addEventListener("click", hideLeaderAbility);
+  leaderAbilityOverlay.addEventListener("click", hideLeaderAbility);
+  laDialogConfirm.addEventListener("click", () => {
+    if (laDialogConfirm.disabled) return;
+    hideLeaderAbility();
+    handlers.onUseLeaderAbility();
+  });
+
   const logOverlay = div("log-overlay", "");
   const logDialog = div("log-dialog", "");
   logDialog.innerHTML =
@@ -974,6 +1040,10 @@ export function createUI(handlers: UIHandlers): UI {
         hideGreatPersonActivate();
         return;
       }
+      if (leaderAbilityDialog.classList.contains("show")) {
+        hideLeaderAbility();
+        return;
+      }
       if (villageDialog.classList.contains("show")) {
         closeVillageDialog();
         return;
@@ -1027,6 +1097,7 @@ export function createUI(handlers: UIHandlers): UI {
         return;
       }
       if (gpActivateDialog.classList.contains("show")) { gpActivateConfirm.click(); return; }
+      if (leaderAbilityDialog.classList.contains("show")) { laDialogConfirm.click(); return; }
       if (villageDialog.classList.contains("show")) { villageOk.click(); return; }
       if (turnUpdateDialog.classList.contains("show")) { turnUpdateClose.click(); return; }
       if (goldDialog.classList.contains("show")) { goldClose.click(); return; }
@@ -1611,6 +1682,26 @@ export function createUI(handlers: UIHandlers): UI {
         (p.fromId === viewerId && p.status === "accepted"),
     ).length;
 
+    // Leader ability: the civ's active, cooldown-gated signature action. Surfaced
+    // as a badge pinned to the leader portrait (see the leaderAvatar block below) —
+    // bright when ready to use, dim while locked or on cooldown. Clicking it opens
+    // an info/confirm dialog. Shown only when the civ actually has one.
+    const laDef = getLeaderAbilityForCiv(player.civId ?? "");
+    let leaderAbilityBadgeHtml = "";
+    if (laDef) {
+      const laUnlocked = leaderAbilityUnlocked(state, player, laDef);
+      const laCooldown = leaderAbilityCooldownRemaining(state, player, laDef);
+      const laReady = laUnlocked && laCooldown === 0;
+      const laInner = laReady ? "✦" : !laUnlocked ? `<span class="la-lock">🔒</span>` : `<span class="la-cd">${laCooldown}</span>`;
+      const laStatus = laReady
+        ? "Ready — click to use"
+        : !laUnlocked
+          ? `Locked — unlocks with ${leaderAbilityUnlockLabel(laDef)}`
+          : `On cooldown — ${laCooldown} turn${laCooldown > 1 ? "s" : ""} left`;
+      leaderAbilityBadgeHtml =
+        `<button class="la-badge ${laReady ? "ready" : "inactive"}" id="leader-ability-badge" title="${escapeHtml(`${laDef.name} — ${laStatus}`)}">${laInner}</button>`;
+    }
+
     topbar.innerHTML = `
       <div class="tb-grp">
         <span class="tb-turn">⏱ ${state.turn}</span>
@@ -1646,7 +1737,11 @@ export function createUI(handlers: UIHandlers): UI {
       leaderAvatar.classList.remove("empty");
       leaderAvatar.innerHTML =
         `<img src="${ASSET_BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" title="${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)}" onerror="this.style.visibility='hidden'">` +
-        `<div class="leader-avatar-label"><b>${escapeHtml(civ.name)}</b><span>${escapeHtml(civ.leader)}</span></div>`;
+        `<div class="leader-avatar-label"><b>${escapeHtml(civ.name)}</b><span>${escapeHtml(civ.leader)}</span></div>` +
+        leaderAbilityBadgeHtml;
+      leaderAvatar
+        .querySelector<HTMLButtonElement>("#leader-ability-badge")
+        ?.addEventListener("click", () => showLeaderAbility(state));
     } else {
       leaderAvatar.classList.add("empty");
       leaderAvatar.innerHTML = "";
@@ -3064,7 +3159,7 @@ export function createUI(handlers: UIHandlers): UI {
     const ready = (player.greatPeople ?? []).map((id) => getGreatPerson(id)).filter(Boolean);
 
     let html = `<div class="row" style="justify-content:space-between"><b>🎖️ Great People</b><button class="btn" id="gpclose">✕</button></div>`;
-    html += `<div class="sub">Build the right buildings to earn class points. When a pool fills you recruit the next great figure — there are only so many to go round.</div>`;
+    html += `<div class="sub">Build the right buildings to earn class points. When a pool fills you recruit the next great figure, there are only so many to go round.</div>`;
 
     // Recruited figures awaiting activation.
     html += `<div class="csub">Recruited (${ready.length})</div>`;
@@ -3892,11 +3987,6 @@ export function createUI(handlers: UIHandlers): UI {
       }).filter(Boolean);
       if (btns.length) {
         html += `<div class="csub">Develop</div><div class="row" style="flex-wrap:wrap;gap:6px">${btns.join("")}</div>`;
-        // On neutral land the improvement is built but yields nothing until a city's
-        // borders reach the tile — make that expectation explicit.
-        if (neutralTile) {
-          html += `<div class="sub" style="margin-top:4px;color:#9fb7d0">Outside your borders — ready for when a city claims this tile.</div>`;
-        }
       }
       // World wonders are tile-targeted too: offer any that can be raised on this
       // clear, owned tile. Only wonders whose tech is already researched appear here

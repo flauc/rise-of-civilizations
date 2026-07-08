@@ -509,6 +509,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onBoardTradeRoute: (unitId, routeId) => session.order({ type: "boardTradeRoute", unitId, routeId }),
     onActivateGreatPerson: (greatPersonId) => session.order({ type: "activateGreatPerson", greatPersonId }),
     onRecruitLegend: (legendId) => session.order({ type: "recruitLegend", legendId }),
+    onUseLeaderAbility: () => session.order({ type: "useLeaderAbility" }),
     onEstablishTrade: (destCityId) => {
       if (selectedUnitId != null) session.order({ type: "establishTradeRoute", unitId: selectedUnitId, destCityId });
       clearSelection();
@@ -984,6 +985,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         constructionAtlas,
         religionIconAtlas,
       });
+      try {
       ui.render({
         state: st(),
         selectedUnit: selectedUnitId != null ? st().units.get(selectedUnitId) ?? null : null,
@@ -999,6 +1001,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         cheatsEnabled: !session.isOnline,
         liftFog,
       });
+      } catch (err) {
+        console.error("RENDER-THREW", (err as Error)?.stack || err);
+      }
     }
     requestAnimationFrame(frame);
   }
