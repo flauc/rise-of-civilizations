@@ -45,7 +45,7 @@ import { accrueGreatPeople, activateGreatPerson } from "./great-people";
 import { recruitLegend, tickLegends } from "./legends";
 import { extendLegendsOnTrigger } from "./legend-lifespan";
 import { tickLegendPassives } from "./legend-passives";
-import { checkEurekas } from "./eurekas";
+// import { checkEurekas } from "./eurekas"; // DISABLED for now — see beginTurn
 import {
   declareWar,
   makePeace,
@@ -247,7 +247,7 @@ export function beginTurn(state: GameState): void {
     processCity(state, c, player);
   }
   autoManageCities(state, player); // governor mode: opted-in cities manage themselves
-  checkEurekas(state, player);      // fire any newly-met eureka conditions before research ticks
+  // checkEurekas(state, player);   // DISABLED for now — eurekas kept in eurekas.ts but not fired
   advanceResearch(state, player);   // complete at most one tech from the pooled science
   advanceGovernment(state, player); // and at most one government node from the pooled culture
   tickUnrest(state, player); // wind down post-revolution unrest (opens a free re-slot window)
