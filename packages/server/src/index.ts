@@ -185,6 +185,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         naturalWonders: msg.naturalWonders,
         startingGold: msg.startingGold,
         turnLimit: msg.turnLimit,
+        gameSpeed: msg.gameSpeed,
         enabledVictories: msg.enabledVictories,
         aiCivIds: msg.aiCivIds,
         colors: msg.colors,
@@ -228,6 +229,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         naturalWonders: msg.naturalWonders,
         startingGold: msg.startingGold,
         turnLimit: msg.turnLimit,
+        gameSpeed: msg.gameSpeed,
         enabledVictories: msg.enabledVictories,
       });
       if ("error" in r) return send(ws, { t: "error", message: r.error });
@@ -294,6 +296,8 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       send(ws, { t: "games", games: lobby.list() });
       return;
     }
+    case "ping":
+      return; // keepalive — nothing to do
     case "order": {
       const host = ws.data.gameId ? lobby.get(ws.data.gameId)?.host : undefined;
       if (!host || ws.data.playerId === undefined) return send(ws, { t: "error", message: "not in a game" });
@@ -391,6 +395,7 @@ const server = Bun.serve<Conn>({
     });
   },
   websocket: {
+    idleTimeout: 0, // never time out idle connections (game state is server-authoritative; clients may be AFK)
     open() {
       /* connection opens unauthenticated; client sends register/login next */
     },

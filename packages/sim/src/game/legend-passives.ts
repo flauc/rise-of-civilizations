@@ -85,7 +85,7 @@ export function tickLegendPassives(state: GameState, player: Player): void {
       // his sight are revealed ("know the enemy and know yourself").
       case "sun_tzu_legend": {
         for (const u of adjacentUnits(state, hero)) {
-          if (u.ownerId === player.id && isMilitary(u.type)) awardUnitXp(u, 3);
+          if (u.ownerId === player.id && isMilitary(u.type) && !u.legendId) awardUnitXp(u, 3);
         }
         revealHiddenInSight(state, hero, unitSight(state, hero));
         break;

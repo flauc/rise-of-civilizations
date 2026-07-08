@@ -5,7 +5,7 @@ import { makeUnit, citiesOf, unitsOf, type City, type GameState, type Unit } fro
 import { getTile } from "@roc/shared";
 import { resolveAttack } from "./combat";
 import { establishTradeRoute, tradeRouteYield } from "./trade";
-import { pillageTile, plunderTradeRoute, sackCityCommand, pillageValue, sackValue } from "./raiding";
+import { pillageTile, plunderTradeRoute, plunderValue, sackCityCommand, pillageValue, sackValue } from "./raiding";
 import { offsetNeighbors } from "./movement";
 
 function warAll(state: GameState): void {
@@ -169,10 +169,11 @@ describe("raiding", () => {
     // Two owned cities for player 0.
     const from = placeCity(state, 0, "A", 5, 5);
     const to = placeCity(state, 0, "B", 10, 5);
-    // Claim a corridor of tiles between them so BFS can find a path.
+    // Claim a corridor of plains between them so the caravan can path overland.
     for (let c = 5; c <= 10; c++) {
       const tile = getTile(state.map, c, 5);
-      if (tile && tile.terrain !== "ocean" && tile.terrain !== "coast" && tile.terrain !== "lake") {
+      if (tile) {
+        tile.terrain = "plains";
         tile.ownerCityId = from.id;
       }
     }
@@ -192,7 +193,7 @@ describe("raiding", () => {
     const [pc, pr] = pathTile.split(",").map(Number) as [number, number];
     const looter = place(state, 1, "warrior", pc, pr);
 
-    const expected = 20 + 10 * tradeRouteYield(state, route).gold;
+    const expected = plunderValue(state, route);
     const goldBefore = state.players[1]!.gold;
     const plunderRes = plunderTradeRoute(state, looter.id, route.id, 1);
     expect(plunderRes.ok).toBe(true);
@@ -212,7 +213,8 @@ describe("raiding", () => {
     const to = placeCity(state, 0, "B", 10, 5);
     for (let c = 5; c <= 10; c++) {
       const tile = getTile(state.map, c, 5);
-      if (tile && tile.terrain !== "ocean" && tile.terrain !== "coast" && tile.terrain !== "lake") {
+      if (tile) {
+        tile.terrain = "plains";
         tile.ownerCityId = from.id;
       }
     }

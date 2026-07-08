@@ -6,6 +6,7 @@ import type { Command } from "./game/commands";
 import type { BarbarianActivity, VictoryKind } from "./game/state";
 import type { PlayerView } from "./game/serialize";
 import type { MapType } from "./worldgen";
+import type { GameSpeed } from "./game/game-speed";
 
 export interface GameSummary {
   id: string;
@@ -46,6 +47,8 @@ export interface LobbyRoom {
   startingGold: "tight" | "balanced" | "generous";
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit: number;
+  /** How costly research and civics are. */
+  gameSpeed: GameSpeed;
   /** Decisive win conditions enabled this game (score/extinction always apply). */
   enabledVictories: VictoryKind[];
   hasPassword: boolean;
@@ -74,6 +77,8 @@ export type ClientMessage =
       startingGold?: "tight" | "balanced" | "generous";
       /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
       turnLimit?: number;
+      /** How costly research and civics are. Defaults to normal. */
+      gameSpeed?: GameSpeed;
       /** Decisive win conditions enabled; omitted = all toggleable ones. */
       enabledVictories?: VictoryKind[];
       /** Civ id per AI opponent; null/undefined = a random unique civ. */
@@ -103,6 +108,8 @@ export type ClientMessage =
       startingGold?: "tight" | "balanced" | "generous";
       /** Turn at which the score victory triggers; 0 = unlimited. */
       turnLimit?: number;
+      /** How costly research and civics are. */
+      gameSpeed?: GameSpeed;
       /** Decisive win conditions enabled; omitted = unchanged. */
       enabledVictories?: VictoryKind[];
     }
@@ -115,7 +122,8 @@ export type ClientMessage =
   | { t: "ready" } // end-of-turn: ready for simultaneous resolution
   | { t: "exportState" } // host requests the full authoritative state for saving
   | { t: "loadGame"; blob: string } // host uploads a full SerializedState blob to restore
-  | { t: "deleteGame"; gameId: string }; // host removes a game from the lobby
+  | { t: "deleteGame"; gameId: string } // host removes a game from the lobby
+  | { t: "ping" }; // keepalive — server ignores, just prevents idle-timeout
 
 export type ServerMessage =
   | { t: "authOk"; token: string; userId: string; handle: string }

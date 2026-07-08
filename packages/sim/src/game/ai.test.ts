@@ -409,6 +409,40 @@ describe("AI opponent", () => {
     expect(dist(s.units.get(scoutId)!, spot)).toBeLessThan(d0); // headed for the village
   });
 
+  it("marches a military unit toward a discovered tribal village", () => {
+    const s = aiWithCity("ai-mil-village");
+    const ai = s.players[1]!;
+    const warrior = unitsOf(s, 1).find((u) => UNIT_DEFS[u.type].strength > 0 && !UNIT_DEFS[u.type].founder)!;
+    for (const u of unitsOf(s, 1)) if (u.id !== warrior!.id) s.units.delete(u.id);
+    clearFeatures(s);
+    const spot = landTileAtDepth(s, warrior!, 3)!;
+    getTile(s.map, spot.col, spot.row)!.feature = "village";
+    ai.explored.add(`${spot.col},${spot.row}`);
+    const d0 = dist(warrior!, spot);
+    warrior!.movementLeft = UNIT_DEFS[warrior!.type].movement;
+    aiTakeTurn(s, 1);
+    expect(dist(s.units.get(warrior!.id)!, spot)).toBeLessThan(d0);
+  });
+
+  it("prefers a nearby village over a farther barbarian camp", () => {
+    const s = aiWithCity("ai-village-over-camp");
+    const ai = s.players[1]!;
+    const warrior = unitsOf(s, 1).find((u) => UNIT_DEFS[u.type].strength > 0 && !UNIT_DEFS[u.type].founder)!;
+    for (const u of unitsOf(s, 1)) if (u.id !== warrior!.id) s.units.delete(u.id);
+    clearFeatures(s);
+    const villageSpot = landTileAtDepth(s, warrior!, 3)!;
+    const campSpot = landTileAtDepth(s, warrior!, 7)!;
+    getTile(s.map, villageSpot.col, villageSpot.row)!.feature = "village";
+    getTile(s.map, campSpot.col, campSpot.row)!.feature = "barb_camp";
+    ai.explored.add(`${villageSpot.col},${villageSpot.row}`);
+    ai.explored.add(`${campSpot.col},${campSpot.row}`);
+    const dV0 = dist(warrior!, villageSpot);
+    warrior!.movementLeft = UNIT_DEFS[warrior!.type].movement;
+    aiTakeTurn(s, 1);
+    expect(dist(s.units.get(warrior!.id)!, villageSpot)).toBeLessThan(dV0);
+    expect(dist(s.units.get(warrior!.id)!, campSpot)).toBeGreaterThan(dist(warrior!, villageSpot));
+  });
+
   it("rushes wartime troop training with surplus gold", () => {
     const s = aiWithCity("ai-rush");
     const city = citiesOf(s, 1)[0]!;

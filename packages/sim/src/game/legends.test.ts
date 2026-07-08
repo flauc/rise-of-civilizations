@@ -60,7 +60,8 @@ describe("legends: recruitment", () => {
     const hero = unitsOf(state, 0).find((u) => u.legendId === def.id)!;
     expect(hero).toBeTruthy();
     expect(isLegend(hero)).toBe(true);
-    expect(hero.legendExpiresOnTurn).toBe(state.turn + def.lifespan);
+    expect(hero.legendExpiresOnTurn).toBe(state.turn + 15);
+    expect(hero.xp).toBe(0);
     // Cannot recruit the same legend again (taken globally).
     expect(canRecruitLegend(state, 0, def.id).ok).toBe(false);
   });
@@ -98,7 +99,9 @@ describe("legends: lifespan", () => {
   it("a rechargeable legend returns to the pool when it retires", () => {
     const state = newGame();
     addCity(state, 0, 3, 3);
-    playerById(state, 0)!.faith = 500;
+    const player = playerById(state, 0)!;
+    player.faith = 500;
+    player.researched.add("carburizing");
     const def = availableLegends(state).find((l) => l.rechargeable)!;
     recruitLegend(state, 0, def.id);
     const hero = unitsOf(state, 0).find((u) => u.legendId === def.id)!;
@@ -117,8 +120,8 @@ describe("legends: combat aura", () => {
     const hero = makeUnit(heroId, 0, def.baseType as never, 5, 5, 0, 120);
     hero.legendId = def.id;
     state.units.set(heroId, hero);
-    // The hero's own bonus.
-    expect(legendCombatBonus(state, hero)).toBeGreaterThanOrEqual(def.combatBonus);
+    // The hero's own bonus (combat is nerfed slightly from the raw def).
+    expect(legendCombatBonus(state, hero)).toBeGreaterThanOrEqual(Math.max(0, def.combatBonus - 2));
     // A friendly warrior placed adjacent gains the aura.
     const allyId = state.nextEntityId++;
     const ally = makeUnit(allyId, 0, "warrior", 6, 5, 0, 100);

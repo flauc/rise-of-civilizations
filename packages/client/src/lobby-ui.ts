@@ -14,6 +14,7 @@ import {
   type GameSummary,
   type LobbyRoom,
   type MapType,
+  type GameSpeed,
   type SerializedState,
   type ServerMessage,
   type VictoryKind,
@@ -41,6 +42,7 @@ const MAP_TYPE_OPTIONS: { value: MapType; label: string; desc: string }[] = [
   { value: "pangaea", label: "One Big Continent", desc: "A single supercontinent: everyone shares one landmass with little ocean between." },
   { value: "two_continents", label: "Two Continents", desc: "Two major landmasses divided by open ocean." },
   { value: "three_continents", label: "Three Continents", desc: "Three landmasses scattered across the sea." },
+  { value: "four_continents", label: "Four Continents", desc: "Four separate continents — wide oceans between every rival." },
   { value: "archipelago", label: "Archipelago", desc: "Many medium islands — exploration and naval play matter more." },
   { value: "inland_sea", label: "Inland Sea", desc: "A ring of land wrapped around a central sea." },
   { value: "islands", label: "Islands", desc: "Lots of small, scattered islands across a wide ocean." },
@@ -66,6 +68,16 @@ const TURN_LIMIT_OPTIONS: { value: number; label: string }[] = [
 
 const DEFAULT_TURN_LIMIT = 120;
 
+/** Game-speed presets — only research and civic costs change. */
+const GAME_SPEED_OPTIONS: { value: GameSpeed; label: string; desc: string }[] = [
+  { value: "fast", label: "Fast", desc: "Cheaper research and civics — eras pass quickly." },
+  { value: "normal", label: "Normal", desc: "Default pacing for the technology and civics trees." },
+  { value: "slow", label: "Slow", desc: "Higher research and civic costs — linger longer in each age." },
+  { value: "epic", label: "Epic", desc: "Much higher costs — a long march through every era." },
+];
+
+const DEFAULT_GAME_SPEED: GameSpeed = "normal";
+
 /** "random" = let the sim assign a random unique civ when the game starts. */
 const RANDOM_CIV = "random";
 
@@ -90,6 +102,7 @@ interface MenuState {
     legends: boolean;
     startingGold: StartingGold;
     turnLimit: number;
+    gameSpeed: GameSpeed;
     enabledVictories: VictoryKind[];
   };
   mp: {
@@ -172,6 +185,16 @@ function turnLimitSelect(id: string, value: number): string {
   return `<select id="${id}" class="menu-in">${TURN_LIMIT_OPTIONS.map(
     (o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`,
   ).join("")}</select>`;
+}
+
+function gameSpeedSelect(id: string, value: GameSpeed): string {
+  return `<select id="${id}" class="menu-in">${GAME_SPEED_OPTIONS.map(
+    (o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`,
+  ).join("")}</select>`;
+}
+
+function gameSpeedLabel(value: GameSpeed): string {
+  return GAME_SPEED_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
 
 /** Human-readable turn-limit label for read-only displays. */
@@ -314,6 +337,7 @@ function loadSpSetup(defaults: SpSetup): SpSetup {
   if (typeof saved.legends === "boolean") out.legends = saved.legends;
   if (GOLD_OPTIONS.some((o) => o.value === saved!.startingGold)) out.startingGold = saved.startingGold!;
   if (TURN_LIMIT_OPTIONS.some((o) => o.value === saved!.turnLimit)) out.turnLimit = saved.turnLimit!;
+  if (GAME_SPEED_OPTIONS.some((o) => o.value === saved!.gameSpeed)) out.gameSpeed = saved.gameSpeed!;
   if (Array.isArray(saved.enabledVictories)) {
     out.enabledVictories = TOGGLEABLE_VICTORIES.filter((v) =>
       (saved!.enabledVictories as VictoryKind[]).includes(v),
@@ -336,6 +360,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       legends: true,
       startingGold: "balanced",
       turnLimit: DEFAULT_TURN_LIMIT,
+      gameSpeed: DEFAULT_GAME_SPEED,
       enabledVictories: [...TOGGLEABLE_VICTORIES],
     }),
     mp: {
@@ -420,15 +445,15 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .roster-add{margin-top:10px}
     .cp-sel{flex:0 0 auto;width:96px}
     .save-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-    .save-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;border:1px solid var(--edge);border-radius:10px;background:#1f1c14;cursor:pointer;transition:background .12s,border-color .12s}
+    .save-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;border:1px solid var(--edge);border-radius:10px;background:#1f1c14;transition:background .12s,border-color .12s}
     .save-row:hover{background:#29251b;border-color:#c9a227}
-    .save-row .info{min-width:0}
+    .save-row .info{cursor:pointer;flex:1;min-width:0}
     .save-row .name{font-weight:600;color:#e8dcc5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .save-row .meta{color:#b8aa8d;font-size:11.5px;margin-top:2px}
-    .save-row .actions{display:flex;gap:6px;flex-shrink:0}
-    .save-menu{position:relative;width:32px;height:32px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px;line-height:1;pointer-events:auto;flex-shrink:0;transition:background .12s,border-color .12s}
+    .save-row .actions{display:flex;gap:6px;flex-shrink:0;position:relative;z-index:1}
+    .save-menu{width:32px;height:32px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px;line-height:1;flex-shrink:0;transition:background .12s,border-color .12s}
     .save-menu:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
-    .save-dropdown{display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:140px;background:#1f1c14;border:1px solid var(--edge);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.55);z-index:10;overflow:hidden}
+    .save-dropdown{display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:140px;background:#1f1c14;border:1px solid var(--edge);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.55);z-index:20;overflow:hidden}
     .save-dropdown.open{display:block}
     .save-dropdown-item{width:100%;padding:9px 12px;text-align:left;font:inherit;font-size:13px;color:#e8dcc5;background:transparent;border:none;cursor:pointer;white-space:nowrap}
     .save-dropdown-item:hover{background:rgba(201,162,39,.12);color:#f0d878}
@@ -912,6 +937,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
         <div class="menu-row"><span>Turn limit</span>${turnLimitSelect("sp-turnlimit", state.sp.turnLimit)}</div>
         <div class="menu-hint">Highest score wins when the turn limit is reached. "Unlimited" plays until a decisive victory.</div>
+        <div class="menu-row"><span>Game speed</span>${gameSpeedSelect("sp-speed", state.sp.gameSpeed)}</div>
+        <div class="menu-hint" id="sp-speed-desc"></div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
         <div class="menu-row"><span>Natural wonders</span>${onOffSelect("sp-wonders", state.sp.naturalWonders)}</div>
         <div class="menu-row"><span>Legends (heroes)</span>${onOffSelect("sp-legends", state.sp.legends)}</div>
@@ -1039,6 +1066,17 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     });
     updateMapTypeDesc();
 
+    const speedSel = $select("#sp-speed");
+    const updateSpeedDesc = () => {
+      $("#sp-speed-desc").textContent =
+        GAME_SPEED_OPTIONS.find((o) => o.value === state.sp.gameSpeed)?.desc ?? "";
+    };
+    speedSel.addEventListener("change", () => {
+      state.sp.gameSpeed = speedSel.value as GameSpeed;
+      updateSpeedDesc();
+    });
+    updateSpeedDesc();
+
     // Starting treasury: chips with tooltips, mirrored into a description line.
     const updateGoldDesc = () => {
       $("#sp-gold-desc").textContent =
@@ -1066,6 +1104,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       const spWonders = $select("#sp-wonders").value === "on";
       const spLegends = $select("#sp-legends").value === "on";
       const spTurnLimit = Number($select("#sp-turnlimit").value);
+      const spGameSpeed = $select("#sp-speed").value as GameSpeed;
       const spVictories = readVictoryChecklist("sp-victories");
       // Sync the DOM-read options back into state.sp (civ/color/mapType/ais/gold
       // already live there), then persist so the next new game defaults to it.
@@ -1074,6 +1113,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       state.sp.naturalWonders = spWonders;
       state.sp.legends = spLegends;
       state.sp.turnLimit = spTurnLimit;
+      state.sp.gameSpeed = spGameSpeed;
       state.sp.enabledVictories = spVictories;
       saveSpSetup(state.sp);
       const spAiCivIds = state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId));
@@ -1089,6 +1129,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           legends: spLegends,
           startingGold: state.sp.startingGold,
           turnLimit: spTurnLimit,
+          gameSpeed: spGameSpeed,
           enabledVictories: spVictories,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
@@ -1101,6 +1142,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           aiCivIds: spAiCivIds,
           legends: spLegends,
           turnLimit: spTurnLimit,
+          gameSpeed: spGameSpeed,
           enabledVictories: spVictories,
         },
       );
@@ -1281,6 +1323,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         barbarianLevel: "normal",
         aiCivIds: [],
         turnLimit: DEFAULT_TURN_LIMIT,
+        gameSpeed: DEFAULT_GAME_SPEED,
         enabledVictories: [...TOGGLEABLE_VICTORIES],
       };
       mpSession?.send({
@@ -1295,6 +1338,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         naturalWonders: true,
         startingGold: "balanced",
         turnLimit: DEFAULT_TURN_LIMIT,
+        gameSpeed: DEFAULT_GAME_SPEED,
       });
     };
 
@@ -1361,6 +1405,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
             <div class="mp-opt"><span>Map type</span>${mapTypeSelect("rm-maptype", room.mapType)}</div>
             <div class="mp-opt"><span>Map size</span>${mapSelect("rm-map", (room.mapSize as MapSize) || "medium")}</div>
             <div class="mp-opt"><span>Turn limit</span>${turnLimitSelect("rm-turnlimit", room.turnLimit ?? DEFAULT_TURN_LIMIT)}</div>
+            <div class="mp-opt"><span>Game speed</span>${gameSpeedSelect("rm-speed", room.gameSpeed ?? DEFAULT_GAME_SPEED)}</div>
             <div class="mp-opt"><span>Barbarians</span>${barbarianSelect("rm-barb", room.barbarians)}</div>
             <div class="mp-opt"><span>Natural wonders</span>${onOffSelect("rm-wonders", room.naturalWonders)}</div>
             <div class="mp-opt"><span>Starting treasury</span>${goldChips("rm-gold", room.startingGold)}</div>
@@ -1370,6 +1415,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           <div class="mp-settings-readonly">
             <span><b>Map:</b> ${escapeHtml(MAP_TYPE_OPTIONS.find((o) => o.value === room.mapType)?.label ?? room.mapType)} · ${escapeHtml(room.mapSize || "medium")}</span>
             <span><b>Turn limit:</b> ${escapeHtml(turnLimitLabel(room.turnLimit ?? DEFAULT_TURN_LIMIT))}</span>
+            <span><b>Game speed:</b> ${escapeHtml(gameSpeedLabel(room.gameSpeed ?? DEFAULT_GAME_SPEED))}</span>
             <span><b>Barbarians:</b> ${escapeHtml(room.barbarians)}</span>
             <span><b>Natural wonders:</b> ${room.naturalWonders ? "On" : "Off"}</span>
             <span><b>Treasury:</b> ${escapeHtml(room.startingGold)}</span>
@@ -1477,6 +1523,9 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         });
         body.querySelector<HTMLSelectElement>("#rm-turnlimit")?.addEventListener("change", (e) =>
           configure({ turnLimit: Number((e.target as HTMLSelectElement).value) }),
+        );
+        body.querySelector<HTMLSelectElement>("#rm-speed")?.addEventListener("change", (e) =>
+          configure({ gameSpeed: (e.target as HTMLSelectElement).value as GameSpeed }),
         );
         body.querySelector<HTMLSelectElement>("#rm-barb")?.addEventListener("change", (e) =>
           configure({ barbarians: (e.target as HTMLSelectElement).value }),
@@ -1730,16 +1779,16 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     listEl.innerHTML = saves
       .map(
         (s) =>
-          `<div class="save-row" data-load="${s.id}" role="button" tabindex="0">` +
-          `<span class="info">` +
+          `<div class="save-row">` +
+          `<span class="info" data-load="${s.id}" role="button" tabindex="0">` +
           `<span class="name">${escapeHtml(s.name)}</span>` +
           `<span class="meta">${s.mode === "sp" ? "Single Player" : "Multiplayer"} · Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}${s.gameId ? ` · ${s.gameId}` : ""}</span>` +
           `</span>` +
           `<span class="actions">` +
-          `<button type="button" class="save-menu" data-menu="${s.id}" aria-label="Save options" aria-haspopup="true">⋯</button>` +
-          `<div class="save-dropdown" data-dropdown="${s.id}">` +
-          `<button type="button" class="save-dropdown-item" data-export="${s.id}">Export to file</button>` +
-          `<button type="button" class="save-dropdown-item delete" data-delete="${s.id}">Delete</button>` +
+          `<button type="button" class="save-menu" data-menu="${s.id}" aria-label="Save options" aria-haspopup="true" aria-expanded="false">⋯</button>` +
+          `<div class="save-dropdown" data-dropdown="${s.id}" role="menu">` +
+          `<button type="button" class="save-dropdown-item" data-export="${s.id}" role="menuitem">Export to file</button>` +
+          `<button type="button" class="save-dropdown-item delete" data-delete="${s.id}" role="menuitem">Delete</button>` +
           `</div>` +
           `</span>` +
           `</div>`,
@@ -1749,13 +1798,16 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     let dropdownCloser: (() => void) | null = null;
     const closeAllDropdowns = () => {
       listEl.querySelectorAll<HTMLDivElement>(".save-dropdown.open").forEach((d) => d.classList.remove("open"));
+      listEl.querySelectorAll<HTMLButtonElement>(".save-menu[aria-expanded='true']").forEach((b) => {
+        b.setAttribute("aria-expanded", "false");
+      });
       if (dropdownCloser) {
         document.removeEventListener("click", dropdownCloser);
         dropdownCloser = null;
       }
     };
 
-    listEl.querySelectorAll<HTMLDivElement>(".save-row").forEach((el) => {
+    listEl.querySelectorAll<HTMLSpanElement>(".save-row .info[data-load]").forEach((el) => {
       const load = async () => {
         const id = el.dataset.load!;
         const record = await loadSave(id);
@@ -1767,9 +1819,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         close();
         onStart(new LocalSession({ savedState: JSON.parse(record.blob) as SerializedState }));
       };
-      el.addEventListener("click", load);
+      el.addEventListener("click", () => void load());
       el.addEventListener("keydown", (e) => {
-        if (e.target !== el) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           void load();
@@ -1779,14 +1830,20 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
 
     listEl.querySelectorAll<HTMLButtonElement>(".save-menu").forEach((el) =>
       el.addEventListener("click", (e) => {
+        e.preventDefault();
         e.stopPropagation();
         const dropdown = listEl.querySelector<HTMLDivElement>(`[data-dropdown="${el.dataset.menu}"]`);
         const isOpen = dropdown?.classList.contains("open") ?? false;
         closeAllDropdowns();
         if (dropdown && !isOpen) {
           dropdown.classList.add("open");
-          dropdownCloser = () => closeAllDropdowns();
-          document.addEventListener("click", dropdownCloser);
+          el.setAttribute("aria-expanded", "true");
+          dropdownCloser = (ev) => {
+            if (ev.target instanceof Node && el.contains(ev.target)) return;
+            if (ev.target instanceof Node && dropdown.contains(ev.target)) return;
+            closeAllDropdowns();
+          };
+          window.setTimeout(() => document.addEventListener("click", dropdownCloser!), 0);
         }
       }),
     );

@@ -158,7 +158,7 @@ describe("legend situational combat passives", () => {
     const state = bareGame();
     const elCid = placeLegend(state, 0, "el_cid", "cataphract", 5, 5);
     // No city owns this ground — the frontier.
-    expect(legendCombatBonus(state, elCid)).toBe(9 + 4);
+    expect(legendCombatBonus(state, elCid)).toBe(9 - 2 + 4);
   });
 
   it("Cleopatra's Allure weakens adjacent enemies", () => {

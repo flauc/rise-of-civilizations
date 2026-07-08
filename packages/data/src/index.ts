@@ -137,6 +137,12 @@ export interface CivEffects {
   allUnitCombat?: number;
   /** Flat combat-strength bonus vs units of a civ whose national religion differs from yours. */
   combatVsOtherReligion?: number;
+  /** Flat combat-strength bonus vs enemy unique units (Great General Scipio, etc.). */
+  combatVsUniqueUnit?: number;
+  /** Flat combat-strength bonus for gunpowder units (hand cannon, matchlock, bombard). */
+  gunpowderCombatBonus?: number;
+  /** Flat combat-strength bonus for naval melee ships (boarding, corvus). */
+  navalMeleeCombatBonus?: number;
   /** Culture gained each time one of your units kills an enemy unit (mirror of faithOnKill). */
   cultureOnKill?: number;
   /** Percentage scaling of RIVAL religions' pressure gain in your cities (−50 = halved). */
@@ -3499,6 +3505,62 @@ export type ProphetGift =
   /** Rumi — the whirling: a pressure surge across all your cities + timed culture. */
   | { kind: "revival"; pressure: number; turns: number; culturePercent: number };
 
+/**
+ * Per-figure activation gift for non-prophet Great People. Each figure carries a
+ * distinct, historically-themed effect resolved in `great-person-gifts.ts`.
+ * Prophets use `prophetGift` instead (faith burst + gift).
+ */
+export type GreatPersonGift =
+  // ---- Great Generals ----------------------------------------------------
+  | { kind: "drill_land"; promotions: number; morale: number }
+  | { kind: "drill_cavalry"; promotions: number; morale: number; healCavalry: boolean }
+  | { kind: "drill_double"; promotions: number; morale: number }
+  | { kind: "scipios_genius"; promotions: number; morale: number; combatVsUnique: number; turns: number }
+  | { kind: "martel_hammer"; promotions: number; morale: number; cityDefenseBonus: number; turns: number }
+  | { kind: "baibars_victory"; promotions: number; morale: number; faithOnKill: number; turns: number }
+  | { kind: "guerrilla_eagle"; promotions: number; morale: number; raidGoldPercent: number; turns: number }
+  | { kind: "tercio"; promotions: number; morale: number; gunpowderCombat: number; turns: number }
+  // ---- Great Admirals ----------------------------------------------------
+  | { kind: "spawn_trireme"; morale: number }
+  | { kind: "corvus"; morale: number; navalMeleeBonus: number; turns: number }
+  | { kind: "artemisia_retreat"; morale: number; navalCombat: number; navalMovementBonus: number; turns: number }
+  | { kind: "vinland"; morale: number; navalMovementBonus: number; turns: number }
+  | { kind: "genoa_repair"; morale: number; gold: number }
+  | { kind: "armada"; morale: number; raidGoldPercent: number }
+  // ---- Great Scientists --------------------------------------------------
+  | { kind: "science_burst"; science: number }
+  | { kind: "science_siege"; science: number; siegeBonus: number; turns: number }
+  | { kind: "library_empire"; science: number; sciencePercent: number; turns: number }
+  | { kind: "science_double"; science: number }
+  | { kind: "university_boost"; science: number; sciencePercent: number; turns: number }
+  // ---- Great Engineers ---------------------------------------------------
+  | { kind: "production_surge"; production: number }
+  | { kind: "wonder_push"; production: number }
+  | { kind: "free_building"; building: string; count: number; production: number }
+  | { kind: "dome_rush"; production: number }
+  | { kind: "fortify_empire"; production: number; cityDefenseBonus: number; turns: number }
+  | { kind: "workshop_genius"; production: number; trainTimePercent: number; turns: number }
+  // ---- Great Merchants ---------------------------------------------------
+  | { kind: "gold_windfall"; gold: number }
+  | { kind: "silk_road"; gold: number; tradeRouteGoldBonus: number; turns: number }
+  | { kind: "polo_journey"; gold: number; revealRadius: number }
+  | { kind: "battuta_caravan"; gold: number; science: number }
+  | { kind: "market_reform"; gold: number; yieldGoldPercent: number; yieldFoodPercent: number; turns: number }
+  | { kind: "medici_patron"; gold: number; culture: number }
+  | { kind: "fugger_finance"; gold: number }
+  // ---- Great Artists -----------------------------------------------------
+  | { kind: "culture_inspire"; culture: number }
+  | { kind: "great_work"; culture: number; workTitle: string }
+  // ---- Great Statesmen ---------------------------------------------------
+  | { kind: "civic_reform"; culture: number }
+  | { kind: "military_reform"; culture: number; startMoraleBonus: number; turns: number }
+  | { kind: "arthashastra"; culture: number; science: number; gold: number }
+  | { kind: "oratory"; culture: number; culturePercent: number; turns: number }
+  | { kind: "justinian_code"; culture: number; cityDefenseBonus: number; turns: number }
+  | { kind: "administer_conquest"; culture: number; capturePopBonus: number }
+  | { kind: "loyalty_pressure"; culture: number; pressure: number }
+  | { kind: "utopian_vision"; culture: number; morale: number };
+
 export interface GreatPersonDef {
   id: string;
   name: string;
@@ -3509,6 +3571,8 @@ export interface GreatPersonDef {
   desc: string;
   /** Great Prophets only: the historically-themed secondary gift (see ProphetGift). */
   prophetGift?: ProphetGift;
+  /** Non-prophets: the per-figure activation gift (see GreatPersonGift). */
+  gift?: GreatPersonGift;
 }
 
 const GP = (
@@ -3518,8 +3582,13 @@ const GP = (
   era: GreatPersonEra,
   effect: GreatPersonEffect,
   desc: string,
-  prophetGift?: ProphetGift,
-): GreatPersonDef => ({ id, name, cls, era, effect, desc, ...(prophetGift ? { prophetGift } : {}) });
+  extra?: ProphetGift | GreatPersonGift,
+): GreatPersonDef => {
+  const def: GreatPersonDef = { id, name, cls, era, effect, desc };
+  if (!extra) return def;
+  if (cls === "prophet") return { ...def, prophetGift: extra as ProphetGift };
+  return { ...def, gift: extra as GreatPersonGift };
+};
 
 /** Display metadata per class (glyph + the point-pool's name). */
 export const GREAT_PERSON_CLASS_INFO: Record<GreatPersonClass, { name: string; glyph: string }> = {
@@ -3543,49 +3612,49 @@ export const GREAT_PEOPLE: GreatPersonDef[] = [
   // ---- Great Generals (land military) ------------------------------------
   // (Figures who appear as LEGENDS — Sun Tzu, Hannibal, Caesar, Belisarius,
   // Subutai, Joan of Arc — are deliberately absent here: one system per person.)
-  GP("epaminondas", "Epaminondas", "general", "Classical", "drill", "Broke Sparta at Leuctra: drills your land army, granting each a free promotion."),
-  GP("pyrrhus", "Pyrrhus of Epirus", "general", "Classical", "drill", "The fighting king: rallies your land army with a free promotion."),
-  GP("scipio_africanus", "Scipio Africanus", "general", "Classical", "drill", "Conqueror of Carthage: hardens your legions with a free promotion."),
-  GP("gaius_marius", "Gaius Marius", "general", "Classical", "drill", "Reformer of the legions: your land army earns a free promotion."),
-  GP("charles_martel", "Charles Martel", "general", "Medieval", "drill", "The Hammer of Tours: steels your land army with a free promotion."),
-  GP("khalid", "Khalid ibn al-Walid", "general", "Medieval", "drill", "The Drawn Sword of God: your land army earns a free promotion."),
-  GP("baibars", "Baibars", "general", "Medieval", "drill", "Victor of Ain Jalut: your land army earns a free promotion."),
-  GP("du_guesclin", "Bertrand du Guesclin", "general", "Medieval", "drill", "The Eagle of Brittany: your land army earns a free promotion."),
-  GP("gonzalo", "Gonzalo de Córdoba", "general", "Exploration", "drill", "Father of the tercio: your land army earns a free promotion."),
+  GP("epaminondas", "Epaminondas", "general", "Classical", "drill", "Broke Sparta at Leuctra: drills your land army, granting each a free promotion.", { kind: "drill_land", promotions: 1, morale: 12 }),
+  GP("pyrrhus", "Pyrrhus of Epirus", "general", "Classical", "drill", "The fighting king: rallies the land army with a free promotion and fierce morale.", { kind: "drill_land", promotions: 1, morale: 18 }),
+  GP("scipio_africanus", "Scipio Africanus", "general", "Classical", "drill", "Conqueror of Carthage: drills the legions and teaches them to break rival unique units.", { kind: "scipios_genius", promotions: 1, morale: 12, combatVsUnique: 4, turns: 15 }),
+  GP("gaius_marius", "Gaius Marius", "general", "Classical", "drill", "Reformer of the legions: every land soldier earns two free promotions.", { kind: "drill_double", promotions: 2, morale: 12 }),
+  GP("charles_martel", "Charles Martel", "general", "Medieval", "drill", "The Hammer of Tours: steels the army and fortifies every city for a time.", { kind: "martel_hammer", promotions: 1, morale: 12, cityDefenseBonus: 6, turns: 12 }),
+  GP("khalid", "Khalid ibn al-Walid", "general", "Medieval", "drill", "The Drawn Sword of God: heals every cavalry unit and drills the horsemen.", { kind: "drill_cavalry", promotions: 1, morale: 12, healCavalry: true }),
+  GP("baibars", "Baibars", "general", "Medieval", "drill", "Victor of Ain Jalut: drills the army; kills reap faith while he inspires.", { kind: "baibars_victory", promotions: 1, morale: 12, faithOnKill: 4, turns: 10 }),
+  GP("du_guesclin", "Bertrand du Guesclin", "general", "Medieval", "drill", "The Eagle of Brittany: guerrilla warfare enriches every raid for a time.", { kind: "guerrilla_eagle", promotions: 1, morale: 12, raidGoldPercent: 25, turns: 12 }),
+  GP("gonzalo", "Gonzalo de Córdoba", "general", "Exploration", "drill", "Father of the tercio: drills the army and hardens your gunpowder troops.", { kind: "tercio", promotions: 1, morale: 12, gunpowderCombat: 4, turns: 12 }),
 
   // ---- Great Admirals (naval) --------------------------------------------
   // (Zheng He and Yi Sun-sin are LEGENDS, so they are absent here.)
-  GP("themistocles", "Themistocles", "admiral", "Classical", "flagship", "Victor of Salamis: heals your fleet and army and lifts morale."),
-  GP("gaius_duilius", "Gaius Duilius", "admiral", "Classical", "flagship", "First Roman sea-triumph: heals your fleet and army and lifts morale."),
-  GP("artemisia", "Artemisia", "admiral", "Classical", "flagship", "Cunning at sea: heals your fleet and army and lifts morale."),
-  GP("leif_erikson", "Leif Erikson", "admiral", "Medieval", "flagship", "Bold ocean voyager: heals your fleet and army and lifts morale."),
-  GP("andrea_doria", "Andrea Doria", "admiral", "Exploration", "flagship", "Liberator of Genoa: heals your fleet and army and lifts morale."),
-  GP("francis_drake", "Francis Drake", "admiral", "Exploration", "flagship", "Scourge of the Armada: heals your fleet and army and lifts morale."),
+  GP("themistocles", "Themistocles", "admiral", "Classical", "flagship", "Victor of Salamis: heals your fleet and spawns a free Trireme at the coast.", { kind: "spawn_trireme", morale: 12 }),
+  GP("gaius_duilius", "Gaius Duilius", "admiral", "Classical", "flagship", "First Roman sea-triumph: heals the fleet and teaches boarding tactics.", { kind: "corvus", morale: 12, navalMeleeBonus: 3, turns: 12 }),
+  GP("artemisia", "Artemisia", "admiral", "Classical", "flagship", "Cunning at sea: heals the fleet and grants swift hit-and-run at sea.", { kind: "artemisia_retreat", morale: 12, navalCombat: 3, navalMovementBonus: 1, turns: 10 }),
+  GP("leif_erikson", "Leif Erikson", "admiral", "Medieval", "flagship", "Bold ocean voyager: heals the fleet and extends ship range across the waves.", { kind: "vinland", morale: 12, navalMovementBonus: 2, turns: 15 }),
+  GP("andrea_doria", "Andrea Doria", "admiral", "Exploration", "flagship", "Liberator of Genoa: heals the fleet and pays a windfall from coastal trade.", { kind: "genoa_repair", morale: 12, gold: 80 }),
+  GP("francis_drake", "Francis Drake", "admiral", "Exploration", "flagship", "Scourge of the Armada: heals all units and enriches every raid.", { kind: "armada", morale: 14, raidGoldPercent: 30 }),
 
   // ---- Great Scientists --------------------------------------------------
-  GP("archimedes", "Archimedes", "scientist", "Classical", "eureka", "Eureka! A flash of insight bursts your current research forward."),
-  GP("hypatia", "Hypatia", "scientist", "Classical", "eureka", "Scholar of Alexandria: a burst of science speeds your research."),
-  GP("aristotle", "Aristotle", "scientist", "Classical", "eureka", "The Philosopher: a burst of science speeds your research."),
-  GP("aryabhata", "Aryabhata", "scientist", "Classical", "eureka", "Pioneer of astronomy: a burst of science speeds your research."),
-  GP("al_khwarizmi", "Al-Khwarizmi", "scientist", "Medieval", "eureka", "Father of algebra: a great burst of science speeds your research."),
-  GP("ibn_al_haytham", "Ibn al-Haytham", "scientist", "Medieval", "eureka", "Father of optics: a burst of science speeds your research."),
-  GP("copernicus", "Nicolaus Copernicus", "scientist", "Exploration", "eureka", "Turned the heavens: a great burst of science speeds your research."),
+  GP("archimedes", "Archimedes", "scientist", "Classical", "eureka", "Eureka! A flash of insight and a siege-engineer's cunning.", { kind: "science_siege", science: 160, siegeBonus: 3, turns: 12 }),
+  GP("hypatia", "Hypatia", "scientist", "Classical", "eureka", "Scholar of Alexandria: science bursts and Archives work harder empire-wide.", { kind: "library_empire", science: 120, sciencePercent: 15, turns: 12 }),
+  GP("aristotle", "Aristotle", "scientist", "Classical", "eureka", "The Philosopher: a measured burst of science speeds your research.", { kind: "science_burst", science: 140 }),
+  GP("aryabhata", "Aryabhata", "scientist", "Classical", "eureka", "Pioneer of astronomy: a great burst of science on math and the stars.", { kind: "science_burst", science: 175 }),
+  GP("al_khwarizmi", "Al-Khwarizmi", "scientist", "Medieval", "eureka", "Father of algebra: a double flash of insight worth two eurekas.", { kind: "science_double", science: 320 }),
+  GP("ibn_al_haytham", "Ibn al-Haytham", "scientist", "Medieval", "eureka", "Father of optics: science bursts and Academies shine brighter.", { kind: "university_boost", science: 130, sciencePercent: 20, turns: 12 }),
+  GP("copernicus", "Nicolaus Copernicus", "scientist", "Exploration", "eureka", "Turned the heavens: a vast burst of science toward the new cosmology.", { kind: "science_burst", science: 200 }),
 
   // ---- Great Engineers ---------------------------------------------------
-  GP("imhotep", "Imhotep", "engineer", "Bronze", "masterwork", "Architect of the first pyramid: a surge of production in your best city."),
-  GP("vitruvius", "Vitruvius", "engineer", "Classical", "masterwork", "Master builder: a surge of production in your best city."),
-  GP("su_song", "Su Song", "engineer", "Medieval", "masterwork", "Clockwork genius: a surge of production in your best city."),
-  GP("brunelleschi", "Filippo Brunelleschi", "engineer", "Medieval", "masterwork", "Raised the great dome: a large surge of production in your best city."),
-  GP("mimar_sinan", "Mimar Sinan", "engineer", "Exploration", "masterwork", "Imperial architect: a surge of production in your best city."),
-  GP("da_vinci", "Leonardo da Vinci", "engineer", "Exploration", "masterwork", "Universal genius: a great surge of production in your best city."),
+  GP("imhotep", "Imhotep", "engineer", "Bronze", "masterwork", "Architect of the first pyramid: a huge surge toward your greatest work.", { kind: "wonder_push", production: 200 }),
+  GP("vitruvius", "Vitruvius", "engineer", "Classical", "masterwork", "Master builder: raises Aqueducts in your best cities and hurries production.", { kind: "free_building", building: "aqueduct", count: 2, production: 50 }),
+  GP("su_song", "Su Song", "engineer", "Medieval", "masterwork", "Clockwork genius: raises Workshops and pours production into your capital.", { kind: "free_building", building: "workshop", count: 2, production: 80 }),
+  GP("brunelleschi", "Filippo Brunelleschi", "engineer", "Medieval", "masterwork", "Raised the great dome: an enormous production surge in your best city.", { kind: "dome_rush", production: 220 }),
+  GP("mimar_sinan", "Mimar Sinan", "engineer", "Exploration", "masterwork", "Imperial architect: production surges and every city defends harder.", { kind: "fortify_empire", production: 120, cityDefenseBonus: 4, turns: 15 }),
+  GP("da_vinci", "Leonardo da Vinci", "engineer", "Exploration", "masterwork", "Universal genius: production surges and workshops train faster.", { kind: "workshop_genius", production: 150, trainTimePercent: -15, turns: 12 }),
 
   // ---- Great Merchants ---------------------------------------------------
-  GP("zhang_qian", "Zhang Qian", "merchant", "Classical", "windfall", "Opened the Silk Road: a windfall of gold flows to your treasury."),
-  GP("marco_polo", "Marco Polo", "merchant", "Medieval", "windfall", "Far-travelled trader: a windfall of gold flows to your treasury."),
-  GP("ibn_battuta", "Ibn Battuta", "merchant", "Medieval", "windfall", "Greatest medieval traveller: a windfall of gold flows to your treasury."),
-  GP("wang_anshi", "Wang Anshi", "merchant", "Medieval", "windfall", "Reforming minister: a windfall of gold flows to your treasury."),
-  GP("cosimo", "Cosimo de' Medici", "merchant", "Exploration", "windfall", "Banker of Florence: a large windfall of gold flows to your treasury."),
-  GP("fugger", "Jakob Fugger", "merchant", "Exploration", "windfall", "Richest man of his age: a huge windfall of gold flows to your treasury."),
+  GP("zhang_qian", "Zhang Qian", "merchant", "Classical", "windfall", "Opened the Silk Road: gold flows and trade routes pay more.", { kind: "silk_road", gold: 100, tradeRouteGoldBonus: 3, turns: 20 }),
+  GP("marco_polo", "Marco Polo", "merchant", "Medieval", "windfall", "Far-travelled trader: gold and distant lands revealed on the map.", { kind: "polo_journey", gold: 180, revealRadius: 8 }),
+  GP("ibn_battuta", "Ibn Battuta", "merchant", "Medieval", "windfall", "Greatest medieval traveller: gold and knowledge from distant routes.", { kind: "battuta_caravan", gold: 200, science: 60 }),
+  GP("wang_anshi", "Wang Anshi", "merchant", "Medieval", "windfall", "Reforming minister: gold now and markets yield more food and coin.", { kind: "market_reform", gold: 150, yieldGoldPercent: 15, yieldFoodPercent: 10, turns: 12 }),
+  GP("cosimo", "Cosimo de' Medici", "merchant", "Exploration", "windfall", "Banker of Florence: a windfall of gold and patronage of the arts.", { kind: "medici_patron", gold: 220, culture: 80 }),
+  GP("fugger", "Jakob Fugger", "merchant", "Exploration", "windfall", "Richest man of his age: an enormous windfall of gold.", { kind: "fugger_finance", gold: 350 }),
 
   // ---- Great Prophets ----------------------------------------------------
   GP("zarathustra", "Zarathustra", "prophet", "Bronze", "revelation", "Prophet of the sacred fire: faith, and a holy war on the Lie — your kills reap faith for a time.", { kind: "zeal", turns: 10, faithOnKill: 6, morale: 8 }),
@@ -3597,24 +3666,24 @@ export const GREAT_PEOPLE: GreatPersonDef[] = [
   GP("rumi", "Rumi", "prophet", "Medieval", "revelation", "Mystic poet: faith, and the whirling — a surge of devotion sweeps every city and culture blooms for a time.", { kind: "revival", pressure: 30, turns: 8, culturePercent: 20 }),
 
   // ---- Great Artists (writers / artists / musicians) ---------------------
-  GP("homer", "Homer", "artist", "Classical", "inspiration", "Father of epic poetry: a burst of culture inspires your empire."),
-  GP("sappho", "Sappho", "artist", "Classical", "inspiration", "The Tenth Muse: a burst of culture inspires your empire."),
-  GP("valmiki", "Valmiki", "artist", "Classical", "inspiration", "First poet of the epic: a burst of culture inspires your empire."),
-  GP("phidias", "Phidias", "artist", "Classical", "inspiration", "Greatest classical sculptor: a burst of culture inspires your empire."),
-  GP("murasaki", "Murasaki Shikibu", "artist", "Medieval", "inspiration", "Author of the first novel: a burst of culture inspires your empire."),
-  GP("giotto", "Giotto", "artist", "Medieval", "inspiration", "Father of the Renaissance: a burst of culture inspires your empire."),
-  GP("dante", "Dante Alighieri", "artist", "Exploration", "inspiration", "Author of the Commedia: a great burst of culture inspires your empire."),
-  GP("michelangelo", "Michelangelo", "artist", "Exploration", "inspiration", "Supreme master: a great burst of culture inspires your empire."),
+  GP("homer", "Homer", "artist", "Classical", "inspiration", "Father of epic poetry: culture bursts and an epic Great Work endures.", { kind: "great_work", culture: 150, workTitle: "The Iliad" }),
+  GP("sappho", "Sappho", "artist", "Classical", "inspiration", "The Tenth Muse: a burst of culture inspires your empire.", { kind: "culture_inspire", culture: 140 }),
+  GP("valmiki", "Valmiki", "artist", "Classical", "inspiration", "First poet of the epic: culture and the Ramayana as a Great Work.", { kind: "great_work", culture: 150, workTitle: "The Ramayana" }),
+  GP("phidias", "Phidias", "artist", "Classical", "inspiration", "Greatest classical sculptor: culture and a masterpiece Great Work.", { kind: "great_work", culture: 160, workTitle: "Statue of Zeus" }),
+  GP("murasaki", "Murasaki Shikibu", "artist", "Medieval", "inspiration", "Author of the first novel: culture and The Tale of Genji endures.", { kind: "great_work", culture: 155, workTitle: "The Tale of Genji" }),
+  GP("giotto", "Giotto", "artist", "Medieval", "inspiration", "Father of the Renaissance: a burst of culture inspires your empire.", { kind: "culture_inspire", culture: 150 }),
+  GP("dante", "Dante Alighieri", "artist", "Exploration", "inspiration", "Author of the Commedia: culture and the Divine Comedy as a Great Work.", { kind: "great_work", culture: 170, workTitle: "The Divine Comedy" }),
+  GP("michelangelo", "Michelangelo", "artist", "Exploration", "inspiration", "Supreme master: a vast burst of culture and a masterpiece Great Work.", { kind: "great_work", culture: 180, workTitle: "The Sistine Ceiling" }),
 
   // ---- Great Statesmen / Lawgivers ---------------------------------------
-  GP("solon", "Solon", "statesman", "Classical", "reform", "The Lawgiver: a burst of culture speeds your civic reforms."),
-  GP("lycurgus", "Lycurgus", "statesman", "Classical", "reform", "Founder of Sparta's order: a burst of culture speeds your civic reforms."),
-  GP("chanakya", "Chanakya", "statesman", "Classical", "reform", "Author of the Arthashastra: a burst of culture speeds your civic reforms."),
-  GP("cicero", "Cicero", "statesman", "Classical", "reform", "Greatest Roman orator: a burst of culture speeds your civic reforms."),
-  GP("justinian", "Justinian", "statesman", "Medieval", "reform", "Codifier of Roman law: a great burst of culture speeds your civic reforms."),
-  GP("yelu_chucai", "Yelü Chucai", "statesman", "Medieval", "reform", "Reforming administrator: a burst of culture speeds your civic reforms."),
-  GP("eleanor", "Eleanor of Aquitaine", "statesman", "Medieval", "reform", "Queen of two realms: a burst of culture speeds your civic reforms."),
-  GP("thomas_more", "Thomas More", "statesman", "Exploration", "reform", "Author of Utopia: a great burst of culture speeds your civic reforms."),
+  GP("solon", "Solon", "statesman", "Classical", "reform", "The Lawgiver: a burst of culture speeds your civic reforms.", { kind: "civic_reform", culture: 150 }),
+  GP("lycurgus", "Lycurgus", "statesman", "Classical", "reform", "Founder of Sparta's order: civic progress and sterner new recruits.", { kind: "military_reform", culture: 130, startMoraleBonus: 8, turns: 15 }),
+  GP("chanakya", "Chanakya", "statesman", "Classical", "reform", "Author of the Arthashastra: culture, science, and gold from shrewd statecraft.", { kind: "arthashastra", culture: 120, science: 80, gold: 60 }),
+  GP("cicero", "Cicero", "statesman", "Classical", "reform", "Greatest Roman orator: culture and cities yield more culture for a time.", { kind: "oratory", culture: 140, culturePercent: 15, turns: 12 }),
+  GP("justinian", "Justinian", "statesman", "Medieval", "reform", "Codifier of Roman law: civic progress and every city defends harder.", { kind: "justinian_code", culture: 160, cityDefenseBonus: 4, turns: 15 }),
+  GP("yelu_chucai", "Yelü Chucai", "statesman", "Medieval", "reform", "Reforming administrator: civic progress and conquered cities gain people.", { kind: "administer_conquest", culture: 140, capturePopBonus: 1 }),
+  GP("eleanor", "Eleanor of Aquitaine", "statesman", "Medieval", "reform", "Queen of two realms: culture and religious pressure across your cities.", { kind: "loyalty_pressure", culture: 130, pressure: 25 }),
+  GP("thomas_more", "Thomas More", "statesman", "Exploration", "reform", "Author of Utopia: civic progress and the realm takes heart.", { kind: "utopian_vision", culture: 170, morale: 10 }),
 ];
 
 const GREAT_PERSON_BY_ID = new Map(GREAT_PEOPLE.map((g) => [g.id, g]));
@@ -3669,38 +3738,38 @@ const L = (d: LegendDef): LegendDef => d;
 
 export const LEGENDS: LegendDef[] = [
   // ---- Bronze ------------------------------------------------------------
-  L({ id: "gilgamesh", name: "Gilgamesh", era: "Bronze", type: "land", recruitVia: "Quest", baseType: "axeman", combatBonus: 9, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "slay_the_beast", abilityDesc: "Slay the Beast: a hero's blow at +6 attack against barbarians (+1 against others); when the foe falls, Gilgamesh and adjacent allies take heart (+10 morale).", auraDesc: "Adjacent allies fight harder beside the hero of Uruk." }),
-  L({ id: "hammurabi", name: "Hammurabi", era: "Bronze", type: "support", recruitVia: "Wonder", baseType: "warrior", combatBonus: 2, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "code_of_laws", abilityDesc: "Code of Laws: while the lawgiver lives, your empire-wide morale rises +1 every turn — the law steadies the realm.", auraDesc: "Adjacent allies stand firm under the law." }),
-  L({ id: "ramesses_ii", name: "Ramesses II", era: "Bronze", type: "support", recruitVia: "Faith", baseType: "war_chariot", combatBonus: 4, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "monument_builder", abilityDesc: "Monument Builder: the city Ramesses stands in works at +25% production and +25% culture while the pharaoh holds court there.", auraDesc: "Adjacent allies are emboldened by the living god." }),
+  L({ id: "gilgamesh", name: "Gilgamesh", era: "Bronze", type: "land", recruitVia: "Quest", baseType: "axeman", combatBonus: 9, auraBonus: 3, lifespan: 15, rechargeable: false, ability: "slay_the_beast", abilityDesc: "Slay the Beast: a hero's blow at +6 attack against barbarians (+1 against others); when the foe falls, Gilgamesh and adjacent allies take heart (+10 morale).", auraDesc: "Adjacent allies fight harder beside the hero of Uruk." }),
+  L({ id: "hammurabi", name: "Hammurabi", era: "Bronze", type: "support", recruitVia: "Wonder", baseType: "warrior", combatBonus: 2, auraBonus: 3, lifespan: 15, rechargeable: false, ability: "code_of_laws", abilityDesc: "Code of Laws: while the lawgiver lives, your empire-wide morale rises +1 every turn — the law steadies the realm.", auraDesc: "Adjacent allies stand firm under the law." }),
+  L({ id: "ramesses_ii", name: "Ramesses II", era: "Bronze", type: "support", recruitVia: "Faith", baseType: "war_chariot", combatBonus: 4, auraBonus: 3, lifespan: 15, rechargeable: false, ability: "monument_builder", abilityDesc: "Monument Builder: the city Ramesses stands in works at +25% production and +25% culture while the pharaoh holds court there.", auraDesc: "Adjacent allies are emboldened by the living god." }),
   // ---- Classical ---------------------------------------------------------
-  L({ id: "cyrus", name: "Cyrus the Great", era: "Classical", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 9, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "kings_march", abilityDesc: "The King's March: at the start of your turn, Cyrus and every friendly unit beside him gain +1 movement — his armies arrive before word of their coming.", auraDesc: "Adjacent allies move with the king." }),
-  L({ id: "leonidas", name: "Leonidas", era: "Classical", type: "land", recruitVia: "Culture", baseType: "hoplite", combatBonus: 8, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "last_stand", abilityDesc: "Last Stand: a hero's brace whose defense grows as his wounds deepen — up to +60% near death. The pass does not fall while he stands.", auraDesc: "Adjacent allies hold the line." }),
-  L({ id: "alexander", name: "Alexander", era: "Classical", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 10, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "hammer_and_anvil", abilityDesc: "Hammer & Anvil: +4 attack against an enemy already engaged by another of your units — the phalanx holds, the Companions fall on the flank. He can also Shock Charge to knock a foe from its ground.", auraDesc: "Adjacent allies are undaunted." }),
-  L({ id: "hannibal", name: "Hannibal", era: "Classical", type: "land", recruitVia: "Quest", baseType: "war_elephant", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "grand_ambush", abilityDesc: "Grand Ambush: alone among elephants, Hannibal can Hide in cover — breaking concealment strikes with the ambush bonus — and Trample through the enemy line.", auraDesc: "Adjacent allies flank the enemy." }),
-  L({ id: "sun_tzu_legend", name: "Sun Tzu", era: "Classical", type: "support", recruitVia: "Culture", baseType: "swordsman", combatBonus: 3, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "art_of_war", abilityDesc: "The Art of War: adjacent friendly units drill under the master (+3 XP at the start of each turn), and hidden enemies within his sight are revealed — know the enemy.", auraDesc: "Adjacent allies fight with discipline." }),
-  L({ id: "qin_shi_huang", name: "Qin Shi Huang", era: "Classical", type: "support", recruitVia: "Wonder", baseType: "swordsman", combatBonus: 3, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "great_wall", abilityDesc: "The Great Wall: while the First Emperor lives, every one of your cities defends at +6 strength — the wall is the whole empire's.", auraDesc: "Adjacent allies labour and fight tirelessly." }),
-  L({ id: "ashoka", name: "Ashoka", era: "Classical", type: "support", recruitVia: "Faith", baseType: "war_elephant", combatBonus: 4, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "dhamma", abilityDesc: "Dhamma: +2 faith every turn, and adjacent friendly units heal +10 HP at the start of your turn — rest houses and healers travel with the emperor.", auraDesc: "Adjacent allies are heartened by his compassion." }),
-  L({ id: "boudica", name: "Boudica", era: "Classical", type: "land", recruitVia: "Quest", baseType: "war_chariot", combatBonus: 8, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "uprising", abilityDesc: "Uprising: rouse an adjacent barbarian war-band to her cause — it joins your side. The tribes rise where she rides.", auraDesc: "Adjacent allies are roused to fury." }),
-  L({ id: "julius_caesar_legend", name: "Julius Caesar", era: "Classical", type: "land", recruitVia: "Conquest", baseType: "legionary", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "veteran_legions", abilityDesc: "Veteran Legions: the pila fly, then the gladius closes (Pilum Volley); his victories Plunder gold from the slain — Gaul paid for Caesar's wars.", auraDesc: "Adjacent legions fight as veterans." }),
-  L({ id: "cleopatra", name: "Cleopatra", era: "Classical", type: "support", recruitVia: "Faith", baseType: "warrior", combatBonus: 2, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "allure", abilityDesc: "Allure: enemy units adjacent to the queen fight at −2 strength, and the wealth of Egypt yields +3 gold every turn.", auraDesc: "Adjacent allies are inspired by her presence." }),
+  L({ id: "cyrus", name: "Cyrus the Great", era: "Classical", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 9, auraBonus: 3, lifespan: 15, rechargeable: false, ability: "kings_march", abilityDesc: "The King's March: at the start of your turn, Cyrus and every friendly unit beside him gain +1 movement — his armies arrive before word of their coming.", auraDesc: "Adjacent allies move with the king." }),
+  L({ id: "leonidas", name: "Leonidas", era: "Classical", type: "land", recruitVia: "Culture", baseType: "hoplite", combatBonus: 8, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "last_stand", abilityDesc: "Last Stand: a hero's brace whose defense grows as his wounds deepen — up to +60% near death. The pass does not fall while he stands.", auraDesc: "Adjacent allies hold the line." }),
+  L({ id: "alexander", name: "Alexander", era: "Classical", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 10, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "hammer_and_anvil", abilityDesc: "Hammer & Anvil: +4 attack against an enemy already engaged by another of your units — the phalanx holds, the Companions fall on the flank. He can also Shock Charge to knock a foe from its ground.", auraDesc: "Adjacent allies are undaunted." }),
+  L({ id: "hannibal", name: "Hannibal", era: "Classical", type: "land", recruitVia: "Quest", baseType: "war_elephant", combatBonus: 9, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "grand_ambush", abilityDesc: "Grand Ambush: alone among elephants, Hannibal can Hide in cover — breaking concealment strikes with the ambush bonus — and Trample through the enemy line.", auraDesc: "Adjacent allies flank the enemy." }),
+  L({ id: "sun_tzu_legend", name: "Sun Tzu", era: "Classical", type: "support", recruitVia: "Culture", baseType: "swordsman", combatBonus: 3, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "art_of_war", abilityDesc: "The Art of War: adjacent friendly units drill under the master (+3 XP at the start of each turn), and hidden enemies within his sight are revealed — know the enemy.", auraDesc: "Adjacent allies fight with discipline." }),
+  L({ id: "qin_shi_huang", name: "Qin Shi Huang", era: "Classical", type: "support", recruitVia: "Wonder", baseType: "swordsman", combatBonus: 3, auraBonus: 3, lifespan: 15, rechargeable: false, ability: "great_wall", abilityDesc: "The Great Wall: while the First Emperor lives, every one of your cities defends at +6 strength — the wall is the whole empire's.", auraDesc: "Adjacent allies labour and fight tirelessly." }),
+  L({ id: "ashoka", name: "Ashoka", era: "Classical", type: "support", recruitVia: "Faith", baseType: "war_elephant", combatBonus: 4, auraBonus: 3, lifespan: 15, rechargeable: false, ability: "dhamma", abilityDesc: "Dhamma: +2 faith every turn, and adjacent friendly units heal +10 HP at the start of your turn — rest houses and healers travel with the emperor.", auraDesc: "Adjacent allies are heartened by his compassion." }),
+  L({ id: "boudica", name: "Boudica", era: "Classical", type: "land", recruitVia: "Quest", baseType: "war_chariot", combatBonus: 8, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "uprising", abilityDesc: "Uprising: rouse an adjacent barbarian war-band to her cause — it joins your side. The tribes rise where she rides.", auraDesc: "Adjacent allies are roused to fury." }),
+  L({ id: "julius_caesar_legend", name: "Julius Caesar", era: "Classical", type: "land", recruitVia: "Conquest", baseType: "legionary", combatBonus: 9, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "veteran_legions", abilityDesc: "Veteran Legions: the pila fly, then the gladius closes (Pilum Volley); his victories Plunder gold from the slain — Gaul paid for Caesar's wars.", auraDesc: "Adjacent legions fight as veterans." }),
+  L({ id: "cleopatra", name: "Cleopatra", era: "Classical", type: "support", recruitVia: "Faith", baseType: "warrior", combatBonus: 2, auraBonus: 3, lifespan: 15, rechargeable: false, ability: "allure", abilityDesc: "Allure: enemy units adjacent to the queen fight at −2 strength, and the wealth of Egypt yields +3 gold every turn.", auraDesc: "Adjacent allies are inspired by her presence." }),
   // ---- Medieval ----------------------------------------------------------
-  L({ id: "attila", name: "Attila", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "horse_archer", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "terrorize", abilityDesc: "Terror: a thunderous assault (+3 attack) that shakes the survivor's nerve — it must pass a rout check or break and flee. He fires and fades like the steppe wind.", auraDesc: "Adjacent allies spread terror." }),
-  L({ id: "belisarius", name: "Belisarius", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "against_all_odds", abilityDesc: "Against All Odds: +2 combat strength for every enemy beyond the first standing adjacent to him (up to +6) — the fewer his men, the greater his art.", auraDesc: "Adjacent allies never waver when outnumbered." }),
-  L({ id: "charlemagne", name: "Charlemagne", era: "Medieval", type: "support", recruitVia: "Faith", baseType: "longswordsman", combatBonus: 5, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "crown_of_the_west", abilityDesc: "Crown of the West: +2 faith every turn while the emperor lives, and his Heroic Challenge fells enemy champions to hearten the host.", auraDesc: "Adjacent allies are heartened by the crown." }),
-  L({ id: "harald_hardrada", name: "Harald Hardrada", era: "Medieval", type: "naval", recruitVia: "Conquest", baseType: "longship", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "strandhogg", abilityDesc: "Strandhögg: the lightning ship-borne raid (+2 attack) that carries off gold when it kills, and the Ram that drives the longship home.", auraDesc: "Adjacent ships raid mercilessly." }),
-  L({ id: "el_cid", name: "El Cid", era: "Medieval", type: "land", recruitVia: "Quest", baseType: "cataphract", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "campeador", abilityDesc: "Campeador: +4 combat strength on any tile outside your own borders — the frontier between the realms is his true home.", auraDesc: "Adjacent allies are steadfast on the frontier." }),
-  L({ id: "saladin", name: "Saladin", era: "Medieval", type: "land", recruitVia: "Faith", baseType: "cataphract", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "horns_of_hattin", abilityDesc: "The Horns of Hattin: Feigned Retreat lures the enemy on to exhaustion, and Harry pins them in place, far from water — the battle is won before it is fought.", auraDesc: "Adjacent allies fight for the faith." }),
-  L({ id: "genghis_khan", name: "Genghis Khan", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "horse_archer", combatBonus: 10, auraBonus: 5, lifespan: 30, rechargeable: false, ability: "terror_of_the_steppe", abilityDesc: "Terror of the Steppe: enemy units adjacent to the Khan lose 3 morale at the start of your every turn — his name alone unmakes armies. In battle he closes the Nerge hunting-ring (+5 attack with two allies beside the target).", auraDesc: "Adjacent allies ride harder under the Khan's banner." }),
-  L({ id: "subutai", name: "Subutai", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "horse_archer", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "hit_and_run", abilityDesc: "Hit and Run: the Parthian Shot fired on the gallop, and the Feigned Retreat that lured whole armies onto ground of his choosing.", auraDesc: "Adjacent horse archers strike and fade." }),
-  L({ id: "joan_of_arc_legend", name: "Joan of Arc", era: "Medieval", type: "land", recruitVia: "Faith", baseType: "longswordsman", combatBonus: 8, auraBonus: 5, lifespan: 30, rechargeable: true, ability: "sacred_banner", abilityDesc: "Sacred Banner: raise the banner of Orléans — Joan and adjacent allies heal 10 HP and gain +15 morale. Martyred, she alone returns to the pool to be called again.", auraDesc: "Adjacent allies are filled with holy fervour." }),
-  L({ id: "tomoe_gozen", name: "Tomoe Gozen", era: "Medieval", type: "land", recruitVia: "Quest", baseType: "horse_archer", combatBonus: 9, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "duelist", abilityDesc: "Duelist: her Heroic Challenge strikes a champion's blow (+3 attack) — when the foe falls, every ally within 2 tiles takes heart. She looses arrows from the saddle and fades (Fire & Retreat).", auraDesc: "Adjacent allies are emboldened by her duels." }),
-  L({ id: "mansa_musa", name: "Mansa Musa", era: "Medieval", type: "support", recruitVia: "Faith", baseType: "warrior", combatBonus: 2, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "golden_flood", abilityDesc: "Golden Flood: +8 gold every turn while the mansa reigns — the richest man who ever lived pays for your wars and your works.", auraDesc: "Adjacent allies march on golden coin." }),
+  L({ id: "attila", name: "Attila", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "horse_archer", combatBonus: 9, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "terrorize", abilityDesc: "Terror: a thunderous assault (+3 attack) that shakes the survivor's nerve — it must pass a rout check or break and flee. He fires and fades like the steppe wind.", auraDesc: "Adjacent allies spread terror." }),
+  L({ id: "belisarius", name: "Belisarius", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 9, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "against_all_odds", abilityDesc: "Against All Odds: +2 combat strength for every enemy beyond the first standing adjacent to him (up to +6) — the fewer his men, the greater his art.", auraDesc: "Adjacent allies never waver when outnumbered." }),
+  L({ id: "charlemagne", name: "Charlemagne", era: "Medieval", type: "support", recruitVia: "Faith", baseType: "longswordsman", combatBonus: 5, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "crown_of_the_west", abilityDesc: "Crown of the West: +2 faith every turn while the emperor lives, and his Heroic Challenge fells enemy champions to hearten the host.", auraDesc: "Adjacent allies are heartened by the crown." }),
+  L({ id: "harald_hardrada", name: "Harald Hardrada", era: "Medieval", type: "naval", recruitVia: "Conquest", baseType: "longship", combatBonus: 9, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "strandhogg", abilityDesc: "Strandhögg: the lightning ship-borne raid (+2 attack) that carries off gold when it kills, and the Ram that drives the longship home.", auraDesc: "Adjacent ships raid mercilessly." }),
+  L({ id: "el_cid", name: "El Cid", era: "Medieval", type: "land", recruitVia: "Quest", baseType: "cataphract", combatBonus: 9, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "campeador", abilityDesc: "Campeador: +4 combat strength on any tile outside your own borders — the frontier between the realms is his true home.", auraDesc: "Adjacent allies are steadfast on the frontier." }),
+  L({ id: "saladin", name: "Saladin", era: "Medieval", type: "land", recruitVia: "Faith", baseType: "cataphract", combatBonus: 9, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "horns_of_hattin", abilityDesc: "The Horns of Hattin: Feigned Retreat lures the enemy on to exhaustion, and Harry pins them in place, far from water — the battle is won before it is fought.", auraDesc: "Adjacent allies fight for the faith." }),
+  L({ id: "genghis_khan", name: "Genghis Khan", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "horse_archer", combatBonus: 10, auraBonus: 5, lifespan: 15, rechargeable: false, ability: "terror_of_the_steppe", abilityDesc: "Terror of the Steppe: enemy units adjacent to the Khan lose 3 morale at the start of your every turn — his name alone unmakes armies. In battle he closes the Nerge hunting-ring (+5 attack with two allies beside the target).", auraDesc: "Adjacent allies ride harder under the Khan's banner." }),
+  L({ id: "subutai", name: "Subutai", era: "Medieval", type: "land", recruitVia: "Conquest", baseType: "horse_archer", combatBonus: 9, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "hit_and_run", abilityDesc: "Hit and Run: the Parthian Shot fired on the gallop, and the Feigned Retreat that lured whole armies onto ground of his choosing.", auraDesc: "Adjacent horse archers strike and fade." }),
+  L({ id: "joan_of_arc_legend", name: "Joan of Arc", era: "Medieval", type: "land", recruitVia: "Faith", baseType: "longswordsman", combatBonus: 8, auraBonus: 5, lifespan: 15, rechargeable: true, ability: "sacred_banner", abilityDesc: "Sacred Banner: raise the banner of Orléans — Joan and adjacent allies heal 10 HP and gain +15 morale. Martyred, she alone returns to the pool to be called again.", auraDesc: "Adjacent allies are filled with holy fervour." }),
+  L({ id: "tomoe_gozen", name: "Tomoe Gozen", era: "Medieval", type: "land", recruitVia: "Quest", baseType: "horse_archer", combatBonus: 9, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "duelist", abilityDesc: "Duelist: her Heroic Challenge strikes a champion's blow (+3 attack) — when the foe falls, every ally within 2 tiles takes heart. She looses arrows from the saddle and fades (Fire & Retreat).", auraDesc: "Adjacent allies are emboldened by her duels." }),
+  L({ id: "mansa_musa", name: "Mansa Musa", era: "Medieval", type: "support", recruitVia: "Faith", baseType: "warrior", combatBonus: 2, auraBonus: 3, lifespan: 15, rechargeable: false, ability: "golden_flood", abilityDesc: "Golden Flood: +8 gold every turn while the mansa reigns — the richest man who ever lived pays for your wars and your works.", auraDesc: "Adjacent allies march on golden coin." }),
   // ---- Exploration -------------------------------------------------------
-  L({ id: "tamerlane", name: "Tamerlane", era: "Exploration", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 10, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "pyramid_of_skulls", abilityDesc: "Pyramid of Skulls: a conqueror's blow (+4 attack) struck to be seen — if the target falls, every enemy unit within 2 tiles loses 15 morale.", auraDesc: "Adjacent allies devastate all before them." }),
-  L({ id: "mehmed_ii", name: "Mehmed II", era: "Exploration", type: "support", recruitVia: "Wonder", baseType: "catapult", combatBonus: 6, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "basilica_bombard", abilityDesc: "The Basilica: Orban's great bombard hurls a stone ball at +1 range, at +6 ranged strength against units holding walls or forts (+2 otherwise). Two turns to reload.", auraDesc: "Adjacent siege engines batter the walls." }),
-  L({ id: "pachacuti", name: "Pachacuti", era: "Exploration", type: "support", recruitVia: "Culture", baseType: "swordsman", combatBonus: 3, auraBonus: 3, lifespan: 30, rechargeable: false, ability: "qhapaq_nan", abilityDesc: "Qhapaq Ñan: while he lives your land units ignore rough-terrain movement penalties — the royal roads run everywhere — and the city he stands in grows +25% food from the terraces.", auraDesc: "Adjacent allies cross the mountains with ease." }),
-  L({ id: "zheng_he_legend", name: "Zheng He", era: "Exploration", type: "naval", recruitVia: "Wonder", baseType: "trireme", combatBonus: 8, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "treasure_fleet", abilityDesc: "Treasure Fleet: +4 gold every turn and +1 movement for all your ships while the admiral sails; he can Catch the Monsoon for a burst of speed.", auraDesc: "Adjacent ships sail with the treasure fleet." }),
-  L({ id: "yi_sun_sin_legend", name: "Yi Sun-sin", era: "Exploration", type: "naval", recruitVia: "Quest", baseType: "trireme", combatBonus: 10, auraBonus: 4, lifespan: 30, rechargeable: false, ability: "turtle_ship", abilityDesc: "Turtle Ship: seal the spiked iron shell (+30% defense; melee attackers bleed on the spikes) or fire a crashing Broadside at range that wrecks the survivor's rigging.", auraDesc: "Adjacent ships are shielded like the turtle ship." }),
+  L({ id: "tamerlane", name: "Tamerlane", era: "Exploration", type: "land", recruitVia: "Conquest", baseType: "cataphract", combatBonus: 10, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "pyramid_of_skulls", abilityDesc: "Pyramid of Skulls: a conqueror's blow (+4 attack) struck to be seen — if the target falls, every enemy unit within 2 tiles loses 15 morale.", auraDesc: "Adjacent allies devastate all before them." }),
+  L({ id: "mehmed_ii", name: "Mehmed II", era: "Exploration", type: "support", recruitVia: "Wonder", baseType: "catapult", combatBonus: 6, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "basilica_bombard", abilityDesc: "The Basilica: Orban's great bombard hurls a stone ball at +1 range, at +6 ranged strength against units holding walls or forts (+2 otherwise). Two turns to reload.", auraDesc: "Adjacent siege engines batter the walls." }),
+  L({ id: "pachacuti", name: "Pachacuti", era: "Exploration", type: "support", recruitVia: "Culture", baseType: "swordsman", combatBonus: 3, auraBonus: 3, lifespan: 15, rechargeable: false, ability: "qhapaq_nan", abilityDesc: "Qhapaq Ñan: while he lives your land units ignore rough-terrain movement penalties — the royal roads run everywhere — and the city he stands in grows +25% food from the terraces.", auraDesc: "Adjacent allies cross the mountains with ease." }),
+  L({ id: "zheng_he_legend", name: "Zheng He", era: "Exploration", type: "naval", recruitVia: "Wonder", baseType: "trireme", combatBonus: 8, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "treasure_fleet", abilityDesc: "Treasure Fleet: +4 gold every turn and +1 movement for all your ships while the admiral sails; he can Catch the Monsoon for a burst of speed.", auraDesc: "Adjacent ships sail with the treasure fleet." }),
+  L({ id: "yi_sun_sin_legend", name: "Yi Sun-sin", era: "Exploration", type: "naval", recruitVia: "Quest", baseType: "trireme", combatBonus: 10, auraBonus: 4, lifespan: 15, rechargeable: false, ability: "turtle_ship", abilityDesc: "Turtle Ship: seal the spiked iron shell (+30% defense; melee attackers bleed on the spikes) or fire a crashing Broadside at range that wrecks the survivor's rigging.", auraDesc: "Adjacent ships are shielded like the turtle ship." }),
 ];
 
 const LEGEND_BY_ID = new Map(LEGENDS.map((l) => [l.id, l]));

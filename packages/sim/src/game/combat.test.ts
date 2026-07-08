@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { damageFrom, resolveAttack, cityMaxHp, unitMaxHp, availablePromotions, cityBombardTargets } from "./combat";
@@ -146,14 +147,16 @@ describe("M2 combat", () => {
     expect(() => beginTurn(state)).not.toThrow();
   });
 
-  it("unit max HP increases by 5% per level", () => {
+  it("unit max HP increases by 5% per level and with combat tier", () => {
     const state = bareGame();
     const u = place(state, 0, "warrior", 5, 5);
-    expect(unitMaxHp(u)).toBe(100);
+    expect(unitMaxHp(u)).toBe(108); // 100 + (8−4)×2 tier bonus
     u.level = 2;
-    expect(unitMaxHp(u)).toBe(105);
+    expect(unitMaxHp(u)).toBe(113);
     u.level = 3;
-    expect(unitMaxHp(u)).toBe(110);
+    expect(unitMaxHp(u)).toBe(118);
+    const spearman = place(state, 0, "spearman", 6, 5);
+    expect(unitMaxHp(spearman)).toBeGreaterThan(108); // higher tier = more HP at level 1
   });
 
   it("leveling up heals the unit for 20% of its new max HP", () => {
@@ -164,9 +167,9 @@ describe("M2 combat", () => {
     archer.hp = 50;
     resolveAttack(state, archer, target.col, target.row);
     expect(archer.level).toBe(2);
-    expect(unitMaxHp(archer)).toBe(105);
-    // 50 + 20% of 105 = 50 + 21 = 71, capped at new max.
-    expect(archer.hp).toBe(71);
+    expect(unitMaxHp(archer)).toBe(119); // archer tier + level 2
+    // 50 + 20% of 119 (rounded) = 50 + 24 = 74, capped at new max.
+    expect(archer.hp).toBe(74);
   });
 
   it("a higher-level unit deals more damage than a same-type level 1 unit", () => {
@@ -229,12 +232,35 @@ describe("M2 combat", () => {
     expect(state.gameOver?.winnerId).toBe(0);
   });
 
+  it("upgrading a unit raises its max HP and fully heals it", () => {
+    const state = bareGame();
+    const player = state.players[0]!;
+    player.gold = 500;
+    player.researched.add("bronze_alloying");
+    player.resources.copper = 5;
+    const cid = state.nextEntityId++;
+    const city = {
+      id: cid, ownerId: 0, name: "Home", col: 5, row: 5, population: 4,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    state.cities.set(cid, city as never);
+    const warrior = place(state, 0, "warrior", 5, 5);
+    getTile(state.map, warrior.col, warrior.row)!.ownerCityId = cid;
+    warrior.hp = 40;
+    const warriorMax = unitMaxHp(warrior);
+    expect(applyCommand(state, { type: "upgradeUnit", unitId: warrior.id }, 0).ok).toBe(true);
+    expect(warrior.type).toBe("spearman");
+    expect(unitMaxHp(warrior)).toBeGreaterThan(warriorMax);
+    expect(warrior.hp).toBe(unitMaxHp(warrior));
+  });
+
   it("toughness increases max HP", () => {
     const state = bareGame();
     const u = place(state, 0, "warrior", 5, 5);
-    expect(unitMaxHp(u)).toBe(100);
+    expect(unitMaxHp(u)).toBe(108);
     u.promotions.push("toughness");
-    expect(unitMaxHp(u)).toBe(115);
+    expect(unitMaxHp(u)).toBe(123);
   });
 
   it("charge deals more damage on the first attack", () => {

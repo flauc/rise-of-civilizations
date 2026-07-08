@@ -18,7 +18,9 @@ import {
   availablePromotions,
   availableTechs,
   getCivic,
-  civicCost,
+  scaledCivicCost,
+  scaledGovernmentCost,
+  scaledTechCost,
   getGovernment,
   governmentTier,
   BELIEFS,
@@ -49,6 +51,11 @@ import {
   tradeRouteYield,
   tradeRoutesFrom,
   tradeRoutesOf,
+  tradeRoutesAtTile,
+  areEnemies,
+  playerById,
+  isMilitary,
+  plunderValue,
   SPECIALIST_DEFS,
   availableSpecialists,
   specialistLabour,
@@ -139,9 +146,24 @@ import {
   previewGreatPersonEffect,
   scoreBreakdown,
   availableLegends,
+  availableLegendsForPlayer,
   legendCost,
   legendBaseName,
+  LEGEND_DEFAULT_LIFESPAN,
+  legendLifeExtensions,
+  eraGateLabel,
+  eraUnlocked,
+  playerGameEra,
   findSpecialist,
+  UNIT_UPGRADES,
+  unitUpgradeCost,
+  tileOwnerId,
+  unitActiveAbilityIds,
+  boardableShips,
+  cargoOnShip,
+  shipCargoLabel,
+  disembarkTargets,
+  isNavalUnit,
   type City,
   type CityAutoFocus,
   type Discipline,
@@ -173,6 +195,7 @@ import {
   RELIGIONS,
   getReligionByName,
   getReligionKit,
+  greatPeopleOfClass,
   type GreatPersonClass,
 } from "@roc/data";
 import { abilityIconHtml, type AbilityAtlas } from "./ability-assets";
@@ -339,10 +362,16 @@ export interface UIHandlers {
   onEndTurn(): void;
   onFoundCity(): void;
   onPromote(promotion: PromotionId): void;
+  /** Upgrade a unit to its next type (gold cost, loses turn, must be on own territory). */
+  onUpgradeUnit(): void;
   /** Invoke an active ability. The controller decides whether it needs a target. */
   onAbility(ability: ActiveAbilityId): void;
   onSleep(): void;
   onWake(): void;
+  /** Board an adjacent friendly warship (passenger must be selected). */
+  onBoardShip(shipId: number): void;
+  /** Leave a ship onto the nearest available shore tile. */
+  onDisembarkFromShip(passengerId: number): void;
   onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
   /** Toggle a city's governor mode (auto-manage toward a focus); null = manual. */
   onSetCityAutoMode(cityId: number, mode: CityAutoFocus | null): void;
@@ -355,6 +384,9 @@ export interface UIHandlers {
   onCancelWork(workId: number): void;
   /** Close an existing trade route — the trader that opened it is lost. */
   onCancelTradeRoute(routeId: number): void;
+  onAssignTradeEscort(unitId: number, routeId: number): void;
+  onLeaveTradeEscort(routeId: number): void;
+  onPlunderTradeRoute(unitId: number, routeId: number): void;
   /** Spend a stockpiled resource to instantly finish a city's production. */
   onRushProduction(cityId: number, currency: RushCurrency): void;
   /** Spend a stockpiled resource to instantly finish a tile/defensive work. */
@@ -503,6 +535,64 @@ function trainingIconImg(family: TrainingClass, glyph: string, px = 28): string 
   );
 }
 
+/** Trade-route destination buttons for a trader standing in a city. */
+function tradeRouteChoicesHtml(state: GameState, trader: Unit, origin: City, dests: City[], onlyMineId?: string): string {
+  const destBtn = (c: City): string => {
+    const international = c.ownerId !== trader.ownerId;
+    const y = tradeRouteYield(state, {
+      id: 0,
+      ownerId: trader.ownerId,
+      fromCityId: origin.id,
+      toCityId: c.id,
+      toOwnerId: c.ownerId,
+      international,
+      path: [],
+    });
+    const extra =
+      (y.food ? ` +${y.food}🍞` : "") +
+      (y.production ? ` +${y.production}⚒️` : "") +
+      (y.science ? ` +${y.science}🔬` : "") +
+      (y.culture ? ` +${y.culture}🎭` : "");
+    const civTag = international
+      ? ` <span class="sub" style="color:#c9a24a">🤝 ${escapeHtml(civNameForPlayer(state, c.ownerId))}</span>`
+      : "";
+    return (
+      `<button class="btn" data-trade-dest="${c.id}" style="text-align:left;display:flex;justify-content:space-between;gap:8px">` +
+      `<span><b style="color:#fff">${escapeHtml(c.name)}</b>${civTag}</span>` +
+      `<span class="sub">+${y.gold}🪙${extra}</span></button>`
+    );
+  };
+  const own = dests.filter((c) => c.ownerId === trader.ownerId);
+  const foreign = dests.filter((c) => c.ownerId !== trader.ownerId);
+  let html = `<div class="csub">🐪 Trade route from ${escapeHtml(origin.name)}</div>`;
+  if (foreign.length > 0) {
+    html +=
+      `<label style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:12px;color:#9fc3e0;cursor:pointer">` +
+      `<input type="checkbox" id="${onlyMineId ?? "trade-only-mine"}"> Only my cities</label>`;
+  }
+  if (own.length > 0) {
+    html += `<div class="sub" style="margin-top:6px;color:#8fce8f">🏠 Your cities</div>`;
+    html += `<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">${own.map(destBtn).join("")}</div>`;
+  }
+  if (foreign.length > 0) {
+    html += `<div class="sub" data-foreign-group style="margin-top:8px;color:#c9a24a">🤝 Allied cities</div>`;
+    html += `<div data-foreign-group style="display:flex;flex-direction:column;gap:6px;margin-top:4px">${foreign.map(destBtn).join("")}</div>`;
+  }
+  return html;
+}
+
+/** Sticky title row shared by city sub-dialogs (construction, training, specialists). */
+function dialogHeader(title: string, closeId: string, opts?: { subtitle?: string; extra?: string }): string {
+  return (
+    `<div class="panel-dialog-header">` +
+    `<div class="row" style="justify-content:space-between;align-items:flex-start">` +
+    `<b>${title}</b><button type="button" class="btn panel-close" id="${closeId}">✕</button></div>` +
+    (opts?.subtitle ? `<div class="sub" style="margin-top:4px">${opts.subtitle}</div>` : "") +
+    (opts?.extra ?? "") +
+    `</div>`
+  );
+}
+
 const RUSH_GLYPH: Record<RushCurrency, string> = { gold: "🪙", faith: "☮️", culture: "🎭" };
 
 /** The viewer's stockpile for a rush currency. */
@@ -581,8 +671,6 @@ export function createUI(handlers: UIHandlers): UI {
   const gameover = div("gameover", "hidden");
   const saveModal = div("save-modal", "panel hidden");
   const godPanel = div("god-panel", "panel hidden");
-  godPanel.style.cssText =
-    "position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:min(320px,calc(100vw - 32px));max-height:min(520px,80vh);overflow:auto;z-index:40"; 
   const wiki = createWiki();
   /** Markup for a compact "view in Encyclopedia" button, encoding its target. */
   const wikiBtn = (nav: string, label = "📖"): string =>
@@ -967,6 +1055,9 @@ export function createUI(handlers: UIHandlers): UI {
   let specCityId: number | null = null;
   let trainingOpen = false;
   let trainCityId: number | null = null;
+  /** Which train-units accordion sections are expanded (family id, "city", or "temple"). */
+  let trainExpandedSections = new Set<string>();
+  let trainExpandedForCityId: number | null = null;
   /** The ONE founding belief picked in the founding flow (0 or 1 entries). */
   let chosenBeliefs: string[] = [];
   /** Religion the player has picked in the (step 1) founding grid, before beliefs. */
@@ -1158,6 +1249,9 @@ export function createUI(handlers: UIHandlers): UI {
     if (ev.type === "religionFounded" && ev.payload?.religionId) {
       return assetUrl(`religions/${ev.payload.religionId}.png`);
     }
+    if (ev.type === "eureka") {
+      return assetUrl("turn-updates/eureka.png");
+    }
     return assetUrl(`turn-updates/${ev.type}.png`);
   };
 
@@ -1221,6 +1315,8 @@ export function createUI(handlers: UIHandlers): UI {
         return "Religion Founded";
       case "treasuryExhausted":
         return "Treasury Exhausted";
+      case "eureka":
+        return "Eureka!";
       default:
         return "Update";
     }
@@ -1475,12 +1571,13 @@ export function createUI(handlers: UIHandlers): UI {
     const goldClass = netGold >= 0 ? "color:#ffd700" : "color:#ff8a8a";
     const fth = citiesOf(state, player.id).reduce((n, c) => n + cityDisplayYields(state, c).faith, 0);
     const researchingDef = player.researching ? TECH_DEFS[player.researching] : null;
+    const researchCost = player.researching ? scaledTechCost(state, player.researching) : 0;
     const researchPct = researchingDef
-      ? Math.min(100, (player.scienceProgress / researchingDef.cost) * 100)
+      ? Math.min(100, (player.scienceProgress / researchCost) * 100)
       : 0;
     const cul = citiesOf(state, player.id).reduce((n, c) => n + cityDisplayYields(state, c).culture, 0);
     const govResDef = getGovernment(player.researchingGovernment ?? undefined);
-    const govResCost = govResDef ? govResDef.cost : 0;
+    const govResCost = player.researchingGovernment ? scaledGovernmentCost(state, player.researchingGovernment) : 0;
     const civicPct = govResCost ? Math.min(100, (player.cultureProgress / govResCost) * 100) : 0;
     const gov = getGovernment(player.government);
     const civ = getCiv(player.civId);
@@ -1505,7 +1602,7 @@ export function createUI(handlers: UIHandlers): UI {
       legendsOn &&
       player.faith >= legendCost(player.legendsRecruited ?? 0) &&
       citiesOf(state, viewerId).length > 0 &&
-      availableLegends(state).length > 0;
+      availableLegendsForPlayer(state, viewerId).length > 0;
     // Proposals needing the viewer's attention: incoming offers awaiting a
     // response, plus our own offers the other side accepted and we must finalize.
     const diploActionable = state.diploProposals.filter(
@@ -2131,7 +2228,7 @@ export function createUI(handlers: UIHandlers): UI {
                 `<div class="tech" data-tech="${t}"><div style="flex:1">` +
                 `<div><b>${TECH_DEFS[t].name}</b></div>` +
                 (u.length ? `<div class="sub">Unlocks: ${u.join(", ")}</div>` : "") +
-                `</div><span class="cost">${TECH_DEFS[t].cost}🔬</span></div>`
+                `</div><span class="cost">${scaledTechCost(state, t)}🔬</span></div>`
               );
             })
             .join(""));
@@ -2223,8 +2320,9 @@ export function createUI(handlers: UIHandlers): UI {
     html += `<div class="csub">Research a government</div>`;
     if (player.researchingGovernment) {
       const rg = getGovernment(player.researchingGovernment)!;
-      const pct = Math.min(100, Math.round((player.cultureProgress / Math.max(1, rg.cost)) * 100));
-      html += `<div class="tech" style="border-color:#ffd967"><div style="flex:1"><b>Researching ${rg.name}</b><div class="sub">${player.cultureProgress}/${rg.cost}🎭 (${pct}%)</div></div></div>`;
+      const rgCost = scaledGovernmentCost(state, player.researchingGovernment);
+      const pct = Math.min(100, Math.round((player.cultureProgress / Math.max(1, rgCost)) * 100));
+      html += `<div class="tech" style="border-color:#ffd967"><div style="flex:1"><b>Researching ${rg.name}</b><div class="sub">${player.cultureProgress}/${rgCost}🎭 (${pct}%)</div></div></div>`;
     }
     html += researchable.length
       ? researchable
@@ -2233,7 +2331,7 @@ export function createUI(handlers: UIHandlers): UI {
             return (
               `<div class="tech" data-research-gov="${id}"><div style="flex:1">` +
               `<div><b>${g.name}</b> <span class="sub">T${g.tier} · ${g.branch.join("/") || "—"}</span></div>` +
-              `<div class="sub">${g.desc}</div></div><span class="cost">${g.cost}🎭</span></div>`
+              `<div class="sub">${g.desc}</div></div><span class="cost">${scaledGovernmentCost(state, id)}🎭</span></div>`
             );
           })
           .join("")
@@ -2278,7 +2376,7 @@ export function createUI(handlers: UIHandlers): UI {
       ? adoptable
           .map((id) => {
             const d = getCivic(id)!;
-            const cost = civicCost(d, player.civicsAdopted.size);
+            const cost = scaledCivicCost(state, d, player.civicsAdopted.size);
             return (
               `<div class="tech" data-adopt="${id}"><div style="flex:1">` +
               `<div><b>${d.name}</b> <span class="sub">T${d.tier} · ${d.branch}</span></div>${effectBadges(id)}` +
@@ -2359,17 +2457,18 @@ export function createUI(handlers: UIHandlers): UI {
     }
     const shown = options.filter((o) => o.item.kind === prodTab);
 
-    let html = `<div class="production-header"><div class="row" style="justify-content:space-between"><b>${escapeHtml(city.name)} — Construction</b><button class="btn" id="pclose">✕</button></div>`;
-    html +=
-      `<div class="ptabs">` +
-      tabs
-        .map(
-          (t) =>
-            `<button class="ptab${t.id === prodTab ? " active" : ""}" data-ptab="${t.id}">${t.label} <span style="opacity:.7">${countFor(t.id)}</span></button>`,
-        )
-        .join("") +
-      `</div></div>`;
-    html += `<div class="production-list">`;
+    let html = dialogHeader(`${escapeHtml(city.name)} — Construction`, "pclose", {
+      extra:
+        `<div class="ptabs">` +
+        tabs
+          .map(
+            (t) =>
+              `<button type="button" class="ptab${t.id === prodTab ? " active" : ""}" data-ptab="${t.id}">${t.label} <span style="opacity:.7">${countFor(t.id)}</span></button>`,
+          )
+          .join("") +
+        `</div>`,
+    });
+    html += `<div class="panel-dialog-body">`;
     html += shown
       .map((o) => {
         let desc: string;
@@ -2407,7 +2506,8 @@ export function createUI(handlers: UIHandlers): UI {
     if (!shown.length) html += `<div class="sub" style="margin-top:10px">Nothing available here yet.</div>`;
     html += `</div>`;
     production.innerHTML = html;
-    production.querySelector<HTMLButtonElement>("#pclose")!.addEventListener("click", () => {
+    production.querySelector<HTMLButtonElement>("#pclose")!.addEventListener("click", (e) => {
+      e.stopPropagation();
       productionOpen = false;
       production.classList.add("hidden");
     });
@@ -2484,12 +2584,16 @@ export function createUI(handlers: UIHandlers): UI {
       : `<div class="sub" style="margin-top:12px">No public works under way. Train craftsmen, then develop a tile from its panel.</div>`;
 
     specialists.innerHTML =
-      `<div class="row" style="justify-content:space-between"><b>${escapeHtml(city.name)} — Specialists</b><button class="btn" id="spclose">✕</button></div>` +
-      `<div class="sub" style="margin-top:4px">${city.specialists.length} trained · ${free} free slots</div>` +
+      dialogHeader(`${escapeHtml(city.name)} — Specialists`, "spclose", {
+        subtitle: `${city.specialists.length} trained · ${free} free slots`,
+      }) +
+      `<div class="panel-dialog-body">` +
       specRows +
-      worksHtml;
+      worksHtml +
+      `</div>`;
 
-    specialists.querySelector<HTMLButtonElement>("#spclose")!.addEventListener("click", () => {
+    specialists.querySelector<HTMLButtonElement>("#spclose")!.addEventListener("click", (e) => {
+      e.stopPropagation();
       specialistsOpen = false;
       specialists.classList.add("hidden");
     });
@@ -2517,20 +2621,45 @@ export function createUI(handlers: UIHandlers): UI {
     const trainable = availableTraining(state, player, city);
     const free = freeCitizens(city);
 
+    if (trainCityId !== trainExpandedForCityId) {
+      trainExpandedForCityId = trainCityId;
+      trainExpandedSections = new Set();
+    }
+
+    const foldSection = (key: string, labelHtml: string, bodyHtml: string): string => {
+      const open = trainExpandedSections.has(key);
+      return (
+        `<button type="button" class="train-fold${open ? " open" : ""}" data-train-fold="${key}">` +
+        `<span class="train-fold-label">${labelHtml}</span>` +
+        `<span class="train-chevron">▸</span>` +
+        `</button>` +
+        `<div class="train-fold-body">${bodyHtml}</div>`
+      );
+    };
+
     const unitButton = (type: UnitTypeId): string => {
       const can = canStartTraining(state, city, type);
       const t = trainingTimeInCity(state, city, type);
-      const name = uniqueUnitForCiv(player.civId, type)?.name ?? UNIT_DEFS[type].name;
+      const uu = uniqueUnitForCiv(player.civId, type);
+      const name = uu?.name ?? UNIT_DEFS[type].name;
       // Religion unique units carry a signature kit — surface it in the tooltip.
       const kit = religionUnitKit(type);
+      // UU: list ability names and combat bonus in the tooltip.
+      const uuAbilityNames = uu
+        ? unitActiveAbilityIds(type, uu.id)
+            .map((a) => ACTIVE_ABILITY_DEFS[a]?.name ?? a)
+            .join(", ")
+        : "";
+      const uuDesc = uu
+        ? `\n★ Unique Unit — +${uu.bonus} combat${uuAbilityNames ? ` · ${uuAbilityNames}` : ""}`
+        : "";
       const title =
         (can.ok ? `Train ${name} — ${t} turns, costs 1 citizen` : can.error ?? "") +
+        uuDesc +
         (kit ? `\n${kit.abilityName}: ${kit.desc}` : "");
-      // No leading glyph — unit glyphs are a mix of emoji and bare letters ("S", "C"),
-      // which read as clutter and misalign; lead straight with the name instead.
       return (
-        `<button class="btn" data-train="${type}" title="${escapeHtml(title)}"${can.ok ? "" : " disabled"}>` +
-        `${escapeHtml(name)} <span class="sub">${t}t</span></button>`
+        `<button class="btn${uu ? " primary" : ""}" data-train="${type}" title="${escapeHtml(title)}"${can.ok ? "" : " disabled"}>` +
+        `${uu ? `<span style="color:#ffd967;margin-right:3px">★</span>` : ""}${escapeHtml(name)} <span class="sub">${t}t${uu ? ` ·+${uu.bonus}⚔️` : ""}</span></button>`
       );
     };
 
@@ -2547,16 +2676,22 @@ export function createUI(handlers: UIHandlers): UI {
       // Religion units train from the Temple (own section below), never the family.
       const units = trainable.filter((u) => trainingClassFor(u) === fam && !UNIT_DEFS[u].religionUnit);
       sections.push(
-        `<div class="csub" style="margin-top:10px">${trainingIconImg(fam, def.glyph, 20)} ${def.name} (Tier ${tier}) <span class="sub">— ${inUse}/${slots} slots in use</span></div>` +
-        `<div class="row" style="flex-wrap:wrap;gap:4px">${units.map(unitButton).join("") || `<span class="sub">No units available yet.</span>`}</div>`,
+        foldSection(
+          fam,
+          `${trainingIconImg(fam, def.glyph, 20)} <b>${def.name}</b> <span class="sub">Tier ${tier} · ${inUse}/${slots} slots</span>`,
+          `<div class="row" style="flex-wrap:wrap;gap:4px">${units.map(unitButton).join("") || `<span class="sub">No units available yet.</span>`}</div>`,
+        ),
       );
     }
 
     const civ = trainable.filter((u) => trainingClassFor(u) === null && !UNIT_DEFS[u].religionUnit);
     if (civ.length) {
       sections.push(
-        `<div class="csub" style="margin-top:10px">🏙️ City Center <span class="sub">— civilians & scouts</span></div>` +
-        `<div class="row" style="flex-wrap:wrap;gap:4px">${civ.map(unitButton).join("")}</div>`,
+        foldSection(
+          "city",
+          `🏙️ <b>City Center</b> <span class="sub">civilians & scouts</span>`,
+          `<div class="row" style="flex-wrap:wrap;gap:4px">${civ.map(unitButton).join("")}</div>`,
+        ),
       );
     }
 
@@ -2564,13 +2699,16 @@ export function createUI(handlers: UIHandlers): UI {
     const holyUnits = trainable.filter((u) => UNIT_DEFS[u].religionUnit);
     if (holyUnits.length) {
       sections.push(
-        `<div class="csub" style="margin-top:10px">⛪ Temple <span class="sub">— holy orders (one trains at a time)</span></div>` +
-        `<div class="row" style="flex-wrap:wrap;gap:4px">${holyUnits.map(unitButton).join("")}</div>`,
+        foldSection(
+          "temple",
+          `⛪ <b>Temple</b> <span class="sub">holy orders · one at a time</span>`,
+          `<div class="row" style="flex-wrap:wrap;gap:4px">${holyUnits.map(unitButton).join("")}</div>`,
+        ),
       );
     }
 
     const orders = city.trainingQueue.length
-      ? `<div class="csub" style="margin-top:12px">Training now</div>` +
+      ? `<div class="csub" style="margin-top:4px">Training now</div>` +
         city.trainingQueue
           .map((o) => {
             const name = uniqueUnitForCiv(player.civId, o.unit)?.name ?? UNIT_DEFS[o.unit].name;
@@ -2578,27 +2716,41 @@ export function createUI(handlers: UIHandlers): UI {
             const canRush = rushCost != null && player.gold >= rushCost;
             const rushBtn =
               rushCost != null
-                ? `<button class="btn" data-rush-train="${o.id}" title="Rush with gold"${canRush ? "" : " disabled"}>⚡${rushCost}🪙</button>`
+                ? `<button type="button" class="btn" data-rush-train="${o.id}" title="Rush with gold"${canRush ? "" : " disabled"}>⚡${rushCost}🪙</button>`
                 : "";
             return (
               `<div class="row" style="justify-content:space-between;gap:6px;margin-top:4px">` +
               `<span>${UNIT_DEFS[o.unit].glyph} ${escapeHtml(name)} <span class="sub">${o.turnsLeft}t left</span></span>` +
-              `<span style="display:flex;gap:4px">${rushBtn}<button class="btn" data-cancel-train="${o.id}" title="Cancel — returns the citizen">✕</button></span></div>`
+              `<span style="display:flex;gap:4px">${rushBtn}<button type="button" class="btn" data-cancel-train="${o.id}" title="Cancel — returns the citizen">✕</button></span></div>`
             );
           })
           .join("")
       : "";
 
     training.innerHTML =
-      `<div class="row" style="justify-content:space-between"><b>${escapeHtml(city.name)} — Train Units</b><button class="btn" id="trclose">✕</button></div>` +
-      `<div class="sub" style="margin-top:4px">👥 ${city.population} pop · ${free} free citizen${free === 1 ? "" : "s"} · each unit costs 1 citizen</div>` +
+      dialogHeader(`${escapeHtml(city.name)} — Train Units`, "trclose", {
+        subtitle: `👥 ${city.population} pop · ${free} free citizen${free === 1 ? "" : "s"} · each unit costs 1 citizen`,
+      }) +
+      `<div class="panel-dialog-body">` +
+      orders +
       sections.join("") +
-      orders;
+      (sections.length === 0 && !orders ? `<div class="sub" style="margin-top:8px">Build military buildings in Construction to train units here.</div>` : "") +
+      `</div>`;
 
-    training.querySelector<HTMLButtonElement>("#trclose")!.addEventListener("click", () => {
+    training.querySelector<HTMLButtonElement>("#trclose")!.addEventListener("click", (e) => {
+      e.stopPropagation();
       trainingOpen = false;
       training.classList.add("hidden");
     });
+    training.querySelectorAll<HTMLButtonElement>("[data-train-fold]").forEach((el) =>
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const key = el.dataset.trainFold!;
+        if (trainExpandedSections.has(key)) trainExpandedSections.delete(key);
+        else trainExpandedSections.add(key);
+        renderTraining(state);
+      }),
+    );
     training.querySelectorAll<HTMLButtonElement>("[data-train]").forEach((el) =>
       el.addEventListener("click", () => handlers.onStartTraining(city.id, el.dataset.train as UnitTypeId)),
     );
@@ -2943,10 +3095,16 @@ export function createUI(handlers: UIHandlers): UI {
       const info = GREAT_PERSON_CLASS_INFO[cls];
       const pts = Math.floor(player.greatPeoplePoints?.[cls] ?? 0);
       const earned = player.greatPeopleEarned?.[cls] ?? 0;
-      const next = nextAvailableFigure(state, cls as GreatPersonClass);
+      const next = nextAvailableFigure(state, cls as GreatPersonClass, player);
       const per = perTurn[cls] ?? 0;
       if (!next) {
-        return `<div class="sub">${info.glyph} <b>${info.name}</b> — all figures recruited</div>`;
+        const poolLeft = greatPeopleOfClass(cls as GreatPersonClass).some(
+          (g) => !(state.recruitedGreatPeople ?? []).includes(g.id) && eraUnlocked(player, g.era),
+        );
+        if (!poolLeft) {
+          return `<div class="sub">${info.glyph} <b>${info.name}</b> — all figures recruited</div>`;
+        }
+        return `<div class="sub">${info.glyph} <b>${info.name}</b> — advance to a later era to unlock the next figure</div>`;
       }
       const cost = greatPersonThreshold(earned);
       const pct = Math.min(100, (pts / cost) * 100);
@@ -2992,7 +3150,7 @@ export function createUI(handlers: UIHandlers): UI {
       });
       return;
     }
-    html += `<div class="sub">Recruit a hero with faith. Each is a powerful, one-of-a-kind unit with a lifespan — once recruited it is gone for everyone.</div>`;
+    html += `<div class="sub">Recruit a hero with faith. Each is a powerful, one-of-a-kind unit with a short tenure — deeds matching their legend can extend their time.</div>`;
     html += `<div class="sub" style="margin-top:4px">☮️ Faith: <b style="color:#fff">${Math.floor(player.faith)}</b> · next hero costs <b style="color:${canAfford ? "#7ee787" : "#ff8a8a"}">${cost}</b></div>`;
 
     // Active legends (the viewer's hero units, with turns remaining).
@@ -3003,19 +3161,33 @@ export function createUI(handlers: UIHandlers): UI {
         .map((u) => {
           const def = getLegend(u.legendId);
           const left = (u.legendExpiresOnTurn ?? state.turn) - state.turn;
-          return `<div class="sub" style="display:flex;align-items:center;gap:6px">${typeGlyph[def?.type ?? "land"]} <b style="color:#fff">${def?.name ?? "Hero"}</b> — ${left} turn${left === 1 ? "" : "s"} remain${u.legendId ? " " + wikiBtn(`legend:${u.legendId}`) : ""}</div>`;
+          const ext = def ? legendLifeExtensions(def.id) : [];
+          const extHint = ext.length
+            ? ` · earns +turns from ${ext.map((e) => e.trigger.replace(/_/g, " ")).join(", ")}`
+            : "";
+          return `<div class="sub" style="display:flex;align-items:center;gap:6px">${typeGlyph[def?.type ?? "land"]} <b style="color:#fff">${def?.name ?? "Hero"}</b> — ${left} turn${left === 1 ? "" : "s"} remain${extHint}${u.legendId ? " " + wikiBtn(`legend:${u.legendId}`) : ""}</div>`;
         })
         .join("");
     }
 
     // Available legends to recruit.
     html += `<div class="csub">Available Heroes</div>`;
-    const avail = availableLegends(state);
+    const viewer = playerById(state, viewerId) ?? player;
+    const avail = availableLegendsForPlayer(state, viewerId);
     if (avail.length === 0) {
-      html += `<div class="sub">Every Legend has been recruited.</div>`;
+      const locked = availableLegends(state).filter((l) => !eraUnlocked(viewer, l.era));
+      if (locked.length > 0) {
+        html += `<div class="sub">Heroes of later eras await — reach ${playerGameEra(viewer) === "Bronze" ? "the Classical era (bronze alloying)" : "a later era"} to recruit them.</div>`;
+      } else {
+        html += `<div class="sub">Every Legend has been recruited.</div>`;
+      }
     } else {
       html += avail
         .map((l) => {
+          const ext = legendLifeExtensions(l.id);
+          const extLine = ext.length
+            ? ` · may earn turns: ${ext.map((e) => `+${e.turns}/${e.trigger.replace(/_/g, " ")}`).join(", ")}`
+            : "";
           const dis = !canAfford || !hasCity;
           return (
             `<div class="tech" data-legend="${l.id}">` +
@@ -3023,7 +3195,7 @@ export function createUI(handlers: UIHandlers): UI {
             `<div style="flex:1">` +
             `<b>${typeGlyph[l.type]} ${l.name}</b> <span class="sub">· ${l.era} · ${legendBaseName(l)}</span>` +
             `<div class="sub">${l.abilityDesc}</div>` +
-            `<div class="sub">Aura: ${l.auraDesc} (+${l.auraBonus} adjacent) · lifespan ${l.lifespan}t${l.rechargeable ? " · recharges" : ""}</div></div>` +
+            `<div class="sub">Aura: ${l.auraDesc} (+${l.auraBonus} adjacent) · ${LEGEND_DEFAULT_LIFESPAN} turns base${extLine}${l.rechargeable ? " · recharges" : ""}</div></div>` +
             `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">` +
             `<button class="btn primary" data-legend-recruit="${l.id}"${dis ? " disabled" : ""}>Recruit</button>` +
             wikiBtn(`legend:${l.id}`) +
@@ -3179,7 +3351,18 @@ export function createUI(handlers: UIHandlers): UI {
     }
 
     if (own) {
-      // Status line (sleeping / hidden / in-stance) shown above the action row.
+      // Unique unit callout — show abilities + bonus when the player is looking at their UU.
+      if (uu) {
+        const uuAbilityNames = unitActiveAbilityIds(unit.type, uu.id)
+          .map((a) => ACTIVE_ABILITY_DEFS[a]?.name ?? a)
+          .join(", ");
+        html +=
+          `<div style="margin-top:6px;padding:6px 8px;border-radius:4px;background:rgba(201,162,39,.12);border:1px solid rgba(201,162,39,.3)">` +
+          `<span style="color:#ffd967;font-weight:700">★ ${escapeHtml(uu.name)}</span>` +
+          ` <span class="sub">— Unique Unit (+${uu.bonus} combat)</span>` +
+          (uuAbilityNames ? `<div class="sub" style="margin-top:2px">Abilities: ${escapeHtml(uuAbilityNames)}</div>` : "") +
+          `</div>`;
+      }
       const abilities = unitAbilities(state, unit);
       if (abilities.length) {
         if (unit.sleeping) {
@@ -3199,6 +3382,16 @@ export function createUI(handlers: UIHandlers): UI {
       } else {
         actions.push(`<button class="btn" id="sleep">Sleep</button>`);
       }
+      const ships = boardableShips(state, unit);
+      if (ships.length && unit.movementLeft > 0) {
+        for (const ship of ships) {
+          const shipName = UNIT_DEFS[ship.type].name;
+          actions.push(
+            `<button class="btn primary" data-board-ship="${ship.id}" ` +
+              `title="Board ${shipName} (${shipCargoLabel(state, ship)} full)">Jump In · ${escapeHtml(shipName)}</button>`,
+          );
+        }
+      }
       if (def.founder) actions.push(`<button class="btn primary" id="found">Found City</button>`);
       for (const a of abilities) {
         const ad = ACTIVE_ABILITY_DEFS[a];
@@ -3212,61 +3405,86 @@ export function createUI(handlers: UIHandlers): UI {
       }
       if (actions.length) html += `<div class="row" style="margin-top:8px">${actions.join("")}</div>`;
 
+      if (isNavalUnit(unit)) {
+        const cargo = cargoOnShip(state, unit.id);
+        html +=
+          `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--edge)">` +
+          `<div class="csub">Cargo: <b>${shipCargoLabel(state, unit)}</b></div>`;
+        if (cargo.length === 0) {
+          html += `<div class="sub" style="margin-top:4px">Empty — move beside coastal troops and use <b>Jump In</b>.</div>`;
+        } else {
+          html += `<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">`;
+          for (const p of cargo) {
+            const pName = uniqueUnitForCiv(owner?.civId, p.type)?.name ?? UNIT_DEFS[p.type].name;
+            const canLeave = p.movementLeft > 0 && disembarkTargets(state, p).length > 0;
+            html += `<div class="row" style="flex-wrap:wrap;gap:4px;align-items:center">` +
+              `<span>${UNIT_DEFS[p.type].glyph} ${escapeHtml(pName)}</span>`;
+            if (canLeave) {
+              html +=
+                `<button class="btn" data-disembark="${p.id}" title="Disembark onto the nearest shore">Jump Out</button>`;
+            } else if (p.movementLeft <= 0) {
+              html += `<span class="sub">— waits for next turn</span>`;
+            } else {
+              html += `<span class="sub">— no shore nearby</span>`;
+            }
+            html += `</div>`;
+          }
+          html += `</div>`;
+        }
+        html += `</div>`;
+      }
+
       if (def.trader) {
         const origin = cityAt(state, unit.col, unit.row);
         const dests = tradeRouteDestinations(state, unit);
-        if (origin && dests.length > 0) {
-          const destBtn = (c: (typeof dests)[number]): string => {
-            const international = c.ownerId !== unit.ownerId;
-            const y = tradeRouteYield(state, {
-              id: 0,
-              ownerId: unit.ownerId,
-              fromCityId: origin.id,
-              toCityId: c.id,
-              toOwnerId: c.ownerId,
-              international,
-              path: [],
-            });
-            const extra =
-              (y.food ? ` +${y.food}🍞` : "") +
-              (y.production ? ` +${y.production}⚒️` : "") +
-              (y.science ? ` +${y.science}🔬` : "") +
-              (y.culture ? ` +${y.culture}🎭` : "");
-            // Name the owning civ so it's clear whose city an allied route runs to.
-            const civTag = international
-              ? ` <span class="sub" style="color:#c9a24a">🤝 ${escapeHtml(civNameForPlayer(state, c.ownerId))}</span>`
-              : "";
-            return (
-              `<button class="btn" data-trade-dest="${c.id}" style="text-align:left;display:flex;justify-content:space-between;gap:8px">` +
-              `<span><b style="color:#fff">${escapeHtml(c.name)}</b>${civTag}</span>` +
-              `<span class="sub">+${y.gold}🪙${extra}</span></button>`
-            );
-          };
-          const own = dests.filter((c) => c.ownerId === unit.ownerId);
-          const foreign = dests.filter((c) => c.ownerId !== unit.ownerId);
-          html += `<div class="csub">🐪 Trade route from ${origin.name}</div>`;
-          if (foreign.length > 0) {
-            // Let the player hide allied destinations and focus on their own network.
-            html +=
-              `<label style="display:flex;align-items:center;gap:6px;margin-top:4px;font-size:12px;color:#9fc3e0;cursor:pointer">` +
-              `<input type="checkbox" id="trade-only-mine"> Only my cities</label>`;
-          }
-          if (own.length > 0) {
-            html += `<div class="sub" style="margin-top:6px;color:#8fce8f">🏠 Your cities</div>`;
-            html +=
-              `<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">` +
-              own.map(destBtn).join("") +
-              `</div>`;
-          }
-          if (foreign.length > 0) {
-            html += `<div class="sub" data-foreign-group style="margin-top:8px;color:#c9a24a">🤝 Allied cities</div>`;
-            html +=
-              `<div data-foreign-group style="display:flex;flex-direction:column;gap:6px;margin-top:4px">` +
-              foreign.map(destBtn).join("") +
-              `</div>`;
-          }
-        } else {
+        if (origin && origin.ownerId === unit.ownerId && dests.length > 0) {
+          html += tradeRouteChoicesHtml(state, unit, origin, dests);
+        } else if (!origin || origin.ownerId !== unit.ownerId) {
           html += `<div class="locked-note">🐪 Move this Trader into one of your cities, then it can open a trade route to another city.</div>`;
+        } else {
+          html +=
+            `<div class="locked-note">🐪 No reachable partner from ${escapeHtml(origin.name)}. ` +
+            `Inland cities trade overland; sea lanes need a <b>port city</b> at each end — link far inland partners through a hub port on the same continent.</div>`;
+        }
+      }
+
+      if (own && isMilitary(unit.type) && !unit.escortingRouteId && unit.movementLeft > 0) {
+        const viewer = playerById(state, viewerId);
+        const escortRoutes = tradeRoutesAtTile(state, unit.col, unit.row, viewerId).filter((r) => !r.escortUnitId);
+        if (escortRoutes.length > 0) {
+          html += `<div class="csub">🛡 Escort a trade route</div>`;
+          html += `<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">`;
+          for (const r of escortRoutes) {
+            const from = state.cities.get(r.fromCityId);
+            const to = state.cities.get(r.toCityId);
+            html +=
+              `<button class="btn" data-escort-route="${r.id}" style="text-align:left">` +
+              `Guard ${escapeHtml(from?.name ?? "?")} → ${escapeHtml(to?.name ?? "?")}` +
+              ` <span class="sub">(unit leaves the map)</span></button>`;
+          }
+          html += `</div>`;
+        }
+        if (viewer) {
+          const lootRoutes = tradeRoutesAtTile(state, unit.col, unit.row).filter((r) => {
+            if (r.ownerId === viewerId) return false;
+            const owner = playerById(state, r.ownerId);
+            return !!owner && areEnemies(viewer, owner);
+          });
+          if (lootRoutes.length > 0) {
+            html += `<div class="csub">🏴‍☠️ Plunder trade route</div>`;
+            html += `<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">`;
+            for (const r of lootRoutes) {
+              const from = state.cities.get(r.fromCityId);
+              const to = state.cities.get(r.toCityId);
+              const loot = plunderValue(state, r);
+              const guarded = r.escortUnitId !== undefined ? " · 🛡 guarded" : "";
+              html +=
+                `<button class="btn" data-plunder-route="${r.id}" style="text-align:left;display:flex;justify-content:space-between;gap:8px">` +
+                `<span>${escapeHtml(from?.name ?? "?")} → ${escapeHtml(to?.name ?? "?")}${guarded}</span>` +
+                `<span class="sub">+${loot}🪙</span></button>`;
+            }
+            html += `</div>`;
+          }
         }
       }
 
@@ -3315,14 +3533,46 @@ export function createUI(handlers: UIHandlers): UI {
             : `<div class="sub">No promotions available at this level.</div>`) +
           `</div>`;
       }
-    }
+
+      // Upgrade button — shown when this unit has a next type, tech is met,
+      // resources are available, and the unit is standing on own territory.
+      const upgradeToType = UNIT_UPGRADES[unit.type];
+      if (upgradeToType) {
+        const upgToDef = UNIT_DEFS[upgradeToType];
+        const upgCost = unitUpgradeCost(unit.type, upgradeToType);
+        const onOwnTerritory = tileOwnerId(state, unit.col, unit.row) === viewerId;
+        const techOk = !upgToDef.reqTech || (owner?.researched.has(upgToDef.reqTech) ?? false);
+        const resOk = !upgToDef.reqResource
+          || (owner ? (owner.resources[upgToDef.reqResource.resource] ?? 0) >= upgToDef.reqResource.count : false);
+        const goldOk = (owner?.gold ?? 0) >= upgCost;
+        const canUpgrade = onOwnTerritory && techOk && resOk && goldOk;
+
+        let upgradeNote = "";
+        if (!onOwnTerritory) upgradeNote = "Must be on your own territory";
+        else if (!techOk) upgradeNote = `Requires ${upgToDef.reqTech ? TECH_DEFS[upgToDef.reqTech].name : ""}`;
+        else if (!resOk) upgradeNote = `Requires ${upgToDef.reqResource?.resource ?? "resource"}`;
+        else if (!goldOk) upgradeNote = `Not enough gold (need ${upgCost}🪙)`;
+
+        html +=
+          `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)">` +
+          `<button class="btn${canUpgrade ? " primary" : ""}" data-upgrade ` +
+          `${canUpgrade ? "" : "disabled"} ` +
+          `title="${canUpgrade ? `Upgrade to ${upgToDef.name} — loses its turn` : upgradeNote}" ` +
+          `style="width:100%;text-align:left;display:flex;justify-content:space-between;gap:8px${canUpgrade ? "" : ";opacity:.5"}">` +
+          `<span>⬆️ Upgrade to <b style="color:#fff">${upgToDef.name}</b>${upgradeNote ? ` <span class="sub">(${upgradeNote})</span>` : ""}</span>` +
+          `<span class="sub">${upgCost}🪙</span>` +
+          `</button>` +
+          `</div>`;
+      }
+    } // end if (own)
 
     // Compact summary bar — name + key stats — doubles as the expand/collapse
     // tap target (see summaryBar / the shared .ip-* panel styling).
     const levelMult = 1 + 0.05 * (unit.level - 1);
     const summaryStats = combatant
       ? `<span>⚔️ ${Math.floor(def.strength * levelMult) + civCombatBonus(state, unit)}</span>` +
-        `<span>❤️ ${unit.hp}/${unitMaxHp(unit)}</span>`
+        `<span>❤️ ${unit.hp}/${unitMaxHp(unit)}</span>` +
+        (isNavalUnit(unit) ? `<span>Cargo ${shipCargoLabel(state, unit)}</span>` : "")
       : `<span class="sub">${info.role}</span>`;
 
     // Quick-cast bar: icon-only ability buttons surfaced on the collapsed panel
@@ -3369,27 +3619,42 @@ export function createUI(handlers: UIHandlers): UI {
     unitPanel.querySelector<HTMLButtonElement>("[data-found]")?.addEventListener("click", () => handlers.onFoundCity());
     unitPanel.querySelector<HTMLButtonElement>("#sleep")?.addEventListener("click", () => handlers.onSleep());
     unitPanel.querySelector<HTMLButtonElement>("#wake")?.addEventListener("click", () => handlers.onWake());
+    unitPanel.querySelectorAll<HTMLButtonElement>("[data-board-ship]").forEach((btn) => {
+      btn.addEventListener("click", () => handlers.onBoardShip(Number(btn.dataset.boardShip)));
+    });
+    unitPanel.querySelectorAll<HTMLButtonElement>("[data-disembark]").forEach((btn) => {
+      btn.addEventListener("click", () => handlers.onDisembarkFromShip(Number(btn.dataset.disembark)));
+    });
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-promote]").forEach((el) =>
       el.addEventListener("click", () => handlers.onPromote(el.dataset.promote as PromotionId)),
     );
+    unitPanel.querySelector<HTMLButtonElement>("[data-upgrade]")?.addEventListener("click", () => handlers.onUpgradeUnit());
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-ability]").forEach((el) =>
       el.addEventListener("click", () => handlers.onAbility(el.dataset.ability as ActiveAbilityId)),
     );
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-trade-dest]").forEach((el) =>
       el.addEventListener("click", () => handlers.onEstablishTrade(Number(el.dataset.tradeDest))),
     );
-    const onlyMine = unitPanel.querySelector<HTMLInputElement>("#trade-only-mine");
-    onlyMine?.addEventListener("change", () => {
-      unitPanel
-        .querySelectorAll<HTMLElement>("[data-foreign-group]")
-        .forEach((el) => (el.style.display = onlyMine.checked ? "none" : ""));
-    });
+    unitPanel.querySelectorAll<HTMLInputElement>("[id^='trade-only-mine']").forEach((onlyMine) =>
+      onlyMine.addEventListener("change", () => {
+        const root = onlyMine.closest(".ip-detail") ?? unitPanel;
+        root
+          .querySelectorAll<HTMLElement>("[data-foreign-group]")
+          .forEach((el) => (el.style.display = onlyMine.checked ? "none" : ""));
+      }),
+    );
     unitPanel.querySelector<HTMLButtonElement>("[data-evangelize]")?.addEventListener("click", (e) =>
       handlers.onEvangelize(unit.id, Number((e.currentTarget as HTMLElement).dataset.evangelize)));
     unitPanel.querySelector<HTMLButtonElement>("[data-purge]")?.addEventListener("click", (e) =>
       handlers.onPurgeHeresy(unit.id, Number((e.currentTarget as HTMLElement).dataset.purge)));
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-board]").forEach((el) =>
       el.addEventListener("click", () => handlers.onBoardTradeRoute(unit.id, Number(el.dataset.board))));
+    unitPanel.querySelectorAll<HTMLButtonElement>("[data-escort-route]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onAssignTradeEscort(unit.id, Number(el.dataset.escortRoute))),
+    );
+    unitPanel.querySelectorAll<HTMLButtonElement>("[data-plunder-route]").forEach((el) =>
+      el.addEventListener("click", () => handlers.onPlunderTradeRoute(unit.id, Number(el.dataset.plunderRoute))),
+    );
     unitPanel.querySelector<HTMLButtonElement>("[data-bribe]")?.addEventListener("click", () => handlers.onBribeBarbarian(unit.id));
     unitPanel.querySelector<HTMLButtonElement>("[data-recruit]")?.addEventListener("click", () => handlers.onRecruitBarbarian(unit.id));
   };
@@ -3738,17 +4003,19 @@ export function createUI(handlers: UIHandlers): UI {
       .map((w) => `<option value="${w.id}">${escapeHtml(w.name)}</option>`)
       .join("");
 
-    let html =
-      `<div class="row" style="justify-content:space-between"><b>God Mode</b>` +
-      `<button class="btn" id="god-close">✕</button></div>` +
-      `<div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">` +
+    let html = dialogHeader("God Mode", "god-close");
+    html += `<div class="panel-dialog-body"><div style="display:flex;flex-direction:column;gap:8px">` +
       `<button class="btn" data-cheat="unlockTechs">Unlock All Techs</button>` +
       `<button class="btn" data-cheat="completeWorks">Complete All Works</button>` +
       `<button class="btn" data-cheat="healUnits">Heal All Units</button>` +
       `<button class="btn" data-cheat="revealMap">Reveal Map</button>` +
       `<button class="btn" id="god-liftfog"${view.liftFog ? ` style="background:#2f5a2f;border-color:#4a8a4a"` : ""}>` +
       `Lift Fog of War: ${view.liftFog ? "On" : "Off"}</button>` +
-      `<button class="btn" data-cheat="addGold" data-amount="100">+100 Gold</button>`;
+      `<button class="btn" data-cheat="addGold" data-amount="100">+100 Gold</button>` +
+      `<button class="btn" data-cheat="addPopulation">Add Population</button>` +
+      `<button class="btn" data-cheat="addResource" data-resource="copper" data-amount="5">+5 Copper</button>` +
+      `<button class="btn" data-cheat="addResource" data-resource="iron" data-amount="5">+5 Iron</button>` +
+      `<button class="btn" data-cheat="addResource" data-resource="horses" data-amount="5">+5 Horses</button>`;
 
     if (tileOk) {
       html +=
@@ -3777,10 +4044,11 @@ export function createUI(handlers: UIHandlers): UI {
         `<div class="csub">Selected Tile</div>` +
         `<div class="sub">Select a passable land tile to use tile cheats.</div>`;
     }
-    html += `</div>`;
+    html += `</div></div>`;
 
     godPanel.innerHTML = html;
-    godPanel.querySelector<HTMLButtonElement>("#god-close")!.addEventListener("click", () => {
+    godPanel.querySelector<HTMLButtonElement>("#god-close")!.addEventListener("click", (e) => {
+      e.stopPropagation();
       godModeOpen = false;
       renderGodMode(view);
     });
@@ -3805,6 +4073,12 @@ export function createUI(handlers: UIHandlers): UI {
             break;
           case "addGold":
             handlers.onCheat({ type: "addGold", amount: Number(el.dataset.amount) });
+            break;
+          case "addPopulation":
+            handlers.onCheat({ type: "addPopulation" });
+            break;
+          case "addResource":
+            handlers.onCheat({ type: "addResource", resource: el.dataset.resource!, amount: Number(el.dataset.amount) });
             break;
           case "buildRoad": {
             if (!tile) break;
@@ -4104,6 +4378,7 @@ export function createUI(handlers: UIHandlers): UI {
     onConvertCitizen: (cityId, sid, delta) => handlers.onConvertCitizen(cityId, sid, delta),
     onCancelWork: (wid) => handlers.onCancelWork(wid),
     onCancelTradeRoute: (rid) => handlers.onCancelTradeRoute(rid),
+    onLeaveTradeEscort: (rid) => handlers.onLeaveTradeEscort(rid),
   });
 
   // Diplomacy: first-contact dialog + Contacts/negotiation screen + toggle button.

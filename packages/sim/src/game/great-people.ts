@@ -23,6 +23,12 @@ import { civicsUnlocked } from "./civs";
 import { BUILDING_DEFS, UNIT_DEFS, isMilitary, isNaval, type BuildingId, type TrainingClass } from "./content";
 import { unitMaxHp } from "./combat";
 import { GLOBAL_MORALE_MAX, globalMoraleOf, recordMoraleEvent, recordMoraleGain } from "./morale";
+import {
+  applyGreatPersonGift,
+  bestProductionCity,
+  describeGreatPersonGift,
+} from "./great-person-gifts";
+import { eraUnlocked } from "./era";
 
 export type { GreatPersonClass, GreatPersonDef };
 
@@ -106,10 +112,11 @@ export function playerGreatPersonPerTurn(state: GameState, playerId: number): Pa
   return out;
 }
 
-/** The next not-yet-recruited figure of a class (earliest era first), if any. */
-export function nextAvailableFigure(state: GameState, cls: GreatPersonClass): GreatPersonDef | undefined {
+/** The next not-yet-recruited figure of a class (earliest era first) that the
+ *  player has reached the right age to recruit, if any. */
+export function nextAvailableFigure(state: GameState, cls: GreatPersonClass, player: Player): GreatPersonDef | undefined {
   const taken = new Set(state.recruitedGreatPeople ?? []);
-  return greatPeopleOfClass(cls).find((g) => !taken.has(g.id));
+  return greatPeopleOfClass(cls).find((g) => !taken.has(g.id) && eraUnlocked(player, g.era));
 }
 
 /**
@@ -132,7 +139,7 @@ export function accrueGreatPeople(state: GameState, player: Player): void {
       const earned = earnedOf(player)[cls] ?? 0;
       const cost = greatPersonThreshold(earned);
       if ((points[cls] ?? 0) < cost) break;
-      const figure = nextAvailableFigure(state, cls);
+      const figure = nextAvailableFigure(state, cls, player);
       if (!figure) {
         // No figures left of this class — stop draining the pool.
         break;
@@ -156,16 +163,7 @@ export interface ActivateResult {
   error?: string;
 }
 
-/** The city best suited to receive an engineer's production surge. */
-function bestProductionCity(state: GameState, playerId: number): City | undefined {
-  const cities = citiesOf(state, playerId);
-  if (cities.length === 0) return undefined;
-  // Prefer the capital; otherwise the first city. (Avoids importing the economy
-  // module just to rank by yield — production effect is forgiving of the choice.)
-  return cities.find((c) => c.isCapital) ?? cities[0];
-}
-
-/** Effect magnitudes (instant one-shots). */
+/** Legacy class-level effect magnitudes (fallback if a figure has no `gift`). */
 const EUREKA_SCIENCE = 160;
 const WINDFALL_GOLD = 250;
 const MASTERWORK_PRODUCTION = 150;
@@ -350,6 +348,15 @@ function describeProphetGift(state: GameState, player: Player, gift: ProphetGift
 
 /** Apply a figure's instant effect. Returns a short human-readable summary. */
 function applyGreatPersonEffect(state: GameState, player: Player, def: GreatPersonDef): string {
+  if (def.cls === "prophet") {
+    player.faith += REVELATION_FAITH;
+    if (def.prophetGift) {
+      const extra = applyProphetGift(state, player, def.prophetGift);
+      return `+${REVELATION_FAITH} faith, and ${extra}`;
+    }
+    return `+${REVELATION_FAITH} faith`;
+  }
+  if (def.gift) return applyGreatPersonGift(state, player, def.name, def.gift);
   switch (def.effect) {
     case "eureka": {
       player.scienceProgress += EUREKA_SCIENCE;
@@ -451,6 +458,15 @@ export function previewGreatPersonEffect(
   player: Player,
   def: GreatPersonDef,
 ): GreatPersonEffectPreview {
+  if (def.cls === "prophet") {
+    const base = `Sparks a revelation worth +${REVELATION_FAITH} faith, toward founding or spreading a religion.`;
+    if (def.prophetGift) {
+      const gd = describeProphetGift(state, player, def.prophetGift);
+      return { summary: `+${REVELATION_FAITH} faith · ${gd.summary}`, detail: `${base} ${gd.detail}` };
+    }
+    return { summary: `+${REVELATION_FAITH} faith`, detail: base };
+  }
+  if (def.gift) return describeGreatPersonGift(state, player, def.gift);
   switch (def.effect) {
     case "eureka":
       return {

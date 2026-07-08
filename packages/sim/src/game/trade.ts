@@ -8,10 +8,10 @@
 
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { City, GameState, TradeRoute, Unit } from "./state";
-import { cityAt, log, playerById } from "./state";
-import { UNIT_DEFS } from "./content";
+import { cityAt, log, playerById, unitAt } from "./state";
+import { UNIT_DEFS, isMilitary, type UnitTypeId } from "./content";
 import { isPassableLand, isWaterTerrain, moveCost, type TerrainType } from "./terrain";
-import { offsetNeighbors, riverBetween, tileHasBridge } from "./movement";
+import { offsetNeighbors, riverBetween, tileHasBridge, isCoastalLand } from "./movement";
 import { relationBetween, atWar } from "./diplomacy";
 import { emitTradeRouteEstablished } from "./turn-updates";
 
@@ -38,13 +38,13 @@ export interface TradeYield {
 const ZERO: TradeYield = { gold: 0, food: 0, production: 0, science: 0, culture: 0 };
 /** The distance-based base gold is capped here; roads (and buildings) lift a route
  *  above this ceiling, so paving a route is the way to grow it past the early game. */
-const MAX_ROUTE_GOLD = 10;
+const MAX_ROUTE_GOLD = 6;
 
 /** Bonus gold for a route whose entire land path is connected by roads (or, with
  *  Sailing, rivers). The weakest road tier along the path determines the bonus, and
  *  upgrading the road — Dirt → Paved → Imperial — clearly lifts the route past the
  *  base cap. */
-const ROAD_BONUS_BY_TIER: Record<number, number> = { 1: 3, 2: 6, 3: 9 };
+const ROAD_BONUS_BY_TIER: Record<number, number> = { 1: 2, 2: 4, 3: 6 };
 
 const ax = (c: { col: number; row: number }) => offsetToAxial({ col: c.col, row: c.row });
 
@@ -157,11 +157,11 @@ export function tradeRouteGoldBreakdown(state: GameState, route: TradeRoute): Tr
   const roadTier = roadConnectionTier(state, route);
   const road = ROAD_BONUS_BY_TIER[roadTier] ?? 0;
   const isInternational = isInternationalRoute(route);
-  // International routes are far richer: the whole land yield is boosted ×1.5.
+  // International routes earn a modest premium over domestic commerce.
   const preIntl = base + buildings + road;
-  const international = isInternational ? Math.round(preIntl * 1.5) - preIntl : 0;
-  // Overseas lanes (the Age of Exploration's spice routes) pay a further flat premium.
-  const overseas = routeIsOverseas(state, route) ? 4 : 0;
+  const international = isInternational ? Math.round(preIntl * 1.25) - preIntl : 0;
+  // Overseas lanes (the Age of Exploration's spice routes) pay a small flat premium.
+  const overseas = routeIsOverseas(state, route) ? 2 : 0;
   const total = preIntl + international + overseas;
   return { base, buildings, road, roadTier, international, overseas, isInternational, total };
 }
@@ -209,7 +209,7 @@ export function cityTradeYields(state: GameState, city: City): TradeYield {
     } else if (r.toCityId === city.id) {
       // The receiving end gains a little commerce + knowledge — more from an
       // international partner (mutual gains from cross-border trade).
-      gold += r.international ? 3 : 1;
+      gold += r.international ? 2 : 1;
       science += 1;
       if (r.international) culture += 1;
     }
@@ -226,8 +226,32 @@ export function tradeRoutesFrom(state: GameState, cityId: number): TradeRoute[] 
   return state.tradeRoutes.filter((r) => r.fromCityId === cityId);
 }
 
-/** Cities a trader (standing in one of its owner's cities) can connect to — its
- *  owner's own cities, plus the cities of any civ it may trade with internationally. */
+/** True when a city sits on coastal land (a harbour — not open ocean). */
+export function isCoastalPortCity(state: GameState, city: City): boolean {
+  return isCoastalLand(state, city.col, city.row);
+}
+
+/** Whether a computed path crosses any water tile. */
+function pathUsesWater(state: GameState, path: string[]): boolean {
+  for (const key of path) {
+    const [col, row] = key.split(",").map(Number) as [number, number];
+    const tile = getTile(state.map, col, row);
+    if (tile && isWaterTerrain(tile.terrain)) return true;
+  }
+  return false;
+}
+
+/** Whether a caravan can link two cities. Overseas lanes require both ends to be ports. */
+export function canConnectCities(state: GameState, from: City, to: City): boolean {
+  const path = computeTradeRoutePath(state, from, to);
+  if (path.length < 2) return false;
+  if (pathUsesWater(state, path) && !(isCoastalPortCity(state, from) && isCoastalPortCity(state, to))) {
+    return false;
+  }
+  return true;
+}
+
+/** Cities a trader (standing in one of its owner's cities) can connect to. */
 export function tradeRouteDestinations(state: GameState, unit: Unit): City[] {
   if (!UNIT_DEFS[unit.type].trader) return [];
   const origin = cityAt(state, unit.col, unit.row);
@@ -236,7 +260,8 @@ export function tradeRouteDestinations(state: GameState, unit: Unit): City[] {
     (c) =>
       c.id !== origin.id &&
       (c.ownerId === unit.ownerId || canTradeInternational(state, unit.ownerId, c.ownerId)) &&
-      !state.tradeRoutes.some((r) => r.fromCityId === origin.id && r.toCityId === c.id),
+      !state.tradeRoutes.some((r) => r.fromCityId === origin.id && r.toCityId === c.id) &&
+      canConnectCities(state, origin, c),
   );
 }
 
@@ -277,6 +302,7 @@ function computeTradeRoutePath(state: GameState, from: City, to: City): string[]
   const goal = `${to.col},${to.row}`;
   if (start === goal) return [start];
   const riverConnects = riversConnectFor(state, from.ownerId);
+  const allowWater = isCoastalPortCity(state, from) && isCoastalPortCity(state, to);
 
   const dist = new Map<string, number>();
   const cameFrom = new Map<string, string>();
@@ -296,7 +322,12 @@ function computeTradeRoutePath(state: GameState, from: City, to: City): string[]
     const [col, row] = key.split(",").map(Number) as [number, number];
     for (const n of offsetNeighbors(state.map, col, row)) {
       const tile = getTile(state.map, n.col, n.row);
-      if (!tile || (!isPassableLand(tile.terrain) && !isWaterTerrain(tile.terrain))) continue;
+      if (!tile) continue;
+      if (isWaterTerrain(tile.terrain)) {
+        if (!allowWater) continue;
+      } else if (!isPassableLand(tile.terrain)) {
+        continue;
+      }
       const nk = `${n.col},${n.row}`;
       const next = curCost + caravanTileCost(state, tile, n.col, n.row, riverConnects);
       if (next < (dist.get(nk) ?? Infinity)) {
@@ -307,10 +338,7 @@ function computeTradeRoutePath(state: GameState, from: City, to: City): string[]
     }
   }
 
-  if (!cameFrom.has(goal)) {
-    // No passable path found: fall back to a direct endpoint-only path.
-    return [start, goal];
-  }
+  if (!cameFrom.has(goal)) return [];
   const path: string[] = [goal];
   let cur = goal;
   while (cameFrom.get(cur) !== "") {
@@ -350,6 +378,17 @@ export function establishTradeRoute(
   if (state.tradeRoutes.some((r) => r.fromCityId === origin.id && r.toCityId === dest.id)) {
     return { ok: false, error: "route already exists" };
   }
+  if (!canConnectCities(state, origin, dest)) {
+    const needsPorts = !isCoastalPortCity(state, origin) || !isCoastalPortCity(state, dest);
+    return {
+      ok: false,
+      error: needsPorts
+        ? "no overland path — link inland cities through a port on the same continent, or open a sea lane between two ports"
+        : "no caravan path between these cities",
+    };
+  }
+  const path = computeTradeRoutePath(state, origin, dest);
+  if (path.length < 2) return { ok: false, error: "no caravan path between these cities" };
   const routeId = state.nextEntityId++;
   state.tradeRoutes.push({
     id: routeId,
@@ -358,7 +397,7 @@ export function establishTradeRoute(
     toCityId: dest.id,
     toOwnerId: dest.ownerId,
     international,
-    path: computeTradeRoutePath(state, origin, dest),
+    path,
   });
   state.units.delete(unit.id);
   const owner = playerById(state, unit.ownerId);
@@ -384,13 +423,15 @@ export function establishTradeRoute(
 }
 
 /** Cancel an existing route, e.g. to stop it being raided. The trader that
- *  established it is gone for good — there is no refund. */
+ *  established it is gone for good — there is no refund. Any escort reappears at
+ *  the origin city. */
 export function cancelTradeRoute(state: GameState, routeId: number, actingPlayerId: number): TradeResult {
   const route = state.tradeRoutes.find((r) => r.id === routeId);
   if (!route) return { ok: false, error: "no such route" };
   if (route.ownerId !== actingPlayerId) return { ok: false, error: "not your route" };
-  state.tradeRoutes = state.tradeRoutes.filter((r) => r.id !== routeId);
   const from = state.cities.get(route.fromCityId);
+  releaseRouteEscort(state, route, from?.col, from?.row);
+  state.tradeRoutes = state.tradeRoutes.filter((r) => r.id !== routeId);
   const to = state.cities.get(route.toCityId);
   const owner = playerById(state, actingPlayerId);
   log(state, `${owner?.name ?? "A trader"} closed the trade route ${from?.name ?? "?"} → ${to?.name ?? "?"}.`, {
@@ -405,15 +446,154 @@ export function cancelTradeRoute(state: GameState, routeId: number, actingPlayer
  *  international route is also severed if the civs fall out of trading terms
  *  (war declared, or open borders / alliance lapsed). */
 export function pruneTradeRoutes(state: GameState): void {
-  state.tradeRoutes = state.tradeRoutes.filter((r) => {
+  const kept: TradeRoute[] = [];
+  for (const r of state.tradeRoutes) {
     const from = state.cities.get(r.fromCityId);
     const to = state.cities.get(r.toCityId);
-    if (!from || !to || from.ownerId !== r.ownerId) return false;
-    if (r.international) {
-      // The destination must still belong to the partner we agreed to trade with.
-      if (to.ownerId !== r.toOwnerId) return false;
-      return canTradeInternational(state, r.ownerId, to.ownerId);
+    if (!from || !to || from.ownerId !== r.ownerId) {
+      clearRouteEscort(state, r);
+      continue;
     }
-    return to.ownerId === r.ownerId;
+    if (r.international) {
+      if (to.ownerId !== r.toOwnerId || !canTradeInternational(state, r.ownerId, to.ownerId)) {
+        clearRouteEscort(state, r);
+        continue;
+      }
+    } else if (to.ownerId !== r.ownerId) {
+      clearRouteEscort(state, r);
+      continue;
+    }
+    kept.push(r);
+  }
+  state.tradeRoutes = kept;
+}
+
+/** Routes whose path includes a tile (optionally filtered to one owner). */
+export function tradeRoutesAtTile(state: GameState, col: number, row: number, ownerId?: number): TradeRoute[] {
+  const key = `${col},${row}`;
+  return state.tradeRoutes.filter(
+    (r) => r.path.includes(key) && (ownerId === undefined || r.ownerId === ownerId),
+  );
+}
+
+/** The unit guarding a route, if any. */
+export function escortUnitOf(state: GameState, route: TradeRoute): Unit | undefined {
+  if (route.escortUnitId === undefined) return undefined;
+  return state.units.get(route.escortUnitId);
+}
+
+function clearRouteEscort(state: GameState, route: TradeRoute): void {
+  const escort = escortUnitOf(state, route);
+  if (escort) state.units.delete(escort.id);
+  route.escortUnitId = undefined;
+  route.escortType = undefined;
+  route.repelledRaidTile = undefined;
+}
+
+/** Return an escort to the map at (col,row) and detach it from the route. */
+function releaseRouteEscort(state: GameState, route: TradeRoute, col?: number, row?: number): void {
+  const escort = escortUnitOf(state, route);
+  if (!escort) {
+    route.escortUnitId = undefined;
+    route.escortType = undefined;
+    route.repelledRaidTile = undefined;
+    return;
+  }
+  if (col !== undefined && row !== undefined) {
+    escort.col = col;
+    escort.row = row;
+  }
+  escort.escortingRouteId = undefined;
+  escort.movementLeft = 0;
+  route.escortUnitId = undefined;
+  route.escortType = undefined;
+  route.repelledRaidTile = undefined;
+}
+
+/** Assign a military unit standing on this route's path to guard it off-map. */
+export function assignTradeEscort(
+  state: GameState,
+  unitId: number,
+  routeId: number,
+  actingPlayerId: number,
+): TradeResult {
+  const unit = state.units.get(unitId);
+  if (!unit) return { ok: false, error: "no such unit" };
+  if (unit.ownerId !== actingPlayerId) return { ok: false, error: "not your unit" };
+  if (!isMilitary(unit.type)) return { ok: false, error: "only military units can escort trade routes" };
+  if (unit.escortingRouteId !== undefined) return { ok: false, error: "unit is already escorting a route" };
+  if (unit.inTransit) return { ok: false, error: "unit is travelling a route" };
+  if (unit.embarked) return { ok: false, error: "embarked units cannot escort" };
+  const route = state.tradeRoutes.find((r) => r.id === routeId);
+  if (!route) return { ok: false, error: "no such route" };
+  if (route.ownerId !== actingPlayerId) return { ok: false, error: "not your route" };
+  if (route.escortUnitId !== undefined) return { ok: false, error: "route already has an escort" };
+  const key = `${unit.col},${unit.row}`;
+  if (!route.path.includes(key)) return { ok: false, error: "unit must stand on the trade route" };
+
+  route.escortUnitId = unit.id;
+  route.escortType = unit.type;
+  route.repelledRaidTile = undefined;
+  unit.escortingRouteId = route.id;
+  unit.movementLeft = 0;
+
+  const from = state.cities.get(route.fromCityId);
+  const to = state.cities.get(route.toCityId);
+  const owner = playerById(state, actingPlayerId);
+  log(
+    state,
+    `${owner?.name ?? "A caravan"} assigned a ${UNIT_DEFS[unit.type].name} to guard the route ${from?.name ?? "?"} → ${to?.name ?? "?"}.`,
+    { actorId: actingPlayerId, targetIds: [actingPlayerId], tile: { col: unit.col, row: unit.row } },
+  );
+  return { ok: true };
+}
+
+/** After repelling a raid, order the escort off the route — it appears where the
+ *  raid was attempted and the raider is pushed to a neighbouring tile. */
+export function leaveTradeEscort(state: GameState, routeId: number, actingPlayerId: number): TradeResult {
+  const route = state.tradeRoutes.find((r) => r.id === routeId);
+  if (!route) return { ok: false, error: "no such route" };
+  if (route.ownerId !== actingPlayerId) return { ok: false, error: "not your route" };
+  const escort = escortUnitOf(state, route);
+  if (!escort) return { ok: false, error: "route has no escort" };
+  const tile = route.repelledRaidTile;
+  if (!tile) return { ok: false, error: "no raid to disembark from" };
+
+  escort.col = tile.col;
+  escort.row = tile.row;
+  escort.escortingRouteId = undefined;
+  escort.movementLeft = 0;
+  route.escortUnitId = undefined;
+  route.escortType = undefined;
+  route.repelledRaidTile = undefined;
+
+  // Shove any enemy raider still on the ambush tile aside.
+  for (const u of state.units.values()) {
+    if (u.col === tile.col && u.row === tile.row && u.ownerId !== actingPlayerId) {
+      pushUnitToNeighbor(state, u, tile.col, tile.row);
+      break;
+    }
+  }
+
+  const owner = playerById(state, actingPlayerId);
+  log(state, `${owner?.name ?? "A caravan"} recalled its escort from a trade route.`, {
+    actorId: actingPlayerId,
+    targetIds: [actingPlayerId],
+    tile,
   });
+  return { ok: true };
+}
+
+/** Move a unit to any passable neighbouring tile that is not `avoid`. */
+export function pushUnitToNeighbor(state: GameState, unit: Unit, avoidCol: number, avoidRow: number): boolean {
+  for (const n of offsetNeighbors(state.map, unit.col, unit.row)) {
+    if (n.col === avoidCol && n.row === avoidRow) continue;
+    if (unitAt(state, n.col, n.row)) continue;
+    const tile = getTile(state.map, n.col, n.row);
+    if (!tile || !isPassableLand(tile.terrain)) continue;
+    unit.col = n.col;
+    unit.row = n.row;
+    return true;
+  }
+  return false;
 }

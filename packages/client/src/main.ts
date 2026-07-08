@@ -280,6 +280,19 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   }
   session.onUpdate(update);
 
+  // Auto-save single-player games when the tab goes to background so a browser
+  // reload or mobile-OS page eviction doesn't lose progress.
+  if (!session.isOnline) {
+    const autoSave = (): void => {
+      if (!document.hidden || !session.hasState()) return;
+      try {
+        const record = makeSaveRecord("sp", serializeState(session.getState()), { name: "__autosave__" });
+        saveGame(record).catch(() => { /* best-effort */ });
+      } catch { /* best-effort */ }
+    };
+    document.addEventListener("visibilitychange", autoSave);
+  }
+
   function cancelAbility(): void {
     pendingAbility = null;
     abilityTargetSet = new Set();
@@ -360,11 +373,20 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onPromote: (promotion) => {
       if (selectedUnitId != null) session.order({ type: "promote", unitId: selectedUnitId, promotion });
     },
+    onUpgradeUnit: () => {
+      if (selectedUnitId != null) session.order({ type: "upgradeUnit", unitId: selectedUnitId });
+    },
     onSleep: () => {
       if (selectedUnitId != null) session.order({ type: "sleep", unitId: selectedUnitId });
     },
     onWake: () => {
       if (selectedUnitId != null) session.order({ type: "wake", unitId: selectedUnitId });
+    },
+    onBoardShip: (shipId) => {
+      if (selectedUnitId != null) session.order({ type: "boardShip", unitId: selectedUnitId, shipId });
+    },
+    onDisembarkFromShip: (passengerId) => {
+      session.order({ type: "disembarkFromShip", unitId: passengerId });
     },
     onAbility: (ability) => {
       if (selectedUnitId == null) return;
@@ -492,6 +514,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       clearSelection();
     },
     onCancelTradeRoute: (routeId) => session.order({ type: "cancelTradeRoute", routeId }),
+    onAssignTradeEscort: (unitId, routeId) => session.order({ type: "assignTradeEscort", unitId, routeId }),
+    onLeaveTradeEscort: (routeId) => session.order({ type: "leaveTradeEscort", routeId }),
+    onPlunderTradeRoute: (unitId, routeId) => session.order({ type: "plunderTradeRoute", unitId, routeId }),
     onBribeBarbarian: (unitId) => session.order({ type: "bribeBarbarian", unitId }),
     onRecruitBarbarian: (unitId) => session.order({ type: "recruitBarbarian", unitId }),
     onCloseCity: () => {
@@ -949,7 +974,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         // Flag where the selected city grows next: the player's chosen tile if any,
         // otherwise the default nearest tile — so a target is always shown.
         expandMarker: selCity ? selCity.expandTarget ?? nextExpansionTile(st(), selCity) : null,
-        tradeRoutes: st().tradeRoutes,
+        tradeRoutes: st().tradeRoutes.filter((r) => r.ownerId === me || r.escortUnitId !== undefined),
         works: st()
           .works.filter((w) => w.ownerId === me && w.target)
           .map((w) => ({ col: w.target!.col, row: w.target!.row, kind: w.kind })),

@@ -106,6 +106,16 @@ export function expandTerritory(state: GameState, city: City, count = 1): void {
   }
 }
 
+/** Claim every tile one step beyond the city's current border (full outward ring). */
+export function expandTerritoryRing(state: GameState, city: City): number {
+  const candidates = expansionCandidates(state, city);
+  let claimed = 0;
+  for (const { col, row } of candidates) {
+    if (claim(state, city, col, row)) claimed++;
+  }
+  return claimed;
+}
+
 function forEachInRadius(
   state: GameState,
   col: number,

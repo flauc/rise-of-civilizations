@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { isWater } from "@roc/shared";
-import { generateMap, MAP_TYPES, type MapType } from "./worldgen";
+import { generateMap, MAP_TYPES, countLandmasses, targetContinentCount, type MapType } from "./worldgen";
 
 function landFraction(mapType: MapType | undefined): number {
   const map = generateMap({ cols: 52, rows: 34, seed: "worldgen-test", mapType });
@@ -44,5 +44,20 @@ describe("worldgen map types", () => {
     // Earth is ~30% land; sampling the baked mask should stay in a sensible band.
     expect(frac).toBeGreaterThan(0.2);
     expect(frac).toBeLessThan(0.5);
+  });
+
+  it("multi-continent layouts produce the promised number of major landmasses", () => {
+    const types = ["two_continents", "three_continents", "four_continents"] as const;
+    const seeds = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"];
+    const cols = 80;
+    const rows = 56;
+    const minSize = Math.max(16, Math.round((cols * rows) / 160));
+    for (const mapType of types) {
+      const expected = targetContinentCount(mapType)!;
+      for (const seed of seeds) {
+        const map = generateMap({ cols, rows, seed, mapType });
+        expect(countLandmasses(map, minSize), `${mapType} / ${seed}`).toBe(expected);
+      }
+    }
   });
 });

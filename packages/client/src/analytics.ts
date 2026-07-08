@@ -175,6 +175,7 @@ export type GameSetup = Pick<
   | "aiCivIds"
   | "legends"
   | "turnLimit"
+  | "gameSpeed"
   | "enabledVictories"
 >;
 
@@ -193,6 +194,8 @@ export interface SessionStartMeta {
   startingGold?: string;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit?: number;
+  /** How costly research and civics are. */
+  gameSpeed?: string;
   aiCivIds?: (string | null)[];
   /** Decisive win conditions enabled this game. */
   enabledVictories?: string[];
@@ -238,6 +241,7 @@ export function trackSessionStart(meta: SessionStartMeta): string {
     naturalWonders: meta.naturalWonders,
     startingGold: meta.startingGold,
     turnLimit: meta.turnLimit,
+    gameSpeed: meta.gameSpeed,
     aiCivIds: meta.aiCivIds,
     enabledVictories: meta.enabledVictories,
     ts: Date.now(),

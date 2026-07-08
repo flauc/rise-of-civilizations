@@ -461,7 +461,10 @@ export function drawOverlay(
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     for (const r of o.tradeRoutes) {
-      if (r.ownerId !== o.viewingPlayerId) continue;
+      const own = r.ownerId === o.viewingPlayerId;
+      const escorted = r.escortUnitId !== undefined;
+      // Own routes always; escorted routes are visible to every player.
+      if (!own && !escorted) continue;
       const from = state.cities.get(r.fromCityId);
       const to = state.cities.get(r.toCityId);
       if (!from || !to) continue;
@@ -492,6 +495,7 @@ export function drawOverlay(
       strokePolyline(ctx, pts);
 
       // Trail, drawn per segment so road segments differ from open country.
+      const escortColor = escorted ? "rgba(140,200,255,0.95)" : intl ? "rgba(90,216,224,0.9)" : "rgba(255,206,110,0.9)";
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i]!;
         const b = pts[i + 1]!;
@@ -502,30 +506,42 @@ export function drawOverlay(
           // Paved road: solid, thicker, warm stone colour.
           ctx.setLineDash([]);
           ctx.lineWidth = Math.max(2, size * 0.1);
-          ctx.strokeStyle = "rgba(214,180,120,0.95)";
+          ctx.strokeStyle = escorted ? "rgba(170,210,255,0.95)" : "rgba(214,180,120,0.95)";
         } else {
           // Open country: dashed caravan track — gold for domestic, teal for
-          // international routes so the player can tell them apart at a glance.
+          // international routes; escorted routes get a brighter guard-blue.
           ctx.setLineDash([Math.max(4, size * 0.34), Math.max(3, size * 0.24)]);
-          ctx.lineWidth = Math.max(1.5, size * 0.07);
-          ctx.strokeStyle = intl ? "rgba(90,216,224,0.9)" : "rgba(255,206,110,0.9)";
+          ctx.lineWidth = escorted ? Math.max(2, size * 0.09) : Math.max(1.5, size * 0.07);
+          ctx.strokeStyle = escortColor;
         }
         ctx.stroke();
       }
 
-      // Small marker at the path midpoint.
+      // Small marker at the path midpoint ($ for commerce, shield when escorted).
       if (size > 10) {
         ctx.setLineDash([]);
         const mid = polylineMidpoint(pts);
-        ctx.fillStyle = "rgba(255,206,110,0.95)";
-        ctx.beginPath();
-        ctx.arc(mid.x, mid.y, Math.max(2, size * 0.12), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#2a1c08";
-        ctx.font = `${Math.max(7, Math.round(size * 0.22))}px system-ui, sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("$", mid.x, mid.y + 1);
+        if (escorted) {
+          ctx.fillStyle = "rgba(140,200,255,0.95)";
+          ctx.beginPath();
+          ctx.arc(mid.x, mid.y, Math.max(3, size * 0.16), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#0a1a2a";
+          ctx.font = `${Math.max(8, Math.round(size * 0.24))}px system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("🛡", mid.x, mid.y + 1);
+        } else {
+          ctx.fillStyle = "rgba(255,206,110,0.95)";
+          ctx.beginPath();
+          ctx.arc(mid.x, mid.y, Math.max(2, size * 0.12), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#2a1c08";
+          ctx.font = `${Math.max(7, Math.round(size * 0.22))}px system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("$", mid.x, mid.y + 1);
+        }
       }
     }
     ctx.restore();
@@ -661,6 +677,8 @@ export function drawOverlay(
   const unitScale = isMobileScreen() ? MOBILE_UNIT_SCALE : 1;
   const civByPlayer = new Map(state.players.map((p) => [p.id, p.civId]));
   for (const unit of state.units.values()) {
+    if (unit.aboardShipId !== undefined) continue;
+    if (unit.escortingRouteId !== undefined) continue;
     const own = unit.ownerId === o.viewingPlayerId;
     if (!own && !o.visible.has(`${unit.col},${unit.row}`)) continue;
     const uu = uniqueUnitForCiv(civByPlayer.get(unit.ownerId), unit.type);

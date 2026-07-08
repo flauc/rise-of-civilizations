@@ -37,3 +37,8 @@ export * from "./legends";
 export * from "./legend-effects";
 export * from "./legend-passives";
 export * from "./turn-updates";
+export * from "./naval-cargo";
+export * from "./eurekas";
+export * from "./game-speed";
+export * from "./era";
+export * from "./legend-lifespan";

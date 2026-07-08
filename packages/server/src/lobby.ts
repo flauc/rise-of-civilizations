@@ -9,7 +9,9 @@ import {
   createGame,
   PLAYER_COLORS,
   TOGGLEABLE_VICTORIES,
+  normalizeGameSpeed,
   type BarbarianActivity,
+  type GameSpeed,
   type GameState,
   type GameSummary,
   type LobbyRoom,
@@ -51,6 +53,8 @@ export interface LobbyGame {
   startingGold: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit: number;
+  /** How costly research and civics are. */
+  gameSpeed: GameSpeed;
   /** Decisive win conditions enabled this game (score/extinction always apply). */
   enabledVictories: VictoryKind[];
   /** Optional join password; empty/undefined means the game is open. */
@@ -78,6 +82,8 @@ export interface CreateOptions {
   startingGold?: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
   turnLimit?: number;
+  /** How costly research and civics are. Defaults to normal. */
+  gameSpeed?: GameSpeed;
   /** Decisive win conditions enabled; omitted = all toggleable ones. */
   enabledVictories?: VictoryKind[];
   password?: string;
@@ -101,6 +107,8 @@ export interface ConfigurePatch {
   startingGold?: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit?: number;
+  /** How costly research and civics are. */
+  gameSpeed?: GameSpeed;
   enabledVictories?: VictoryKind[];
 }
 
@@ -170,6 +178,7 @@ export class Lobby {
       naturalWonders: opts.naturalWonders ?? true,
       startingGold: opts.startingGold ?? "balanced",
       turnLimit: opts.turnLimit ?? 120,
+      gameSpeed: normalizeGameSpeed(opts.gameSpeed),
       enabledVictories: opts.enabledVictories ?? [...TOGGLEABLE_VICTORIES],
       password: opts.password || undefined,
       hostUserId: ownerUserId,
@@ -220,6 +229,7 @@ export class Lobby {
     if (patch.naturalWonders !== undefined) game.naturalWonders = patch.naturalWonders;
     if (patch.startingGold !== undefined) game.startingGold = patch.startingGold;
     if (patch.turnLimit !== undefined) game.turnLimit = Math.max(0, Math.floor(patch.turnLimit));
+    if (patch.gameSpeed !== undefined) game.gameSpeed = normalizeGameSpeed(patch.gameSpeed);
     if (patch.enabledVictories !== undefined) {
       game.enabledVictories = patch.enabledVictories.filter((v) => TOGGLEABLE_VICTORIES.includes(v));
     }
@@ -333,6 +343,7 @@ export class Lobby {
       naturalWonders: g.naturalWonders,
       startingGold: g.startingGold,
       turnLimit: g.turnLimit,
+      gameSpeed: g.gameSpeed,
       enabledVictories: g.enabledVictories,
       hasPassword: !!g.password,
       slots: g.slots.map((s) => ({
@@ -371,6 +382,7 @@ export class Lobby {
       naturalWonders: game.naturalWonders,
       startingGold: game.startingGold,
       turnLimit: game.turnLimit,
+      gameSpeed: game.gameSpeed,
       enabledVictories: game.enabledVictories,
       civIds,
       colors,

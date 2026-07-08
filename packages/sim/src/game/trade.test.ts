@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getTile, offsetToAxial, axialNeighbor, axialToOffset } from "@roc/shared";
+import { getTile, offsetToAxial, axialNeighbor, axialToOffset, type GameMap } from "@roc/shared";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { getCityYields } from "./economy";
@@ -11,9 +11,32 @@ import {
   cityTradeYields,
   pruneTradeRoutes,
   tradeRouteDestinations,
+  canConnectCities,
+  isCoastalPortCity,
 } from "./trade";
 import { citiesOf, makeUnit, unitsOf, type City } from "./state";
 import { viewForPlayer } from "./serialize";
+import type { TerrainType } from "./terrain";
+
+const makeMap = (cols: number, rows: number, terrain: (col: number, row: number) => TerrainType): GameMap => ({
+  cols,
+  rows,
+  tiles: Array.from({ length: rows * cols }, (_, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    return { col, row, terrain: terrain(col, row) };
+  }),
+});
+
+/** Two landmasses separated by a water channel (cols 4–5). */
+const twoPortMap = makeMap(10, 4, (col) => (col >= 4 && col <= 5 ? "coast" : "plains"));
+
+function gameOnMap(map: GameMap) {
+  const s = createGame({ seed: "trade-map", cols: map.cols, rows: map.rows, barbarians: false, humanSlots: 2 });
+  s.map = map;
+  beginTurn(s);
+  return s;
+}
 
 /** A game where player 0 owns two cities a few tiles apart. */
 function gameWithTwoCities() {
@@ -81,6 +104,61 @@ describe("trade routes", () => {
     expect(establishTradeRoute(s, tid3, to.id, 0).ok).toBe(false);
   });
 
+  it("rejects ocean routes unless both cities are coastal ports", () => {
+    const s = gameOnMap(twoPortMap);
+    const inlandId = s.nextEntityId++;
+    const inland: City = {
+      id: inlandId, ownerId: 0, name: "Inland", col: 1, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(inlandId, inland);
+    const portId = s.nextEntityId++;
+    const port: City = {
+      id: portId, ownerId: 0, name: "Harbour", col: 6, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(portId, port);
+    expect(isCoastalPortCity(s, port)).toBe(true);
+    expect(isCoastalPortCity(s, inland)).toBe(false);
+    expect(canConnectCities(s, inland, port)).toBe(false);
+
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", inland.col, inland.row));
+    expect(tradeRouteDestinations(s, s.units.get(tid)!).map((c) => c.id)).not.toContain(portId);
+    expect(establishTradeRoute(s, tid, portId, 0).ok).toBe(false);
+  });
+
+  it("allows a sea lane only between two coastal port cities", () => {
+    const s = gameOnMap(twoPortMap);
+    const portAId = s.nextEntityId++;
+    const portA: City = {
+      id: portAId, ownerId: 0, name: "Port Alpha", col: 3, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(portAId, portA);
+    const portBId = s.nextEntityId++;
+    const portB: City = {
+      id: portBId, ownerId: 0, name: "Port Beta", col: 6, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(portBId, portB);
+    expect(canConnectCities(s, portA, portB)).toBe(true);
+
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", portA.col, portA.row));
+    expect(establishTradeRoute(s, tid, portBId, 0).ok).toBe(true);
+    const route = s.tradeRoutes[0]!;
+    expect(route.path.some((key) => {
+      const [col, row] = key.split(",").map(Number) as [number, number];
+      const tile = getTile(s.map, col, row);
+      return tile && (tile.terrain === "coast" || tile.terrain === "ocean");
+    })).toBe(true);
+  });
+
   it("cancels a route without refunding the trader; rejects bad ids and other owners", () => {
     const { s, from, to } = gameWithTwoCities();
     const tid = s.nextEntityId++;
@@ -129,7 +207,7 @@ describe("trade routes", () => {
         tile.roadLevel = 1;
       }
     }
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 3);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 2);
 
     // Upgrade to paved roads.
     for (let i = 1; i < route.path.length - 1; i++) {
@@ -137,7 +215,7 @@ describe("trade routes", () => {
       const tile = getTile(s.map, col, row);
       if (tile) tile.roadLevel = 2;
     }
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 4);
 
     // Upgrade to imperial roads.
     for (let i = 1; i < route.path.length - 1; i++) {
@@ -145,7 +223,7 @@ describe("trade routes", () => {
       const tile = getTile(s.map, col, row);
       if (tile) tile.roadLevel = 3;
     }
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 9);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
   });
 
   it("gains no road bonus if any intermediate tile lacks a road", () => {
@@ -186,7 +264,7 @@ describe("trade routes", () => {
     expect(tradeRouteYield(s, route).gold).toBe(baseYield);
     // With Sailing the river route earns the best-grade (tier 3) connection bonus.
     s.players[0]!.researched.add("sailing");
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 9);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
   });
 
   it("a river severs the road connection unless a bridge spans it", () => {
@@ -206,7 +284,7 @@ describe("trade routes", () => {
         tile.roadLevel = 3;
       }
     }
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 9);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
 
     // Run a river along the edge between the first two intermediate road tiles.
     const a = route.path[1]!.split(",").map(Number) as [number, number];
@@ -222,7 +300,7 @@ describe("trade routes", () => {
     s.players[0]!.researched.add("bridge_building");
     getTile(s.map, a[0], a[1])!.ownerCityId = from.id;
     getTile(s.map, b[0], b[1])!.ownerCityId = from.id;
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 9);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
   });
 
   it("serializes a bridge flag for a roaded river crossing only once the tech is researched", () => {
@@ -272,7 +350,7 @@ describe("trade routes", () => {
         tile.roadLevel = i === 1 ? 1 : 3; // one dirt road, the rest imperial
       }
     }
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 3);
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield + 2);
   });
 
   it("routes through a chain of roads even on a longer path, and keeps the bonus across a city hub", () => {
@@ -301,7 +379,7 @@ describe("trade routes", () => {
     expect(route.path).toContain(`${from.col + 3},${from.row + 1}`);
     // Every intermediate tile is roaded, so the imperial-road bonus applies.
     expect(tradeRouteGoldBreakdown(s, route).roadTier).toBe(3);
-    expect(tradeRouteGoldBreakdown(s, route).road).toBe(9);
+    expect(tradeRouteGoldBreakdown(s, route).road).toBe(6);
   });
 
   it("lifts every yield — not just gold — when a route is improved", () => {
@@ -367,20 +445,16 @@ import { ensureContact, relationBetween, declareWar } from "./diplomacy";
 
 describe("international trade routes", () => {
   function twoCivsWithCities() {
-    const s = createGame({ seed: "trade-intl", cols: 40, rows: 28, barbarians: false, humanSlots: 2, playerCount: 2 });
-    beginTurn(s);
-    const set0 = unitsOf(s, 0).find((u) => u.type === "settler")!;
-    applyCommand(s, { type: "foundCity", unitId: set0.id }, 0);
-    const c0 = citiesOf(s, 0)[0]!;
+    const { s, from } = gameWithTwoCities();
     const id = s.nextEntityId++;
     const c1: City = {
-      id, ownerId: 1, name: "Foreign", col: c0.col + 5, row: c0.row, population: 1,
+      id, ownerId: 1, name: "Foreign", col: from.col + 6, row: from.row, population: 1,
       foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
       isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
     };
     s.cities.set(id, c1);
     ensureContact(s, 0, 1);
-    return { s, c0, c1 };
+    return { s, c0: from, c1 };
   }
 
   it("a foreign city is only a destination with open borders or an alliance", () => {

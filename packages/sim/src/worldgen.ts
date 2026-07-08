@@ -26,6 +26,7 @@ export type MapType =
   | "pangaea"
   | "two_continents"
   | "three_continents"
+  | "four_continents"
   | "archipelago"
   | "inland_sea"
   | "islands"
@@ -36,6 +37,7 @@ export const MAP_TYPES: readonly MapType[] = [
   "pangaea",
   "two_continents",
   "three_continents",
+  "four_continents",
   "archipelago",
   "inland_sea",
   "islands",
@@ -64,6 +66,82 @@ function blob(u: number, v: number, cx: number, cy: number, r: number): number {
   return 1 - smoothstep(r * 0.45, r, d);
 }
 
+/** A continent seed in normalized map coordinates (0..1). */
+interface ContinentSeed {
+  cx: number;
+  cy: number;
+  /** Radius of the land blob around this seed. */
+  r: number;
+}
+
+/** Open-ocean strip between Voronoi cells — keeps landmasses from bridging. */
+const CONTINENT_SEPARATION = 0.07;
+
+/** How many major landmasses a map type promises. */
+export function targetContinentCount(type: MapType): number | null {
+  switch (type) {
+    case "two_continents":
+      return 2;
+    case "three_continents":
+      return 3;
+    case "four_continents":
+      return 4;
+    default:
+      return null;
+  }
+}
+
+function continentSeedsFor(type: MapType): ContinentSeed[] | null {
+  switch (type) {
+    case "two_continents":
+      return [
+        { cx: 0.28, cy: 0.5, r: 0.31 },
+        { cx: 0.72, cy: 0.5, r: 0.31 },
+      ];
+    case "three_continents":
+      return [
+        { cx: 0.25, cy: 0.32, r: 0.28 },
+        { cx: 0.75, cy: 0.33, r: 0.28 },
+        { cx: 0.5, cy: 0.74, r: 0.28 },
+      ];
+    case "four_continents":
+      return [
+        { cx: 0.24, cy: 0.27, r: 0.27 },
+        { cx: 0.76, cy: 0.27, r: 0.27 },
+        { cx: 0.24, cy: 0.73, r: 0.27 },
+        { cx: 0.76, cy: 0.73, r: 0.27 },
+      ];
+    default:
+      return null;
+  }
+}
+
+/**
+ * Each tile belongs to exactly one continent cell (nearest seed). Land only grows
+ * inside that cell and away from the shared borders, so continents cannot merge
+ * into one supercontinent the way overlapping Math.max(blobs) allowed.
+ */
+function voronoiContinentMask(
+  u: number,
+  v: number,
+  edge: number,
+  seeds: ContinentSeed[],
+  separation: number,
+): number {
+  const dists = seeds
+    .map((s) => ({ s, d: Math.hypot(u - s.cx, v - s.cy) }))
+    .sort((a, b) => a.d - b.d);
+  const nearest = dists[0]!;
+  const second = dists[1];
+  if (second && second.d - nearest.d < separation) return 0;
+  const blobVal = blob(u, v, nearest.s.cx, nearest.s.cy, nearest.s.r);
+  return (0.22 + 0.88 * blobVal) * edge;
+}
+
+function multiContinentMask(seeds: ContinentSeed[]): (u: number, v: number, edge: number) => number {
+  return (u, v, edge) => voronoiContinentMask(u, v, edge, seeds, CONTINENT_SEPARATION);
+}
+
 /**
  * How a map type shapes generation: a sea level, a noise-frequency multiplier
  * (higher = more, smaller landmasses), and an elevation multiplier per tile.
@@ -84,21 +162,19 @@ function shaperFor(type: MapType): Shaper {
       return {
         seaLevel: 0.44,
         freq: 1,
-        mask: (u, v, e) => (0.3 + 0.85 * Math.max(blob(u, v, 0.27, 0.5, 0.42), blob(u, v, 0.73, 0.5, 0.42))) * e,
+        mask: multiContinentMask(continentSeedsFor("two_continents")!),
       };
     case "three_continents":
       return {
         seaLevel: 0.45,
         freq: 1.05,
-        mask: (u, v, e) =>
-          (0.28 +
-            0.85 *
-              Math.max(
-                blob(u, v, 0.24, 0.33, 0.34),
-                blob(u, v, 0.75, 0.34, 0.34),
-                blob(u, v, 0.5, 0.74, 0.34),
-              )) *
-          e,
+        mask: multiContinentMask(continentSeedsFor("three_continents")!),
+      };
+    case "four_continents":
+      return {
+        seaLevel: 0.46,
+        freq: 1.05,
+        mask: multiContinentMask(continentSeedsFor("four_continents")!),
       };
     case "inland_sea":
       // A ring of land wrapped around a central sea (with open ocean at the rim).
@@ -167,6 +243,28 @@ function classifyLand(
 }
 
 export function generateMap(opts: WorldGenOptions): GameMap {
+  const mapType = opts.mapType ?? "continents";
+  const target = targetContinentCount(mapType);
+  const maxAttempts = target !== null ? 16 : 1;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const seed = attempt === 0 ? opts.seed : `${opts.seed}:continent:${attempt}`;
+    const map = generateMapOnce({ ...opts, seed });
+    if (target === null) return map;
+    const minSize = Math.max(16, Math.round((map.cols * map.rows) / 160));
+    if (countLandmasses(map, minSize) === target) return map;
+  }
+  // Last resort: carve any lingering land bridges along Voronoi seams.
+  const map = generateMapOnce({ ...opts, seed: `${opts.seed}:continent:force` });
+  const seeds = continentSeedsFor(mapType);
+  if (seeds) {
+    carveContinentSeams(map, seeds, CONTINENT_SEPARATION * 1.35);
+    markLakes(map);
+    markCoasts(map);
+  }
+  return map;
+}
+
+function generateMapOnce(opts: WorldGenOptions): GameMap {
   const { cols, rows } = opts;
   const mapType = opts.mapType ?? "continents";
   const realWorld = mapType === "realworld";
@@ -230,10 +328,65 @@ export function generateMap(opts: WorldGenOptions): GameMap {
   }
 
   const map: GameMap = { cols, rows, tiles };
+  const seeds = continentSeedsFor(mapType);
+  if (seeds) carveContinentSeams(map, seeds, CONTINENT_SEPARATION, heights, seaLevel);
   markLakes(map);
   markCoasts(map);
   generateRivers(map, heights, rng);
   return map;
+}
+
+/** Count connected land regions at least `minTiles` large (ignores tiny islets). */
+export function countLandmasses(map: GameMap, minTiles = 16): number {
+  const { cols, rows, tiles } = map;
+  const seen = new Array<boolean>(cols * rows).fill(false);
+  let count = 0;
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const start = row * cols + col;
+      if (seen[start] || isWater(tiles[start]!.terrain)) continue;
+      let size = 0;
+      const stack: [number, number][] = [[col, row]];
+      seen[start] = true;
+      while (stack.length) {
+        const [c, r] = stack.pop()!;
+        size++;
+        for (const [nc, nr] of waterNeighbors(map, c, r)) {
+          const ni = nr * cols + nc;
+          if (!seen[ni] && !isWater(tiles[ni]!.terrain)) {
+            seen[ni] = true;
+            stack.push([nc, nr]);
+          }
+        }
+      }
+      if (size >= minTiles) count++;
+    }
+  }
+  return count;
+}
+
+/** Flood any land sitting on a Voronoi seam back to open ocean. */
+function carveContinentSeams(
+  map: GameMap,
+  seeds: ContinentSeed[],
+  separation: number,
+  heights?: Float32Array,
+  seaLevel = 0.44,
+): void {
+  const { cols, rows, tiles } = map;
+  for (let row = 0; row < rows; row++) {
+    const v = rows > 1 ? row / (rows - 1) : 0.5;
+    for (let col = 0; col < cols; col++) {
+      const tile = tiles[row * cols + col]!;
+      if (isWater(tile.terrain)) continue;
+      const u = cols > 1 ? col / (cols - 1) : 0.5;
+      const dists = seeds.map((s) => Math.hypot(u - s.cx, v - s.cy)).sort((a, b) => a - b);
+      if ((dists[1] ?? Infinity) - dists[0]! < separation) {
+        tile.terrain = "ocean";
+        if (heights) heights[row * cols + col] = seaLevel * 0.5;
+      }
+    }
+  }
 }
 
 /** Direction (0..5) from tile A to adjacent tile B, or -1 if not neighbours. */

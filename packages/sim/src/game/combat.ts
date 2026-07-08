@@ -4,6 +4,7 @@ import { cityAt, log, playerById, unitAt, areEnemies } from "./state";
 import {
   UNIT_DEFS,
   UNIT_MAX_HP,
+  unitBaseMaxHp,
   isRanged,
   PROMOTION_DEFS,
   PROMOTION_POOL,
@@ -15,6 +16,8 @@ import { isRough, terrainDefense, isWaterTerrain, isForestTerrain } from "./terr
 import { structureDefense, towerBombard } from "./fortifications";
 import { civCombatBonus, uniqueUnitForUnit, unitDisplayName } from "./civs";
 import { legendCombatBonus } from "./legends";
+import { extendLegendsOnTrigger } from "./legend-lifespan";
+import { scuttleShipCargo } from "./naval-cargo";
 import { legendCityDefenseBonus } from "./legend-effects";
 import { applyVictoryCheck } from "./victory";
 import { emitCityLost, emitUnitDied } from "./turn-updates";
@@ -44,6 +47,17 @@ function conditionalCombatBonus(state: GameState, unit: Unit, opponent: Unit): n
     // theirs differs (including having none — e.g. barbarians).
     if (mine && playerReligionId(state, opponent.ownerId) !== mine) b += eff.combatVsOtherReligion;
   }
+  if (eff.combatVsUniqueUnit && uniqueUnitForUnit(state, opponent)) b += eff.combatVsUniqueUnit;
+  return b;
+}
+
+/** Combat bonuses from timed modifiers that depend on the unit's own type. */
+function typedCombatBonus(state: GameState, unit: Unit, ranged: boolean): number {
+  const eff = playerEffects(state, unit.ownerId);
+  let b = 0;
+  if (eff.gunpowderCombatBonus && UNIT_DEFS[unit.type].gunpowder) b += eff.gunpowderCombatBonus;
+  const cls = UNIT_DEFS[unit.type].cls;
+  if (!ranged && eff.navalMeleeCombatBonus && cls === "naval_melee") b += eff.navalMeleeCombatBonus;
   return b;
 }
 
@@ -51,12 +65,12 @@ function conditionalCombatBonus(state: GameState, unit: Unit, opponent: Unit): n
  *  lands slightly harder than a regular thrust (and takes no retaliation). */
 const FIRE_LANCE_BONUS = 3;
 
-/** Maximum HP for a unit, increasing by 5% per level above 1 plus promotion bonuses. */
+/** Maximum HP for a unit, increasing by 5% per level above 1, unit tier, and promotions. */
 export function unitMaxHp(unit: Unit): number {
   let bonus = 0;
   if (has(unit, "toughness")) bonus += 15;
   if (has(unit, "colonist")) bonus += 20;
-  return Math.floor(UNIT_MAX_HP * (1 + 0.05 * (unit.level - 1))) + bonus;
+  return unitBaseMaxHp(unit.type, unit.level) + bonus;
 }
 
 /** Combat-strength multiplier from experience level (+5% per level). */
@@ -91,6 +105,32 @@ function hasBushido(state: GameState, unit: Unit): boolean {
 export function damageFrom(attEff: number, defEff: number): number {
   const d = Math.round(30 * Math.pow(attEff / Math.max(1, defEff), 1.4));
   return Math.max(1, Math.min(75, d));
+}
+
+/** Melee exchange without moving either unit or spending the attacker's turn pool.
+ *  Used when a trade-route escort intercepts a plunder attempt. Both may die. */
+export function exchangeMeleeCombat(
+  state: GameState,
+  attacker: Unit,
+  defender: Unit,
+  terrain: TerrainType,
+): void {
+  const attEff = attackStrength(state, attacker, defender, terrain, false, undefined);
+  const defEff = defenseStrength(state, defender, attacker, false);
+  defender.hp -= damageFrom(attEff, defEff);
+  let retaliation = damageFrom(defEff, attEff);
+  if (has(attacker, "suppression")) retaliation = Math.max(0, retaliation - 3);
+  attacker.hp -= retaliation;
+  awardXp(state, attacker, 4);
+  awardXp(state, defender, 4);
+  if (defender.hp <= 0) {
+    killUnit(state, defender);
+    onEnemyDefeated(state, attacker, defender);
+    harvestFaithOnKill(state, attacker);
+  } else {
+    maybeRoute(state, defender);
+  }
+  if (attacker.hp <= 0) killUnit(state, attacker);
 }
 
 function adjacentFriendlies(state: GameState, unit: Unit): number {
@@ -133,6 +173,7 @@ function attackStrength(
   if (ranged && ability === "double_ballista") s = Math.max(4, def.strength - 2) * levelMultiplier(unit);
   s += civCombatBonus(state, unit);
   s += conditionalCombatBonus(state, unit, defender); // civics: home/foreign/all-unit/other-religion
+  s += typedCombatBonus(state, unit, ranged);
   s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
   s += religionUnitCombatBonus(state, unit); // faith-tier strength + religious auras
   if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) s -= unit.cursedPenalty ?? 3;
@@ -342,6 +383,7 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
 
   s += civCombatBonus(state, unit);
   s += conditionalCombatBonus(state, unit, attacker); // civics: home/foreign/all-unit/other-religion
+  s += typedCombatBonus(state, unit, vsRanged);
   s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
   s += religionUnitCombatBonus(state, unit); // faith-tier strength + religious auras
   if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) s -= unit.cursedPenalty ?? 3;
@@ -630,6 +672,7 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
   if (oldOwner && !oldOwner.isBarbarian) {
     emitCityLost(state, oldOwner.id, city.id, city.name, city.col, city.row);
   }
+  extendLegendsOnTrigger(state, attacker.ownerId, "city_capture");
   applyVictoryCheck(state);
 }
 
@@ -988,6 +1031,7 @@ export function cityBombard(
 }
 
 export function killUnit(state: GameState, unit: Unit): void {
+  if (isNavalUnit(unit)) scuttleShipCargo(state, unit.id, killUnit);
   religionRitesOnDeath(state, unit); // mortuary harvests + Valhalla rallies (before removal)
   onUnitLost(state, unit); // nearby friendlies waver + global morale drops (before removal)
   const wasLegend = !!unit.legendId;

@@ -358,6 +358,20 @@ export type TechId =
 
 export const UNIT_MAX_HP = 100;
 
+/** Extra max HP from a unit type's combat tier — stronger units are sturdier.
+ *  Civilians get no tier bonus. */
+export function unitTypeHpBonus(type: UnitTypeId): number {
+  const d = UNIT_DEFS[type];
+  if (d.cls === "settler" || d.cls === "trader" || d.cls === "religious") return 0;
+  const combat = Math.max(d.strength, d.rangedStrength ?? 0);
+  return Math.max(0, (combat - 4) * 2);
+}
+
+/** Base max HP from type tier and experience level (before promotion extras). */
+export function unitBaseMaxHp(type: UnitTypeId, level: number): number {
+  return Math.floor(UNIT_MAX_HP * (1 + 0.05 * (level - 1))) + unitTypeHpBonus(type);
+}
+
 export interface UnitDef {
   id: UnitTypeId;
   name: string;
@@ -1248,6 +1262,65 @@ export const TECH_SYSTEM_UNLOCKS: Partial<Record<TechId, string[]>> = {
 /** Map/mechanic/system unlocks for a tech (not units or buildings). */
 export function techSystemUnlocks(techId: TechId): string[] {
   return TECH_SYSTEM_UNLOCKS[techId] ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Unit upgrade paths
+// ---------------------------------------------------------------------------
+
+/**
+ * For each unit type, the next unit it can be upgraded to (in friendly territory,
+ * for gold, provided the target's tech and resource requirements are met).
+ * Only military units (melee, ranged, cavalry, siege, naval) are upgradeable;
+ * civilians and religious units are not.
+ */
+export const UNIT_UPGRADES: Partial<Record<UnitTypeId, UnitTypeId>> = {
+  // Melee line
+  clubman:        "warrior",
+  warrior:        "spearman",
+  firehard_spear: "spearman",
+  spearman:       "hoplite",
+  hoplite:        "pikeman",
+  axeman:         "swordsman",
+  maceman:        "swordsman",
+  swordsman:      "longswordsman",
+  pikeman:        "longswordsman",
+  longswordsman:  "legionary",
+  // Ranged line
+  slinger:        "javelineer",
+  hunter:         "archer",
+  javelineer:     "archer",
+  archer:         "crossbowman",
+  crossbowman:    "hand_cannon",
+  hand_cannon:    "matchlock",
+  // Cavalry line
+  light_chariot:  "war_chariot",
+  war_chariot:    "rider",
+  rider:          "cataphract",
+  horse_archer:   "cataphract",
+  // Siege line
+  battering_ram:  "catapult",
+  catapult:       "ballista",
+  ballista:       "bombard",
+  // Naval melee
+  galley:         "bireme",
+  bireme:         "trireme",
+  trireme:        "quinquereme",
+  longship:       "caravel",
+  // Naval ranged
+  dromon:         "galleass",
+  war_junk:       "galleass",
+  galleass:       "galleon",
+};
+
+/**
+ * Gold cost to upgrade a unit from `fromType` to `toType`.
+ * Scales with the target unit's production cost.
+ */
+export function unitUpgradeCost(fromType: UnitTypeId, toType: UnitTypeId): number {
+  const to = UNIT_DEFS[toType];
+  const from = UNIT_DEFS[fromType];
+  return Math.max(20, to.cost + 10 - Math.floor(from.cost * 0.3));
 }
 
 /** Names of everything a tech unlocks — units, buildings, and mechanics (for the research picker). */

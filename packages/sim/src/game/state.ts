@@ -1,6 +1,7 @@
 import type { GameMap } from "@roc/shared";
 import type { CivEffects, GreatPersonClass } from "@roc/data";
-import { UNIT_DEFS, UNIT_MAX_HP, type ActiveAbilityId, type BuildingId, type ProjectId, type PromotionId, type StanceId, type TechId, type TrainingClass, type UnitTypeId } from "./content";
+import type { GameSpeed } from "./game-speed";
+import { UNIT_DEFS, unitBaseMaxHp, type ActiveAbilityId, type BuildingId, type ProjectId, type PromotionId, type StanceId, type TechId, type TrainingClass, type UnitTypeId } from "./content";
 
 export interface Unit {
   id: number;
@@ -52,12 +53,16 @@ export interface Unit {
   campKey?: string;
   /** True when a land unit has embarked onto a water tile. */
   embarked?: boolean;
+  /** When set, the unit is stowed aboard this warship and hidden from the map. */
+  aboardShipId?: number;
   /** Religious-unit charges remaining (missionary/apostle spread, inquisitor purge).
    *  When it hits 0 the unit is spent and removed. Absent on non-religious units. */
   religiousCharges?: number;
   /** Set while the unit is riding a trade route (fast-travel). It leaves the map
    *  and re-appears at `exitCityId` on `arrivesOnTurn` (see religion.ts / trade). */
   inTransit?: { routeId: number; exitCityId: number; arrivesOnTurn: number };
+  /** When set, the unit is guarding that trade route off-map (see trade escorts). */
+  escortingRouteId?: number;
   /** Unit morale (0–200; 100 is neutral). Buffs/debuffs combat and drives routing.
    *  Undefined on legacy saves — treated as neutral by the morale helpers. */
   morale?: number;
@@ -306,6 +311,8 @@ export interface Player {
   /** Lifetime enemy cities captured by conquest. Feeds the score; absent on
    *  legacy saves (treated as 0). */
   citiesCaptured?: number;
+  /** Techs for which the eureka has already fired (prevents double-triggering). */
+  eurekaTriggered?: Set<string>;
   /** Rush-spending escalation: how many rushes still count toward the surcharge
    *  and the last turn one happened. Each rush within the window makes the next
    *  pricier; the spree resets after a few idle turns (see rush.ts). Absent until
@@ -526,6 +533,12 @@ export interface TradeRoute {
   international?: boolean;
   /** Tile keys "col,row" the caravan travels through; used for plundering. */
   path: string[];
+  /** Military unit id guarding this route off-map, if any. */
+  escortUnitId?: number;
+  /** Escort unit type — copied at assignment so every player can render the guard. */
+  escortType?: UnitTypeId;
+  /** Set when a raid was repelled — the escort may disembark here (see leaveTradeEscort). */
+  repelledRaidTile?: { col: number; row: number };
 }
 
 export type BarbarianActivity = "none" | "minimal" | "low" | "normal" | "high";
@@ -564,6 +577,7 @@ export type TurnUpdateType =
   | "greatPersonRecruited"
   | "legendRecruited"
   | "religionFounded"
+  | "eureka"
   | "treasuryExhausted";
 
 /** A structured event shown to a specific player in the turn-start update dialog. */
@@ -630,6 +644,8 @@ export interface GameState {
   log: LogEntry[];
   gameOver: GameOver | null;
   turnLimit: number;
+  /** How costly research and civics are (fast/normal/slow/epic). Defaults to normal. */
+  gameSpeed?: GameSpeed;
   /** Decisive win conditions enabled this game (see TOGGLEABLE_VICTORIES). Score
    *  (at the turn limit) and extinction always apply regardless of this set.
    *  Absent on legacy saves — treat a missing set as "all enabled". */
@@ -697,7 +713,7 @@ export function makeUnit(
     col,
     row,
     movementLeft: 0,
-    hp: UNIT_MAX_HP,
+    hp: unitBaseMaxHp(type, 1),
     xp,
     level: 1,
     unspentPromotions: 0,
@@ -732,6 +748,7 @@ export function citiesOf(state: GameState, playerId: number): City[] {
 
 export function unitAt(state: GameState, col: number, row: number): Unit | undefined {
   for (const u of state.units.values()) {
+    if (u.aboardShipId !== undefined) continue;
     if (u.col === col && u.row === row) return u;
   }
   return undefined;

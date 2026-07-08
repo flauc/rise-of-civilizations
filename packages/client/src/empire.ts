@@ -46,6 +46,7 @@ export interface EmpireHandlers {
   onCancelWork(workId: number): void;
   /** Close a trade route — the trader that established it is lost. */
   onCancelTradeRoute(routeId: number): void;
+  onLeaveTradeEscort(routeId: number): void;
 }
 
 export type Tab = "units" | "cities" | "specialists" | "trade";
@@ -300,7 +301,8 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
       return (
         `<div class="emp-empty">No trade routes yet.<br>` +
         `Move a Trader into one of your cities and use “Establish trade route” to open one.<br>` +
-        `<span style="color:#9fc3e0">Tip: connect cities with roads — and upgrade them — to grow a route's gold past the base cap.</span></div>`
+        `<span style="color:#9fc3e0">Tip: connect cities with roads — and upgrade them — to grow a route's gold past the base cap.<br>` +
+        `Post a warrior on a route's path and choose <b>🛡 Escort</b> to guard it from barbarian raids.</span></div>`
       );
     }
     const totalGold = routes.reduce((sum, r) => sum + tradeRouteYield(state, r).gold, 0);
@@ -334,6 +336,12 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
             b.roadTier > 0
               ? `<div class="emp-sub" style="color:#8fce8f">🛣️ ${workName("road", b.roadTier)} link · +${b.road}🪙</div>`
               : `<div class="emp-sub" style="color:#c98f8f">⚠ No road link — pave every tile of the path to boost this route</div>`;
+          const escortLine = r.escortUnitId
+            ? `<div class="emp-sub" style="color:#8cb8ff">🛡 Escorted${r.escortType ? ` (${r.escortType.replace(/_/g, " ")})` : ""} — visible to all players</div>`
+            : `<div class="emp-sub" style="color:#c98f8f">⚠ Unguarded — move a soldier onto the route and choose Escort</div>`;
+          const leaveBtn = r.repelledRaidTile
+            ? `<button class="btn primary" data-leave-escort="${r.id}" title="Spawn the escort where the raid was stopped">Recall escort</button>`
+            : "";
           // Gold breakdown so it's clear how the total is built up.
           const goldParts = [
             `base ${b.base}`,
@@ -351,7 +359,11 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
             `<div class="emp-sub">${yieldBits || "no yield"} / turn · ${r.path.length} tiles</div>` +
             `<div class="emp-sub" style="opacity:.75">${goldParts}</div>` +
             roadLine +
+            escortLine +
+            (r.repelledRaidTile ? `<div class="emp-sub" style="color:#ffd967">⚔️ Escort repelled a raid — recall it to disembark at the ambush site.</div>` : "") +
             `</div>` +
+            `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">` +
+            leaveBtn +
             `<button class="btn" data-cancel-route="${r.id}" title="Disband this route — the trader is lost">Cancel</button>` +
             `</div></div>`
           );
@@ -412,6 +424,12 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
       el.addEventListener("click", () => {
         if (!confirm("Cancel this trade route? The trader that opened it is lost.")) return;
         handlers.onCancelTradeRoute(Number(el.dataset.cancelRoute));
+        render(state, viewerId);
+      }),
+    );
+    body.querySelectorAll<HTMLButtonElement>("[data-leave-escort]").forEach((el) =>
+      el.addEventListener("click", () => {
+        handlers.onLeaveTradeEscort(Number(el.dataset.leaveEscort));
         render(state, viewerId);
       }),
     );

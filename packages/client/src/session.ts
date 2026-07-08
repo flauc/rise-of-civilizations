@@ -68,6 +68,8 @@ export interface LocalGameOptions {
   startingGold?: "tight" | "balanced" | "generous";
   /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
   turnLimit?: number;
+  /** How costly research and civics are. Defaults to normal. */
+  gameSpeed?: import("@roc/sim").GameSpeed;
   /** Decisive win conditions enabled; omitted = all toggleable ones. */
   enabledVictories?: VictoryKind[];
   /** The human player's civilization. */
@@ -107,6 +109,7 @@ export class LocalSession implements Session {
         naturalWonders: opts.naturalWonders ?? true,
         startingGold: opts.startingGold ?? "balanced",
         turnLimit: opts.turnLimit ?? 120,
+        gameSpeed: opts.gameSpeed ?? "normal",
         enabledVictories: opts.enabledVictories,
         civIds,
         colors: opts.colors ?? undefined,
@@ -235,6 +238,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     log: view.log,
     gameOver: view.gameOver,
     turnLimit: view.turnLimit ?? 0,
+    gameSpeed: view.gameSpeed ?? "normal",
     enabledVictories: new Set(view.enabledVictories ?? TOGGLEABLE_VICTORIES),
     religions: view.religions,
     tradeRoutes: view.tradeRoutes ?? [],
@@ -286,6 +290,7 @@ export class OnlineSession implements Session {
   private exportReject: ((reason: string) => void) | null = null;
   private loadResolve: (() => void) | null = null;
   private loadReject: ((reason: string) => void) | null = null;
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
   /** Server game id; set by lobby-ui when the game starts. */
   gameId?: string;
 
@@ -295,8 +300,17 @@ export class OnlineSession implements Session {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.url);
       this.ws = ws;
-      ws.onopen = () => resolve();
+      ws.onopen = () => {
+        // Send a ping every 45 s so NAT/proxy layers don't drop a silent connection.
+        this.pingTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "ping" }));
+        }, 45_000);
+        resolve();
+      };
       ws.onerror = () => reject(new Error("connection failed"));
+      ws.onclose = () => {
+        if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
+      };
       ws.onmessage = (e) => this.onMessage(JSON.parse(String(e.data)) as ServerMessage);
     });
   }

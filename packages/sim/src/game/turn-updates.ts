@@ -296,3 +296,12 @@ export function emitTreasuryExhausted(state: GameState, playerId: number): void 
     message: "Your treasury is exhausted; a unit was disbanded and your army's morale has collapsed.",
   });
 }
+
+export function emitEureka(state: GameState, playerId: number, techName: string, desc: string, boost: number): void {
+  emitTurnUpdate(state, {
+    type: "eureka",
+    playerId,
+    message: `Eureka! ${techName} — ${desc} (+${boost} science)`,
+    payload: { techName, boost },
+  });
+}

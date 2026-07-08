@@ -14,7 +14,7 @@ A turn-based 4X strategy game (a "Civilization" clone) spanning the **Ancient Er
 
 ---
 
-## 0. Implementation status snapshot (audited 2026-06-19)
+## 0. Implementation status snapshot (audited 2026-07-08)
 
 > These docs describe the **intended design**; much of it is aspirational. This section is the honest map of what the **code** (`packages/sim`, `packages/data`, `packages/client`) actually does today. Where a doc and the code disagree, the code is the source of truth. Each design doc carries its own status banner with detail. **Anything implemented "in a reduced/different way" from its doc is listed here as not-yet-done**, per the audit's intent.
 
@@ -29,19 +29,24 @@ A turn-based 4X strategy game (a "Civilization" clone) spanning the **Ancient Er
 - **Diplomacy** — meet/first-contact, peace/war, open borders, pacts, deals, gifts, tribute, warmonger reputation, AI attitudes ([DIPLOMACY.md](DIPLOMACY.md) v1 is shipped, not "pre-implementation").
 - **Trade routes** — internal city-to-city routes (gold/food/prod/science, road bonus).
 - **Civilizations** — all **82** civs as data (leader, flat ability `effects`, leader active ability). See [CIVILIZATIONS.md](CIVILIZATIONS.md#implementation-status-audit).
-- **Multiplayer & AI** — server-authoritative WS sim, lobby, fog-filtered views; on-device rules AI. Victory: domination, religious, score.
+- **Unique Units** — `UNIQUE_UNITS` in `@roc/data` defines every civ's UU (`replaces`, `bonus`, art id); `UNIQUE_ABILITY_OVERRIDES` in `content.ts` assigns civ-unique active abilities (pilum/testudo for Rome, parthian_shot for Parthia, etc.); `civCombatBonus` applies the flat strength bonus in combat; `effectiveAbilities` applies the ability overrides. Training UI badges UUs with ★ and shows the bonus/abilities; the unit panel calls them out. AI prefers its own UU when ranking units to train.
+- **Unit upgrades** — units can be upgraded to the next tier (clubman→warrior→spearman→…, slinger→javelineer→archer→…, etc.) for gold on friendly territory, provided the target tech and strategic resource are available. Command: `upgradeUnit`. Upgrade paths defined in `UNIT_UPGRADES` in `content.ts`.
+- **Multiplayer & AI** — server-authoritative WS sim, lobby, fog-filtered views; on-device rules AI. Victory: domination, religious, score. WebSocket `idleTimeout: 0` (no idle disconnect); client sends a keepalive ping every 45 s.
+- **Single-player auto-save** — the game auto-saves to IndexedDB when the browser tab is hidden (`visibilitychange`), so a page reload or mobile-OS eviction does not lose progress.
+- **Tech Eurekas** — every tech (except the two free starting techs) has an in-world eureka trigger (e.g. build a Farm → boost Cultivation, win 3 battles → boost Bronze Alloying). Eurekas grant ~40 % of the tech's science cost as a free instant boost, fire at most once per player, and are shown in the turn-start update dialog. Defined in `packages/sim/src/game/eurekas.ts`; checked each turn in `beginTurn` via `checkEurekas`.
+- **Great People** — eight classes, per-class point pools from buildings/training/capital, globally unique named roster (`@roc/data` `GREAT_PEOPLE`), recruit when a pool fills, activate once for instant effects (`great-people.ts`). Per-class effects (Scientist eureka, General drill, …) with **per-figure prophet gifts** as the exception. 🎖️ panel + wiki + portraits. See [GREAT-PEOPLE.md](GREAT-PEOPLE.md).
+- **Legends (heroes)** — 29 globally unique heroes recruited with rising faith cost, spawn as reskinned units with combat bonus, adjacent aura, lifespan, and real signature powers (`legends.ts`, `legend-passives.ts`, `legend-effects.ts`, `LEGEND_ABILITY_OVERRIDES`). Toggleable per game (`legendsEnabled`). ⭐ panel + map crown/gold ring + wiki + portraits. See [GREAT-PEOPLE.md](GREAT-PEOPLE.md) §2.
 
 **❌ Not implemented (or only as flavor/partial — treated as not done)**
-- **Great People & Legends (heroes)** — *entirely absent.* [GREAT-PEOPLE.md](GREAT-PEOPLE.md) is 100% aspirational, even though Legends are billed as a "core feature."
-- **Unique Units & Unique Infrastructure** — strings only; no civ-locked unit/building types exist (see CIVILIZATIONS.md audit).
+- **Great People extensions** — auras, placed improvements (Citadel), unit-attach passives are not built; full Great Works/tourism victory loop is not built.
+- **Legend extensions** — varied per-hero recruitment paths (culture/conquest/wonder/quest) are flavour only (faith cost in-game); the optional Mythic toggle is not built.
+- **Unique Infrastructure** — strings only; no civ-locked building/improvement types exist (see CIVILIZATIONS.md audit).
 - **Civ abilities' prose behaviors** — only the flat numeric `effects` are wired; richer described effects are not.
-- **Civ-unique & hero active abilities** — UNIT-ABILITIES.md §8/§9 unbuilt.
 - **City-states / envoys, diplomatic favor, war-weariness, tech trading, espionage, casus belli, diplomatic victory** — none exist; LEADER-ABILITIES.md effects that reference envoys/favor/war-weariness are no-ops or substituted.
 - **Culture/Tourism & Great Works** — no tourism, no Great Works, no culture victory.
 - **Science & Economic victories** — not implemented (only domination/religious/score).
 - **Real-world geodata maps in-game** — only a `tools/geodata-poc` spike; not wired into map setup.
 - **Postgres persistence, turn timer, async play-by-cloud + notifications, combat-lock sub-phase** — pending (in-memory only).
-- **Tech eurekas** — the eureka system described across docs is not in the shipped tree.
 
 ---
 

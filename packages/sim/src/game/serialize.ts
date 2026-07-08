@@ -11,6 +11,7 @@ import { attitudeLabel, attitudeScore, sharedVisionPartners } from "./diplomacy"
 import { GLOBAL_MORALE_BASE } from "./morale";
 import { victoryProgress, type VictoryProgressEntry } from "./victory";
 import type { TechId } from "./content";
+import { normalizeGameSpeed, type GameSpeed } from "./game-speed";
 
 export interface DiploView {
   met: number[];
@@ -62,6 +63,8 @@ export interface PlayerView {
   turn: number;
   /** Turn at which the score victory triggers; 0 = unlimited (no turn cap). */
   turnLimit: number;
+  /** How costly research and civics are. */
+  gameSpeed: GameSpeed;
   yourId: number;
   you: {
     gold: number;
@@ -220,6 +223,11 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
 
   const units: Unit[] = [];
   for (const u of state.units.values()) {
+    // Cargo is hidden below decks — never reveal enemy troops stowed on a ship.
+    if (u.aboardShipId !== undefined) {
+      if (u.ownerId === playerId) units.push(u);
+      continue;
+    }
     // Hidden enemy units are concealed even on a visible tile until discovered.
     if (u.ownerId === playerId || (visible.has(`${u.col},${u.row}`) && !u.hidden)) units.push(u);
   }
@@ -236,6 +244,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
   return {
     turn: state.turn,
     turnLimit: state.turnLimit,
+    gameSpeed: normalizeGameSpeed(state.gameSpeed),
     yourId: playerId,
     you: {
       gold: me?.gold ?? 0,
@@ -268,7 +277,12 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
         .map((b) => ({ campKey: b.campKey, untilTurn: b.untilTurn })),
     },
     religions: state.religions.map((r) => ({ ...r, beliefs: [...r.beliefs] })),
-    tradeRoutes: state.tradeRoutes.filter((r) => r.ownerId === playerId).map((r) => ({ ...r })),
+    tradeRoutes: [
+      ...state.tradeRoutes.filter((r) => r.ownerId === playerId),
+      ...state.tradeRoutes.filter((r) => r.escortUnitId !== undefined && r.ownerId !== playerId),
+    ]
+      .filter((r, i, arr) => arr.findIndex((x) => x.id === r.id) === i)
+      .map((r) => ({ ...r, path: [...r.path] })),
     works: state.works
       .filter((w) => w.ownerId === playerId)
       .map((w) => ({ ...w, cityIds: [...w.cityIds], assignedSpecialistIds: [...w.assignedSpecialistIds] })),
@@ -313,6 +327,7 @@ export interface SerializedState {
   log: LogEntry[];
   gameOver: GameOver | null;
   turnLimit: number;
+  gameSpeed: GameSpeed;
   enabledVictories: VictoryKind[];
   religions: Religion[];
   tradeRoutes: TradeRoute[];
@@ -355,6 +370,7 @@ export function serializeState(state: GameState): SerializedState {
     log: state.log,
     gameOver: state.gameOver,
     turnLimit: state.turnLimit,
+    gameSpeed: normalizeGameSpeed(state.gameSpeed),
     enabledVictories: [...(state.enabledVictories ?? defaultEnabledVictories())],
     religions: state.religions,
     tradeRoutes: state.tradeRoutes,
@@ -399,6 +415,7 @@ export function deserializeState(s: SerializedState): GameState {
       : [],
     gameOver: s.gameOver,
     turnLimit: s.turnLimit,
+    gameSpeed: normalizeGameSpeed(s.gameSpeed),
     enabledVictories: s.enabledVictories ? new Set(s.enabledVictories) : defaultEnabledVictories(),
     // Legacy saves predate religion tiers — every faith starts at tier 1.
     religions: (s.religions ?? []).map((r) => ({ ...r, tier: r.tier ?? 1 })),
@@ -442,6 +459,11 @@ export function deserializeState(s: SerializedState): GameState {
       legendsRecruited: p.legendsRecruited ?? 0,
       battlesWon: p.battlesWon ?? 0,
       citiesCaptured: p.citiesCaptured ?? 0,
+      eurekaTriggered: new Set<string>(
+        Array.isArray((p as unknown as { eurekaTriggered: unknown }).eurekaTriggered)
+          ? (p as unknown as { eurekaTriggered: string[] }).eurekaTriggered
+          : []
+      ),
       slottedCivics: p.slottedCivics ?? [],
       unrestTurns: p.unrestTurns ?? 0,
       governmentChangedTurn: p.governmentChangedTurn ?? -Infinity,

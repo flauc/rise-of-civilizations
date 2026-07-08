@@ -12,6 +12,7 @@ import { placeResources } from "./resources";
 import { placeNaturalWonders } from "./natural-wonders";
 import { GLOBAL_MORALE_BASE, startingUnitMorale } from "./morale";
 import type { BarbarianActivity } from "./state";
+import { normalizeGameSpeed, type GameSpeed } from "./game-speed";
 
 export interface NewGameOptions {
   cols?: number;
@@ -33,6 +34,8 @@ export interface NewGameOptions {
   naturalWonders?: boolean;
   /** Starting gold treasury preset for major civ players. */
   startingGold?: "tight" | "balanced" | "generous";
+  /** How costly research and civics are. Defaults to normal. */
+  gameSpeed?: GameSpeed;
   turnLimit?: number;
   /** Decisive win conditions enabled this game. Defaults to all toggleable ones.
    *  (Score at the turn limit and extinction always apply.) */
@@ -323,6 +326,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     log: [],
     gameOver: null,
     turnLimit: opts.turnLimit ?? 120,
+    gameSpeed: normalizeGameSpeed(opts.gameSpeed),
     enabledVictories: opts.enabledVictories
       ? new Set(opts.enabledVictories.filter((v) => TOGGLEABLE_VICTORIES.includes(v)))
       : defaultEnabledVictories(),

@@ -28,6 +28,8 @@ interface BunServeOptions<T> {
     server: BunServer,
   ): Response | undefined | Promise<Response | undefined>;
   websocket?: {
+    /** Seconds of inactivity before the server closes the connection. 0 = disabled. */
+    idleTimeout?: number;
     open?(ws: ServerWebSocket<T>): void | Promise<void>;
     message?(ws: ServerWebSocket<T>, message: string | ArrayBuffer): void | Promise<void>;
     close?(ws: ServerWebSocket<T>, code?: number, reason?: string): void | Promise<void>;

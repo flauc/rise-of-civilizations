@@ -160,11 +160,17 @@ The full playable roster (target **70+**). Each civ is a **data-driven entry** �
 - **Leader active abilities — all 82.** Every civ has one player-triggered leader ability in `leader-abilities.ts`, each with a real effect (spawn units, timed player/city modifiers, instant gold/faith/science/culture, tech steal, finish-current-civic, population levies), a tech-or-civic unlock gate, and a cooldown. This is the most complete special-ability layer in the game. (Note: these are an *active* design that the prose "Civ Ability" column does not describe — the doc column is the passive identity, the leader ability is the cooldown power.)
 - **Generic active *unit* abilities** ([UNIT-ABILITIES.md](UNIT-ABILITIES.md) §3) are now implemented despite that doc's stale "nothing implemented yet" header: `brace, shield_wall, testudo, emplace, charge, shock_charge, trample, fire_and_retreat, skirmish, sunder, pierce, harry, reconnoiter` plus naval `ram, boarding_party, greek_fire, coastal_bombardment`, assigned per unit class in `content.ts` and resolved in `abilities.ts`/`combat.ts`/`commands.ts` with AI and client UI support.
 
+### ✅ Now implemented — Unique Units & Civ-unique abilities
+
+- **Unique Units (UU).** `UNIQUE_UNITS` in `packages/data/src/index.ts` defines every civ's UU: `id` (art key), `civId`, `name`, `replaces` (base `UnitTypeId`), and `bonus` (flat combat strength added on top of the base unit). `UNIQUE_ABILITY_OVERRIDES` in `packages/sim/src/game/content.ts` assigns each UU its civ-unique active-ability kit (e.g. Rome: `pilum, testudo`; Parthia: `parthian_shot`; Persia: `endless_ranks, shield_wall`). These are applied at runtime via `effectiveAbilities` (in `civs.ts`) and `civCombatBonus`, so every civ's units fight differently without requiring separate `UnitTypeId` entries. The training UI badges UU buttons with ★ and surfaces the combat bonus and ability names; the unit panel shows a "★ Unique Unit" callout. The AI factors in the UU bonus when ranking units to train.
+- ~~**Unique Infrastructure (UI).**~~ **Implemented.** Each civ now fields a real, civ-locked **extra** building or tile improvement (never a replacement) — see `UNIQUE_INFRA` in `packages/data/src/index.ts`. Buildings are offered in the owning civ's build queue once their tech is known and grant flat host-city yields plus, for flagship civs, empire-wide `CivEffects`; improvements are built on owned tiles via the Works system for worked-tile yields. Surfaced in the civ picker, showcase, and wiki, with art generated via `--subset unique-infra`.
+- **Civ-unique active abilities** ([UNIT-ABILITIES.md](UNIT-ABILITIES.md) §8) — fully implemented via `UNIQUE_ABILITY_OVERRIDES` in `content.ts`. Every UU with a distinctive historical fighting style has its own ability kit assigned (100+ entries). See the map for the full list.
+
 ### ❌ Not implemented
 
-- **Unique Units (UU).** *None exist as real unit types.* `uniqueUnit` is a descriptive string only — there is no civ-restricted `UnitTypeId`, no "replaces" wiring, no per-civ stats. Base units that happen to share a name (Legionary, Hoplite, Cataphract, War Elephant, Bireme, War Junk…) are defined in `content.ts` and are buildable by **every** civ, not locked to the named one. So the entire "Unique Unit" column is currently cosmetic; civs differentiate combat only through the flat `unitClassCombat` numbers in their `effects`.
-- ~~**Unique Infrastructure (UI).**~~ **Implemented.** Each civ now fields a real, civ-locked **extra** building or tile improvement (never a replacement) — see `UNIQUE_INFRA` in `packages/data/src/index.ts`. Buildings are offered in the owning civ's build queue once their tech is known and grant flat host-city yields plus, for flagship civs, empire-wide `CivEffects`; improvements are built on owned tiles via the Works system for worked-tile yields. Surfaced in the civ picker, showcase, and wiki, with art generated via `--subset unique-infra`.
-- **Civ-unique & enhanced active abilities** ([UNIT-ABILITIES.md](UNIT-ABILITIES.md) §8) — `parthian_shot, feigned_retreat, hussar_charge, othismos, last_stand, repeating_fire, pavise, furor, arrow_storm, siege_assault, war_cart_charge`: **not implemented** (no unit is assigned them; they depend on UUs existing first).
+- **Unique Units (UU).** ~~*None exist as real unit types.*~~ **Implemented** — see above.
+- ~~**Unique Infrastructure (UI).**~~ **Implemented** — see above.
+- ~~**Civ-unique & enhanced active abilities** ([UNIT-ABILITIES.md](UNIT-ABILITIES.md) §8).~~ **Implemented** via `UNIQUE_ABILITY_OVERRIDES`.
 - **Legend (hero) signature abilities** ([UNIT-ABILITIES.md](UNIT-ABILITIES.md) §9) — `duel, rally, grand_ambush, lightning_advance, terror, great_bombard, inspire`: **not implemented.**
 - **The richer prose behaviors of most civ abilities.** Anything beyond a flat stat is *not* modeled. Representative gaps:
   - Sumer *Epic Quest* "extra rewards from clearing barbarian camps" → only `production +10%`.
@@ -182,10 +188,11 @@ The full playable roster (target **70+**). Each civ is a **data-driven entry** �
 | Civ ability — flat `effects` | ✅ | `civs.ts` `playerEffects()` |
 | Civ ability — prose/special behavior | ❌ mostly | — |
 | Leader active ability (82) | ✅ | `leader-abilities.ts` |
-| Unique Unit (civ-locked type) | ❌ | strings only |
-| Unique Infrastructure | ❌ | strings only |
+| Unique Unit (combat bonus + civ-unique abilities) | ✅ | `UNIQUE_UNITS` / `UNIQUE_ABILITY_OVERRIDES` |
+| Unique Infrastructure | ✅ | `UNIQUE_INFRA` in `packages/data` |
 | Generic active unit abilities | ✅ | `content.ts` / `abilities.ts` |
-| Civ-unique / hero active abilities | ❌ | — |
+| Civ-unique active abilities (§8) | ✅ | `UNIQUE_ABILITY_OVERRIDES` in `content.ts` |
+| Hero active abilities (§9) | ❌ | — |
 | Start bias for placement | ❌ | — |
 
 ---

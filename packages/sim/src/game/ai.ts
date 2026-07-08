@@ -23,7 +23,7 @@ import { aiConsiderDiplomacy, atWar, personalityOf, proposeDeal, relationBetween
 import { availablePromotions } from "./combat";
 import { rushCurrencies, canRushWork, canRushTraining, canRushCity, type RushCurrency } from "./rush";
 import { availableTraining } from "./training";
-import { BELIEFS, WONDER_DEFS, type CivEffects, type DiploPersonality } from "@roc/data";
+import { BELIEFS, WONDER_DEFS, uniqueUnitForCiv, type CivEffects, type DiploPersonality } from "@roc/data";
 import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
 import {
   nextTierAt,
@@ -448,6 +448,58 @@ function nearestFeature(
   return best;
 }
 
+/** Nearest discovered tribal village within `maxDist` (Infinity = any). */
+function nearestVillage(
+  state: GameState,
+  unit: Unit,
+  pid: number,
+  maxDist = Infinity,
+): { col: number; row: number } | null {
+  const village = nearestFeature(state, unit, pid, "village");
+  if (!village) return null;
+  if (axialDistance(ax(unit), ax(village)) > maxDist) return null;
+  return village;
+}
+
+/** March on a discovered village — scouts and any military unit can collect it. */
+function aiHuntVillage(state: GameState, unit: Unit, pid: number, maxDist = 24): boolean {
+  const village = nearestVillage(state, unit, pid, maxDist);
+  if (!village) return false;
+  stepToward(state, unit, village.col, village.row, pid);
+  return true;
+}
+
+/**
+ * Race for map features. Villages are strongly preferred — they're one-shot rewards
+ * any rival can steal — and only yield to a camp when it's dramatically closer.
+ * During war, only detour for villages/camps that are a short hop away.
+ */
+function aiHuntMapFeatures(state: GameState, unit: Unit, pid: number): boolean {
+  const atWar = (playerById(state, pid)?.atWar.length ?? 0) > 0;
+  const village = nearestFeature(state, unit, pid, "village");
+  const camp = nearestFeature(state, unit, pid, "barb_camp");
+  if (!village && !camp) return false;
+
+  const dV = village ? axialDistance(ax(unit), ax(village)) : Infinity;
+  const dC = camp ? axialDistance(ax(unit), ax(camp)) : Infinity;
+  const villageMax = atWar ? 10 : 24;
+  const villageOk = village !== null && dV <= villageMax;
+  const campOk = camp !== null && (!atWar || dC <= 12);
+
+  let goal: { col: number; row: number } | null = null;
+  if (villageOk && campOk) {
+    // Prefer the village unless the camp is 3+ tiles closer — camps can wait.
+    goal = dC + 3 < dV ? camp : village;
+  } else if (villageOk) {
+    goal = village;
+  } else if (campOk) {
+    goal = camp;
+  }
+  if (!goal) return false;
+  stepToward(state, unit, goal.col, goal.row, pid);
+  return true;
+}
+
 /** When not at war, wander toward the unexplored frontier instead of idling. */
 function aiExplore(state: GameState, unit: Unit, pid: number): void {
   const goal = nearestUnexplored(state, unit, pid);
@@ -564,10 +616,16 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
 }
 
 /** Highest-strength military unit the city can currently train, or null. */
-function bestTrainableMilitary(trainable: UnitTypeId[]): UnitTypeId | null {
+function bestTrainableMilitary(trainable: UnitTypeId[], civId?: string): UnitTypeId | null {
+  // Include the civ's UU bonus in the strength comparison so the AI always
+  // prefers its unique unit over an equally-strong generic one.
   return trainable
     .filter((t) => isMilitary(t))
-    .sort((a, b) => UNIT_DEFS[b].strength - UNIT_DEFS[a].strength)[0] ?? null;
+    .sort((a, b) => {
+      const bonusA = civId ? (uniqueUnitForCiv(civId, a)?.bonus ?? 0) : 0;
+      const bonusB = civId ? (uniqueUnitForCiv(civId, b)?.bonus ?? 0) : 0;
+      return (UNIT_DEFS[b].strength + bonusB) - (UNIT_DEFS[a].strength + bonusA);
+    })[0] ?? null;
 }
 
 /**
@@ -611,7 +669,10 @@ function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPers
   // Civilians: a scout early (we usually start with one), a trader to link cities. Note
   // expansion continues even during a distant war — safe cities keep settling rather than
   // freezing the whole empire; the army is raised by the frontier and by maxed-out cities.
-  if (!localThreat && exploredFraction(state, player.id) < 0.45 && !has("scout") && tryTrain("scout")) return;
+  if (!localThreat && exploredFraction(state, player.id) < 0.7) {
+    const scouts = units.filter((u) => u.type === "scout").length;
+    if (scouts < 2 && tryTrain("scout")) return;
+  }
   // Expand: a safe city below the empire's target builds settlers from pop 3 (dropping
   // to 2, so it keeps growing). The biggest single lever now that units cost population.
   if (expanding && city.population >= 3 && tryTrain("settler")) return;
@@ -628,7 +689,7 @@ function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPers
     ? cityCount * 2 + 2
     : Math.max(cityCount + (p.aggression > 0.6 ? 3 : 2), 4)) + (escortShortfall ? 2 : 0);
   if (milCount < desired) {
-    const type = bestTrainableMilitary(trainable);
+    const type = bestTrainableMilitary(trainable, player.civId);
     if (type) tryTrain(type);
   }
 }
@@ -937,7 +998,7 @@ function chooseAutoProduction(state: GameState, player: Player, city: City, focu
 function autoTrainMilitary(state: GameState, city: City, player: Player): void {
   if (city.population <= 2 || city.trainingQueue.length > 0) return;
   const trainable = availableTraining(state, player, city);
-  const type = bestTrainableMilitary(trainable);
+  const type = bestTrainableMilitary(trainable, player.civId);
   if (!type) return;
   const cityCount = citiesOf(state, player.id).length;
   const milCount = unitsOf(state, player.id).filter((u) => isMilitary(u.type)).length;
@@ -1543,6 +1604,10 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
     }
   }
 
+  // Race for tribal villages and barbarian camps before other errands — villages
+  // are one-shot prizes any rival can steal, so grab them while we can.
+  if (aiHuntMapFeatures(state, unit, pid)) return;
+
   // Economic warfare: raze an enemy improvement we're standing on (isHostile means
   // we're at war with — or raiding — its owner, so this is never an unprovoked act).
   {
@@ -1559,24 +1624,6 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
   if (objective) {
     stepToward(state, unit, objective.col, objective.row, pid);
     return;
-  }
-
-  // No war to wage: make the roaming pay. March on the nearest known barbarian camp
-  // (gold, and it stops the raider spawns) and snap up tribal villages, heading to
-  // whichever is closer — ties go to the camp, since clearing it removes a standing
-  // threat. This runs ahead of chasing a lone, distant barbarian: better to burn the
-  // nest than trail one wasp across the map.
-  {
-    const camp = nearestFeature(state, unit, pid, "barb_camp");
-    const village = nearestFeature(state, unit, pid, "village");
-    let goal = camp ?? village;
-    if (camp && village) {
-      goal = axialDistance(ax(unit), ax(village)) < axialDistance(ax(unit), ax(camp)) ? village : camp;
-    }
-    if (goal) {
-      stepToward(state, unit, goal.col, goal.row, pid);
-      return;
-    }
   }
 
   // Nothing to collect: pressure the nearest hostile unit, or scout if all is quiet.
@@ -1598,15 +1645,9 @@ function aiScout(state: GameState, unit: Unit, pid: number): void {
       return;
     }
   }
-  // Scouts are the natural village-collectors: any unit triggers a village, and a
-  // scout fans out across the map anyway, so divert to the nearest discovered one
-  // for its free perk before drifting on toward the frontier. (Camps need a military
-  // unit to clear, so scouts leave those alone.)
-  const village = nearestFeature(state, unit, pid, "village");
-  if (village) {
-    stepToward(state, unit, village.col, village.row, pid);
-    return;
-  }
+  // Villages are the scout's top job — any unit can collect them and rivals race
+  // for the same reward, so beeline every discovered one before exploring further.
+  if (aiHuntVillage(state, unit, pid)) return;
   aiExplore(state, unit, pid);
 }
 

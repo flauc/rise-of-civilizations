@@ -3,6 +3,7 @@ import type { City, GameState, Player, ProductionItem } from "./state";
 import { cityAt, currentPlayer, log, playerById, unitsOf, citiesOf, unitAt, areEnemies } from "./state";
 import { isPassableLand, isWaterTerrain } from "./terrain";
 import { computeReachable, isCoastalLand, isCoastalWater, isNavalUnit, isWaterDomain, ejectTrespassers } from "./movement";
+import { boardShip, disembarkFromShip, syncShipCargo } from "./naval-cargo";
 import { updateExplored } from "./visibility";
 import { processCity, advanceResearch, advanceGovernment, availableProduction, autoAssignCitizens, toggleCitizen, applyUnitUpkeep } from "./economy";
 import {
@@ -31,18 +32,20 @@ import {
 } from "./works";
 import { rushCity, rushWork, rushTraining, type RushCurrency } from "./rush";
 import { capitalPopulationBonusFor, BASE_CITY_POPULATION } from "@roc/data";
-import { foundTerritory, expandTerritory, canExpandTo } from "./territory";
+import { foundTerritory, expandTerritory, canExpandTo, tileOwnerId } from "./territory";
 import { onUnitEnter, tickRuins, clearRuin } from "./features";
 import { foundReligion, spreadReligion, buyReligiousUnit, evangelize, purgeHeresy, boardTradeRoute, processTransit, upgradeReligion, pickReligionPerk, moveHolyCity } from "./religion";
 import { trackCircumnavigation } from "./science-victory";
 import { accrueInfluence } from "./culture-victory";
-import { establishTradeRoute, cancelTradeRoute, pruneTradeRoutes } from "./trade";
+import { establishTradeRoute, cancelTradeRoute, assignTradeEscort, leaveTradeEscort, pruneTradeRoutes } from "./trade";
 import { pillageTile, plunderTradeRoute, sackCityCommand } from "./raiding";
 import { bribeBarbarian, recruitBarbarian, pruneBarbarianBribes } from "./bribery";
 import { useLeaderAbility } from "./leader-abilities";
 import { accrueGreatPeople, activateGreatPerson } from "./great-people";
 import { recruitLegend, tickLegends } from "./legends";
+import { extendLegendsOnTrigger } from "./legend-lifespan";
 import { tickLegendPassives } from "./legend-passives";
+import { checkEurekas } from "./eurekas";
 import {
   declareWar,
   makePeace,
@@ -68,14 +71,30 @@ import {
   civicSlotCapacity,
   getCivic,
   getGovernment,
-  civicCost,
   civicLegal,
   nextCityNameForCiv,
   unitDisplayName,
 } from "./civs";
 import { aiTakeTurn, autoManageCities, governorPickProduction } from "./ai";
 import { onUnitPromoted, decayGlobalMorale, UPKEEP_MODIFIER_MIN, UPKEEP_MODIFIER_MAX } from "./morale";
-import { UNIT_DEFS, TECH_DEFS, techUnlocked, computeResearchPath, advanceResearchQueue, type ActiveAbilityId, type BuildingId, type PromotionId, type TechId, type UnitTypeId } from "./content";
+import {
+  UNIT_DEFS,
+  TECH_DEFS,
+  techUnlocked,
+  computeResearchPath,
+  advanceResearchQueue,
+  UNIT_UPGRADES,
+  unitUpgradeCost,
+  type ActiveAbilityId,
+  type BuildingId,
+  type PromotionId,
+  type TechId,
+  type UnitTypeId,
+} from "./content";
+import {
+  scaledCivicCost,
+  scaledCivicSwapFee,
+} from "./game-speed";
 import { startTraining, cancelTraining } from "./training";
 
 /** Turns before a player may switch government again (docs/CIVICS §2.4). */
@@ -108,6 +127,7 @@ function switchGovernment(state: GameState, player: Player, targetId: string): v
   if (player.slottedCivics.length > cap) player.slottedCivics = player.slottedCivics.slice(0, cap);
   if (unrest > 0) {
     log(state, `${player.name} embraced ${to.name} — ${unrest} turn${unrest > 1 ? "s" : ""} of unrest grip the realm.`, { actorId: player.id, targetIds: [player.id] });
+    if (unrest >= 3) extendLegendsOnTrigger(state, player.id, "revolution");
   } else {
     log(state, `${player.name} established its first government: ${to.name}.`, { actorId: player.id, targetIds: [player.id] });
   }
@@ -162,6 +182,8 @@ export type Command =
   | { type: "moveHolyCity"; cityId: number }
   | { type: "establishTradeRoute"; unitId: number; destCityId: number }
   | { type: "cancelTradeRoute"; routeId: number }
+  | { type: "assignTradeEscort"; unitId: number; routeId: number }
+  | { type: "leaveTradeEscort"; routeId: number }
   | { type: "bribeBarbarian"; unitId: number }
   | { type: "recruitBarbarian"; unitId: number }
   | { type: "pillage"; unitId: number }
@@ -169,6 +191,8 @@ export type Command =
   | { type: "sackCity"; unitId: number }
   | { type: "embark"; unitId: number; col: number; row: number }
   | { type: "disembark"; unitId: number; col: number; row: number }
+  | { type: "boardShip"; unitId: number; shipId: number }
+  | { type: "disembarkFromShip"; unitId: number }
   | { type: "declareWar"; targetId: number }
   | { type: "makePeace"; targetId: number }
   | { type: "denounce"; targetId: number }
@@ -182,6 +206,7 @@ export type Command =
   | { type: "useLeaderAbility" }
   | { type: "activateGreatPerson"; greatPersonId: string }
   | { type: "recruitLegend"; legendId: string; cityId?: number }
+  | { type: "upgradeUnit"; unitId: number }
   | { type: "setUpkeepModifier"; pct: number }
   | { type: "endTurn" };
 
@@ -202,6 +227,10 @@ export function beginTurn(state: GameState): void {
   if (state.currentPlayerIndex === 0) tickRuins(state); // ruins fade once per round
   for (const u of unitsOf(state, player.id)) {
     if (u.sleeping) continue;
+    if (u.aboardShipId !== undefined) {
+      u.movementLeft = unitMovement(state, u); // may jump ashore this turn
+      continue;
+    }
     u.movementLeft = unitMovement(state, u);
     // A concealed stealth-mover creeps at one third its normal pace.
     if (u.hidden && canStealthMove(state, u)) u.movementLeft = stealthMovement(u.movementLeft);
@@ -218,7 +247,8 @@ export function beginTurn(state: GameState): void {
     processCity(state, c, player);
   }
   autoManageCities(state, player); // governor mode: opted-in cities manage themselves
-  advanceResearch(state, player); // complete at most one tech from the pooled science
+  checkEurekas(state, player);      // fire any newly-met eureka conditions before research ticks
+  advanceResearch(state, player);   // complete at most one tech from the pooled science
   advanceGovernment(state, player); // and at most one government node from the pooled culture
   tickUnrest(state, player); // wind down post-revolution unrest (opens a free re-slot window)
   ejectTrespassers(state); // bump any unit a freshly-expanded border just enclosed off foreign soil
@@ -298,6 +328,7 @@ export function applyCommand(
       const unit = state.units.get(cmd.unitId);
       if (!unit) return fail("no such unit");
       if (unit.ownerId !== player.id) return fail("not your unit");
+      if (unit.aboardShipId !== undefined) return fail("aboard a ship — disembark first");
       const entry = computeReachable(state, unit).get(`${cmd.col},${cmd.row}`);
       if (!entry) return fail("tile not reachable");
       // Stepping onto a concealed enemy springs their ambush: the intruder is
@@ -320,6 +351,7 @@ export function applyCommand(
       unit.col = cmd.col;
       unit.row = cmd.row;
       unit.movementLeft = Math.max(0, unit.movementLeft - entry.cost);
+      if (isNavalUnit(unit)) syncShipCargo(state, unit);
       if (unit.stance === "emplace" || unit.stance === "wagenburg") unit.stance = null; // moving packs up an engine / unchains the wagons
       // Moving breaks concealment — unless this unit can creep while hidden.
       if (unit.hidden && !canStealthMove(state, unit)) breakCover(state, unit);
@@ -454,6 +486,33 @@ export function applyCommand(
         unit.hp = Math.min(unitMaxHp(unit), unit.hp + 15);
       }
       onUnitPromoted(state, unit); // the unit and nearby allies are heartened
+      return ok;
+    }
+
+    case "upgradeUnit": {
+      const unit = state.units.get(cmd.unitId);
+      if (!unit) return fail("no such unit");
+      if (unit.ownerId !== player.id) return fail("not your unit");
+      const toType = UNIT_UPGRADES[unit.type];
+      if (!toType) return fail("this unit has no upgrade");
+      const toDef = UNIT_DEFS[toType];
+      if (toDef.reqTech && !player.researched.has(toDef.reqTech)) return fail("required tech not researched");
+      if (toDef.reqResource && (player.resources[toDef.reqResource.resource] ?? 0) < toDef.reqResource.count)
+        return fail("required resource not available");
+      if (tileOwnerId(state, unit.col, unit.row) !== player.id) return fail("must be on your own territory");
+      const cost = unitUpgradeCost(unit.type, toType);
+      if (player.gold < cost) return fail("not enough gold");
+      player.gold -= cost;
+      unit.type = toType;
+      unit.hp = unitMaxHp(unit); // upgrade restores to full tier HP
+      unit.movementLeft = 0; // unit loses its turn
+      unit.stance = null;     // clear any stance (new unit type may not support it)
+      if (toDef.gunpowder) { unit.loaded = true; unit.reloading = false; }
+      log(state, `${player.name} upgraded a unit to ${toDef.name} (cost ${cost}🪙).`, {
+        actorId: player.id,
+        targetIds: [player.id],
+        tile: { col: unit.col, row: unit.row },
+      });
       return ok;
     }
 
@@ -614,11 +673,12 @@ export function applyCommand(
       if (player.civicsAdopted.has(cmd.civicId)) return fail("already adopted");
       if (!civicLegal(player.government, cmd.civicId)) return fail("not legal under your government");
       if ((player.lastCivicAdoptedTurn ?? -Infinity) === state.turn) return fail("only one civic may be adopted per turn");
-      const cost = civicCost(def, player.civicsAdopted.size);
+      const cost = scaledCivicCost(state, def, player.civicsAdopted.size);
       if (player.cultureProgress < cost) return fail("not enough culture");
       player.cultureProgress -= cost;
       player.civicsAdopted.add(cmd.civicId);
       player.lastCivicAdoptedTurn = state.turn;
+      extendLegendsOnTrigger(state, player.id, "civic_adopted");
       // A newly adopted civic slots for free if there is room.
       if (player.slottedCivics.length < civicSlotCapacity(player)) player.slottedCivics.push(cmd.civicId);
       log(state, `${player.name} adopted the ${def.name} civic.`, { actorId: player.id, targetIds: [player.id] });
@@ -640,7 +700,7 @@ export function applyCommand(
       // Swapping a civic out costs 10% of its base tier cost — unless this is a
       // free re-slot window (the turn you adopt, or the turn unrest ends).
       if (!inFreeReslotWindow(state, player)) {
-        const fee = Math.round((getCivic(cmd.civicId)?.cost ?? 0) * 0.1);
+        const fee = scaledCivicSwapFee(state, getCivic(cmd.civicId)?.cost ?? 0);
         if (player.cultureProgress < fee) return fail("not enough culture for the swap fee");
         player.cultureProgress -= fee;
       }
@@ -688,6 +748,16 @@ export function applyCommand(
 
     case "cancelTradeRoute": {
       return cancelTradeRoute(state, cmd.routeId, player.id);
+    }
+
+    case "assignTradeEscort": {
+      const r = assignTradeEscort(state, cmd.unitId, cmd.routeId, player.id);
+      return r.ok ? ok : fail(r.error ?? "cannot assign escort");
+    }
+
+    case "leaveTradeEscort": {
+      const r = leaveTradeEscort(state, cmd.routeId, player.id);
+      return r.ok ? ok : fail(r.error ?? "cannot leave escort");
     }
 
     case "bribeBarbarian":
@@ -771,6 +841,18 @@ export function applyCommand(
       unit.movementLeft = 0; // disembarking consumes the turn's movement
       updateExplored(state, player.id);
       return ok;
+    }
+
+    case "boardShip": {
+      const res = boardShip(state, cmd.unitId, cmd.shipId, player.id);
+      if (res.ok) updateExplored(state, player.id);
+      return res;
+    }
+
+    case "disembarkFromShip": {
+      const res = disembarkFromShip(state, cmd.unitId, player.id);
+      if (res.ok) updateExplored(state, player.id);
+      return res;
     }
 
     case "declareWar":

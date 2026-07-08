@@ -41,6 +41,8 @@ export interface SessionStartEvent {
   startingGold?: string;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit?: number;
+  /** How costly research and civics are, e.g. "fast"/"normal"/"slow"/"epic". */
+  gameSpeed?: string;
   /** Chosen civ per AI opponent (null = random). */
   aiCivIds?: (string | null)[];
   /** Decisive win conditions enabled this game (e.g. ["domination","science"]). */

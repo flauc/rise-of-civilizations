@@ -15,8 +15,13 @@ import { UNIT_DEFS, isMilitary, type UnitTypeId } from "./content";
 import { offsetNeighbors } from "./movement";
 import { isWaterTerrain } from "./terrain";
 import { startingUnitMorale } from "./morale";
+import { eraUnlocked } from "./era";
 import { legendSituationalCombatBonus } from "./legend-effects";
+import { LEGEND_DEFAULT_LIFESPAN } from "./legend-lifespan";
 import { grantLegendDeathFaith } from "./works";
+
+/** Flat reduction so hero combat bonuses aren't overwhelming at spawn. */
+const LEGEND_COMBAT_NERF = 2;
 
 export type { LegendDef };
 
@@ -39,6 +44,13 @@ export function availableLegends(state: GameState): LegendDef[] {
   return LEGENDS.filter((l) => !taken.has(l.id));
 }
 
+/** Globally available legends the player has reached the right era to recruit. */
+export function availableLegendsForPlayer(state: GameState, playerId: number): LegendDef[] {
+  const player = playerById(state, playerId);
+  if (!player) return [];
+  return availableLegends(state).filter((l) => eraUnlocked(player, l.era));
+}
+
 export interface LegendResult {
   ok: boolean;
   error?: string;
@@ -52,6 +64,7 @@ export function canRecruitLegend(state: GameState, playerId: number, legendId: s
   const def = getLegend(legendId);
   if (!def) return { ok: false, error: "unknown legend" };
   if ((state.recruitedLegends ?? []).includes(legendId)) return { ok: false, error: "already recruited" };
+  if (!eraUnlocked(player, def.era)) return { ok: false, error: `${def.era} era not reached yet` };
   const cost = legendCost(player.legendsRecruited ?? 0);
   if (player.faith < cost) return { ok: false, error: `not enough faith (need ${cost})` };
   if (citiesOf(state, playerId).length === 0) return { ok: false, error: "you have no city" };
@@ -100,9 +113,9 @@ export function recruitLegend(
 
   const id = state.nextEntityId++;
   const morale = Math.min(200, startingUnitMorale(state, playerId) + 50); // heroes are steadfast
-  const unit = makeUnit(id, playerId, def.baseType as UnitTypeId, spawn.col, spawn.row, 30, morale);
+  const unit = makeUnit(id, playerId, def.baseType as UnitTypeId, spawn.col, spawn.row, 0, morale);
   unit.legendId = def.id;
-  unit.legendExpiresOnTurn = state.turn + def.lifespan;
+  unit.legendExpiresOnTurn = state.turn + LEGEND_DEFAULT_LIFESPAN;
   state.units.set(id, unit);
 
   // No turn-start pop-up for your own recruitment (you just chose it); the log
@@ -148,7 +161,10 @@ export function tickLegends(state: GameState, playerId: number): void {
  */
 export function legendCombatBonus(state: GameState, unit: Unit): number {
   let bonus = 0;
-  if (unit.legendId) bonus += getLegend(unit.legendId)?.combatBonus ?? 0;
+  if (unit.legendId) {
+    const raw = getLegend(unit.legendId)?.combatBonus ?? 0;
+    bonus += Math.max(0, raw - LEGEND_COMBAT_NERF);
+  }
   // Aura: only military units benefit from a nearby hero's inspiration.
   if (isMilitary(unit.type)) {
     let aura = 0;

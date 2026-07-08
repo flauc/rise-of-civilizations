@@ -4,6 +4,7 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": [],
     "noEmit": true,
+    "ignoreDeprecations": "5.0",
     "baseUrl": "../..",
     "paths": {
       "@roc/shared": ["packages/shared/src/index.ts"]
