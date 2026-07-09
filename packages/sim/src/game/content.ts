@@ -325,7 +325,11 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
 export type BuildingId =
   | "granary" | "workshop" | "forge" | "walls"
   | "market" | "bank" | "library" | "academy" | "aqueduct" | "harbor" | "lighthouse" | "monument" | "amphitheater"
-  | "museum" | "shrine" | "temple";
+  | "museum" | "shrine" | "temple"
+  // Buildings Expansion — military production, the fortification chain, growth & support.
+  | "drill_yard" | "armoury" | "arsenal"
+  | "castle" | "ballista_towers" | "bombard_tower"
+  | "storehouse" | "infirmary" | "triumphal_arch" | "beacon_tower";
 
 /**
  * Dedicated unit-training building families. Each trains units of one or more unit
@@ -771,6 +775,38 @@ export function isNaval(def: UnitDef): boolean {
   return def.cls === "naval_melee" || def.cls === "naval_ranged";
 }
 
+/**
+ * Structured, stackable building effects (Buildings Expansion). Kept as a separate
+ * block rather than widening the legacy `effect` union so combat/economy/training can
+ * read each mechanic directly. Sum-type fields (defense, HP, XP, morale, bombard,
+ * carryover) accumulate across a city's buildings; the aura fields take the strongest.
+ * See `sumBuildingEffects`.
+ */
+export interface BuildingEffects {
+  /** Percent change to training time in this city (−15 = trains 15% faster). */
+  trainTimePercent?: number;
+  /** Extra starting XP for units trained in this city (Armoury). */
+  trainedUnitXp?: number;
+  /** Extra starting morale for units trained in this city (Arsenal). */
+  trainedUnitMorale?: number;
+  /** Flat city-defense bonus (Castle). */
+  cityDefense?: number;
+  /** Flat city max-HP bonus (Castle). */
+  cityMaxHp?: number;
+  /** Percent bonus to the city's bombard damage (Ballista Towers). */
+  bombardPercent?: number;
+  /** Extra city bombards allowed per turn (Bombard Tower). */
+  extraBombards?: number;
+  /** Fraction (0–1) of the next citizen pre-filled on growth (Storehouse). */
+  growthCarryover?: number;
+  /** Heal friendly units within `radius` tiles by `amount` HP/turn (Infirmary). */
+  healAura?: { radius: number; amount: number };
+  /** Grant nearby friendly units morale when an enemy dies near the city (Triumphal Arch). */
+  victoryMorale?: { radius: number; amount: number };
+  /** Grant friendly cities within `radius` flat city-defense (Beacon Tower). */
+  cityDefenseAura?: { radius: number; amount: number };
+}
+
 export interface BuildingDef {
   id: BuildingId;
   name: string;
@@ -780,6 +816,11 @@ export interface BuildingDef {
   reqResource?: { resource: string; count: number };
   yields: { food?: number; production?: number; gold?: number; science?: number; culture?: number; faith?: number };
   effect?: "walls" | "barracks" | "harbor" | "lighthouse";
+  /** Another building that must already exist in the city to construct this one
+   *  (the fortification chain: Castle needs Walls; Bombard Tower needs Castle). */
+  reqBuilding?: BuildingId;
+  /** Structured mechanical effects (Buildings Expansion). */
+  effects?: BuildingEffects;
   /** Building can only be constructed in a city adjacent to a water tile (harbors, lighthouses). */
   requiresCoastal?: boolean;
 }
@@ -803,6 +844,21 @@ export const BUILDING_DEFS: Record<BuildingId, BuildingDef> = {
   museum: B({ id: "museum", name: "Museum", cost: 34, reqTech: "philosophy", yields: { culture: 4 } }),
   shrine: B({ id: "shrine", name: "Shrine", cost: 18, reqTech: "ritual_burial", yields: { faith: 2 } }),
   temple: B({ id: "temple", name: "Temple", cost: 28, reqTech: "writing", yields: { faith: 2, culture: 1 } }),
+
+  // ---- Buildings Expansion --------------------------------------------------
+  // Military production — support the training system (train.ts folds these in).
+  drill_yard: B({ id: "drill_yard", name: "Drill Yard", cost: 28, reqTech: "phalanx", yields: {}, effects: { trainTimePercent: -15 } }),
+  armoury: B({ id: "armoury", name: "Armoury", cost: 30, reqTech: "iron_bloomery", yields: {}, effects: { trainedUnitXp: 10 } }),
+  arsenal: B({ id: "arsenal", name: "Arsenal", cost: 44, reqTech: "gunpowder", yields: {}, effects: { trainTimePercent: -15, trainedUnitMorale: 10 } }),
+  // City defense — the walls chain (combat.ts folds these in).
+  castle: B({ id: "castle", name: "Castle", cost: 42, reqTech: "engineering", reqBuilding: "walls", yields: {}, effects: { cityDefense: 8, cityMaxHp: 60 } }),
+  ballista_towers: B({ id: "ballista_towers", name: "Ballista Towers", cost: 34, reqTech: "torsion_engines", reqBuilding: "walls", yields: {}, effects: { bombardPercent: 50 } }),
+  bombard_tower: B({ id: "bombard_tower", name: "Bombard Tower", cost: 46, reqTech: "firearms", reqBuilding: "castle", yields: {}, effects: { extraBombards: 1 } }),
+  // Growth & support.
+  storehouse: B({ id: "storehouse", name: "Storehouse", cost: 22, reqTech: "irrigation", yields: {}, effects: { growthCarryover: 0.3 } }),
+  infirmary: B({ id: "infirmary", name: "Infirmary", cost: 30, reqTech: "theology", yields: {}, effects: { healAura: { radius: 2, amount: 5 } } }),
+  triumphal_arch: B({ id: "triumphal_arch", name: "Triumphal Arch", cost: 36, reqTech: "monumental_architecture", yields: { culture: 1 }, effects: { victoryMorale: { radius: 3, amount: 5 } } }),
+  beacon_tower: B({ id: "beacon_tower", name: "Beacon Tower", cost: 26, reqTech: "optics", yields: {}, effects: { cityDefenseAura: { radius: 6, amount: 2 } } }),
 };
 
 // ---- Training buildings (unit-class production families) ------------------
@@ -1199,6 +1255,72 @@ export function getBuildingDef(id: string): BuildingDef | undefined {
   return BUILDING_DEFS[id as BuildingId] ?? UNIQUE_BUILDING_DEFS[id];
 }
 
+/** Maximum stacked city-defense from Beacon Towers (three towers), so beacon-spam
+ *  cannot trivialize a frontier's defense. */
+export const BEACON_DEFENSE_CAP = 6;
+
+/** Aggregated numeric building effects for a city's built buildings. Sum-type fields
+ *  accumulate; the aura fields are surfaced as the strongest single source (auras are
+ *  resolved spatially in combat/economy, not summed per-city). */
+export interface AggregatedBuildingEffects {
+  trainTimePercent: number;
+  trainedUnitXp: number;
+  trainedUnitMorale: number;
+  cityDefense: number;
+  cityMaxHp: number;
+  bombardPercent: number;
+  extraBombards: number;
+  growthCarryover: number;
+  healAura: number; // strongest heal amount from any Infirmary here (0 = none)
+  healAuraRadius: number;
+}
+
+/** Sum the structured effects of every building a city owns (see BuildingEffects). */
+export function sumBuildingEffects(buildings: readonly string[]): AggregatedBuildingEffects {
+  const out: AggregatedBuildingEffects = {
+    trainTimePercent: 0, trainedUnitXp: 0, trainedUnitMorale: 0,
+    cityDefense: 0, cityMaxHp: 0, bombardPercent: 0, extraBombards: 0,
+    growthCarryover: 0, healAura: 0, healAuraRadius: 0,
+  };
+  for (const id of buildings) {
+    const e = getBuildingDef(id)?.effects;
+    if (!e) continue;
+    out.trainTimePercent += e.trainTimePercent ?? 0;
+    out.trainedUnitXp += e.trainedUnitXp ?? 0;
+    out.trainedUnitMorale += e.trainedUnitMorale ?? 0;
+    out.cityDefense += e.cityDefense ?? 0;
+    out.cityMaxHp += e.cityMaxHp ?? 0;
+    out.bombardPercent += e.bombardPercent ?? 0;
+    out.extraBombards += e.extraBombards ?? 0;
+    out.growthCarryover = Math.max(out.growthCarryover, e.growthCarryover ?? 0);
+    if (e.healAura && e.healAura.amount > out.healAura) {
+      out.healAura = e.healAura.amount;
+      out.healAuraRadius = e.healAura.radius;
+    }
+  }
+  return out;
+}
+
+/** Human-readable one-liner for a Buildings-Expansion building's special effect
+ *  (used by buildingInfo, the production tooltips, and the generated wiki roster). */
+export function buildingEffectText(id: string): string | null {
+  const e = getBuildingDef(id)?.effects;
+  if (!e) return null;
+  const parts: string[] = [];
+  if (e.trainTimePercent) parts.push(`units train ${Math.abs(e.trainTimePercent)}% ${e.trainTimePercent < 0 ? "faster" : "slower"}`);
+  if (e.trainedUnitXp) parts.push(`trained units start with +${e.trainedUnitXp} XP`);
+  if (e.trainedUnitMorale) parts.push(`trained units start with +${e.trainedUnitMorale} morale`);
+  if (e.cityDefense) parts.push(`+${e.cityDefense} city defense`);
+  if (e.cityMaxHp) parts.push(`+${e.cityMaxHp} city HP`);
+  if (e.bombardPercent) parts.push(`city bombard damage +${e.bombardPercent}%`);
+  if (e.extraBombards) parts.push(`city can bombard ${e.extraBombards + 1}× per turn`);
+  if (e.growthCarryover) parts.push(`on growth, the next citizen starts ${Math.round(e.growthCarryover * 100)}% complete`);
+  if (e.healAura) parts.push(`friendly units within ${e.healAura.radius} tiles heal +${e.healAura.amount} HP/turn`);
+  if (e.victoryMorale) parts.push(`when an enemy dies within ${e.victoryMorale.radius} tiles, your nearby units gain +${e.victoryMorale.amount} morale`);
+  if (e.cityDefenseAura) parts.push(`+${e.cityDefenseAura.amount} city defense to friendly cities within ${e.cityDefenseAura.radius} tiles (stacks to +${BEACON_DEFENSE_CAP})`);
+  return parts.join("; ") || null;
+}
+
 export function buildingInfo(id: string): string {
   const d = getBuildingDef(id);
   if (!d) return "—";
@@ -1214,6 +1336,9 @@ export function buildingInfo(id: string): string {
   if (d.effect === "barracks") parts.push("+city defense; new units gain XP");
   if (d.effect === "harbor") parts.push("heals adjacent naval units; +trade gold");
   if (d.effect === "lighthouse") parts.push("+1 sight for naval units in this city");
+  const fx = buildingEffectText(id);
+  if (fx) parts.push(fx);
+  if (d.reqBuilding) parts.push(`requires ${getBuildingDef(d.reqBuilding)?.name ?? d.reqBuilding}`);
   return parts.join(", ") || "—";
 }
 

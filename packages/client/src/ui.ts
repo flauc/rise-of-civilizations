@@ -77,6 +77,8 @@ import {
   unitsOf,
   cityDefenseStrength,
   cityBombardTargets,
+  cityBombardsUsed,
+  cityBombardAllowance,
   cityMaxHp,
   foodToGrow,
   cityFoodGrowth,
@@ -2404,7 +2406,31 @@ export function createUI(handlers: UIHandlers): UI {
         );
       })
       .join("");
-    if (!shown.length) html += `<div class="sub" style="margin-top:10px">Nothing available here yet.</div>`;
+    // Greyed, non-buildable rows for buildings whose tech is known but whose
+    // prerequisite building isn't up yet (the fortification chain) — so the player can
+    // see what unlocks next (same idea as the coastal-only greying).
+    const lockedBuildings =
+      prodTab === "building"
+        ? Object.values(BUILDING_DEFS).filter(
+            (def) =>
+              def.reqBuilding &&
+              (!def.reqTech || player.researched.has(def.reqTech)) &&
+              !city.buildings.includes(def.id) &&
+              !city.buildings.includes(def.reqBuilding),
+          )
+        : [];
+    html += lockedBuildings
+      .map((def) => {
+        const reqName = getBuildingDef(def.reqBuilding!)?.name ?? def.reqBuilding;
+        return (
+          `<div class="pcard locked" data-locked="1">` +
+          `<div style="flex:1"><div><b>${def.name}</b> <span class="sub">· 🔒 Requires ${reqName}</span></div>` +
+          `<div class="sub">${buildingInfo(def.id)}</div></div>` +
+          `<span class="cost">${def.cost}⚒️</span></div>`
+        );
+      })
+      .join("");
+    if (!shown.length && !lockedBuildings.length) html += `<div class="sub" style="margin-top:10px">Nothing available here yet.</div>`;
     html += `</div>`;
     production.innerHTML = html;
     production.querySelector<HTMLButtonElement>("#pclose")!.addEventListener("click", () => {
@@ -2419,6 +2445,7 @@ export function createUI(handlers: UIHandlers): UI {
     );
     production.querySelectorAll<HTMLDivElement>(".pcard").forEach((el) =>
       el.addEventListener("click", () => {
+        if (el.dataset.locked) return; // greyed prerequisite row — not buildable yet
         const kind = el.dataset.kind;
         const item: ProductionItem =
           kind === "trainingBuilding"
@@ -3923,8 +3950,13 @@ export function createUI(handlers: UIHandlers): UI {
     // Bombard button: only shown when an enemy is actually in range, greyed once the
     // city has fired this turn (one shot per turn). Manual — never auto-fires.
     const canBombardNow = isOwner && cityBombardTargets(state, city).length > 0;
+    const bombardsLeft = cityBombardAllowance(city) - cityBombardsUsed(city);
+    const bombardSpent = bombardsLeft <= 0;
+    const bombardTitle = bombardSpent
+      ? "No bombards left this turn"
+      : `Bombard a nearby enemy (${bombardsLeft} left this turn)`;
     const bombardBtn = canBombardNow
-      ? `<button class="mini-btn${city.rangedAttackUsed ? "" : " bombard-ready"}" id="city-bombard"${city.rangedAttackUsed ? " disabled" : ""} title="${city.rangedAttackUsed ? "Already bombarded this turn" : "Bombard a nearby enemy (once per turn)"}">💥</button>`
+      ? `<button class="mini-btn${bombardSpent ? "" : " bombard-ready"}" id="city-bombard"${bombardSpent ? " disabled" : ""} title="${bombardTitle}">💥</button>`
       : "";
     const governorPicker =
       isOwner && governorPickerOpen

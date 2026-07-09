@@ -214,7 +214,7 @@ export function beginTurn(state: GameState): void {
   gatherPlayerResources(state, player.id);
   tickWonders(state, player.id); // active wonder effects (e.g. the Colossus's free warships)
   for (const c of citiesOf(state, player.id)) {
-    c.rangedAttackUsed = false;
+    c.rangedAttacksUsed = 0;
     processCity(state, c, player);
   }
   autoManageCities(state, player); // governor mode: opted-in cities manage themselves
@@ -385,7 +385,7 @@ export function applyCommand(
         foundedAsCapital: isCapital,
         hp: 0,
         lastAttackedTurn: 0,
-        rangedAttackUsed: false,
+        rangedAttacksUsed: 0,
         modifiers: [],
       };
       state.cities.set(id, city);

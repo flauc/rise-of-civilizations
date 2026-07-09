@@ -42,7 +42,7 @@ export function startSimultaneousTurn(state: GameState): void {
     gatherPlayerResources(state, p.id); // stockpile strategic resources for the turn
     tickWonders(state, p.id); // active wonder effects (e.g. the Colossus's free warships)
     for (const c of state.cities.values()) {
-      if (c.ownerId === p.id) c.rangedAttackUsed = false;
+      if (c.ownerId === p.id) c.rangedAttacksUsed = 0;
     }
     towerBombardment(state, p.id);
     updateExplored(state, p.id);

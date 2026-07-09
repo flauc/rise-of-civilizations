@@ -19,6 +19,8 @@ import {
   expansionCandidates,
   nextExpansionTile,
   cityBombardTargets,
+  cityBombardsUsed,
+  cityBombardAllowance,
   UNIT_DEFS,
   TERRAIN_NAMES,
   isRough,
@@ -416,8 +418,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       } else {
         const city = st().cities.get(cityId);
         if (!city) return;
-        if (city.rangedAttackUsed) {
-          ui.banner("This city has already bombarded this turn.");
+        if (cityBombardsUsed(city) >= cityBombardAllowance(city)) {
+          ui.banner("This city has no bombards left this turn.");
           cancelBombard();
         } else {
           const targets = cityBombardTargets(st(), city);

@@ -7,6 +7,12 @@ import {
   CIVILIZATIONS,
   UNIT_DEFS,
   UNIQUE_UNITS,
+  BUILDING_DEFS,
+  TRAINING_BUILDING_DEFS,
+  TRAINING_CLASSES,
+  trainingTier,
+  buildingInfo,
+  type BuildingId,
   baseTrainTime,
   TERRAIN_NAMES,
   TERRAIN_YIELDS,
@@ -316,7 +322,8 @@ function renderGameplay(): string {
       "Construction & Training",
       `<p>Cities do two separate things. <b>Construction</b> spends production to raise <b>buildings, wonders and conversion projects</b> — one item at a time.</p>` +
         `<p>Units are no longer built; they are <b>trained</b>. To field an army a city must first construct the <b>training building</b> for that unit's class — a <b>Barracks</b> (melee), <b>Archery Range</b> (ranged), <b>Stable</b> (cavalry), <b>Siege Workshop</b> (siege) or <b>Shipyard</b> (naval) — then train units there. Each building has <b>five tiers</b> that train faster, raise a recruit's starting morale and experience, and let more units train at once.</p>` +
-        `<p>Every trained unit <b>costs one population</b> — a citizen leaves the city to take up arms — so the real limit on your army is <b>food and growth</b>, not production. Settlers, Traders and Scouts also cost a citizen but are trained from the city centre with no building required. You can cancel a unit in training to recover the citizen, or spend gold (or faith/culture, with the right perk) to rush it out.</p>`,
+        `<p>Every trained unit <b>costs one population</b> — a citizen leaves the city to take up arms — so the real limit on your army is <b>food and growth</b>, not production. Settlers, Traders and Scouts also cost a citizen but are trained from the city centre with no building required. You can cancel a unit in training to recover the citizen, or spend gold (or faith/culture, with the right perk) to rush it out.</p>` +
+        `<p>Ordinary construction still has plenty to build. Alongside the economy and culture buildings, a set of <b>support and defence</b> buildings back the army: a <b>Drill Yard</b>, <b>Armoury</b> and <b>Arsenal</b> speed training and send recruits off with more experience and morale; a <b>Storehouse</b> keeps a food reserve so growth never restarts from empty; and a fortification chain — <b>Walls → Castle → Bombard Tower</b>, with <b>Ballista Towers</b> and a <b>Beacon Tower</b> network — hardens a city and lets it bombard attackers (twice a turn with a Bombard Tower). An <b>Infirmary</b> heals nearby units and a <b>Triumphal Arch</b> rallies them when the enemy falls. See <b>Cities → Buildings</b> for the full roster.</p>`,
     ) +
     section(
       "Exploration",
@@ -418,7 +425,8 @@ function renderCombat(): string {
     ) +
     section(
       "Cities",
-      `<p>Cities have their own combat strength based on population and buildings. Enemy units must attack from adjacent tiles; cities cannot be entered until captured.</p>`,
+      `<p>Cities have their own combat strength and HP based on population and buildings. Enemy units must attack from adjacent tiles; cities cannot be entered until captured.</p>` +
+        `<p><b>Fortifications</b> stack up a defence chain: <b>Walls</b> add strength and HP, a <b>Castle</b> hardens the core further (+defence, +HP), <b>Ballista Towers</b> boost the city's bombardment, and a <b>Beacon Tower</b> network lends defence to friendly cities in signalling range. A city bombards an adjacent enemy <b>once per turn</b> for free — or <b>twice</b> once it has a <b>Bombard Tower</b>.</p>`,
     )
   );
 }
@@ -689,6 +697,97 @@ function renderLegends(): string {
   );
 }
 
+// One emoji per building, drawn from the app's icon set (see icons.ts EMOJI_ICON).
+const BUILDING_GLYPH: Record<BuildingId, string> = {
+  granary: "🌾", storehouse: "🏺", workshop: "🛠️", forge: "🔨", walls: "🧱",
+  market: "🪙", bank: "🪙", library: "📖", academy: "🔬", aqueduct: "🏠",
+  harbor: "⚓", lighthouse: "✨", monument: "★", amphitheater: "🎭", museum: "🎭",
+  shrine: "🙏", temple: "⛪",
+  drill_yard: "🎯", armoury: "🛡️", arsenal: "🏭", castle: "🏰", ballista_towers: "🗼",
+  bombard_tower: "💣", infirmary: "⚕️", triumphal_arch: "🏛️", beacon_tower: "🔥",
+};
+
+// Roster order, grouped the way the four building roles read (Growth & Economy /
+// Science & Culture / Faith / Military & Defense). Generated straight from
+// BUILDING_DEFS so it can never drift from the actual game defs.
+const BUILDING_ROSTER: { title: string; ids: BuildingId[] }[] = [
+  { title: "Growth & Economy", ids: ["granary", "storehouse", "workshop", "forge", "market", "bank", "aqueduct", "harbor", "lighthouse"] },
+  { title: "Science & Culture", ids: ["library", "academy", "monument", "amphitheater", "museum", "triumphal_arch"] },
+  { title: "Faith", ids: ["shrine", "temple"] },
+  { title: "Military & Defense", ids: ["walls", "drill_yard", "armoury", "arsenal", "castle", "ballista_towers", "bombard_tower", "beacon_tower", "infirmary"] },
+];
+
+const WIKI_BUILDING_STYLE = `<style>
+.wiki-bld-table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:13px}
+.wiki-bld-table th{text-align:left;color:#c9a227;font-weight:600;padding:4px 8px;border-bottom:1px solid var(--edge)}
+.wiki-bld-table td{padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.06);vertical-align:top;color:#e8dcc5}
+.wiki-bld-name{white-space:nowrap;font-weight:600}
+.wiki-bld-cat{font-family:'Cinzel',Georgia,serif;color:#e8dcc5;font-size:14px;margin:16px 0 4px}
+</style>`;
+
+function buildingTable(ids: BuildingId[]): string {
+  const rows = ids
+    .map((id) => {
+      const def = BUILDING_DEFS[id];
+      if (!def) return "";
+      const tech = def.reqTech ? TECH_DEFS[def.reqTech]?.name ?? String(def.reqTech) : "—";
+      const glyph = BUILDING_GLYPH[id] ?? "";
+      return (
+        `<tr>` +
+        `<td class="wiki-bld-name">${glyph} ${escapeHtml(def.name)}</td>` +
+        `<td>${def.cost}⚒️</td>` +
+        `<td>${escapeHtml(tech)}</td>` +
+        `<td>${escapeHtml(buildingInfo(id))}</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+  return (
+    `<table class="wiki-bld-table"><thead><tr>` +
+    `<th>Building</th><th>Cost</th><th>Requires tech</th><th>Effect</th>` +
+    `</tr></thead><tbody>${rows}</tbody></table>`
+  );
+}
+
+function trainingFamilyTable(): string {
+  return TRAINING_CLASSES.map((fam) => {
+    const def = TRAINING_BUILDING_DEFS[fam];
+    const rows = def.tiers
+      .map((t) => {
+        const tech = t.reqTech ? TECH_DEFS[t.reqTech]?.name ?? String(t.reqTech) : "—";
+        const extra: string[] = [];
+        if (t.defense) extra.push(`+${t.defense} city def`);
+        if (t.yields?.production) extra.push(`+${t.yields.production}⚒️`);
+        return (
+          `<tr><td>Tier ${t.tier}</td><td>${t.cost}⚒️</td><td>${escapeHtml(tech)}</td>` +
+          `<td>${t.slots}</td><td>×${t.speedPct.toFixed(2)}</td><td>+${t.moraleBonus}</td><td>+${t.xp}</td>` +
+          `<td>${extra.join(", ") || "—"}</td></tr>`
+        );
+      })
+      .join("");
+    return (
+      `<div class="wiki-bld-cat">${def.glyph} ${escapeHtml(def.name)} — trains ${def.classes.join("/")}</div>` +
+      `<table class="wiki-bld-table"><thead><tr>` +
+      `<th>Tier</th><th>Cost</th><th>Requires tech</th><th>Slots</th><th>Train speed</th><th>Morale</th><th>XP</th><th>Extra</th>` +
+      `</tr></thead><tbody>${rows}</tbody></table>`
+    );
+  }).join("");
+}
+
+function renderBuildingRoster(): string {
+  const groups = BUILDING_ROSTER.map(
+    (g) => `<div class="wiki-bld-cat">${escapeHtml(g.title)}</div>${buildingTable(g.ids)}`,
+  ).join("");
+  return (
+    WIKI_BUILDING_STYLE +
+    `<p>Construction raises <b>buildings</b> one at a time. Each grants a permanent bonus; several are gated by research, and a few need a prerequisite building (the fortification chain <b>Walls → Castle → Bombard Tower</b>, and Ballista Towers off Walls).</p>` +
+    groups +
+    `<div class="wiki-bld-cat" style="margin-top:22px">Training buildings</div>` +
+    `<p>A separate family of <b>training buildings</b> lets a city train units of one class; upgrading them through five tiers trains faster and fields steadier, more experienced troops. They are raised through construction but tracked separately from ordinary buildings.</p>` +
+    trainingFamilyTable()
+  );
+}
+
 function renderCities(): string {
   return (
     section(
@@ -717,10 +816,7 @@ function renderCities(): string {
         `<p>Whatever the focus, a Governor also handles the generic housekeeping: assigning citizens to the best tiles, training and deploying <b>specialists</b>, and queuing <b>public works</b> (farms, mines, roads). If it can't advance its chosen focus — for example a Science city that has already built every research building — it simply falls back to sensible all-round development rather than idling.</p>` +
         `<p><b>You stay in charge.</b> A Governor only fills <b>empty</b> production slots and never overrides a tile you have <b>locked</b> by hand, so you can always take a decision back. Switch focus or return to Manual at any time. A city that is <b>captured or ceded</b> reverts to Manual for its new owner.</p>`,
     ) +
-    section(
-      "Buildings",
-      `<p>Buildings provide permanent bonuses: Granaries boost food, Monuments boost culture, and Markets generate gold. A separate family of <b>training buildings</b> — Barracks, Archery Range, Stable, Siege Workshop and Shipyard — lets a city train units of each class; upgrading them through five tiers trains faster and fields steadier, more experienced troops.</p>`,
-    ) +
+    section("Buildings", renderBuildingRoster()) +
     section(
       "Territory",
       `<p>Culture expands borders over time. Controlling strategic resources and choke points is key to both economy and defense.</p>`,

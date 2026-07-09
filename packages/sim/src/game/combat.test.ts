@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
-import { damageFrom, resolveAttack, cityMaxHp, unitMaxHp, availablePromotions, cityBombardTargets } from "./combat";
+import { damageFrom, resolveAttack, cityMaxHp, cityDefenseStrength, cityBombardStrength, cityBombardsUsed, cityBombardAllowance, beaconDefenseBonus, unitMaxHp, availablePromotions, cityBombardTargets } from "./combat";
 import { PROMOTION_DEFS } from "./content";
 import { citiesOf, makeUnit, type GameState, type Unit } from "./state";
 
@@ -80,7 +80,7 @@ describe("M2 combat", () => {
     const res = applyCommand(state, { type: "cityBombard", cityId: city.id, col: 12, row: 8 }, 0);
     expect(res.ok).toBe(true);
     expect(enemy.hp).toBeLessThan(hp0);
-    expect(city.rangedAttackUsed).toBe(true);
+    expect(city.rangedAttacksUsed).toBe(1);
     // A second bombardment the same turn is refused.
     expect(applyCommand(state, { type: "cityBombard", cityId: city.id, col: 12, row: 8 }, 0).ok).toBe(false);
   });
@@ -92,7 +92,68 @@ describe("M2 combat", () => {
     expect(applyCommand(state, { type: "cityBombard", cityId: city.id, col: 16, row: 8 }, 0).ok).toBe(false);
     place(state, 0, "warrior", 11, 8); // own unit adjacent
     expect(applyCommand(state, { type: "cityBombard", cityId: city.id, col: 11, row: 8 }, 0).ok).toBe(false);
-    expect(city.rangedAttackUsed).toBe(false); // nothing fired
+    expect(cityBombardsUsed(city)).toBe(0); // nothing fired
+  });
+
+  it("a Castle adds city defense and max HP", () => {
+    const state = bareGame();
+    const city = makeCity(state, 0, 10, 8);
+    const defBefore = cityDefenseStrength(state, city);
+    const hpBefore = cityMaxHp(city);
+    city.buildings.push("castle");
+    expect(cityDefenseStrength(state, city)).toBe(defBefore + 8);
+    expect(cityMaxHp(city)).toBe(hpBefore + 60);
+  });
+
+  it("Ballista Towers raise the city's bombard damage by 50%", () => {
+    const state = bareGame();
+    const city = makeCity(state, 0, 10, 8);
+    const before = cityBombardStrength(state, city);
+    city.buildings.push("ballista_towers");
+    expect(cityBombardStrength(state, city)).toBe(Math.max(1, Math.round(cityDefenseStrength(state, city) * 0.5 * 1.5)));
+    expect(cityBombardStrength(state, city)).toBeGreaterThan(before);
+  });
+
+  it("a Bombard Tower lets a city bombard twice, and it resets next turn", () => {
+    const state = bareGame();
+    const city = makeCity(state, 0, 10, 8);
+    city.buildings.push("bombard_tower");
+    expect(cityBombardAllowance(city)).toBe(2);
+    const e1 = place(state, 1, "warrior", 12, 8);
+    const e2 = place(state, 1, "warrior", 11, 8);
+    expect(applyCommand(state, { type: "cityBombard", cityId: city.id, col: e1.col, row: e1.row }, 0).ok).toBe(true);
+    expect(applyCommand(state, { type: "cityBombard", cityId: city.id, col: e2.col, row: e2.row }, 0).ok).toBe(true);
+    expect(cityBombardsUsed(city)).toBe(2);
+    // A third shot is refused.
+    expect(applyCommand(state, { type: "cityBombard", cityId: city.id, col: e2.col, row: e2.row }, 0).ok).toBe(false);
+    // Reset on the owner's next turn.
+    beginTurn(state);
+    expect(cityBombardsUsed(city)).toBe(0);
+  });
+
+  it("legacy saves with the rangedAttackUsed boolean still block a spent bombard", () => {
+    const state = bareGame();
+    const city = makeCity(state, 0, 10, 8);
+    delete (city as { rangedAttacksUsed?: number }).rangedAttacksUsed;
+    (city as { rangedAttackUsed?: boolean }).rangedAttackUsed = true;
+    expect(cityBombardsUsed(city)).toBe(1);
+    place(state, 1, "warrior", 12, 8);
+    expect(applyCommand(state, { type: "cityBombard", cityId: city.id, col: 12, row: 8 }, 0).ok).toBe(false);
+  });
+
+  it("Beacon Towers add +2 city defense each, capped at +6 across cities", () => {
+    const state = bareGame();
+    const a = makeCity(state, 0, 5, 8);
+    const before = cityDefenseStrength(state, a);
+    a.buildings.push("beacon_tower"); // its own beacon
+    expect(beaconDefenseBonus(state, a)).toBe(2);
+    // A distant beacon (well beyond radius 6) doesn't reach.
+    makeCity(state, 0, 25, 8).buildings.push("beacon_tower");
+    expect(beaconDefenseBonus(state, a)).toBe(2);
+    // Three more adjacent friendly beacons: the sum (+8) caps at +6.
+    for (const col of [6, 7, 4]) makeCity(state, 0, col, 8).buildings.push("beacon_tower");
+    expect(beaconDefenseBonus(state, a)).toBe(6);
+    expect(cityDefenseStrength(state, a)).toBe(before + 6);
   });
 
   it("a melee unit captures a city whose HP is depleted", () => {

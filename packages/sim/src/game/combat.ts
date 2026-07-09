@@ -8,6 +8,9 @@ import {
   PROMOTION_DEFS,
   PROMOTION_POOL,
   trainingTier,
+  sumBuildingEffects,
+  getBuildingDef,
+  BEACON_DEFENSE_CAP,
   type ActiveAbilityId,
   type PromotionId,
 } from "./content";
@@ -21,7 +24,7 @@ import { emitCityLost, emitUnitDied } from "./turn-updates";
 import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween } from "./movement";
 import { playerEffects } from "./civs";
 import { breakCover } from "./stealth";
-import { changeUnitMorale, moraleAttackMultiplier, moraleDefenseMultiplier, onEnemyDefeated, onUnitLost, maybeRoute, retreatOneStep } from "./morale";
+import { changeUnitMorale, moraleAttackMultiplier, moraleDefenseMultiplier, onEnemyDefeated, onEnemyDeathNearArch, onUnitLost, maybeRoute, retreatOneStep } from "./morale";
 import { cityMajorityFaith, religionInstanceForDefId, religionUnitCombatBonus, religionUnitKit, unitPassive } from "./religion-units";
 import { onUnitEnter, leaveRuin } from "./features";
 import { grantLegendDeathFaith } from "./works";
@@ -458,7 +461,22 @@ export function cityHasWalls(city: City): boolean {
 }
 
 export function cityMaxHp(city: City): number {
-  return 80 + 8 * city.population + (cityHasWalls(city) ? 100 : 0);
+  // Castle (+60) and any other cityMaxHp buildings harden the city's core.
+  return 80 + 8 * city.population + (cityHasWalls(city) ? 100 : 0) + sumBuildingEffects(city.buildings).cityMaxHp;
+}
+
+/** City-defense granted by friendly Beacon Towers in range (this city's own tower
+ *  included), each +amount, capped so beacon-spam can't trivialize defense. */
+export function beaconDefenseBonus(state: GameState, city: City): number {
+  let bonus = 0;
+  for (const other of state.cities.values()) {
+    if (other.ownerId !== city.ownerId) continue;
+    const aura = getBuildingDef("beacon_tower")?.effects?.cityDefenseAura;
+    if (!aura || !other.buildings.includes("beacon_tower")) continue;
+    if (axialDistance(offsetToAxial(city), offsetToAxial(other)) > aura.radius) continue;
+    bonus += aura.amount;
+  }
+  return Math.min(BEACON_DEFENSE_CAP, bonus);
 }
 
 export function cityDefenseStrength(state: GameState, city: City): number {
@@ -470,6 +488,9 @@ export function cityDefenseStrength(state: GameState, city: City): number {
   // A Barracks fortifies its city — defense scales with the building's tier.
   const barracksTier = city.training.barracks ?? 0;
   if (barracksTier > 0) s += trainingTier("barracks", barracksTier).defense ?? 0;
+  // Castle (flat) and Beacon Tower network (aura, capped) add fortification strength.
+  s += sumBuildingEffects(city.buildings).cityDefense;
+  s += beaconDefenseBonus(state, city);
   if (tile) s += terrainDefense(tile.terrain);
   s += playerEffects(state, city.ownerId).cityDefenseBonus ?? 0; // civics: Royal Garrisons, Divine Right
   // Strongest garrison lends some strength.
@@ -935,7 +956,19 @@ export const CITY_BOMBARD_RANGE = 2;
 /** The attack strength a city bombards with: half its defensive strength, so a
  *  walled, garrisoned, or populous city hits meaningfully harder. */
 export function cityBombardStrength(state: GameState, city: City): number {
-  return Math.max(1, Math.round(cityDefenseStrength(state, city) * 0.5));
+  // Ballista Towers turn the walls into artillery — bombard damage +50%.
+  const bombardMult = 1 + sumBuildingEffects(city.buildings).bombardPercent / 100;
+  return Math.max(1, Math.round(cityDefenseStrength(state, city) * 0.5 * bombardMult));
+}
+
+/** How many times this city may bombard per turn (base 1, +extra from Bombard Tower). */
+export function cityBombardAllowance(city: City): number {
+  return 1 + sumBuildingEffects(city.buildings).extraBombards;
+}
+
+/** Bombards this city has already made this turn, honoring the legacy boolean field. */
+export function cityBombardsUsed(city: City): number {
+  return city.rangedAttacksUsed ?? (city.rangedAttackUsed ? 1 : 0);
 }
 
 /** Enemy units this city could bombard right now (in range and at war). Used by the
@@ -968,7 +1001,9 @@ export function cityBombard(
   const city = state.cities.get(cityId);
   if (!city) return { ok: false, error: "no such city" };
   if (city.ownerId !== playerId) return { ok: false, error: "not your city" };
-  if (city.rangedAttackUsed) return { ok: false, error: "this city has already bombarded this turn" };
+  if (cityBombardsUsed(city) >= cityBombardAllowance(city)) {
+    return { ok: false, error: "this city has no bombards left this turn" };
+  }
   const owner = playerById(state, playerId);
   const target = unitAt(state, col, row);
   if (!target) return { ok: false, error: "no unit to bombard there" };
@@ -977,7 +1012,7 @@ export function cityBombard(
   if (dist({ col: city.col, row: city.row }, target) > CITY_BOMBARD_RANGE) return { ok: false, error: "target out of range" };
   const dmg = damageFrom(cityBombardStrength(state, city), defenseStrengthVsBombard(state, target));
   target.hp -= dmg;
-  city.rangedAttackUsed = true;
+  city.rangedAttacksUsed = cityBombardsUsed(city) + 1;
   log(state, `${city.name} bombarded ${unitDisplayName(state, target)} for ${dmg}.`, {
     actorId: playerId,
     targetIds: [target.ownerId],
@@ -990,6 +1025,7 @@ export function cityBombard(
 export function killUnit(state: GameState, unit: Unit): void {
   religionRitesOnDeath(state, unit); // mortuary harvests + Valhalla rallies (before removal)
   onUnitLost(state, unit); // nearby friendlies waver + global morale drops (before removal)
+  onEnemyDeathNearArch(state, unit); // a Triumphal Arch turns an enemy's fall into a rally
   const wasLegend = !!unit.legendId;
   const legendTile = { col: unit.col, row: unit.row };
   state.units.delete(unit.id);
@@ -1198,6 +1234,19 @@ export function combatPreview(state: GameState, attacker: Unit, col: number, row
   return null;
 }
 
+/** Heal (HP/turn) an Infirmary aura grants `unit`: the strongest of the owner's
+ *  Infirmary cities within its heal radius. Does not stack across multiple Infirmaries. */
+export function infirmaryHeal(state: GameState, playerId: number, unit: Unit): number {
+  let best = 0;
+  for (const c of state.cities.values()) {
+    if (c.ownerId !== playerId) continue;
+    const fx = sumBuildingEffects(c.buildings);
+    if (fx.healAura <= 0) continue;
+    if (dist({ col: c.col, row: c.row }, unit) <= fx.healAuraRadius) best = Math.max(best, fx.healAura);
+  }
+  return best;
+}
+
 /** Start-of-turn upkeep for a player's units: heal, medic aura, reset flags. */
 export function healAndReset(state: GameState, player: Player): void {
   const own = [...state.units.values()].filter((u) => u.ownerId === player.id);
@@ -1226,6 +1275,8 @@ export function healAndReset(state: GameState, player: Player): void {
     heal += eff.unitHealPerTurn ?? 0;
     if ((eff.homeHealBonus ?? 0) !== 0 && tileOwnerId(state, u.col, u.row) === player.id) heal += eff.homeHealBonus!;
     if (cls === "cavalry") heal += eff.mountedHealPerTurn ?? 0;
+    heal += infirmaryHeal(state, player.id, u); // monastic infirmaries tend nearby units
+
     u.hp = Math.min(unitMaxHp(u), u.hp + heal);
     if (u.promotions.includes("medic")) {
       for (const other of own) {

@@ -507,6 +507,14 @@ const EMOJI_ICON_DEFS: readonly (readonly [string, string])[] = [
   ["ic_eye", "a single watching human eye"],
   ["ic_flag_planted", "a red rectangular flag on a pole planted into the ground, marking a claimed spot"],
   ["ic_burst", "a stylised explosion burst, a bright impact star"],
+  // Buildings Expansion glyphs.
+  ["ic_amphora", "a classical clay storage amphora (a two-handled grain jar)"],
+  ["ic_target", "a round archery/drill target with concentric rings and a central bullseye"],
+  ["ic_factory", "a state arsenal workshop building with a chimney"],
+  ["ic_castle", "a fortified stone castle keep with crenellated towers"],
+  ["ic_tower", "a tall stone defensive tower mounting a torsion ballista"],
+  ["ic_bomb", "a round early-gunpowder bomb with a lit fuse"],
+  ["ic_medical", "a simple medical staff / caduceus symbolising a healing infirmary"],
 ];
 
 export const EMOJI_ICON_SUBSET: AssetEntry[] = EMOJI_ICON_DEFS.map(([id, description]) => ({

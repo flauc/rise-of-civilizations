@@ -38,7 +38,7 @@ import {
 import { offsetNeighbors } from "./movement";
 import { RESOURCE_DEFS, resourceActive } from "./resources";
 import { isPassableLand, isWaterTerrain, tileYields } from "./terrain";
-import { BARBARIAN_DIPLOMACY_TECH, UNIT_DEFS, isMilitary, isRanged, type TechId, type TrainingClass, type UnitTypeId } from "./content";
+import { BARBARIAN_DIPLOMACY_TECH, UNIT_DEFS, getBuildingDef, isMilitary, isRanged, type TechId, type TrainingClass, type UnitTypeId } from "./content";
 import { barbarianBribeCost, barbarianRecruitCost, canParleyWith, isBarbarianPacified } from "./bribery";
 import { victoryProgress } from "./victory";
 import {
@@ -517,11 +517,30 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
   if (warMinded && !city.training.stable) { const s = findTraining("stable"); if (s) return s; }
 
   // 2. Economy / infrastructure buildings (skips any already built / not unlocked).
-  // Growth first (a Granary feeds bigger cities → more pop for everything), then the
-  // commerce/science/culture core, including the Bank and Museum that drive the
-  // economic and culture victories.
-  const order: string[] = ["granary", "workshop", "market", "library"];
+  // Growth first (a Granary + Storehouse feed bigger cities → more pop for
+  // everything), then the commerce/science/culture core, including the Bank and
+  // Museum that drive the economic and culture victories.
+  const order: string[] = ["granary", "storehouse", "workshop", "market", "library"];
   if (coastal) order.unshift("harbor");
+  // Frontier / war cities harden themselves: Walls → Castle → Ballista Towers, plus a
+  // Beacon network where two or more of our cities sit within signalling range, and an
+  // Infirmary to keep the staged army healed. (availableProduction enforces the chain,
+  // so Castle only surfaces once Walls stand.)
+  const beaconAura = getBuildingDef("beacon_tower")?.effects?.cityDefenseAura;
+  const beaconCluster = beaconAura
+    ? citiesOf(state, player.id).some((c) =>
+        c.id !== city.id &&
+        axialDistance(offsetToAxial(city), offsetToAxial(c)) <= beaconAura.radius)
+    : false;
+  const localThreat = hostileNearCity(state, player.id, city, 3);
+  if (warMinded || localThreat) {
+    order.unshift("infirmary", "ballista_towers", "castle", "walls");
+    if (beaconCluster) order.unshift("beacon_tower");
+    order.push("bombard_tower"); // late-era gun tower
+  }
+  // Military-production support once the city trains a real army (barracks/range tier 2+).
+  const trainsArmies = (city.training.barracks ?? 0) >= 2 || (city.training.archery_range ?? 0) >= 2;
+  if (trainsArmies || warMinded) order.unshift("armoury", "drill_yard");
   if (warMinded) order.unshift("walls"); // fortify the frontier before it's tested
   if (player.gold <= 0) order.unshift("market"); // prioritise income when broke
   // The civ's victory focus pulls its win-condition buildings to the front of the queue:
@@ -529,14 +548,17 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
   // for the Great Endeavor, shrines/temples for a religious crusade.
   const focusBuildings: Partial<Record<VictoryKind, string[]>> = {
     economic: ["market", "bank", "harbor"],
-    culture: ["amphitheater", "monument", "museum", "temple"],
+    culture: ["amphitheater", "monument", "triumphal_arch", "museum", "temple"],
     science: ["library", "academy"],
     religious: ["shrine", "temple"],
   };
   for (const id of [...(focusBuildings[focus] ?? [])].reverse()) order.unshift(id);
+  // A Triumphal Arch (culture + a battlefield morale aura) is worth more while at war.
+  if (atWar) order.unshift("triumphal_arch");
   order.push(
-    "forge", "bank", "monument", "amphitheater", "academy", "museum",
-    "aqueduct", "temple", "shrine", "walls", "lighthouse",
+    "forge", "bank", "monument", "amphitheater", "triumphal_arch", "academy", "museum",
+    "aqueduct", "temple", "shrine", "walls", "castle", "ballista_towers", "arsenal",
+    "armoury", "drill_yard", "storehouse", "infirmary", "beacon_tower", "bombard_tower", "lighthouse",
   );
   const seen = new Set<string>();
   for (const id of order) {

@@ -9,7 +9,7 @@
 import type { City, GameState, Player, TrainingOrder } from "./state";
 import { playerById } from "./state";
 import {
-  TRAINING_BUILDING_DEFS, UNIT_DEFS, trainingClassFor, trainingTier, trainTimeFor,
+  TRAINING_BUILDING_DEFS, UNIT_DEFS, sumBuildingEffects, trainingClassFor, trainingTier, trainTimeFor,
   type TrainingClass, type UnitTypeId,
 } from "./content";
 import { resourceStock } from "./resources";
@@ -122,8 +122,13 @@ export function trainingTimeInCity(state: GameState, city: City, type: UnitTypeI
   const speedPct = family ? trainingTier(family, familyTier(city, family)).speedPct : 1;
   const civPct = playerEffects(state, city.ownerId).trainTimePercent ?? 0;
   const cityPct = cityEffects(state, city).trainTimePercent ?? 0;
+  // Drill Yard / Arsenal speed the muster (trainTimePercent is negative = faster).
+  const buildingPct = sumBuildingEffects(city.buildings).trainTimePercent;
   const garrisonPct = garrisonTrainPercent(state, city);
-  return trainTimeFor(type, speedPct * (1 + civPct / 100) * (1 + cityPct / 100) * (1 - garrisonPct / 100));
+  return trainTimeFor(
+    type,
+    speedPct * (1 + civPct / 100) * (1 + cityPct / 100) * (1 + buildingPct / 100) * (1 - garrisonPct / 100),
+  );
 }
 
 /** Training speed-up (percent) from religion units garrisoned in the city. */
@@ -178,8 +183,10 @@ export function advanceTraining(state: GameState, city: City, owner: Player): vo
     const family = trainingClassFor(order.unit);
     const tierDef = family ? trainingTier(family, familyTier(city, family)) : null;
     const eff = playerEffects(state, owner.id);
-    const xp = (tierDef?.xp ?? 0) + (eff.startXpBonus ?? 0);
-    const moraleBonus = (tierDef?.moraleBonus ?? 0) + (eff.startMoraleBonus ?? 0);
+    // Armoury issues standardized arms (+XP); the Arsenal sends recruits off proud (+morale).
+    const bfx = sumBuildingEffects(city.buildings);
+    const xp = (tierDef?.xp ?? 0) + (eff.startXpBonus ?? 0) + bfx.trainedUnitXp;
+    const moraleBonus = (tierDef?.moraleBonus ?? 0) + (eff.startMoraleBonus ?? 0) + bfx.trainedUnitMorale;
     placeUnit(state, city, order.unit, xp, moraleBonus);
     const def = UNIT_DEFS[order.unit];
     if (def.reqResource) {

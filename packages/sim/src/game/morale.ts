@@ -8,7 +8,7 @@
 import { axialDistance, axialNeighbors, axialToOffset, makeRng, offsetToAxial, getTile } from "@roc/shared";
 import type { GameState, MoraleEvent, Player, Unit } from "./state";
 import { areEnemies, cityAt, log, playerById, unitAt } from "./state";
-import { UNIT_DEFS } from "./content";
+import { UNIT_DEFS, getBuildingDef } from "./content";
 import { unitDisplayName } from "./civs";
 import { isPassableLand, isWaterTerrain } from "./terrain";
 
@@ -230,6 +230,29 @@ export function onEnemyDefeated(state: GameState, killer: Unit, defeated: Unit):
   recordMoraleGain(state, killer.ownerId);
   const victor = playerById(state, killer.ownerId);
   if (victor) victor.battlesWon = (victor.battlesWon ?? 0) + 1;
+}
+
+/**
+ * Triumphal Arch: when an enemy unit dies within the Arch's radius of a city that
+ * has one, that city owner's units within the same radius are steeled (+morale).
+ * Only enemy deaths count, and only for the city owner. Call from the unit-death
+ * path (killUnit) while the dead unit is still on the map.
+ */
+export function onEnemyDeathNearArch(state: GameState, dead: Unit): void {
+  const deadOwner = playerById(state, dead.ownerId);
+  if (!deadOwner) return;
+  const aura = getBuildingDef("triumphal_arch")?.effects?.victoryMorale;
+  if (!aura) return;
+  for (const city of state.cities.values()) {
+    if (!city.buildings.includes("triumphal_arch")) continue;
+    const owner = playerById(state, city.ownerId);
+    if (!owner || !areEnemies(owner, deadOwner)) continue;
+    if (dist({ col: city.col, row: city.row }, dead) > aura.radius) continue;
+    for (const u of state.units.values()) {
+      if (u.ownerId !== city.ownerId) continue;
+      if (dist({ col: city.col, row: city.row }, u) <= aura.radius) changeUnitMorale(u, aura.amount);
+    }
+  }
 }
 
 /** A village rallied a single unit's spirits — a large personal morale boost. */

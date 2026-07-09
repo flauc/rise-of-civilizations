@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.5.1";
+export const CURRENT_VERSION = "0.6.0";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,48 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.6.0",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Cities with plenty to build again",
+        desc:
+          "Now that soldiers are trained from citizens rather than hammered out on the production line, cities had run short of things to build. Ten new buildings fill the gap — spanning growth, city defence and military support — so a developed city has a real construction queue from the ancient era to the age of gunpowder, instead of running out of work by the classical age. Every one is unlocked by research and slots into the techs you already climb.",
+      },
+      {
+        tag: "New",
+        title: "A fortress worth besieging",
+        desc:
+          "Walls now anchor a whole chain of fortifications. A Castle raises a stone keep that outlasts the outer wall — adding defence and a deep reserve of city health — while Ballista Towers turn the ramparts into artillery, striking bombarded foes far harder. A Bombard Tower mounts gun batteries that let a city fire twice in a single turn, and a Beacon Tower lights a signal chain that lends its defence to every friendly city within sight of its flame. Layer them and a frontier capital becomes a nightmare to storm.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Armies forged, not just fielded",
+        desc:
+          "Three new buildings back the muster field. A Drill Yard drills recruits so they train faster; an Armoury issues standardized iron arms, so soldiers march out already blooded with extra experience; and a late-era Arsenal — the pride of a great city — speeds production further and sends its troops off in high spirits. A city that invests in all three fields a faster, sharper, steadier army.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Storehouses, infirmaries and arches of triumph",
+        desc:
+          "A Storehouse keeps a grain reserve, so a growing city never restarts its next citizen from empty — every generation builds on the last. An Infirmary tends the wounded, healing your units for a couple of tiles around it each turn, so a city that stages armies also mends them. And a Triumphal Arch turns victory into an address: when an enemy falls near it, your nearby soldiers are steeled by the sight and fight the harder for it.",
+      },
+      {
+        tag: "UI",
+        title: "See what unlocks next",
+        desc:
+          "The construction menu no longer hides a building you can't yet raise because it needs another first. A Castle, its towers and the great gun batteries appear greyed out with the prerequisite spelled beneath them, so you can plan the whole fortification chain ahead. The in-game encyclopedia's Buildings page is rebuilt too — a complete, always-accurate roster of every building, its cost, its tech and exactly what it does.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Rivals fortify and equip",
+        desc:
+          "Rival empires make full use of the new roster. Cities near a war front raise walls, castles and towers before the blow lands and light beacon networks across a threatened frontier; war-minded civilizations equip their armies with drill yards and armouries; and every empire stocks storehouses and infirmaries to grow and heal — so an AI capital is now as hard to crack as one of your own.",
+      },
+    ],
+  },
   {
     version: "0.5.1",
     date: "July 2026",
