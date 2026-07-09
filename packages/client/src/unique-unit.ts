@@ -246,7 +246,7 @@ export function wireUuImages(root: HTMLElement): void {
 
 /**
  * Open the expanded unique-unit detail as a modal dialog (above the civ picker
- * or the wiki). Closed via the ✕, a backdrop click, or Escape.
+ * or the wiki). Closed via the ✕ or Escape.
  */
 export function openUnitDetail(uuId: string): void {
   const uu = UNIQUE_UNITS.find((u) => u.id === uuId);
@@ -269,9 +269,6 @@ export function openUnitDetail(uuId: string): void {
   };
   document.addEventListener("keydown", onKey);
   overlay.querySelector<HTMLButtonElement>(".uud-close")!.addEventListener("click", close);
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) close();
-  });
 }
 
 /** Wire clickable unique-unit blocks within `root` to open their detail dialog. */

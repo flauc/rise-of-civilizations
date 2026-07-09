@@ -19,6 +19,7 @@ import {
 import { isMilitary, type UnitTypeId } from "./content";
 import { unitMaxHp } from "./combat";
 import { hasMorale, onBarbCampCleared, onUnitPromoted, onVillageGlobalMorale, onVillageUnitMorale, startingUnitMorale } from "./morale";
+import { onLegendCampCleared } from "./legend-earning";
 import { availableTechs, autoAssignCitizens } from "./economy";
 import { getGovernment, unitDisplayName } from "./civs";
 import { expandTerritory } from "./territory";
@@ -260,6 +261,7 @@ export function clearBarbCamp(state: GameState, unit: Unit, player: Player): voi
     unit.hp = Math.min(unitMaxHp(unit), unit.hp + 8);
   }
   onBarbCampCleared(state, unit);
+  onLegendCampCleared(state, unit);
   log(state, `${player.name} cleared a barbarian camp (+${gold} gold).`, {
     actorId: player.id,
     targetIds: [player.id],
@@ -382,6 +384,7 @@ export function placeFeatures(
   state: GameState,
   starts: ({ col: number; row: number } | null)[],
   activity: BarbarianActivity,
+  villages = true,
 ): void {
   const { map } = state;
   const area = map.cols * map.rows;
@@ -415,6 +418,6 @@ export function placeFeatures(
       n++;
     }
   };
-  claim("village", villageCount);
+  if (villages) claim("village", villageCount);
   claim("barb_camp", campCount);
 }

@@ -16,6 +16,7 @@ import {
   type ClientMessage,
   type Command,
   type GameState,
+  type LobbyChatMessage,
   type MapType,
   type Player,
   type PlayerView,
@@ -64,6 +65,8 @@ export interface LocalGameOptions {
   legends?: boolean;
   /** Scatter natural wonders across the map. Defaults to off. */
   naturalWonders?: boolean;
+  /** Scatter tribal villages that grant rewards when visited. Defaults to on. */
+  villages?: boolean;
   /** Starting gold treasury preset. */
   startingGold?: "tight" | "balanced" | "generous";
   /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
@@ -107,6 +110,7 @@ export class LocalSession implements Session {
         barbarians: opts.barbarians ?? true,
         legends: opts.legends ?? true,
         naturalWonders: opts.naturalWonders ?? true,
+        villages: opts.villages ?? true,
         startingGold: opts.startingGold ?? "balanced",
         turnLimit: opts.turnLimit ?? 120,
         gameSpeed: opts.gameSpeed ?? "normal",
@@ -291,8 +295,12 @@ export class OnlineSession implements Session {
   private loadResolve: (() => void) | null = null;
   private loadReject: ((reason: string) => void) | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
-  /** Server game id; set by lobby-ui when the game starts. */
+  /** Server game id; set when joining/creating a lobby room. */
   gameId?: string;
+  private chatMessages: LobbyChatMessage[] = [];
+  private pendingChat: LobbyChatMessage | null = null;
+  private chatHandle = "You";
+  private chatHandlers = new Set<(messages: readonly LobbyChatMessage[]) => void>();
 
   constructor(private readonly url: string) {}
 
@@ -300,19 +308,40 @@ export class OnlineSession implements Session {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.url);
       this.ws = ws;
+      let opened = false;
+      let settled = false;
+      const finish = (ok: boolean, err?: Error): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (ok) resolve();
+        else reject(err ?? new Error("connection failed"));
+      };
+      const timer = setTimeout(
+        () => finish(false, new Error(`Could not reach ${url}. Run: bun run server, then adb reverse tcp:3001 tcp:3001`)),
+        12_000,
+      );
       ws.onopen = () => {
-        // Send a ping every 45 s so NAT/proxy layers don't drop a silent connection.
+        opened = true;
         this.pingTimer = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "ping" }));
         }, 45_000);
-        resolve();
+        finish(true);
       };
-      ws.onerror = () => reject(new Error("connection failed"));
+      ws.onerror = () => finish(false, new Error("connection failed"));
       ws.onclose = () => {
-        if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
+        if (this.pingTimer) {
+          clearInterval(this.pingTimer);
+          this.pingTimer = null;
+        }
+        if (!opened) finish(false, new Error("connection closed"));
       };
       ws.onmessage = (e) => this.onMessage(JSON.parse(String(e.data)) as ServerMessage);
     });
+  }
+
+  isOpen(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
   }
 
   private onMessage(msg: ServerMessage): void {
@@ -331,7 +360,33 @@ export class OnlineSession implements Session {
       this.loadResolve?.();
       this.loadResolve = null;
       this.loadReject = null;
+    } else if (msg.t === "joined") {
+      this.gameId = msg.gameId;
+      this.chatMessages = [];
+      this.pendingChat = null;
+    } else if (msg.t === "lobbyChatHistory") {
+      if (!this.gameId) this.gameId = msg.gameId;
+      if (msg.gameId === this.gameId) {
+        this.chatMessages = msg.messages;
+        this.emitChat();
+      }
+    } else if (msg.t === "lobbyChat") {
+      if (!this.gameId) this.gameId = msg.gameId;
+      if (msg.gameId === this.gameId) {
+        this.chatMessages.push(msg.message);
+        while (this.chatMessages.length > 100) this.chatMessages.shift();
+        if (this.pendingChat?.text === msg.message.text) this.pendingChat = null;
+        this.emitChat();
+      }
+    } else if (msg.t === "deleted" || msg.t === "kicked") {
+      if (this.gameId === msg.gameId) {
+        this.gameId = undefined;
+        this.chatMessages = [];
+        this.emitChat();
+      }
     } else if (msg.t === "error") {
+      this.pendingChat = null;
+      this.emitChat();
       this.exportReject?.(msg.message);
       this.exportResolve = null;
       this.exportReject = null;
@@ -347,8 +402,72 @@ export class OnlineSession implements Session {
     this.handlers.add(handler);
   }
 
+  /** Subscribe to lobby/in-game chat updates. Returns an unsubscribe function. */
+  onChat(handler: (messages: readonly LobbyChatMessage[]) => void): () => void {
+    this.chatHandlers.add(handler);
+    handler(this.displayChatMessages());
+    return () => this.chatHandlers.delete(handler);
+  }
+
+  getChatMessages(): readonly LobbyChatMessage[] {
+    return this.chatMessages;
+  }
+
+  /** Messages for the UI, including an unsent line while waiting for the server. */
+  displayChatMessages(): readonly LobbyChatMessage[] {
+    return this.pendingChat ? [...this.chatMessages, this.pendingChat] : this.chatMessages;
+  }
+
+  setChatHandle(handle: string): void {
+    this.chatHandle = handle.trim() || "You";
+  }
+
+  sendChat(text: string): void {
+    if (!this.gameId) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    this.pendingChat = {
+      userId: "",
+      handle: this.chatHandle,
+      text: trimmed,
+      at: Date.now(),
+    };
+    this.emitChat();
+    this.send({ t: "lobbyChat", gameId: this.gameId, text: trimmed });
+  }
+
+  private emitChat(): void {
+    const messages = this.displayChatMessages();
+    for (const h of this.chatHandlers) h(messages);
+  }
+
   send(msg: ClientMessage): void {
     this.ws?.send(JSON.stringify(msg));
+  }
+
+  /** Close the socket and drop lobby handlers (e.g. on logout or account switch). */
+  disconnect(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+    if (this.ws) {
+      this.ws.onmessage = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      try {
+        this.ws.close();
+      } catch {
+        /* ignore */
+      }
+      this.ws = null;
+    }
+    this.handlers.clear();
+    this.chatHandlers.clear();
+    this.gameId = undefined;
+    this.chatMessages = [];
+    this.pendingChat = null;
+    this.state = null;
   }
 
   hasState(): boolean {

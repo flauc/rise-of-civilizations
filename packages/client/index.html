@@ -59,6 +59,7 @@
       #game {
         display: block;
         width: 100vw;
+        width: 100dvw;
         height: 100vh;
         /* dvh tracks the *visible* viewport as the mobile browser's toolbar
            shows/hides; plain vh is locked to the larger viewport, leaving a
@@ -618,15 +619,41 @@
         font-size: 16px;
       }
       /* Research / civics / religion / great people / production / save modal */
+      #save-modal {
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: 320px;
+        max-height: 80vh;
+        overflow: auto;
+        z-index: 40;
+      }
+      /* Top-bar pickers: below the status bar so the map and end-turn stay reachable */
       #research,
       #civics,
-      #religion,
+      #religion {
+        left: 50%;
+        top: max(68px, calc(52px + env(safe-area-inset-top)));
+        transform: translateX(-50%);
+        width: 320px;
+        max-height: min(420px, calc(100vh - 140px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+        overflow: hidden;
+        z-index: 40;
+      }
+      /* Great People & Legends — richer cards, wider/taller panels. */
       #great-people,
-      #legends,
+      #legends {
+        left: 50%;
+        top: max(68px, calc(52px + env(safe-area-inset-top)));
+        transform: translateX(-50%);
+        width: min(440px, calc(100vw - 24px));
+        max-height: calc(100vh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        overflow: hidden;
+        z-index: 40;
+      }
       #production,
       #specialists,
-      #training,
-      #save-modal {
+      #training {
         left: 50%;
         top: 50%;
         transform: translate(-50%, -50%);
@@ -663,7 +690,12 @@
       #production,
       #specialists,
       #training,
-      #god-panel {
+      #god-panel,
+      #research,
+      #civics,
+      #religion,
+      #great-people,
+      #legends {
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -769,15 +801,18 @@
         flex-direction: column;
         z-index: 41;
       }
-      #techtree > div:first-child {
+      #techtree > div:first-child,
+      #techtree .panel-dialog-header {
         flex: none;
       }
       #techtree .tt-scroll {
         margin-top: 8px;
       }
-      #techtree > div:last-child {
+      #techtree > div:last-child,
+      #techtree .panel-dialog-body {
         flex: 1;
         overflow: auto;
+        min-height: 0;
       }
       .tt-node {
         position: absolute;
@@ -1056,6 +1091,125 @@
         border: 1px solid var(--edge);
         margin-right: 8px;
         flex-shrink: 0;
+      }
+      /* Legends panel — larger portraits and readable copy on desktop & mobile. */
+      #legends .panel-dialog-body {
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      #legends .sub {
+        font-size: 12.5px;
+        line-height: 1.45;
+      }
+      #legends .csub {
+        font-size: 13px;
+        margin-top: 12px;
+      }
+      #legends .legend-card {
+        align-items: flex-start;
+        gap: 12px;
+        padding: 11px 12px;
+        margin-top: 10px;
+        border-radius: 12px;
+        cursor: default;
+      }
+      #legends .legend-card:hover {
+        background: rgba(201, 162, 39, 0.08);
+      }
+      #legends .legend-card > div:first-of-type b,
+      #legends .legend-card b {
+        font-size: 15px;
+        line-height: 1.3;
+      }
+      #legends .legend-portrait {
+        width: 68px;
+        height: 86px;
+        border-radius: 8px;
+        margin-right: 0;
+        object-position: 50% 15%;
+      }
+      #legends .legend-portrait-sm {
+        width: 52px;
+        height: 66px;
+      }
+      #legends .legend-active {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 6px;
+      }
+      #legends .legend-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        align-items: flex-end;
+        flex-shrink: 0;
+      }
+      /* Great People panel — larger portraits and readable copy. */
+      #great-people .panel-dialog-body {
+        font-size: 13px;
+        line-height: 1.45;
+      }
+      #great-people .sub {
+        font-size: 12.5px;
+        line-height: 1.45;
+      }
+      #great-people .csub {
+        font-size: 13px;
+        margin-top: 12px;
+      }
+      #great-people .gp-card {
+        align-items: flex-start;
+        gap: 12px;
+        padding: 11px 12px;
+        margin-top: 10px;
+        border-radius: 12px;
+        cursor: default;
+      }
+      #great-people .gp-card:hover {
+        background: rgba(201, 162, 39, 0.08);
+      }
+      #great-people .gp-card b {
+        font-size: 15px;
+        line-height: 1.3;
+      }
+      #great-people .gp-portrait {
+        width: 68px;
+        height: 86px;
+        border-radius: 8px;
+        margin-right: 0;
+        object-fit: cover;
+        object-position: 50% 15%;
+        border: 1px solid var(--edge);
+        flex-shrink: 0;
+      }
+      #great-people .gp-portrait-sm {
+        width: 52px;
+        height: 66px;
+      }
+      #great-people .gp-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        align-items: flex-end;
+        flex-shrink: 0;
+      }
+      #great-people .gp-progress {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-top: 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--edge);
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.12);
+      }
+      #great-people .gp-progress-body {
+        flex: 1;
+        min-width: 0;
+      }
+      #great-people .gp-progress-body b {
+        font-size: 15px;
       }
       /* transient banner */
       #banner {
@@ -1398,10 +1552,23 @@
         font-weight: 700;
         color: var(--parchment);
         margin-bottom: 12px;
+        padding-right: 40px;
+      }
+      #log-dialog,
+      #leaderboard-dialog,
+      #turn-update-dialog,
+      #settings-dialog {
+        position: fixed;
+      }
+      #log-dialog,
+      #leaderboard-dialog {
+        display: flex;
+        flex-direction: column;
       }
       #log-dialog-content {
         flex: 1;
         overflow: auto;
+        min-height: 0;
         font-size: 13px;
         line-height: 1.5;
         color: var(--parchment);
@@ -1413,9 +1580,10 @@
       #log-dialog-content div:last-child {
         border-bottom: none;
       }
-      #log-dialog .btn {
-        margin-top: 14px;
-        align-self: center;
+      #leaderboard-content {
+        flex: 1;
+        overflow: auto;
+        min-height: 0;
       }
       /* leaderboard / civilization standings dialog */
       #leaderboard-overlay {
@@ -1452,10 +1620,6 @@
       #leaderboard-dialog.show {
         opacity: 1;
         pointer-events: auto;
-      }
-      #leaderboard-content {
-        flex: 1;
-        overflow: auto;
       }
       .lb-caption {
         font-size: 12px;
@@ -1578,10 +1742,6 @@
         display: flex;
         justify-content: space-between;
       }
-      #leaderboard-dialog .btn {
-        margin-top: 14px;
-        align-self: center;
-      }
       @media (max-width: 560px) {
         .lb-detail {
           display: none;
@@ -1629,6 +1789,7 @@
         font-weight: 700;
         color: var(--parchment);
         margin-bottom: 12px;
+        padding-right: 40px;
       }
       #gold-dialog-content {
         flex: 1;
@@ -1693,9 +1854,29 @@
         font-weight: 700;
         font-size: 14px;
       }
-      #gold-dialog .btn {
-        margin-top: 14px;
-        align-self: center;
+      /* Top-right ✕ on overlay dialogs (treasury, morale, …). */
+      .dialog-x {
+        position: absolute;
+        top: 12px;
+        right: 14px;
+        width: 34px;
+        height: 34px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        border-radius: 50%;
+        border: 1px solid var(--edge);
+        background: var(--bg-card);
+        color: var(--parchment);
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      .dialog-x:hover {
+        background: rgba(201, 162, 39, 0.14);
+        color: var(--accent-bright);
       }
       /* Morale dialog — mirrors the treasury dialog, plus an expandable explainer. */
       #morale-overlay {
@@ -1740,29 +1921,6 @@
         color: var(--parchment);
         margin-bottom: 12px;
         padding-right: 40px;
-      }
-      .morale-x {
-        position: absolute;
-        top: 12px;
-        right: 14px;
-        width: 34px;
-        height: 34px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        border-radius: 50%;
-        border: 1px solid var(--edge);
-        background: var(--bg-card);
-        color: var(--parchment);
-        font-size: 16px;
-        line-height: 1;
-        cursor: pointer;
-        transition: background 0.15s ease, color 0.15s ease;
-      }
-      .morale-x:hover {
-        background: rgba(201, 162, 39, 0.14);
-        color: var(--accent-bright);
       }
       #morale-dialog-content {
         overflow: auto;
@@ -1839,6 +1997,132 @@
       #morale-dialog .btn.primary {
         margin-top: 14px;
         align-self: center;
+      }
+      /* Unit promotion info dialog */
+      #unit-promo-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 14, 11, 0.72);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 60;
+      }
+      #unit-promo-overlay.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #unit-promo-dialog {
+        position: fixed;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        width: min(560px, calc(100vw - 32px));
+        max-height: 80vh;
+        background: var(--panel);
+        border: 1px solid var(--edge);
+        border-radius: 16px;
+        padding: 18px 20px;
+        display: flex;
+        flex-direction: column;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 61;
+      }
+      #unit-promo-dialog.show {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .unit-promo-dialog-title {
+        font-family: 'Cinzel', Georgia, serif;
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--parchment);
+        margin-bottom: 12px;
+        padding-right: 40px;
+      }
+      #unit-promo-dialog-content {
+        flex: 1;
+        overflow: auto;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--parchment);
+      }
+      .unit-perk-summary {
+        margin-bottom: 12px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--edge);
+      }
+      .unit-perk-section {
+        margin-top: 14px;
+      }
+      .unit-perk-section-title {
+        font-weight: 700;
+        color: var(--accent-bright);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        font-size: 11px;
+        letter-spacing: 0.06em;
+      }
+      .unit-perk-tier-block {
+        margin-top: 12px;
+      }
+      .unit-perk-tier-head {
+        font-weight: 700;
+        color: var(--parchment);
+        margin-bottom: 6px;
+        font-size: 12px;
+      }
+      .unit-perk-tier {
+        color: #ffd967;
+        letter-spacing: 1px;
+      }
+      .unit-perk-row {
+        padding: 8px 10px;
+        margin-bottom: 6px;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .unit-perk-row.taken {
+        border-color: rgba(126, 231, 135, 0.25);
+        background: rgba(126, 231, 135, 0.06);
+      }
+      .unit-perk-row.available {
+        border-color: rgba(255, 217, 103, 0.35);
+        background: rgba(255, 217, 103, 0.08);
+      }
+      .unit-perk-row.locked {
+        opacity: 0.72;
+      }
+      .unit-perk-row-head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 6px;
+      }
+      .unit-perk-desc {
+        margin-top: 4px;
+        font-size: 12px;
+        color: var(--parchment-dim);
+        line-height: 1.45;
+      }
+      .unit-perk-status {
+        margin-left: auto;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .unit-perk-status.earned {
+        color: #7ee787;
+      }
+      .unit-perk-status.available {
+        color: #ffd967;
+      }
+      .unit-perk-status.locked {
+        color: #9fc0dc;
       }
       .bb-chip.gold-chip {
         cursor: pointer;
@@ -1944,6 +2228,7 @@
         align-items: center;
         justify-content: space-between;
         gap: 10px;
+        padding-right: 36px;
       }
       #turn-update-dialog .turn-update-heading {
         font-family: 'Cinzel', Georgia, serif;
@@ -2064,6 +2349,7 @@
         font-family: 'Cinzel', Georgia, serif;
         font-size: 18px;
         color: var(--accent-bright);
+        padding-right: 40px;
       }
       #settings-dialog .settings-section {
         border-top: 1px solid var(--edge);
@@ -2107,6 +2393,39 @@
         color: #1a160f;
         font-weight: 700;
       }
+      .rotation-controls {
+        margin-top: 14px;
+      }
+      .rotation-controls-label {
+        font-size: 12px;
+        color: #b8aa8d;
+        margin-bottom: 8px;
+      }
+      .rotation-seg {
+        display: flex;
+        border: 1px solid var(--edge);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+      .rotation-seg-btn {
+        flex: 1;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 9px 12px;
+        border: none;
+        background: transparent;
+        color: #b8aa8d;
+        cursor: pointer;
+        transition: background 0.12s, color 0.12s;
+      }
+      .rotation-seg-btn + .rotation-seg-btn {
+        border-left: 1px solid var(--edge);
+      }
+      .rotation-seg-btn.active {
+        background: linear-gradient(135deg, #c9a227, #a6821f);
+        color: #15120c;
+      }
       .hidden {
         display: none !important;
       }
@@ -2115,8 +2434,42 @@
         display: none;
       }
 
+      /* In-game HUD shell — canvas stays full-screen; overlays live here.
+         pointer-events: none lets map taps pass through; each panel/overlay sets
+         its own auto/none (hidden full-screen overlays must stay none). */
+      #game-hud {
+        position: fixed;
+        inset: 0;
+        z-index: 5;
+        pointer-events: none;
+      }
+      #game-hud .panel:not(.hidden),
+      #game-hud .action-btn,
+      #game-hud #leader-avatar:not(.empty),
+      #game-hud #log,
+      #game-hud #banner,
+      #game-hud #tile-tip:not(.hidden),
+      #game-hud #game-chat,
+      #game-hud #empire:not(.hidden),
+      #game-hud #diplomacy:not(.hidden),
+      #game-hud #gameover:not(.hidden) {
+        pointer-events: auto;
+      }
+
+      /* Touch / tablet: one universal HUD scale (same on every phone & tablet).
+         Reference width 400px; cap at 0.9 so normal phones and tablets match. */
+      @media (pointer: coarse), (max-width: 860px) {
+        #game-hud {
+          --hud-scale: min(0.9, 100vw / 400px);
+          width: calc(100vw / var(--hud-scale));
+          height: calc(100dvh / var(--hud-scale));
+          transform: scale(var(--hud-scale));
+          transform-origin: top left;
+        }
+      }
+
       /* ---- mobile / narrow screens: panels become bottom sheets ---- */
-      @media (max-width: 640px) {
+      @media (max-width: 860px), (pointer: coarse) {
         #topbar {
           display: flex;
           align-items: center;
@@ -2247,7 +2600,7 @@
           min-width: 0;
           top: auto;
           bottom: calc(54px + env(safe-area-inset-bottom));
-          max-height: min(52vh, 360px);
+          max-height: min(46vh, 320px);
           overflow: auto;
           z-index: 10;
         }
@@ -2270,14 +2623,47 @@
         #research,
         #civics,
         #religion,
-        #great-people,
-        #legends,
         #production,
         #specialists,
         #training,
         #save-modal {
-          width: calc(100vw - 20px);
-          max-width: calc(100vw - 20px);
+          width: calc(100% - 20px);
+          max-width: calc(100% - 20px);
+        }
+        #great-people,
+        #legends {
+          width: calc(100% - 16px);
+          max-width: calc(100% - 16px);
+          max-height: calc(100% - 76px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        }
+        #great-people .gp-portrait {
+          width: 80px;
+          height: 100px;
+        }
+        #great-people .gp-portrait-sm {
+          width: 58px;
+          height: 72px;
+        }
+        #great-people .gp-card b,
+        #great-people .gp-progress-body b {
+          font-size: 16px;
+        }
+        #great-people .sub {
+          font-size: 13px;
+        }
+        #legends .legend-portrait {
+          width: 80px;
+          height: 100px;
+        }
+        #legends .legend-portrait-sm {
+          width: 58px;
+          height: 72px;
+        }
+        #legends .legend-card b {
+          font-size: 16px;
+        }
+        #legends .sub {
+          font-size: 13px;
         }
         #save-modal {
           padding: 12px;
@@ -2296,6 +2682,26 @@
         }
         .btn {
           padding: 9px 13px;
+        }
+        #turn-update-dialog {
+          width: min(340px, calc(100% - 24px));
+          max-height: min(70dvh, calc(100% - 48px));
+          padding: 14px 16px;
+          top: 42%;
+        }
+        #turn-update-dialog .turn-update-art {
+          width: 130px;
+          height: 162px;
+        }
+        #turn-update-dialog .turn-update-title {
+          font-size: 17px;
+        }
+        #turn-update-dialog .turn-update-msg {
+          font-size: 13px;
+        }
+        #turn-update-dialog .tu-row-art {
+          width: 40px;
+          height: 50px;
         }
       }
     </style>

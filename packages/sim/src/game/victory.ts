@@ -90,7 +90,8 @@ export function playerScore(state: GameState, playerId: number): number {
   return scoreBreakdown(state, playerId).total;
 }
 
-function isAlive(state: GameState, p: Player): boolean {
+/** A major civ is still in play while it holds a city or fields a unit. */
+export function isPlayerAlive(state: GameState, p: Player): boolean {
   return citiesOf(state, p.id).length > 0 || unitsOf(state, p.id).length > 0;
 }
 
@@ -104,7 +105,7 @@ function victoryEnabled(state: GameState, kind: VictoryKind): boolean {
 /** Every major civ has been wiped out — a dead game, always terminal. */
 function checkExtinction(state: GameState): GameOver | null {
   const majors = state.players.filter((p) => !p.isBarbarian);
-  const aliveMajor = majors.filter((p) => isAlive(state, p));
+  const aliveMajor = majors.filter((p) => isPlayerAlive(state, p));
   if (aliveMajor.length === 0 && majors.length > 0) return { condition: "extinction" };
   return null;
 }
@@ -114,14 +115,14 @@ function checkDomination(state: GameState): GameOver | null {
   const humans = state.players.filter((p) => p.isHuman);
 
   // Last human standing.
-  const aliveHumans = humans.filter((p) => isAlive(state, p));
+  const aliveHumans = humans.filter((p) => isPlayerAlive(state, p));
   if (humans.length > 1 && aliveHumans.length === 1) {
     return { winnerId: aliveHumans[0]!.id, condition: "domination" };
   }
 
   // Last major civ standing (humans + AI, excluding barbarians).
   const majors = state.players.filter((p) => !p.isBarbarian);
-  const aliveMajor = majors.filter((p) => isAlive(state, p));
+  const aliveMajor = majors.filter((p) => isPlayerAlive(state, p));
   if (majors.length > 1 && aliveMajor.length === 1) {
     return { winnerId: aliveMajor[0]!.id, condition: "domination" };
   }

@@ -457,6 +457,8 @@ export function deserializeState(s: SerializedState): GameState {
       greatPeopleEarned: p.greatPeopleEarned ?? {},
       greatPeople: p.greatPeople ?? [],
       legendsRecruited: p.legendsRecruited ?? 0,
+      legendTrackPoints: p.legendTrackPoints ?? {},
+      legendTrackEarned: p.legendTrackEarned ?? {},
       battlesWon: p.battlesWon ?? 0,
       citiesCaptured: p.citiesCaptured ?? 0,
       eurekaTriggered: new Set<string>(

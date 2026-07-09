@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createGame } from "./setup";
 import { makeUnit, playerById, unitsOf, type City } from "./state";
-import { recruitLegend, tickLegends } from "./legends";
+import { recruitLegend, tickLegends, legendRecruitThreshold } from "./legends";
 import { LEGEND_DEFAULT_LIFESPAN, extendLegendsOnTrigger } from "./legend-lifespan";
 import { onEnemyDefeated } from "./morale";
 
@@ -20,11 +20,16 @@ function addCity(state: ReturnType<typeof newGame>, ownerId: number, col: number
   return city;
 }
 
+function fundTrack(state: ReturnType<typeof newGame>, playerId: number, track: "melee" | "cavalry", amount?: number): void {
+  const player = playerById(state, playerId)!;
+  player.legendTrackPoints = { [track]: amount ?? legendRecruitThreshold(0) };
+}
+
 describe("legend lifespan extensions", () => {
   it("heroes start with the default 15-turn tenure at 0 XP", () => {
     const state = newGame();
     addCity(state, 0, 3, 3);
-    playerById(state, 0)!.faith = 500;
+    fundTrack(state, 0, "melee");
     recruitLegend(state, 0, "gilgamesh");
     const hero = unitsOf(state, 0).find((u) => u.legendId === "gilgamesh")!;
     expect(hero.legendExpiresOnTurn).toBe(state.turn + LEGEND_DEFAULT_LIFESPAN);
@@ -34,7 +39,7 @@ describe("legend lifespan extensions", () => {
   it("Gilgamesh earns +1 turn per kill", () => {
     const state = newGame();
     addCity(state, 0, 3, 3);
-    playerById(state, 0)!.faith = 500;
+    fundTrack(state, 0, "melee");
     recruitLegend(state, 0, "gilgamesh");
     const hero = unitsOf(state, 0).find((u) => u.legendId === "gilgamesh")!;
     const before = hero.legendExpiresOnTurn!;
@@ -49,8 +54,8 @@ describe("legend lifespan extensions", () => {
     const state = newGame();
     addCity(state, 0, 3, 3);
     const player = playerById(state, 0)!;
-    player.faith = 500;
     player.researched.add("bronze_alloying");
+    fundTrack(state, 0, "cavalry");
     recruitLegend(state, 0, "cyrus");
     const hero = unitsOf(state, 0).find((u) => u.legendId === "cyrus")!;
     const before = hero.legendExpiresOnTurn!;
@@ -61,7 +66,7 @@ describe("legend lifespan extensions", () => {
   it("retires after extended tenure elapses", () => {
     const state = newGame();
     addCity(state, 0, 3, 3);
-    playerById(state, 0)!.faith = 500;
+    fundTrack(state, 0, "melee");
     recruitLegend(state, 0, "gilgamesh");
     const hero = unitsOf(state, 0).find((u) => u.legendId === "gilgamesh")!;
     state.turn = hero.legendExpiresOnTurn! + 1;

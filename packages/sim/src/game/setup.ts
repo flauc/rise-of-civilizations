@@ -32,6 +32,8 @@ export interface NewGameOptions {
   legends?: boolean;
   /** Scatter natural wonders across the map. Defaults to off. */
   naturalWonders?: boolean;
+  /** Scatter tribal villages that grant rewards when visited. Defaults to on. */
+  villages?: boolean;
   /** Starting gold treasury preset for major civ players. */
   startingGold?: "tight" | "balanced" | "generous";
   /** How costly research and civics are. Defaults to normal. */
@@ -366,7 +368,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   });
 
   if (activity !== "none") spawnBarbarians(state, barbId, starts, activity);
-  placeFeatures(state, starts, activity);
+  placeFeatures(state, starts, activity, opts.villages ?? true);
   if (opts.naturalWonders) placeNaturalWonders(state, starts, seed);
   placeResources(state, starts, seed);
 

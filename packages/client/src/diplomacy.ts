@@ -14,6 +14,8 @@
 // Re-renders are signature-gated so the deal builder's inputs survive frames.
 
 import { ASSET_BASE_URL } from "./asset-base";
+import { gameHud } from "./hud-root";
+import { withPreservedScroll } from "./panel-scroll";
 import {
   relationBetween,
   attitudeScore,
@@ -257,13 +259,13 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   // --- first-contact modal ---
   const modal = document.createElement("div");
   modal.id = "diplo-contact";
-  document.body.appendChild(modal);
+  gameHud().appendChild(modal);
   let showingContact: number | null = null; // otherId currently in the modal
 
   // --- incoming-proposal modal (pops the instant another civ proposes to us) ---
   const propModal = document.createElement("div");
   propModal.id = "diplo-proposal";
-  document.body.appendChild(propModal);
+  gameHud().appendChild(propModal);
   let showingProposal: number | null = null; // proposal id currently in the modal
   const seenProposals = new Set<number>(); // proposals we've already surfaced
 
@@ -271,7 +273,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   const panel = document.createElement("div");
   panel.id = "diplomacy";
   panel.className = "hidden";
-  document.body.appendChild(panel);
+  gameHud().appendChild(panel);
   let open = false;
   let selected: number | null = null; // civ id in the negotiation view
   let tab: "overview" | "deal" = "overview"; // negotiation sub-tab
@@ -476,12 +478,14 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       body += renderNegotiation(state, viewerId, selected);
     }
 
-    panel.innerHTML =
-      `<div class="dp-head">` +
-      (selected !== null ? `<button class="btn" id="dp-back">←</button>` : "") +
-      `<span class="dp-title">🕊️ Diplomacy</span>` +
-      `<button class="dp-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
-      `<div class="dp-body">${body}${resultMsg ? `<div class="dp-empty" style="color:#ffd967">${resultMsg}</div>` : ""}</div>`;
+    withPreservedScroll(panel, () => {
+      panel.innerHTML =
+        `<div class="dp-head">` +
+        (selected !== null ? `<button class="btn" id="dp-back">←</button>` : "") +
+        `<span class="dp-title">🕊️ Diplomacy</span>` +
+        `<button class="dp-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
+        `<div class="dp-body">${body}${resultMsg ? `<div class="dp-empty" style="color:#ffd967">${resultMsg}</div>` : ""}</div>`;
+    });
     wire(state, viewerId);
   }
 

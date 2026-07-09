@@ -44,6 +44,8 @@ export interface LobbyRoom {
   mapSize?: string;
   barbarians: BarbarianActivity;
   naturalWonders: boolean;
+  /** Tribal villages that grant rewards when visited. */
+  villages: boolean;
   startingGold: "tight" | "balanced" | "generous";
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit: number;
@@ -55,8 +57,17 @@ export interface LobbyRoom {
   slots: LobbySlot[];
 }
 
+/** One lobby chat message (pre-game only). */
+export interface LobbyChatMessage {
+  userId: string;
+  handle: string;
+  text: string;
+  /** Unix epoch ms when the server accepted the message. */
+  at: number;
+}
+
 export type ClientMessage =
-  | { t: "register"; handle: string; password: string }
+  | { t: "register"; handle: string; password: string; email?: string; newsletter?: boolean }
   | { t: "login"; handle: string; password: string }
   | { t: "resume"; token: string }
   | { t: "listGames" }
@@ -71,6 +82,8 @@ export type ClientMessage =
       barbarians?: BarbarianActivity;
       /** Scatter natural wonders across the map. Defaults to off. */
       naturalWonders?: boolean;
+      /** Scatter tribal villages that grant rewards when visited. Defaults to on. */
+      villages?: boolean;
       /** Landmass layout to generate (one big continent, archipelago, real world…). */
       mapType?: MapType;
       /** Starting gold treasury preset for major civ players. */
@@ -105,6 +118,8 @@ export type ClientMessage =
       mapType?: MapType;
       barbarians?: BarbarianActivity;
       naturalWonders?: boolean;
+      /** Scatter tribal villages that grant rewards when visited. */
+      villages?: boolean;
       startingGold?: "tight" | "balanced" | "generous";
       /** Turn at which the score victory triggers; 0 = unlimited. */
       turnLimit?: number;
@@ -123,6 +138,7 @@ export type ClientMessage =
   | { t: "exportState" } // host requests the full authoritative state for saving
   | { t: "loadGame"; blob: string } // host uploads a full SerializedState blob to restore
   | { t: "deleteGame"; gameId: string } // host removes a game from the lobby
+  | { t: "lobbyChat"; gameId: string; text: string }
   | { t: "ping" }; // keepalive — server ignores, just prevents idle-timeout
 
 export type ServerMessage =
@@ -137,4 +153,6 @@ export type ServerMessage =
   | { t: "orderRejected"; reason: string }
   | { t: "exported"; blob: string } // full SerializedState JSON blob, sent only to host
   | { t: "loaded"; gameId: string } // confirms the server restored the uploaded save
-  | { t: "deleted"; gameId: string }; // the game was removed by the host
+  | { t: "deleted"; gameId: string } // the game was removed by the host
+  | { t: "lobbyChat"; gameId: string; message: LobbyChatMessage }
+  | { t: "lobbyChatHistory"; gameId: string; messages: LobbyChatMessage[] };

@@ -12,6 +12,18 @@ describe("storage", () => {
     expect(await st.userIdForToken(token)).toBe(u.id);
     await expect(st.createUser("alice", "x")).rejects.toThrow();
   });
+
+  it("lists users newest first", async () => {
+    const st = new MemoryStorage();
+    await st.createUser("First", "hash1");
+    await new Promise((r) => setTimeout(r, 2));
+    const second = await st.createUser("Second", "hash2", { email: "a@b.co", newsletterOptIn: true });
+    const listed = await st.listUsers();
+    expect(listed).toHaveLength(2);
+    expect(listed[0]!.id).toBe(second.id);
+    expect(listed[0]!.passwordHash).toBe("hash2");
+    expect(listed[0]!.email).toBe("a@b.co");
+  });
 });
 
 describe("lobby + game host (simultaneous multiplayer)", () => {
@@ -247,5 +259,25 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     lobby.join(g2.id, "uB", "Bob");
     expect("error" in lobby.delete(g2.id, "uB")).toBe(true);
     expect(lobby.get(g2.id)).toBeDefined();
+  });
+
+  it("stores lobby chat for seated players only", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Chatty", "uA", "Alice", { seed: "seed-chat" });
+    lobby.join(g.id, "uB", "Bob");
+    expect("error" in lobby.appendChat(g.id, "uC", "Carol", "hello")).toBe(true);
+    const r = lobby.appendChat(g.id, "uA", "Alice", "  hi lobby  ");
+    expect("error" in r).toBe(false);
+    if ("error" in r) return;
+    expect(r.message.handle).toBe("Alice");
+    expect(r.message.text).toBe("hi lobby");
+    expect(lobby.chatHistory(g.id)).toHaveLength(1);
+    lobby.appendChat(g.id, "uB", "Bob", "hey");
+    expect(lobby.chatHistory(g.id)).toHaveLength(2);
+    lobby.start(g.id);
+    expect(lobby.get(g.id)!.status).toBe("active");
+    const inGame = lobby.appendChat(g.id, "uA", "Alice", "still chatting");
+    expect("error" in inGame).toBe(false);
+    expect(lobby.chatHistory(g.id)).toHaveLength(3);
   });
 });

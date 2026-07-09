@@ -3,6 +3,8 @@
 // stays out of the busy ui.ts; ui.ts only toggles it and re-renders it per frame
 // while open.
 
+import { gameHud } from "./hud-root";
+import { withPreservedScroll } from "./panel-scroll";
 import {
   UNIT_DEFS,
   TRAINING_BUILDING_DEFS,
@@ -113,13 +115,10 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     `<button class="emp-tab" data-tab="trade">Trade</button>` +
     `<button class="emp-x" id="emp-close" title="Close" aria-label="Close">✕</button></div>` +
     `<div class="emp-body" id="emp-body"></div></div>`;
-  document.body.appendChild(root);
+  gameHud().appendChild(root);
 
   const body = root.querySelector<HTMLDivElement>("#emp-body")!;
   root.querySelector<HTMLButtonElement>("#emp-close")!.addEventListener("click", () => close());
-  root.addEventListener("click", (e) => {
-    if (e.target === root) close();
-  });
   root.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((el) =>
     el.addEventListener("click", () => {
       tab = el.dataset.tab as Tab;
@@ -251,9 +250,16 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         `</div>`;
     }
 
-    // Wonders.
-    html += `<div class="emp-card"><div class="emp-name">🏛️ Wonders</div>`;
-    for (const w of WONDER_DEFS) {
+    // Wonders — only list those whose unlocking tech is known (or already built / in progress).
+    const player = state.players.find((p) => p.id === viewerId)!;
+    const visibleWonders = WONDER_DEFS.filter((w) => {
+      if (state.completedWonders.includes(w.id)) return true;
+      if (worksOf(state, viewerId).some((x) => x.wonderId === w.id)) return true;
+      return !w.reqTech || player.researched.has(w.reqTech as TechId);
+    });
+    if (visibleWonders.length > 0) {
+      html += `<div class="emp-card"><div class="emp-name">🏛️ Wonders</div>`;
+      for (const w of visibleWonders) {
       const built = state.completedWonders.includes(w.id);
       const inProg = worksOf(state, viewerId).find((x) => x.wonderId === w.id);
       const reqStr = Object.entries(w.crew)
@@ -284,8 +290,9 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         `<div class="emp-sub">${w.desc}</div><div class="emp-sub" style="color:#c9a24a">Crew: ${reqStr}</div>` +
         (gateBits ? `<div class="emp-sub" style="color:#9fc3e0">Unlock: ${gateBits}</div>` : "") +
         `</div>${action}</div>`;
+      }
+      html += `</div>`;
     }
-    html += `</div>`;
     return html;
   }
 
@@ -378,14 +385,16 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     root.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((el) =>
       el.classList.toggle("active", el.dataset.tab === tab),
     );
-    body.innerHTML =
-      tab === "cities"
-        ? renderCities(state, viewerId)
-        : tab === "units"
-          ? renderUnits(state, viewerId)
-          : tab === "trade"
-            ? renderTrade(state, viewerId)
-            : renderSpecialists(state, viewerId);
+    withPreservedScroll(body, () => {
+      body.innerHTML =
+        tab === "cities"
+          ? renderCities(state, viewerId)
+          : tab === "units"
+            ? renderUnits(state, viewerId)
+            : tab === "trade"
+              ? renderTrade(state, viewerId)
+              : renderSpecialists(state, viewerId);
+    });
 
     body.querySelectorAll<HTMLDivElement>("[data-city]").forEach((el) => {
       if (el.classList.contains("emp-row")) {

@@ -1,6 +1,6 @@
 // Game speed scales how much science and culture a tech, government, or civic
-// costs. Faster speeds mean cheaper research (shorter ages); slower speeds stretch
-// each era without touching combat, movement, or yields.
+// costs. Lower multipliers mean cheaper research (quicker eras); higher multipliers
+// stretch each era without touching combat, movement, or yields.
 
 import { civicCost, type CivicDef } from "@roc/data";
 import { TECH_DEFS, type TechId } from "./content";
@@ -8,20 +8,20 @@ import { getGovernment } from "./civs";
 
 export type GameSpeed = "fast" | "normal" | "slow" | "epic";
 
-export const GAME_SPEEDS: readonly GameSpeed[] = ["fast", "normal", "slow", "epic"];
+export const GAME_SPEEDS: readonly GameSpeed[] = ["slow", "normal", "fast", "epic"];
 
 /** Multiplier applied to tech, government-research, and civic costs. */
 export const GAME_SPEED_COST_MULTIPLIER: Record<GameSpeed, number> = {
-  fast: 0.67,
+  slow: 0.67,
   normal: 1,
-  slow: 1.5,
+  fast: 1.5,
   epic: 2.5,
 };
 
 export const GAME_SPEED_LABELS: Record<GameSpeed, string> = {
-  fast: "Fast",
-  normal: "Normal",
   slow: "Slow",
+  normal: "Normal",
+  fast: "Fast",
   epic: "Epic",
 };
 

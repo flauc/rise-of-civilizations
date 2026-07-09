@@ -6,6 +6,7 @@ import { isPassableLand } from "./terrain";
 import { startWonder, startWork } from "./works";
 import { establishTradeRoute } from "./trade";
 import { pillageTile } from "./raiding";
+import { maybeCheckCivElimination } from "./turn-updates";
 
 function newGame() {
   const state = createGame({ seed: "test-turn-updates", cols: 48, rows: 32, barbarians: false });
@@ -284,5 +285,113 @@ describe("turn update events", () => {
     expect(events.length).toBe(1);
     expect(events[0]!.payload?.pillaged).toContain("farm");
     expect(events[0]!.tile).toEqual({ col: 11, row: 10 });
+  });
+
+  it("alerts every other major civ when a rival is eliminated", () => {
+    const state = createGame({
+      seed: "civ-defeat",
+      cols: 36,
+      rows: 24,
+      barbarians: false,
+      humanSlots: 1,
+      playerCount: 2,
+      civIds: ["khazars", "japan"],
+    });
+    beginTurn(state);
+
+    // Wipe player 1: delete their only city and all units.
+    for (const c of citiesOf(state, 1)) state.cities.delete(c.id);
+    for (const u of unitsOf(state, 1)) state.units.delete(u.id);
+
+    maybeCheckCivElimination(state, 1, 0, { col: 10, row: 10 });
+
+    const defeated = state.turnUpdates.filter((e) => e.type === "civDefeated");
+    expect(defeated).toHaveLength(1);
+    expect(defeated[0]!.playerId).toBe(0);
+    expect(defeated[0]!.message).toBe("Bulan defeated Tokugawa.");
+    expect(defeated.some((e) => e.playerId === 1)).toBe(false);
+    expect(state.log.some((e) => e.world && e.message.includes("Bulan defeated Tokugawa"))).toBe(true);
+  });
+
+  it("alerts when the last city is captured even if the victim still has units", () => {
+    const state = createGame({
+      seed: "civ-defeat-city",
+      cols: 36,
+      rows: 24,
+      barbarians: false,
+      humanSlots: 1,
+      playerCount: 2,
+      civIds: ["khazars", "japan"],
+    });
+    beginTurn(state);
+
+    const mkCity = (ownerId: number, name: string, col: number, row: number): City => {
+      const id = state.nextEntityId++;
+      const city: City = {
+        id,
+        ownerId,
+        name,
+        col,
+        row,
+        population: 1,
+        foodStored: 0,
+        productionStored: 0,
+        production: null,
+        buildings: [],
+        training: {},
+        trainingQueue: [],
+        specialists: [],
+        wonders: [],
+        workedTiles: [],
+        isCapital: true,
+        foundedAsCapital: true,
+        hp: 0,
+        lastAttackedTurn: 0,
+        rangedAttackUsed: false,
+        modifiers: [],
+      };
+      state.cities.set(id, city);
+      return city;
+    };
+    mkCity(0, "Khazar Hold", 5, 5);
+    const victimCity = mkCity(1, "Edo", 14, 5);
+
+    const attacker = unitsOf(state, 0).find((u) => u.type === "warrior" || u.type === "swordsman")!;
+    attacker.col = victimCity.col + 1;
+    attacker.row = victimCity.row;
+    attacker.movementLeft = 2;
+    attacker.attackedThisTurn = false;
+    state.players[0]!.atWar.push(1);
+    state.players[1]!.atWar.push(0);
+
+    expect(unitsOf(state, 1).length).toBeGreaterThan(0);
+    applyCommand(state, { type: "attack", attackerId: attacker.id, col: victimCity.col, row: victimCity.row }, attacker.ownerId);
+
+    const defeated = state.turnUpdates.filter((e) => e.type === "civDefeated");
+    expect(defeated.some((e) => e.playerId === 0)).toBe(true);
+    expect(defeated[0]!.message).toBe("Bulan defeated Tokugawa.");
+  });
+
+  it("uses multiplayer usernames in civ-defeat announcements", () => {
+    const state = createGame({
+      seed: "civ-defeat-mp",
+      cols: 36,
+      rows: 24,
+      barbarians: false,
+      humanSlots: 2,
+      playerCount: 2,
+      playerNames: ["Alice", "Bob"],
+      civIds: ["khazars", "japan"],
+    });
+    beginTurn(state);
+
+    for (const c of citiesOf(state, 1)) state.cities.delete(c.id);
+    for (const u of unitsOf(state, 1)) state.units.delete(u.id);
+
+    maybeCheckCivElimination(state, 1, 0, { col: 10, row: 10 });
+
+    const defeated = state.turnUpdates.filter((e) => e.type === "civDefeated");
+    expect(defeated).toHaveLength(1);
+    expect(defeated[0]!.message).toBe("Alice defeated Bob.");
   });
 });

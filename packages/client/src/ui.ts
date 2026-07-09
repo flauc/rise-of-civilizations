@@ -3,10 +3,17 @@ import { renderTechTreeInto } from "./techtree";
 import { createWiki } from "./wiki";
 import { createEmpire, type Tab as EmpireTab } from "./empire";
 import { createDiplomacy } from "./diplomacy";
+import { gameHud, initGameHud } from "./hud-root";
+import { setPreservedHtml, withPreservedScroll } from "./panel-scroll";
 import type { DealItem } from "@roc/sim";
 import type { SaveRecord } from "./save-db";
 import type { CheatAction } from "./god-mode";
 import { getSettings, updateSettings, type TurnUpdateView } from "./settings";
+import {
+  bindScreenRotationControls,
+  screenRotationControlsHtml,
+  shouldOfferScreenRotation,
+} from "./screen-rotation-ui";
 import { selectTurnUpdates } from "./turn-update-batch";
 import {
   researchableGovernmentsFor,
@@ -116,6 +123,7 @@ import {
   uniqueImprovementForCiv,
   IMPROVEMENT_DEFS,
   PROMOTION_DEFS,
+  PROMOTION_POOL,
   TECH_DEFS,
   UNIT_DEFS,
   buildingInfo,
@@ -147,7 +155,14 @@ import {
   scoreBreakdown,
   availableLegends,
   availableLegendsForPlayer,
-  legendCost,
+  canRecruitLegend,
+  legendRecruitCostFor,
+  legendRecruitThreshold,
+  legendTrackEarnedOf,
+  legendTrackFor,
+  legendTrackPointsOf,
+  LEGEND_TRACKS,
+  LEGEND_TRACK_LABELS,
   legendBaseName,
   LEGEND_DEFAULT_LIFESPAN,
   legendLifeExtensions,
@@ -443,6 +458,12 @@ export interface UIHandlers {
   onSuggestion(): void;
   onSave(name: string): Promise<void>;
   onExportCurrentSave(): Promise<string>;
+  /** Registered players can persist single-player saves; guests cannot. */
+  canSave: boolean;
+  /** Single-player registered users are prompted to save when leaving. */
+  promptSaveOnLeave: boolean;
+  /** Called after the player confirms leaving (optionally after saving). */
+  onLeaveGame(): void;
   /**
    * Submit a bug report with the player's description. The handler captures the
    * game state/context. Resolves `true` if sent now, `false` if queued offline.
@@ -488,7 +509,7 @@ function div(id: string, cls: string): HTMLDivElement {
   const el = document.createElement("div");
   el.id = id;
   el.className = cls;
-  document.body.appendChild(el);
+  gameHud().appendChild(el);
   return el;
 }
 
@@ -654,7 +675,77 @@ const GOVERNOR_NOTE: Record<CityAutoFocus, string> = {
   money: "Auto: favouring gold tiles & buildings, plus works & specialists.",
 };
 
+/** Full promotion catalog + earned perks for the unit promotion info dialog. */
+function unitPromotionDialogHtml(unit: Unit, displayName: string): string {
+  const pool = PROMOTION_POOL[UNIT_DEFS[unit.type].cls];
+  const maxTier = Math.max(1, unit.level - 1);
+  const levelStars = unit.level > 1 ? ` <span style="color:#ffd967">${"★".repeat(unit.level - 1)}</span>` : "";
+  let html =
+    `<div class="unit-perk-summary">` +
+    `<div><b>${escapeHtml(displayName)}</b>${levelStars}</div>` +
+    `<div class="sub">Level <b>${unit.level}</b> · XP <b>${unit.xp}/${unitXpForNextLevel(unit.level)}</b>`;
+  if (unit.unspentPromotions > 0) {
+    html +=
+      ` · <b style="color:#ffd967">${unit.unspentPromotions} promotion pick${unit.unspentPromotions === 1 ? "" : "s"} waiting</b>`;
+  }
+  html += `</div></div>`;
+
+  if (unit.promotions.length) {
+    html += `<div class="unit-perk-section"><div class="unit-perk-section-title">Earned</div>`;
+    for (const p of unit.promotions) {
+      const def = PROMOTION_DEFS[p];
+      html +=
+        `<div class="unit-perk-row taken">` +
+        `<div class="unit-perk-row-head"><b>${escapeHtml(def.name)}</b> <span class="unit-perk-tier">${"★".repeat(def.tier)}</span></div>` +
+        `<div class="unit-perk-desc">${escapeHtml(def.desc)}</div></div>`;
+    }
+    html += `</div>`;
+  }
+
+  html +=
+    `<div class="unit-perk-section"><div class="unit-perk-section-title">Perk catalog</div>` +
+    `<p class="sub" style="margin:0 0 10px">Each level-up grants one pick from unlocked tiers (★ at level 2, ★★ at 3, ★★★ at 4+).</p>`;
+
+  for (const tier of [1, 2, 3] as const) {
+    const tierPromos = pool.filter((p) => PROMOTION_DEFS[p].tier === tier);
+    if (!tierPromos.length) continue;
+    const levelReq = tier + 1;
+    html +=
+      `<div class="unit-perk-tier-block">` +
+      `<div class="unit-perk-tier-head">Level ${levelReq}+ · <span class="unit-perk-tier">${"★".repeat(tier)}</span></div>`;
+    for (const p of tierPromos) {
+      const def = PROMOTION_DEFS[p];
+      const taken = unit.promotions.includes(p);
+      const tierLocked = def.tier > maxTier;
+      const prereqLocked = def.prereq !== undefined && !unit.promotions.includes(def.prereq);
+      let status = "";
+      let rowClass = "unit-perk-row";
+      if (taken) {
+        status = `<span class="unit-perk-status earned">Earned</span>`;
+        rowClass += " taken";
+      } else if (tierLocked) {
+        status = `<span class="unit-perk-status locked">Needs level ${levelReq}</span>`;
+        rowClass += " locked";
+      } else if (prereqLocked) {
+        status = `<span class="unit-perk-status locked">Needs ${escapeHtml(PROMOTION_DEFS[def.prereq!].name)}</span>`;
+        rowClass += " locked";
+      } else if (unit.unspentPromotions > 0 && availablePromotions(unit).includes(p)) {
+        status = `<span class="unit-perk-status available">Available now</span>`;
+        rowClass += " available";
+      }
+      html +=
+        `<div class="${rowClass}">` +
+        `<div class="unit-perk-row-head"><b>${escapeHtml(def.name)}</b> <span class="unit-perk-tier">${"★".repeat(def.tier)}</span>${status}</div>` +
+        `<div class="unit-perk-desc">${escapeHtml(def.desc)}</div></div>`;
+    }
+    html += `</div>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
 export function createUI(handlers: UIHandlers): UI {
+  initGameHud();
   let abilityAtlas: AbilityAtlas | undefined;
   const topbar = div("topbar", "panel");
   const bottomBar = div("bottom-bar", "panel");
@@ -696,6 +787,7 @@ export function createUI(handlers: UIHandlers): UI {
   const villageOverlay = div("village-overlay", "");
   const villageDialog = div("village-dialog", "");
   villageDialog.innerHTML =
+    `<button type="button" class="dialog-x" id="village-close" title="Close" aria-label="Close">✕</button>` +
     `<img class="village-art" id="village-art" src="" alt="" />` +
     `<div class="village-title" id="village-title">Village Discovered</div>` +
     `<div class="village-msg" id="village-msg"></div>` +
@@ -710,6 +802,7 @@ export function createUI(handlers: UIHandlers): UI {
   const gpActivateOverlay = div("gp-activate-overlay", "");
   const gpActivateDialog = div("gp-activate-dialog", "");
   gpActivateDialog.innerHTML =
+    `<button type="button" class="dialog-x" id="gp-activate-x" title="Close" aria-label="Close">✕</button>` +
     `<img class="gp-activate-art" id="gp-activate-art" src="" alt="" />` +
     `<div class="gp-activate-title" id="gp-activate-title"></div>` +
     `<div class="gp-activate-sub" id="gp-activate-sub"></div>` +
@@ -750,8 +843,8 @@ export function createUI(handlers: UIHandlers): UI {
     gpActivateOverlay.classList.add("show");
     gpActivateDialog.classList.add("show");
   };
+  gpActivateDialog.querySelector<HTMLButtonElement>("#gp-activate-x")!.addEventListener("click", hideGreatPersonActivate);
   gpActivateCancel.addEventListener("click", hideGreatPersonActivate);
-  gpActivateOverlay.addEventListener("click", hideGreatPersonActivate);
   gpActivateConfirm.addEventListener("click", () => {
     const id = pendingGreatPersonId;
     hideGreatPersonActivate();
@@ -764,12 +857,13 @@ export function createUI(handlers: UIHandlers): UI {
   const leaderAbilityOverlay = div("leader-ability-overlay", "");
   const leaderAbilityDialog = div("leader-ability-dialog", "");
   leaderAbilityDialog.innerHTML =
+    `<button type="button" class="dialog-x" id="la-dialog-x" title="Close" aria-label="Close">✕</button>` +
     `<img class="la-dialog-art" id="la-dialog-art" src="" alt="" />` +
     `<div class="la-dialog-title" id="la-dialog-title"></div>` +
     `<div class="la-dialog-sub" id="la-dialog-sub"></div>` +
     `<div class="la-dialog-msg" id="la-dialog-msg"></div>` +
     `<div class="la-dialog-actions">` +
-    `<button class="btn" id="la-dialog-cancel">Close</button>` +
+    `<button class="btn" id="la-dialog-cancel">Cancel</button>` +
     `<button class="btn primary" id="la-dialog-confirm">Use ability</button></div>`;
   const laDialogArt = leaderAbilityDialog.querySelector<HTMLImageElement>("#la-dialog-art")!;
   const laDialogTitle = leaderAbilityDialog.querySelector<HTMLDivElement>("#la-dialog-title")!;
@@ -810,8 +904,8 @@ export function createUI(handlers: UIHandlers): UI {
     leaderAbilityOverlay.classList.add("show");
     leaderAbilityDialog.classList.add("show");
   };
+  leaderAbilityDialog.querySelector<HTMLButtonElement>("#la-dialog-x")!.addEventListener("click", hideLeaderAbility);
   laDialogCancel.addEventListener("click", hideLeaderAbility);
-  leaderAbilityOverlay.addEventListener("click", hideLeaderAbility);
   laDialogConfirm.addEventListener("click", () => {
     if (laDialogConfirm.disabled) return;
     hideLeaderAbility();
@@ -821,9 +915,9 @@ export function createUI(handlers: UIHandlers): UI {
   const logOverlay = div("log-overlay", "");
   const logDialog = div("log-dialog", "");
   logDialog.innerHTML =
+    `<button type="button" class="dialog-x" id="log-close" title="Close" aria-label="Close">✕</button>` +
     `<div class="log-dialog-title">Game Log</div>` +
-    `<div class="log-dialog-content" id="log-dialog-content"></div>` +
-    `<button class="btn primary" id="log-close">Close</button>`;
+    `<div class="log-dialog-content" id="log-dialog-content"></div>`;
   const logDialogContent = logDialog.querySelector<HTMLDivElement>("#log-dialog-content")!;
   const logClose = logDialog.querySelector<HTMLButtonElement>("#log-close")!;
   const hideLogDialog = (): void => {
@@ -831,14 +925,13 @@ export function createUI(handlers: UIHandlers): UI {
     logDialog.classList.remove("show");
   };
   logClose.addEventListener("click", hideLogDialog);
-  logOverlay.addEventListener("click", hideLogDialog);
 
   const leaderboardOverlay = div("leaderboard-overlay", "");
   const leaderboardDialog = div("leaderboard-dialog", "");
   leaderboardDialog.innerHTML =
+    `<button type="button" class="dialog-x" id="leaderboard-close" title="Close" aria-label="Close">✕</button>` +
     `<div class="log-dialog-title">Civilization Standings</div>` +
-    `<div id="leaderboard-content"></div>` +
-    `<button class="btn primary" id="leaderboard-close">Close</button>`;
+    `<div id="leaderboard-content"></div>`;
   const leaderboardContent = leaderboardDialog.querySelector<HTMLDivElement>("#leaderboard-content")!;
   const leaderboardClose = leaderboardDialog.querySelector<HTMLButtonElement>("#leaderboard-close")!;
   const hideLeaderboard = (): void => {
@@ -914,11 +1007,13 @@ export function createUI(handlers: UIHandlers): UI {
       ? `<div class="lb-vic-title">🏆 Your Victory Progress</div><div class="lb-vic">${vicBody}</div>`
       : "";
 
-    leaderboardContent.innerHTML =
-      `<div class="lb-caption">${turnCaption}</div>` +
-      `<div class="lb-list">${body}</div>` +
-      vicSection +
-      `<div class="lb-legend">🏛️ Cities · 👥 Population · 🔬 Technology · 📜 Civics · 🛡️ Units · 🪙 Gold · ⚔️ Battles won · 🔥 Cities conquered</div>`;
+    withPreservedScroll(leaderboardContent, () => {
+      leaderboardContent.innerHTML =
+        `<div class="lb-caption">${turnCaption}</div>` +
+        `<div class="lb-list">${body}</div>` +
+        vicSection +
+        `<div class="lb-legend">🏛️ Cities · 👥 Population · 🔬 Technology · 📜 Civics · 🛡️ Units · 🪙 Gold · ⚔️ Battles won · 🔥 Cities conquered</div>`;
+    });
     // The civ Encyclopedia buttons close the leaderboard so the wiki opens cleanly on top.
     leaderboardContent.querySelectorAll<HTMLButtonElement>("[data-wiki-open]").forEach((el) =>
       el.addEventListener("click", hideLeaderboard),
@@ -928,14 +1023,13 @@ export function createUI(handlers: UIHandlers): UI {
     leaderboardDialog.classList.add("show");
   };
   leaderboardClose.addEventListener("click", hideLeaderboard);
-  leaderboardOverlay.addEventListener("click", hideLeaderboard);
 
   const goldOverlay = div("gold-overlay", "");
   const goldDialog = div("gold-dialog", "");
   goldDialog.innerHTML =
+    `<button type="button" class="dialog-x" id="gold-close" title="Close" aria-label="Close">✕</button>` +
     `<div class="gold-dialog-title">Treasury</div>` +
-    `<div id="gold-dialog-content"></div>` +
-    `<button class="btn primary" id="gold-close">Close</button>`;
+    `<div id="gold-dialog-content"></div>`;
   const goldDialogContent = goldDialog.querySelector<HTMLDivElement>("#gold-dialog-content")!;
   const goldClose = goldDialog.querySelector<HTMLButtonElement>("#gold-close")!;
   let goldDialogOpen = false;
@@ -945,12 +1039,11 @@ export function createUI(handlers: UIHandlers): UI {
     goldDialog.classList.remove("show");
   };
   goldClose.addEventListener("click", hideGoldDialog);
-  goldOverlay.addEventListener("click", hideGoldDialog);
 
   const moraleOverlay = div("morale-overlay", "");
   const moraleDialog = div("morale-dialog", "");
   moraleDialog.innerHTML =
-    `<button class="morale-x" id="morale-close" title="Close" aria-label="Close">✕</button>` +
+    `<button type="button" class="dialog-x" id="morale-close" title="Close" aria-label="Close">✕</button>` +
     `<div class="morale-dialog-title">Empire Morale</div>` +
     `<div id="morale-dialog-content"></div>` +
     `<button class="btn morale-explain-toggle" id="morale-explain-toggle"></button>` +
@@ -983,11 +1076,33 @@ export function createUI(handlers: UIHandlers): UI {
     syncMoraleExplain();
   });
   moraleClose.addEventListener("click", hideMoraleDialog);
-  moraleOverlay.addEventListener("click", hideMoraleDialog);
+
+  const unitPromoOverlay = div("unit-promo-overlay", "");
+  const unitPromoDialog = div("unit-promo-dialog", "");
+  unitPromoDialog.innerHTML =
+    `<button type="button" class="dialog-x" id="unit-promo-close" title="Close" aria-label="Close">✕</button>` +
+    `<div class="unit-promo-dialog-title">Unit Promotions</div>` +
+    `<div id="unit-promo-dialog-content"></div>`;
+  const unitPromoDialogContent = unitPromoDialog.querySelector<HTMLDivElement>("#unit-promo-dialog-content")!;
+  const unitPromoClose = unitPromoDialog.querySelector<HTMLButtonElement>("#unit-promo-close")!;
+  let unitPromoDialogOpen = false;
+  const hideUnitPromoDialog = (): void => {
+    unitPromoDialogOpen = false;
+    unitPromoOverlay.classList.remove("show");
+    unitPromoDialog.classList.remove("show");
+  };
+  const showUnitPromoDialog = (unit: Unit, displayName: string): void => {
+    unitPromoDialogContent.innerHTML = unitPromotionDialogHtml(unit, displayName);
+    unitPromoDialogOpen = true;
+    unitPromoOverlay.classList.add("show");
+    unitPromoDialog.classList.add("show");
+  };
+  unitPromoClose.addEventListener("click", hideUnitPromoDialog);
 
   const turnUpdateOverlay = div("turn-update-overlay", "");
   const turnUpdateDialog = div("turn-update-dialog", "");
   turnUpdateDialog.innerHTML =
+    `<button type="button" class="dialog-x" id="turn-update-close" title="Close" aria-label="Close">✕</button>` +
     `<div class="turn-update-header">` +
     `<div class="turn-update-heading" id="turn-update-heading">Turn Updates</div>` +
     `<button class="btn tu-view-toggle" id="turn-update-view-toggle"></button>` +
@@ -1003,8 +1118,7 @@ export function createUI(handlers: UIHandlers): UI {
     `<button class="btn" id="turn-update-next">Next ▶</button>` +
     `</div>` +
     `</div>` +
-    `<div class="turn-update-compact hidden" id="turn-update-compact"></div>` +
-    `<button class="btn primary" id="turn-update-close">Close</button>`;
+    `<div class="turn-update-compact hidden" id="turn-update-compact"></div>`;
   const turnUpdateExpanded = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-expanded")!;
   const turnUpdateCompact = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-compact")!;
   const turnUpdateHeading = turnUpdateDialog.querySelector<HTMLDivElement>("#turn-update-heading")!;
@@ -1025,14 +1139,13 @@ export function createUI(handlers: UIHandlers): UI {
   endturn.id = "endturn";
   endturn.className = "action-btn action-next";
   endturn.title = "Next Move";
-  document.body.appendChild(endturn);
+  gameHud().appendChild(endturn);
 
   const endturn2 = document.createElement("button");
   endturn2.id = "endturn2";
   endturn2.className = "action-btn action-skip";
   endturn2.title = "Skip Move (End Turn)";
-  endturn2.addEventListener("click", () => handlers.onEndTurn());
-  document.body.appendChild(endturn2);
+  gameHud().appendChild(endturn2);
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
@@ -1062,6 +1175,10 @@ export function createUI(handlers: UIHandlers): UI {
       }
       if (moraleDialog.classList.contains("show")) {
         hideMoraleDialog();
+        return;
+      }
+      if (unitPromoDialog.classList.contains("show")) {
+        hideUnitPromoDialog();
         return;
       }
       if (settingsOpen) {
@@ -1101,6 +1218,7 @@ export function createUI(handlers: UIHandlers): UI {
       if (villageDialog.classList.contains("show")) { villageOk.click(); return; }
       if (turnUpdateDialog.classList.contains("show")) { turnUpdateClose.click(); return; }
       if (goldDialog.classList.contains("show")) { goldClose.click(); return; }
+      if (unitPromoDialog.classList.contains("show")) { unitPromoClose.click(); return; }
       if (logDialog.classList.contains("show")) { logClose.click(); return; }
       if (leaderboardDialog.classList.contains("show")) { leaderboardClose.click(); return; }
       // Blocking overlays with no single positive action: swallow Enter rather
@@ -1158,12 +1276,14 @@ export function createUI(handlers: UIHandlers): UI {
   const lastSeenTurnUpdateByViewer = new Map<number, number>();
   let menuOpen = false;
   let settingsOpen = false;
-  let menuView: "menu" | "save" | "bug" = "menu";
+  let menuView: "menu" | "save" | "leave" | "bug" = "menu";
   let isSaving = false;
   let isReporting = false;
   let mpSaves: SaveRecord[] = [];
   let godModeEnabled = false;
   let godModeOpen = false;
+  /** Skip god-panel DOM rebuilds when cheat UI content is unchanged (preserves scroll). */
+  let godModeRenderSig = "";
   let lastView: UIView | null = null;
   // Docked info-panel collapse state. Each panel starts minimized on mobile and
   // expanded on desktop, and resets whenever the selection changes so each new
@@ -1177,7 +1297,8 @@ export function createUI(handlers: UIHandlers): UI {
   let governorPickerOpen = false;
   let tilePanelExpanded = false;
   let tilePanelKey: string | null = null;
-  const isMobile = (): boolean => window.matchMedia("(max-width: 640px)").matches;
+  const isMobile = (): boolean =>
+    window.matchMedia("(max-width: 860px), (pointer: coarse)").matches;
 
   // Shared summary bar for the collapsible docked panels (unit / tile / city).
   // The whole bar toggles the panel's `.collapsed` class; an optional ✕ closes it.
@@ -1302,7 +1423,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
 
   villageOk.addEventListener("click", closeVillageDialog);
-  villageOverlay.addEventListener("click", closeVillageDialog);
+  villageDialog.querySelector<HTMLButtonElement>("#village-close")!.addEventListener("click", closeVillageDialog);
 
   const turnUpdateImagePath = (ev: TurnUpdateEvent): string => {
     if (ev.type === "wonderComplete" && ev.payload?.wonderId) {
@@ -1384,6 +1505,8 @@ export function createUI(handlers: UIHandlers): UI {
         return "A Legend Rises";
       case "religionFounded":
         return "Religion Founded";
+      case "civDefeated":
+        return "Civilization Defeated";
       case "treasuryExhausted":
         return "Treasury Exhausted";
       case "eureka":
@@ -1513,18 +1636,20 @@ export function createUI(handlers: UIHandlers): UI {
       hideTurnUpdateDialog();
       return;
     }
-    turnUpdateCompact.innerHTML = turnUpdateQueue
-      .map(
-        (ev, i) =>
-          `<button class="tu-row" data-tu-row="${i}">` +
-          `<img class="tu-row-art" src="${turnUpdateImagePath(ev)}" alt="" ` +
-          `onerror="this.onerror=null;this.src='${assetUrl(`turn-updates/${ev.type}.png`)}'" />` +
-          `<span class="tu-row-text"><b>${escapeHtml(updateTitleFor(ev))}</b>` +
-          `<span>${escapeHtml(ev.message)}</span></span>` +
-          `<span class="tu-row-chevron">›</span>` +
-          `</button>`,
-      )
-      .join("");
+    withPreservedScroll(turnUpdateDialog, () => {
+      turnUpdateCompact.innerHTML = turnUpdateQueue
+        .map(
+          (ev, i) =>
+            `<button class="tu-row" data-tu-row="${i}">` +
+            `<img class="tu-row-art" src="${turnUpdateImagePath(ev)}" alt="" ` +
+            `onerror="this.onerror=null;this.src='${assetUrl(`turn-updates/${ev.type}.png`)}'" />` +
+            `<span class="tu-row-text"><b>${escapeHtml(updateTitleFor(ev))}</b>` +
+            `<span>${escapeHtml(ev.message)}</span></span>` +
+            `<span class="tu-row-chevron">›</span>` +
+            `</button>`,
+        )
+        .join("");
+    });
     turnUpdateCompact.querySelectorAll<HTMLButtonElement>("[data-tu-row]").forEach((el) =>
       el.addEventListener("click", () => {
         // Drill into the chosen event without changing the saved preference.
@@ -1571,7 +1696,6 @@ export function createUI(handlers: UIHandlers): UI {
     }
   });
   turnUpdateClose.addEventListener("click", hideTurnUpdateDialog);
-  turnUpdateOverlay.addEventListener("click", hideTurnUpdateDialog);
 
   const closeSettings = (): void => {
     settingsOpen = false;
@@ -1584,17 +1708,26 @@ export function createUI(handlers: UIHandlers): UI {
     if (!settingsOpen) return;
     const s = getSettings();
     const tuMode = !s.turnUpdatePopup ? "off" : s.turnUpdateView;
-    settingsDialog.innerHTML =
-      `<div class="settings-header"><b>⚙ Settings</b>` +
-      `<button class="btn" id="settings-close">Close</button></div>` +
-      `<div class="settings-section">` +
-      `<div class="settings-title">Turn Updates</div>` +
-      `<div class="settings-hint">What happens at the start of each of your turns.</div>` +
-      `<div class="seg">` +
-      `<button class="seg-btn ${tuMode === "expanded" ? "active" : ""}" data-tu-mode="expanded" title="Pop up one event at a time">Pop up</button>` +
-      `<button class="seg-btn ${tuMode === "compact" ? "active" : ""}" data-tu-mode="compact" title="Pop up all events on one screen">Compact</button>` +
-      `<button class="seg-btn ${tuMode === "off" ? "active" : ""}" data-tu-mode="off" title="Don't pop up; still available from the Updates button">Off</button>` +
-      `</div></div>`;
+    withPreservedScroll(settingsDialog, () => {
+      settingsDialog.innerHTML =
+        `<button type="button" class="dialog-x" id="settings-close" title="Close" aria-label="Close">✕</button>` +
+        `<div class="settings-header"><b>⚙ Settings</b></div>` +
+        `<div class="settings-section">` +
+        `<div class="settings-title">Turn Updates</div>` +
+        `<div class="settings-hint">What happens at the start of each of your turns.</div>` +
+        `<div class="seg">` +
+        `<button class="seg-btn ${tuMode === "expanded" ? "active" : ""}" data-tu-mode="expanded" title="Pop up one event at a time">Pop up</button>` +
+        `<button class="seg-btn ${tuMode === "compact" ? "active" : ""}" data-tu-mode="compact" title="Pop up all events on one screen">Compact</button>` +
+        `<button class="seg-btn ${tuMode === "off" ? "active" : ""}" data-tu-mode="off" title="Don't pop up; still available from the Updates button">Off</button>` +
+        `</div></div>` +
+        (shouldOfferScreenRotation()
+          ? `<div class="settings-section">` +
+            `<div class="settings-title">Screen Rotation</div>` +
+            `<div class="settings-hint">Pick one orientation. The game stays fixed and does not rotate with your device.</div>` +
+            screenRotationControlsHtml({ showLabel: false }) +
+            `</div>`
+          : "");
+    });
     settingsDialog.querySelector<HTMLButtonElement>("#settings-close")!.addEventListener("click", closeSettings);
     settingsDialog.querySelectorAll<HTMLButtonElement>("[data-tu-mode]").forEach((el) =>
       el.addEventListener("click", () => {
@@ -1611,17 +1744,19 @@ export function createUI(handlers: UIHandlers): UI {
         renderSettings();
       }),
     );
+    if (shouldOfferScreenRotation()) bindScreenRotationControls(settingsDialog);
   };
-  settingsOverlay.addEventListener("click", closeSettings);
 
   const renderAction = (view: UIView): void => {
     if (view.suggestion) {
       endturn.title = view.suggestion.label;
       endturn.onclick = () => handlers.onSuggestion();
+      endturn2.onclick = () => handlers.onEndTurn();
       endturn2.classList.remove("hidden");
     } else {
       endturn.title = "End Turn";
       endturn.onclick = () => handlers.onEndTurn();
+      endturn2.onclick = null;
       endturn2.classList.add("hidden");
     }
   };
@@ -1671,9 +1806,8 @@ export function createUI(handlers: UIHandlers): UI {
     const myLegends = unitsOf(state, viewerId).filter((u) => u.legendId).length;
     const canRecruitLegendNow =
       legendsOn &&
-      player.faith >= legendCost(player.legendsRecruited ?? 0) &&
       citiesOf(state, viewerId).length > 0 &&
-      availableLegendsForPlayer(state, viewerId).length > 0;
+      availableLegendsForPlayer(state, viewerId).some((l) => canRecruitLegend(state, viewerId, l.id).ok);
     // Proposals needing the viewer's attention: incoming offers awaiting a
     // response, plus our own offers the other side accepted and we must finalize.
     const diploActionable = state.diploProposals.filter(
@@ -1952,6 +2086,15 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
 
+    if (menuView === "leave" && saveModal.querySelector<HTMLInputElement>("#leave-save-name")) {
+      const confirmBtn = saveModal.querySelector<HTMLButtonElement>("#leave-save");
+      if (confirmBtn) {
+        confirmBtn.disabled = isSaving;
+        confirmBtn.textContent = isSaving ? "Saving…" : "Save & Leave";
+      }
+      return;
+    }
+
     if (menuView === "menu") {
       const godMenuBtn =
         !lastView?.cheatsEnabled
@@ -1959,12 +2102,15 @@ export function createUI(handlers: UIHandlers): UI {
           : godModeEnabled
             ? `<button class="btn" id="menu-god">God Mode</button>`
             : `<button class="btn" id="menu-enable-god">Enable God Mode</button>`;
+      const saveBtn = handlers.canSave
+        ? `<button class="btn primary" id="menu-save">Save Game</button>`
+        : "";
       let html =
         `<div class="row" style="justify-content:space-between"><b>Game Menu</b>` +
-        `<button class="btn" id="save-close">Close</button></div>` +
+        `<button type="button" class="btn panel-close" id="save-close">✕</button></div>` +
         `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
         `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
-        `<button class="btn primary" id="menu-save">Save Game</button>` +
+        saveBtn +
         `<button class="btn" id="menu-settings">Settings</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki</button>` +
         `<button class="btn" id="menu-leaderboard">Leaderboard</button>` +
@@ -1987,7 +2133,9 @@ export function createUI(handlers: UIHandlers): UI {
           .join("");
       }
       html += `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
-      saveModal.innerHTML = html;
+      withPreservedScroll(saveModal, () => {
+        saveModal.innerHTML = html;
+      });
       saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
         menuOpen = false;
         renderMenu(state);
@@ -1996,7 +2144,7 @@ export function createUI(handlers: UIHandlers): UI {
         settingsOpen = true;
         renderSettings();
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-save")!.addEventListener("click", () => {
+      saveModal.querySelector<HTMLButtonElement>("#menu-save")?.addEventListener("click", () => {
         menuView = "save";
         renderMenu(state);
       });
@@ -2013,10 +2161,13 @@ export function createUI(handlers: UIHandlers): UI {
         showLeaderboard(state);
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-log")!.addEventListener("click", () => {
-        logDialogContent.innerHTML = visibleLog(state, lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? 0))
-          .reverse()
-          .map((entry) => `<div>${escapeHtml(entry.message)}</div>`)
-          .join("");
+        setPreservedHtml(
+          logDialogContent,
+          visibleLog(state, lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? 0))
+            .reverse()
+            .map((entry) => `<div>${escapeHtml(entry.message)}</div>`)
+            .join(""),
+        );
         logOverlay.classList.add("show");
         logDialog.classList.add("show");
       });
@@ -2045,11 +2196,13 @@ export function createUI(handlers: UIHandlers): UI {
         if (lastView) renderGodMode(lastView);
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-leave")!.addEventListener("click", () => {
+        if (handlers.promptSaveOnLeave && handlers.canSave) {
+          menuView = "leave";
+          renderMenu(state);
+          return;
+        }
         if (confirm("Leave this game and return to the main menu?")) {
-          // Leaving an unfinished game counts as abandoned. Record it before the
-          // reload (persisted to the queue, so it survives and is delivered).
-          abandonActiveSession();
-          location.reload();
+          handlers.onLeaveGame();
         }
       });
       saveModal.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
@@ -2074,19 +2227,65 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
 
+    if (menuView === "leave") {
+      const civ = getCiv(player.civId);
+      const defaultName = `${civ ? civ.name : player.name} - Turn ${state.turn}`;
+      withPreservedScroll(saveModal, () => {
+        saveModal.innerHTML =
+          `<div class="row" style="justify-content:space-between"><b>Leave Game</b>` +
+          `<button type="button" class="btn panel-close" id="save-close">✕</button></div>` +
+          `<div style="margin:8px 0;color:#9fc0dc">Save your progress before returning to the main menu?</div>` +
+          `<input id="leave-save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
+          `<button class="btn primary" id="leave-save" style="width:100%" ${isSaving ? "disabled" : ""}>` +
+          (isSaving ? "Saving…" : "Save & Leave") +
+          `</button>` +
+          `<button class="btn" id="leave-discard" style="width:100%;margin-top:8px">Leave without saving</button>` +
+          `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+      });
+      const input = saveModal.querySelector<HTMLInputElement>("#leave-save-name")!;
+      input.focus();
+      saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
+        menuView = "menu";
+        renderMenu(state);
+      });
+      saveModal.querySelector<HTMLButtonElement>("#leave-discard")!.addEventListener("click", () => {
+        handlers.onLeaveGame();
+      });
+      saveModal.querySelector<HTMLButtonElement>("#leave-save")!.addEventListener("click", async () => {
+        const name = input.value.trim();
+        if (!name) {
+          saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = "Enter a save name.";
+          return;
+        }
+        isSaving = true;
+        renderMenu(state);
+        try {
+          await handlers.onSave(name);
+          handlers.onLeaveGame();
+        } catch (err) {
+          isSaving = false;
+          renderMenu(state);
+          saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+        }
+      });
+      return;
+    }
+
     // Bug-report form view
     if (menuView === "bug") {
-      saveModal.innerHTML =
-        `<div class="row" style="justify-content:space-between"><b>🐞 Report a Bug</b>` +
-        `<button class="btn" id="bug-close">Cancel</button></div>` +
-        `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
-        `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
-        `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
-        `style="width:100%;min-height:120px;resize:vertical;margin-bottom:8px"></textarea>` +
-        `<button class="btn primary" id="bug-confirm" style="width:100%" ${isReporting ? "disabled" : ""}>` +
-        (isReporting ? "Sending…" : "Submit report") +
-        `</button>` +
-        `<div id="bug-status" style="margin-top:8px"></div>`;
+      withPreservedScroll(saveModal, () => {
+        saveModal.innerHTML =
+          `<div class="row" style="justify-content:space-between"><b>🐞 Report a Bug</b>` +
+          `<button type="button" class="btn panel-close" id="bug-close">✕</button></div>` +
+          `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
+          `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
+          `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
+          `style="width:100%;min-height:120px;resize:vertical;margin-bottom:8px"></textarea>` +
+          `<button class="btn primary" id="bug-confirm" style="width:100%" ${isReporting ? "disabled" : ""}>` +
+          (isReporting ? "Sending…" : "Submit report") +
+          `</button>` +
+          `<div id="bug-status" style="margin-top:8px"></div>`;
+      });
       const ta = saveModal.querySelector<HTMLTextAreaElement>("#bug-text")!;
       ta.focus();
       const statusEl = saveModal.querySelector<HTMLDivElement>("#bug-status")!;
@@ -2124,7 +2323,7 @@ export function createUI(handlers: UIHandlers): UI {
     const defaultName = `${civ ? civ.name : player.name} - Turn ${state.turn}`;
     let html =
       `<div class="row" style="justify-content:space-between"><b>Save Game</b>` +
-      `<button class="btn" id="save-close">Cancel</button></div>` +
+      `<button type="button" class="btn panel-close" id="save-close">✕</button></div>` +
       `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
       `<input id="save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
       `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
@@ -2132,7 +2331,9 @@ export function createUI(handlers: UIHandlers): UI {
       `</button>` +
       `<button class="btn" id="save-export" style="width:100%;margin-top:8px">💾 Export Current Save</button>` +
       `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
-    saveModal.innerHTML = html;
+    withPreservedScroll(saveModal, () => {
+      saveModal.innerHTML = html;
+    });
     const input = saveModal.querySelector<HTMLInputElement>("#save-name")!;
     input.focus();
     saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
@@ -2234,7 +2435,7 @@ export function createUI(handlers: UIHandlers): UI {
     html += `<div class="gold-total"><span>Total upkeep</span><span class="gold-amount gold-negative">−${totalUpkeep}</span></div>`;
     html += `</div>`;
 
-    goldDialogContent.innerHTML = html;
+    setPreservedHtml(goldDialogContent, html);
   };
 
   const renderMoraleDialog = (state: GameState): void => {
@@ -2299,7 +2500,7 @@ export function createUI(handlers: UIHandlers): UI {
     }
     html += `</div>`;
 
-    moraleDialogContent.innerHTML = html;
+    setPreservedHtml(moraleDialogContent, html);
     moraleDialogContent.querySelectorAll<HTMLButtonElement>("[data-pay]").forEach((el) =>
       el.addEventListener("click", () => handlers.onSetUpkeepModifier(Number(el.dataset.pay))),
     );
@@ -2310,23 +2511,26 @@ export function createUI(handlers: UIHandlers): UI {
     if (!researchOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const techs = availableTechs(player);
-    research.innerHTML =
-      `<div class="row" style="justify-content:space-between"><b>Choose research</b>` +
-      `<button class="btn" id="rclose">✕</button></div>` +
-      `<button class="btn" id="open-techtree" style="width:100%;margin:6px 0">🌳 View Full Tech Tree</button>` +
-      (techs.length === 0
-        ? `<div style="margin-top:8px;color:#9fc0dc">All available techs researched.</div>`
-        : techs
-            .map((t) => {
-              const u = techUnlocks(t);
-              return (
-                `<div class="tech" data-tech="${t}"><div style="flex:1">` +
-                `<div><b>${TECH_DEFS[t].name}</b></div>` +
-                (u.length ? `<div class="sub">Unlocks: ${u.join(", ")}</div>` : "") +
-                `</div><span class="cost">${scaledTechCost(state, t)}🔬</span></div>`
-              );
-            })
-            .join(""));
+    withPreservedScroll(research, () => {
+      research.innerHTML =
+        dialogHeader("Choose research", "rclose") +
+        `<div class="panel-dialog-body">` +
+        `<button class="btn" id="open-techtree" style="width:100%;margin:6px 0">🌳 View Full Tech Tree</button>` +
+        (techs.length === 0
+          ? `<div style="margin-top:8px;color:#9fc0dc">All available techs researched.</div>`
+          : techs
+              .map((t) => {
+                const u = techUnlocks(t);
+                return (
+                  `<div class="tech" data-tech="${t}"><div style="flex:1">` +
+                  `<div><b>${TECH_DEFS[t].name}</b></div>` +
+                  (u.length ? `<div class="sub">Unlocks: ${u.join(", ")}</div>` : "") +
+                  `</div><span class="cost">${scaledTechCost(state, t)}🔬</span></div>`
+                );
+              })
+              .join("")) +
+        `</div>`;
+    });
     research.querySelector<HTMLButtonElement>("#rclose")!.addEventListener("click", () => {
       researchOpen = false;
       research.classList.add("hidden");
@@ -2369,8 +2573,10 @@ export function createUI(handlers: UIHandlers): UI {
         techtree.classList.add("hidden");
       },
     );
-    techtree.innerHTML = `<div class="row" style="justify-content:space-between"><b>Technology Tree</b><button class="btn" id="ttclose">✕</button></div>`;
-    techtree.appendChild(inner);
+    withPreservedScroll(techtree, () => {
+      techtree.innerHTML = dialogHeader("Technology Tree", "ttclose") + `<div class="panel-dialog-body"></div>`;
+      techtree.querySelector<HTMLDivElement>(".panel-dialog-body")!.appendChild(inner);
+    });
     techtree.querySelector<HTMLButtonElement>("#ttclose")!.addEventListener("click", () => {
       techtreeOpen = false;
       techtree.classList.add("hidden");
@@ -2384,13 +2590,15 @@ export function createUI(handlers: UIHandlers): UI {
     const gov = getGovernment(player.government);
     const capacity = civicSlotCapacity(player);
 
-    let html =
-      `<div class="row" style="justify-content:space-between"><b>Governments & Civics</b><button class="btn" id="vclose">✕</button></div>`;
+    let html = dialogHeader("Governments & Civics", "vclose") + `<div class="panel-dialog-body">`;
 
     if (!civicsUnlocked(player)) {
       html +=
         `<div class="locked-note">🔒 The government tree unlocks after researching <b>${TECH_DEFS[CIVICS_REQUIRED_TECH].name}</b>.</div>`;
-      civics.innerHTML = html;
+      html += `</div>`;
+      withPreservedScroll(civics, () => {
+        civics.innerHTML = html;
+      });
       civics.querySelector<HTMLButtonElement>("#vclose")!.addEventListener("click", () => {
         civicsOpen = false;
         civics.classList.add("hidden");
@@ -2498,7 +2706,10 @@ export function createUI(handlers: UIHandlers): UI {
         .join("");
     }
 
-    civics.innerHTML = html;
+    html += `</div>`;
+    withPreservedScroll(civics, () => {
+      civics.innerHTML = html;
+    });
     civics.querySelector<HTMLButtonElement>("#vclose")!.addEventListener("click", () => {
       civicsOpen = false;
       civics.classList.add("hidden");
@@ -2600,7 +2811,9 @@ export function createUI(handlers: UIHandlers): UI {
       .join("");
     if (!shown.length) html += `<div class="sub" style="margin-top:10px">Nothing available here yet.</div>`;
     html += `</div>`;
-    production.innerHTML = html;
+    withPreservedScroll(production, () => {
+      production.innerHTML = html;
+    });
     production.querySelector<HTMLButtonElement>("#pclose")!.addEventListener("click", (e) => {
       e.stopPropagation();
       productionOpen = false;
@@ -2678,14 +2891,16 @@ export function createUI(handlers: UIHandlers): UI {
           .join("")
       : `<div class="sub" style="margin-top:12px">No public works under way. Train craftsmen, then develop a tile from its panel.</div>`;
 
-    specialists.innerHTML =
-      dialogHeader(`${escapeHtml(city.name)} — Specialists`, "spclose", {
-        subtitle: `${city.specialists.length} trained · ${free} free slots`,
-      }) +
-      `<div class="panel-dialog-body">` +
-      specRows +
-      worksHtml +
-      `</div>`;
+    withPreservedScroll(specialists, () => {
+      specialists.innerHTML =
+        dialogHeader(`${escapeHtml(city.name)} — Specialists`, "spclose", {
+          subtitle: `${city.specialists.length} trained · ${free} free slots`,
+        }) +
+        `<div class="panel-dialog-body">` +
+        specRows +
+        worksHtml +
+        `</div>`;
+    });
 
     specialists.querySelector<HTMLButtonElement>("#spclose")!.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2822,15 +3037,17 @@ export function createUI(handlers: UIHandlers): UI {
           .join("")
       : "";
 
-    training.innerHTML =
-      dialogHeader(`${escapeHtml(city.name)} — Train Units`, "trclose", {
-        subtitle: `👥 ${city.population} pop · ${free} free citizen${free === 1 ? "" : "s"} · each unit costs 1 citizen`,
-      }) +
-      `<div class="panel-dialog-body">` +
-      orders +
-      sections.join("") +
-      (sections.length === 0 && !orders ? `<div class="sub" style="margin-top:8px">Build military buildings in Construction to train units here.</div>` : "") +
-      `</div>`;
+    withPreservedScroll(training, () => {
+      training.innerHTML =
+        dialogHeader(`${escapeHtml(city.name)} — Train Units`, "trclose", {
+          subtitle: `👥 ${city.population} pop · ${free} free citizen${free === 1 ? "" : "s"} · each unit costs 1 citizen`,
+        }) +
+        `<div class="panel-dialog-body">` +
+        orders +
+        sections.join("") +
+        (sections.length === 0 && !orders ? `<div class="sub" style="margin-top:8px">Build military buildings in Construction to train units here.</div>` : "") +
+        `</div>`;
+    });
 
     training.querySelector<HTMLButtonElement>("#trclose")!.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2885,7 +3102,7 @@ export function createUI(handlers: UIHandlers): UI {
     if (!religionOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const totalCities = state.cities.size;
-    let html = REL_STYLE + `<div class="row" style="justify-content:space-between"><b>Religion</b><button class="btn" id="relclose">✕</button></div>`;
+    let html = REL_STYLE + dialogHeader("Religion", "relclose") + `<div class="panel-dialog-body">`;
     const myRel = religionById(state, player.foundedReligionId);
     /** Small emblem <img> for a founded religion (matched by name), or "" if none. */
     const relEmblem = (name: string, size = 18): string => {
@@ -2904,7 +3121,10 @@ export function createUI(handlers: UIHandlers): UI {
     if (!myRel && !religionUnlocked(state, player.id)) {
       html += `<div class="locked-note">🔒 Religion unlocks after researching <b>${TECH_DEFS[RELIGION_REQUIRED_TECH].name}</b>. Then build Shrines/Temples to earn faith.</div>`;
       html += worldReligionsHtml();
-      religionPanel.innerHTML = html;
+      html += `</div>`;
+      withPreservedScroll(religionPanel, () => {
+        religionPanel.innerHTML = html;
+      });
       religionPanel.querySelector<HTMLButtonElement>("#relclose")!.addEventListener("click", () => {
         religionOpen = false;
         religionPanel.classList.add("hidden");
@@ -3092,7 +3312,10 @@ export function createUI(handlers: UIHandlers): UI {
         .join("");
     }
 
-    religionPanel.innerHTML = html;
+    html += `</div>`;
+    withPreservedScroll(religionPanel, () => {
+      religionPanel.innerHTML = html;
+    });
     religionPanel.querySelectorAll<HTMLButtonElement>("[data-buyrel]").forEach((el) =>
       el.addEventListener("click", () => {
         if (myCity) handlers.onBuyReligiousUnit(myCity.id, el.dataset.buyrel as "missionary" | "apostle" | "inquisitor");
@@ -3158,7 +3381,8 @@ export function createUI(handlers: UIHandlers): UI {
     const perTurn = playerGreatPersonPerTurn(state, player.id);
     const ready = (player.greatPeople ?? []).map((id) => getGreatPerson(id)).filter(Boolean);
 
-    let html = `<div class="row" style="justify-content:space-between"><b>🎖️ Great People</b><button class="btn" id="gpclose">✕</button></div>`;
+    let html = dialogHeader("🎖️ Great People", "gpclose");
+    html += `<div class="panel-dialog-body">`;
     html += `<div class="sub">Build the right buildings to earn class points. When a pool fills you recruit the next great figure, there are only so many to go round.</div>`;
 
     // Recruited figures awaiting activation.
@@ -3170,12 +3394,12 @@ export function createUI(handlers: UIHandlers): UI {
         .map((g) => {
           const info = GREAT_PERSON_CLASS_INFO[g!.cls];
           return (
-            `<div class="tech" data-gp="${g!.id}">` +
-            `<img class="portrait-thumb" src="${ASSET_BASE_URL}great-people/${g!.id}.png" alt="" onerror="this.style.display='none'">` +
-            `<div style="flex:1">` +
+            `<div class="tech gp-card" data-gp="${g!.id}">` +
+            `<img class="gp-portrait" src="${ASSET_BASE_URL}great-people/${g!.id}.png" alt="" onerror="this.style.display='none'">` +
+            `<div style="flex:1;min-width:0">` +
             `<b>${info.glyph} ${g!.name}</b> <span class="sub">· ${info.name} · ${g!.era}</span>` +
             `<div class="sub">${g!.desc}</div></div>` +
-            `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">` +
+            `<div class="gp-actions">` +
             `<button class="btn primary" data-gp-use="${g!.id}">Activate</button>` +
             wikiBtn(`greatPerson:${g!.id}`) +
             `</div></div>`
@@ -3204,15 +3428,22 @@ export function createUI(handlers: UIHandlers): UI {
       const cost = greatPersonThreshold(earned);
       const pct = Math.min(100, (pts / cost) * 100);
       return (
-        `<div style="margin-top:4px">${info.glyph} <b>${next.name}</b> ` +
+        `<div class="gp-progress">` +
+        `<img class="gp-portrait gp-portrait-sm" src="${ASSET_BASE_URL}great-people/${next.id}.png" alt="" onerror="this.style.display='none'">` +
+        `<div class="gp-progress-body">` +
+        `<div>${info.glyph} <b>${next.name}</b> ` +
         `<span class="sub">· ${info.name}${per ? ` · +${per}/turn` : ""}</span> ` +
         wikiBtn(`greatPerson:${next.id}`) +
+        `</div>` +
         `<div class="bar"><i style="width:${pct}%;background:#d9b44a"></i></div>` +
-        `<span class="sub">${pts}/${cost}</span></div>`
+        `<span class="sub">${pts}/${cost}</span></div></div>`
       );
     }).join("");
 
-    greatPeoplePanel.innerHTML = html;
+    html += `</div>`;
+    withPreservedScroll(greatPeoplePanel, () => {
+      greatPeoplePanel.innerHTML = html;
+    });
     greatPeoplePanel.querySelector<HTMLButtonElement>("#gpclose")!.addEventListener("click", () => {
       greatPeopleOpen = false;
       greatPeoplePanel.classList.add("hidden");
@@ -3230,23 +3461,37 @@ export function createUI(handlers: UIHandlers): UI {
     if (!legendsOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const viewerId = lastViewerId >= 0 ? lastViewerId : player.id;
-    const cost = legendCost(player.legendsRecruited ?? 0);
-    const canAfford = player.faith >= cost;
-    const hasCity = citiesOf(state, player.id).length > 0;
+    const viewer = playerById(state, viewerId) ?? player;
+    const hasCity = citiesOf(state, viewerId).length > 0;
     const typeGlyph: Record<string, string> = { land: "⚔️", naval: "⚓", support: "✨" };
 
-    let html = `<div class="row" style="justify-content:space-between"><b>⭐ Legends</b><button class="btn" id="lgclose">✕</button></div>`;
+    let html = dialogHeader("⭐ Legends", "lgclose");
+    html += `<div class="panel-dialog-body">`;
     if (!state.legendsEnabled) {
       html += `<div class="locked-note">🔒 Legends are disabled for this game.</div>`;
-      legendsPanel.innerHTML = html;
+      html += `</div>`;
+      withPreservedScroll(legendsPanel, () => {
+        legendsPanel.innerHTML = html;
+      });
       legendsPanel.querySelector<HTMLButtonElement>("#lgclose")!.addEventListener("click", () => {
         legendsOpen = false;
         legendsPanel.classList.add("hidden");
       });
       return;
     }
-    html += `<div class="sub">Recruit a hero with faith. Each is a powerful, one-of-a-kind unit with a short tenure — deeds matching their legend can extend their time.</div>`;
-    html += `<div class="sub" style="margin-top:4px">☮️ Faith: <b style="color:#fff">${Math.floor(player.faith)}</b> · next hero costs <b style="color:${canAfford ? "#7ee787" : "#ff8a8a"}">${cost}</b></div>`;
+    html += `<div class="sub">Earn heroes by training military units and winning battles. Each legend belongs to a combat track — train matching units and fight to bank glory, then recruit from the panel.</div>`;
+    html += `<div class="csub" style="margin-top:10px">Track glory</div>`;
+    html += `<div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;margin-bottom:10px">`;
+    for (const track of LEGEND_TRACKS) {
+      const have = legendTrackPointsOf(viewer, track);
+      const need = legendRecruitThreshold(legendTrackEarnedOf(viewer, track));
+      const pct = need > 0 ? Math.min(100, Math.round((have / need) * 100)) : 0;
+      html +=
+        `<div class="sub">${LEGEND_TRACK_LABELS[track]}: <b style="color:#fff">${have}</b> / ${need}` +
+        `<div style="height:5px;border-radius:999px;background:rgba(255,255,255,.08);margin-top:3px;overflow:hidden">` +
+        `<div style="height:100%;width:${pct}%;background:#c9a227;border-radius:999px"></div></div></div>`;
+    }
+    html += `</div>`;
 
     // Active legends (the viewer's hero units, with turns remaining).
     const active = unitsOf(state, viewerId).filter((u) => u.legendId);
@@ -3260,14 +3505,22 @@ export function createUI(handlers: UIHandlers): UI {
           const extHint = ext.length
             ? ` · earns +turns from ${ext.map((e) => e.trigger.replace(/_/g, " ")).join(", ")}`
             : "";
-          return `<div class="sub" style="display:flex;align-items:center;gap:6px">${typeGlyph[def?.type ?? "land"]} <b style="color:#fff">${def?.name ?? "Hero"}</b> — ${left} turn${left === 1 ? "" : "s"} remain${extHint}${u.legendId ? " " + wikiBtn(`legend:${u.legendId}`) : ""}</div>`;
+          const art =
+            u.legendId
+              ? `<img class="portrait-thumb legend-portrait legend-portrait-sm" src="${ASSET_BASE_URL}legends/${u.legendId}.png" alt="" onerror="this.style.display='none'">`
+              : "";
+          return (
+            `<div class="legend-active sub">` +
+            art +
+            `<div>${typeGlyph[def?.type ?? "land"]} <b style="color:#fff">${def?.name ?? "Hero"}</b> — ${left} turn${left === 1 ? "" : "s"} remain${extHint}${u.legendId ? " " + wikiBtn(`legend:${u.legendId}`) : ""}</div>` +
+            `</div>`
+          );
         })
         .join("");
     }
 
     // Available legends to recruit.
     html += `<div class="csub">Available Heroes</div>`;
-    const viewer = playerById(state, viewerId) ?? player;
     const avail = availableLegendsForPlayer(state, viewerId);
     if (avail.length === 0) {
       const locked = availableLegends(state).filter((l) => !eraUnlocked(viewer, l.era));
@@ -3283,15 +3536,19 @@ export function createUI(handlers: UIHandlers): UI {
           const extLine = ext.length
             ? ` · may earn turns: ${ext.map((e) => `+${e.turns}/${e.trigger.replace(/_/g, " ")}`).join(", ")}`
             : "";
-          const dis = !canAfford || !hasCity;
+          const track = legendTrackFor(l);
+          const need = legendRecruitCostFor(l, viewer);
+          const have = legendTrackPointsOf(viewer, track);
+          const canRecruit = canRecruitLegend(state, viewerId, l.id).ok;
+          const dis = !canRecruit || !hasCity;
           return (
-            `<div class="tech" data-legend="${l.id}">` +
-            `<img class="portrait-thumb" src="${ASSET_BASE_URL}legends/${l.id}.png" alt="" onerror="this.style.display='none'">` +
-            `<div style="flex:1">` +
-            `<b>${typeGlyph[l.type]} ${l.name}</b> <span class="sub">· ${l.era} · ${legendBaseName(l)}</span>` +
+            `<div class="tech legend-card" data-legend="${l.id}">` +
+            `<img class="portrait-thumb legend-portrait" src="${ASSET_BASE_URL}legends/${l.id}.png" alt="" onerror="this.style.display='none'">` +
+            `<div style="flex:1;min-width:0">` +
+            `<b>${typeGlyph[l.type]} ${l.name}</b> <span class="sub">· ${l.era} · ${legendBaseName(l)} · ${LEGEND_TRACK_LABELS[track]}</span>` +
             `<div class="sub">${l.abilityDesc}</div>` +
-            `<div class="sub">Aura: ${l.auraDesc} (+${l.auraBonus} adjacent) · ${LEGEND_DEFAULT_LIFESPAN} turns base${extLine}${l.rechargeable ? " · recharges" : ""}</div></div>` +
-            `<div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">` +
+            `<div class="sub">Glory: <b style="color:${have >= need ? "#7ee787" : "#ffd967"}">${have}/${need}</b> ${LEGEND_TRACK_LABELS[track]} · Aura: ${l.auraDesc} (+${l.auraBonus} adjacent) · ${LEGEND_DEFAULT_LIFESPAN} turns base${extLine}${l.rechargeable ? " · recharges" : ""}</div></div>` +
+            `<div class="legend-actions">` +
             `<button class="btn primary" data-legend-recruit="${l.id}"${dis ? " disabled" : ""}>Recruit</button>` +
             wikiBtn(`legend:${l.id}`) +
             `</div></div>`
@@ -3300,7 +3557,10 @@ export function createUI(handlers: UIHandlers): UI {
         .join("");
     }
 
-    legendsPanel.innerHTML = html;
+    html += `</div>`;
+    withPreservedScroll(legendsPanel, () => {
+      legendsPanel.innerHTML = html;
+    });
     legendsPanel.querySelector<HTMLButtonElement>("#lgclose")!.addEventListener("click", () => {
       legendsOpen = false;
       legendsPanel.classList.add("hidden");
@@ -3343,9 +3603,14 @@ export function createUI(handlers: UIHandlers): UI {
     const tokenSrc = `${ASSET_BASE_URL}units/${imgId}.png`;
     // Encyclopedia target: the hero legend, else the civ's unique unit, else the base unit.
     const unitWikiNav = unit.legendId ? `legend:${unit.legendId}` : uu ? `uniqueUnit:${uu.id}` : `unit:${unit.type}`;
+    const hasPromoPool = PROMOTION_POOL[def.cls].length > 0;
+    const promoInfoBtn = hasPromoPool
+      ? `<button type="button" class="btn unit-perk-info" data-unit-promo-info title="View promotion perks" ` +
+        `style="padding:3px 7px;font-size:12px;flex:0 0 auto;line-height:1.2">ℹ️</button>`
+      : "";
     let headInfo =
       `<div class="row" style="justify-content:space-between;align-items:flex-start"><b style="font-size:15px">${displayName}<span style="color:#ffd967">${stars}</span></b>` +
-      wikiBtn(unitWikiNav) +
+      `<span class="row" style="gap:4px;flex:0 0 auto">${promoInfoBtn}${wikiBtn(unitWikiNav)}</span>` +
       `</div>` +
       (owner && !own
         ? `<div class="sub"><span class="dot" style="background:${owner.color};display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px"></span>${owner.name}</div>`
@@ -3396,12 +3661,6 @@ export function createUI(handlers: UIHandlers): UI {
       `style="width:76px;height:76px;flex:0 0 76px;object-fit:contain;filter:drop-shadow(0 3px 6px rgba(0,0,0,.5))">` +
       `<div style="flex:1;min-width:0">${headInfo}</div>` +
       `</div>`;
-    if (unit.promotions.length) {
-      html +=
-        `<div style="margin-top:6px;color:#9fc0dc"><b>Promotions:</b> ` +
-        `${unit.promotions.map((p) => `<span title="${PROMOTION_DEFS[p].desc}">${PROMOTION_DEFS[p].name}</span>`).join(", ")}` +
-        `</div>`;
-    }
     if (odds) {
       html +=
         `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--edge)">` +
@@ -3618,9 +3877,10 @@ export function createUI(handlers: UIHandlers): UI {
                   const def = PROMOTION_DEFS[p];
                   const stars = "★".repeat(def.tier);
                   return (
-                    `<button class="btn" data-promote="${p}" style="text-align:left;display:flex;flex-direction:column;gap:2px;padding:8px 10px">` +
-                    `<span><b style="color:#fff">${def.name}</b> <span style="color:#ffd967;letter-spacing:1px">${stars}</span></span>` +
-                    `<span style="font-size:12px;color:#9fc0dc;font-weight:400;line-height:1.4">${def.desc}</span>` +
+                    `<button class="btn" data-promote="${p}" title="${escapeHtml(def.desc)}" ` +
+                    `style="text-align:left;display:flex;justify-content:space-between;gap:8px;padding:8px 10px">` +
+                    `<b style="color:#fff">${def.name}</b>` +
+                    `<span style="color:#ffd967;letter-spacing:1px;flex:0 0 auto">${stars}</span>` +
                     `</button>`
                   );
                 })
@@ -3629,35 +3889,35 @@ export function createUI(handlers: UIHandlers): UI {
           `</div>`;
       }
 
-      // Upgrade button — shown when this unit has a next type, tech is met,
-      // resources are available, and the unit is standing on own territory.
+      // Upgrade button — shown only after the target unit's tech is researched.
       const upgradeToType = UNIT_UPGRADES[unit.type];
       if (upgradeToType) {
         const upgToDef = UNIT_DEFS[upgradeToType];
-        const upgCost = unitUpgradeCost(unit.type, upgradeToType);
-        const onOwnTerritory = tileOwnerId(state, unit.col, unit.row) === viewerId;
         const techOk = !upgToDef.reqTech || (owner?.researched.has(upgToDef.reqTech) ?? false);
-        const resOk = !upgToDef.reqResource
-          || (owner ? (owner.resources[upgToDef.reqResource.resource] ?? 0) >= upgToDef.reqResource.count : false);
-        const goldOk = (owner?.gold ?? 0) >= upgCost;
-        const canUpgrade = onOwnTerritory && techOk && resOk && goldOk;
+        if (techOk) {
+          const upgCost = unitUpgradeCost(unit.type, upgradeToType);
+          const onOwnTerritory = tileOwnerId(state, unit.col, unit.row) === viewerId;
+          const resOk = !upgToDef.reqResource
+            || (owner ? (owner.resources[upgToDef.reqResource.resource] ?? 0) >= upgToDef.reqResource.count : false);
+          const goldOk = (owner?.gold ?? 0) >= upgCost;
+          const canUpgrade = onOwnTerritory && resOk && goldOk;
 
-        let upgradeNote = "";
-        if (!onOwnTerritory) upgradeNote = "Must be on your own territory";
-        else if (!techOk) upgradeNote = `Requires ${upgToDef.reqTech ? TECH_DEFS[upgToDef.reqTech].name : ""}`;
-        else if (!resOk) upgradeNote = `Requires ${upgToDef.reqResource?.resource ?? "resource"}`;
-        else if (!goldOk) upgradeNote = `Not enough gold (need ${upgCost}🪙)`;
+          let upgradeNote = "";
+          if (!onOwnTerritory) upgradeNote = "Must be on your own territory";
+          else if (!resOk) upgradeNote = `Requires ${upgToDef.reqResource?.resource ?? "resource"}`;
+          else if (!goldOk) upgradeNote = `Not enough gold (need ${upgCost}🪙)`;
 
-        html +=
-          `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)">` +
-          `<button class="btn${canUpgrade ? " primary" : ""}" data-upgrade ` +
-          `${canUpgrade ? "" : "disabled"} ` +
-          `title="${canUpgrade ? `Upgrade to ${upgToDef.name} — loses its turn` : upgradeNote}" ` +
-          `style="width:100%;text-align:left;display:flex;justify-content:space-between;gap:8px${canUpgrade ? "" : ";opacity:.5"}">` +
-          `<span>⬆️ Upgrade to <b style="color:#fff">${upgToDef.name}</b>${upgradeNote ? ` <span class="sub">(${upgradeNote})</span>` : ""}</span>` +
-          `<span class="sub">${upgCost}🪙</span>` +
-          `</button>` +
-          `</div>`;
+          html +=
+            `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)">` +
+            `<button class="btn${canUpgrade ? " primary" : ""}" data-upgrade ` +
+            `${canUpgrade ? "" : "disabled"} ` +
+            `title="${canUpgrade ? `Upgrade to ${upgToDef.name} — loses its turn` : upgradeNote}" ` +
+            `style="width:100%;text-align:left;display:flex;justify-content:space-between;gap:8px${canUpgrade ? "" : ";opacity:.5"}">` +
+            `<span>⬆️ Upgrade to <b style="color:#fff">${upgToDef.name}</b>${upgradeNote ? ` <span class="sub">(${upgradeNote})</span>` : ""}</span>` +
+            `<span class="sub">${upgCost}🪙</span>` +
+            `</button>` +
+            `</div>`;
+        }
       }
     } // end if (own)
 
@@ -3696,20 +3956,26 @@ export function createUI(handlers: UIHandlers): UI {
     }
 
     unitPanel.classList.toggle("collapsed", !unitPanelExpanded);
-    unitPanel.innerHTML =
-      summaryBar({
-        icon: tokenSrc,
-        isImg: true,
-        name: `<b>${escapeHtml(displayName)}</b><span style="color:#ffd967">${stars}</span>`,
-        stats: summaryStats,
-        extra: quickBar,
-      }) +
-      `<div class="ip-detail">${html}</div>`;
+    withPreservedScroll(unitPanel, () => {
+      unitPanel.innerHTML =
+        summaryBar({
+          icon: tokenSrc,
+          isImg: true,
+          name: `<b>${escapeHtml(displayName)}</b><span style="color:#ffd967">${stars}</span>`,
+          stats: summaryStats,
+          extra: quickBar,
+        }) +
+        `<div class="ip-detail">${html}</div>`;
+    });
     wireCollapse(unitPanel, () => {
       unitPanelExpanded = !unitPanelExpanded;
       renderUnitPanel(state, unit, viewerId, odds);
     });
     wireWikiButtons(unitPanel);
+    unitPanel.querySelector<HTMLButtonElement>("[data-unit-promo-info]")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showUnitPromoDialog(unit, displayName);
+    });
     unitPanel.querySelector<HTMLButtonElement>("#found")?.addEventListener("click", () => handlers.onFoundCity());
     unitPanel.querySelector<HTMLButtonElement>("[data-found]")?.addEventListener("click", () => handlers.onFoundCity());
     unitPanel.querySelector<HTMLButtonElement>("#sleep")?.addEventListener("click", () => handlers.onSleep());
@@ -4035,14 +4301,16 @@ export function createUI(handlers: UIHandlers): UI {
     }
 
     tilePanel.classList.toggle("collapsed", !tilePanelExpanded);
-    tilePanel.innerHTML =
-      summaryBar({
-        icon: "⬡",
-        name: `<b>${r.name}</b>`,
-        stats: `${chip("🍞", y.food)}${chip("⚒️", y.production)}`,
-        closeId: "tile-close",
-      }) +
-      `<div class="ip-detail">${html}</div>`;
+    withPreservedScroll(tilePanel, () => {
+      tilePanel.innerHTML =
+        summaryBar({
+          icon: "⬡",
+          name: `<b>${r.name}</b>`,
+          stats: `${chip("🍞", y.food)}${chip("⚒️", y.production)}`,
+          closeId: "tile-close",
+        }) +
+        `<div class="ip-detail">${html}</div>`;
+    });
     wireCollapse(tilePanel, () => {
       tilePanelExpanded = !tilePanelExpanded;
       renderTilePanel(state, tile, viewerId, cheatsEnabled);
@@ -4080,9 +4348,23 @@ export function createUI(handlers: UIHandlers): UI {
     });
   };
 
+  function godModeSignature(view: UIView): string {
+    const tile = view.selectedTile;
+    const tileKey =
+      tile && isPassableLand(tile.terrain) ? `${tile.col},${tile.row},${tile.terrain}` : "none";
+    const wonders = [...view.state.completedWonders].sort().join(",");
+    return `${view.liftFog ? 1 : 0}|${tileKey}|${wonders}`;
+  }
+
   function renderGodMode(view: UIView): void {
     godPanel.classList.toggle("hidden", !godModeOpen);
-    if (!godModeOpen) return;
+    if (!godModeOpen) {
+      godModeRenderSig = "";
+      return;
+    }
+    const sig = godModeSignature(view);
+    if (sig === godModeRenderSig) return;
+
     const tile = view.selectedTile;
     const tileOk = !!tile && isPassableLand(tile.terrain);
     const unitOptions = Object.entries(UNIT_DEFS)
@@ -4136,7 +4418,10 @@ export function createUI(handlers: UIHandlers): UI {
     }
     html += `</div></div>`;
 
-    godPanel.innerHTML = html;
+    withPreservedScroll(godPanel, () => {
+      godPanel.innerHTML = html;
+    });
+    godModeRenderSig = sig;
     godPanel.querySelector<HTMLButtonElement>("#god-close")!.addEventListener("click", (e) => {
       e.stopPropagation();
       godModeOpen = false;
@@ -4350,14 +4635,16 @@ export function createUI(handlers: UIHandlers): UI {
         : "");
 
     cityPanel.classList.toggle("collapsed", !cityPanelExpanded);
-    cityPanel.innerHTML =
-      summaryBar({
-        icon: city.isCapital ? "★" : "🏙️",
-        name: "",
-        stats: `👥 ${city.population} · 🍞 ${yd.food} · ⚒️ ${yd.production} · 🪙 ${yd.gold} · 🔬 ${yd.science}`,
-        closeId: "cclose",
-      }) +
-      `<div class="ip-detail">${detail}</div>`;
+    withPreservedScroll(cityPanel, () => {
+      cityPanel.innerHTML =
+        summaryBar({
+          icon: city.isCapital ? "★" : "🏙️",
+          name: "",
+          stats: `👥 ${city.population} · 🍞 ${yd.food} · ⚒️ ${yd.production} · 🪙 ${yd.gold} · 🔬 ${yd.science}`,
+          closeId: "cclose",
+        }) +
+        `<div class="ip-detail">${detail}</div>`;
+    });
 
     wireCollapse(cityPanel, () => {
       cityPanelExpanded = !cityPanelExpanded;
@@ -4512,25 +4799,19 @@ export function createUI(handlers: UIHandlers): UI {
       renderMoraleDialog(view.state);
       renderAction(view);
 
-      // Hide the docked city/unit/tile panels whenever a higher-layer sheet or modal
-      // is open so they don't peek through or fight for pointer events.
+      // Hide the docked city/unit/tile panels whenever a full-screen sheet or modal
+      // is open so they don't peek through or fight for pointer events. Top-bar
+      // pickers (research, civics, …) stay non-blocking — they dismiss on outside click.
       const overlayOpen =
         empire.isOpen() ||
         diplomacy.isOpen() ||
         wiki.isOpen() ||
-        researchOpen ||
-        civicsOpen ||
-        religionOpen ||
-        greatPeopleOpen ||
-        legendsOpen ||
-        productionOpen ||
-        specialistsOpen ||
-        trainingOpen ||
         techtreeOpen ||
         menuOpen ||
         godModeOpen ||
         goldDialogOpen ||
         moraleDialogOpen ||
+        unitPromoDialogOpen ||
         turnUpdateOpen ||
         settingsOpen;
       if (overlayOpen) {
@@ -4579,7 +4860,8 @@ export function createUI(handlers: UIHandlers): UI {
         lastSeenTurnUpdateByViewer.get(view.viewerId),
       );
       lastSeenTurnUpdateByViewer.set(view.viewerId, batch.lastSeen);
-      if (turnChanged && batch.toShow.length > 0) {
+      const hasImmediateUpdate = batch.toShow.some((e) => e.type === "civDefeated");
+      if ((turnChanged || hasImmediateUpdate) && batch.toShow.length > 0) {
         turnUpdateQueue = batch.toShow;
         turnUpdateIndex = 0;
         turnUpdateHasNew = true;

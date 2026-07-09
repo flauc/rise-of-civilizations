@@ -16,7 +16,7 @@ import { religionUnitKit, religionInstanceForDefId, cityMajorityFaith } from "./
 import { availableProduction, availableTechs, workableTiles } from "./economy";
 import { adoptableCivics, researchableGovernmentsFor, switchableGovernments, slottableCivics, civicSlotCapacity, getCivic, getGovernment, governmentTier, CIVICS, civicLegal } from "./civs";
 import { canFoundReligion, availableReligionNames, buyReligiousUnit, religiousUnitCost, availablePerks, canUpgradeReligion, nextTierRequirement, takenPerkIds } from "./religion";
-import { availableLegends, canRecruitLegend } from "./legends";
+import { availableLegendsForPlayer, canRecruitLegend } from "./legends";
 import { canUseLeaderAbility } from "./leader-abilities";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
 import { aiConsiderDiplomacy, atWar, personalityOf, proposeDeal, relationBetween, attitudeScore, powerRatio, declareWar } from "./diplomacy";
@@ -1912,13 +1912,12 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     applyCommand(state, { type: "slotCivic", civicId: cid }, playerId);
   }
 
-  // Recruit a Legend when faith allows — prefer a land hero, else any available.
+  // Recruit a Legend when enough track glory is banked — prefer the track with the most progress.
   if (state.legendsEnabled) {
-    const options = availableLegends(state);
-    const pick = options.find((l) => l.type === "land") ?? options[0];
-    if (pick && canRecruitLegend(state, playerId, pick.id).ok) {
-      applyCommand(state, { type: "recruitLegend", legendId: pick.id }, playerId);
-    }
+    const options = availableLegendsForPlayer(state, playerId)
+      .filter((l) => canRecruitLegend(state, playerId, l.id).ok);
+    const pick = options[0];
+    if (pick) applyCommand(state, { type: "recruitLegend", legendId: pick.id }, playerId);
   }
 
   // Found a religion once enough faith is stored.

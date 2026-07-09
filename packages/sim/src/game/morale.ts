@@ -12,6 +12,7 @@ import { UNIT_DEFS } from "./content";
 import { unitDisplayName } from "./civs";
 import { isPassableLand, isWaterTerrain } from "./terrain";
 import { extendLegendsOnTrigger } from "./legend-lifespan";
+import { onLegendBattleWon } from "./legend-earning";
 
 // ---- bounds & pivots -----------------------------------------------------
 
@@ -232,6 +233,7 @@ export function onEnemyDefeated(state: GameState, killer: Unit, defeated: Unit):
   const victor = playerById(state, killer.ownerId);
   if (victor) victor.battlesWon = (victor.battlesWon ?? 0) + 1;
   extendLegendsOnTrigger(state, killer.ownerId, "kill");
+  onLegendBattleWon(state, killer, defeated.ownerId);
 }
 
 /** A village rallied a single unit's spirits — a large personal morale boost. */

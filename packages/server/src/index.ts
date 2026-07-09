@@ -5,14 +5,21 @@
 // The sim is server-authoritative; clients send orders, the server validates
 // per-owner and broadcasts fog-filtered state.
 
-import type { ClientMessage, ServerMessage } from "@roc/sim";
+import type { ClientMessage, LobbyChatMessage, ServerMessage } from "@roc/sim";
 import { deserializeState, serializeState } from "@roc/sim";
-import type { AnalyticsBatch } from "@roc/shared";
+import type { AnalyticsBatch, AdminRegisteredUser } from "@roc/shared";
 import { MemoryStorage } from "./storage";
+import { loadPersistedBugReports, persistBugReports } from "./bug-reports-persistence";
+import { loadPersistedSessions, persistSessions } from "./analytics-persistence";
+import { parseBugReportQuery } from "./bug-reports";
+import { loadPersistedUsers, persistUsers } from "./user-persistence";
 import { Lobby } from "./lobby";
 import { login, register, resume } from "./auth";
 import { MemoryAnalyticsStore, type AnalyticsStore } from "./analytics";
 import { PostgresAnalyticsStore } from "./analytics-postgres";
+import { parseGameSessionQuery } from "./game-sessions";
+import { buildHandleByClientId, enrichLeaderboard, enrichSessionsPerPlayer } from "./player-handles";
+import type { SessionRow } from "./analytics";
 
 interface Conn {
   userId?: string;
@@ -24,16 +31,27 @@ interface Conn {
 
 const PORT = Number(process.env.PORT ?? 3001);
 const storage = new MemoryStorage();
+await loadPersistedUsers(storage);
 const lobby = new Lobby();
 const gameConns = new Map<string, Set<ServerWebSocket<Conn>>>();
 
 // Analytics: durable Postgres when DATABASE_URL is set, else in-memory (dev).
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? "";
+const isProd = process.env.NODE_ENV === "production";
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? (isProd ? "" : "dev");
 const analytics: AnalyticsStore = process.env.DATABASE_URL
   ? new PostgresAnalyticsStore()
   : new MemoryAnalyticsStore();
+const memoryAnalytics = analytics instanceof MemoryAnalyticsStore ? analytics : null;
+if (memoryAnalytics) {
+  await loadPersistedSessions(memoryAnalytics);
+  await loadPersistedBugReports(memoryAnalytics);
+}
 await analytics.init?.().catch((err) => console.error("analytics init failed:", err));
-if (!ADMIN_TOKEN) console.warn("ADMIN_TOKEN not set — the /admin API will reject all requests.");
+if (!process.env.ADMIN_TOKEN && !isProd) {
+  console.warn("ADMIN_TOKEN not set — using default token \"dev\" (local dev only).");
+} else if (!ADMIN_TOKEN) {
+  console.warn("ADMIN_TOKEN not set — the /admin API will reject all requests.");
+}
 
 const CORS_HEADERS: Record<string, string> = {
   "access-control-allow-origin": "*",
@@ -55,13 +73,61 @@ function adminAuthorized(req: Request): boolean {
   return bearer === ADMIN_TOKEN || req.headers.get("x-admin-token") === ADMIN_TOKEN;
 }
 
+/** Registered accounts for the admin dashboard (passwords are bcrypt hashes only). */
+async function adminListUsers(): Promise<AdminRegisteredUser[]> {
+  const users = await storage.listUsers();
+  return users.map((u) => ({
+    id: u.id,
+    handle: u.handle,
+    createdAt: u.createdAt,
+    email: u.email,
+    newsletterOptIn: u.newsletterOptIn,
+  }));
+}
+
+/** Registered usernames keyed by account id — fills gaps when a session row lost its handle. */
+async function registeredUserHandles(): Promise<Map<string, string>> {
+  const users = await adminListUsers();
+  return new Map(users.map((u) => [u.id, u.handle]));
+}
+
+async function loadSessionRows(): Promise<SessionRow[]> {
+  if (memoryAnalytics) return memoryAnalytics.exportSessions();
+  if (analytics instanceof PostgresAnalyticsStore) return analytics.exportSessionRows();
+  return [];
+}
+
+async function adminLeaderboard() {
+  const [entries, rows, byUser] = await Promise.all([
+    analytics.leaderboard(),
+    loadSessionRows(),
+    registeredUserHandles(),
+  ]);
+  return enrichLeaderboard(entries, rows, byUser);
+}
+
+async function adminSessionsPerPlayer() {
+  const [entries, rows, byUser] = await Promise.all([
+    analytics.sessionsPerPlayer(),
+    loadSessionRows(),
+    registeredUserHandles(),
+  ]);
+  return enrichSessionsPerPlayer(entries, rows, byUser);
+}
+
 /** Read-only admin aggregations, keyed by the URL path segment. */
-async function adminQuery(name: string): Promise<unknown | undefined> {
+async function adminQuery(name: string, searchParams?: URLSearchParams): Promise<unknown | undefined> {
   switch (name) {
     case "overview":
       return analytics.overview();
+    case "users":
+      return adminListUsers();
+    case "games":
+      return analytics.listGameSessions(parseGameSessionQuery(searchParams ?? new URLSearchParams()));
+    case "bug-reports":
+      return analytics.listBugReports(parseBugReportQuery(searchParams ?? new URLSearchParams()));
     case "sessions":
-      return analytics.sessionsPerPlayer();
+      return adminSessionsPerPlayer();
     case "civs":
       return analytics.civDistribution();
     case "config":
@@ -71,25 +137,28 @@ async function adminQuery(name: string): Promise<unknown | undefined> {
     case "victories":
       return analytics.victoryBreakdown();
     case "leaderboard":
-      return analytics.leaderboard();
+      return adminLeaderboard();
     case "votes":
       return analytics.voteTotals();
     case "bugReports":
       return analytics.bugReports();
     case "all": {
-      const [overview, sessions, civs, config, outcomes, victories, leaderboard, votes, bugReports] =
+      const [overview, sessions, civs, config, outcomes, victories, leaderboard, votes, bugReports, users] =
         await Promise.all([
           analytics.overview(),
-          analytics.sessionsPerPlayer(),
+          adminSessionsPerPlayer(),
           analytics.civDistribution(),
           analytics.configBreakdown(),
           analytics.outcomeBreakdown(),
           analytics.victoryBreakdown(),
-          analytics.leaderboard(),
+          adminLeaderboard(),
           analytics.voteTotals(),
           analytics.bugReports(),
+          adminListUsers(),
         ]);
-      return { overview, sessions, civs, config, outcomes, victories, leaderboard, votes, bugReports };
+      return { overview, sessions, civs, config, outcomes, victories, leaderboard, votes, bugReports, users,
+        playerHandles: Object.fromEntries(buildHandleByClientId(await loadSessionRows())),
+      };
     }
     default:
       return undefined;
@@ -120,6 +189,14 @@ function broadcastLobby(gameId: string): void {
   const room = lobby.room(gameId);
   if (!room) return;
   for (const ws of gameConns.get(gameId) ?? []) send(ws, { t: "lobby", room });
+}
+
+function sendLobbyChatHistory(ws: ServerWebSocket<Conn>, gameId: string): void {
+  send(ws, { t: "lobbyChatHistory", gameId, messages: lobby.chatHistory(gameId) });
+}
+
+function broadcastLobbyChat(gameId: string, message: LobbyChatMessage): void {
+  for (const ws of gameConns.get(gameId) ?? []) send(ws, { t: "lobbyChat", gameId, message });
 }
 
 function isHost(ws: ServerWebSocket<Conn>): boolean {
@@ -158,13 +235,19 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
     case "resume": {
       const res =
         msg.t === "register"
-          ? await register(storage, msg.handle, msg.password)
+          ? await register(storage, msg.handle, msg.password, {
+              email: msg.email,
+              newsletter: msg.newsletter,
+            })
           : msg.t === "login"
             ? await login(storage, msg.handle, msg.password)
             : await resume(storage, msg.token);
       if ("error" in res) return send(ws, { t: "error", message: res.error });
       ws.data.userId = res.userId;
       ws.data.handle = res.handle;
+      if (msg.t === "register") {
+        persistUsers(storage).catch((err) => console.error("user persistence save failed:", err));
+      }
       send(ws, { t: "authOk", token: res.token, userId: res.userId, handle: res.handle });
       return;
     }
@@ -183,6 +266,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         mapType: msg.mapType,
         barbarians: msg.barbarians,
         naturalWonders: msg.naturalWonders,
+        villages: msg.villages,
         startingGold: msg.startingGold,
         turnLimit: msg.turnLimit,
         gameSpeed: msg.gameSpeed,
@@ -195,6 +279,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       ws.data.slot = game.slots[0]!.id;
       addConn(game.id, ws);
       send(ws, { t: "joined", gameId: game.id, slotId: game.slots[0]!.id });
+      sendLobbyChatHistory(ws, game.id);
       broadcastLobby(game.id);
       return;
     }
@@ -206,6 +291,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       ws.data.slot = r.slotId;
       addConn(msg.gameId, ws);
       send(ws, { t: "joined", gameId: msg.gameId, slotId: r.slotId });
+      sendLobbyChatHistory(ws, msg.gameId);
       broadcastLobby(msg.gameId);
       return;
     }
@@ -227,6 +313,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         mapType: msg.mapType,
         barbarians: msg.barbarians,
         naturalWonders: msg.naturalWonders,
+        villages: msg.villages,
         startingGold: msg.startingGold,
         turnLimit: msg.turnLimit,
         gameSpeed: msg.gameSpeed,
@@ -296,6 +383,14 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       send(ws, { t: "games", games: lobby.list() });
       return;
     }
+    case "lobbyChat": {
+      if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      if (ws.data.gameId !== msg.gameId) return send(ws, { t: "error", message: "not in this game" });
+      const r = lobby.appendChat(msg.gameId, ws.data.userId, ws.data.handle ?? "Player", msg.text);
+      if ("error" in r) return send(ws, { t: "error", message: r.error });
+      broadcastLobbyChat(msg.gameId, r.message);
+      return;
+    }
     case "ping":
       return; // keepalive — nothing to do
     case "order": {
@@ -341,6 +436,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
 
 const server = Bun.serve<Conn>({
   port: PORT,
+  hostname: "0.0.0.0",
   async fetch(req, server) {
     const url = new URL(req.url);
     if (url.pathname === "/health") {
@@ -363,7 +459,13 @@ const server = Bun.serve<Conn>({
         // would otherwise depend on the content-type.
         const batch = JSON.parse(await req.text()) as AnalyticsBatch;
         const events = Array.isArray(batch?.events) ? batch.events.slice(0, 100) : [];
-        if (events.length) await analytics.record(events);
+        if (events.length) {
+          await analytics.record(events);
+          if (memoryAnalytics) {
+            persistSessions(memoryAnalytics).catch((err) => console.error("game persistence save failed:", err));
+            persistBugReports(memoryAnalytics).catch((err) => console.error("bug report persistence save failed:", err));
+          }
+        }
       } catch (err) {
         console.error("analytics ingest error:", err);
       }
@@ -381,7 +483,7 @@ const server = Bun.serve<Conn>({
         if (!report) return jsonResponse({ error: "not found" }, 404);
         return jsonResponse(report);
       }
-      const result = await adminQuery(name);
+      const result = await adminQuery(name, url.searchParams);
       if (result === undefined) return jsonResponse({ error: "not found" }, 404);
       return jsonResponse(result);
     }
@@ -418,4 +520,4 @@ const server = Bun.serve<Conn>({
   },
 });
 
-console.log(`roc-server listening on http://localhost:${server.port}`);
+console.log(`roc-server listening on http://0.0.0.0:${server.port} (emulator: ws://10.0.2.2:${server.port}/ws)`);

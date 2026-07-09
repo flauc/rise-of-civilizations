@@ -1,6 +1,7 @@
 import type { GameMap } from "@roc/shared";
 import type { CivEffects, GreatPersonClass } from "@roc/data";
 import type { GameSpeed } from "./game-speed";
+import type { LegendTrack } from "./legend-earning";
 import { UNIT_DEFS, unitBaseMaxHp, type ActiveAbilityId, type BuildingId, type ProjectId, type PromotionId, type StanceId, type TechId, type TrainingClass, type UnitTypeId } from "./content";
 
 export interface Unit {
@@ -300,8 +301,12 @@ export interface Player {
   greatPeopleEarned: Partial<Record<GreatPersonClass, number>>;
   /** Recruited Great People not yet activated (figure ids, ready to use). */
   greatPeople: string[];
-  /** Lifetime count of Legends this player has recruited (drives the rising cost). */
+  /** Lifetime count of Legends this player has recruited (score / analytics). */
   legendsRecruited: number;
+  /** Legend track points earned by training and battle (melee, cavalry, …). */
+  legendTrackPoints?: Partial<Record<LegendTrack, number>>;
+  /** Heroes already recruited per track (drives the rising point threshold). */
+  legendTrackEarned?: Partial<Record<LegendTrack, number>>;
   /** Science-victory capstone: longitude sectors this civ's ships have visited, and
    *  whether the globe has been circumnavigated. Absent until a ship puts to sea. */
   circumnavigation?: { visitedSectors: number[]; done: boolean };
@@ -311,6 +316,8 @@ export interface Player {
   /** Lifetime enemy cities captured by conquest. Feeds the score; absent on
    *  legacy saves (treated as 0). */
   citiesCaptured?: number;
+  /** Set once this major civ has lost all its cities (defeat announcement fired). */
+  eliminated?: boolean;
   /** Techs for which the eureka has already fired (prevents double-triggering). */
   eurekaTriggered?: Set<string>;
   /** Rush-spending escalation: how many rushes still count toward the surcharge
@@ -577,6 +584,7 @@ export type TurnUpdateType =
   | "greatPersonRecruited"
   | "legendRecruited"
   | "religionFounded"
+  | "civDefeated"
   | "eureka"
   | "treasuryExhausted";
 

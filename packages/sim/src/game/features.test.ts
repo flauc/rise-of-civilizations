@@ -27,6 +27,12 @@ describe("map features", () => {
     expect(camps).toBeGreaterThan(0);
   });
 
+  it("skips villages when disabled at game setup", () => {
+    const state = createGame({ seed: "no-villages", cols: 44, rows: 30, barbarians: true, villages: false });
+    const villages = state.map.tiles.filter((t) => t.feature === "village").length;
+    expect(villages).toBe(0);
+  });
+
   it("a village grants a perk and is consumed on entry", () => {
     const state = createGame({ seed: "feat2", cols: 44, rows: 30, barbarians: true });
     beginTurn(state);

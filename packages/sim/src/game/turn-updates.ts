@@ -1,6 +1,7 @@
+import { getCiv } from "@roc/data";
 import type { GreatPersonDef, LegendDef } from "@roc/data";
-import type { GameState, ProductionItem, TurnUpdateEvent, TurnUpdateType } from "./state";
-import { log } from "./state";
+import type { GameState, Player, ProductionItem, TurnUpdateEvent, TurnUpdateType } from "./state";
+import { log, playerById, citiesOf } from "./state";
 
 /** Append a structured turn-start update event for a specific player.
  *  Also writes a matching log entry so the regular game log stays complete. */
@@ -304,4 +305,61 @@ export function emitEureka(state: GameState, playerId: number, techName: string,
     message: `Eureka! ${techName} — ${desc} (+${boost} science)`,
     payload: { techName, boost },
   });
+}
+
+/** Label for civ-defeat announcements: leader names in single-player, usernames in MP. */
+function civDefeatDisplayName(state: GameState, player: Player): string {
+  if (player.isBarbarian) return "Barbarians";
+  const mpHumans = state.players.filter((p) => !p.isBarbarian && p.isHuman).length > 1;
+  if (mpHumans && player.isHuman) return player.name;
+  return getCiv(player.civId)?.leader ?? player.name.replace(/ \(AI\)$/, "");
+}
+
+/** When a major civ is wiped out, alert every other player at turn start. */
+export function emitCivDefeated(
+  state: GameState,
+  victorId: number,
+  defeatedId: number,
+  tile?: { col: number; row: number },
+): void {
+  const victor = playerById(state, victorId);
+  const defeated = playerById(state, defeatedId);
+  if (!victor || !defeated || defeated.isBarbarian) return;
+  const victorLabel = civDefeatDisplayName(state, victor);
+  const defeatedLabel = civDefeatDisplayName(state, defeated);
+  const message = `${victorLabel} defeated ${defeatedLabel}.`;
+
+  for (const p of state.players) {
+    if (p.isBarbarian || p.id === defeatedId) continue;
+    const id = state.nextTurnUpdateId++;
+    state.turnUpdates.push({
+      id,
+      turn: state.turn,
+      type: "civDefeated",
+      playerId: p.id,
+      message,
+      tile,
+      payload: { victorId, defeatedId, victorLabel, defeatedLabel },
+    });
+  }
+  log(state, message, {
+    actorId: victorId,
+    targetIds: [defeatedId],
+    world: true,
+    tile,
+  });
+}
+
+/** Fire a civ-defeat announcement once when a major civ loses its last city. */
+export function maybeCheckCivElimination(
+  state: GameState,
+  playerId: number,
+  victorId: number,
+  tile?: { col: number; row: number },
+): void {
+  const p = playerById(state, playerId);
+  if (!p || p.isBarbarian || p.eliminated) return;
+  if (citiesOf(state, playerId).length > 0) return;
+  p.eliminated = true;
+  emitCivDefeated(state, victorId, playerId, tile);
 }
