@@ -1004,8 +1004,8 @@ export function cityBombardTargets(state: GameState, city: City): Unit[] {
 
 /**
  * Manual city bombardment: one strength-scaled ranged hit per turn on a nearby
- * enemy unit. Player-triggered only (never automatic) — wired to the cityBombard
- * command and the bombard button on the city panel. The city takes no retaliation.
+ * enemy unit. Wired to the cityBombard command (human UI + AI aiCityBombard).
+ * The city takes no retaliation.
  */
 export function cityBombard(
   state: GameState,

@@ -198,6 +198,52 @@ describe("AI opponent", () => {
     expect(unit.movementLeft).toBe(0); // pin enforced at turn start
   });
 
+  it("bombards nearby enemies from its cities when at war", () => {
+    const s = aiWithCity("ai-bombard");
+    const city = citiesOf(s, 1)[0]!;
+    ensureContact(s, 0, 1);
+    expect(declareWar(s, 1, 0).ok).toBe(true);
+    for (const u of [...unitsOf(s, 1)]) {
+      if (!UNIT_DEFS[u.type].founder) s.units.delete(u.id);
+    }
+    const neighbor = offsetNeighbors(s.map, city.col, city.row).find((n) => {
+      const t = getTile(s.map, n.col, n.row);
+      return t && isPassableLand(t.terrain);
+    });
+    expect(neighbor).toBeTruthy();
+    const foe = unitsOf(s, 0).find((u) => UNIT_DEFS[u.type].strength > 0)!;
+    foe.col = neighbor!.col;
+    foe.row = neighbor!.row;
+    const hpBefore = foe.hp;
+    city.rangedAttackUsed = false;
+    aiTakeTurn(s, 1);
+    expect(city.rangedAttackUsed).toBe(true);
+    expect(foe.hp).toBeLessThan(hpBefore);
+  });
+
+  it("attacks a favorable adjacent enemy when at war", () => {
+    const s = aiWithCity("ai-fight");
+    ensureContact(s, 0, 1);
+    expect(declareWar(s, 1, 0).ok).toBe(true);
+    const warrior = unitsOf(s, 1).find((u) => u.type === "warrior")!;
+    for (const u of [...unitsOf(s, 1)]) {
+      if (u.id !== warrior.id) s.units.delete(u.id);
+    }
+    const human = unitsOf(s, 0).find((u) => UNIT_DEFS[u.type].strength > 0)!;
+    const adj = offsetNeighbors(s.map, warrior.col, warrior.row).find((n) => {
+      const t = getTile(s.map, n.col, n.row);
+      return t && isPassableLand(t.terrain) && !unitAt(s, n.col, n.row);
+    });
+    expect(adj).toBeTruthy();
+    human.col = adj!.col;
+    human.row = adj!.row;
+    human.hp = 45;
+    warrior.movementLeft = UNIT_DEFS.warrior.movement;
+    const hpBefore = human.hp;
+    aiTakeTurn(s, 1);
+    expect(human.hp).toBeLessThan(hpBefore);
+  });
+
   it("scouts instead of shadowing a peaceful neighbour, then pursues once at war", () => {
     const s = aiWithCity("ai-scout");
     const ai = s.players[1]!;
@@ -303,12 +349,11 @@ describe("AI opponent", () => {
     const enemyId = s.nextEntityId++;
     const enemy = makeUnit(enemyId, 0, "swordsman", adj.col, adj.row);
     s.units.set(enemyId, enemy);
-    const hp0 = enemy.hp;
     wounded.movementLeft = UNIT_DEFS["swordsman"].movement;
     aiTakeTurn(s, 1);
-    // An even matchup it would otherwise attack — but wounded, it disengages instead.
-    expect(enemy.hp).toBe(hp0);
-    expect(s.units.has(woundedId)).toBe(true); // and it survived to heal
+    // The wounded swordsman must not trade blows (city bombard may still chip the foe).
+    expect(wounded.hp).toBe(20);
+    expect(s.units.has(woundedId)).toBe(true);
   });
 
   it("musters its faith's holy unit in a temple city that follows the religion", () => {
@@ -369,6 +414,7 @@ describe("AI opponent", () => {
     s.units.set(enemyId, enemy);
     const hp0 = enemy.hp;
     s.units.get(scoutId)!.movementLeft = UNIT_DEFS["scout"].movement;
+    city.rangedAttackUsed = true; // isolate scout movement — city bombard also chips adjacent foes
     aiTakeTurn(s, 1);
     expect(enemy.hp).toBe(hp0); // the scout slipped away instead of attacking
   });
@@ -457,6 +503,58 @@ describe("AI opponent", () => {
     aiTakeTurn(s, 1);
     expect(s.players[1]!.gold).toBeLessThan(1000); // spent gold to hurry it
     expect(city.trainingQueue.some((o) => o.turnsLeft === 1)).toBe(true); // a unit was hurried
+  });
+
+  it("finds a distant settle site when the local ring is full of cities", () => {
+    const s = aiWithCity("ai-settle-global");
+    for (const u of unitsOf(s, 1)) s.units.delete(u.id);
+    const city = citiesOf(s, 1)[0]!;
+    // Fully explore so the global fallback can see the whole map.
+    for (let row = 0; row < s.map.rows; row++)
+      for (let col = 0; col < s.map.cols; col++) s.players[1]!.explored.add(`${col},${row}`);
+    // Ring the capital so nothing within the local ±6 search is legal.
+    for (let dr = -5; dr <= 5; dr++) {
+      for (let dc = -5; dc <= 5; dc++) {
+        const col = city.col + dc;
+        const row = city.row + dr;
+        const tile = getTile(s.map, col, row);
+        if (!tile || !isPassableLand(tile.terrain)) continue;
+        if (dist(city, { col, row }) < 3) continue;
+        if (dist(city, { col, row }) > 5) continue;
+        const id = s.nextEntityId++;
+        s.cities.set(id, {
+          id, ownerId: 1, name: `Fill${id}`, col, row, population: 1, foodStored: 0, productionStored: 0,
+          production: null, buildings: [], training: {}, trainingQueue: [], specialists: [], wonders: [],
+          workedTiles: [], isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0,
+          rangedAttackUsed: false, modifiers: [],
+        });
+      }
+    }
+    const settlerId = s.nextEntityId++;
+    s.units.set(settlerId, makeUnit(settlerId, 1, "settler", city.col, city.row));
+    const settler = s.units.get(settlerId)!;
+    const plan = planSettle(s, settler, 1);
+    expect(plan).toBeTruthy();
+    expect(dist(city, plan!)).toBeGreaterThan(5);
+  });
+
+  it("assigns different settle destinations to multiple settlers", () => {
+    const s = aiWithCity("ai-settle-reserve");
+    for (const u of unitsOf(s, 1)) s.units.delete(u.id);
+    const city = citiesOf(s, 1)[0]!;
+    for (let row = 0; row < s.map.rows; row++)
+      for (let col = 0; col < s.map.cols; col++) s.players[1]!.explored.add(`${col},${row}`);
+    const a = s.nextEntityId++;
+    const b = s.nextEntityId++;
+    s.units.set(a, makeUnit(a, 1, "settler", city.col, city.row));
+    s.units.set(b, makeUnit(b, 1, "settler", city.col, city.row));
+    const reserved = new Set<string>();
+    const planA = planSettle(s, s.units.get(a)!, 1, reserved);
+    expect(planA).toBeTruthy();
+    reserved.add(`${planA!.col},${planA!.row}`);
+    const planB = planSettle(s, s.units.get(b)!, 1, reserved);
+    expect(planB).toBeTruthy();
+    expect(`${planB!.col},${planB!.row}`).not.toBe(`${planA!.col},${planA!.row}`);
   });
 
   it("routes a settler around a known barbarian camp to safe ground", () => {
@@ -559,6 +657,27 @@ describe("AI opponent", () => {
     expect(atWar(s, 0, 1)).toBe(false);
     aiSeekConquest(s, s.players[0]!, "domination");
     expect(atWar(s, 0, 1)).toBe(true); // a beatable neighbour within reach → war
+  });
+
+  it("declares war when far ahead even without a domination focus", () => {
+    const s = createGame({ seed: "ai-jugg", cols: 40, rows: 28, barbarians: false, humanSlots: 0, playerCount: 2 });
+    beginTurn(s);
+    for (const pid of [0, 1]) {
+      const settler = unitsOf(s, pid).find((u) => u.type === "settler");
+      if (settler) applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+    }
+    ensureContact(s, 0, 1);
+    for (const u of unitsOf(s, 1)) if (UNIT_DEFS[u.type].strength > 0) s.units.delete(u.id);
+    const target = citiesOf(s, 1)[0]!;
+    for (let i = 0; i < 5; i++) {
+      const nb = freeNeighbor(s, target.col, target.row);
+      expect(nb).toBeTruthy();
+      const id = s.nextEntityId++;
+      s.units.set(id, makeUnit(id, 0, "swordsman", nb!.col, nb!.row));
+    }
+    expect(atWar(s, 0, 1)).toBe(false);
+    aiSeekConquest(s, s.players[0]!, "science"); // not a warmonger focus, but a huge edge
+    expect(atWar(s, 0, 1)).toBe(true);
   });
 
   it("opens by training a settler from the lone capital (pop 2)", () => {

@@ -1,5 +1,7 @@
 // Split login / register panel — both sides visible, divided by a center border.
 
+import { PASSWORD_REQUIREMENTS_HINT, validateRegistrationPassword, type PasswordValidationError } from "@roc/shared";
+
 function esc(s: string): string {
   const d = document.createElement("div");
   d.textContent = s;
@@ -58,7 +60,7 @@ export function authSplitPanelHtml(opts: {
           <h2 class="auth-pane-title" id="${p}-register-title">Register</h2>
           <p class="auth-pane-hint">Create an account to save progress and play online.</p>
           <div class="mp-field"><label for="${p}-reg-handle">Username</label><input id="${p}-reg-handle" class="menu-in" placeholder="Pick a name" autocomplete="username" /></div>
-          <div class="mp-field"><label for="${p}-reg-pw">Password</label><input id="${p}-reg-pw" class="menu-in" type="password" placeholder="Password" autocomplete="new-password" /></div>
+          <div class="mp-field"><label for="${p}-reg-pw">Password</label><input id="${p}-reg-pw" class="menu-in" type="password" placeholder="Password" autocomplete="new-password" /><p class="menu-hint auth-pw-hint">${esc(PASSWORD_REQUIREMENTS_HINT)}</p></div>
           <div class="mp-field"><label for="${p}-reg-pw2">Repeat password</label><input id="${p}-reg-pw2" class="menu-in" type="password" placeholder="Repeat password" autocomplete="new-password" /></div>
           <label class="auth-check"><input type="checkbox" id="${p}-newsletter" /><span>Send me newsletter and notifications</span></label>
           <div class="auth-email-wrap hidden" id="${p}-email-wrap">
@@ -101,6 +103,8 @@ export function bindAuthSplitPanel(root: ParentNode, opts: AuthSplitBindOptions)
     const password = root.querySelector<HTMLInputElement>(`#${p}-reg-pw`)!.value;
     const pw2 = root.querySelector<HTMLInputElement>(`#${p}-reg-pw2`)!.value;
     if (!handle || !password) return setStatus("Enter a username and password to register.");
+    const passwordError = validateRegistrationPassword(password);
+    if (passwordError) return setStatus(friendlyRegisterPasswordError(passwordError));
     if (password !== pw2) return setStatus("Passwords don't match.");
     const newsletter = newsletterEl?.checked ?? false;
     const email = root.querySelector<HTMLInputElement>(`#${p}-email`)?.value.trim();
@@ -122,4 +126,12 @@ export function bindAuthSplitPanel(root: ParentNode, opts: AuthSplitBindOptions)
   if (urlEl && opts.onAdvancedUrlChange) {
     urlEl.addEventListener("change", () => opts.onAdvancedUrlChange!(urlEl.value));
   }
+}
+
+function friendlyRegisterPasswordError(code: PasswordValidationError): string {
+  if (code === "password too short") return "Password must be at least 8 characters.";
+  if (code === "password too long") return "Password must be at most 128 characters.";
+  if (code === "password needs letter") return "Password must include at least one letter.";
+  if (code === "password needs digit") return "Password must include at least one number.";
+  return "Password does not meet requirements.";
 }

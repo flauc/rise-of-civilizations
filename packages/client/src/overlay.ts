@@ -32,6 +32,8 @@ export interface OverlayState {
   /** Tiles the selected city could claim next, highlighted while the player is
    *  choosing its next border tile. */
   expandCandidates?: Set<string>;
+  /** Origin tile while the player is picking a road-route destination. */
+  roadRouteFrom?: { col: number; row: number } | null;
   /** The tile the selected city will claim next (player-chosen or default) — flagged
    *  so the player can see where the borders grow before/after overriding it. */
   expandMarker?: { col: number; row: number } | null;
@@ -873,5 +875,21 @@ export function drawOverlay(
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     drawGlyph(ctx, "🚩", s.x, s.y - size * 0.02, Math.round(size * 0.5));
+  }
+
+  // Road-route origin while the player is choosing a destination.
+  if (o.roadRouteFrom) {
+    const s = screen(o.roadRouteFrom.col, o.roadRouteFrom.row);
+    ctx.save();
+    ctx.setLineDash([size * 0.12, size * 0.08]);
+    ctx.lineWidth = Math.max(1.5, size * 0.05);
+    ctx.strokeStyle = "rgba(143,206,143,0.85)";
+    hexPath(ctx, s.x, s.y, size * 0.92);
+    ctx.stroke();
+    ctx.restore();
+    ctx.font = `${Math.round(size * 0.5)}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    drawGlyph(ctx, "🛤️", s.x, s.y - size * 0.02, Math.round(size * 0.5));
   }
 }

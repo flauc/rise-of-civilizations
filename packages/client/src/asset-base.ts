@@ -12,7 +12,9 @@
 // the zip). See tools/build-itchio.mjs.
 
 const RAW_BASE =
-  import.meta.env.VITE_ASSET_BASE_URL?.trim() || import.meta.env.BASE_URL;
+  import.meta.env?.VITE_ASSET_BASE_URL?.trim() ||
+  import.meta.env?.BASE_URL ||
+  "./";
 
 /** Asset base, guaranteed to end in exactly one trailing slash. */
 export const ASSET_BASE_URL = RAW_BASE.endsWith("/") ? RAW_BASE : `${RAW_BASE}/`;

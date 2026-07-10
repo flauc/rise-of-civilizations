@@ -201,6 +201,7 @@ import {
   type UnitTypeId,
   type TrainingClass,
   type TurnUpdateEvent,
+  mapTypeDisplay,
 } from "@roc/sim";
 import type { Tile } from "@roc/shared";
 import {
@@ -219,6 +220,11 @@ import {
 } from "@roc/data";
 import { abilityIconHtml, type AbilityAtlas } from "./ability-assets";
 import { abandonActiveSession } from "./analytics";
+
+function stateMapLabel(state: GameState): string {
+  if (!state.map.mapType) return "";
+  return mapTypeDisplay(state.map.mapTypeRequested, state.map.mapType);
+}
 
 export interface CombatOdds {
   targetName: string;
@@ -399,6 +405,8 @@ export interface UIHandlers {
   /** Enter the aimer to fire the city's once-a-turn bombardment at a nearby enemy. */
   onCityBombard(cityId: number): void;
   onStartWork(kind: string, col: number, row: number): void;
+  /** Begin a multi-tile road route from this tile (player taps the destination next). */
+  onStartRoadRoute(col: number, row: number): void;
   onStartWonder(wonderId: string, col: number, row: number): void;
   onCancelWork(workId: number): void;
   /** Close an existing trade route — the trader that opened it is lost. */
@@ -1836,9 +1844,12 @@ export function createUI(handlers: UIHandlers): UI {
         `<button class="la-badge ${laReady ? "ready" : "inactive"}" id="leader-ability-badge" title="${escapeHtml(`${laDef.name} — ${laStatus}`)}">${laInner}</button>`;
     }
 
+    const mapLabel = stateMapLabel(state);
+    const turnTitle = mapLabel ? `Turn ${state.turn} · Map: ${mapLabel}` : `Turn ${state.turn}`;
+
     topbar.innerHTML = `
       <div class="tb-grp">
-        <span class="tb-turn">⏱ ${state.turn}</span>
+        <span class="tb-turn" title="${escapeHtml(turnTitle)}">⏱ ${state.turn}${mapLabel ? `<span class="tb-map">${escapeHtml(mapLabel)}</span>` : ""}</span>
         <span class="tb-civ" title="${civTitle}"><span class="dot" style="background:${player.color}"></span>${player.name}${civ ? ` · <b>${civ.name}</b>` : ""}</span>
       </div>
       <div class="tb-grp tb-res">
@@ -2096,6 +2107,7 @@ export function createUI(handlers: UIHandlers): UI {
     }
 
     if (menuView === "menu") {
+      const mapLabel = stateMapLabel(state);
       const godMenuBtn =
         !lastView?.cheatsEnabled
           ? ""
@@ -2108,7 +2120,9 @@ export function createUI(handlers: UIHandlers): UI {
       let html =
         `<div class="row" style="justify-content:space-between"><b>Game Menu</b>` +
         `<button type="button" class="btn panel-close" id="save-close">✕</button></div>` +
-        `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
+        `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}` +
+        (mapLabel ? `<br/><span style="font-size:11px">Map: ${escapeHtml(mapLabel)}</span>` : "") +
+        `</div>` +
         `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
         saveBtn +
         `<button class="btn" id="menu-settings">Settings</button>` +
@@ -2933,7 +2947,8 @@ export function createUI(handlers: UIHandlers): UI {
 
     if (trainCityId !== trainExpandedForCityId) {
       trainExpandedForCityId = trainCityId;
-      trainExpandedSections = new Set();
+      // Open the city-center fold by default so scouts/settlers are visible immediately.
+      trainExpandedSections = new Set(["city"]);
     }
 
     const foldSection = (key: string, labelHtml: string, bodyHtml: string): string => {
@@ -4253,6 +4268,13 @@ export function createUI(handlers: UIHandlers): UI {
       }).filter(Boolean);
       if (btns.length) {
         html += `<div class="csub">Develop</div><div class="row" style="flex-wrap:wrap;gap:6px">${btns.join("")}</div>`;
+        const roadCan = canStartWork(state, viewerId, "road", tile.col, tile.row);
+        if (roadCan.ok) {
+          html +=
+            `<div class="row" style="flex-wrap:wrap;gap:6px;margin-top:6px">` +
+            `<button class="btn imp-btn" id="road-route-btn">🛤️ Route from here…</button>` +
+            `<span class="sub">Surveyors pave every tile along the path automatically.</span></div>`;
+        }
       }
       // World wonders are tile-targeted too: offer any that can be raised on this
       // clear, owned tile. Only wonders whose tech is already researched appear here
@@ -4324,6 +4346,9 @@ export function createUI(handlers: UIHandlers): UI {
     });
     tilePanel.querySelectorAll<HTMLButtonElement>("[data-work]").forEach((el) =>
       el.addEventListener("click", () => handlers.onStartWork(el.dataset.work!, tile.col, tile.row)),
+    );
+    tilePanel.querySelector<HTMLButtonElement>("#road-route-btn")?.addEventListener("click", () =>
+      handlers.onStartRoadRoute(tile.col, tile.row),
     );
     tilePanel.querySelectorAll<HTMLButtonElement>("[data-wonder]").forEach((el) =>
       el.addEventListener("click", () => handlers.onStartWonder(el.dataset.wonder!, tile.col, tile.row)),

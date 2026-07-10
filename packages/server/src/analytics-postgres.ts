@@ -1,6 +1,10 @@
 // Durable analytics storage on Postgres via Bun's built-in SQL client. Selected
 // in index.ts when DATABASE_URL is set (e.g. the Coolify Postgres container).
 // Only runs under Bun — the pure MemoryAnalyticsStore covers tests/dev.
+//
+// SQL safety: every user-provided value is passed via tagged-template placeholders
+// (${value}). Admin filters are applied in memory after load; sort columns use
+// resolveSqlSortColumn whitelists — never interpolate user text into SQL.
 
 import { SQL } from "bun";
 import type {

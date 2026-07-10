@@ -30,6 +30,7 @@ import {
   startWork,
   unassignSpecialistEverywhere,
 } from "./works";
+import { cancelRoadRoute, startRoadRoute } from "./road-routes";
 import { rushCity, rushWork, rushTraining, type RushCurrency } from "./rush";
 import { capitalPopulationBonusFor, BASE_CITY_POPULATION } from "@roc/data";
 import { foundTerritory, expandTerritory, canExpandTo, tileOwnerId } from "./territory";
@@ -153,6 +154,15 @@ export type Command =
   | { type: "wake"; unitId: number }
   | { type: "convertCitizen"; cityId: number; specialistId: string; delta: number }
   | { type: "startWork"; kind: string; col: number; row: number }
+  | {
+      type: "startRoadRoute";
+      fromCol: number;
+      fromRow: number;
+      toCol: number;
+      toRow: number;
+      specialistIds?: number[];
+    }
+  | { type: "cancelRoadRoute"; routeId: number }
   | { type: "startWonder"; wonderId: string; col: number; row: number }
   | { type: "assignSpecialist"; workId: number; specialistId: number; on: boolean }
   | { type: "cancelWork"; workId: number }
@@ -456,6 +466,22 @@ export function applyCommand(
 
     case "startWork": {
       return startWork(state, player.id, cmd.kind, cmd.col, cmd.row);
+    }
+
+    case "startRoadRoute": {
+      return startRoadRoute(
+        state,
+        player.id,
+        cmd.fromCol,
+        cmd.fromRow,
+        cmd.toCol,
+        cmd.toRow,
+        cmd.specialistIds,
+      );
+    }
+
+    case "cancelRoadRoute": {
+      return cancelRoadRoute(state, cmd.routeId, player.id);
     }
 
     case "startWonder": {

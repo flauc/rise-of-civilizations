@@ -398,6 +398,18 @@ export interface Work {
   requirement: Partial<Record<Discipline, number>>;
   /** Labour accumulated so far, by discipline. */
   progress: Partial<Record<Discipline, number>>;
+  /** When set, this road segment belongs to a multi-tile route (see roadRoutes). */
+  routeId?: number;
+}
+
+/** A queued path of road tiles assigned to one or more surveyors. */
+export interface RoadRoute {
+  id: number;
+  ownerId: number;
+  /** Tiles still to pave, in path order. */
+  queue: { col: number; row: number }[];
+  /** Agrimensores committed to paving this route until it finishes. */
+  specialistIds: number[];
 }
 
 // ---- diplomacy -----------------------------------------------------------
@@ -663,6 +675,8 @@ export interface GameState {
   tradeRoutes: TradeRoute[];
   /** In-progress public-works projects (all players). */
   works: Work[];
+  /** Multi-tile road routes being paved by assigned surveyors. */
+  roadRoutes: RoadRoute[];
   /** Wonder ids already completed somewhere in the world (each is world-unique). */
   completedWonders: string[];
   /** Great-person ids already recruited by anyone (each figure is world-unique). */

@@ -39,6 +39,13 @@ import {
 } from "./screen-rotation-ui";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 import type { GameSetup } from "./analytics";
+import {
+  createTutorialSession,
+  createTutorialSetup,
+  dismissTutorialPrompt,
+  markGameStarted,
+  shouldRecommendTutorial,
+} from "./tutorial";
 
 const DEFAULT_WS_SCHEME = location.protocol === "https:" ? "wss" : "ws";
 const DEFAULT_WS =
@@ -54,8 +61,9 @@ type StartingGold = "tight" | "balanced" | "generous";
 
 /** Map layout presets, in menu order, each with a short explanation. */
 const MAP_TYPE_OPTIONS: { value: MapType; label: string; desc: string }[] = [
-  { value: "continents", label: "Continents", desc: "A balanced spread of landmasses separated by sea — the classic default." },
-  { value: "pangaea", label: "One Big Continent", desc: "A single supercontinent: everyone shares one landmass with little ocean between." },
+  { value: "random", label: "Random", desc: "Roll any map layout — random or fixed continents, archipelago, inland sea, islands, or real world." },
+  { value: "continents", label: "Continents (1-4)", desc: "Each game rolls one to four separate continents, from one supercontinent up to four distant landmasses." },
+  { value: "pangaea", label: "One Continent", desc: "A single supercontinent: everyone shares one landmass with little ocean between." },
   { value: "two_continents", label: "Two Continents", desc: "Two major landmasses divided by open ocean." },
   { value: "three_continents", label: "Three Continents", desc: "Three landmasses scattered across the sea." },
   { value: "four_continents", label: "Four Continents", desc: "Four separate continents — wide oceans between every rival." },
@@ -309,7 +317,7 @@ function defaultSpSetup(): SpSetup {
     civId: CIVS_BY_NAME[0]!.id,
     color: PLAYER_COLORS[0]!,
     mapSize: "medium",
-    mapType: "continents",
+    mapType: "random",
     ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],
     barbarians: "normal",
     naturalWonders: true,
@@ -377,7 +385,67 @@ function loadSpSetup(defaults: SpSetup): SpSetup {
   return out;
 }
 
-export function createLobby(onStart: (session: Session, setup?: GameSetup) => void): void {
+export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) => void): void {
+  const onStart = (session: Session, setup?: GameSetup): void => {
+    markGameStarted();
+    onStartRaw(session, setup);
+  };
+
+  const launchTutorialGame = (): void => {
+    close();
+    onStart(createTutorialSession(), createTutorialSetup());
+  };
+
+  const showTutorialRecommendModal = (onSkip: () => void): void => {
+    const overlay = document.createElement("div");
+    overlay.className = "tutorial-prompt-overlay";
+    overlay.innerHTML = `
+      <div class="tutorial-prompt" role="dialog" aria-modal="true" aria-label="Tutorial recommendation">
+        <button class="tutorial-prompt-close" id="tp-close" type="button" aria-label="Close">✕</button>
+        <div class="tutorial-prompt-icon">📜</div>
+        <div class="tutorial-prompt-title">New to Rise of Civilizations?</div>
+        <p class="tutorial-prompt-body">
+          We recommend playing the <b>Tutorial</b> first — a short game on a small map with one AI opponent
+          and light barbarian activity. You can always start a custom game instead.
+        </p>
+        <div class="tutorial-prompt-actions">
+          <button class="menu-btn primary" id="tp-play" type="button" style="width:auto">Play Tutorial</button>
+          <button class="menu-btn secondary" id="tp-skip" type="button" style="width:auto">Skip — custom game</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = (): void => {
+      overlay.remove();
+      document.removeEventListener("keydown", onKey);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        dismissTutorialPrompt();
+        close();
+        onSkip();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    overlay.querySelector<HTMLButtonElement>("#tp-close")!.addEventListener("click", () => {
+      dismissTutorialPrompt();
+      close();
+      onSkip();
+    });
+    overlay.querySelector<HTMLButtonElement>("#tp-skip")!.addEventListener("click", () => {
+      dismissTutorialPrompt();
+      close();
+      onSkip();
+    });
+    overlay.querySelector<HTMLButtonElement>("#tp-play")!.addEventListener("click", () => {
+      close();
+      launchTutorialGame();
+    });
+  };
+
+  const maybeOfferTutorial = (onSkip: () => void): void => {
+    if (shouldRecommendTutorial()) showTutorialRecommendModal(onSkip);
+    else onSkip();
+  };
   const state: MenuState = {
     screen: "start",
     sp: loadSpSetup(defaultSpSetup()),
@@ -386,7 +454,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       handle: "",
       password: "",
       capacity: 2,
-      mapType: "continents",
+      mapType: "random",
       humanColors: [PLAYER_COLORS[0]!, PLAYER_COLORS[1]!],
       ais: [],
       userId: "",
@@ -619,6 +687,15 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .cp-item-name{font-weight:700;font-size:14px}
     .cp-item-leader{font-size:12px;color:#b8aa8d}
     .cp-detail{flex:1;overflow-y:auto;padding:22px 24px}
+    /* First-game tutorial recommendation */
+    .tutorial-prompt-overlay{position:fixed;inset:0;z-index:75;background:rgba(8,7,5,.82);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
+    .tutorial-prompt{position:relative;width:min(480px,100%);background:linear-gradient(180deg,#1f1c14,#15120c);border:1px solid var(--edge);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:28px 24px 22px;text-align:center}
+    .tutorial-prompt-close{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px}
+    .tutorial-prompt-close:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
+    .tutorial-prompt-icon{font-size:40px;line-height:1;margin-bottom:8px}
+    .tutorial-prompt-title{font-family:'Cinzel',Georgia,serif;font-size:22px;font-weight:800;color:#e8dcc5;margin-bottom:12px}
+    .tutorial-prompt-body{color:#cdbfa6;font-size:14px;line-height:1.55;margin:0 0 20px}
+    .tutorial-prompt-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
     .cp-detail-top{display:flex;gap:18px}
     .cp-portrait{position:relative;flex:0 0 auto;width:170px;height:212px;border-radius:14px;overflow:hidden;border:1px solid var(--edge);background:var(--bg-card)}
     .cp-portrait-img{width:100%;height:100%;object-fit:cover;display:block}
@@ -722,6 +799,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .mp-advanced[open] summary::before{content:"▾ "}
     /* Browse / create */
     .mp-browse-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:22px;align-items:start}
+    .mp-browse-stack{display:flex;flex-direction:column;gap:22px;min-width:0}
     .mp-opt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
     .mp-opt{display:flex;flex-direction:column;gap:6px}
     .mp-opt.wide{grid-column:1/-1}
@@ -1082,8 +1160,9 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       <div class="lobby-title">Rise of Civilizations</div>
       <div class="lobby-subtitle">Ancient Era → Age of Exploration</div>
       <div class="menu-actions">
-        <button class="menu-btn primary" data-screen="sp">Single Player</button>
+        <button class="menu-btn primary" id="lobby-sp">Single Player</button>
         <button class="menu-btn" data-screen="mp">Multiplayer</button>
+        <button class="menu-btn" id="lobby-tutorial">Tutorial</button>
         ${loadBtn}
         <button class="menu-btn" id="lobby-wiki">Wiki</button>
         <button class="menu-btn" id="lobby-roadmap">Roadmap</button>
@@ -1095,6 +1174,12 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     left.querySelectorAll<HTMLButtonElement>("[data-screen]").forEach((el) =>
       el.addEventListener("click", () => showScreen(el.dataset.screen as Screen)),
     );
+    left.querySelector<HTMLButtonElement>("#lobby-sp")!.addEventListener("click", () => {
+      maybeOfferTutorial(() => showScreen("sp"));
+    });
+    left.querySelector<HTMLButtonElement>("#lobby-tutorial")!.addEventListener("click", () => {
+      launchTutorialGame();
+    });
     left.querySelector<HTMLButtonElement>("#account-login")?.addEventListener("click", () => showScreen("auth"));
     left.querySelector<HTMLButtonElement>("#account-logout")?.addEventListener("click", () => {
       clearAccount();
@@ -1154,7 +1239,12 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     if (message === "email required for newsletter") return "Enter an email to receive newsletter and notifications.";
     if (message === "invalid email") return "Enter a valid email address.";
     if (message === "handle too short") return "Username must be at least 2 characters.";
-    if (message === "password too short") return "Password must be at least 4 characters.";
+    if (message === "handle too long") return "Username must be at most 32 characters.";
+    if (message === "email too long") return "Email address is too long.";
+    if (message === "password too short") return "Password must be at least 8 characters.";
+    if (message === "password too long") return "Password must be at most 128 characters.";
+    if (message === "password needs letter") return "Password must include at least one letter.";
+    if (message === "password needs digit") return "Password must include at least one number.";
     return message;
   }
 
@@ -1559,7 +1649,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       const dims = MAP_DIMENSIONS["medium"];
       // Sensible defaults; the host tweaks everything in the lobby afterward.
       mpSetup = {
-        mapType: "continents",
+        mapType: "random",
         mapSize: "medium",
         startingGold: "balanced",
         naturalWonders: true,
@@ -1576,7 +1666,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         cols: dims.cols,
         rows: dims.rows,
         mapSize: "medium",
-        mapType: "continents",
+        mapType: "random",
         capacity: 2,
         barbarians: "normal",
         naturalWonders: true,
@@ -1593,11 +1683,18 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           ${topbar(whoChip())}
           ${steps("browse")}
           <div class="mp-browse-grid">
-            <div class="mp-panel">
-              <div class="mp-panel-title">Create a game</div>
-              <div class="menu-hint" style="margin-bottom:14px">Name your game, then set the map, players and an optional password in the lobby.</div>
-              <div class="mp-field"><label>Game name</label><input id="mp-name" class="menu-in" placeholder="${escapeHtml((state.mp.handle || "Player") + "'s game")}" /></div>
-              <div class="mp-create-foot"><button class="menu-btn primary" id="mp-create" style="width:auto">Create game</button></div>
+            <div class="mp-browse-stack">
+              <div class="mp-panel">
+                <div class="mp-panel-title">Create a game</div>
+                <div class="menu-hint" style="margin-bottom:14px">Name your game, then set the map, players and an optional password in the lobby.</div>
+                <div class="mp-field"><label>Game name</label><input id="mp-name" class="menu-in" placeholder="${escapeHtml((state.mp.handle || "Player") + "'s game")}" /></div>
+                <div class="mp-create-foot"><button class="menu-btn primary" id="mp-create" style="width:auto">Create game</button></div>
+              </div>
+              <div class="mp-panel">
+                <div class="mp-panel-title">Tutorial</div>
+                <div class="menu-hint" style="margin-bottom:14px">Learn the basics in a short offline game — small map, one AI, minimal barbarians.</div>
+                <div class="mp-create-foot"><button class="menu-btn" id="mp-tutorial" style="width:auto">Play Tutorial</button></div>
+              </div>
             </div>
             <div class="mp-panel">
               <div class="mp-panel-title">Open games <button class="menu-btn secondary" id="mp-refresh" style="margin-left:auto;width:auto;padding:6px 12px;font-size:12px">Refresh</button></div>
@@ -1609,6 +1706,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       screen.querySelector<HTMLButtonElement>("#mp-back")!.addEventListener("click", () => showScreen("start"));
       screen.querySelector<HTMLButtonElement>("#mp-refresh")!.addEventListener("click", () => mpSession?.send({ t: "listGames" }));
       screen.querySelector<HTMLButtonElement>("#mp-create")!.addEventListener("click", doCreate);
+      screen.querySelector<HTMLButtonElement>("#mp-tutorial")!.addEventListener("click", () => launchTutorialGame());
       screen.querySelector<HTMLInputElement>("#mp-name")!.addEventListener("keydown", (e) => {
         if (e.key === "Enter") doCreate();
       });

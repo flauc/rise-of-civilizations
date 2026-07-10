@@ -57,7 +57,7 @@ export const MAP_DIMENSIONS: Record<MapSize, { cols: number; rows: number }> = {
 export interface LocalGameOptions {
   seed?: string;
   mapSize?: MapSize;
-  /** Landmass layout to generate. Defaults to "continents". */
+  /** Landmass layout to generate. Defaults to "random". */
   mapType?: MapType;
   aiCount?: number;
   barbarians?: boolean | BarbarianActivity;
@@ -104,7 +104,7 @@ export class LocalSession implements Session {
         seed: opts.seed ?? "rise",
         cols: dims.cols,
         rows: dims.rows,
-        mapType: opts.mapType ?? "continents",
+        mapType: opts.mapType ?? "random",
         humanSlots: 1,
         playerCount: 1 + aiCount,
         barbarians: opts.barbarians ?? true,
@@ -247,6 +247,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     religions: view.religions,
     tradeRoutes: view.tradeRoutes ?? [],
     works: view.works ?? [],
+    roadRoutes: view.roadRoutes ?? [],
     completedWonders: view.completedWonders ?? [],
     recruitedGreatPeople: view.recruitedGreatPeople ?? [],
     legendsEnabled: view.legendsEnabled ?? true,

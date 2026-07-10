@@ -194,6 +194,7 @@ export type GameSetup = Pick<
   | "turnLimit"
   | "gameSpeed"
   | "enabledVictories"
+  | "isTutorial"
 >;
 
 export interface SessionStartMeta {
@@ -217,6 +218,8 @@ export interface SessionStartMeta {
   aiCivIds?: (string | null)[];
   /** Decisive win conditions enabled this game. */
   enabledVictories?: string[];
+  /** Guided tutorial scenario (small map, one AI). */
+  isTutorial?: boolean;
 }
 
 /**

@@ -8,6 +8,7 @@
 import type { ClientMessage, LobbyChatMessage, ServerMessage } from "@roc/sim";
 import { deserializeState, serializeState } from "@roc/sim";
 import type { AnalyticsBatch, AdminRegisteredUser } from "@roc/shared";
+import { isSafeLookupId } from "@roc/shared";
 import { MemoryStorage } from "./storage";
 import { loadPersistedBugReports, persistBugReports } from "./bug-reports-persistence";
 import { loadPersistedSessions, persistSessions } from "./analytics-persistence";
@@ -479,6 +480,7 @@ const server = Bun.serve<Conn>({
       // Single bug report detail (full captured payload): /admin/api/bug-report/<id>.
       if (name.startsWith("bug-report/")) {
         const id = decodeURIComponent(name.slice("bug-report/".length));
+        if (!isSafeLookupId(id)) return jsonResponse({ error: "not found" }, 404);
         const report = await analytics.bugReport(id);
         if (!report) return jsonResponse({ error: "not found" }, 404);
         return jsonResponse(report);

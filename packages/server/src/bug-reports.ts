@@ -11,6 +11,7 @@ import type {
   GameMode,
   SessionOutcome,
 } from "@roc/shared";
+import { clampFilterText } from "@roc/shared";
 import type { BugReportRow, SessionRow } from "./analytics";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -51,8 +52,7 @@ function parseIntOpt(v: string | null): number | undefined {
 }
 
 function parseText(v: string | null): string | undefined {
-  const t = v?.trim();
-  return t ? t : undefined;
+  return clampFilterText(v?.trim() || undefined);
 }
 
 function parseMode(v: string | null): GameMode | undefined {

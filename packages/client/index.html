@@ -192,8 +192,25 @@
         gap: 8px;
       }
       .tb-turn {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 6px;
         font-weight: 700;
         color: var(--accent-bright);
+      }
+      .tb-map {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--parchment-dim);
+        max-width: 30vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      @media (max-width: 720px) {
+        .tb-map {
+          display: none;
+        }
       }
       .tb-civ {
         max-width: 38vw;
@@ -1420,6 +1437,217 @@
         0%, 100% { box-shadow: 0 0 0 2px rgba(217, 169, 4, 0.3), 0 0 8px rgba(255, 214, 90, 0.55); }
         50% { box-shadow: 0 0 0 3px rgba(217, 169, 4, 0.5), 0 0 18px rgba(255, 214, 90, 0.95); }
       }
+      /* In-game tutorial coach — pulsing ring on the next button to tap */
+      #tutorial-coach {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 45;
+      }
+      #tutorial-coach.hidden {
+        display: none;
+      }
+      #tutorial-coach-dim {
+        position: fixed;
+        inset: 0;
+        background: rgba(8, 10, 14, 0.45);
+        opacity: 0;
+        transition: opacity 0.25s ease;
+        pointer-events: none;
+      }
+      #tutorial-coach-dim.show {
+        opacity: 1;
+      }
+      #tutorial-coach-ring {
+        position: fixed;
+        border: 2px solid #ffd666;
+        border-radius: 12px;
+        box-shadow: 0 0 0 2px rgba(217, 169, 4, 0.35), 0 0 16px rgba(255, 214, 90, 0.75);
+        animation: tutorial-coach-pulse 1.6s ease-in-out infinite;
+        pointer-events: none;
+        box-sizing: border-box;
+      }
+      @keyframes tutorial-coach-pulse {
+        0%, 100% { box-shadow: 0 0 0 2px rgba(217, 169, 4, 0.35), 0 0 12px rgba(255, 214, 90, 0.6); }
+        50% { box-shadow: 0 0 0 4px rgba(217, 169, 4, 0.55), 0 0 24px rgba(255, 214, 90, 1); }
+      }
+      #tutorial-coach-panel {
+        position: fixed;
+        right: max(12px, env(safe-area-inset-right));
+        bottom: max(72px, calc(12px + env(safe-area-inset-bottom)));
+        display: flex;
+        flex-direction: row;
+        align-items: flex-end;
+        gap: 14px;
+        pointer-events: none;
+        max-width: min(580px, calc(100vw - 24px));
+      }
+      #tutorial-coach-card {
+        flex: 1;
+        min-width: 0;
+        pointer-events: auto;
+      }
+      #tutorial-coach-bubble {
+        position: relative;
+        border: 2px solid #c9a24a;
+        border-radius: 18px 18px 18px 6px;
+        padding: 0;
+        background: linear-gradient(165deg, rgba(48, 40, 28, 0.97) 0%, rgba(22, 18, 12, 0.96) 100%);
+        box-shadow:
+          0 10px 32px rgba(0, 0, 0, 0.5),
+          inset 0 1px 0 rgba(255, 230, 160, 0.12),
+          0 0 0 1px rgba(0, 0, 0, 0.35);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      #tutorial-coach-panel.speaking #tutorial-coach-bubble {
+        border-color: #e8c45a;
+        box-shadow:
+          0 10px 32px rgba(0, 0, 0, 0.5),
+          inset 0 1px 0 rgba(255, 230, 160, 0.16),
+          0 0 0 1px rgba(0, 0, 0, 0.35),
+          0 0 20px rgba(255, 214, 90, 0.22);
+        animation: tutorial-coach-bubble-speak 1.1s ease-in-out infinite;
+      }
+      @keyframes tutorial-coach-bubble-speak {
+        0%, 100% { border-color: #c9a24a; }
+        50% { border-color: #f0d878; }
+      }
+      #tutorial-coach-bubble.info-only {
+        cursor: pointer;
+      }
+      #tutorial-coach-bubble.info-only #tutorial-coach-tail {
+        pointer-events: auto;
+        cursor: pointer;
+      }
+      /* Speech tail pointing at the legend portrait */
+      #tutorial-coach-tail {
+        position: absolute;
+        right: -16px;
+        bottom: 36px;
+        width: 18px;
+        height: 22px;
+        pointer-events: none;
+      }
+      #tutorial-coach-tail::before,
+      #tutorial-coach-tail::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        clip-path: polygon(0 0, 100% 50%, 0 100%);
+      }
+      #tutorial-coach-tail::before {
+        background: #c9a24a;
+        transform: scale(1.08);
+        transform-origin: left center;
+      }
+      #tutorial-coach-tail::after {
+        background: linear-gradient(165deg, rgba(48, 40, 28, 0.97), rgba(22, 18, 12, 0.96));
+        inset: 2px 4px 2px 0;
+      }
+      #tutorial-coach-panel.speaking #tutorial-coach-tail::before {
+        background: #e8c45a;
+      }
+      #tutorial-coach-dialog {
+        border: none;
+        border-radius: 0;
+        padding: 14px 16px 12px;
+        background: transparent;
+        box-shadow: none;
+      }
+      #tutorial-coach-dialog.info-only {
+        cursor: inherit;
+      }
+      #tutorial-coach-dialog.info-only::before {
+        content: "Tap to continue";
+        display: block;
+        font-size: 10px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--parchment-dim);
+        margin-bottom: 6px;
+        opacity: 0.85;
+      }
+      #tutorial-coach-portrait {
+        position: relative;
+        z-index: 2;
+        width: 188px;
+        max-width: 34vw;
+        height: auto;
+        max-height: min(280px, 44vh);
+        flex-shrink: 0;
+        object-fit: contain;
+        object-position: bottom center;
+        pointer-events: none;
+        margin-bottom: 2px;
+        filter:
+          drop-shadow(0 2px 0 rgba(0, 0, 0, 0.65))
+          drop-shadow(0 8px 18px rgba(0, 0, 0, 0.45));
+        transition: filter 0.2s ease;
+      }
+      #tutorial-coach-portrait.speaking {
+        animation: tutorial-coach-speak 0.85s ease-in-out infinite;
+      }
+      @keyframes tutorial-coach-speak {
+        0%, 100% { filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 8px rgba(255, 214, 90, 0.25)); }
+        50% { filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 18px rgba(255, 214, 90, 0.55)); }
+      }
+      #tutorial-coach-portrait:not([src]),
+      #tutorial-coach-portrait[src=""] {
+        display: none;
+      }
+      #tutorial-coach-panel:not(:has(#tutorial-coach-portrait[src])) #tutorial-coach-tail {
+        display: none;
+      }
+      #tutorial-coach-panel:not(:has(#tutorial-coach-portrait[src])) #tutorial-coach-bubble {
+        border-radius: 18px;
+      }
+      #tutorial-coach-text {
+        color: #f0e6d0;
+        font-size: 17px;
+        line-height: 1.5;
+        text-align: left;
+        min-height: 3.2em;
+      }
+      #tutorial-coach-text::after {
+        content: "";
+        display: inline-block;
+        width: 2px;
+        height: 1em;
+        margin-left: 2px;
+        vertical-align: text-bottom;
+        background: #d9a904;
+        opacity: 0;
+      }
+      #tutorial-coach-panel.speaking #tutorial-coach-text::after {
+        opacity: 1;
+        animation: tutorial-coach-blink 0.7s step-end infinite;
+      }
+      @keyframes tutorial-coach-blink {
+        50% { opacity: 0; }
+      }
+      #tutorial-coach-foot {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 8px;
+        padding: 0 2px;
+        font-size: 11px;
+        color: #b8a88a;
+      }
+      #tutorial-coach-skip {
+        background: transparent;
+        border: 1px solid #5a5040;
+        color: #c9b896;
+        border-radius: 8px;
+        padding: 4px 10px;
+        font-size: 11px;
+        cursor: pointer;
+      }
+      #tutorial-coach-skip:hover {
+        border-color: #8b7340;
+        color: #f0e6d0;
+      }
       #leader-ability-overlay {
         position: fixed;
         inset: 0;
@@ -2452,6 +2680,8 @@
       #game-hud #game-chat,
       #game-hud #empire:not(.hidden),
       #game-hud #diplomacy:not(.hidden),
+      #game-hud #diplo-contact.show,
+      #game-hud #diplo-proposal.show,
       #game-hud #gameover:not(.hidden) {
         pointer-events: auto;
       }
@@ -2619,6 +2849,30 @@
           transform: none;
           width: 28px;
           height: 28px;
+        }
+        #tutorial-coach-panel {
+          right: max(6px, env(safe-area-inset-right));
+          bottom: calc(58px + env(safe-area-inset-bottom));
+          max-width: min(380px, calc(100vw - 20px));
+          gap: 10px;
+        }
+        #tutorial-coach-dialog {
+          padding: 10px 12px 8px;
+        }
+        #tutorial-coach-tail {
+          right: -12px;
+          bottom: 28px;
+          width: 14px;
+          height: 18px;
+        }
+        #tutorial-coach-portrait {
+          width: 112px;
+          max-height: min(190px, 38vh);
+        }
+        #tutorial-coach-text {
+          font-size: 13px;
+          line-height: 1.4;
+          min-height: 2.6em;
         }
         #research,
         #civics,

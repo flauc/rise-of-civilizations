@@ -10,6 +10,7 @@ import type {
   GameSessionSortField,
   SessionOutcome,
 } from "@roc/shared";
+import { clampFilterText, resolveSqlSortColumn } from "@roc/shared";
 import type { SessionRow } from "./analytics";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -49,8 +50,7 @@ function parseIntOpt(v: string | null): number | undefined {
 }
 
 function parseText(v: string | null): string | undefined {
-  const t = v?.trim();
-  return t ? t : undefined;
+  return clampFilterText(v?.trim() || undefined);
 }
 
 function parseMode(v: string | null): GameMode | undefined {
@@ -279,34 +279,28 @@ export function listGameSessionsFromRows(rows: SessionRow[], query: GameSessionL
   return { items, total, page: safePage, pageSize, totalPages };
 }
 
-/** Whitelist sort field → Postgres column name. */
+/** Whitelist sort field → Postgres column name (never use raw user input). */
+const GAME_SESSION_SQL_SORT: Readonly<Record<GameSessionSortField, string>> = {
+  startedAt: "started_at",
+  endedAt: "ended_at",
+  sessionId: "session_id",
+  clientId: "client_id",
+  handle: "handle",
+  mode: "mode",
+  civId: "civ_id",
+  mapType: "map_type",
+  mapSize: "map_size",
+  outcome: "outcome",
+  condition: "condition",
+  turns: "turns",
+  score: "score",
+  aiCount: "ai_count",
+  barbarianLevel: "barbarian_level",
+  startingGold: "starting_gold",
+  gameSpeed: "game_speed",
+  turnLimit: "turn_limit",
+};
+
 export function sortFieldToSql(sort: GameSessionSortField | undefined): string {
-  switch (sort) {
-    case "endedAt":
-      return "ended_at";
-    case "sessionId":
-      return "session_id";
-    case "clientId":
-      return "client_id";
-    case "handle":
-      return "handle";
-    case "civId":
-      return "civ_id";
-    case "mapType":
-      return "map_type";
-    case "mapSize":
-      return "map_size";
-    case "barbarianLevel":
-      return "barbarian_level";
-    case "startingGold":
-      return "starting_gold";
-    case "gameSpeed":
-      return "game_speed";
-    case "turnLimit":
-      return "turn_limit";
-    case "aiCount":
-      return "ai_count";
-    default:
-      return sort ?? "started_at";
-  }
+  return resolveSqlSortColumn(sort, GAME_SESSION_SQL_SORT, "started_at");
 }

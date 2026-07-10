@@ -19,6 +19,11 @@ import {
   expansionCandidates,
   nextExpansionTile,
   cityBombardTargets,
+  computeRoadPath,
+  canStartRoadRoute,
+  freeSurveySpecialistIds,
+  tilesNeedingRoad,
+  canDeclareWar,
   UNIT_DEFS,
   TERRAIN_NAMES,
   isRough,
@@ -39,6 +44,7 @@ import {
 } from "./renderer";
 import { drawOverlay } from "./overlay";
 import { attachInput } from "./input";
+import { pickUnitAtScreen } from "./unit-pick";
 import { createUI, type CombatOdds, type TileTip } from "./ui";
 import { mountGameChat } from "./mp-chat";
 import { createLobby } from "./lobby-ui";
@@ -61,6 +67,7 @@ import type { CheatAction } from "./god-mode";
 import { exportSave, listSavesForUser, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
 import { getAccount } from "./account";
 import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, abandonActiveSession, type GameSetup } from "./analytics";
+import { createTutorialCoach } from "./tutorial-coach";
 import { installIconifyHook } from "./icons";
 import { initScreenRotation } from "./screen-rotation";
 
@@ -130,6 +137,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   // bombardment, and `bombardTargets` holds the enemy tiles it can hit.
   let bombardCityId: number | null = null;
   let bombardTargets = new Set<string>();
+  // Road-route picker: first tile chosen in the tile panel, second tap on the map
+  // sets the destination and queues surveyors to pave the path.
+  let roadRouteFrom: { col: number; row: number } | null = null;
   let visible = new Set<string>();
   let liftFog = false; // God Mode: render the whole map with no fog
   let gameOverShown = false;
@@ -225,6 +235,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         gameSpeed: setup.gameSpeed,
         aiCivIds: setup.aiCivIds,
         enabledVictories: setup.enabledVictories,
+        isTutorial: setup.isTutorial,
       });
     }
     noteTurns(st().turn);
@@ -302,6 +313,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     bombardCityId = null;
     bombardTargets = new Set();
   }
+  function cancelRoadRoutePick(): void {
+    roadRouteFrom = null;
+  }
   function selectUnit(id: number): void {
     selectedUnitId = id;
     selectedCityId = null;
@@ -309,6 +323,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     cancelAbility();
     cancelExpandPick();
     cancelBombard();
+    cancelRoadRoutePick();
     recomputeOverlays();
     needsRedraw = true;
   }
@@ -321,6 +336,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     cancelAbility();
     cancelExpandPick();
     cancelBombard();
+    cancelRoadRoutePick();
     const city = st().cities.get(id);
     cityWorkable = city ? new Set(workableTiles(st(), city).map((t) => `${t.col},${t.row}`)) : new Set();
     needsRedraw = true;
@@ -334,6 +350,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     cancelAbility();
     cancelExpandPick();
     cancelBombard();
+    cancelRoadRoutePick();
     cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
@@ -347,6 +364,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     cancelAbility();
     cancelExpandPick();
     cancelBombard();
+    cancelRoadRoutePick();
     cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
@@ -453,6 +471,11 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       needsRedraw = true;
     },
     onStartWork: (kind, col, row) => session.order({ type: "startWork", kind, col, row }),
+    onStartRoadRoute: (col, row) => {
+      roadRouteFrom = { col, row };
+      ui.banner("Tap the destination tile for your road route.");
+      needsRedraw = true;
+    },
     onStartWonder: (wonderId, col, row) => session.order({ type: "startWonder", wonderId, col, row }),
     onCancelWork: (workId) => session.order({ type: "cancelWork", workId }),
     onRushProduction: (cityId, currency) => session.order({ type: "rushProduction", cityId, currency }),
@@ -473,7 +496,15 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         centerOn(c.col, c.row);
       }
     },
-    onDeclareWar: (t) => session.order({ type: "declareWar", targetId: t }),
+    onDeclareWar: (t) => {
+      const check = canDeclareWar(st(), session.getViewerId(), t);
+      if (!check.ok) {
+        ui.banner(check.reason ?? "Cannot declare war.");
+        return;
+      }
+      session.order({ type: "declareWar", targetId: t });
+      needsRedraw = true;
+    },
     onMakePeace: (t) => session.order({ type: "makePeace", targetId: t }),
     onDenounce: (t) => session.order({ type: "denounce", targetId: t }),
     onGift: (t, g) => session.order({ type: "giftTo", targetId: t, gold: g }),
@@ -660,6 +691,21 @@ function startGame(session: Session, setup: GameSetup = {}): void {
 
   const unmountGameChat = session.isOnline ? mountGameChat(session as import("./session").OnlineSession) : null;
 
+  const tutorialCoach = setup.isTutorial
+    ? createTutorialCoach({
+        getState: st,
+        getViewerId: () => session.getViewerId(),
+        getSelectedUnitId: () => selectedUnitId,
+        getSelectedCityId: () => selectedCityId,
+        tileToScreen: (col, row) => {
+          const c = tileCenterWorld(col, row);
+          return { x: camera.worldToScreenX(c.x), y: camera.worldToScreenY(c.y) };
+        },
+        banner: (text) => ui.banner(text),
+        isWorldReady: () => loadingHidden,
+      })
+    : null;
+
   type Suggestion = { kind: "units" | "research" | "civic" | "religion" | "production"; label: string } | null;
   function computeSuggestion(): Suggestion {
     const me = session.getViewerId();
@@ -711,9 +757,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   }
 
   function handleTap(sx: number, sy: number): void {
-    const off = screenToTile(camera, st().map, sx, sy);
-    if (!off) return clearSelection();
     const me = session.getViewerId();
+    let off = screenToTile(camera, st().map, sx, sy);
+    const pickedUnit = pickUnitAtScreen(st(), camera, sx, sy, visible, me);
+    if (pickedUnit) {
+      off = { col: pickedUnit.col, row: pickedUnit.row };
+    }
+    if (!off) return clearSelection();
     const key = `${off.col},${off.row}`;
 
     // Targeted-ability mode: a tap on a highlighted tile fires the ability.
@@ -724,6 +774,32 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         return;
       }
       cancelAbility(); // tapping elsewhere cancels targeting
+    }
+    // Road-route picker: second tap sets the destination and queues the route.
+    if (roadRouteFrom != null) {
+      const from = roadRouteFrom;
+      cancelRoadRoutePick();
+      const path = computeRoadPath(st(), me, from.col, from.row, off.col, off.row);
+      const can = canStartRoadRoute(st(), me, from.col, from.row, off.col, off.row);
+      if (!can.ok) {
+        ui.banner(can.error ?? "Cannot pave a route here.");
+      } else {
+        const specialists = freeSurveySpecialistIds(st(), me);
+        const tiles = tilesNeedingRoad(st(), me, path);
+        session.order({
+          type: "startRoadRoute",
+          fromCol: from.col,
+          fromRow: from.row,
+          toCol: off.col,
+          toRow: off.row,
+          specialistIds: specialists,
+        });
+        ui.banner(
+          `${specialists.length} surveyor${specialists.length === 1 ? "" : "s"} paving ${tiles.length} tile${tiles.length === 1 ? "" : "s"}…`,
+        );
+      }
+      needsRedraw = true;
+      return;
     }
     // Border-tile picker: a tap on a highlighted candidate sets it as the city's
     // next claim; a tap anywhere else just cancels the picker.
@@ -751,7 +827,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       return;
     }
 
-    const u = unitAt(st(), off.col, off.row);
+    const u = pickedUnit ?? unitAt(st(), off.col, off.row);
     const c = cityAt(st(), off.col, off.row);
 
     // Citizen assignment: with a city selected, tapping a workable tile toggles it.
@@ -763,11 +839,17 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     const attack = () => session.order({ type: "attack", attackerId: selectedUnitId!, col: off.col, row: off.row });
     const move = () => session.order({ type: "move", unitId: selectedUnitId!, col: off.col, row: off.row });
     const targetOwner = u && u.ownerId !== me ? u.ownerId : c && c.ownerId !== me ? c.ownerId : null;
-    const warnAttack = (owner: number) =>
+    const warnAttack = (owner: number) => {
+      const check = canDeclareWar(st(), me, owner);
+      if (!check.ok) {
+        ui.banner(check.reason ?? "Cannot declare war right now.");
+        return;
+      }
       confirmAction(`Attacking ${civNameOf(owner)} will start a war with them and cancel any deals you have. Continue?`, () => {
         session.order({ type: "declareWar", targetId: owner });
         attack();
       });
+    };
 
     if (u) {
       // When one of our units is selected, tapping an enemy unit on an attack tile
@@ -821,7 +903,10 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   }
 
   function onHover(sx: number, sy: number): void {
-    const off = screenToTile(camera, st().map, sx, sy);
+    const me = session.getViewerId();
+    const pickedUnit = pickUnitAtScreen(st(), camera, sx, sy, visible, me);
+    let off = screenToTile(camera, st().map, sx, sy);
+    if (pickedUnit) off = { col: pickedUnit.col, row: pickedUnit.row };
     ui.setTileTip(off ? tipFor(off.col, off.row) : null);
 
     let next: CombatOdds | null = null;
@@ -830,7 +915,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       const prev = u ? combatPreview(st(), u, off.col, off.row) : null;
       if (prev) {
         const city = cityAt(st(), off.col, off.row);
-        const enemy = unitAt(st(), off.col, off.row);
+        const enemy = pickedUnit ?? unitAt(st(), off.col, off.row);
         next = {
           targetName: city ? city.name : enemy ? (uniqueUnitForCiv(st().players.find((p) => p.id === enemy.ownerId)?.civId, enemy.type)?.name ?? UNIT_DEFS[enemy.type].name) : "target",
           toDefender: prev.toDefender,
@@ -1002,6 +1087,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         cityWorkable,
         cityWorked: selCity ? new Set(selCity.workedTiles) : new Set(),
         expandCandidates,
+        roadRouteFrom,
         // Flag where the selected city grows next: the player's chosen tile if any,
         // otherwise the default nearest tile — so a target is always shown.
         expandMarker: selCity ? selCity.expandTarget ?? nextExpansionTile(st(), selCity) : null,
@@ -1034,6 +1120,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       } catch (err) {
         console.error("RENDER-THREW", (err as Error)?.stack || err);
       }
+      tutorialCoach?.tick();
     }
     requestAnimationFrame(frame);
   }

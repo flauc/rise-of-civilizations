@@ -98,6 +98,10 @@ export interface GameMap {
   readonly rows: number;
   /** Row-major: index = row * cols + col. */
   readonly tiles: Tile[];
+  /** Lobby / setup choice before resolution (e.g. "random", "continents"). */
+  readonly mapTypeRequested?: string;
+  /** Concrete layout used to generate this map (after Random / Continents rolls). */
+  readonly mapType?: string;
 }
 
 export function tileIndex(map: GameMap, col: number, row: number): number {

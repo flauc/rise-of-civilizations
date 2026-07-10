@@ -23,6 +23,7 @@ import {
   reputationOf,
   previewProposal,
   previewPeace,
+  canDeclareWar,
   tradeableLuxuries,
   tradeableTechs,
   citiesOf,
@@ -65,9 +66,9 @@ export interface DiploHandlers {
 }
 
 const STYLE = `
-#diplo-contact,#diplo-proposal{position:fixed;inset:0;z-index:65;background:rgba(10,9,6,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px}
+#diplo-contact,#diplo-proposal{position:fixed;inset:0;z-index:65;background:rgba(10,9,6,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px;pointer-events:none}
 #diplo-proposal{z-index:66}
-#diplo-contact.show,#diplo-proposal.show{display:flex}
+#diplo-contact.show,#diplo-proposal.show{display:flex;pointer-events:auto}
 .dpm-body{display:flex;gap:16px;padding:18px;align-items:flex-start}
 .dpm-portrait{width:96px;height:112px;object-fit:cover;border-radius:10px;border:1px solid var(--edge);background:var(--bg-card);flex:none}
 .dpm-info{flex:1;min-width:0}
@@ -601,6 +602,10 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       const left = rel.pactUntilTurn !== undefined ? ` · ${Math.max(0, rel.pactUntilTurn - state.turn)}t left` : "";
       chips.push(`<span class="dp-chip treaty">🤝 ${rel.pact.replace("_", " ")}${left}</span>`);
     }
+    if (rel?.warAllowedTurn !== undefined && state.turn < rel.warAllowedTurn) {
+      const left = rel.warAllowedTurn - state.turn;
+      chips.push(`<span class="dp-chip treaty">🕊 No war for ${left}t</span>`);
+    }
     if (rep > 0) chips.push(`<span class="dp-chip warn">⚠ Warmonger ${rep}</span>`);
 
     return (
@@ -636,10 +641,16 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   /** The Overview tab: live offers, standing actions, agreements, opinion/history. */
   function overviewTab(state: GameState, viewerId: number, cid: number, war: boolean, rel: Relation | undefined): string {
     const yourGold = Math.floor(state.players.find((p) => p.id === viewerId)?.gold ?? 0);
+    const warCheck = canDeclareWar(state, viewerId, cid);
+    const warBtn = war
+      ? ""
+      : warCheck.ok
+        ? `<button class="btn" data-act="war" style="color:#d98a6a">⚔ Declare war</button>`
+        : `<button class="btn" data-act="war" disabled title="${warCheck.reason ?? ""}">⚔ Declare war (locked)</button>`;
     const actionBar =
       `<div class="dp-sec"><h4>Actions</h4>` +
       `<div class="dp-actbar">` +
-      (war ? "" : `<button class="btn" data-act="war" style="color:#d98a6a">⚔ Declare war</button>`) +
+      warBtn +
       `<button class="btn" data-act="denounce">📢 Denounce</button>` +
       `</div>` +
       `<div class="dp-actbtns">` +
@@ -650,7 +661,9 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       `<label>⚔ Demand <input type="number" id="demand-amt" min="0" value="50"/>🪙</label>` +
       `<button class="btn" data-act="demand">Demand</button>` +
       `<span id="demand-verdict" class="dp-verdict-inline"></span>` +
-      `</div></div>`;
+      `</div>` +
+      (!war && !warCheck.ok ? `<div class="dp-sub" style="margin-top:6px">${warCheck.reason}</div>` : "") +
+      `</div>`;
     const detailsToggle =
       `<div class="dp-sec">` +
       `<button class="btn dp-builder-toggle" id="dp-details-toggle"><span>📜 Opinion & history</span><span>${detailsOpen ? "▾" : "▸"}</span></button>` +

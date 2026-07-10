@@ -22,6 +22,7 @@ import { isWorldLand } from "./worldmask";
  * the baked Natural Earth continents down and grows terrain on top of them.
  */
 export type MapType =
+  | "random"
   | "continents"
   | "pangaea"
   | "two_continents"
@@ -32,7 +33,8 @@ export type MapType =
   | "islands"
   | "realworld";
 
-export const MAP_TYPES: readonly MapType[] = [
+/** Layouts the "Random" menu choice can roll (excludes the meta "random" type). */
+export const RANDOM_MAP_POOL: readonly MapType[] = [
   "continents",
   "pangaea",
   "two_continents",
@@ -43,6 +45,49 @@ export const MAP_TYPES: readonly MapType[] = [
   "islands",
   "realworld",
 ];
+
+/** All map-type values (menu + internal). */
+export const MAP_TYPES: readonly MapType[] = [
+  "random",
+  "continents",
+  "pangaea",
+  "two_continents",
+  "three_continents",
+  "four_continents",
+  "archipelago",
+  "inland_sea",
+  "islands",
+  "realworld",
+];
+
+/** Human-readable names for map layouts (menus + in-game HUD). */
+export const MAP_TYPE_LABELS: Record<MapType, string> = {
+  random: "Random",
+  continents: "Continents (1–4)",
+  pangaea: "One Continent",
+  two_continents: "Two Continents",
+  three_continents: "Three Continents",
+  four_continents: "Four Continents",
+  archipelago: "Archipelago",
+  inland_sea: "Inland Sea",
+  islands: "Islands",
+  realworld: "Real World (Earth)",
+};
+
+export function mapTypeLabel(type: MapType | string | undefined): string {
+  if (!type) return "";
+  return MAP_TYPE_LABELS[type as MapType] ?? type.replaceAll("_", " ");
+}
+
+/** Show the rolled layout when the lobby choice was Random or Continents (1–4). */
+export function mapTypeDisplay(
+  requested: MapType | string | undefined,
+  resolved: MapType | string,
+): string {
+  const rLabel = mapTypeLabel(resolved);
+  if (!requested || requested === resolved) return rLabel;
+  return `${mapTypeLabel(requested)} → ${rLabel}`;
+}
 
 export interface WorldGenOptions {
   cols: number;
@@ -80,6 +125,8 @@ const CONTINENT_SEPARATION = 0.07;
 /** How many major landmasses a map type promises. */
 export function targetContinentCount(type: MapType): number | null {
   switch (type) {
+    case "pangaea":
+      return 1;
     case "two_continents":
       return 2;
     case "three_continents":
@@ -89,6 +136,27 @@ export function targetContinentCount(type: MapType): number | null {
     default:
       return null;
   }
+}
+
+/**
+ * Turn a menu/lobby map type into the concrete layout used for generation.
+ * "random" picks any playable layout; "continents" rolls 1–4 separate landmasses.
+ */
+export function resolveMapType(seed: number | string, mapType: MapType = "continents"): MapType {
+  if (mapType === "random") {
+    const rng = makeRng(`${seed}:map-random`);
+    const pick = RANDOM_MAP_POOL[Math.floor(rng.next() * RANDOM_MAP_POOL.length)]!;
+    return resolveMapType(seed, pick);
+  }
+  if (mapType === "continents") {
+    const rng = makeRng(`${seed}:continents`);
+    const roll = 1 + Math.floor(rng.next() * 4);
+    if (roll === 1) return "pangaea";
+    if (roll === 2) return "two_continents";
+    if (roll === 3) return "three_continents";
+    return "four_continents";
+  }
+  return mapType;
 }
 
 function continentSeedsFor(type: MapType): ContinentSeed[] | null {
@@ -243,25 +311,28 @@ function classifyLand(
 }
 
 export function generateMap(opts: WorldGenOptions): GameMap {
-  const mapType = opts.mapType ?? "continents";
+  const requested = opts.mapType ?? "continents";
+  const mapType = resolveMapType(opts.seed, requested);
+  const genOpts = { ...opts, mapType };
+  const stamp = (map: GameMap): GameMap => ({ ...map, mapType, mapTypeRequested: requested });
   const target = targetContinentCount(mapType);
   const maxAttempts = target !== null ? 16 : 1;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const seed = attempt === 0 ? opts.seed : `${opts.seed}:continent:${attempt}`;
-    const map = generateMapOnce({ ...opts, seed });
-    if (target === null) return map;
+    const map = generateMapOnce({ ...genOpts, seed });
+    if (target === null) return stamp(map);
     const minSize = Math.max(16, Math.round((map.cols * map.rows) / 160));
-    if (countLandmasses(map, minSize) === target) return map;
+    if (countLandmasses(map, minSize) === target) return stamp(map);
   }
   // Last resort: carve any lingering land bridges along Voronoi seams.
-  const map = generateMapOnce({ ...opts, seed: `${opts.seed}:continent:force` });
+  const map = generateMapOnce({ ...genOpts, seed: `${opts.seed}:continent:force` });
   const seeds = continentSeedsFor(mapType);
   if (seeds) {
     carveContinentSeams(map, seeds, CONTINENT_SEPARATION * 1.35);
     markLakes(map);
     markCoasts(map);
   }
-  return map;
+  return stamp(map);
 }
 
 function generateMapOnce(opts: WorldGenOptions): GameMap {

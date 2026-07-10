@@ -1,5 +1,6 @@
 import {
   axialNeighbor,
+  axialNeighbors,
   axialRound,
   axialToOffset,
   axialToPixel,
@@ -32,6 +33,38 @@ export const BASE_SIZE = 26;
 // grid but compress the vertical axis by this factor so the on-screen hex
 // footprint becomes square and the art tessellates perfectly.
 export const VSQUISH = Math.sqrt(3) / 2;
+
+/** Screen-space corners of the squished pointy-top hex (matches drawScene). */
+export function squishedHexCornersScreen(cx: number, cy: number, size: number): Point[] {
+  const corners: Point[] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 180) * (60 * i - 30);
+    corners.push({ x: cx + size * Math.cos(a), y: cy + size * Math.sin(a) * VSQUISH });
+  }
+  return corners;
+}
+
+function pointInPolygon(px: number, py: number, poly: Point[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i]!.x;
+    const yi = poly[i]!.y;
+    const xj = poly[j]!.x;
+    const yj = poly[j]!.y;
+    const intersect = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** True when a screen point lies inside a tile's on-screen hex outline. */
+export function pointInTileHex(camera: Camera, col: number, row: number, sx: number, sy: number): boolean {
+  const size = BASE_SIZE * camera.zoom;
+  const c = tileCenterWorld(col, row);
+  const cx = camera.worldToScreenX(c.x);
+  const cy = camera.worldToScreenY(c.y);
+  return pointInPolygon(sx, sy, squishedHexCornersScreen(cx, cy, size));
+}
 
 /** Footprint width of a tile (== height after squish) for a given hex size. */
 export function tileFootprint(size: number): number {
@@ -85,6 +118,20 @@ function roadMask(map: GameMap, col: number, row: number, cityKeys: Set<string>)
   }
   return mask;
 }
+
+/** True when the tile has at least one road neighbour (used to pick procedural
+ *  segments that join at shared edge midpoints). */
+function hasRoadNeighbor(map: GameMap, col: number, row: number): boolean {
+  const here = offsetToAxial({ col, row });
+  for (let d = 0; d < 6; d++) {
+    const nb = axialToOffset(axialNeighbor(here, d));
+    if (getTile(map, nb.col, nb.row)?.road) return true;
+  }
+  return false;
+}
+
+/** Straight-through masks where the painted overlay spans edge-to-edge cleanly. */
+const PAINTED_ROAD_MASKS = new Set([9, 18, 36]);
 
 /** Highest road level among a tile's road neighbors (defaults to 1). */
 function maxNeighborRoadLevel(map: GameMap, col: number, row: number): number {
@@ -203,6 +250,33 @@ function drawRoadSegment(
   }
 }
 
+/** A lone road with no neighbours to join — a small worn patch in the tile centre. */
+function drawIsolatedRoad(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  level: number,
+  size: number,
+): void {
+  const base = Math.max(2.2, size * 0.15);
+  const s = roadStyle(level, base);
+  const r = base * 1.15;
+  ctx.beginPath();
+  ctx.arc(sx, sy, r, 0, Math.PI * 2);
+  ctx.fillStyle = s.edge;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(sx, sy, r * 0.68, 0, Math.PI * 2);
+  ctx.fillStyle = s.surface;
+  ctx.fill();
+  if (s.center && size > 22) {
+    ctx.beginPath();
+    ctx.arc(sx, sy, r * 0.22, 0, Math.PI * 2);
+    ctx.fillStyle = s.center;
+    ctx.fill();
+  }
+}
+
 /** Which map tile (if any) is under a screen-space point. */
 export function screenToTile(
   camera: Camera,
@@ -212,13 +286,50 @@ export function screenToTile(
 ): Offset | undefined {
   const world: Point = {
     x: camera.screenToWorldX(sx),
-    y: camera.screenToWorldY(sy) / VSQUISH, // undo the vertical squish for hit-testing
+    y: camera.screenToWorldY(sy) / VSQUISH,
   };
-  const off = axialToOffset(axialRound(pixelToAxial(world, BASE_SIZE)));
-  if (off.col < 0 || off.row < 0 || off.col >= map.cols || off.row >= map.rows) {
-    return undefined;
+  const roughAxial = axialRound(pixelToAxial(world, BASE_SIZE));
+  const rough = axialToOffset(roughAxial);
+
+  const candidates: Offset[] = [];
+  const seen = new Set<string>();
+  const add = (col: number, row: number): void => {
+    const key = `${col},${row}`;
+    if (seen.has(key)) return;
+    if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return;
+    seen.add(key);
+    candidates.push({ col, row });
+  };
+
+  add(rough.col, rough.row);
+  for (const nb of axialNeighbors(roughAxial)) {
+    const off = axialToOffset(nb);
+    add(off.col, off.row);
   }
-  return off;
+
+  const hits: Offset[] = [];
+  for (const off of candidates) {
+    if (pointInTileHex(camera, off.col, off.row, sx, sy)) hits.push(off);
+  }
+
+  if (hits.length === 1) return hits[0];
+
+  if (hits.length > 1) {
+    let best: { off: Offset; dist: number } | undefined;
+    for (const off of hits) {
+      const c = tileCenterWorld(off.col, off.row);
+      const cx = camera.worldToScreenX(c.x);
+      const cy = camera.worldToScreenY(c.y);
+      const dist = Math.hypot(sx - cx, sy - cy);
+      if (!best || dist < best.dist) best = { off, dist };
+    }
+    return best!.off;
+  }
+
+  if (rough.col >= 0 && rough.row >= 0 && rough.col < map.cols && rough.row < map.rows) {
+    return rough;
+  }
+  return undefined;
 }
 
 export interface FogState {
@@ -619,14 +730,20 @@ export function drawScene(
       const isCity = cityKeys.has(key);
       if (t.road || isCity) {
         const mask = roadMask(map, t.col, t.row, cityKeys);
-        if (mask !== 0) {
-          // Prefer the painted road overlay; fall back to the procedural segment
-          // while the atlas is still loading (or a variant failed to load).
-          const img = roadFrame(opts.roadAtlas, mask, false, t.col, t.row);
+        const level = t.road ? (t.roadLevel ?? 1) : maxNeighborRoadLevel(map, t.col, t.row);
+        if (t.road && mask === 0) {
+          // No road/city neighbour — a standalone patch on this tile only.
+          drawIsolatedRoad(ctx, sx, sy, level, size);
+        } else if (mask !== 0) {
+          // Painted dead-ends and corners do not always meet at edge midpoints,
+          // so use procedural segments whenever a road touches another road; keep
+          // painted art for long straight runs and city stubs.
+          const usePainted =
+            !hasRoadNeighbor(map, t.col, t.row) && PAINTED_ROAD_MASKS.has(mask);
+          const img = usePainted ? roadFrame(opts.roadAtlas, mask, false, t.col, t.row) : undefined;
           if (img && isImageReady(img)) {
             drawFootprintOverlay(ctx, img, sx, sy, footprint);
           } else {
-            const level = t.road ? (t.roadLevel ?? 1) : maxNeighborRoadLevel(map, t.col, t.row);
             drawRoadSegment(ctx, sx, sy, corners, mask, level, size);
           }
         }

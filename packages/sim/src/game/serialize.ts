@@ -1,7 +1,7 @@
 import { getTile } from "@roc/shared";
 import type {
   Attitude, BarbarianActivity, BarbarianBribe, City, ContactEvent, GameOver, GameState,
-  LogEntry, MoraleEvent, Proposal, Relation, Religion, TradeRecord, TradeRoute, TurnUpdateEvent,
+  LogEntry, MoraleEvent, Proposal, Relation, Religion, RoadRoute, TradeRecord, TradeRoute, TurnUpdateEvent,
   Unit, VictoryKind, Work,
 } from "./state";
 import { defaultEnabledVictories } from "./state";
@@ -109,6 +109,8 @@ export interface PlayerView {
   tradeRoutes: TradeRoute[];
   /** The viewer's own public works in progress. */
   works: Work[];
+  /** The viewer's own multi-tile road routes being paved. */
+  roadRoutes: RoadRoute[];
   /** Wonders already completed in the world. */
   completedWonders: string[];
   /** Great-person ids already recruited by anyone (gone for the world). */
@@ -286,6 +288,9 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     works: state.works
       .filter((w) => w.ownerId === playerId)
       .map((w) => ({ ...w, cityIds: [...w.cityIds], assignedSpecialistIds: [...w.assignedSpecialistIds] })),
+    roadRoutes: state.roadRoutes
+      .filter((r) => r.ownerId === playerId)
+      .map((r) => ({ ...r, queue: r.queue.map((t) => ({ ...t })), specialistIds: [...r.specialistIds] })),
     completedWonders: [...state.completedWonders],
     recruitedGreatPeople: [...(state.recruitedGreatPeople ?? [])],
     legendsEnabled: state.legendsEnabled ?? true,
@@ -332,6 +337,7 @@ export interface SerializedState {
   religions: Religion[];
   tradeRoutes: TradeRoute[];
   works: Work[];
+  roadRoutes?: RoadRoute[];
   completedWonders: string[];
   recruitedGreatPeople: string[];
   legendsEnabled: boolean;
@@ -375,6 +381,7 @@ export function serializeState(state: GameState): SerializedState {
     religions: state.religions,
     tradeRoutes: state.tradeRoutes,
     works: state.works,
+    roadRoutes: state.roadRoutes,
     completedWonders: state.completedWonders,
     recruitedGreatPeople: state.recruitedGreatPeople ?? [],
     legendsEnabled: state.legendsEnabled ?? true,
@@ -425,6 +432,7 @@ export function deserializeState(s: SerializedState): GameState {
       cityIds: w.cityIds ?? [],
       assignedSpecialistIds: w.assignedSpecialistIds ?? [],
     })),
+    roadRoutes: s.roadRoutes ?? [],
     completedWonders: s.completedWonders ?? [],
     recruitedGreatPeople: s.recruitedGreatPeople ?? [],
     legendsEnabled: s.legendsEnabled ?? true,

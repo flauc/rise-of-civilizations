@@ -181,7 +181,7 @@ export class Lobby {
       cols: opts.cols,
       rows: opts.rows,
       mapSize: opts.mapSize,
-      mapType: opts.mapType ?? "continents",
+      mapType: opts.mapType ?? "random",
       barbarians: opts.barbarians ?? "normal",
       naturalWonders: opts.naturalWonders ?? true,
       villages: opts.villages ?? true,

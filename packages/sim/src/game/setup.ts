@@ -335,6 +335,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     religions: [],
     tradeRoutes: [],
     works: [],
+    roadRoutes: [],
     completedWonders: [],
     recruitedGreatPeople: [],
     legendsEnabled,

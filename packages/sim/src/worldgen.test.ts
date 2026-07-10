@@ -1,6 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { isWater } from "@roc/shared";
-import { generateMap, MAP_TYPES, countLandmasses, targetContinentCount, type MapType } from "./worldgen";
+import {
+  generateMap,
+  MAP_TYPES,
+  countLandmasses,
+  mapTypeDisplay,
+  resolveMapType,
+  targetContinentCount,
+  type MapType,
+} from "./worldgen";
+
+const GENERATABLE_MAP_TYPES = MAP_TYPES.filter((t) => t !== "random") as MapType[];
 
 function landFraction(mapType: MapType | undefined): number {
   const map = generateMap({ cols: 52, rows: 34, seed: "worldgen-test", mapType });
@@ -10,8 +20,8 @@ function landFraction(mapType: MapType | undefined): number {
 }
 
 describe("worldgen map types", () => {
-  it("every map type produces a mix of land and water", () => {
-    for (const mapType of MAP_TYPES) {
+  it("every concrete map type produces a mix of land and water", () => {
+    for (const mapType of GENERATABLE_MAP_TYPES) {
       const map = generateMap({ cols: 52, rows: 34, seed: "mix", mapType });
       const land = map.tiles.filter((t) => !isWater(t.terrain)).length;
       const water = map.tiles.length - land;
@@ -21,7 +31,7 @@ describe("worldgen map types", () => {
   });
 
   it("is deterministic for a given seed and type", () => {
-    for (const mapType of MAP_TYPES) {
+    for (const mapType of GENERATABLE_MAP_TYPES) {
       const a = generateMap({ cols: 40, rows: 26, seed: "det", mapType });
       const b = generateMap({ cols: 40, rows: 26, seed: "det", mapType });
       expect(a.tiles.map((t) => t.terrain)).toEqual(b.tiles.map((t) => t.terrain));
@@ -34,9 +44,43 @@ describe("worldgen map types", () => {
     expect(a.tiles.map((t) => t.terrain)).toEqual(b.tiles.map((t) => t.terrain));
   });
 
+  it("random resolves to a playable layout from the pool", () => {
+    const playable = new Set<MapType>([
+      "pangaea",
+      "two_continents",
+      "three_continents",
+      "four_continents",
+      "archipelago",
+      "inland_sea",
+      "islands",
+      "realworld",
+    ]);
+    const resolved = resolveMapType("roll-check", "random");
+    expect(playable.has(resolved)).toBe(true);
+    expect(resolveMapType("roll-check", "random")).toBe(resolved);
+  });
+
+  it("continents rolls one of the 1–4 continent layouts from the seed", () => {
+    const layouts = new Set(
+      ["alpha", "beta", "gamma", "delta", "epsilon"].map((seed) => resolveMapType(seed, "continents")),
+    );
+    expect(layouts.size).toBeGreaterThan(1);
+    for (const layout of layouts) {
+      expect(["pangaea", "two_continents", "three_continents", "four_continents"]).toContain(layout);
+    }
+  });
+
+  it("stamps resolved and requested map types on the generated map", () => {
+    const map = generateMap({ cols: 40, rows: 26, seed: "meta-test", mapType: "random" });
+    expect(map.mapTypeRequested).toBe("random");
+    expect(map.mapType).toBe(resolveMapType("meta-test", "random"));
+    expect(map.mapType).not.toBe("random");
+    expect(mapTypeDisplay("random", map.mapType!)).toContain("→");
+  });
+
   it("island-style layouts have less land than continental ones", () => {
     expect(landFraction("islands")).toBeLessThan(landFraction("pangaea"));
-    expect(landFraction("archipelago")).toBeLessThan(landFraction("continents"));
+    expect(landFraction("archipelago")).toBeLessThan(landFraction("pangaea"));
   });
 
   it("the real-world layout lays down recognizable Earth-sized continents", () => {
@@ -47,7 +91,7 @@ describe("worldgen map types", () => {
   });
 
   it("multi-continent layouts produce the promised number of major landmasses", () => {
-    const types = ["two_continents", "three_continents", "four_continents"] as const;
+    const types = ["pangaea", "two_continents", "three_continents", "four_continents"] as const;
     const seeds = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"];
     const cols = 80;
     const rows = 56;
