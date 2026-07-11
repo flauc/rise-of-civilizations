@@ -53,6 +53,10 @@ export const TERRAIN_YIELDS: Record<TerrainType, Yields> = {
 /** Total yields of a tile (terrain + tier-aware improvement + river bonuses). */
 export function tileYields(tile: Tile): Yields {
   let y = addYields(TERRAIN_YIELDS[tile.terrain], improvementYields(tile.improvement, tile.improvementLevel));
+  if (tile.wooded && tile.terrain === "hills") {
+    // Tree-clad hills carry a forest's worth of knowledge (+1 science, like forest).
+    y = addYields(y, { food: 0, production: 0, gold: 0, science: 1, faith: 0 });
+  }
   if (tile.river) {
     // A river enriches the land it crosses; a river lake also waters fresh ideas.
     y = addYields(y, { food: 1, production: 0, gold: 0, science: tile.riverLake ? 1 : 0, faith: 0 });

@@ -16,6 +16,7 @@ import {
   type ClientMessage,
   type Command,
   type GameState,
+  type LobbyChatMessage,
   type MapType,
   type Player,
   type PlayerView,
@@ -56,7 +57,7 @@ export const MAP_DIMENSIONS: Record<MapSize, { cols: number; rows: number }> = {
 export interface LocalGameOptions {
   seed?: string;
   mapSize?: MapSize;
-  /** Landmass layout to generate. Defaults to "continents". */
+  /** Landmass layout to generate. Defaults to "random". */
   mapType?: MapType;
   aiCount?: number;
   barbarians?: boolean | BarbarianActivity;
@@ -64,10 +65,14 @@ export interface LocalGameOptions {
   legends?: boolean;
   /** Scatter natural wonders across the map. Defaults to off. */
   naturalWonders?: boolean;
+  /** Scatter tribal villages that grant rewards when visited. Defaults to on. */
+  villages?: boolean;
   /** Starting gold treasury preset. */
   startingGold?: "tight" | "balanced" | "generous";
   /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
   turnLimit?: number;
+  /** How costly research and civics are. Defaults to normal. */
+  gameSpeed?: import("@roc/sim").GameSpeed;
   /** Decisive win conditions enabled; omitted = all toggleable ones. */
   enabledVictories?: VictoryKind[];
   /** The human player's civilization. */
@@ -99,14 +104,16 @@ export class LocalSession implements Session {
         seed: opts.seed ?? "rise",
         cols: dims.cols,
         rows: dims.rows,
-        mapType: opts.mapType ?? "continents",
+        mapType: opts.mapType ?? "random",
         humanSlots: 1,
         playerCount: 1 + aiCount,
         barbarians: opts.barbarians ?? true,
         legends: opts.legends ?? true,
         naturalWonders: opts.naturalWonders ?? true,
+        villages: opts.villages ?? true,
         startingGold: opts.startingGold ?? "balanced",
         turnLimit: opts.turnLimit ?? 120,
+        gameSpeed: opts.gameSpeed ?? "normal",
         enabledVictories: opts.enabledVictories,
         civIds,
         colors: opts.colors ?? undefined,
@@ -168,6 +175,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     if (t.naturalWonder) tile.naturalWonder = t.naturalWonder;
     if (t.river) tile.river = t.river;
     if (t.riverLake) tile.riverLake = true;
+    if (t.wooded) tile.wooded = true;
     if (t.bridge) tile.bridge = true;
     tiles[t.row * view.cols + t.col] = tile;
     explored.add(`${t.col},${t.row}`);
@@ -225,7 +233,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
   }));
 
   const state: GameState = {
-    map: { cols: view.cols, rows: view.rows, tiles },
+    map: { cols: view.cols, rows: view.rows, tiles, poleAxis: view.poleAxis },
     players,
     units: new Map(view.units.map((u) => [u.id, u])),
     cities: new Map(view.cities.map((c) => [c.id, c])),
@@ -235,10 +243,12 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     log: view.log,
     gameOver: view.gameOver,
     turnLimit: view.turnLimit ?? 0,
+    gameSpeed: view.gameSpeed ?? "normal",
     enabledVictories: new Set(view.enabledVictories ?? TOGGLEABLE_VICTORIES),
     religions: view.religions,
     tradeRoutes: view.tradeRoutes ?? [],
     works: view.works ?? [],
+    roadRoutes: view.roadRoutes ?? [],
     completedWonders: view.completedWonders ?? [],
     recruitedGreatPeople: view.recruitedGreatPeople ?? [],
     legendsEnabled: view.legendsEnabled ?? true,
@@ -286,8 +296,13 @@ export class OnlineSession implements Session {
   private exportReject: ((reason: string) => void) | null = null;
   private loadResolve: (() => void) | null = null;
   private loadReject: ((reason: string) => void) | null = null;
-  /** Server game id; set by lobby-ui when the game starts. */
+  private pingTimer: ReturnType<typeof setInterval> | null = null;
+  /** Server game id; set when joining/creating a lobby room. */
   gameId?: string;
+  private chatMessages: LobbyChatMessage[] = [];
+  private pendingChat: LobbyChatMessage | null = null;
+  private chatHandle = "You";
+  private chatHandlers = new Set<(messages: readonly LobbyChatMessage[]) => void>();
 
   constructor(private readonly url: string) {}
 
@@ -295,10 +310,40 @@ export class OnlineSession implements Session {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.url);
       this.ws = ws;
-      ws.onopen = () => resolve();
-      ws.onerror = () => reject(new Error("connection failed"));
+      let opened = false;
+      let settled = false;
+      const finish = (ok: boolean, err?: Error): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (ok) resolve();
+        else reject(err ?? new Error("connection failed"));
+      };
+      const timer = setTimeout(
+        () => finish(false, new Error(`Could not reach ${url}. Run: bun run server, then adb reverse tcp:3001 tcp:3001`)),
+        12_000,
+      );
+      ws.onopen = () => {
+        opened = true;
+        this.pingTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "ping" }));
+        }, 45_000);
+        finish(true);
+      };
+      ws.onerror = () => finish(false, new Error("connection failed"));
+      ws.onclose = () => {
+        if (this.pingTimer) {
+          clearInterval(this.pingTimer);
+          this.pingTimer = null;
+        }
+        if (!opened) finish(false, new Error("connection closed"));
+      };
       ws.onmessage = (e) => this.onMessage(JSON.parse(String(e.data)) as ServerMessage);
     });
+  }
+
+  isOpen(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
   }
 
   private onMessage(msg: ServerMessage): void {
@@ -317,7 +362,33 @@ export class OnlineSession implements Session {
       this.loadResolve?.();
       this.loadResolve = null;
       this.loadReject = null;
+    } else if (msg.t === "joined") {
+      this.gameId = msg.gameId;
+      this.chatMessages = [];
+      this.pendingChat = null;
+    } else if (msg.t === "lobbyChatHistory") {
+      if (!this.gameId) this.gameId = msg.gameId;
+      if (msg.gameId === this.gameId) {
+        this.chatMessages = msg.messages;
+        this.emitChat();
+      }
+    } else if (msg.t === "lobbyChat") {
+      if (!this.gameId) this.gameId = msg.gameId;
+      if (msg.gameId === this.gameId) {
+        this.chatMessages.push(msg.message);
+        while (this.chatMessages.length > 100) this.chatMessages.shift();
+        if (this.pendingChat?.text === msg.message.text) this.pendingChat = null;
+        this.emitChat();
+      }
+    } else if (msg.t === "deleted" || msg.t === "kicked") {
+      if (this.gameId === msg.gameId) {
+        this.gameId = undefined;
+        this.chatMessages = [];
+        this.emitChat();
+      }
     } else if (msg.t === "error") {
+      this.pendingChat = null;
+      this.emitChat();
       this.exportReject?.(msg.message);
       this.exportResolve = null;
       this.exportReject = null;
@@ -333,8 +404,72 @@ export class OnlineSession implements Session {
     this.handlers.add(handler);
   }
 
+  /** Subscribe to lobby/in-game chat updates. Returns an unsubscribe function. */
+  onChat(handler: (messages: readonly LobbyChatMessage[]) => void): () => void {
+    this.chatHandlers.add(handler);
+    handler(this.displayChatMessages());
+    return () => this.chatHandlers.delete(handler);
+  }
+
+  getChatMessages(): readonly LobbyChatMessage[] {
+    return this.chatMessages;
+  }
+
+  /** Messages for the UI, including an unsent line while waiting for the server. */
+  displayChatMessages(): readonly LobbyChatMessage[] {
+    return this.pendingChat ? [...this.chatMessages, this.pendingChat] : this.chatMessages;
+  }
+
+  setChatHandle(handle: string): void {
+    this.chatHandle = handle.trim() || "You";
+  }
+
+  sendChat(text: string): void {
+    if (!this.gameId) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    this.pendingChat = {
+      userId: "",
+      handle: this.chatHandle,
+      text: trimmed,
+      at: Date.now(),
+    };
+    this.emitChat();
+    this.send({ t: "lobbyChat", gameId: this.gameId, text: trimmed });
+  }
+
+  private emitChat(): void {
+    const messages = this.displayChatMessages();
+    for (const h of this.chatHandlers) h(messages);
+  }
+
   send(msg: ClientMessage): void {
     this.ws?.send(JSON.stringify(msg));
+  }
+
+  /** Close the socket and drop lobby handlers (e.g. on logout or account switch). */
+  disconnect(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+    if (this.ws) {
+      this.ws.onmessage = null;
+      this.ws.onclose = null;
+      this.ws.onerror = null;
+      try {
+        this.ws.close();
+      } catch {
+        /* ignore */
+      }
+      this.ws = null;
+    }
+    this.handlers.clear();
+    this.chatHandlers.clear();
+    this.gameId = undefined;
+    this.chatMessages = [];
+    this.pendingChat = null;
+    this.state = null;
   }
 
   hasState(): boolean {

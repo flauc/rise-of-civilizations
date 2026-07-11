@@ -302,3 +302,30 @@ It requires `GEMINI_API_KEY` and ImageMagick (`magick`). See
 - Civilization definitions (including civilization-specific city names) live in `packages/data/src/index.ts`. Unit/tech/building content is still defined in `packages/sim/src/game/content.ts`.
 - `tools/geodata-poc` has its own `package.json` and `node_modules`; it is not part of the Bun workspace and uses npm.
 - Never introduce a new emoji in the client UI without registering it in the emoji→icon bridge and generating its PNG — see "Adding a new emoji to the UI" under Art generation. An unregistered emoji renders as the raw system glyph, inconsistent with the generated icon set.
+
+## Learned User Preferences
+
+- Do not commit or push git changes until the user explicitly asks.
+- Treat mobile responsiveness as a first-class requirement for all client UI work.
+- Modal/dialog consistency: sticky top-right X on every dialog; close only via X or Esc (choose-research also closes when selecting an item); never dismiss on backdrop or outside click.
+- In admin and in-game UI, show registered usernames/handles only—never raw account IDs, truncated hashes, or password hashes.
+- When helping with local environment setup, prefer documenting shell commands over adding new helper files to the repo unless the user asks for a file.
+- Hide gated UI (upgrade buttons, wonders, etc.) until the relevant tech is unlocked; use info buttons/dialogs for extra detail rather than showing everything upfront.
+- Keep admin panel tables clean with per-column filter controls rather than dense inline summary layouts.
+- Heuristic AI should play to win: collect villages, city-bombard at war, cap idle settlers (they must found), build naval capacity for overseas expansion, and press city conquest when clearly ahead—including cross-continent invasions after dominating the home landmass.
+- Tutorial coach copy should use a friendly, human tone for first-time 4X players and walk them through everything doable in turn 1: unit moves, founding a city, research, Construction, and training a unit.
+
+## Learned Workspace Facts
+
+- Admin analytics UI is a separate Vite app (typically `localhost:5174` or `5175`); it talks to the Bun game server API on `localhost:3001`.
+- Guest sessions do not persist saved games; registered users are prompted to save on exit and saves survive server restarts.
+- Map lobby order: **Random** is the first choice and rolls from the full map pool; **Continents (1–4)** randomizes landmass count separately from fixed One / Two / Three / Four Continent presets.
+- When **Random** or **Continents (1–4)** is chosen, `generateMap` resolves the concrete layout from the seed; `GameMap.mapType` / `mapTypeRequested` store the result and the client shows it in the top bar and game menu (e.g. `Random → Archipelago`).
+- Inter-continent trade routes only work when both endpoint cities are port tiles; traders cannot cross open ocean between continents without port hops.
+- Accounts registered before password validation rules were added are grandfathered test users and do not need password resets.
+- Tutorial mode uses the smallest map, one continent (`pangaea`), one AI, minimal barbarians, and normal speed (other toggles on); the lobby has a Tutorial button and first-time players get a skippable prompt (`packages/client/src/tutorial.ts`).
+- Tutorial coach guides the first five turns (`TUTORIAL_COACH_TURNS`) with UI highlights; panel is bottom-right; portrait prefers baked cutout at `public/coach/legends/` (`tools/bake-coach-portrait.ts`), else `public/legends/`; voice is pre-baked MP3 at `public/coach/voice/` via build-time `tools/generate-coach-voice.ts` (ElevenLabs, not live client API) with browser-TTS fallback; catch-up advances past already-done steps; voice/typewriter waits for the loading veil to clear.
+- Primary `#endturn` always ends the turn; secondary `#endturn2` is an optional suggestion nudge (Next Unit, etc.) — the sim never requires using all movement before ending.
+- Native iOS/Android wrappers live in `mobile/` (Capacitor); macOS Sonoma needs Xcode 16.2 from developer.apple.com (App Store Xcode may require a newer macOS).
+- Peace treaty cooldown blocks re-declaring war after accepting peace; the client should surface `canDeclareWar` feedback instead of silent failure.
+- Multi-tile road routes let players pick a start and end; agrimensores pave one tile at a time (multiple surveyors can work the same route).

@@ -24,6 +24,8 @@ const QUEUE_CAP = 500;
 function resolveEndpoint(): string {
   const explicit = import.meta.env.VITE_ANALYTICS_URL?.trim();
   if (explicit) return explicit;
+  // In dev, same-origin /analytics is proxied to the Bun server (see vite.config.ts).
+  if (import.meta.env.DEV) return "/analytics";
   // Derive from the WS URL if provided (ws(s)://host:port/ws -> http(s)://.../analytics).
   const wsUrl = import.meta.env.VITE_WS_URL?.trim();
   if (wsUrl) {
@@ -34,6 +36,25 @@ function resolveEndpoint(): string {
 }
 
 const ENDPOINT = resolveEndpoint();
+
+/** Browsers reject keepalive fetch bodies above ~64 KiB; bug reports carry full saves. */
+const KEEPALIVE_MAX_BYTES = 60_000;
+
+async function postAnalyticsBatch(events: AnalyticsEvent[], opts?: { keepalive?: boolean }): Promise<boolean> {
+  const body = JSON.stringify({ v: ANALYTICS_SCHEMA_VERSION, events } satisfies AnalyticsBatch);
+  const keepalive = !!opts?.keepalive && body.length <= KEEPALIVE_MAX_BYTES;
+  try {
+    const res = await fetch(ENDPOINT, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      ...(keepalive ? { keepalive: true } : {}),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 function uuid(): string {
   try {
@@ -56,6 +77,8 @@ function getClientId(): string {
     return "anon";
   }
 }
+
+import { getAccount } from "./account";
 
 const clientId = getClientId();
 
@@ -94,14 +117,8 @@ export async function flush(): Promise<void> {
   flushing = true;
   const snapshot = queue.slice();
   try {
-    const batch: AnalyticsBatch = { v: ANALYTICS_SCHEMA_VERSION, events: snapshot };
-    const res = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(batch),
-      keepalive: true,
-    });
-    if (res.ok) {
+    const ok = await postAnalyticsBatch(snapshot, { keepalive: true });
+    if (ok) {
       // Drop exactly the events we sent; anything appended meanwhile stays queued.
       writeQueue(readQueue().slice(snapshot.length));
     }
@@ -143,9 +160,8 @@ function flushBeacon(): void {
 
 // ---- active-session tracking (for abandoned detection) -------------------
 
-interface ActiveSession {
+interface ActiveSession extends SessionStartMeta {
   sessionId: string;
-  mode: GameMode;
   turns: number;
 }
 let active: ActiveSession | null = null;
@@ -171,11 +187,14 @@ export type GameSetup = Pick<
   | "mapSize"
   | "startingGold"
   | "naturalWonders"
+  | "villages"
   | "barbarianLevel"
   | "aiCivIds"
   | "legends"
   | "turnLimit"
+  | "gameSpeed"
   | "enabledVictories"
+  | "isTutorial"
 >;
 
 export interface SessionStartMeta {
@@ -190,12 +209,17 @@ export interface SessionStartMeta {
   legends?: boolean;
   barbarianLevel?: string;
   naturalWonders?: boolean;
+  villages?: boolean;
   startingGold?: string;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit?: number;
+  /** How costly research and civics are. */
+  gameSpeed?: string;
   aiCivIds?: (string | null)[];
   /** Decisive win conditions enabled this game. */
   enabledVictories?: string[];
+  /** Guided tutorial scenario (small map, one AI). */
+  isTutorial?: boolean;
 }
 
 /**
@@ -205,12 +229,28 @@ export interface SessionStartMeta {
  * persisted to the queue synchronously, so it survives the page reload that
  * follows and is delivered on the next load even if the immediate send is cut off.
  */
+function sessionEndPayload(
+  sessionId: string,
+  rest: Omit<Extract<AnalyticsEvent, { t: "session_end" }>, "t" | "sessionId" | "clientId" | "handle" | "userId" | "ts">,
+): Extract<AnalyticsEvent, { t: "session_end" }> {
+  const account = getAccount();
+  return {
+    t: "session_end",
+    sessionId,
+    clientId,
+    handle: account?.handle,
+    userId: account?.userId,
+    ts: Date.now(),
+    ...rest,
+  };
+}
+
 export function abandonActiveSession(): void {
   if (!active) return;
   const { sessionId, turns } = active;
   active = null;
   persistActive();
-  enqueue({ t: "session_end", sessionId, clientId, outcome: "abandoned", turns, ts: Date.now() });
+  enqueue(sessionEndPayload(sessionId, { outcome: "abandoned", turns }));
 }
 
 /** Record the start of a game session and become the "active" session. */
@@ -219,12 +259,15 @@ export function trackSessionStart(meta: SessionStartMeta): string {
   // menu without a clean end), record it as abandoned before starting the new one.
   abandonActiveSession();
   const sessionId = uuid();
-  active = { sessionId, mode: meta.mode, turns: 0 };
+  active = { sessionId, turns: 0, ...meta };
   persistActive();
+  const account = getAccount();
   enqueue({
     t: "session_start",
     sessionId,
     clientId,
+    handle: account?.handle,
+    userId: account?.userId,
     mode: meta.mode,
     civId: meta.civId,
     mapType: meta.mapType,
@@ -236,8 +279,10 @@ export function trackSessionStart(meta: SessionStartMeta): string {
     legends: meta.legends,
     barbarianLevel: meta.barbarianLevel,
     naturalWonders: meta.naturalWonders,
+    villages: meta.villages,
     startingGold: meta.startingGold,
     turnLimit: meta.turnLimit,
+    gameSpeed: meta.gameSpeed,
     aiCivIds: meta.aiCivIds,
     enabledVictories: meta.enabledVictories,
     ts: Date.now(),
@@ -262,10 +307,13 @@ export function trackSessionEnd(args: {
   const sessionId = active.sessionId;
   active = null;
   persistActive();
+  const account = getAccount();
   enqueue({
     t: "session_end",
     sessionId,
     clientId,
+    handle: account?.handle,
+    userId: account?.userId,
     outcome: args.outcome,
     condition: args.condition,
     turns: args.turns,
@@ -341,37 +389,55 @@ export interface BugReportInput {
  * Resolves `true` if delivered now, `false` if it was queued for later. Never throws.
  */
 export async function trackBugReport(input: BugReportInput): Promise<boolean> {
+  const account = getAccount();
   const event: AnalyticsEvent = {
     t: "bug_report",
     reportId: uuid(),
     clientId,
     sessionId: active?.sessionId,
+    handle: account?.handle,
+    userId: account?.userId,
     message: input.message,
-    mode: input.mode,
+    mode: input.mode ?? active?.mode,
     turn: input.turn,
     civId: input.civId,
+    mapType: active?.mapType,
+    mapSize: active?.mapSize,
+    cols: active?.cols,
+    rows: active?.rows,
+    aiCount: active?.aiCount,
+    barbarians: active?.barbarians,
+    legends: active?.legends,
+    barbarianLevel: active?.barbarianLevel,
+    naturalWonders: active?.naturalWonders,
+    villages: active?.villages,
+    startingGold: active?.startingGold,
+    turnLimit: active?.turnLimit,
+    gameSpeed: active?.gameSpeed,
+    aiCivIds: active?.aiCivIds,
+    enabledVictories: active?.enabledVictories,
     errors: recentErrors.slice(),
     context: captureContext(),
     state: input.state,
     ts: Date.now(),
   };
-  // Immediate direct send.
+  // Immediate direct send (no keepalive — state snapshots exceed the ~64 KiB limit).
   try {
     if (typeof navigator === "undefined" || navigator.onLine !== false) {
-      const batch: AnalyticsBatch = { v: ANALYTICS_SCHEMA_VERSION, events: [event] };
-      const res = await fetch(ENDPOINT, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(batch),
-        keepalive: true,
-      });
-      if (res.ok) return true;
+      if (await postAnalyticsBatch([event])) return true;
+      // Last resort: deliver metadata without the save blob so the report isn't lost.
+      if (event.state) {
+        const slim = { ...event, state: undefined };
+        if (await postAnalyticsBatch([slim])) return true;
+      }
     }
   } catch {
     /* fall through to queueing */
   }
-  // Offline / failed: queue it so it's delivered on the next successful flush.
-  enqueue(event);
+  // Offline / failed: queue without the state blob (localStorage quota is tiny).
+  const toQueue =
+    event.t === "bug_report" && event.state ? ({ ...event, state: undefined } as AnalyticsEvent) : event;
+  enqueue(toQueue);
   return false;
 }
 
@@ -390,10 +456,13 @@ export function initAnalytics(): void {
       const stale = JSON.parse(raw) as ActiveSession;
       localStorage.removeItem(ACTIVE_KEY);
       if (stale?.sessionId) {
+        const account = getAccount();
         enqueue({
           t: "session_end",
           sessionId: stale.sessionId,
           clientId,
+          handle: account?.handle,
+          userId: account?.userId,
           outcome: "abandoned",
           turns: stale.turns ?? 0,
           ts: Date.now(),

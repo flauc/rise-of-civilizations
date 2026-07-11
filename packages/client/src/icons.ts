@@ -45,6 +45,14 @@ export const EMOJI_ICON: Record<string, string> = {
   // Buildings Expansion glyphs.
   "🏺": "ic_amphora", "🎯": "ic_target", "🏭": "ic_factory", "🏰": "ic_castle",
   "🗼": "ic_tower", "💣": "ic_bomb", "⚕": "ic_medical",
+  // --- swept in 2026-07-10: previously-unregistered UI glyphs ---
+  "💬": "ic_chat", "ℹ": "ic_info", "🏴‍☠": "ic_pirate_flag",
+  "→": "ic_arrow_right", "⮕": "ic_arrow_right", "←": "ic_arrow_left",
+  "✕": "ic_close", "✗": "ic_close", "✓": "ic_check",
+  "▸": "ic_tri_right", "▾": "ic_tri_down", "▼": "ic_tri_down",
+  "▴": "ic_tri_up", "▲": "ic_tri_up", "●": "ic_bullet",
+  "↺": "ic_reset", "▦": "ic_grid", "✦": "ic_spark_star",
+  "⬡": "ic_hexagon", "⬣": "ic_hex_filled",
 };
 
 const iconUrl = (id: string): string => `${ASSET_BASE_URL}icons/${id}.png`;
@@ -53,7 +61,13 @@ const iconUrl = (id: string): string => `${ASSET_BASE_URL}icons/${id}.png`;
 let enabled = false;
 if (typeof Image !== "undefined") {
   const probe = new Image();
-  probe.onload = () => { enabled = true; };
+  probe.onload = () => {
+    enabled = true;
+    // Static screens (e.g. the pre-game lobby) render ONCE, before this async
+    // probe resolves, so their innerHTML was assigned while iconify() was still a
+    // no-op. Retro-fit those already-rendered nodes now that icons are confirmed.
+    reiconifyDocument();
+  };
   probe.src = iconUrl("ic_gold"); // sentinel — if this exists the whole set does
 }
 
@@ -89,6 +103,41 @@ export function iconify(html: string): string {
   if (!enabled || !html) return html;
   // Even indices are text, odd indices are whole tags (<...>).
   return html.split(/(<[^>]*>)/).map((seg, i) => (i % 2 === 1 ? seg : iconifyText(seg))).join("");
+}
+
+const escapeHtml = (s: string): string =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// A non-global twin of EMOJI_RE for `.test()` — a global regex carries mutable
+// lastIndex state, so reusing EMOJI_RE for tests would skip matches unpredictably.
+const EMOJI_TEST = new RegExp(EMOJI_RE.source, "u");
+
+/**
+ * Retro-fit already-rendered DOM: walk every text node and swap known emoji for
+ * icon <img>s in place. Unlike re-assigning innerHTML, this only touches text
+ * nodes, so element identity and event listeners on the lobby survive. A no-op
+ * until the icon set is confirmed present. Safe to call more than once —
+ * converted emoji live inside <img alt> attributes, which text nodes never see.
+ */
+export function reiconifyDocument(): void {
+  if (!enabled || typeof document === "undefined" || !document.body) return;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const tag = node.parentElement?.tagName;
+      if (tag === "SCRIPT" || tag === "STYLE" || tag === "TEXTAREA") return NodeFilter.FILTER_REJECT;
+      return node.nodeValue && EMOJI_TEST.test(node.nodeValue)
+        ? NodeFilter.FILTER_ACCEPT
+        : NodeFilter.FILTER_REJECT;
+    },
+  });
+  const targets: Text[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) targets.push(n as Text);
+  for (const t of targets) {
+    const replaced = iconifyText(escapeHtml(t.nodeValue ?? ""));
+    const tpl = document.createElement("template");
+    tpl.innerHTML = replaced; // re-runs iconify (idempotent) then parses to nodes
+    t.replaceWith(tpl.content);
+  }
 }
 
 // --- canvas -----------------------------------------------------------------

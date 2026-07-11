@@ -213,7 +213,7 @@ export function computeReachable(
   const { map } = state;
   const budget = unit.movementLeft;
   const result = new Map<string, ReachableEntry>();
-  if (budget <= 0) return result;
+  if (budget <= 0 || unit.aboardShipId !== undefined) return result;
   const borderBlocked = (col: number, row: number): boolean =>
     !opts?.ignoreBorders && foreignTerritoryOwner(state, unit.ownerId, col, row) !== null;
 

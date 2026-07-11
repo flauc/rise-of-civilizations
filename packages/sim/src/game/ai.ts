@@ -9,21 +9,21 @@
 
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import { applyCommand } from "./commands";
-import { computeReachable } from "./movement";
-import { computeAttackTargets, unitMaxHp } from "./combat";
+import { computeReachable, isNavalUnit } from "./movement";
+import { computeAttackTargets, unitMaxHp, combatPreview, cityBombardTargets, cityBombardStrength, damageFrom, cityMaxHp } from "./combat";
 import { abilityTargets, canUseAbility, unitAbilities } from "./abilities";
 import { religionUnitKit, religionInstanceForDefId, cityMajorityFaith } from "./religion-units";
 import { availableProduction, availableTechs, workableTiles } from "./economy";
 import { adoptableCivics, researchableGovernmentsFor, switchableGovernments, slottableCivics, civicSlotCapacity, getCivic, getGovernment, governmentTier, CIVICS, civicLegal } from "./civs";
 import { canFoundReligion, availableReligionNames, buyReligiousUnit, religiousUnitCost, availablePerks, canUpgradeReligion, nextTierRequirement, takenPerkIds } from "./religion";
-import { availableLegends, canRecruitLegend } from "./legends";
+import { availableLegendsForPlayer, canRecruitLegend } from "./legends";
 import { canUseLeaderAbility } from "./leader-abilities";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
 import { aiConsiderDiplomacy, atWar, personalityOf, proposeDeal, relationBetween, attitudeScore, powerRatio, declareWar } from "./diplomacy";
 import { availablePromotions } from "./combat";
 import { rushCurrencies, canRushWork, canRushTraining, canRushCity, type RushCurrency } from "./rush";
 import { availableTraining } from "./training";
-import { BELIEFS, WONDER_DEFS, type CivEffects, type DiploPersonality } from "@roc/data";
+import { BELIEFS, WONDER_DEFS, uniqueUnitForCiv, type CivEffects, type DiploPersonality } from "@roc/data";
 import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
 import {
   nextTierAt,
@@ -274,6 +274,23 @@ export function aiPeaceBlocked(state: GameState, pid: number, col: number, row: 
 
 /** Move a unit one step toward (goalCol,goalRow) if it makes progress. */
 function stepToward(state: GameState, unit: Unit, goalCol: number, goalRow: number, pid: number): boolean {
+  const player = playerById(state, pid);
+  const here = getTile(state.map, unit.col, unit.row);
+  const canEmbark =
+    !isNavalUnit(unit) &&
+    !unit.embarked &&
+    !!player?.researched.has("sailing") &&
+    !!here &&
+    isPassableLand(here.terrain);
+  if (
+    canEmbark &&
+    isCoastalTile(state, unit.col, unit.row) &&
+    !sameLandmass(state, { col: unit.col, row: unit.row }, { col: goalCol, row: goalRow }) &&
+    tryNavalStep(state, unit, goalCol, goalRow, pid)
+  ) {
+    return true;
+  }
+
   const reach = computeReachable(state, unit);
   if (reach.size === 0) return false;
   const goal = ax({ col: goalCol, row: goalRow });
@@ -343,6 +360,95 @@ function tryNavalStep(state: GameState, unit: Unit, goalCol: number, goalRow: nu
   return false;
 }
 
+function isCoastalTile(state: GameState, col: number, row: number): boolean {
+  for (const n of offsetNeighbors(state.map, col, row)) {
+    const t = getTile(state.map, n.col, n.row);
+    if (t && isWaterTerrain(t.terrain)) return true;
+  }
+  return false;
+}
+
+/** Whether two land tiles connect without crossing water (same continent / island). */
+function sameLandmass(
+  state: GameState,
+  from: { col: number; row: number },
+  to: { col: number; row: number },
+): boolean {
+  const start = getTile(state.map, from.col, from.row);
+  const end = getTile(state.map, to.col, to.row);
+  if (!start || !end || !isPassableLand(start.terrain) || !isPassableLand(end.terrain)) return false;
+  if (from.col === to.col && from.row === to.row) return true;
+  const seen = new Set<string>([`${from.col},${from.row}`]);
+  const q: { col: number; row: number }[] = [from];
+  while (q.length) {
+    const cur = q.shift()!;
+    if (cur.col === to.col && cur.row === to.row) return true;
+    for (const n of offsetNeighbors(state.map, cur.col, cur.row)) {
+      const k = `${n.col},${n.row}`;
+      if (seen.has(k)) continue;
+      const t = getTile(state.map, n.col, n.row);
+      if (!t || !isPassableLand(t.terrain)) continue;
+      seen.add(k);
+      q.push(n);
+    }
+  }
+  return false;
+}
+
+/** Capital (or first city) — anchor for "home continent" checks. */
+function homeAnchor(state: GameState, pid: number): { col: number; row: number } | null {
+  const capital = citiesOf(state, pid).find((c) => c.isCapital);
+  const city = capital ?? citiesOf(state, pid)[0];
+  return city ? { col: city.col, row: city.row } : null;
+}
+
+/** True when this civ holds a clear majority of cities on its home landmass. */
+function dominatesHomeContinent(state: GameState, pid: number): boolean {
+  const anchor = homeAnchor(state, pid);
+  if (!anchor) return false;
+  let ours = 0;
+  let total = 0;
+  for (const c of state.cities.values()) {
+    if (!sameLandmass(state, anchor, c)) continue;
+    total++;
+    if (c.ownerId === pid) ours++;
+  }
+  return total >= 3 && ours / total >= 0.55;
+}
+
+/** Shipyard online and a small fleet ready to ferry troops overseas. */
+function navalInvasionReady(state: GameState, player: Player): boolean {
+  if (!player.researched.has("sailing")) return false;
+  const hasShipyard = citiesOf(state, player.id).some((c) => c.training.shipyard);
+  const naval = unitsOf(state, player.id).filter((u) => isNaval(UNIT_DEFS[u.type])).length;
+  return hasShipyard && naval >= 2;
+}
+
+/** Best power edge over rivals we're currently at war with (>1 = winning). */
+function conquestLeadRatio(state: GameState, pid: number): number {
+  const player = playerById(state, pid);
+  if (!player) return 1;
+  let best = 1;
+  for (const id of player.atWar) {
+    if (playerById(state, id)?.isBarbarian) continue;
+    best = Math.max(best, powerRatio(state, pid, id));
+  }
+  return best;
+}
+
+/** A friendly city that actually needs a defender — not a distant skirmish while we're crushing the war. */
+function cityNeedsRelief(state: GameState, pid: number, city: City, pushOffense: boolean): boolean {
+  let threats = 0;
+  for (const e of state.units.values()) {
+    if (!isHostile(state, pid, e.ownerId) || !isMilitary(e.type)) continue;
+    if (axialDistance(ax(city), ax(e)) > 3) continue;
+    threats++;
+  }
+  if (threats === 0) return false;
+  if (pushOffense && threats < 2 && city.hp > cityMaxHp(city) * 0.55) return false;
+  return true;
+}
+
 /** Barbarians are always fair game; civs only when we're actually at war. */
 function isHostile(state: GameState, pid: number, otherId: number): boolean {
   if (otherId === pid) return false;
@@ -382,14 +488,20 @@ function friendlyMilitaryNear(state: GameState, pid: number, col: number, row: n
 
 /** Nearest hostile city — the objective an army at war should converge on. */
 function nearestHostileCity(state: GameState, unit: Unit, pid: number): { col: number; row: number } | null {
+  const anchor = homeAnchor(state, pid);
+  const overseas = dominatesHomeContinent(state, pid);
   let best: { col: number; row: number } | null = null;
-  let bestD = Infinity;
+  let bestScore = -Infinity;
   const from = ax(unit);
   for (const c of state.cities.values()) {
     if (!isHostile(state, pid, c.ownerId)) continue;
     const d = axialDistance(from, ax(c));
-    if (d < bestD) {
-      bestD = d;
+    let score = -d;
+    if (c.isCapital) score += 10;
+    if (c.hp < cityMaxHp(c) * 0.65) score += 6;
+    if (overseas && anchor && !sameLandmass(state, anchor, c)) score += 4;
+    if (score > bestScore) {
+      bestScore = score;
       best = { col: c.col, row: c.row };
     }
   }
@@ -448,6 +560,58 @@ function nearestFeature(
   return best;
 }
 
+/** Nearest discovered tribal village within `maxDist` (Infinity = any). */
+function nearestVillage(
+  state: GameState,
+  unit: Unit,
+  pid: number,
+  maxDist = Infinity,
+): { col: number; row: number } | null {
+  const village = nearestFeature(state, unit, pid, "village");
+  if (!village) return null;
+  if (axialDistance(ax(unit), ax(village)) > maxDist) return null;
+  return village;
+}
+
+/** March on a discovered village — scouts and any military unit can collect it. */
+function aiHuntVillage(state: GameState, unit: Unit, pid: number, maxDist = 24): boolean {
+  const village = nearestVillage(state, unit, pid, maxDist);
+  if (!village) return false;
+  stepToward(state, unit, village.col, village.row, pid);
+  return true;
+}
+
+/**
+ * Race for map features. Villages are strongly preferred — they're one-shot rewards
+ * any rival can steal — and only yield to a camp when it's dramatically closer.
+ * During war, only detour for villages/camps that are a short hop away.
+ */
+function aiHuntMapFeatures(state: GameState, unit: Unit, pid: number): boolean {
+  const atWar = (playerById(state, pid)?.atWar.length ?? 0) > 0;
+  const village = nearestFeature(state, unit, pid, "village");
+  const camp = nearestFeature(state, unit, pid, "barb_camp");
+  if (!village && !camp) return false;
+
+  const dV = village ? axialDistance(ax(unit), ax(village)) : Infinity;
+  const dC = camp ? axialDistance(ax(unit), ax(camp)) : Infinity;
+  const villageMax = atWar ? 10 : 24;
+  const villageOk = village !== null && dV <= villageMax;
+  const campOk = camp !== null && (!atWar || dC <= 12);
+
+  let goal: { col: number; row: number } | null = null;
+  if (villageOk && campOk) {
+    // Prefer the village unless the camp is 3+ tiles closer — camps can wait.
+    goal = dC + 3 < dV ? camp : village;
+  } else if (villageOk) {
+    goal = village;
+  } else if (campOk) {
+    goal = camp;
+  }
+  if (!goal) return false;
+  stepToward(state, unit, goal.col, goal.row, pid);
+  return true;
+}
+
 /** When not at war, wander toward the unexplored frontier instead of idling. */
 function aiExplore(state: GameState, unit: Unit, pid: number): void {
   const goal = nearestUnexplored(state, unit, pid);
@@ -503,6 +667,7 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
   const atWar = player.atWar.length > 0;
   const warMinded = atWar || p.aggression > 0.6;
   const coastal = isCoastalCity(state, city);
+  const overseasPush = dominatesHomeContinent(state, player.id) && (warMinded || focus === "domination");
 
   const findBuilding = (id: string): ProductionItem | null =>
     opts.find((o) => o.item.kind === "building" && o.item.id === id)?.item ?? null;
@@ -511,9 +676,10 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
 
   // 1. A Barracks first so the city can train melee defenders at all.
   if (!city.training.barracks) { const b = findTraining("barracks"); if (b) return b; }
-  // 1b. War-minded civs raise more training families early; coastal cities a shipyard.
-  if (warMinded && !city.training.archery_range) { const a = findTraining("archery_range"); if (a) return a; }
+  // Coastal cities raise a shipyard early so the empire can reach other landmasses.
   if (coastal && !city.training.shipyard) { const s = findTraining("shipyard"); if (s) return s; }
+  if (overseasPush && coastal && !city.training.siege_workshop) { const sw = findTraining("siege_workshop"); if (sw) return sw; }
+  if (warMinded && !city.training.archery_range) { const a = findTraining("archery_range"); if (a) return a; }
   if (warMinded && !city.training.stable) { const s = findTraining("stable"); if (s) return s; }
 
   // 2. Economy / infrastructure buildings (skips any already built / not unlocked).
@@ -585,11 +751,30 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
     ?? null;
 }
 
+/** Highest-strength naval unit the city can currently train, or null. */
+function bestTrainableNaval(trainable: UnitTypeId[], civId?: string): UnitTypeId | null {
+  const score = (t: UnitTypeId): number => {
+    const def = UNIT_DEFS[t];
+    const bonus = civId ? (uniqueUnitForCiv(civId, t)?.bonus ?? 0) : 0;
+    return Math.max(def.strength, def.rangedStrength ?? 0) + bonus + (def.oceanGoing ? 2 : 0);
+  };
+  return trainable
+    .filter((t) => isNaval(UNIT_DEFS[t]))
+    .sort((a, b) => score(b) - score(a))[0] ?? null;
+}
+
 /** Highest-strength military unit the city can currently train, or null. */
-function bestTrainableMilitary(trainable: UnitTypeId[]): UnitTypeId | null {
+function bestTrainableMilitary(trainable: UnitTypeId[], civId?: string, preferRanged = false): UnitTypeId | null {
+  const score = (t: UnitTypeId): number => {
+    const def = UNIT_DEFS[t];
+    const bonus = civId ? (uniqueUnitForCiv(civId, t)?.bonus ?? 0) : 0;
+    const melee = def.strength + bonus;
+    const ranged = (def.rangedStrength ?? 0) + bonus;
+    return preferRanged ? Math.max(melee, ranged * 1.05) : melee;
+  };
   return trainable
     .filter((t) => isMilitary(t))
-    .sort((a, b) => UNIT_DEFS[b].strength - UNIT_DEFS[a].strength)[0] ?? null;
+    .sort((a, b) => score(b) - score(a))[0] ?? null;
 }
 
 /**
@@ -603,6 +788,7 @@ function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPers
   const has = (t: string) => units.some((u) => u.type === t);
   const cityCount = citiesOf(state, player.id).length;
   const settlersOut = units.filter((u) => u.type === "settler").length;
+  const settlersPipeline = settlersInPipeline(state, player.id);
   const milCount = units.filter((u) => isMilitary(u.type)).length;
   // Threat is LOCAL, not empire-wide: a city pauses its own expansion only if an enemy
   // is right on top of it. Two coarser flags used to freeze the WHOLE empire's growth —
@@ -612,12 +798,17 @@ function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPers
   const localThreat = hostileNearCity(state, player.id, city, 2);
   const atWar = player.atWar.length > 0;
   const expanding = !localThreat && cityCount + settlersOut < targetCityCount(p);
+  const settlersWanted = maxSettlersWanted(cityCount, targetCityCount(p));
+  const canBuildSettler =
+    expanding &&
+    settlersPipeline < settlersWanted &&
+    (exploredFraction(state, player.id) < 0.85 || hasSettleableLand(state, player.id));
   // Opening play: get the lone capital's first settler out the door immediately — it
   // founds a cheap, safe second city while the starting Warriors screen it. We let the
   // capital dip to a single citizen for this one settler (it regrows once it leaves);
   // afterwards settlers come from the healthier pop-3 gate so cities keep growing rather
   // than freezing into a swarm of fragile pop-1 hamlets.
-  const openingSettler = expanding && cityCount <= 1 && settlersOut === 0;
+  const openingSettler = canBuildSettler && cityCount <= 1 && settlersOut === 0;
 
   const tryTrain = (type: UnitTypeId): boolean =>
     trainable.includes(type) &&
@@ -633,14 +824,31 @@ function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPers
   // Civilians: a scout early (we usually start with one), a trader to link cities. Note
   // expansion continues even during a distant war — safe cities keep settling rather than
   // freezing the whole empire; the army is raised by the frontier and by maxed-out cities.
-  if (!localThreat && exploredFraction(state, player.id) < 0.45 && !has("scout") && tryTrain("scout")) return;
+  if (!localThreat && exploredFraction(state, player.id) < 0.7) {
+    const scouts = units.filter((u) => u.type === "scout").length;
+    if (scouts < 2 && tryTrain("scout")) return;
+  }
   // Expand: a safe city below the empire's target builds settlers from pop 3 (dropping
-  // to 2, so it keeps growing). The biggest single lever now that units cost population.
-  if (expanding && city.population >= 3 && tryTrain("settler")) return;
+  // to 2, so it keeps growing). Cap how many are out or in muster so they don't pile up
+  // when the map is crowded and can't find a legal site.
+  if (canBuildSettler && city.population >= 3 && tryTrain("settler")) return;
   // Keep a trader heading out whenever we have fewer routes than cities (links the
   // empire and, with open borders, opens lucrative international trade).
   const routeCount = state.tradeRoutes.filter((r) => r.ownerId === player.id).length;
   if (!localThreat && cityCount >= 2 && !has("trader") && routeCount < cityCount && tryTrain("trader")) return;
+
+  const coastal = isCoastalCity(state, city);
+  const overseasPush = dominatesHomeContinent(state, player.id);
+  const navalCount = units.filter((u) => isNaval(UNIT_DEFS[u.type])).length;
+  const desiredNaval = overseasPush && player.researched.has("sailing")
+    ? Math.max(3, Math.ceil(cityCount * 0.85))
+    : atWar || p.aggression > 0.55
+      ? Math.max(2, Math.ceil(cityCount * 0.75))
+      : Math.max(1, Math.ceil(cityCount / 2));
+  if (coastal && city.training.shipyard && player.researched.has("sailing") && navalCount < desiredNaval) {
+    const naval = bestTrainableNaval(trainable, player.civId);
+    if (naval && tryTrain(naval)) return;
+  }
 
   // Military: a war footing when fighting or locally menaced, else a peacetime garrison
   // that scales with the empire (warlike civs hold a bigger host so they can threaten
@@ -650,7 +858,7 @@ function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPers
     ? cityCount * 2 + 2
     : Math.max(cityCount + (p.aggression > 0.6 ? 3 : 2), 4)) + (escortShortfall ? 2 : 0);
   if (milCount < desired) {
-    const type = bestTrainableMilitary(trainable);
+    const type = bestTrainableMilitary(trainable, player.civId, atWar || localThreat);
     if (type) tryTrain(type);
   }
 }
@@ -706,10 +914,107 @@ export interface SettlePlan {
   safe: boolean;
 }
 
+/** Must match `MIN_CITY_DISTANCE` in commands.ts — founding fails closer than this. */
+const SETTLE_MIN_CITY_DISTANCE = 3;
 /** How close a known barbarian threat may be before a site counts as "exposed". */
 const SETTLE_DANGER_RADIUS = 3;
+/** Local search radius before falling back to empire-wide explored land. */
+const SETTLE_LOCAL_RADIUS = 6;
 /** A safe site is taken over the best one as long as it's within this much quality. */
 const SETTLE_SAFE_MARGIN = 6;
+
+function isSettleCandidate(
+  state: GameState,
+  col: number,
+  row: number,
+  unitId: number,
+  reserved?: Set<string>,
+): boolean {
+  const key = `${col},${row}`;
+  if (reserved?.has(key)) return false;
+  const tile = getTile(state.map, col, row);
+  if (!tile || !isPassableLand(tile.terrain)) return false;
+  if (cityAt(state, col, row)) return false;
+  const here = ax({ col, row });
+  for (const c of state.cities.values()) {
+    if (axialDistance(here, ax(c)) < SETTLE_MIN_CITY_DISTANCE) return false;
+  }
+  if (unitId >= 0) {
+    const occ = unitAt(state, col, row);
+    if (occ && occ.id !== unitId) return false;
+  }
+  return true;
+}
+
+/** Any explored tile where a city could still be founded (ignores friendly units standing on it). */
+function hasSettleableLand(state: GameState, pid: number, reserved?: Set<string>): boolean {
+  const me = playerById(state, pid);
+  if (!me) return false;
+  for (const t of state.map.tiles) {
+    if (!me.explored.has(`${t.col},${t.row}`)) continue;
+    if (isSettleCandidate(state, t.col, t.row, -1, reserved)) return true;
+  }
+  return false;
+}
+
+function settlersInPipeline(state: GameState, pid: number): number {
+  let n = unitsOf(state, pid).filter((u) => u.type === "settler").length;
+  for (const c of citiesOf(state, pid)) {
+    n += c.trainingQueue.filter((o) => o.unit === "settler").length;
+  }
+  return n;
+}
+
+function maxSettlersWanted(cityCount: number, target: number): number {
+  const room = target - cityCount;
+  if (room <= 0) return 0;
+  return Math.max(1, Math.min(3, room));
+}
+
+function finalizeSettlePlan(
+  state: GameState,
+  pid: number,
+  best: { col: number; row: number },
+  bestValue: number,
+  safeBest: { col: number; row: number } | null,
+  safeBestValue: number,
+): SettlePlan {
+  const threats = knownBarbThreats(state, pid);
+  const exposed = (col: number, row: number) =>
+    threats.some((t) => axialDistance(ax({ col, row }), ax(t)) <= SETTLE_DANGER_RADIUS);
+  if (safeBest && safeBestValue >= bestValue - SETTLE_SAFE_MARGIN) {
+    return { ...safeBest, safe: true };
+  }
+  return { ...best, safe: !exposed(best.col, best.row) };
+}
+
+function rankSettleCandidates(
+  state: GameState,
+  unit: Unit,
+  pid: number,
+  candidates: { col: number; row: number }[],
+  trekFactor: number,
+): { best: { col: number; row: number } | null; bestValue: number; safeBest: { col: number; row: number } | null; safeBestValue: number } {
+  const threats = knownBarbThreats(state, pid);
+  const exposed = (col: number, row: number) =>
+    threats.some((t) => axialDistance(ax({ col, row }), ax(t)) <= SETTLE_DANGER_RADIUS);
+  let best: { col: number; row: number } | null = null;
+  let bestValue = -Infinity;
+  let safeBest: { col: number; row: number } | null = null;
+  let safeBestValue = -Infinity;
+  for (const { col, row } of candidates) {
+    const value = settleScore(state, col, row) - axialDistance(ax(unit), ax({ col, row })) * trekFactor;
+    if (value > bestValue) {
+      bestValue = value;
+      best = { col, row };
+    }
+    if (!exposed(col, row) && value > safeBestValue) {
+      safeBestValue = value;
+      safeBest = { col, row };
+    }
+  }
+  return { best, bestValue, safeBest, safeBestValue };
+}
 
 /**
  * Choose where a settler should found, preferring ground clear of barbarians. We rank
@@ -718,47 +1023,55 @@ const SETTLE_SAFE_MARGIN = 6;
  *  - if it's exposed but a nearly-as-good *safe* site exists, take the safe one instead;
  *  - only when the best land is unavoidably in harm's way do we take it and flag it
  *    unsafe, so the turn planner knows to send a guard along.
+ *
+ * Searches locally first, then any explored tile empire-wide (late game: the ±6 ring
+ * around a settler is often full even when distant frontiers still have room).
+ * `reserved` holds sites already claimed by other settlers this turn.
  */
-export function planSettle(state: GameState, unit: Unit, pid: number): SettlePlan | null {
-  const cities = [...state.cities.values()];
-  const threats = knownBarbThreats(state, pid);
-  const exposed = (col: number, row: number) =>
-    threats.some((t) => axialDistance(ax({ col, row }), ax(t)) <= SETTLE_DANGER_RADIUS);
-  let best: { col: number; row: number } | null = null;
-  let bestValue = -Infinity;
-  let safeBest: { col: number; row: number } | null = null;
-  let safeBestValue = -Infinity;
-  for (let dr = -6; dr <= 6; dr++) {
-    for (let dc = -6; dc <= 6; dc++) {
+export function planSettle(state: GameState, unit: Unit, pid: number, reserved?: Set<string>): SettlePlan | null {
+  const local: { col: number; row: number }[] = [];
+  for (let dr = -SETTLE_LOCAL_RADIUS; dr <= SETTLE_LOCAL_RADIUS; dr++) {
+    for (let dc = -SETTLE_LOCAL_RADIUS; dc <= SETTLE_LOCAL_RADIUS; dc++) {
       const col = unit.col + dc;
       const row = unit.row + dr;
-      const tile = getTile(state.map, col, row);
-      if (!tile || !isPassableLand(tile.terrain)) continue;
-      const here = ax({ col, row });
-      if (cities.some((c) => axialDistance(here, ax(c)) < 3)) continue;
-      if (unitAt(state, col, row) && !(col === unit.col && row === unit.row)) continue;
-      const d = axialDistance(ax(unit), here);
-      // Reward good land, but discount the trek to reach it so settlers don't roam
-      // forever (measured: settling nearer founds more cities than chasing far land,
-      // since a long, undefended march just feeds barbarians a free settler).
-      const value = settleScore(state, col, row) - d * 1.5;
-      if (value > bestValue) {
-        bestValue = value;
-        best = { col, row };
-      }
-      if (!exposed(col, row) && value > safeBestValue) {
-        safeBestValue = value;
-        safeBest = { col, row };
-      }
+      if (isSettleCandidate(state, col, row, unit.id, reserved)) local.push({ col, row });
     }
   }
-  if (!best) return null;
-  // A safe site that's almost as good as the best is worth the small downgrade.
-  if (safeBest && safeBestValue >= bestValue - SETTLE_SAFE_MARGIN) {
-    return { ...safeBest, safe: true };
+  let ranked = rankSettleCandidates(state, unit, pid, local, 1.5);
+  if (ranked.best) {
+    return finalizeSettlePlan(state, pid, ranked.best, ranked.bestValue, ranked.safeBest, ranked.safeBestValue);
   }
-  // The best land is unavoidably exposed — take it, but it warrants an escort.
-  return { ...best, safe: !exposed(best.col, best.row) };
+
+  const me = playerById(state, pid);
+  if (!me) return null;
+  const global: { col: number; row: number }[] = [];
+  for (const t of state.map.tiles) {
+    if (!me.explored.has(`${t.col},${t.row}`)) continue;
+    if (isSettleCandidate(state, t.col, t.row, unit.id, reserved)) global.push({ col: t.col, row: t.row });
+  }
+  ranked = rankSettleCandidates(state, unit, pid, global, 0.35);
+  if (!ranked.best) return null;
+  return finalizeSettlePlan(state, pid, ranked.best, ranked.bestValue, ranked.safeBest, ranked.safeBestValue);
+}
+
+/** Best known settle site on a different landmass (for coastal expansion overseas). */
+function nearestOverseasLand(state: GameState, unit: Unit, pid: number): { col: number; row: number } | null {
+  const me = playerById(state, pid);
+  if (!me) return null;
+  const from = { col: unit.col, row: unit.row };
+  let best: { col: number; row: number } | null = null;
+  let bestValue = -Infinity;
+  for (const t of state.map.tiles) {
+    if (!me.explored.has(`${t.col},${t.row}`)) continue;
+    if (!isSettleCandidate(state, t.col, t.row, unit.id)) continue;
+    if (sameLandmass(state, from, { col: t.col, row: t.row })) continue;
+    const value = settleScore(state, t.col, t.row) - axialDistance(ax(unit), ax({ col: t.col, row: t.row })) * 0.5;
+    if (value > bestValue) {
+      bestValue = value;
+      best = { col: t.col, row: t.row };
+    }
+  }
+  return best;
 }
 
 function aiSettler(state: GameState, unit: Unit, pid: number, plan?: SettlePlan | null): void {
@@ -784,8 +1097,17 @@ function aiSettler(state: GameState, unit: Unit, pid: number, plan?: SettlePlan 
     applyCommand(state, { type: "foundCity", unitId: unit.id }, pid); // try again if we arrived
     return;
   }
-  // No viable site within reach — push toward the unexplored frontier to uncover new
-  // land rather than letting a precious settler stand idle.
+  // No good site nearby — coastal empires put settlers to sea toward fresh land.
+  const player = playerById(state, pid);
+  if (player?.researched.has("sailing") && isCoastalTile(state, unit.col, unit.row)) {
+    const overseas = nearestOverseasLand(state, unit, pid);
+    if (overseas) {
+      stepToward(state, unit, overseas.col, overseas.row, pid);
+      applyCommand(state, { type: "foundCity", unitId: unit.id }, pid);
+      return;
+    }
+  }
+  // Push toward the unexplored frontier to uncover new land rather than idling.
   aiExplore(state, unit, pid);
 }
 
@@ -959,7 +1281,7 @@ function chooseAutoProduction(state: GameState, player: Player, city: City, focu
 function autoTrainMilitary(state: GameState, city: City, player: Player): void {
   if (city.population <= 2 || city.trainingQueue.length > 0) return;
   const trainable = availableTraining(state, player, city);
-  const type = bestTrainableMilitary(trainable);
+  const type = bestTrainableMilitary(trainable, player.civId);
   if (!type) return;
   const cityCount = citiesOf(state, player.id).length;
   const milCount = unitsOf(state, player.id).filter((u) => isMilitary(u.type)).length;
@@ -1387,9 +1709,93 @@ function assignEscorts(state: GameState, pid: number, plans: Map<number, SettleP
   return out;
 }
 
+const SCORE_KILL_UNIT = 500;
+const SCORE_KILL_CITY = 1000;
+
+/** Score an adjacent attack using combatPreview; null if the trade is too poor. */
+function scoreAttackTarget(state: GameState, unit: Unit, pid: number, col: number, row: number): number | null {
+  const preview = combatPreview(state, unit, col, row);
+  if (!preview) return null;
+  const def = UNIT_DEFS[unit.type];
+  const city = cityAt(state, col, row);
+  const enemy = unitAt(state, col, row);
+
+  if (city && city.ownerId !== pid) {
+    const lead = powerRatio(state, pid, city.ownerId);
+    const crushing = lead >= 1.45;
+    const ranged = isRanged(def);
+    const supported = friendlyMilitaryNear(state, pid, col, row, 2) >= (crushing ? 1 : 2);
+    const canAssault =
+      crushing ||
+      ranged ||
+      supported ||
+      city.hp <= (crushing ? 85 : 55) ||
+      preview.toDefender >= city.hp ||
+      (preview.toAttacker < unit.hp && preview.toDefender >= Math.max(6, city.hp * (crushing ? 0.08 : 0.12)));
+    if (!canAssault) return null;
+    const finish = preview.toDefender >= city.hp ? SCORE_KILL_CITY : 0;
+    const siegeBonus = crushing ? preview.toDefender * 1.5 : 0;
+    return finish + preview.toDefender * 2 - preview.toAttacker * (crushing ? 2 : 3) + siegeBonus;
+  }
+
+  if (enemy && isHostile(state, pid, enemy.ownerId)) {
+    const lead = powerRatio(state, pid, enemy.ownerId);
+    const crushing = lead >= 1.45;
+    const kill = preview.toDefender >= enemy.hp ? SCORE_KILL_UNIT : 0;
+    if (!kill) {
+      if (preview.toAttacker >= unit.hp) return null;
+      if (!crushing && preview.toAttacker > preview.toDefender + 5 && unit.hp < 70) return null;
+    }
+    return kill + preview.toDefender * 2 - preview.toAttacker * (crushing ? 1.5 : 2);
+  }
+  return null;
+}
+
+function pickBestAttackTarget(
+  state: GameState,
+  unit: Unit,
+  pid: number,
+  targets: Set<string>,
+): { col: number; row: number; score: number } | null {
+  let best: { col: number; row: number; score: number } | null = null;
+  for (const key of targets) {
+    const [col, row] = key.split(",").map(Number) as [number, number];
+    const score = scoreAttackTarget(state, unit, pid, col, row);
+    if (score == null) continue;
+    if (!best || score > best.score) best = { col, row, score };
+  }
+  return best;
+}
+
+/** Fire each city's once-per-turn bombard at the best nearby enemy. */
+function aiCityBombard(state: GameState, pid: number): void {
+  for (const city of citiesOf(state, pid)) {
+    if (city.rangedAttackUsed) continue;
+    const targets = cityBombardTargets(state, city);
+    if (targets.length === 0) continue;
+    const str = cityBombardStrength(state, city);
+    let best: Unit | null = null;
+    let bestScore = -Infinity;
+    for (const t of targets) {
+      const tile = getTile(state.map, t.col, t.row);
+      let def = UNIT_DEFS[t.type].strength * (t.hp / unitMaxHp(t));
+      if (tile) def += 2; // rough terrain cushion
+      const dmg = damageFrom(str, Math.max(1, Math.round(def)));
+      const kill = dmg >= t.hp ? 1000 : 0;
+      const score = kill - t.hp + dmg;
+      if (score > bestScore) {
+        bestScore = score;
+        best = t;
+      }
+    }
+    if (best) {
+      applyCommand(state, { type: "cityBombard", cityId: city.id, col: best.col, row: best.row }, pid);
+    }
+  }
+}
+
 function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?: number): void {
   const abilities = unitAbilities(state, unit);
-  const def = UNIT_DEFS[unit.type];
 
   // Badly wounded and in danger? Fall back to the nearest city to heal (cities mend
   // a unit far faster) rather than feeding it to the enemy.
@@ -1430,6 +1836,23 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
     }
   }
 
+  // Naval gunnery: pick the best previewed target for coastal/broadside abilities.
+  const navalBombard = abilities.find((a) => a === "coastal_bombardment" || a === "broadside" || a === "greek_fire");
+  if (navalBombard && canUseAbility(state, unit, navalBombard).ok) {
+    let best: { col: number; row: number; score: number } | null = null;
+    for (const key of abilityTargets(state, unit, navalBombard)) {
+      const [col, row] = key.split(",").map(Number) as [number, number];
+      const preview = combatPreview(state, unit, col, row);
+      if (!preview) continue;
+      const score = preview.toDefender * 2 - preview.toAttacker * 2;
+      if (!best || score > best.score) best = { col, row, score };
+    }
+    if (best && best.score > 0) {
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: navalBombard, col: best.col, row: best.row }, pid);
+      return;
+    }
+  }
+
   // Mehmed's great bombard: an outranging siege shot with no retaliation.
   if (abilities.includes("basilica_bombard")) {
     const t = [...abilityTargets(state, unit, "basilica_bombard")][0];
@@ -1463,50 +1886,46 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
     }
   }
 
+  const pushOffense = conquestLeadRatio(state, pid) >= 1.35;
+  const threatenedCity = citiesOf(state, pid).find((city) => {
+    if (unit.col === city.col && unit.row === city.row) return false;
+    return cityNeedsRelief(state, pid, city, pushOffense);
+  });
+
   const targets = computeAttackTargets(state, unit);
-  if (targets.size > 0) {
-    let chosen: { col: number; row: number } | null = null;
-    let cityChoice: { col: number; row: number } | null = null;
-    for (const key of targets) {
-      const [col, row] = key.split(",").map(Number) as [number, number];
-      const city = cityAt(state, col, row);
-      const enemy = unitAt(state, col, row);
-      if (city) {
-        // Storm a city only when it's already weakened or we've massed a couple of
-        // attackers around it — never throw a lone melee unit at a healthy city.
-        // Ranged units bombard freely (no retaliation) to soften it for the assault.
-        const supported = friendlyMilitaryNear(state, pid, col, row, 1) >= 2;
-        if ((city.hp <= 55 || supported || isRanged(def)) && !cityChoice) cityChoice = { col, row };
-        continue;
-      }
-      const favorable = enemy
-        ? enemy.hp <= unit.hp + 10 || UNIT_DEFS[unit.type].strength >= UNIT_DEFS[enemy.type].strength
-        : false;
-      if (favorable && !chosen) chosen = { col, row };
-    }
-    // Prefer storming a city when it's a sound move; else hit a favourable unit.
-    chosen = cityChoice ?? chosen;
-    if (chosen) {
-      // Cavalry strike with a charge (extra punch + breakthrough) when hitting a unit.
-      const enemy = unitAt(state, chosen.col, chosen.row);
-      const charge = abilities.find((a) => a === "shock_charge" || a === "charge" || a === "hussar_charge" || a === "war_cart_charge" || a === "furor" || a === "deus_vult");
-      if (enemy && charge && abilityTargets(state, unit, charge).has(`${chosen.col},${chosen.row}`)) {
-        applyCommand(state, { type: "useAbility", unitId: unit.id, ability: charge, col: chosen.col, row: chosen.row }, pid);
-        return;
-      }
-      const ranged2 = abilities.find((a) => a === "repeating_fire" || a === "arrow_storm");
-      if (enemy && ranged2 && abilityTargets(state, unit, ranged2).has(`${chosen.col},${chosen.row}`)) {
-        applyCommand(state, { type: "useAbility", unitId: unit.id, ability: ranged2, col: chosen.col, row: chosen.row }, pid);
-        return;
-      }
-      const sunder = abilities.find((a) => a === "sunder" || a === "pierce" || a === "harry" || a === "siege_assault" || a === "slay_the_beast" || a === "pyramid_of_skulls");
-      if (enemy && sunder && abilityTargets(state, unit, sunder).has(`${chosen.col},${chosen.row}`)) {
-        applyCommand(state, { type: "useAbility", unitId: unit.id, ability: sunder, col: chosen.col, row: chosen.row }, pid);
-        return;
-      }
-      applyCommand(state, { type: "attack", attackerId: unit.id, col: chosen.col, row: chosen.row }, pid);
+  const attackChoice = pickBestAttackTarget(state, unit, pid, targets);
+  const attackCity = attackChoice != null && cityAt(state, attackChoice.col, attackChoice.row)?.ownerId !== pid;
+
+  if (threatenedCity && !pushOffense && !attackCity) {
+    const distToCity = axialDistance(ax(unit), ax(threatenedCity));
+    const hasKill = attackChoice != null && attackChoice.score >= SCORE_KILL_UNIT;
+    if (!hasKill && distToCity > 2) {
+      stepToward(state, unit, threatenedCity.col, threatenedCity.row, pid);
       return;
     }
+  }
+
+  if (attackChoice) {
+    const chosen = { col: attackChoice.col, row: attackChoice.row };
+    // Cavalry strike with a charge (extra punch + breakthrough) when hitting a unit.
+    const enemy = unitAt(state, chosen.col, chosen.row);
+    const charge = abilities.find((a) => a === "shock_charge" || a === "charge" || a === "hussar_charge" || a === "war_cart_charge" || a === "furor" || a === "deus_vult");
+    if (enemy && charge && abilityTargets(state, unit, charge).has(`${chosen.col},${chosen.row}`)) {
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: charge, col: chosen.col, row: chosen.row }, pid);
+      return;
+    }
+    const ranged2 = abilities.find((a) => a === "repeating_fire" || a === "arrow_storm");
+    if (enemy && ranged2 && abilityTargets(state, unit, ranged2).has(`${chosen.col},${chosen.row}`)) {
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: ranged2, col: chosen.col, row: chosen.row }, pid);
+      return;
+    }
+    const sunder = abilities.find((a) => a === "sunder" || a === "pierce" || a === "harry" || a === "siege_assault" || a === "slay_the_beast" || a === "pyramid_of_skulls");
+    if (enemy && sunder && abilityTargets(state, unit, sunder).has(`${chosen.col},${chosen.row}`)) {
+      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: sunder, col: chosen.col, row: chosen.row }, pid);
+      return;
+    }
+    applyCommand(state, { type: "attack", attackerId: unit.id, col: chosen.col, row: chosen.row }, pid);
+    return;
   }
 
   // No good attack: brace spears against adjacent enemy cavalry rather than idling.
@@ -1524,12 +1943,9 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
 
   // Defend a threatened city: fall back to garrison it (rather than chasing the
   // raider into the open). If already standing in the threatened city, hold the
-  // walls. We ignore peaceful neighbours so armies don't shadow units they can't fight.
+  // walls. While crushing a war, only cities in real danger pull units off the front.
   for (const city of citiesOf(state, unit.ownerId)) {
-    const threat = [...state.units.values()].some(
-      (e) => isHostile(state, pid, e.ownerId) && axialDistance(ax(city), ax(e)) <= 3,
-    );
-    if (!threat) continue;
+    if (!cityNeedsRelief(state, pid, city, pushOffense)) continue;
     if (unit.col === city.col && unit.row === city.row) return; // hold the walls
     stepToward(state, unit, city.col, city.row, pid);
     return;
@@ -1565,6 +1981,10 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
     }
   }
 
+  // Race for tribal villages and barbarian camps before other errands — villages
+  // are one-shot prizes any rival can steal, so grab them while we can.
+  if (aiHuntMapFeatures(state, unit, pid)) return;
+
   // Economic warfare: raze an enemy improvement we're standing on (isHostile means
   // we're at war with — or raiding — its owner, so this is never an unprovoked act).
   {
@@ -1581,24 +2001,6 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
   if (objective) {
     stepToward(state, unit, objective.col, objective.row, pid);
     return;
-  }
-
-  // No war to wage: make the roaming pay. March on the nearest known barbarian camp
-  // (gold, and it stops the raider spawns) and snap up tribal villages, heading to
-  // whichever is closer — ties go to the camp, since clearing it removes a standing
-  // threat. This runs ahead of chasing a lone, distant barbarian: better to burn the
-  // nest than trail one wasp across the map.
-  {
-    const camp = nearestFeature(state, unit, pid, "barb_camp");
-    const village = nearestFeature(state, unit, pid, "village");
-    let goal = camp ?? village;
-    if (camp && village) {
-      goal = axialDistance(ax(unit), ax(village)) < axialDistance(ax(unit), ax(camp)) ? village : camp;
-    }
-    if (goal) {
-      stepToward(state, unit, goal.col, goal.row, pid);
-      return;
-    }
   }
 
   // Nothing to collect: pressure the nearest hostile unit, or scout if all is quiet.
@@ -1620,15 +2022,9 @@ function aiScout(state: GameState, unit: Unit, pid: number): void {
       return;
     }
   }
-  // Scouts are the natural village-collectors: any unit triggers a village, and a
-  // scout fans out across the map anyway, so divert to the nearest discovered one
-  // for its free perk before drifting on toward the frontier. (Camps need a military
-  // unit to clear, so scouts leave those alone.)
-  const village = nearestFeature(state, unit, pid, "village");
-  if (village) {
-    stepToward(state, unit, village.col, village.row, pid);
-    return;
-  }
+  // Villages are the scout's top job — any unit can collect them and rivals race
+  // for the same reward, so beeline every discovered one before exploring further.
+  if (aiHuntVillage(state, unit, pid)) return;
   aiExplore(state, unit, pid);
 }
 
@@ -1682,9 +2078,10 @@ function aiRush(state: GameState, player: Player, p: DiploPersonality, threatene
       }
     }
   }
-  // 3) Hurry out the troops we're training — to meet a danger, or to get a guard
-  //    marching toward a settler that's stranded in hostile country without one.
-  if (threatened || escortShortfall) {
+  // 3) Hurry out the troops we're training — to meet a danger, push a winning war, or
+  //    get a guard marching toward a stranded settler.
+  const winningWar = atWar && conquestLeadRatio(state, pid) >= 1.4;
+  if (threatened || escortShortfall || winningWar) {
     for (const city of citiesOf(state, pid)) {
       for (const order of city.trainingQueue) {
         if (!isMilitary(order.unit)) continue;
@@ -1749,28 +2146,64 @@ function nearestRivalCityDistance(state: GameState, pid: number, otherId: number
 }
 
 /**
- * A domination-focused civ doesn't wait to be provoked. Once it fields a real army and
- * a clearly weaker neighbour sits within striking range, it declares war and goes for
- * the capital — the per-unit military AI already converges on enemy cities and storms
- * them. This is what turns a warmonger's intent into an actual conquest victory.
+ * A strong civ doesn't wait to be provoked. Once it fields a real army and a weaker
+ * neighbour is reachable, it declares war and storms their cities — the per-unit
+ * military AI already converges on enemy capitals. When the home continent is locked
+ * down and a fleet is ready, it also opens wars across the sea.
  */
 export function aiSeekConquest(state: GameState, player: Player, focus: VictoryKind): void {
-  if (focus !== "domination" || player.atWar.length > 0) return;
   const pid = player.id;
+  const p = personalityOf(state, pid);
   const army = unitsOf(state, pid).filter((u) => isMilitary(u.type) && u.hp >= 40).length;
-  if (army < 3) return; // need a credible force before opening a war
+  if (army < 3) return;
+
+  const overseas = dominatesHomeContinent(state, pid);
+  const navalReady = navalInvasionReady(state, player);
+  const warmonger = focus === "domination" || p.aggression > 0.55;
+
+  let bestPeaceRatio = 1;
+  for (const otherId of player.met) {
+    const other = playerById(state, otherId);
+    if (!other || other.isBarbarian || citiesOf(state, otherId).length === 0) continue;
+    const r = relationBetween(state, pid, otherId);
+    if (!r || r.status !== "peace") continue;
+    bestPeaceRatio = Math.max(bestPeaceRatio, powerRatio(state, pid, otherId));
+  }
+
+  if (!warmonger && bestPeaceRatio < 1.45) return;
+
+  if (player.atWar.length > 0) {
+    let worstWarRatio = Infinity;
+    for (const id of player.atWar) {
+      if (playerById(state, id)?.isBarbarian) continue;
+      worstWarRatio = Math.min(worstWarRatio, powerRatio(state, pid, id));
+    }
+    if (worstWarRatio < 1.15) return; // losing the current war — consolidate first
+    if (player.atWar.length >= 2 && bestPeaceRatio < 1.85) return;
+  }
+
+  const minRatio = bestPeaceRatio >= 2 ? 1.1 : bestPeaceRatio >= 1.6 ? 1.15 : warmonger ? 1.2 : 1.35;
+  const anchor = homeAnchor(state, pid);
+
   let target: number | null = null;
   let bestScore = -Infinity;
   for (const otherId of player.met) {
+    if (player.atWar.includes(otherId)) continue;
     const r = relationBetween(state, pid, otherId);
     if (!r || r.status !== "peace" || r.pact !== "none") continue;
-    if (r.warAllowedTurn !== undefined && state.turn < r.warAllowedTurn) continue; // a peace holds
+    if (r.warAllowedTurn !== undefined && state.turn < r.warAllowedTurn) continue;
     const other = playerById(state, otherId);
     if (!other || other.isBarbarian || citiesOf(state, otherId).length === 0) continue;
-    if (powerRatio(state, pid, otherId) < 1.25) continue; // only strike the clearly weaker
+    const ratio = powerRatio(state, pid, otherId);
+    if (ratio < minRatio) continue;
     const reach = nearestRivalCityDistance(state, pid, otherId);
-    if (reach > 16) continue; // too far to prosecute a campaign
-    const score = powerRatio(state, pid, otherId) * 10 - reach;
+    const onOtherContinent = anchor != null && citiesOf(state, otherId).some((c) => !sameLandmass(state, anchor, c));
+    const maxReach = onOtherContinent
+      ? (overseas && navalReady ? 999 : 14)
+      : 20;
+    if (reach > maxReach) continue;
+    const bonus = onOtherContinent && overseas && navalReady ? 20 : 0;
+    const score = ratio * 10 - reach * 0.4 + bonus;
     if (score > bestScore) { bestScore = score; target = otherId; }
   }
   if (target !== null) declareWar(state, pid, target);
@@ -1893,13 +2326,12 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     applyCommand(state, { type: "slotCivic", civicId: cid }, playerId);
   }
 
-  // Recruit a Legend when faith allows — prefer a land hero, else any available.
+  // Recruit a Legend when enough track glory is banked — prefer the track with the most progress.
   if (state.legendsEnabled) {
-    const options = availableLegends(state);
-    const pick = options.find((l) => l.type === "land") ?? options[0];
-    if (pick && canRecruitLegend(state, playerId, pick.id).ok) {
-      applyCommand(state, { type: "recruitLegend", legendId: pick.id }, playerId);
-    }
+    const options = availableLegendsForPlayer(state, playerId)
+      .filter((l) => canRecruitLegend(state, playerId, l.id).ok);
+    const pick = options[0];
+    if (pick) applyCommand(state, { type: "recruitLegend", legendId: pick.id }, playerId);
   }
 
   // Found a religion once enough faith is stored.
@@ -1937,10 +2369,14 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   // warrior: a settler bound for dangerous ground with no soldier free to guard it is
   // an "escort shortfall" we answer by raising — and hurrying — a fresh warrior.
   const settlePlans = new Map<number, SettlePlan>();
+  const reservedSites = new Set<string>();
   for (const u of unitsOf(state, playerId)) {
     if (!UNIT_DEFS[u.type].founder) continue;
-    const plan = planSettle(state, u, playerId);
-    if (plan) settlePlans.set(u.id, plan);
+    const plan = planSettle(state, u, playerId, reservedSites);
+    if (plan) {
+      settlePlans.set(u.id, plan);
+      reservedSites.add(`${plan.col},${plan.row}`);
+    }
   }
   const escorts = assignEscorts(state, playerId, settlePlans);
   const guarded = new Set(escorts.values());
@@ -1960,6 +2396,7 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   aiWonders(state, playerId, p, focus);
   aiAssignSpecialists(state, playerId); // staff the works just queued (manual assignment)
   aiRush(state, player, p, threatened, escortShortfall); // hurry wonders / settlers / troops
+  aiCityBombard(state, playerId);
 
   // A science civ dedicates its first recon unit to the circumnavigation capstone —
   // sailing the globe — while the rest scout as normal.

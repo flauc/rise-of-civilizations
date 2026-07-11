@@ -161,13 +161,13 @@ describe("civ-unique abilities (§8)", () => {
     const low = place(state, 1, "longswordsman", 6, 5);
     low.hp = 20;
     const high = place(state, 1, "longswordsman", 16, 5);
-    high.hp = 35;
+    high.hp = 50; // above 30% of longswordsman max HP (~128)
 
     resolveAttack(state, place(state, 0, "warrior", 5, 5), low.col, low.row);
     resolveAttack(state, place(state, 0, "warrior", 15, 5), high.col, high.row);
 
     // Despite lower HP, Bushidō more than offsets the difference.
-    expect(20 - low.hp).toBeLessThan(35 - high.hp);
+    expect(20 - low.hp).toBeLessThan(50 - high.hp);
   });
 
   it("Bushidō is Samurai-only — an ordinary unique gets no low-HP defense bonus", () => {

@@ -24,11 +24,17 @@ server is unreachable or the player is offline, gameplay is completely unaffecte
    reaching victory is reported as `outcome: "abandoned"`.
 2. **Server** (`packages/server/src/index.ts`) exposes:
    - `POST /analytics` — ingestion (CORS-open, fail-soft, always returns `204`).
-   - `GET /admin/api/{overview|sessions|civs|outcomes|leaderboard|votes|all}` —
+   - `GET /admin/api/games?page=&pageSize=&sort=&order=&<column filters>` —
+     paginated list of individual game sessions with full setup config (token-gated).
+   - `GET /admin/api/bug-reports?page=&pageSize=&sort=&order=&<column filters>` —
+     paginated list of bug reports with reporter and session context (token-gated).
+   - `GET /admin/api/{overview|sessions|civs|config|outcomes|victories|leaderboard|votes|bugReports|users|all}` —
      token-gated read API.
    Storage is durable Postgres (`PostgresAnalyticsStore`, via Bun's built-in
    `SQL`) when `DATABASE_URL` is set, otherwise an in-memory store for dev/tests
-   (`MemoryAnalyticsStore`). The event schema is shared in
+   (`MemoryAnalyticsStore`) with JSON file persistence to `.roc-games.json`
+   (same pattern as registered users in `.roc-users.json`). The event schema is
+   shared in
    `packages/shared/src/analytics.ts`.
 3. **Admin app** (`packages/admin`) is a small Vite dashboard that reads the
    `/admin/api/*` endpoints (sending the token as `x-admin-token`).
@@ -47,9 +53,10 @@ server is unreachable or the player is offline, gameplay is completely unaffecte
 
 **Server**
 - `DATABASE_URL` — Postgres connection string (the Coolify Postgres container).
-  When unset, the server falls back to in-memory analytics (data lost on restart).
-- `ADMIN_TOKEN` — shared secret required by the `/admin` API. If unset, the admin
-  API rejects every request.
+  When unset, the server falls back to in-memory analytics persisted to
+  `.roc-games.json` on each ingest (override with `ROC_GAMES_FILE`).
+- `ADMIN_TOKEN` — shared secret required by the `/admin` API. In production, this
+  must be set explicitly. When unset locally, the server defaults to `dev`.
 
 **Client build** (`packages/client`)
 - `VITE_ANALYTICS_URL` — analytics endpoint. Defaults to `http(s)://<host>:3001/analytics`
@@ -67,9 +74,11 @@ docker compose up -d
 # 2. Run the server against it
 DATABASE_URL=postgres://roc:roc@localhost:5432/roc ADMIN_TOKEN=dev bun run server
 
+# Or for local dev without Postgres — `bun run server` alone defaults ADMIN_TOKEN to `dev`.
+
 # 3. Run the game (sends analytics) and the admin dashboard
 bun run dev          # game on :5173
-bun run dev:admin    # dashboard on :5174  (enter token "dev")
+bun run dev:admin    # dashboard on :5175  (enter token "dev")
 ```
 
 ## Coolify deployment

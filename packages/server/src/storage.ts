@@ -8,16 +8,26 @@ export interface User {
   handle: string;
   passwordHash: string;
   createdAt: number;
+  /** Provided when the user opts into newsletter/notifications at signup. */
+  email?: string;
+  newsletterOptIn?: boolean;
+}
+
+export interface CreateUserOptions {
+  email?: string;
+  newsletterOptIn?: boolean;
 }
 
 export interface Storage {
-  createUser(handle: string, passwordHash: string): Promise<User>;
+  createUser(handle: string, passwordHash: string, opts?: CreateUserOptions): Promise<User>;
   userByHandle(handle: string): Promise<User | undefined>;
   userById(id: string): Promise<User | undefined>;
   createSession(userId: string): Promise<string>; // returns token
   userIdForToken(token: string): Promise<string | undefined>;
   saveSnapshot(gameId: string, turn: number, blob: string): Promise<void>;
   loadSnapshot(gameId: string): Promise<{ turn: number; blob: string } | undefined>;
+  /** All registered accounts, newest first (for admin). */
+  listUsers(): Promise<User[]>;
 }
 
 function rid(prefix: string): string {
@@ -30,9 +40,16 @@ export class MemoryStorage implements Storage {
   private readonly sessions = new Map<string, string>(); // token -> userId
   private readonly snapshots = new Map<string, { turn: number; blob: string }>();
 
-  async createUser(handle: string, passwordHash: string): Promise<User> {
+  async createUser(handle: string, passwordHash: string, opts?: CreateUserOptions): Promise<User> {
     if (this.byHandle.has(handle.toLowerCase())) throw new Error("handle taken");
-    const user: User = { id: rid("u"), handle, passwordHash, createdAt: Date.now() };
+    const user: User = {
+      id: rid("u"),
+      handle,
+      passwordHash,
+      createdAt: Date.now(),
+      email: opts?.email,
+      newsletterOptIn: opts?.newsletterOptIn,
+    };
     this.users.set(user.id, user);
     this.byHandle.set(handle.toLowerCase(), user.id);
     return user;
@@ -57,5 +74,15 @@ export class MemoryStorage implements Storage {
   }
   async loadSnapshot(gameId: string): Promise<{ turn: number; blob: string } | undefined> {
     return this.snapshots.get(gameId);
+  }
+  async listUsers(): Promise<User[]> {
+    return [...this.users.values()].sort((a, b) => b.createdAt - a.createdAt);
+  }
+
+  /** Restore a user loaded from disk (skips duplicate-handle checks). */
+  restoreUser(user: User): void {
+    if (this.byHandle.has(user.handle.toLowerCase())) return;
+    this.users.set(user.id, user);
+    this.byHandle.set(user.handle.toLowerCase(), user.id);
   }
 }

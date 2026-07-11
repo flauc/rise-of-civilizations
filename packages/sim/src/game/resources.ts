@@ -2,7 +2,15 @@
 // Resources are placed during world setup, yield benefits when improved, and
 // strategic resources are stockpiled per player to unlock unit production.
 
-import { getTile, hashSeed, type TerrainType, type Tile } from "@roc/shared";
+import {
+  getTile,
+  hashSeed,
+  landmassSizes,
+  offsetNeighborDeltas,
+  type TerrainType,
+  type Tile,
+} from "@roc/shared";
+import { majorLandmassMin } from "../worldgen";
 import { IMPROVEMENT_REQ_TECH, type ImprovementKind } from "./improvements";
 import type { City, GameState, Player } from "./state";
 import { citiesOf, cityAt, playerById } from "./state";
@@ -396,6 +404,121 @@ function resourceFitsTerrain(def: ResourceDef, terrain: TerrainType): boolean {
   return def.validTerrain.includes(terrain);
 }
 
+/** Roughly one resource per this many island tiles (small islets are denser
+ *  than the big Japan-sized islands, which would otherwise become absurd). */
+function islandResourceTarget(size: number): number {
+  return Math.max(1, Math.round(size / (size <= 10 ? 2 : 3)));
+}
+
+/** Weighted pick of a resource that can spawn on this terrain (luxuries favored —
+ *  islands are treasure worth sailing to). */
+function rollIslandResource(terrain: TerrainType, key: number): ResourceId | null {
+  const options: { id: ResourceId; w: number }[] = [];
+  for (const id of RESOURCE_IDS) {
+    const def = RESOURCE_DEFS[id];
+    if (!resourceFitsTerrain(def, terrain)) continue;
+    options.push({ id, w: def.type === "luxury" ? 3 : def.type === "strategic" ? 2 : 1 });
+  }
+  if (!options.length) return null;
+  const total = options.reduce((s, o) => s + o.w, 0);
+  let roll = key % total;
+  for (const o of options) {
+    roll -= o.w;
+    if (roll < 0) return o.id;
+  }
+  return options[options.length - 1]!.id;
+}
+
+/** All island land regions of the map (each as its list of tiles): every
+ *  landmass below the generator's "major landmass" (continent) threshold. */
+function smallIslands(map: GameState["map"]): Tile[][] {
+  const sizes = landmassSizes(map);
+  const { cols, rows, tiles } = map;
+  const maxTiles = majorLandmassMin(cols, rows) - 1;
+  const seen = new Set<number>();
+  const islands: Tile[][] = [];
+  for (const t of tiles) {
+    const i = t.row * cols + t.col;
+    const s = sizes[i]!;
+    if (s === 0 || s > maxTiles || seen.has(i)) continue;
+    const isle: Tile[] = [];
+    const stack = [i];
+    seen.add(i);
+    while (stack.length) {
+      const ct = tiles[stack.pop()!]!;
+      isle.push(ct);
+      for (const [dc, dr] of offsetNeighborDeltas(ct.row)) {
+        const nc = ct.col + dc;
+        const nr = ct.row + dr;
+        if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+        const ni = nr * cols + nc;
+        if (!seen.has(ni) && sizes[ni]! > 0) {
+          seen.add(ni);
+          stack.push(ni);
+        }
+      }
+    }
+    islands.push(isle);
+  }
+  return islands;
+}
+
+/**
+ * Islands are deliberately resource-rich: dense, luxury-weighted placements
+ * versus the mainland's sparse scatter, plus a good chance of a seafood bonus
+ * in their surrounding waters. On all-island worlds (Islands / Archipelago)
+ * there is no mainland to contrast with, so normal density applies everywhere.
+ */
+function placeIslandResources(
+  state: GameState,
+  starts: ({ col: number; row: number } | null)[],
+  seed: number | string,
+): void {
+  const { map } = state;
+  if (map.mapType === "islands" || map.mapType === "archipelago") return;
+  for (const isle of smallIslands(map)) {
+    const anchor = isle[0]!;
+    const isleKey = `${anchor.col},${anchor.row}`;
+    const target = islandResourceTarget(isle.length);
+    const ordered = [...isle].sort(
+      (a, b) => hashSeed(`isl:${seed}:${a.col},${a.row}`) - hashSeed(`isl:${seed}:${b.col},${b.row}`),
+    );
+    let placed = 0;
+    for (const tile of ordered) {
+      if (placed >= target) break;
+      if (tile.resource || tile.feature || tile.naturalWonder) continue;
+      if (tile.terrain === "mountains" || tile.terrain === "volcano") continue;
+      if (starts.some((s) => s && s.col === tile.col && s.row === tile.row)) continue;
+      const pick = rollIslandResource(tile.terrain, hashSeed(`isl-pick:${seed}:${tile.col},${tile.row}`));
+      if (!pick) continue;
+      tile.resource = pick;
+      placed++;
+    }
+    // Seafood bounty: one fish/crabs/pearls tile in the island's waters.
+    if (hashSeed(`isl-sea:${seed}:${isleKey}`) % 100 < 60) {
+      const waterAdj: Tile[] = [];
+      const seenWater = new Set<number>();
+      for (const tile of isle) {
+        for (const [dc, dr] of offsetNeighborDeltas(tile.row)) {
+          const n = getTile(map, tile.col + dc, tile.row + dr);
+          if (!n || n.resource || n.feature || n.naturalWonder) continue;
+          if (n.terrain !== "coast" && n.terrain !== "ocean") continue;
+          const ni = n.row * map.cols + n.col;
+          if (!seenWater.has(ni)) {
+            seenWater.add(ni);
+            waterAdj.push(n);
+          }
+        }
+      }
+      if (waterAdj.length) {
+        const n = waterAdj[hashSeed(`isl-seapick:${seed}:${isleKey}`) % waterAdj.length]!;
+        const seafood: ResourceId[] = n.terrain === "coast" ? ["fish", "crabs", "pearls"] : ["fish", "crabs"];
+        n.resource = seafood[hashSeed(`isl-seakind:${seed}:${isleKey}`) % seafood.length]!;
+      }
+    }
+  }
+}
+
 /** Scatter resources deterministically after villages/camps are placed. */
 export function placeResources(
   state: GameState,
@@ -404,6 +527,10 @@ export function placeResources(
 ): void {
   const { map } = state;
   const area = map.cols * map.rows;
+
+  // Islands get their dense, luxury-leaning allotment first; the mainland
+  // scatter below then fills the rest of the map at normal density.
+  placeIslandResources(state, starts, seed);
 
   for (const id of RESOURCE_IDS) {
     const def = RESOURCE_DEFS[id];

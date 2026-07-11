@@ -6,7 +6,7 @@ import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, isForestTerrain
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
 import { naturalWonderYields, naturalWonderCulture } from "./natural-wonders";
-import { expandTerritory } from "./territory";
+import { expandTerritory, cityTerritory } from "./territory";
 import { getWonder, uniqueBuildingForCiv, type CivEffects } from "@roc/data";
 import { civEffectsOf, cityEffects, getGovernment, effectSources, cityEffectSources, type EffectSource } from "./civs";
 import { cityTradeYields } from "./trade";
@@ -22,6 +22,7 @@ import {
   emitResearchComplete,
   emitTreasuryExhausted,
 } from "./turn-updates";
+import { extendLegendsOnTrigger } from "./legend-lifespan";
 import {
   BUILDING_DEFS,
   PROJECT_DEFS,
@@ -36,6 +37,7 @@ import {
   type TechId,
   type TrainingClass,
 } from "./content";
+import { scaledGovernmentCost, scaledTechCost } from "./game-speed";
 
 export interface CityYields {
   food: number;
@@ -45,8 +47,6 @@ export interface CityYields {
   culture: number;
   faith: number;
 }
-
-const CITY_RADIUS = 2;
 
 /** True if an enemy or barbarian unit is standing on the tile, blocking the city
  *  from working it (citizens won't venture out under a hostile occupation). */
@@ -58,27 +58,15 @@ export function tileBlockedByEnemy(state: GameState, city: City, col: number, ro
   return !!cityOwner && !!unitOwner && areEnemies(cityOwner, unitOwner);
 }
 
-/** Tiles within the city's work radius (owned by it) that a citizen may work. */
+/** Tiles inside the city's territory (except the center) that a citizen may work. */
 export function workableTiles(state: GameState, city: City): { col: number; row: number }[] {
-  const { map } = state;
-  const center = offsetToAxial({ col: city.col, row: city.row });
   const tiles: { col: number; row: number }[] = [];
-  for (let r = city.row - CITY_RADIUS; r <= city.row + CITY_RADIUS; r++) {
-    for (let c = city.col - CITY_RADIUS - 1; c <= city.col + CITY_RADIUS + 1; c++) {
-      if (c < 0 || r < 0 || c >= map.cols || r >= map.rows) continue;
-      if (c === city.col && r === city.row) continue;
-      if (axialDistance(center, offsetToAxial({ col: c, row: r })) > CITY_RADIUS) {
-        continue;
-      }
-      const tile = getTile(map, c, r);
-      // Only tiles inside this city's territory can be worked.
-      if (!tile || tile.ownerCityId !== city.id) continue;
-      const other = cityAt(state, c, r);
-      if (other && other.id !== city.id) continue;
-      // An enemy/barbarian unit sitting on the tile blocks it from being worked.
-      if (tileBlockedByEnemy(state, city, c, r)) continue;
-      tiles.push({ col: c, row: r });
-    }
+  for (const { col, row } of cityTerritory(state, city)) {
+    if (col === city.col && row === city.row) continue;
+    const other = cityAt(state, col, row);
+    if (other && other.id !== city.id) continue;
+    if (tileBlockedByEnemy(state, city, col, row)) continue;
+    tiles.push({ col, row });
   }
   return tiles;
 }
@@ -159,6 +147,11 @@ function tileWorkYields(state: GameState, col: number, row: number, eff: CivEffe
     ),
     naturalWonderYields(tile),
   );
+  // Tree-clad hills carry a forest's worth of knowledge (+1 science, like forest) —
+  // mirrors tileYields so worked output matches the tile inspector.
+  if (tile.wooded && tile.terrain === "hills") {
+    base.science += 1;
+  }
   // A river enriches the land it crosses (a river lake also waters fresh ideas) —
   // mirrors tileYields so worked output and citizen scoring value rivers correctly.
   if (tile.river) {
@@ -273,36 +266,62 @@ export function tileYieldReport(state: GameState, col: number, row: number, view
   return { yields, sources, preview };
 }
 
+/** Yields the city center tile contributes from its terrain (always worked). */
+function cityCenterTileYields(state: GameState, city: City): Yields & { culture: number } {
+  const eff = mergeCivEffects(civEffectsOf(state, city.ownerId), cityEffects(state, city));
+  const tile = getTile(state.map, city.col, city.row);
+  const cBase = tileWorkYields(state, city.col, city.row, eff);
+  let gold = cBase.gold;
+  if (tile?.terrain === "desert") gold += eff.goldPerWorkedDesert ?? 0;
+  return {
+    food: Math.max(1, cBase.food),
+    production: Math.max(1, cBase.production),
+    gold,
+    science: cBase.science,
+    faith: cBase.faith,
+    culture: tile ? naturalWonderCulture(tile) : 0,
+  };
+}
+
 /** Compute a city's per-turn yields, auto-assigning the best worked tiles. */
 export function getCityYields(state: GameState, city: City): CityYields {
   const { map } = state;
   // City center tile (guaranteed minimum 1 food / 1 production).
   const eff = mergeCivEffects(civEffectsOf(state, city.ownerId), cityEffects(state, city));
-  const cBase = tileWorkYields(state, city.col, city.row, eff);
-  let food = Math.max(1, cBase.food);
-  let production = Math.max(1, cBase.production);
-  let gold = cBase.gold;
-  let science = 1; // base research from every city
-  let culture = 1; // base culture from every city
-  let faith = cBase.faith; // faith from tiles and leader abilities
-
+  const center = cityCenterTileYields(state, city);
+  let food = center.food;
+  let production = center.production;
+  let gold = center.gold;
+  let science = 1 + center.science; // base research from every city
+  let culture = 1 + center.culture; // base culture from every city
+  let faith = center.faith;
   const desertGold = eff.goldPerWorkedDesert ?? 0;
   const centerTile = getTile(map, city.col, city.row);
-  if (centerTile?.terrain === "desert") gold += desertGold;
-  science += cBase.science;
-
-  // City-type leader-ability flat yields.
+  // City-type leader-ability flat yields on the seat of government.
   if (centerTile && isCoastalLand(state, city.col, city.row)) {
     const b = eff.coastalCityYield;
-    if (b) { food += b.food ?? 0; production += b.production ?? 0; gold += b.gold ?? 0; science += b.science ?? 0; culture += b.culture ?? 0; faith += b.faith ?? 0; }
+    if (b) {
+      food += b.food ?? 0;
+      production += b.production ?? 0;
+      gold += b.gold ?? 0;
+      science += b.science ?? 0;
+      culture += b.culture ?? 0;
+      faith += b.faith ?? 0;
+    }
   }
   if (centerTile?.terrain === "desert") {
     const b = eff.desertCityYield;
-    if (b) { food += b.food ?? 0; production += b.production ?? 0; gold += b.gold ?? 0; science += b.science ?? 0; culture += b.culture ?? 0; faith += b.faith ?? 0; }
+    if (b) {
+      food += b.food ?? 0;
+      production += b.production ?? 0;
+      gold += b.gold ?? 0;
+      science += b.science ?? 0;
+      culture += b.culture ?? 0;
+      faith += b.faith ?? 0;
+    }
   }
 
-  // Tiles this city's citizens are assigned to. Citizens trained as specialists
-  // no longer work tiles, so only the first `workerSlots` assignments count.
+  // Tiles this city's citizens are assigned to.
   const cap = workerSlots(city);
   for (const key of city.workedTiles.slice(0, cap)) {
     const [col, row] = key.split(",").map(Number) as [number, number];
@@ -742,11 +761,13 @@ export function processCity(state: GameState, city: City, owner: Player): void {
 export function advanceResearch(state: GameState, owner: Player): void {
   if (!owner.researching) return;
   const def = TECH_DEFS[owner.researching];
-  if (owner.scienceProgress < def.cost) return;
-  owner.scienceProgress -= def.cost;
+  const cost = scaledTechCost(state, owner.researching);
+  if (owner.scienceProgress < cost) return;
+  owner.scienceProgress -= cost;
   owner.researched.add(owner.researching);
   log(state, `${owner.name} discovered ${def.name}.`, { actorId: owner.id, targetIds: [owner.id] });
   emitResearchComplete(state, owner.id, def.name);
+  extendLegendsOnTrigger(state, owner.id, "tech_complete");
   owner.researching = null;
   advanceResearchQueue(owner);
 }
@@ -760,11 +781,13 @@ export function advanceGovernment(state: GameState, owner: Player): void {
   if (!owner.researchingGovernment) return;
   const def = getGovernment(owner.researchingGovernment);
   if (!def) return;
-  if (owner.cultureProgress < def.cost) return;
-  owner.cultureProgress -= def.cost;
+  const cost = scaledGovernmentCost(state, owner.researchingGovernment);
+  if (owner.cultureProgress < cost) return;
+  owner.cultureProgress -= cost;
   owner.governmentsResearched.add(owner.researchingGovernment);
   log(state, `${owner.name} developed the ${def.name} form of government.`, { actorId: owner.id, targetIds: [owner.id] });
   emitGovernmentComplete(state, owner.id, def.name);
+  extendLegendsOnTrigger(state, owner.id, "civic_adopted");
   owner.researchingGovernment = null;
 }
 

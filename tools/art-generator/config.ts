@@ -182,6 +182,22 @@ export const LEGEND_SUBSET: AssetEntry[] = LEGENDS.map((l) => ({
   referenceTile: DEFAULT_REFERENCE_TILE,
 }));
 
+/** Tutorial coach portrait — Herodotus guides the tutorial (not a playable legend;
+ *  shares the legend portrait pipeline). Output: legends/herodotus.png, copied to
+ *  packages/client/public/legends/ and baked via tools/bake-coach-portrait.ts. */
+export const COACH_SUBSET: AssetEntry[] = [
+  {
+    id: "herodotus",
+    name: "Herodotus",
+    description:
+      "the ancient Greek historian Herodotus of Halicarnassus, the father of history: a warm, wise middle-aged scholar with a full curled grey-brown beard, warm sun-tanned Mediterranean skin, and gentle knowing eyes, wearing a rich deep-blue and terracotta-red draped himation cloak over a cream chiton, holding a partly unrolled papyrus scroll. Painted with strong saturated colors, warm directional lighting, deep shadows and high contrast so the figure stands out boldly — NOT pale, washed-out, faded, or low-contrast",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "legend" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+];
+
 /** One on-map UNIT TOKEN per Legend (hero), keyed by the legend id so the overlay
  *  can draw it for the hero unit. Output: units/<id>.png. */
 export const LEGEND_UNIT_SUBSET: AssetEntry[] = LEGENDS.map((l) => {
@@ -515,7 +531,28 @@ const EMOJI_ICON_DEFS: readonly (readonly [string, string])[] = [
   ["ic_tower", "a tall stone defensive tower mounting a torsion ballista"],
   ["ic_bomb", "a round early-gunpowder bomb with a lit fuse"],
   ["ic_medical", "a simple medical staff / caduceus symbolising a healing infirmary"],
+  ["ic_chat", "a rounded speech bubble, a chat balloon"],
+  ["ic_info", "a lowercase letter i inside a circle, an information symbol"],
+  ["ic_pirate_flag", "a Jolly Roger pirate flag: a white skull above crossed bones on a black rectangular flag flying from a pole"],
+  ["ic_arrow_right", "a slim rightward-pointing arrow"],
+  ["ic_arrow_left", "a slim leftward-pointing arrow"],
+  ["ic_close", "a slim X made of two crossed strokes, a close symbol"],
+  ["ic_check", "a single check mark tick"],
+  ["ic_tri_up", "a small solid upward-pointing triangle"],
+  ["ic_tri_down", "a small solid downward-pointing triangle"],
+  ["ic_bullet", "a single solid round bullet dot"],
+  ["ic_reset", "a single counter-clockwise circular arrow, a reset symbol"],
+  ["ic_grid", "a small square grid of four cells, a grid-view symbol"],
+  ["ic_spark_star", "a single four-pointed sparkle star"],
+  ["ic_hexagon", "a single hollow hexagon outline"],
+  ["ic_hex_filled", "a single solid filled hexagon"],
 ];
+
+// Glyphs whose interior is enclosed by the art with NO intended white inside
+// (e.g. a hollow hexagon outline, an "i" inside a ring). The border-connected
+// flood-fill can't reach those pockets, so they need the extra global
+// `-transparent white` pass. Only list ids that contain no legitimate white.
+const EMOJI_SOLID_GLYPHS = new Set<string>(["ic_hexagon", "ic_info"]);
 
 export const EMOJI_ICON_SUBSET: AssetEntry[] = EMOJI_ICON_DEFS.map(([id, description]) => ({
   id,
@@ -525,6 +562,7 @@ export const EMOJI_ICON_SUBSET: AssetEntry[] = EMOJI_ICON_DEFS.map(([id, descrip
   size: { width: 128, height: 128 },
   category: "emoji_icon" as const,
   referenceTile: DEFAULT_REFERENCE_TILE,
+  ...(EMOJI_SOLID_GLYPHS.has(id) ? { solidGlyph: true as const } : {}),
 }));
 
 // Optional per-ability icons (docs/UNIT-ABILITIES.md §10.1). Each `id` MUST be an
@@ -663,6 +701,24 @@ export const TURN_UPDATE_SUBSET: AssetEntry[] = [
     id: "treasuryExhausted",
     name: "Treasury Exhausted",
     description: "a stylized hand-painted portrait of an empty treasury: an open chest with only a few copper coins, a worried scribe, dim lamplight. Evoke financial strain, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "governmentComplete",
+    name: "Government Adopted",
+    description: "a stylized hand-painted portrait of a new government taking power in an ancient civilization: robed statesmen and elders gathered on the steps of a marble council hall, one raising a sceptre or crown before an assembled crowd, banners and a throne in the background, dignified golden light. Evoke statecraft, reform, and a new era of rule, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "civDefeated",
+    name: "Civilization Defeated",
+    description: "a stylized hand-painted portrait of a fallen empire: a toppled royal statue and a broken crown lying in the dust before a ruined capital, a tattered banner half-buried, distant smoke under a leaden sky. Evoke the fall of a rival civilization, finality and somber triumph, no text, no UI.",
     aspectRatio: "3:4",
     size: { width: 320, height: 400 },
     category: "turn_update" as const,

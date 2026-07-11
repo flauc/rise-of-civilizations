@@ -11,6 +11,7 @@ import {
   uniqueInfraForCiv,
   getLeaderAbilityForCiv,
   techSystemUnlocks,
+  scaledTechCost,
   type GameState,
   type TechId,
   type UnitTypeId,
@@ -213,7 +214,7 @@ export function renderTechTreeInto(
       `<div class="tt-node tt-${st}${civ.length ? " tt-civ" : ""}" data-tech="${id}" style="left:${p.x}px;top:${p.y}px;width:${NODE_W}px;height:${NODE_H}px">` +
       (civ.length ? `<div class="tt-civ-badge" title="Unlocks one of your civilization's unique features">👑</div>` : "") +
       `<div class="tt-name">${def.name}</div>` +
-      `<div class="tt-cost">${def.cost > 0 ? `🔬 ${def.cost}` : "start"}</div>` +
+      `<div class="tt-cost">${def.cost > 0 ? `🔬 ${scaledTechCost(state, id)}` : "start"}</div>` +
       unlockLine +
       `</div>`;
   }

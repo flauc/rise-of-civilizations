@@ -1,7 +1,7 @@
 import { cityAt, cityMaxHp, ownedTileYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, majorityReligion, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
-import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
+import { BASE_SIZE, VSQUISH, tileCenterWorld, tileFootprint } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
 import { barbCampFrameFor, villageFrameFor, ruinFrameFor, type FeatureAtlas } from "./feature-assets";
@@ -32,6 +32,8 @@ export interface OverlayState {
   /** Tiles the selected city could claim next, highlighted while the player is
    *  choosing its next border tile. */
   expandCandidates?: Set<string>;
+  /** Origin tile while the player is picking a road-route destination. */
+  roadRouteFrom?: { col: number; row: number } | null;
   /** The tile the selected city will claim next (player-chosen or default) — flagged
    *  so the player can see where the borders grow before/after overriding it. */
   expandMarker?: { col: number; row: number } | null;
@@ -287,10 +289,15 @@ export function drawOverlay(
     if (!o.explored.has(`${t.col},${t.row}`)) continue;
     const s = screen(t.col, t.row);
     if (t.feature === "village") {
-      const villageImg = villageFrameFor(o.featureAtlas, t.col, t.row);
+      const villageImg = villageFrameFor(o.featureAtlas, t.col, t.row, state.turn);
       if (villageImg) {
-        const vSize = size * 0.85;
-        ctx.drawImage(villageImg, s.x - vSize / 2, s.y - vSize / 2, vSize, vSize);
+        // Village sprites use the 256×384 hex-tile format (bottom 256×256 is the
+        // footprint, top 128px transparent overhang), so anchor the footprint's
+        // bottom vertex at s.y + footprint/2 like terrain/wonder sprites.
+        const footprint = tileFootprint(size);
+        const drawW = footprint;
+        const drawH = villageImg.naturalHeight * (footprint / villageImg.naturalWidth);
+        ctx.drawImage(villageImg, s.x - drawW / 2, s.y + footprint / 2 - drawH, drawW, drawH);
       } else {
         ctx.fillStyle = "#cfa867";
         ctx.beginPath();
@@ -303,8 +310,13 @@ export function drawOverlay(
     } else if (t.feature === "barb_camp") {
       const campImg = barbCampFrameFor(o.featureAtlas, t.col, t.row);
       if (campImg) {
-        const cSize = size * 0.85;
-        ctx.drawImage(campImg, s.x - cSize / 2, s.y - cSize / 2, cSize, cSize);
+        // Camp sprites are hex-tile art (bandit camp is near-square; the two
+        // strongholds are 256×384 with overhang). Preserve aspect and anchor the
+        // footprint's bottom vertex at s.y + footprint/2, like village sprites.
+        const footprint = tileFootprint(size);
+        const drawW = footprint;
+        const drawH = campImg.naturalHeight * (footprint / campImg.naturalWidth);
+        ctx.drawImage(campImg, s.x - drawW / 2, s.y + footprint / 2 - drawH, drawW, drawH);
       } else {
         ctx.fillStyle = "#b23b2e";
         ctx.beginPath();
@@ -461,7 +473,10 @@ export function drawOverlay(
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     for (const r of o.tradeRoutes) {
-      if (r.ownerId !== o.viewingPlayerId) continue;
+      const own = r.ownerId === o.viewingPlayerId;
+      const escorted = r.escortUnitId !== undefined;
+      // Own routes always; escorted routes are visible to every player.
+      if (!own && !escorted) continue;
       const from = state.cities.get(r.fromCityId);
       const to = state.cities.get(r.toCityId);
       if (!from || !to) continue;
@@ -492,6 +507,7 @@ export function drawOverlay(
       strokePolyline(ctx, pts);
 
       // Trail, drawn per segment so road segments differ from open country.
+      const escortColor = escorted ? "rgba(140,200,255,0.95)" : intl ? "rgba(90,216,224,0.9)" : "rgba(255,206,110,0.9)";
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i]!;
         const b = pts[i + 1]!;
@@ -502,30 +518,42 @@ export function drawOverlay(
           // Paved road: solid, thicker, warm stone colour.
           ctx.setLineDash([]);
           ctx.lineWidth = Math.max(2, size * 0.1);
-          ctx.strokeStyle = "rgba(214,180,120,0.95)";
+          ctx.strokeStyle = escorted ? "rgba(170,210,255,0.95)" : "rgba(214,180,120,0.95)";
         } else {
           // Open country: dashed caravan track — gold for domestic, teal for
-          // international routes so the player can tell them apart at a glance.
+          // international routes; escorted routes get a brighter guard-blue.
           ctx.setLineDash([Math.max(4, size * 0.34), Math.max(3, size * 0.24)]);
-          ctx.lineWidth = Math.max(1.5, size * 0.07);
-          ctx.strokeStyle = intl ? "rgba(90,216,224,0.9)" : "rgba(255,206,110,0.9)";
+          ctx.lineWidth = escorted ? Math.max(2, size * 0.09) : Math.max(1.5, size * 0.07);
+          ctx.strokeStyle = escortColor;
         }
         ctx.stroke();
       }
 
-      // Small marker at the path midpoint.
+      // Small marker at the path midpoint ($ for commerce, shield when escorted).
       if (size > 10) {
         ctx.setLineDash([]);
         const mid = polylineMidpoint(pts);
-        ctx.fillStyle = "rgba(255,206,110,0.95)";
-        ctx.beginPath();
-        ctx.arc(mid.x, mid.y, Math.max(2, size * 0.12), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#2a1c08";
-        ctx.font = `${Math.max(7, Math.round(size * 0.22))}px system-ui, sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("$", mid.x, mid.y + 1);
+        if (escorted) {
+          ctx.fillStyle = "rgba(140,200,255,0.95)";
+          ctx.beginPath();
+          ctx.arc(mid.x, mid.y, Math.max(3, size * 0.16), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#0a1a2a";
+          ctx.font = `${Math.max(8, Math.round(size * 0.24))}px system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("🛡", mid.x, mid.y + 1);
+        } else {
+          ctx.fillStyle = "rgba(255,206,110,0.95)";
+          ctx.beginPath();
+          ctx.arc(mid.x, mid.y, Math.max(2, size * 0.12), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "#2a1c08";
+          ctx.font = `${Math.max(7, Math.round(size * 0.22))}px system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("$", mid.x, mid.y + 1);
+        }
       }
     }
     ctx.restore();
@@ -661,6 +689,8 @@ export function drawOverlay(
   const unitScale = isMobileScreen() ? MOBILE_UNIT_SCALE : 1;
   const civByPlayer = new Map(state.players.map((p) => [p.id, p.civId]));
   for (const unit of state.units.values()) {
+    if (unit.aboardShipId !== undefined) continue;
+    if (unit.escortingRouteId !== undefined) continue;
     const own = unit.ownerId === o.viewingPlayerId;
     if (!own && !o.visible.has(`${unit.col},${unit.row}`)) continue;
     const uu = uniqueUnitForCiv(civByPlayer.get(unit.ownerId), unit.type);
@@ -855,5 +885,21 @@ export function drawOverlay(
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     drawGlyph(ctx, "🚩", s.x, s.y - size * 0.02, Math.round(size * 0.5));
+  }
+
+  // Road-route origin while the player is choosing a destination.
+  if (o.roadRouteFrom) {
+    const s = screen(o.roadRouteFrom.col, o.roadRouteFrom.row);
+    ctx.save();
+    ctx.setLineDash([size * 0.12, size * 0.08]);
+    ctx.lineWidth = Math.max(1.5, size * 0.05);
+    ctx.strokeStyle = "rgba(143,206,143,0.85)";
+    hexPath(ctx, s.x, s.y, size * 0.92);
+    ctx.stroke();
+    ctx.restore();
+    ctx.font = `${Math.round(size * 0.5)}px system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    drawGlyph(ctx, "🛤️", s.x, s.y - size * 0.02, Math.round(size * 0.5));
   }
 }

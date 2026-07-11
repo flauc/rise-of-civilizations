@@ -20,7 +20,7 @@ import {
   type UnitAbility,
   type ActiveAbilityId,
 } from "@roc/sim";
-import { startingUnitsFor, capitalPopulationBonusFor, uniqueUnitForCiv, uuAbilityLore, BASE_CITY_POPULATION } from "@roc/data";
+import { startingUnitsFor, capitalPopulationBonusFor, uniqueUnitForCiv, uuAbilityLore, uniqueInfraHistoryByCiv, BASE_CITY_POPULATION } from "@roc/data";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -126,9 +126,11 @@ export function leaderAbilityBlockHtml(civId: string): string {
 
 /**
  * The civ's unique infrastructure — a real EXTRA building or tile improvement
- * (see UNIQUE_INFRA in @roc/data), not a flavor string. Shows its art, whether it
- * is a building or improvement, an effect summary, and its tech unlock. Reuses the
- * `.uu-*` block styling; the sprite hides gracefully (wireUuImages) when missing.
+ * (see UNIQUE_INFRA in @roc/data), not a flavor string. Like the unit block it is
+ * clickable (data-infra-detail → openInfraDetail), opening an expanded view with
+ * the effect summary, stats, and history; the effect/history are intentionally NOT
+ * inlined here so the selection screen stays uncluttered. Reuses the `.uu-*` block
+ * styling; the sprite hides gracefully (wireUuImages) when missing.
  */
 export function uniqueInfraBlockHtml(civId: string): string {
   const inf = uniqueInfraForCiv(civId);
@@ -137,14 +139,58 @@ export function uniqueInfraBlockHtml(civId: string): string {
   const src = `${ASSET_BASE_URL}${dir}/${inf.id}.png`;
   const tech = TECH_DEFS[inf.reqTech as keyof typeof TECH_DEFS]?.name ?? inf.reqTech;
   const kindLabel = inf.kind === "building" ? "Unique building" : "Unique tile improvement";
+  return `
+    <button type="button" class="uu-block uu-clickable" data-infra-detail="${civId}">
+      <div class="uu-top">
+        <div class="uu-icon"><img class="js-uu-img" src="${src}" alt="" /></div>
+        <div class="uu-info">
+          <div class="uu-name">${escapeHtml(inf.name)}</div>
+          <div class="uu-meta">${kindLabel} · unlocks with ${escapeHtml(String(tech))}</div>
+        </div>
+        <span class="uu-caret" aria-hidden="true">&rsaquo;</span>
+      </div>
+      <div class="uu-hint">View history</div>
+    </button>`;
+}
+
+/**
+ * Expanded unique-infrastructure view: art, stats (type, unlock tech, cost /
+ * terrain), the effect summary, and the building's history. Returned as the inner
+ * HTML of the detail dialog. Mirrors uniqueUnitDetailHtml's `.uud-*` structure.
+ */
+export function uniqueInfraDetailHtml(civId: string): string {
+  const inf = uniqueInfraForCiv(civId);
+  if (!inf) return "";
+  const civ = CIVILIZATIONS.find((c) => c.id === civId);
+  const dir = inf.kind === "building" ? "buildings" : "improvements";
+  const src = `${ASSET_BASE_URL}${dir}/${inf.id}.png`;
+  const tech = TECH_DEFS[inf.reqTech as keyof typeof TECH_DEFS]?.name ?? inf.reqTech;
+  const kindLabel = inf.kind === "building" ? "Unique building" : "Unique tile improvement";
+
+  const stat = (label: string, val: string): string =>
+    `<div class="uud-stat"><span>${label}</span><b>${val}</b></div>`;
+  const stats: string[] = [stat("Type", inf.kind === "building" ? "Building" : "Tile improvement")];
+  stats.push(stat("Unlocks with", escapeHtml(String(tech))));
+  if (inf.kind === "building" && inf.cost) stats.push(stat("⚙ Cost", String(inf.cost)));
+  if (inf.kind === "improvement" && inf.terrain?.length) stats.push(stat("Terrain", escapeHtml(inf.terrain.join(", "))));
+  if (inf.requiresCoastal) stats.push(stat("Placement", "Coastal cities only"));
+
+  const history = uniqueInfraHistoryByCiv(civId);
+
   return (
-    `<div class="uu-block">` +
-    `<div class="uu-top">` +
-    `<div class="uu-icon"><img class="js-uu-img" src="${src}" alt="" /></div>` +
-    `<div class="uu-info"><div class="uu-name">${escapeHtml(inf.name)}</div>` +
-    `<div class="uu-meta">${kindLabel} · unlocks with ${escapeHtml(tech)}</div></div></div>` +
-    `<div class="uu-meta" style="margin-top:7px">${escapeHtml(inf.desc)}</div>` +
-    `</div>`
+    `<div class="uud-head">` +
+    `<div class="uud-img"><img class="js-uu-img" src="${src}" alt="" /></div>` +
+    `<div class="uud-headinfo">` +
+    `<div class="uud-title">${escapeHtml(inf.name)}</div>` +
+    `<div class="uud-subtitle">${kindLabel}${civ ? ` of ${escapeHtml(civ.name)}` : ""}</div>` +
+    `<div class="uud-stats">${stats.join("")}</div>` +
+    `</div></div>` +
+    `<div class="uud-section"><div class="uud-section-title">Effect</div>` +
+    `<div class="uud-ability-desc">${escapeHtml(inf.desc)}</div></div>` +
+    (history
+      ? `<div class="uud-section"><div class="uud-section-title">History</div>` +
+        `<div class="uud-ability-desc uud-lore">${escapeHtml(history)}</div></div>`
+      : "")
   );
 }
 
@@ -246,7 +292,7 @@ export function wireUuImages(root: HTMLElement): void {
 
 /**
  * Open the expanded unique-unit detail as a modal dialog (above the civ picker
- * or the wiki). Closed via the ✕, a backdrop click, or Escape.
+ * or the wiki). Closed via the ✕ or Escape.
  */
 export function openUnitDetail(uuId: string): void {
   const uu = UNIQUE_UNITS.find((u) => u.id === uuId);
@@ -269,14 +315,42 @@ export function openUnitDetail(uuId: string): void {
   };
   document.addEventListener("keydown", onKey);
   overlay.querySelector<HTMLButtonElement>(".uud-close")!.addEventListener("click", close);
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) close();
-  });
 }
 
-/** Wire clickable unique-unit blocks within `root` to open their detail dialog. */
+/**
+ * Open the expanded unique-infrastructure detail as a modal dialog (above the civ
+ * picker, showcase, or wiki). Closed via the ✕ or Escape. Mirrors openUnitDetail.
+ */
+export function openInfraDetail(civId: string): void {
+  const inf = uniqueInfraForCiv(civId);
+  if (!inf) return;
+  const overlay = document.createElement("div");
+  overlay.className = "uud-overlay";
+  overlay.innerHTML = `
+    <div class="uud-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(inf.name)}">
+      <button class="uud-close" aria-label="Close">✕</button>
+      <div class="uud-content">${uniqueInfraDetailHtml(civId)}</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  wireUuImages(overlay);
+  const close = (): void => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.key === "Escape") close();
+  };
+  document.addEventListener("keydown", onKey);
+  overlay.querySelector<HTMLButtonElement>(".uud-close")!.addEventListener("click", close);
+}
+
+/** Wire clickable unique-unit and unique-infra blocks within `root` to open their
+ *  detail dialog. */
 export function wireUuDetail(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>("[data-uu-detail]").forEach((el) =>
     el.addEventListener("click", () => openUnitDetail(el.dataset.uuDetail!)),
+  );
+  root.querySelectorAll<HTMLElement>("[data-infra-detail]").forEach((el) =>
+    el.addEventListener("click", () => openInfraDetail(el.dataset.infraDetail!)),
   );
 }

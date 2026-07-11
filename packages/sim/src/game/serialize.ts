@@ -1,7 +1,7 @@
 import { getTile } from "@roc/shared";
 import type {
   Attitude, BarbarianActivity, BarbarianBribe, City, ContactEvent, GameOver, GameState,
-  LogEntry, MoraleEvent, Proposal, Relation, Religion, TradeRecord, TradeRoute, TurnUpdateEvent,
+  LogEntry, MoraleEvent, Proposal, Relation, Religion, RoadRoute, TradeRecord, TradeRoute, TurnUpdateEvent,
   Unit, VictoryKind, Work,
 } from "./state";
 import { defaultEnabledVictories } from "./state";
@@ -11,6 +11,7 @@ import { attitudeLabel, attitudeScore, sharedVisionPartners } from "./diplomacy"
 import { GLOBAL_MORALE_BASE } from "./morale";
 import { victoryProgress, type VictoryProgressEntry } from "./victory";
 import type { TechId } from "./content";
+import { normalizeGameSpeed, type GameSpeed } from "./game-speed";
 
 export interface DiploView {
   met: number[];
@@ -47,6 +48,8 @@ export interface TileView {
   river?: number;
   riverLake?: boolean;
   bridge?: boolean;
+  /** Tree-clad hills (visual decor overlay). */
+  wooded?: boolean;
 }
 
 export interface PlayerPublic {
@@ -62,6 +65,8 @@ export interface PlayerView {
   turn: number;
   /** Turn at which the score victory triggers; 0 = unlimited (no turn cap). */
   turnLimit: number;
+  /** How costly research and civics are. */
+  gameSpeed: GameSpeed;
   yourId: number;
   you: {
     gold: number;
@@ -106,6 +111,8 @@ export interface PlayerView {
   tradeRoutes: TradeRoute[];
   /** The viewer's own public works in progress. */
   works: Work[];
+  /** The viewer's own multi-tile road routes being paved. */
+  roadRoutes: RoadRoute[];
   /** Wonders already completed in the world. */
   completedWonders: string[];
   /** Great-person ids already recruited by anyone (gone for the world). */
@@ -125,6 +132,8 @@ export interface PlayerView {
   players: PlayerPublic[];
   cols: number;
   rows: number;
+  /** Which opposite edges hold the frozen poles ("ns" or "ew"); for polar decor. */
+  poleAxis?: "ns" | "ew";
   tiles: TileView[]; // explored tiles only
   visible: string[];
   units: Unit[];
@@ -214,12 +223,18 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     if (t.wonder) tv.wonder = t.wonder;
     if (t.river) tv.river = t.river;
     if (t.riverLake) tv.riverLake = true;
+    if (t.wooded) tv.wooded = true;
     if (tileHasBridge(state, col, row)) tv.bridge = true;
     tiles.push(tv);
   }
 
   const units: Unit[] = [];
   for (const u of state.units.values()) {
+    // Cargo is hidden below decks — never reveal enemy troops stowed on a ship.
+    if (u.aboardShipId !== undefined) {
+      if (u.ownerId === playerId) units.push(u);
+      continue;
+    }
     // Hidden enemy units are concealed even on a visible tile until discovered.
     if (u.ownerId === playerId || (visible.has(`${u.col},${u.row}`) && !u.hidden)) units.push(u);
   }
@@ -236,6 +251,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
   return {
     turn: state.turn,
     turnLimit: state.turnLimit,
+    gameSpeed: normalizeGameSpeed(state.gameSpeed),
     yourId: playerId,
     you: {
       gold: me?.gold ?? 0,
@@ -268,10 +284,18 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
         .map((b) => ({ campKey: b.campKey, untilTurn: b.untilTurn })),
     },
     religions: state.religions.map((r) => ({ ...r, beliefs: [...r.beliefs] })),
-    tradeRoutes: state.tradeRoutes.filter((r) => r.ownerId === playerId).map((r) => ({ ...r })),
+    tradeRoutes: [
+      ...state.tradeRoutes.filter((r) => r.ownerId === playerId),
+      ...state.tradeRoutes.filter((r) => r.escortUnitId !== undefined && r.ownerId !== playerId),
+    ]
+      .filter((r, i, arr) => arr.findIndex((x) => x.id === r.id) === i)
+      .map((r) => ({ ...r, path: [...r.path] })),
     works: state.works
       .filter((w) => w.ownerId === playerId)
       .map((w) => ({ ...w, cityIds: [...w.cityIds], assignedSpecialistIds: [...w.assignedSpecialistIds] })),
+    roadRoutes: state.roadRoutes
+      .filter((r) => r.ownerId === playerId)
+      .map((r) => ({ ...r, queue: r.queue.map((t) => ({ ...t })), specialistIds: [...r.specialistIds] })),
     completedWonders: [...state.completedWonders],
     recruitedGreatPeople: [...(state.recruitedGreatPeople ?? [])],
     legendsEnabled: state.legendsEnabled ?? true,
@@ -290,6 +314,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     })),
     cols: state.map.cols,
     rows: state.map.rows,
+    poleAxis: state.map.poleAxis,
     tiles,
     visible: [...visible],
     units,
@@ -313,10 +338,12 @@ export interface SerializedState {
   log: LogEntry[];
   gameOver: GameOver | null;
   turnLimit: number;
+  gameSpeed: GameSpeed;
   enabledVictories: VictoryKind[];
   religions: Religion[];
   tradeRoutes: TradeRoute[];
   works: Work[];
+  roadRoutes?: RoadRoute[];
   completedWonders: string[];
   recruitedGreatPeople: string[];
   legendsEnabled: boolean;
@@ -355,10 +382,12 @@ export function serializeState(state: GameState): SerializedState {
     log: state.log,
     gameOver: state.gameOver,
     turnLimit: state.turnLimit,
+    gameSpeed: normalizeGameSpeed(state.gameSpeed),
     enabledVictories: [...(state.enabledVictories ?? defaultEnabledVictories())],
     religions: state.religions,
     tradeRoutes: state.tradeRoutes,
     works: state.works,
+    roadRoutes: state.roadRoutes,
     completedWonders: state.completedWonders,
     recruitedGreatPeople: state.recruitedGreatPeople ?? [],
     legendsEnabled: state.legendsEnabled ?? true,
@@ -399,6 +428,7 @@ export function deserializeState(s: SerializedState): GameState {
       : [],
     gameOver: s.gameOver,
     turnLimit: s.turnLimit,
+    gameSpeed: normalizeGameSpeed(s.gameSpeed),
     enabledVictories: s.enabledVictories ? new Set(s.enabledVictories) : defaultEnabledVictories(),
     // Legacy saves predate religion tiers — every faith starts at tier 1.
     religions: (s.religions ?? []).map((r) => ({ ...r, tier: r.tier ?? 1 })),
@@ -408,6 +438,7 @@ export function deserializeState(s: SerializedState): GameState {
       cityIds: w.cityIds ?? [],
       assignedSpecialistIds: w.assignedSpecialistIds ?? [],
     })),
+    roadRoutes: s.roadRoutes ?? [],
     completedWonders: s.completedWonders ?? [],
     recruitedGreatPeople: s.recruitedGreatPeople ?? [],
     legendsEnabled: s.legendsEnabled ?? true,
@@ -440,8 +471,15 @@ export function deserializeState(s: SerializedState): GameState {
       greatPeopleEarned: p.greatPeopleEarned ?? {},
       greatPeople: p.greatPeople ?? [],
       legendsRecruited: p.legendsRecruited ?? 0,
+      legendTrackPoints: p.legendTrackPoints ?? {},
+      legendTrackEarned: p.legendTrackEarned ?? {},
       battlesWon: p.battlesWon ?? 0,
       citiesCaptured: p.citiesCaptured ?? 0,
+      eurekaTriggered: new Set<string>(
+        Array.isArray((p as unknown as { eurekaTriggered: unknown }).eurekaTriggered)
+          ? (p as unknown as { eurekaTriggered: string[] }).eurekaTriggered
+          : []
+      ),
       slottedCivics: p.slottedCivics ?? [],
       unrestTurns: p.unrestTurns ?? 0,
       governmentChangedTurn: p.governmentChangedTurn ?? -Infinity,

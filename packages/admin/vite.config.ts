@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 
 // Mirrors the client config: alias the shared package source so no build step is
 // needed during development. Runs on its own port so it can coexist with the game.
+const API_TARGET = process.env.VITE_API_URL?.trim() || "http://localhost:3001";
+
 export default defineConfig({
   base: "./",
   resolve: {
@@ -12,6 +14,10 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: process.env.PORT ? Number(process.env.PORT) : 5174,
+    port: process.env.PORT ? Number(process.env.PORT) : 5175,
+    strictPort: false,
+    proxy: {
+      "/admin": { target: API_TARGET, changeOrigin: true },
+    },
   },
 });

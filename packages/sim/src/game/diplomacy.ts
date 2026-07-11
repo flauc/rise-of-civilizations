@@ -262,14 +262,30 @@ function setPeace(state: GameState, r: Relation): void {
   if (B) B.atWar = B.atWar.filter((id) => id !== r.a);
 }
 
-export function declareWar(state: GameState, aId: number, targetId: number): DiploResult {
-  if (aId === targetId) return fail("you cannot declare war on yourself");
+/** Whether `aId` may declare war on `targetId` right now (peace cooldown, etc.). */
+export function canDeclareWar(
+  state: GameState,
+  aId: number,
+  targetId: number,
+): { ok: boolean; reason?: string } {
+  if (aId === targetId) return { ok: false, reason: "you cannot declare war on yourself" };
   const r = relationBetween(state, aId, targetId);
-  if (!r) return fail("you have not met them");
-  if (r.status === "war") return fail("you are already at war");
+  if (!r) return { ok: false, reason: "you have not met them" };
+  if (r.status === "war") return { ok: false, reason: "you are already at war" };
   if (r.warAllowedTurn !== undefined && state.turn < r.warAllowedTurn) {
-    return fail(`a peace treaty holds until turn ${r.warAllowedTurn}`);
+    const left = r.warAllowedTurn - state.turn;
+    return {
+      ok: false,
+      reason: `Peace treaty holds for ${left} more turn${left === 1 ? "" : "s"} (until turn ${r.warAllowedTurn})`,
+    };
   }
+  return { ok: true };
+}
+
+export function declareWar(state: GameState, aId: number, targetId: number): DiploResult {
+  const gate = canDeclareWar(state, aId, targetId);
+  if (!gate.ok) return fail(gate.reason ?? "cannot declare war");
+  const r = relationBetween(state, aId, targetId)!;
   const denounced = hasModifier(state, aId, targetId, "__denounced");
   setWar(state, r);
   addReputation(state, aId, denounced ? WARMONGER_DENOUNCED : WARMONGER_SURPRISE);

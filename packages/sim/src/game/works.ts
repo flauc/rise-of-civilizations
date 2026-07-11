@@ -22,6 +22,7 @@ import {
 import { DEFENSE_NAMES, STRUCTURE_HP, type DefenseKind } from "./fortifications";
 import { IMPROVEMENT_REQ_TECH, type ImprovementKind } from "./improvements";
 import { emitImprovementComplete, emitWonderComplete } from "./turn-updates";
+import { advanceRoadRoute, onRouteWorkCancelled } from "./road-routes";
 
 export type EconKind =
   | "farm"
@@ -267,7 +268,7 @@ export function buildableOutsideTerritory(kind: string): boolean {
 /** Whether the player may target this tile with a work of `kind`, given ownership.
  *  Neutral tiles are open to roads/improvements; enemy-claimed tiles never are;
  *  territory-locked kinds (defences, wonders) still require the tile to be yours. */
-function tileBuildableFor(state: GameState, tile: Tile, playerId: number, kind: string): boolean {
+export function tileBuildableFor(state: GameState, tile: Tile, playerId: number, kind: string): boolean {
   if (buildableOutsideTerritory(kind)) return !tileOwnedByOther(state, tile, playerId);
   return tileOwnedBy(state, tile, playerId);
 }
@@ -372,8 +373,20 @@ function lockedDisciplinesError(missing: Discipline[]): string {
   return `Research is needed before a ${missing.map(specialistNameForDiscipline).join(" or ")} can do this work`;
 }
 
+export interface WorkStartOpts {
+  /** Route dispatch reserves staff separately — skip the idle-craftsman gate. */
+  skipStaffCheck?: boolean;
+}
+
 /** Validate a tile/defensive work without mutating (drives the build UI). */
-export function canStartWork(state: GameState, playerId: number, kind: string, col: number, row: number): WorkResult {
+export function canStartWork(
+  state: GameState,
+  playerId: number,
+  kind: string,
+  col: number,
+  row: number,
+  opts?: WorkStartOpts,
+): WorkResult {
   if (!isEconKind(kind) && !isDefenseKind(kind) && !isUniqueImpKind(kind)) return { ok: false, error: "unknown work" };
   const tile = getTile(state.map, col, row);
   if (!tile) return { ok: false, error: "no such tile" };
@@ -415,7 +428,7 @@ export function canStartWork(state: GameState, playerId: number, kind: string, c
   const host = nearestOwningCity(state, playerId, col, row);
   if (!host) return { ok: false, error: "no city to build from" };
   const player = playerById(state, playerId);
-  if (player) {
+  if (player && !opts?.skipStaffCheck) {
     // The craft must be at least researchable (or already fielded) …
     const locked = lockedDisciplines(state, playerId, player, workDisciplines(kind));
     if (locked.length) return { ok: false, error: lockedDisciplinesError(locked) };
@@ -427,9 +440,20 @@ export function canStartWork(state: GameState, playerId: number, kind: string, c
   return { ok: true };
 }
 
+export interface StartWorkOpts extends WorkStartOpts {
+  routeId?: number;
+}
+
 /** Start (or upgrade) a tile/defensive work. Tier is inferred from the tile. */
-export function startWork(state: GameState, playerId: number, kind: string, col: number, row: number): WorkResult {
-  const can = canStartWork(state, playerId, kind, col, row);
+export function startWork(
+  state: GameState,
+  playerId: number,
+  kind: string,
+  col: number,
+  row: number,
+  opts?: StartWorkOpts,
+): WorkResult {
+  const can = canStartWork(state, playerId, kind, col, row, opts);
   if (!can.ok) return can;
   const tile = getTile(state.map, col, row)!;
   const tier = nextTierAt(tile, kind)!;
@@ -446,6 +470,7 @@ export function startWork(state: GameState, playerId: number, kind: string, col:
     assignedSpecialistIds: [],
     requirement: workLabourFor(state, kind, tier, host, col, row),
     progress: {},
+    routeId: opts?.routeId,
   });
   return { ok: true, workId: id };
 }
@@ -746,9 +771,11 @@ function crewShortfallError(short: { disc: Discipline; have: number; need: numbe
 }
 
 export function cancelWork(state: GameState, workId: number, playerId: number): WorkResult {
-  const before = state.works.length;
-  state.works = state.works.filter((w) => !(w.id === workId && w.ownerId === playerId));
-  return before === state.works.length ? { ok: false, error: "no such work" } : { ok: true };
+  const removed = state.works.find((w) => w.id === workId && w.ownerId === playerId);
+  if (!removed) return { ok: false, error: "no such work" };
+  state.works = state.works.filter((w) => w.id !== workId);
+  onRouteWorkCancelled(state, removed);
+  return { ok: true };
 }
 
 export function worksOf(state: GameState, playerId: number): Work[] {
@@ -919,6 +946,7 @@ export function advanceWorks(state: GameState, playerId: number): void {
   }
 
   // Complete and remove finished works; award a completion XP bonus to the crew.
+  const finished: Work[] = [];
   for (const w of works) {
     if (!isComplete(w)) continue;
     for (const sid of w.assignedSpecialistIds) {
@@ -926,8 +954,14 @@ export function advanceWorks(state: GameState, playerId: number): void {
       if (found) grantSpecialistXp(found.specialist, 6);
     }
     completeWork(state, w);
+    finished.push(w);
   }
   state.works = state.works.filter((w) => !(w.ownerId === playerId && isComplete(w)));
+  for (const w of finished) {
+    if (w.kind === "road" && w.routeId !== undefined) {
+      advanceRoadRoute(state, playerId, w.routeId, w);
+    }
+  }
   pruneWorks(state);
 }
 

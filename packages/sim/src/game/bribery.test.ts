@@ -11,6 +11,7 @@ import {
   BRIBE_TURNS,
 } from "./bribery";
 import { makeUnit, unitsOf, type GameState, type Unit } from "./state";
+import { unitMaxHp } from "./combat";
 import { offsetNeighbors } from "./movement";
 import { isPassableLand } from "./terrain";
 
@@ -92,7 +93,7 @@ describe("barbarian bribery", () => {
     barbarianTurn(state, barbId);
     const safe = state.units.get(hUnit.id);
     expect(safe).toBeDefined();
-    expect(safe!.hp).toBe(100);
+    expect(safe!.hp).toBe(unitMaxHp(safe!));
   });
 
   it("truces expire after BRIBE_TURNS", () => {

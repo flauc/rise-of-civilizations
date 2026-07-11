@@ -4,11 +4,16 @@
 
 export type TurnUpdateView = "expanded" | "compact";
 
+/** Player-chosen screen orientation; the game does not follow device rotation. */
+export type ScreenRotation = "portrait" | "landscape";
+
 export interface Settings {
   /** Whether the turn-start updates dialog auto-opens when a new turn begins. */
   turnUpdatePopup: boolean;
   /** Layout the turn-start updates dialog uses (carousel vs. one-screen list). */
   turnUpdateView: TurnUpdateView;
+  /** Fixed screen orientation for mobile / installed app builds. */
+  screenRotation: ScreenRotation;
 }
 
 const STORAGE_KEY = "roc:settings";
@@ -16,9 +21,21 @@ const STORAGE_KEY = "roc:settings";
 const DEFAULTS: Settings = {
   turnUpdatePopup: true,
   turnUpdateView: "expanded",
+  screenRotation: "landscape",
 };
 
 let cache: Settings | null = null;
+const listeners = new Set<(settings: Settings) => void>();
+
+/** Subscribe to settings changes (same reference after each update). */
+export function onSettingsChange(fn: (settings: Settings) => void): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+function notifySettingsChange(settings: Settings): void {
+  for (const fn of listeners) fn(settings);
+}
 
 /** Read the current settings, loading from localStorage on first access. */
 export function getSettings(): Settings {
@@ -31,6 +48,9 @@ export function getSettings(): Settings {
       if (typeof parsed.turnUpdatePopup === "boolean") next.turnUpdatePopup = parsed.turnUpdatePopup;
       if (parsed.turnUpdateView === "expanded" || parsed.turnUpdateView === "compact") {
         next.turnUpdateView = parsed.turnUpdateView;
+      }
+      if (parsed.screenRotation === "portrait" || parsed.screenRotation === "landscape") {
+        next.screenRotation = parsed.screenRotation;
       }
     }
   } catch {
@@ -49,5 +69,6 @@ export function updateSettings(patch: Partial<Settings>): Settings {
   } catch {
     // Ignore write failures (quota, private mode); the in-memory cache still applies.
   }
+  notifySettingsChange(next);
   return next;
 }

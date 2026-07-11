@@ -45,9 +45,9 @@ async function main() {
   await Promise.all([alice.ready, bob.ready]);
 
   // Register.
-  alice.send({ t: "register", handle: "alice", password: "secret" });
+  alice.send({ t: "register", handle: "alice", password: "secret12" });
   assert((await alice.next((m) => m.t === "authOk")).handle === "alice", "alice authOk");
-  bob.send({ t: "register", handle: "bob", password: "secret" });
+  bob.send({ t: "register", handle: "bob", password: "secret12" });
   await bob.next((m) => m.t === "authOk");
 
   // Create + join + start.

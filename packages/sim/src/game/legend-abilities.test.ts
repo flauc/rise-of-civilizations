@@ -158,14 +158,14 @@ describe("legend situational combat passives", () => {
     const state = bareGame();
     const elCid = placeLegend(state, 0, "el_cid", "cataphract", 5, 5);
     // No city owns this ground — the frontier.
-    expect(legendCombatBonus(state, elCid)).toBe(9 + 4);
+    expect(legendCombatBonus(state, elCid)).toBe(9 - 2 + 4);
   });
 
   it("Cleopatra's Allure weakens adjacent enemies", () => {
     const state = bareGame();
     placeLegend(state, 1, "cleopatra", "warrior", 5, 5);
     const foe = place(state, 0, "warrior", 6, 5);
-    expect(legendCombatBonus(state, foe)).toBe(-2);
+    expect(legendCombatBonus(state, foe)).toBe(-3);
   });
 
   it("Qin Shi Huang's Great Wall strengthens every city he rules", () => {
@@ -173,7 +173,7 @@ describe("legend situational combat passives", () => {
     const city = addCity(state, 0, 10, 10);
     const without = cityDefenseStrength(state, city);
     placeLegend(state, 0, "qin_shi_huang", "swordsman", 3, 3); // anywhere in the empire
-    expect(cityDefenseStrength(state, city)).toBe(without + 6);
+    expect(cityDefenseStrength(state, city)).toBe(without + 10);
   });
 });
 
@@ -206,19 +206,19 @@ describe("legend per-turn passives (tickLegendPassives)", () => {
   it("Mansa Musa floods the treasury with gold", () => {
     const state = bareGame();
     const player = playerById(state, 0)!;
-    placeLegend(state, 0, "mansa_musa", "warrior", 5, 5);
+    placeLegend(state, 0, "mansa_musa", "swordsman", 5, 5);
     const gold = player.gold;
     tickLegendPassives(state, player);
-    expect(player.gold).toBe(gold + 8);
+    expect(player.gold).toBe(gold + 14);
   });
 
   it("Hammurabi's Code steadies empire-wide morale", () => {
     const state = bareGame();
     const player = playerById(state, 0)!;
-    placeLegend(state, 0, "hammurabi", "warrior", 5, 5);
+    placeLegend(state, 0, "hammurabi", "spearman", 5, 5);
     const before = globalMoraleOf(player);
     tickLegendPassives(state, player);
-    expect(globalMoraleOf(player)).toBe(before + 1);
+    expect(globalMoraleOf(player)).toBe(before + 2);
   });
 
   it("Ashoka yields faith and heals adjacent allies", () => {
@@ -229,8 +229,8 @@ describe("legend per-turn passives (tickLegendPassives)", () => {
     ally.hp = 50;
     const faith = player.faith;
     tickLegendPassives(state, player);
-    expect(player.faith).toBe(faith + 2);
-    expect(ally.hp).toBe(60);
+    expect(player.faith).toBe(faith + 4);
+    expect(ally.hp).toBe(65);
   });
 
   it("Cyrus grants marching speed to himself and adjacent allies", () => {

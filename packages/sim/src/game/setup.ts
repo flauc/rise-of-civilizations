@@ -1,6 +1,6 @@
-import { axialDistance, getTile, hashSeed, makeRng, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, hashSeed, isPolarTile, landmassSizes, makeRng, offsetToAxial, polarCapLand } from "@roc/shared";
 import { CIV_IDS, startingUnitsFor } from "@roc/data";
-import { generateMap, type MapType } from "../worldgen";
+import { generateMap, majorLandmassMin, type MapType } from "../worldgen";
 import type { GameState, Player, VictoryKind } from "./state";
 import { makeUnit, defaultEnabledVictories, TOGGLEABLE_VICTORIES } from "./state";
 import { isPassableLand, TERRAIN_YIELDS } from "./terrain";
@@ -12,6 +12,7 @@ import { placeResources } from "./resources";
 import { placeNaturalWonders } from "./natural-wonders";
 import { GLOBAL_MORALE_BASE, startingUnitMorale } from "./morale";
 import type { BarbarianActivity } from "./state";
+import { normalizeGameSpeed, type GameSpeed } from "./game-speed";
 
 export interface NewGameOptions {
   cols?: number;
@@ -31,8 +32,12 @@ export interface NewGameOptions {
   legends?: boolean;
   /** Scatter natural wonders across the map. Defaults to off. */
   naturalWonders?: boolean;
+  /** Scatter tribal villages that grant rewards when visited. Defaults to on. */
+  villages?: boolean;
   /** Starting gold treasury preset for major civ players. */
   startingGold?: "tight" | "balanced" | "generous";
+  /** How costly research and civics are. Defaults to normal. */
+  gameSpeed?: GameSpeed;
   turnLimit?: number;
   /** Decisive win conditions enabled this game. Defaults to all toggleable ones.
    *  (Score at the turn limit and extinction always apply.) */
@@ -89,14 +94,25 @@ function startScore(state: GameState, col: number, row: number): number {
 /** Pick `count` well-separated, high-scoring land starts via greedy spreading. */
 function findStarts(state: GameState, count: number): { col: number; row: number }[] {
   const { map } = state;
-  const candidates: { col: number; row: number; score: number }[] = [];
+  const sizes = landmassSizes(map);
+  // Landmasses below the continent threshold are trap starts (even the big
+  // "Japan" islands the generator sprinkles stay below it), and so are the
+  // polar ice caps — big, but frozen wastes.
+  const minStartLandmass = majorLandmassMin(map.cols, map.rows);
+  const caps = polarCapLand(map);
+  const all: { col: number; row: number; score: number }[] = [];
   for (let row = 0; row < map.rows; row++) {
     for (let col = 0; col < map.cols; col++) {
+      if (caps.has(row * map.cols + col)) continue;
       const score = startScore(state, col, row);
-      if (score > -Infinity) candidates.push({ col, row, score });
+      if (score > -Infinity) all.push({ col, row, score });
     }
   }
-  candidates.sort((a, b) => b.score - a.score);
+  all.sort((a, b) => b.score - a.score);
+
+  // Keep civs off islands — unless the map (e.g. Islands) offers nothing else.
+  const continental = all.filter((c) => sizes[c.row * map.cols + c.col]! >= minStartLandmass);
+  const candidates = continental.length >= count ? continental : all;
 
   // Try to keep starts at least `minDist` apart, relaxing if we can't fit them.
   for (let minDist = Math.floor(Math.min(map.cols, map.rows) / 2); minDist >= 2; minDist--) {
@@ -171,6 +187,7 @@ function spawnBarbarians(
     for (let col = 2; col < map.cols - 2 && placed.length < types.length; col += 5) {
       const tile = getTile(map, col, row);
       if (!tile || !isPassableLand(tile.terrain)) continue;
+      if (isPolarTile(map, col, row)) continue; // barbarians shun the frozen poles
       if (!farFromStarts(col, row)) continue;
       if (placed.some((p) => axialDistance(offsetToAxial(p), offsetToAxial({ col, row })) < 6)) continue;
       spawn(state, barbId, types[ti++ % types.length]!, col, row);
@@ -323,12 +340,14 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     log: [],
     gameOver: null,
     turnLimit: opts.turnLimit ?? 120,
+    gameSpeed: normalizeGameSpeed(opts.gameSpeed),
     enabledVictories: opts.enabledVictories
       ? new Set(opts.enabledVictories.filter((v) => TOGGLEABLE_VICTORIES.includes(v)))
       : defaultEnabledVictories(),
     religions: [],
     tradeRoutes: [],
     works: [],
+    roadRoutes: [],
     completedWonders: [],
     recruitedGreatPeople: [],
     legendsEnabled,
@@ -362,7 +381,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   });
 
   if (activity !== "none") spawnBarbarians(state, barbId, starts, activity);
-  placeFeatures(state, starts, activity);
+  placeFeatures(state, starts, activity, opts.villages ?? true);
   if (opts.naturalWonders) placeNaturalWonders(state, starts, seed);
   placeResources(state, starts, seed);
 

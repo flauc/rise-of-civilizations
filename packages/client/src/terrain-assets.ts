@@ -6,6 +6,14 @@ import { TERRAIN_TYPES, type TerrainType } from "@roc/shared";
 export interface TerrainAtlas {
   /** All loaded variants for each terrain (e.g. forest.png, forest_1.png …). */
   readonly images: Readonly<Record<TerrainType, HTMLImageElement[]>>;
+  /** Tree-cluster decor sprites drawn on wooded hills. */
+  readonly hillTrees: HTMLImageElement[];
+  /** Frozen-pond decor drawn on some snow tiles. */
+  readonly frozenLakes: HTMLImageElement[];
+  /** Crevasse decor drawn on some polar (ice-cap) tiles. */
+  readonly iceCrevasses: HTMLImageElement[];
+  /** Small iceberg decor scattered in polar waters. */
+  readonly icebergs: HTMLImageElement[];
   /** True once every requested variant image has finished loading or errored. */
   loaded: boolean;
 }
@@ -83,39 +91,57 @@ export function loadTerrainAtlas(onLoad?: () => void): TerrainAtlas {
     volcano: [],
   };
 
+  const hillTrees: HTMLImageElement[] = [];
+  const frozenLakes: HTMLImageElement[] = [];
+  const iceCrevasses: HTMLImageElement[] = [];
+  const icebergs: HTMLImageElement[] = [];
   let remaining = 0;
+
+  const load = (url: string, sink: HTMLImageElement[]): void => {
+    const img = new Image();
+    img.src = url;
+    remaining++;
+
+    const onFinish = (): void => {
+      // Only keep successfully loaded variants.
+      if (isImageReady(img)) {
+        sink.push(img);
+      }
+      remaining--;
+      if (remaining === 0) {
+        (atlas as { loaded: boolean }).loaded = true;
+      }
+      onLoad?.();
+    };
+
+    img.onload = onFinish;
+    img.onerror = () => {
+      // Decrement so we do not block the atlas forever; the renderer will keep
+      // using the fallback color for this terrain if no variants load.
+      remaining--;
+      if (remaining === 0) {
+        (atlas as { loaded: boolean }).loaded = true;
+      }
+      onLoad?.();
+    };
+  };
 
   for (const terrain of TERRAIN_TYPES) {
     for (const url of variantUrls(TERRAIN_IMAGE_NAMES[terrain])) {
-      const img = new Image();
-      img.src = url;
-      remaining++;
-
-      const onFinish = (): void => {
-        // Only keep successfully loaded variants.
-        if (isImageReady(img)) {
-          images[terrain].push(img);
-        }
-        remaining--;
-        if (remaining === 0) {
-          (atlas as { loaded: boolean }).loaded = true;
-        }
-        onLoad?.();
-      };
-
-      img.onload = onFinish;
-      img.onerror = () => {
-        // Decrement so we do not block the atlas forever; the renderer will keep
-        // using the fallback color for this terrain if no variants load.
-        remaining--;
-        if (remaining === 0) {
-          (atlas as { loaded: boolean }).loaded = true;
-        }
-        onLoad?.();
-      };
+      load(url, images[terrain]);
     }
   }
+  // Tree-cluster decor for wooded hills (exactly three variants shipped).
+  for (const name of ["hill-trees", "hill-trees_1", "hill-trees_2"]) {
+    load(imageUrl(name), hillTrees);
+  }
+  // Cold-lands decor: frozen ponds, ice-cap crevasses, and drifting icebergs.
+  load(imageUrl("frozen-lake"), frozenLakes);
+  for (const name of ["ice-crevasse", "ice-crevasse_1"]) load(imageUrl(name), iceCrevasses);
+  for (const name of ["iceberg", "iceberg_1", "iceberg_2", "iceberg_3", "iceberg_4"]) {
+    load(imageUrl(name), icebergs);
+  }
 
-  const atlas: TerrainAtlas = { images, loaded: remaining === 0 };
+  const atlas: TerrainAtlas = { images, hillTrees, frozenLakes, iceCrevasses, icebergs, loaded: remaining === 0 };
   return atlas;
 }

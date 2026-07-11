@@ -49,16 +49,16 @@ export function legendGarrisonEffects(state: GameState, city: City): Partial<Civ
   const garrison = unitAt(state, city.col, city.row);
   if (!garrison || garrison.ownerId !== city.ownerId || !garrison.legendId) return {};
   if (garrison.legendId === "ramesses_ii") return { yieldPercent: { production: 25, culture: 25 } };
-  if (garrison.legendId === "pachacuti") return { yieldPercent: { food: 25 } };
+  if (garrison.legendId === "pachacuti") return { yieldPercent: { food: 25, production: 25 } };
   return {};
 }
 
 /**
  * Qin Shi Huang — the Great Wall: while the First Emperor lives, every one of
- * his empire's cities defends at +6 strength (added in cityDefenseStrength).
+ * his empire's cities defends at +10 strength (added in cityDefenseStrength).
  */
 export function legendCityDefenseBonus(state: GameState, city: City): number {
-  return playerHasLegend(state, city.ownerId, "qin_shi_huang") ? 6 : 0;
+  return playerHasLegend(state, city.ownerId, "qin_shi_huang") ? 10 : 0;
 }
 
 /**
@@ -66,7 +66,7 @@ export function legendCityDefenseBonus(state: GameState, city: City): number {
  * legendCombatBonus (legends.ts) for both attack and defense:
  * - Belisarius — Against All Odds: +2 per adjacent enemy beyond the first (max +6).
  * - El Cid — Campeador: +4 on any tile outside his own borders.
- * - Cleopatra — Allure: enemy units adjacent to the queen fight at −2.
+ * - Cleopatra — Allure: enemy units adjacent to the queen fight at −3.
  */
 export function legendSituationalCombatBonus(state: GameState, unit: Unit): number {
   let bonus = 0;
@@ -93,7 +93,7 @@ export function legendSituationalCombatBonus(state: GameState, unit: Unit): numb
       if (other.legendId !== "cleopatra") continue;
       const o = playerById(state, other.ownerId);
       if (o && areEnemies(owner, o) && axialDistance(ax(unit), ax(other)) === 1) {
-        bonus -= 2;
+        bonus -= 3;
         break;
       }
     }

@@ -13,6 +13,8 @@ export interface SaveRecord {
   createdAt: number;
   turn: number;
   playerNames: string[];
+  /** Account that owns this save; only shown in Load Game for that user. */
+  userId?: string;
   /** Multiplayer server game id, when this is an mp save. */
   gameId?: string;
   /** JSON string of a SerializedState. */
@@ -50,6 +52,25 @@ export async function listSaves(): Promise<SaveRecord[]> {
     req.onerror = () => reject(req.error ?? new Error("listSaves failed"));
     tx.oncomplete = () => db.close();
   });
+}
+
+/** Saves belonging to the signed-in user (legacy saves without userId are excluded). */
+export async function listSavesForUser(userId: string): Promise<SaveRecord[]> {
+  const all = await listSaves();
+  return all.filter((s) => s.userId === userId);
+}
+
+/**
+ * Re-tag every save owned by `fromUserId` to `toUserId`. Used when a guest signs
+ * in, so games saved while playing as a guest carry over to the account.
+ */
+export async function reassignSaves(fromUserId: string, toUserId: string): Promise<void> {
+  if (fromUserId === toUserId) return;
+  const saves = await listSavesForUser(fromUserId);
+  for (const save of saves) {
+    save.userId = toUserId;
+    await saveGame(save);
+  }
 }
 
 export async function saveGame(record: SaveRecord): Promise<void> {
@@ -128,6 +149,7 @@ export async function importSave(json: string): Promise<SaveRecord> {
     createdAt: typeof rec.createdAt === "number" ? rec.createdAt : Date.now(),
     turn: rec.turn,
     playerNames: rec.playerNames,
+    userId: typeof rec.userId === "string" ? rec.userId : undefined,
     gameId: typeof rec.gameId === "string" ? rec.gameId : undefined,
     blob: rec.blob,
   };
@@ -151,7 +173,7 @@ export function defaultSaveName(mode: SaveMode, turn: number, playerNames: strin
 export function makeSaveRecord(
   mode: SaveMode,
   state: SerializedState,
-  opts: { name?: string; gameId?: string } = {},
+  opts: { name?: string; gameId?: string; userId?: string } = {},
 ): SaveRecord {
   const id = `save_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const playerNames = state.players.map((p) => p.name);
@@ -162,6 +184,7 @@ export function makeSaveRecord(
     createdAt: Date.now(),
     turn: state.turn,
     playerNames,
+    userId: opts.userId,
     gameId: opts.gameId,
     blob: JSON.stringify(state),
   };
