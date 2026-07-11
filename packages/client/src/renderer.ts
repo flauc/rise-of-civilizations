@@ -625,6 +625,13 @@ export function drawScene(
   const fogDraws: { img: HTMLImageElement | undefined; sx: number; sy: number }[] = [];
   const unexploredDraws: { sx: number; sy: number }[] = [];
 
+  // Distance (in tiles) from a tile to its nearest polar map edge, and the width
+  // of the polar zone — used to place crevasse and iceberg decor near the caps.
+  const polarDim = map.poleAxis === "ew" ? map.cols : map.rows;
+  const polarBand = Math.max(4, Math.round(polarDim * 0.16));
+  const polarEdgeDist = (col: number, row: number): number =>
+    map.poleAxis === "ew" ? Math.min(col, map.cols - 1 - col) : Math.min(row, map.rows - 1 - row);
+
   for (const t of map.tiles) {
     const c = tileCenterWorld(t.col, t.row);
     const sx = camera.worldToScreenX(c.x);
@@ -683,6 +690,45 @@ export function drawScene(
       ctx.fill();
     }
 
+    // Wooded hills: a tree cluster grows on the hill crest (decor over terrain).
+    if (t.wooded && !t.naturalWonder) {
+      const clusters = opts.terrainAtlas?.hillTrees;
+      if (clusters && clusters.length > 0) {
+        const treeImg = clusters[hashSeed(`trees:${t.col},${t.row}`) % clusters.length]!;
+        if (isImageReady(treeImg)) {
+          const treeW = footprint * 0.52;
+          const treeH = treeImg.naturalHeight * (treeW / treeImg.naturalWidth);
+          // Deterministic nudge so plantations don't line up in rows.
+          const jx = ((hashSeed(`treesx:${t.col},${t.row}`) % 100) / 100 - 0.5) * footprint * 0.14;
+          const jy = ((hashSeed(`treesy:${t.col},${t.row}`) % 100) / 100 - 0.5) * footprint * 0.1;
+          ctx.drawImage(treeImg, sx - treeW / 2 + jx, sy - treeH * 0.78 + jy, treeW, treeH);
+        }
+      }
+    }
+
+    // Cold-lands decor on snow: 5% get a crevasse, another 5% a frozen pond. A
+    // single roll partitions the two so a tile never shows both.
+    if (!t.naturalWonder && !t.wonder && t.terrain === "snow") {
+      const crevasses = opts.terrainAtlas?.iceCrevasses;
+      const frozen = opts.terrainAtlas?.frozenLakes;
+      const roll = hashSeed(`icedecor:${t.col},${t.row}`) % 100;
+      let decor: HTMLImageElement | undefined;
+      let decorScale = 0.55;
+      if (roll < 5 && crevasses && crevasses.length > 0) {
+        decor = crevasses[hashSeed(`crevasse-v:${t.col},${t.row}`) % crevasses.length];
+        decorScale = 0.64;
+      } else if (roll < 10 && frozen && frozen.length > 0) {
+        decor = frozen[hashSeed(`frozen-v:${t.col},${t.row}`) % frozen.length];
+      }
+      if (decor && isImageReady(decor)) {
+        const dW = footprint * decorScale;
+        const dH = decor.naturalHeight * (dW / decor.naturalWidth);
+        const jx = ((hashSeed(`icex:${t.col},${t.row}`) % 100) / 100 - 0.5) * footprint * 0.12;
+        const jy = ((hashSeed(`icey:${t.col},${t.row}`) % 100) / 100 - 0.5) * footprint * 0.1;
+        ctx.drawImage(decor, sx - dW / 2 + jx, sy - dH / 2 + jy, dW, dH);
+      }
+    }
+
     // A completed built wonder draws its decor sprite on top of the terrain (the
     // sprite shares the 256×384 hex-tile format, anchored like a natural wonder
     // but with a transparent background so the terrain shows through).
@@ -709,6 +755,33 @@ export function drawScene(
         const n = getTile(map, nb.col, nb.row);
         if (n?.river && (n.river & (1 << ((d + 3) % 6)))) {
           drawFootprintOverlay(ctx, riverMouthFrame(opts.riverAtlas, 1 << d, t.col, t.row), sx, sy, footprint);
+        }
+      }
+      // Icebergs drift in the open water near the poles — a few small floes per
+      // tile, kept from overlapping by rejecting positions too close to a placed one.
+      // Both the reach from the pole and the spawn rate are kept sparse (~30%
+      // tighter than the ice-cap band) so they hug the caps.
+      const bergs = opts.terrainAtlas?.icebergs;
+      const bergBand = Math.round((polarBand + 2) * 0.7);
+      if (
+        bergs &&
+        bergs.length > 0 &&
+        polarEdgeDist(t.col, t.row) <= bergBand &&
+        hashSeed(`berg:${t.col},${t.row}`) % 100 < 29
+      ) {
+        const count = 1 + (hashSeed(`bergn:${t.col},${t.row}`) % 3); // 1..3 floes
+        const placedBergs: { x: number; y: number; r: number }[] = [];
+        for (let k = 0; k < count * 4 && placedBergs.length < count; k++) {
+          const img = bergs[hashSeed(`bergv:${t.col},${t.row}:${k}`) % bergs.length]!;
+          if (!isImageReady(img)) continue;
+          const bW = footprint * 0.2;
+          const bH = img.naturalHeight * (bW / img.naturalWidth);
+          const px = ((hashSeed(`bergx:${t.col},${t.row}:${k}`) % 1000) / 1000 - 0.5) * footprint * 0.62;
+          const py = ((hashSeed(`bergy:${t.col},${t.row}:${k}`) % 1000) / 1000 - 0.5) * footprint * 0.5;
+          const r = Math.max(bW, bH) * 0.5;
+          if (placedBergs.some((p) => Math.hypot(p.x - px, p.y - py) < p.r + r)) continue;
+          placedBergs.push({ x: px, y: py, r });
+          ctx.drawImage(img, sx + px - bW / 2, sy + py - bH / 2, bW, bH);
         }
       }
     } else if (t.river && !mtnRiverImg) {

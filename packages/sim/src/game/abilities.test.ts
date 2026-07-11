@@ -16,6 +16,14 @@ function warAll(state: GameState): void {
 function bareGame(): GameState {
   const state = createGame({ seed: "abil", cols: 30, rows: 20, barbarians: false });
   state.units.clear();
+  // Flatten the arena: ability mechanics shouldn't depend on rolled terrain.
+  for (const t of state.map.tiles) {
+    t.terrain = "plains";
+    delete t.river;
+    delete t.riverLake;
+    delete t.feature;
+    delete t.resource;
+  }
   warAll(state);
   return state;
 }

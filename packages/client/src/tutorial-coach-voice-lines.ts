@@ -5,6 +5,10 @@ import { TUTORIAL_COACH_TURNS } from "./tutorial.ts";
 import {
   buildTutorialSteps,
   coachSpeechText,
+  SPOT_BARBARIAN_MESSAGE,
+  SPOT_ENEMY_FALLBACK_MESSAGE,
+  T3_VILLAGE_MESSAGE,
+  T4_DIPLOMACY_MESSAGE,
   type TutorialStepId,
 } from "./tutorial-coach.ts";
 
@@ -49,15 +53,13 @@ export function allCoachVoiceSteps(): TutorialCoachVoiceStep[] {
     }
   }
 
-  // Encounter lines use dynamic rival names in-game — ship generic clips for generation.
-  add(
-    "spot_barbarian",
-    "Oh — those are barbarians. Wild raiders from camps out in the wilderness. They'll raid tiles if you let them get too close, so hunt down their camps when your army's ready.",
-  );
-  add(
-    "spot_enemy",
-    "Heads up — there's an enemy civilization out there. They want the same land and glory you do. Scout carefully and keep fighters close.",
-  );
+  // Conditional lines (encounters, villages, diplomacy) may not occur in the
+  // synthetic playthrough above — ship their clips unconditionally. Enemy
+  // sightings use dynamic rival names in-game, so ship the generic variant.
+  add("spot_barbarian", SPOT_BARBARIAN_MESSAGE);
+  add("spot_enemy", SPOT_ENEMY_FALLBACK_MESSAGE);
+  add("t3_village", T3_VILLAGE_MESSAGE);
+  add("t4_diplomacy", T4_DIPLOMACY_MESSAGE);
 
   return out;
 }

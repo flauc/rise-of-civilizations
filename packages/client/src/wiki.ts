@@ -674,7 +674,7 @@ function renderLegends(): string {
     ) +
     section(
       "Lifespan",
-      `<p>Heroes are precious and do not last forever. After their <b>lifespan</b> (about 15 turns, extendable through deeds that match each hero) elapses, a hero <b>passes into legend</b> and leaves the field. A few <b>rechargeable</b> heroes (such as Joan of Arc) return to the pool when they retire and may be recruited again.</p>`,
+      `<p>Heroes are precious and do not last forever. After their <b>lifespan</b> (from about 12 turns for the earliest heroes up to 25 for the longest-reigning, extendable through deeds that match each hero) elapses, a hero <b>passes into legend</b> and leaves the field. A few <b>rechargeable</b> heroes (such as Joan of Arc) return to the pool when they retire and may be recruited again.</p>`,
     ) +
     section(
       "In Battle",

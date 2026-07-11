@@ -32,9 +32,6 @@ import {
   type LegendTrack,
 } from "./legend-earning";
 
-/** Flat reduction so hero combat bonuses aren't overwhelming at spawn. */
-const LEGEND_COMBAT_NERF = 2;
-
 export type { LegendDef, LegendTrack };
 export {
   LEGEND_TRACKS,
@@ -135,7 +132,7 @@ export function recruitLegend(
   const morale = Math.min(200, startingUnitMorale(state, playerId) + 50); // heroes are steadfast
   const unit = makeUnit(id, playerId, def.baseType as UnitTypeId, spawn.col, spawn.row, 0, morale);
   unit.legendId = def.id;
-  unit.legendExpiresOnTurn = state.turn + LEGEND_DEFAULT_LIFESPAN;
+  unit.legendExpiresOnTurn = state.turn + (def.lifespan || LEGEND_DEFAULT_LIFESPAN);
   state.units.set(id, unit);
 
   log(state, `${player.name} recruited the Legend ${def.name}!`, {
@@ -179,8 +176,7 @@ export function tickLegends(state: GameState, playerId: number): void {
 export function legendCombatBonus(state: GameState, unit: Unit): number {
   let bonus = 0;
   if (unit.legendId) {
-    const raw = getLegend(unit.legendId)?.combatBonus ?? 0;
-    bonus += Math.max(0, raw - LEGEND_COMBAT_NERF);
+    bonus += Math.max(0, getLegend(unit.legendId)?.combatBonus ?? 0);
   }
   if (isMilitary(unit.type)) {
     let aura = 0;

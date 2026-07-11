@@ -175,6 +175,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     if (t.naturalWonder) tile.naturalWonder = t.naturalWonder;
     if (t.river) tile.river = t.river;
     if (t.riverLake) tile.riverLake = true;
+    if (t.wooded) tile.wooded = true;
     if (t.bridge) tile.bridge = true;
     tiles[t.row * view.cols + t.col] = tile;
     explored.add(`${t.col},${t.row}`);
@@ -232,7 +233,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
   }));
 
   const state: GameState = {
-    map: { cols: view.cols, rows: view.rows, tiles },
+    map: { cols: view.cols, rows: view.rows, tiles, poleAxis: view.poleAxis },
     players,
     units: new Map(view.units.map((u) => [u.id, u])),
     cities: new Map(view.cities.map((c) => [c.id, c])),

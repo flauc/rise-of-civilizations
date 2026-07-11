@@ -32,6 +32,8 @@ const outDir = join(root, "packages/client/public/coach/voice");
 
 const API_BASE = "https://api.elevenlabs.io/v1";
 const DEFAULT_MODEL = "eleven_turbo_v2_5";
+/** Herodotus — the tutorial advisor's ElevenLabs voice (override with ELEVENLABS_VOICE_ID). */
+const HERODOTUS_VOICE_ID = "Gsndh0O5AnuI2Hj3YUlA";
 
 function usage(): void {
   console.log(`Usage: bun run tools/generate-coach-voice.ts [options]
@@ -44,8 +46,8 @@ Options:
   --help          Show this help
 
 Environment (repo-root .env or shell):
-  ELEVENLABS_API_KEY   Required for generation
-  ELEVENLABS_VOICE_ID  Required for generation — from Voices → Copy voice ID
+  ELEVENLABS_API_KEY   Required for generation (ELEVEN_LABS_API_KEY also accepted)
+  ELEVENLABS_VOICE_ID  Optional — defaults to Herodotus (${HERODOTUS_VOICE_ID})
   ELEVENLABS_MODEL_ID  Optional (default: ${DEFAULT_MODEL})
 `);
 }
@@ -60,10 +62,11 @@ function argValue(name: string): string | undefined {
   return argv[i + 1];
 }
 
-function requireEnv(name: string): string {
-  const v = env[name]?.trim();
+/** API key from either spelling: ELEVENLABS_API_KEY or ELEVEN_LABS_API_KEY. */
+function requireApiKey(): string {
+  const v = env.ELEVENLABS_API_KEY?.trim() || env.ELEVEN_LABS_API_KEY?.trim();
   if (!v) {
-    console.error(`Missing ${name}. Add it to .env in the repo root or export it in your shell.`);
+    console.error("Missing ELEVENLABS_API_KEY. Add it to .env in the repo root or export it in your shell.");
     exit(1);
   }
   return v;
@@ -135,7 +138,7 @@ async function main(): Promise<void> {
   }
 
   if (argFlag("--list-voices")) {
-    await listVoices(requireEnv("ELEVENLABS_API_KEY"));
+    await listVoices(requireApiKey());
     return;
   }
 
@@ -162,9 +165,13 @@ async function main(): Promise<void> {
     return;
   }
 
-  const apiKey = requireEnv("ELEVENLABS_API_KEY");
-  const voiceId = requireEnv("ELEVENLABS_VOICE_ID");
+  const apiKey = requireApiKey();
+  const voiceId = env.ELEVENLABS_VOICE_ID?.trim() || HERODOTUS_VOICE_ID;
   const modelId = env.ELEVENLABS_MODEL_ID?.trim() || DEFAULT_MODEL;
+  // <phoneme> SSML tags (used to force a correct pronunciation) are only honored
+  // by older models, not the default turbo v2.5 — so any clip containing one is
+  // synthesized on a phoneme-capable model instead.
+  const phonemeModel = env.ELEVENLABS_PHONEME_MODEL?.trim() || "eleven_turbo_v2";
 
   await mkdir(outDir, { recursive: true });
 
@@ -179,9 +186,10 @@ async function main(): Promise<void> {
       continue;
     }
 
-    process.stdout.write(`gen   ${step.id}.mp3 … `);
+    const stepModel = step.text.includes("<phoneme") ? phonemeModel : modelId;
+    process.stdout.write(`gen   ${step.id}.mp3 (${stepModel}) … `);
     try {
-      const audio = await synthesize(apiKey, voiceId, modelId, step.text);
+      const audio = await synthesize(apiKey, voiceId, stepModel, step.text);
       await writeFile(outPath, Buffer.from(audio));
       console.log("ok");
       generated++;

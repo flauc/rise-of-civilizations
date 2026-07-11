@@ -10,17 +10,17 @@ reads that file automatically, so add/edit/remove steps there and re-run.
 
 1. Sign up at [elevenlabs.io](https://elevenlabs.io).
 2. **Profile → API Key** → create/copy key.
-3. **Voices** → pick a narrator for Alexander → **Copy voice ID**
-   (looks like `21m00Tcm4TlvDq8ikWAM` — not a download link).
+3. The voice defaults to **Herodotus** (`Gsndh0O5AnuI2Hj3YUlA`). To use another
+   narrator: **Voices** → **Copy voice ID** and set `ELEVENLABS_VOICE_ID`.
 
 ## 2. Local env (never commit)
 
 In the **repo root**, create `.env`:
 
 ```bash
-ELEVENLABS_API_KEY=your-api-key-here
-ELEVENLABS_VOICE_ID=your-voice-id-here
+ELEVENLABS_API_KEY=your-api-key-here   # ELEVEN_LABS_API_KEY also accepted
 # optional:
+# ELEVENLABS_VOICE_ID=override-voice-id   (default: Herodotus)
 # ELEVENLABS_MODEL_ID=eleven_turbo_v2_5
 ```
 

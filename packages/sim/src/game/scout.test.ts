@@ -18,6 +18,12 @@ function warAll(state: GameState): void {
 function bareGame(): GameState {
   const state = createGame({ seed: "scout", cols: 30, rows: 20, barbarians: false });
   state.units.clear();
+  // Strip map-rolled villages/wonders so discovery XP counts only what each
+  // test places itself.
+  for (const t of state.map.tiles) {
+    delete t.feature;
+    delete t.naturalWonder;
+  }
   warAll(state);
   return state;
 }

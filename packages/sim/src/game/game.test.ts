@@ -1,7 +1,9 @@
 import { describe, it, expect } from "vitest";
+import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand, endTurn } from "./commands";
-import { computeReachable } from "./movement";
+import { computeReachable, offsetNeighbors } from "./movement";
+import { isPassableLand } from "./terrain";
 import { currentPlayer, unitsOf, citiesOf } from "./state";
 import { unitMovement } from "./civs";
 
@@ -25,6 +27,11 @@ describe("M1 game model", () => {
   it("moves a unit onto a reachable tile and spends movement", () => {
     const state = newGame();
     const warrior = unitsOf(state, 0).find((u) => u.type === "warrior")!;
+    // Open ground around the warrior — the rolled terrain shouldn't decide this test.
+    for (const n of offsetNeighbors(state.map, warrior.col, warrior.row)) {
+      const t = getTile(state.map, n.col, n.row)!;
+      if (!isPassableLand(t.terrain)) t.terrain = "grassland";
+    }
     const reachable = computeReachable(state, warrior);
     expect(reachable.size).toBeGreaterThan(0);
     const [key, entry] = [...reachable.entries()][0]!;

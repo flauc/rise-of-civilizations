@@ -3,12 +3,18 @@
 import { ASSET_BASE_URL } from "./asset-base";
 import { hashSeed } from "@roc/shared";
 
-const VILLAGE_FRAMES = 5; // village.png, village_1.png .. village_4.png
-const BARB_CAMP_FRAMES = 5; // barb_camp.png, barb_camp_1.png .. barb_camp_4.png
+const VILLAGE_FRAMES = 4; // village_thatched.png / village_wood.png (+ _1.._3)
+const BARB_CAMP_FRAMES = 3; // barb_camp.png (bandit camp), _1 (stakes), _2 (thatched)
 const RUIN_FRAMES = 4; // ruin.png, ruin_1.png .. ruin_3.png
 
+/** Turn on/after which a thatched village has grown into a timber-framed one. */
+export const VILLAGE_UPGRADE_TURN = 25;
+
 export interface FeatureAtlas {
-  readonly village: ReadonlyArray<HTMLImageElement | undefined>;
+  /** Early-game thatched hamlets. */
+  readonly villageThatched: ReadonlyArray<HTMLImageElement | undefined>;
+  /** The timber-framed villages thatched hamlets become after VILLAGE_UPGRADE_TURN. */
+  readonly villageWood: ReadonlyArray<HTMLImageElement | undefined>;
   readonly barbCamp: ReadonlyArray<HTMLImageElement | undefined>;
   readonly ruin: ReadonlyArray<HTMLImageElement | undefined>;
   loaded: boolean;
@@ -26,10 +32,11 @@ export function isImageReady(img: HTMLImageElement): boolean {
 
 /** Starts loading village and barbarian-camp feature sprites. */
 export function loadFeatureAtlas(onLoad?: () => void): FeatureAtlas {
-  const village: (HTMLImageElement | undefined)[] = [];
+  const villageThatched: (HTMLImageElement | undefined)[] = [];
+  const villageWood: (HTMLImageElement | undefined)[] = [];
   const barbCamp: (HTMLImageElement | undefined)[] = [];
   const ruin: (HTMLImageElement | undefined)[] = [];
-  let remaining = VILLAGE_FRAMES + BARB_CAMP_FRAMES + RUIN_FRAMES;
+  let remaining = VILLAGE_FRAMES * 2 + BARB_CAMP_FRAMES + RUIN_FRAMES;
 
   function finishSlot(
     array: (HTMLImageElement | undefined)[],
@@ -46,31 +53,22 @@ export function loadFeatureAtlas(onLoad?: () => void): FeatureAtlas {
     onLoad?.();
   }
 
-  for (let frame = 0; frame < VILLAGE_FRAMES; frame++) {
-    const img = new Image();
-    img.src = frameUrl("village", frame);
-    village.push(img);
-    img.onload = () => finishSlot(village, frame, img);
-    img.onerror = () => finishSlot(village, frame, img);
-  }
+  const loadSet = (base: string, frames: number, into: (HTMLImageElement | undefined)[]): void => {
+    for (let frame = 0; frame < frames; frame++) {
+      const img = new Image();
+      img.src = frameUrl(base, frame);
+      into.push(img);
+      img.onload = () => finishSlot(into, frame, img);
+      img.onerror = () => finishSlot(into, frame, img);
+    }
+  };
 
-  for (let frame = 0; frame < BARB_CAMP_FRAMES; frame++) {
-    const img = new Image();
-    img.src = frameUrl("barb_camp", frame);
-    barbCamp.push(img);
-    img.onload = () => finishSlot(barbCamp, frame, img);
-    img.onerror = () => finishSlot(barbCamp, frame, img);
-  }
+  loadSet("village_thatched", VILLAGE_FRAMES, villageThatched);
+  loadSet("village_wood", VILLAGE_FRAMES, villageWood);
+  loadSet("barb_camp", BARB_CAMP_FRAMES, barbCamp);
+  loadSet("ruin", RUIN_FRAMES, ruin);
 
-  for (let frame = 0; frame < RUIN_FRAMES; frame++) {
-    const img = new Image();
-    img.src = frameUrl("ruin", frame);
-    ruin.push(img);
-    img.onload = () => finishSlot(ruin, frame, img);
-    img.onerror = () => finishSlot(ruin, frame, img);
-  }
-
-  const atlas: FeatureAtlas = { village, barbCamp, ruin, loaded: remaining === 0 };
+  const atlas: FeatureAtlas = { villageThatched, villageWood, barbCamp, ruin, loaded: remaining === 0 };
   return atlas;
 }
 
@@ -83,13 +81,20 @@ function pickFrame(
   return ready[hashSeed(seed) % ready.length];
 }
 
-/** Pick a deterministic village frame for a given tile coordinate. */
+/**
+ * Pick a deterministic village frame for a tile. Villages start as thatched
+ * hamlets and become timber-framed on/after VILLAGE_UPGRADE_TURN. Both sets share
+ * the same pick seed, so a given village keeps its identity (frame N thatched →
+ * frame N wood) when it upgrades.
+ */
 export function villageFrameFor(
   atlas: FeatureAtlas | undefined,
   col: number,
   row: number,
+  turn: number,
 ): HTMLImageElement | undefined {
-  return pickFrame(atlas?.village ?? [], `${col},${row},village`);
+  const frames = turn >= VILLAGE_UPGRADE_TURN ? atlas?.villageWood : atlas?.villageThatched;
+  return pickFrame(frames ?? [], `${col},${row},village`);
 }
 
 /** Pick a deterministic barbarian-camp frame for a given tile coordinate. */

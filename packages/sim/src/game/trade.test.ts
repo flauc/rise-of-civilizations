@@ -38,11 +38,16 @@ function gameOnMap(map: GameMap) {
   return s;
 }
 
-/** A game where player 0 owns two cities a few tiles apart. */
+/** A game where player 0 owns two cities a few tiles apart. Runs on a flat
+ *  all-plains map so routes depend only on the roads/rivers each test builds,
+ *  not on whatever terrain the seed happens to roll. */
 function gameWithTwoCities() {
   const s = createGame({ seed: "trade-test", cols: 40, rows: 28, barbarians: false, humanSlots: 2 });
-  beginTurn(s);
+  s.map = makeMap(40, 28, () => "plains");
   const settler = unitsOf(s, 0).find((u) => u.type === "settler")!;
+  settler.col = 12;
+  settler.row = 10;
+  beginTurn(s);
   applyCommand(s, { type: "foundCity", unitId: settler.id });
   const first = citiesOf(s, 0)[0]!;
   // Plant a second owned city six tiles east.

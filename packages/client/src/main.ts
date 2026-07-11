@@ -65,9 +65,10 @@ import { loadReligionIconAtlas } from "./religion-assets";
 import { MAP_DIMENSIONS, type Session } from "./session";
 import type { CheatAction } from "./god-mode";
 import { exportSave, listSavesForUser, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
-import { getAccount } from "./account";
+import { getAccount, getSaveOwnerId } from "./account";
 import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, abandonActiveSession, type GameSetup } from "./analytics";
 import { createTutorialCoach } from "./tutorial-coach";
+import { spawnTutorialBarbarian, spawnTutorialVillage } from "./tutorial";
 import { installIconifyHook } from "./icons";
 import { initScreenRotation } from "./screen-rotation";
 
@@ -298,8 +299,10 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   }
   session.onUpdate(update);
 
-  const account = getAccount();
-  const canSave = account !== null;
+  // Guests can save locally too (keyed by a device-local guest id); saving is
+  // always available offline. Online games still require an account to have
+  // reached this point, so their saves are tagged with the account id.
+  const canSave = true;
 
   function cancelAbility(): void {
     pendingAbility = null;
@@ -562,8 +565,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       location.reload();
     },
     onSave: async (name) => {
-      const userId = getAccount()?.userId;
-      if (!userId) throw new Error("Sign in to save games.");
+      const userId = getSaveOwnerId();
       const state = session.getState();
       const serialized = serializeState(state);
       if (session.isOnline) {
@@ -581,7 +583,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       }
     },
     onExportCurrentSave: async () => {
-      const userId = getAccount()?.userId;
+      const userId = getSaveOwnerId();
       const state = session.getState();
       let serialized: ReturnType<typeof serializeState>;
       if (session.isOnline) {
@@ -703,6 +705,16 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         },
         banner: (text) => ui.banner(text),
         isWorldReady: () => loadingHidden,
+        exitToMenu: () => {
+          abandonActiveSession();
+          location.reload();
+        },
+        ensureTutorialVillage: () => {
+          if (spawnTutorialVillage(st())) update();
+        },
+        ensureTutorialBarbarian: () => {
+          if (spawnTutorialBarbarian(st())) update();
+        },
       })
     : null;
 
@@ -895,7 +907,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     if (!isExplored(col, row)) return { name: "Unexplored", rough: null };
     const tile = getTile(st().map, col, row);
     if (!tile) return null;
-    let name = TERRAIN_NAMES[tile.terrain];
+    let name = tile.wooded && tile.terrain === "hills" ? "Wooded Hills" : TERRAIN_NAMES[tile.terrain];
     if (tile.feature === "village") name = "Village";
     else if (tile.feature === "barb_camp") name = "Barbarian Camp";
     else if (tile.feature === "ruin") name = "Ruins";
@@ -1041,12 +1053,19 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   // the loading screen. By the cap the map and starting units are painted; the
   // rest (improvements, abilities) pop in harmlessly. Driven by a timer rather
   // than the rAF loop, so it still fires if the tab is briefly backgrounded.
+  //
+  // Crucially we only ARM the reveal here — the veil actually lifts inside frame()
+  // once a full-quality frame has really painted, so the player never sees the
+  // gap between "atlases loaded" and "board + HUD drawn and playable". The
+  // tutorial coach keys off the same moment (isWorldReady), so Herodotus starts
+  // speaking exactly as the finished world appears.
+  let revealWhenPainted = false;
   const loadDeadline = performance.now() + 6000;
   const readyPoll = window.setInterval(() => {
     if (coreAtlases.every((a) => a.loaded) || performance.now() >= loadDeadline) {
       window.clearInterval(readyPoll);
-      needsRedraw = true; // repaint at full quality, then lift the veil
-      hideLoading();
+      needsRedraw = true; // force a full-quality repaint…
+      revealWhenPainted = true; // …then lift the veil once it has painted (see frame())
     }
   }, 150);
 
@@ -1120,8 +1139,34 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       } catch (err) {
         console.error("RENDER-THREW", (err as Error)?.stack || err);
       }
-      tutorialCoach?.tick();
+      // A full-quality frame (board + overlay + HUD) has now been drawn, but the
+      // HUD's icon <img>s (class "gi") and the coach portrait still stream in
+      // asynchronously. Hold the veil until those have loaded too, so nothing
+      // pops in after it lifts — capped so a stalled icon can't trap the player.
+      // Only once the world is genuinely finished do we lift the veil and wake
+      // the coach; its first ready tick (isWorldReady flips with the veil) types
+      // out Herodotus's opening line just as the world is revealed.
+      if (revealWhenPainted) {
+        revealWhenPainted = false;
+        const imgDeadline = performance.now() + 2500;
+        const revealWhenImagesReady = (): void => {
+          const imgs = [...document.querySelectorAll<HTMLImageElement>("img.gi, #tutorial-coach img")];
+          const pending = imgs.some((im) => !!im.getAttribute("src") && !im.complete);
+          if (!pending || performance.now() >= imgDeadline) {
+            hideLoading();
+            needsRedraw = true; // repaint the revealed world
+          } else {
+            window.setTimeout(revealWhenImagesReady, 80);
+          }
+        };
+        revealWhenImagesReady();
+      }
     }
+    // Tick the coach EVERY frame, not only on redraws: tapping an info-only bubble
+    // (the intro, the unit-kinds briefing) sets an acknowledge flag but does not
+    // trigger a canvas redraw, so a redraw-gated tick would leave the coach — and
+    // its interaction gate — stuck on that step until some unrelated repaint.
+    if (session.hasState()) tutorialCoach?.tick();
     requestAnimationFrame(frame);
   }
 

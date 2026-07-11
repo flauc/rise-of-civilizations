@@ -44,6 +44,8 @@ describe("road routes", () => {
     const s = gameWithSurveyor();
     const city = citiesOf(s, 0)[0]!;
     const start = grassland(s, city, city.col + 1, city.row);
+    grassland(s, city, city.col + 2, city.row);
+    grassland(s, city, city.col + 3, city.row);
     const end = grassland(s, city, city.col + 4, city.row);
     const res = startRoadRoute(s, 0, start.col, start.row, end.col, end.row);
     expect(res.ok).toBe(true);
@@ -69,6 +71,7 @@ describe("road routes", () => {
     expect(ids.length).toBe(2);
 
     const start = grassland(s, city, city.col + 1, city.row);
+    for (let d = 2; d <= 4; d++) grassland(s, city, city.col + d, city.row);
     const end = grassland(s, city, city.col + 5, city.row);
     const res = startRoadRoute(s, 0, start.col, start.row, end.col, end.row, ids);
     expect(res.ok).toBe(true);

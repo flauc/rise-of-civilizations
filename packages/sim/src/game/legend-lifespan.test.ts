@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { createGame } from "./setup";
 import { makeUnit, playerById, unitsOf, type City } from "./state";
+import { getLegend } from "@roc/data";
 import { recruitLegend, tickLegends, legendRecruitThreshold } from "./legends";
-import { LEGEND_DEFAULT_LIFESPAN, extendLegendsOnTrigger } from "./legend-lifespan";
+import { extendLegendsOnTrigger } from "./legend-lifespan";
 import { onEnemyDefeated } from "./morale";
 
-const newGame = () =>
-  createGame({ cols: 14, rows: 14, seed: "legend-life", playerCount: 2, humanSlots: 1, barbarians: false, legends: true });
+const newGame = () => {
+  const state = createGame({ cols: 14, rows: 14, seed: "legend-life", playerCount: 2, humanSlots: 1, barbarians: false, legends: true });
+  // Flat land everywhere: hero spawn spots shouldn't depend on rolled terrain.
+  for (const t of state.map.tiles) t.terrain = "plains";
+  return state;
+};
 
 function addCity(state: ReturnType<typeof newGame>, ownerId: number, col: number, row: number): City {
   const id = state.nextEntityId++;
@@ -26,13 +31,13 @@ function fundTrack(state: ReturnType<typeof newGame>, playerId: number, track: "
 }
 
 describe("legend lifespan extensions", () => {
-  it("heroes start with the default 15-turn tenure at 0 XP", () => {
+  it("heroes start with their own tenure at 0 XP", () => {
     const state = newGame();
     addCity(state, 0, 3, 3);
     fundTrack(state, 0, "melee");
     recruitLegend(state, 0, "gilgamesh");
     const hero = unitsOf(state, 0).find((u) => u.legendId === "gilgamesh")!;
-    expect(hero.legendExpiresOnTurn).toBe(state.turn + LEGEND_DEFAULT_LIFESPAN);
+    expect(hero.legendExpiresOnTurn).toBe(state.turn + getLegend("gilgamesh")!.lifespan);
     expect(hero.xp).toBe(0);
   });
 

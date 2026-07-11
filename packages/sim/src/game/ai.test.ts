@@ -250,6 +250,19 @@ describe("AI opponent", () => {
     const warrior = unitsOf(s, 1).find((u) => UNIT_DEFS[u.type].strength > 0 && !UNIT_DEFS[u.type].founder);
     expect(warrior).toBeTruthy();
 
+    // Level the land so the pursuit isn't detoured by movement-cost terrain, and
+    // park the unit away from its own city so garrison duty doesn't pin it.
+    for (const t of s.map.tiles) if (isPassableLand(t.terrain)) t.terrain = "grassland";
+    const home = citiesOf(s, 1)[0]!;
+    for (let dc = 8; dc >= 4; dc--) {
+      const t = getTile(s.map, home.col + dc, home.row);
+      if (t && isPassableLand(t.terrain) && !unitAt(s, t.col, t.row)) {
+        warrior!.col = t.col;
+        warrior!.row = t.row;
+        break;
+      }
+    }
+
     // Park a human unit 3 land-steps away (reachable, but not adjacent to attack).
     const spot = landTileAtDepth(s, warrior!, 3);
     expect(spot).toBeTruthy();
@@ -321,14 +334,20 @@ describe("AI opponent", () => {
     let id = 5000;
     const bench: [string, number][] = [["mason", 12], ["architect", 8], ["engineer", 8], ["carpenter", 8]];
     for (const [type, n] of bench) for (let i = 0; i < n; i++) city.specialists.push({ id: id++, type: type as never, xp: 0, level: 1 });
-    // Wonders now have terrain gates; give the AI a legal desert site for the Great Pyramid.
-    const site = s.map.tiles.find(
-      (t) => t.ownerCityId === city.id && !t.improvement && !t.structure && !(t.col === city.col && t.row === city.row),
-    )!;
-    site.terrain = "desert";
-    site.feature = undefined;
-    site.wonder = undefined;
-    site.naturalWonder = undefined;
+    // Wonders now have terrain gates; give the AI legal desert sites for the Great
+    // Pyramid — several, since it may also claim one tile for a defensive structure.
+    const sites = s.map.tiles
+      .filter(
+        (t) => t.ownerCityId === city.id && !t.improvement && !t.structure && !(t.col === city.col && t.row === city.row),
+      )
+      .slice(0, 3);
+    expect(sites.length).toBeGreaterThan(0);
+    for (const site of sites) {
+      site.terrain = "desert";
+      site.feature = undefined;
+      site.wonder = undefined;
+      site.naturalWonder = undefined;
+    }
     aiTakeTurn(s, 1);
     expect(worksOf(s, 1).some((w) => w.kind === "wonder")).toBe(true);
   });
@@ -461,6 +480,8 @@ describe("AI opponent", () => {
     const warrior = unitsOf(s, 1).find((u) => UNIT_DEFS[u.type].strength > 0 && !UNIT_DEFS[u.type].founder)!;
     for (const u of unitsOf(s, 1)) if (u.id !== warrior!.id) s.units.delete(u.id);
     clearFeatures(s);
+    // Level the land so the march isn't detoured by movement-cost terrain.
+    for (const t of s.map.tiles) if (isPassableLand(t.terrain)) t.terrain = "grassland";
     const spot = landTileAtDepth(s, warrior!, 3)!;
     getTile(s.map, spot.col, spot.row)!.feature = "village";
     ai.explored.add(`${spot.col},${spot.row}`);
@@ -644,6 +665,12 @@ describe("AI opponent", () => {
     // Disarm player 1, then mass a strong army for player 0 right beside player 1's city.
     for (const u of unitsOf(s, 1)) if (UNIT_DEFS[u.type].strength > 0) s.units.delete(u.id);
     const target = citiesOf(s, 1)[0]!;
+    // The rolled map may leave the city short of open land neighbours; the test
+    // is about the power gap, so guarantee room for the army.
+    for (const nb of offsetNeighbors(s.map, target.col, target.row)) {
+      const t = getTile(s.map, nb.col, nb.row);
+      if (t && !isPassableLand(t.terrain)) t.terrain = "plains";
+    }
     let placed = 0;
     for (const nb of offsetNeighbors(s.map, target.col, target.row)) {
       if (placed >= 4) break;
@@ -669,6 +696,12 @@ describe("AI opponent", () => {
     ensureContact(s, 0, 1);
     for (const u of unitsOf(s, 1)) if (UNIT_DEFS[u.type].strength > 0) s.units.delete(u.id);
     const target = citiesOf(s, 1)[0]!;
+    // The rolled map may leave the city short of open land neighbours; the test
+    // is about the power gap, so guarantee room for the army.
+    for (const nb of offsetNeighbors(s.map, target.col, target.row)) {
+      const t = getTile(s.map, nb.col, nb.row);
+      if (t && !isPassableLand(t.terrain)) t.terrain = "plains";
+    }
     for (let i = 0; i < 5; i++) {
       const nb = freeNeighbor(s, target.col, target.row);
       expect(nb).toBeTruthy();

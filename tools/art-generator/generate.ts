@@ -41,6 +41,7 @@ import {
   GREAT_PERSON_SUBSET,
   LEGEND_SUBSET,
   LEGEND_UNIT_SUBSET,
+  COACH_SUBSET,
   ROAD_SUBSET,
   DIRT_ROAD_SUBSET,
   STONE_ROAD_SUBSET,
@@ -254,6 +255,15 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         entries.push(e);
         break;
       }
+      case "--legend-unit": {
+        // Legend units share ids with legend portraits, so resolve within the
+        // subset instead of findEntry (which would match the portrait first).
+        const id = next();
+        const e = LEGEND_UNIT_SUBSET.find((x) => x.id === id);
+        if (!e) fail(`Unknown legend unit: ${id}`);
+        entries.push(e);
+        break;
+      }
       case "--road": {
         const id = next();
         const e = findEntry(id);
@@ -367,6 +377,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "great-people") entries.push(...GREAT_PERSON_SUBSET);
         else if (name === "legends") entries.push(...LEGEND_SUBSET);
         else if (name === "legend-units") entries.push(...LEGEND_UNIT_SUBSET);
+        else if (name === "coach") entries.push(...COACH_SUBSET);
         else if (name === "dirt-roads") entries.push(...DIRT_ROAD_SUBSET);
         else if (name === "stone-roads") entries.push(...STONE_ROAD_SUBSET);
         else if (name === "advanced-stone-roads") entries.push(...ADVANCED_STONE_ROAD_SUBSET);

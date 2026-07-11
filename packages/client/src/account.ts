@@ -4,6 +4,7 @@
 import type { ClientMessage, ServerMessage } from "@roc/sim";
 
 const ACCOUNT_KEY = "roc:account";
+const GUEST_ID_KEY = "roc:guest-id";
 
 const DEFAULT_WS_SCHEME = location.protocol === "https:" ? "wss" : "ws";
 export const DEFAULT_WS_URL =
@@ -43,6 +44,29 @@ export function clearAccount(): void {
 
 export function isLoggedIn(): boolean {
   return getAccount() !== null;
+}
+
+/**
+ * Stable, device-local id for a guest. Used to key locally-saved games so guests
+ * can save and reload without an account. Persisted in localStorage; created on
+ * first use. Guest saves live only on this device/browser.
+ */
+export function getGuestId(): string {
+  try {
+    let id = localStorage.getItem(GUEST_ID_KEY);
+    if (!id) {
+      id = `guest_${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}_${Math.random().toString(36).slice(2)}`}`;
+      localStorage.setItem(GUEST_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return "guest";
+  }
+}
+
+/** Owner id to tag saved games with: the account when signed in, else the guest id. */
+export function getSaveOwnerId(): string {
+  return getAccount()?.userId ?? getGuestId();
 }
 
 export type AuthRequest =

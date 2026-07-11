@@ -10,7 +10,7 @@ import {
 } from "./natural-wonders";
 import { getCityYields } from "./economy";
 import { citiesOf, unitsOf } from "./state";
-import { getTile, offsetToAxial, axialNeighbor, axialToOffset } from "@roc/shared";
+import { axialDistance, getTile, offsetToAxial, axialNeighbor, axialToOffset } from "@roc/shared";
 import { getNaturalWonder, NATURAL_WONDER_DEFS, NATURAL_WONDER_IDS } from "@roc/data";
 
 function foundCapital(state: ReturnType<typeof createGame>) {
@@ -28,6 +28,21 @@ describe("natural wonders", () => {
       expect(getNaturalWonder(id)).toBeDefined();
       const tiles = state.map.tiles.filter((t) => t.naturalWonder === id);
       expect(tiles.length).toBe(1);
+    }
+  });
+
+  it("never places two wonders close to each other", () => {
+    for (const seed of ["nw-space-1", "nw-space-2", "nw-space-3"]) {
+      const state = createGame({ seed, cols: 60, rows: 40, barbarians: false, naturalWonders: true });
+      const spots = state.map.tiles
+        .filter((t) => t.naturalWonder)
+        .map((t) => offsetToAxial({ col: t.col, row: t.row }));
+      expect(spots.length).toBeGreaterThanOrEqual(3);
+      for (let i = 0; i < spots.length; i++) {
+        for (let j = i + 1; j < spots.length; j++) {
+          expect(axialDistance(spots[i]!, spots[j]!), seed).toBeGreaterThanOrEqual(6);
+        }
+      }
     }
   });
 

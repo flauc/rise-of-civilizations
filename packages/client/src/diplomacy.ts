@@ -142,7 +142,7 @@ const STYLE = `
 .dp-chip-toggle{font:inherit;font-size:12.5px;font-weight:700;color:var(--parchment);background:var(--bg-card);border:1px solid var(--edge);border-radius:20px;padding:8px 14px;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;gap:5px;transition:background .15s ease,border-color .15s ease,color .15s ease}
 .dp-chip-toggle:hover{border-color:var(--accent);background:rgba(201,162,39,.10)}
 .dp-chip-toggle.on{background:rgba(74,110,70,.35);border-color:#6f9e5f;color:#d3e8bd}
-.dp-chip-toggle.on::before{content:"✓";font-size:11px}
+.dp-chip-toggle.on::before{content:"";display:inline-block;width:11px;height:11px;margin-right:3px;vertical-align:-1px;background:url(${ASSET_BASE_URL}icons/ic_check.png) center/contain no-repeat}
 /* the give / receive trays */
 .dp-tray{border:1px solid var(--edge);border-radius:11px;padding:11px;background:var(--bg-card);margin-bottom:10px}
 .dp-tray h5{font-family:'Cinzel',Georgia,serif;margin:0 0 8px;font-size:12px;color:var(--accent);letter-spacing:.03em;display:flex;align-items:center;gap:6px}
@@ -831,7 +831,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     const amt = Math.max(0, Number(panel.querySelector<HTMLInputElement>("#demand-amt")?.value ?? 0));
     const v = amt > 0 ? previewProposal(state, viewerId, cid, [], [{ kind: "gold", amount: amt }], true) : null;
     el.className = `dp-verdict-inline ${v ? (v.accept ? "yes" : "no") : ""}`;
-    el.textContent = v ? (v.accept ? "✓ would pay" : "✗ would refuse") : "";
+    el.innerHTML = v ? (v.accept ? "✓ would pay" : "✗ would refuse") : "";
   }
 
   function wire(state: GameState, viewerId: number): void {

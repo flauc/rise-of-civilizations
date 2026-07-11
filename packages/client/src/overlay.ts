@@ -1,7 +1,7 @@
 import { cityAt, cityMaxHp, ownedTileYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, majorityReligion, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
-import { BASE_SIZE, VSQUISH, tileCenterWorld } from "./renderer";
+import { BASE_SIZE, VSQUISH, tileCenterWorld, tileFootprint } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
 import { barbCampFrameFor, villageFrameFor, ruinFrameFor, type FeatureAtlas } from "./feature-assets";
@@ -289,10 +289,15 @@ export function drawOverlay(
     if (!o.explored.has(`${t.col},${t.row}`)) continue;
     const s = screen(t.col, t.row);
     if (t.feature === "village") {
-      const villageImg = villageFrameFor(o.featureAtlas, t.col, t.row);
+      const villageImg = villageFrameFor(o.featureAtlas, t.col, t.row, state.turn);
       if (villageImg) {
-        const vSize = size * 0.85;
-        ctx.drawImage(villageImg, s.x - vSize / 2, s.y - vSize / 2, vSize, vSize);
+        // Village sprites use the 256×384 hex-tile format (bottom 256×256 is the
+        // footprint, top 128px transparent overhang), so anchor the footprint's
+        // bottom vertex at s.y + footprint/2 like terrain/wonder sprites.
+        const footprint = tileFootprint(size);
+        const drawW = footprint;
+        const drawH = villageImg.naturalHeight * (footprint / villageImg.naturalWidth);
+        ctx.drawImage(villageImg, s.x - drawW / 2, s.y + footprint / 2 - drawH, drawW, drawH);
       } else {
         ctx.fillStyle = "#cfa867";
         ctx.beginPath();
@@ -305,8 +310,13 @@ export function drawOverlay(
     } else if (t.feature === "barb_camp") {
       const campImg = barbCampFrameFor(o.featureAtlas, t.col, t.row);
       if (campImg) {
-        const cSize = size * 0.85;
-        ctx.drawImage(campImg, s.x - cSize / 2, s.y - cSize / 2, cSize, cSize);
+        // Camp sprites are hex-tile art (bandit camp is near-square; the two
+        // strongholds are 256×384 with overhang). Preserve aspect and anchor the
+        // footprint's bottom vertex at s.y + footprint/2, like village sprites.
+        const footprint = tileFootprint(size);
+        const drawW = footprint;
+        const drawH = campImg.naturalHeight * (footprint / campImg.naturalWidth);
+        ctx.drawImage(campImg, s.x - drawW / 2, s.y + footprint / 2 - drawH, drawW, drawH);
       } else {
         ctx.fillStyle = "#b23b2e";
         ctx.beginPath();

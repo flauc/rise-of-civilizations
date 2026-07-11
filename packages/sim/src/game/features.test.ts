@@ -12,7 +12,7 @@ import {
   VILLAGE_GLOBAL_MORALE,
   VILLAGE_UNIT_MORALE,
 } from "./morale";
-import { getTile } from "@roc/shared";
+import { getTile, isPolarTile } from "@roc/shared";
 
 function firstUnit(state: GameState, ownerId: number): Unit {
   return unitsOf(state, ownerId)[0]!;
@@ -25,6 +25,23 @@ describe("map features", () => {
     const camps = state.map.tiles.filter((t) => t.feature === "barb_camp").length;
     expect(villages).toBeGreaterThan(0);
     expect(camps).toBeGreaterThan(0);
+  });
+
+  it("never places villages, camps, or barbarians on the frozen poles", () => {
+    for (const seed of ["pole-feat-1", "pole-feat-2", "pole-feat-3"]) {
+      const state = createGame({ seed, cols: 60, rows: 40, barbarians: "high", mapType: "two_continents" });
+      for (const t of state.map.tiles) {
+        if (t.feature === "village" || t.feature === "barb_camp") {
+          expect(isPolarTile(state.map, t.col, t.row), `${t.feature} at ${t.col},${t.row} (${seed})`).toBe(false);
+        }
+      }
+      const barb = state.players.find((p) => p.isBarbarian);
+      if (barb) {
+        for (const u of unitsOf(state, barb.id)) {
+          expect(isPolarTile(state.map, u.col, u.row), `barbarian at ${u.col},${u.row} (${seed})`).toBe(false);
+        }
+      }
+    }
   });
 
   it("skips villages when disabled at game setup", () => {

@@ -21,16 +21,25 @@ import {
   type VictoryKind,
 } from "@roc/sim";
 import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, startingConditionsLine, wireUuImages, wireUuDetail } from "./unique-unit";
-import { deleteSave, exportSave, importSave, listSavesForUser, loadSave, saveGame, type SaveRecord } from "./save-db";
+import { deleteSave, exportSave, importSave, listSavesForUser, loadSave, reassignSaves, saveGame, type SaveRecord } from "./save-db";
 import {
   authenticate,
   clearAccount,
   getAccount,
+  getGuestId,
+  getSaveOwnerId,
   setAccount,
   tryResumeSession,
   type StoredAccount,
 } from "./account";
-import { authSplitPanelHtml, bindAuthSplitPanel } from "./auth-form";
+import {
+  authSplitPanelHtml,
+  bindAuthSplitPanel,
+  authLoginPanelHtml,
+  authRegisterPanelHtml,
+  bindAuthLoginPanel,
+  bindAuthRegisterPanel,
+} from "./auth-form";
 import {
   bindScreenRotationControls,
   SCREEN_ROTATION_STYLES,
@@ -54,7 +63,7 @@ const DEFAULT_WS =
 /** Civilizations sorted alphabetically by display name for the setup UI. */
 const CIVS_BY_NAME = [...CIVILIZATIONS].sort((a, b) => a.name.localeCompare(b.name));
 
-type Screen = "start" | "auth" | "sp" | "mp" | "load";
+type Screen = "start" | "login" | "signup" | "sp" | "mp" | "load";
 
 type BarbLevel = "none" | "minimal" | "low" | "normal" | "high";
 type StartingGold = "tight" | "balanced" | "generous";
@@ -333,11 +342,15 @@ function defaultSpSetup(): SpSetup {
 const SP_SETUP_KEY = "roc:sp-setup";
 const BARB_LEVELS: BarbLevel[] = ["none", "minimal", "low", "normal", "high"];
 
-/** Persist the single-player setup so the next new game starts from it. */
-/** Persist map/options from the last started game (roster size is not saved). */
+/**
+ * Persist the single-player setup so the next new game starts from it. The AI
+ * roster's specific civ/color picks are not kept, but its *size* is — the next
+ * game defaults to the same number of AI opponents the player last used.
+ */
 function saveSpSetup(sp: SpSetup): void {
   try {
-    const { ais: _ais, ...persisted } = sp;
+    const { ais, ...rest } = sp;
+    const persisted = { ...rest, aiCount: ais.length };
     localStorage.setItem(SP_SETUP_KEY, JSON.stringify(persisted));
   } catch {
     // Ignore write failures (quota, private mode); the game still starts.
@@ -367,9 +380,19 @@ function loadSpSetup(defaults: SpSetup): SpSetup {
   const out: SpSetup = { ...defaults };
   if (isCiv(saved.civId)) out.civId = saved.civId;
   if (isColor(saved.color)) out.color = saved.color;
+  // Restore the last roster *size* (not the specific picks): rebuild that many
+  // random-civ opponents, each in a distinct free color.
+  const savedCount = (saved as { aiCount?: unknown }).aiCount;
+  if (typeof savedCount === "number" && Number.isInteger(savedCount) && savedCount >= 0 && savedCount <= MAX_AI) {
+    const used = new Set<string>([out.color]);
+    out.ais = Array.from({ length: savedCount }, () => {
+      const color = firstFreeColor(used);
+      used.add(color);
+      return { civId: RANDOM_CIV, color };
+    });
+  }
   if (typeof saved.mapSize === "string" && saved.mapSize in MAP_DIMENSIONS) out.mapSize = saved.mapSize;
   if (MAP_TYPE_OPTIONS.some((o) => o.value === saved!.mapType)) out.mapType = saved.mapType!;
-  // AI roster always starts from defaults when opening the setup screen.
   if (BARB_LEVELS.includes(saved.barbarians as BarbLevel)) out.barbarians = saved.barbarians!;
   if (typeof saved.naturalWonders === "boolean") out.naturalWonders = saved.naturalWonders;
   if (typeof saved.villages === "boolean") out.villages = saved.villages;
@@ -519,6 +542,19 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       .auth-split-divider{height:1px;width:100%}
       .auth-pane{padding:22px 20px}
     }
+    /* Single-column login / signup pages */
+    .auth-shell-narrow{max-width:440px}
+    .auth-header{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;margin-bottom:24px}
+    .auth-logo{width:96px;height:96px;border-radius:22px;box-shadow:0 10px 30px rgba(0,0,0,.5),0 0 0 1px var(--edge);user-select:none}
+    .auth-header .auth-brand{font-size:26px}
+    .auth-header .auth-brand small{margin-top:6px}
+    .auth-single-card{padding:0;overflow:hidden}
+    .auth-switch{margin:16px 0 0;text-align:center;color:#b8aa8d;font-size:13px}
+    .auth-link{background:none;border:none;padding:0;font:inherit;font-weight:700;color:#f0d878;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+    .auth-link:hover{color:#f6e6a6}
+    .auth-guest{margin-top:18px;text-align:center}
+    .auth-guest .menu-btn{width:100%;justify-content:center;text-align:center}
+    .auth-guest-note{margin:10px 2px 0;color:#8f8467;font-size:12px;line-height:1.4}
     .lobby-version{margin-top:auto;color:#b8aa8d;font:inherit;font-size:12px;text-align:center;padding:18px 0 0;background:none;border:none;cursor:pointer;transition:color .12s}
     .lobby-version:hover{color:#f0d878}
     .menu-actions{display:flex;flex-direction:column;gap:10px;margin-top:8px}
@@ -587,6 +623,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .showcase-ability-name{font-family:'Cinzel',Georgia,serif;font-size:15px;font-weight:700;color:#f0d878;margin-bottom:4px}
     .showcase-ability-desc{font-size:13px;color:#e8dcc5;line-height:1.4}
     .showcase-uniques{margin-top:10px;font-size:12px;color:#b8aa8d}
+    .showcase-wiki{width:auto;margin-top:18px;padding:9px 16px;font-size:14px}
     .showcase-side{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:12px;align-self:center;justify-self:end;width:100%;max-height:100%;min-height:0;z-index:2}
     .showcase-art-wrapper{position:relative;flex:0 1 auto;width:100%;max-height:min(300px,calc(100dvh - 96px));aspect-ratio:13/16;min-height:0;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.55);border:1px solid rgba(201,162,39,.25)}
     .showcase-art{width:100%;height:100%;object-fit:cover;object-position:50% 18%;display:block;border-radius:16px}
@@ -594,20 +631,16 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .showcase-reroll{position:relative;flex:0 0 auto;width:100%;margin-top:0;z-index:2}
     /* Desktop / tall screens: classic hero top-right, copy anchored bottom-left. */
     @media (min-width:861px) and (min-height:521px){
-      .lobby-right{grid-template-columns:minmax(0,1fr) 380px;gap:28px 44px;padding:52px 64px 44px;align-items:stretch}
-      .showcase{align-self:end;max-height:none;overflow:visible;max-width:860px;padding-right:16px;padding-bottom:0}
-      .showcase-label{font-size:14px;letter-spacing:2.5px;margin-bottom:12px}
-      .showcase-civ{font-size:68px}
-      .showcase-leader{font-size:28px;margin-top:10px}
-      .showcase-quote{font-size:24px;line-height:1.5;margin-top:26px;max-width:780px}
-      .showcase-ability{margin-top:28px;padding:20px 22px;border-radius:14px}
-      .showcase-ability-name{font-size:18px;margin-bottom:6px}
-      .showcase-ability-desc{font-size:16px;line-height:1.45}
-      .showcase-uniques{margin-top:12px;font-size:14px}
-      .showcase-side{align-self:start;justify-self:end;max-height:none;width:380px}
-      .showcase-art-wrapper{width:380px;height:468px;max-height:468px;aspect-ratio:auto;flex:none;border-radius:18px}
-      .showcase-art{border-radius:18px;object-position:50% 22%}
-      .showcase-reroll{width:380px;font-size:15px;padding:12px 16px}
+      .lobby-right{display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;gap:0;padding:48px 56px}
+      .showcase{align-self:auto;max-width:720px;max-height:none;overflow:visible;padding-right:0;padding-bottom:0}
+      .showcase-civ{font-size:52px}
+      .showcase-leader{font-size:22px;margin-top:8px}
+      .showcase-quote{font-size:20px;line-height:1.5;margin-top:22px;max-width:640px}
+      .showcase-ability{margin-top:26px;padding:16px 18px}
+      .showcase-side{position:absolute;top:48px;right:56px;width:260px;align-self:auto;justify-self:auto;max-height:none;gap:12px}
+      .showcase-art-wrapper{width:260px;height:320px;max-height:320px;aspect-ratio:auto;flex:none;border-radius:16px}
+      .showcase-art{object-position:50% 50%;border-radius:16px}
+      .showcase-reroll{width:100%}
     }
     /* Unique-unit block — shared by the showcase and the civ picker. Clickable
        (a button) to open the expanded ability detail; no ability text inline. */
@@ -795,8 +828,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .mp-advanced{margin-top:16px;border-top:1px solid var(--edge);padding-top:12px}
     .mp-advanced summary{cursor:pointer;color:#b8aa8d;font-size:12px;list-style:none}
     .mp-advanced summary::-webkit-details-marker{display:none}
-    .mp-advanced summary::before{content:"▸ ";color:#c9a227}
-    .mp-advanced[open] summary::before{content:"▾ "}
+    .mp-advanced summary::before{content:"";display:inline-block;width:.7em;height:.7em;margin-right:4px;vertical-align:-.08em;background:url(${ASSET_BASE_URL}icons/ic_tri_right.png) center/contain no-repeat}
+    .mp-advanced[open] summary::before{background-image:url(${ASSET_BASE_URL}icons/ic_tri_down.png)}
     /* Browse / create */
     .mp-browse-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:22px;align-items:start}
     .mp-browse-stack{display:flex;flex-direction:column;gap:22px;min-width:0}
@@ -906,6 +939,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           <div class="showcase-ability-name">Starting Conditions</div>
           <div class="showcase-ability-desc">${escapeHtml(startingConditionsLine(civ.id))}</div>
         </div>
+        <button class="menu-btn secondary showcase-wiki" id="showcase-wiki" type="button">📖 Read about ${escapeHtml(civ.name)} in the Encyclopedia</button>
       </div>
       <div class="showcase-side">
         <div class="showcase-art-wrapper">
@@ -932,6 +966,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     wireUuImages(right);
     wireUuDetail(right);
     right.querySelector<HTMLButtonElement>("#showcase-reroll")?.addEventListener("click", () => renderShowcase());
+    right.querySelector<HTMLButtonElement>("#showcase-wiki")?.addEventListener("click", () => wiki.openDetail("civ", civ.id));
   }
 
   /**
@@ -1059,15 +1094,19 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     root.dataset.screen = screen;
     const layoutEl = root.querySelector<HTMLDivElement>("#lobby-layout")!;
     const mpScreenEl = root.querySelector<HTMLDivElement>("#mp-screen")!;
-    layoutEl.classList.toggle("hidden", screen === "mp" || screen === "auth");
-    authScreen.classList.toggle("hidden", screen !== "auth");
+    const isAuth = screen === "login" || screen === "signup";
+    layoutEl.classList.toggle("hidden", screen === "mp" || isAuth);
+    authScreen.classList.toggle("hidden", !isAuth);
     mpScreenEl.classList.toggle("hidden", screen !== "mp");
     switch (screen) {
       case "start":
         renderStartScreen();
         break;
-      case "auth":
-        renderAccountAuth();
+      case "login":
+        renderLogin();
+        break;
+      case "signup":
+        renderSignup();
         break;
       case "sp":
         resetSpSetupForMenu();
@@ -1125,6 +1164,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     const prevId = state.mp.userId;
     syncAccountToMp(account);
     if ((account?.userId ?? "") !== prevId) resetMpSession();
+    // Carry any games saved while playing as a guest over to the account.
+    if (account) void reassignSaves(getGuestId(), account.userId);
   }
 
   function renderMpChatLog(): void {
@@ -1147,12 +1188,10 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           <button class="menu-btn secondary" id="account-logout" type="button">Log out</button>
         </div>`
       : `<div class="account-bar">
-          <span>Playing as <b>Guest</b> — games won't be saved</span>
+          <span>Playing as <b>Guest</b> — saves stay on this device</span>
           <button class="menu-btn secondary" id="account-login" type="button">Log in / Register</button>
         </div>`;
-    const loadBtn = account
-      ? `<button class="menu-btn" data-screen="load">Load Game</button>`
-      : `<button class="menu-btn secondary" id="load-guest" type="button" title="Sign in to access saved games">Load Game</button>`;
+    const loadBtn = `<button class="menu-btn" data-screen="load">Load Game</button>`;
     const rotationBlock = shouldOfferScreenRotation() ? screenRotationControlsHtml() : "";
 
     left.innerHTML = `
@@ -1180,14 +1219,11 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     left.querySelector<HTMLButtonElement>("#lobby-tutorial")!.addEventListener("click", () => {
       launchTutorialGame();
     });
-    left.querySelector<HTMLButtonElement>("#account-login")?.addEventListener("click", () => showScreen("auth"));
+    left.querySelector<HTMLButtonElement>("#account-login")?.addEventListener("click", () => showScreen("login"));
     left.querySelector<HTMLButtonElement>("#account-logout")?.addEventListener("click", () => {
       clearAccount();
       applyAccount(null);
       renderStartScreen();
-    });
-    left.querySelector<HTMLButtonElement>("#load-guest")?.addEventListener("click", () => {
-      showScreen("auth");
     });
     left.querySelector<HTMLButtonElement>("#lobby-wiki")?.addEventListener("click", () => wiki.open());
     left.querySelector<HTMLButtonElement>("#lobby-roadmap")?.addEventListener("click", () => roadmap.open());
@@ -1197,26 +1233,48 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     if (shouldOfferScreenRotation()) bindScreenRotationControls(left);
   }
 
-  function renderAccountAuth(): void {
-    authScreen.innerHTML = `
-      <div class="auth-shell">
-        <div class="auth-topbar">
-          <button class="menu-btn secondary" id="auth-back" type="button" style="width:auto;padding:8px 14px;font-size:13px"><span class="icon">←</span> Back</button>
-          <div class="auth-brand">Account<small>Log in or create a new commander</small></div>
+  /** Shell around a single-column auth page (login or signup) with a guest escape. */
+  function authShellHtml(brandSub: string, panel: string): string {
+    return `
+      <div class="auth-shell auth-shell-narrow">
+        <div class="auth-header">
+          <img class="auth-logo" src="${ASSET_BASE_URL}icon-512.png" alt="Rise of Civilizations" draggable="false" />
+          <div class="auth-brand">Rise of Civilizations<small>${escapeHtml(brandSub)}</small></div>
         </div>
-        ${authSplitPanelHtml({ idPrefix: "auth" })}
+        ${panel}
+        <div class="auth-guest">
+          <button class="menu-btn secondary" id="auth-guest" type="button">Continue as guest</button>
+        </div>
       </div>`;
+  }
 
-    authScreen.querySelector<HTMLButtonElement>("#auth-back")!.addEventListener("click", () => showScreen("start"));
-
-    bindAuthSplitPanel(authScreen, {
+  function renderLogin(): void {
+    authScreen.innerHTML = authShellHtml(
+      "Log in to save progress remotely and play online",
+      authLoginPanelHtml({ idPrefix: "auth", defaultHandle: state.mp.handle }),
+    );
+    authScreen.querySelector<HTMLButtonElement>("#auth-guest")!.addEventListener("click", () => showScreen("start"));
+    bindAuthLoginPanel(authScreen, {
       idPrefix: "auth",
+      onSwitch: () => showScreen("signup"),
       onLogin: async (handle, password) => {
         const res = await authenticate({ kind: "login", handle, password, wsUrl: state.mp.url });
         if ("error" in res) return friendlyAuthError(res.error);
         applyAccount(res);
         showScreen("start");
       },
+    });
+  }
+
+  function renderSignup(): void {
+    authScreen.innerHTML = authShellHtml(
+      "Create an account to save progress remotely and play online",
+      authRegisterPanelHtml({ idPrefix: "auth", defaultHandle: state.mp.handle }),
+    );
+    authScreen.querySelector<HTMLButtonElement>("#auth-guest")!.addEventListener("click", () => showScreen("start"));
+    bindAuthRegisterPanel(authScreen, {
+      idPrefix: "auth",
+      onSwitch: () => showScreen("login"),
       onRegister: async ({ handle, password, newsletter, email }) => {
         const res = await authenticate({
           kind: "register",
@@ -1813,7 +1871,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
                  ${kindToggle}
                  ${colorCtl}
                  ${occupied && s.kind === "human" ? `<button type="button" class="menu-btn secondary mp-mini" data-kick="${s.id}">Kick</button>` : ""}
-                 <button type="button" class="roster-remove" data-remove-slot="${s.id}" title="Remove this slot">×</button>
+                 <button type="button" class="roster-remove" data-remove-slot="${s.id}" title="Remove this slot">✕</button>
                </div>`
             : meHost && isHostSeat
               ? `<div class="mp-pcard-manage">${colorCtl}</div>`
@@ -2176,19 +2234,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
   }
 
   async function renderLoadGame(): Promise<void> {
-    const account = getAccount();
-    if (!account) {
-      left.innerHTML = `
-        <button class="menu-btn secondary" id="back" style="width:auto;padding:8px 12px;font-size:13px"><span class="icon">←</span> Back</button>
-        <div class="menu-section">
-          <div class="menu-section-title">Load Saved Game</div>
-          <div class="menu-hint">Sign in to save and load your single-player campaigns. Guests can play, but progress is not saved.</div>
-          <button class="menu-btn primary" id="load-signin" type="button" style="margin-top:14px">Log in / Register</button>
-        </div>`;
-      $("#back").addEventListener("click", () => showScreen("start"));
-      left.querySelector<HTMLButtonElement>("#load-signin")!.addEventListener("click", () => showScreen("auth"));
-      return;
-    }
+    const ownerId = getSaveOwnerId();
 
     left.innerHTML = `
       <button class="menu-btn secondary" id="back" style="width:auto;padding:8px 12px;font-size:13px"><span class="icon">←</span> Back</button>
@@ -2217,10 +2263,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       try {
         const text = await file.text();
         const stored = await importSave(text);
-        if (account) {
-          stored.userId = account.userId;
-          await saveGame(stored);
-        }
+        stored.userId = ownerId;
+        await saveGame(stored);
         errorEl.textContent = `Imported “${stored.name}”.`;
         await renderLoadGame();
       } catch (err) {
@@ -2230,7 +2274,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
     let saves: SaveRecord[] = [];
     try {
-      saves = await listSavesForUser(account.userId);
+      saves = await listSavesForUser(ownerId);
     } catch {
       errorEl.textContent = "Could not open saved games.";
       emptyEl.classList.add("hidden");
@@ -2340,7 +2384,11 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
   }
 
   renderShowcase();
-  showScreen("start");
+  // Gate the menu behind login/signup for logged-out players. A stored token
+  // lets us open the menu optimistically and resume in the background; with no
+  // token at all we show the login page first (guests continue from there).
+  const storedAccount = getAccount();
+  showScreen(storedAccount ? "start" : "login");
   void (async () => {
     const account = await tryResumeSession(state.mp.url);
     if (account) {

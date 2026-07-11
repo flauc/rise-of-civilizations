@@ -48,6 +48,8 @@ export interface TileView {
   river?: number;
   riverLake?: boolean;
   bridge?: boolean;
+  /** Tree-clad hills (visual decor overlay). */
+  wooded?: boolean;
 }
 
 export interface PlayerPublic {
@@ -130,6 +132,8 @@ export interface PlayerView {
   players: PlayerPublic[];
   cols: number;
   rows: number;
+  /** Which opposite edges hold the frozen poles ("ns" or "ew"); for polar decor. */
+  poleAxis?: "ns" | "ew";
   tiles: TileView[]; // explored tiles only
   visible: string[];
   units: Unit[];
@@ -219,6 +223,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     if (t.wonder) tv.wonder = t.wonder;
     if (t.river) tv.river = t.river;
     if (t.riverLake) tv.riverLake = true;
+    if (t.wooded) tv.wooded = true;
     if (tileHasBridge(state, col, row)) tv.bridge = true;
     tiles.push(tv);
   }
@@ -309,6 +314,7 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     })),
     cols: state.map.cols,
     rows: state.map.rows,
+    poleAxis: state.map.poleAxis,
     tiles,
     visible: [...visible],
     units,

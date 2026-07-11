@@ -146,6 +146,11 @@ function tileWorkYields(state: GameState, col: number, row: number, eff: CivEffe
     ),
     naturalWonderYields(tile),
   );
+  // Tree-clad hills carry a forest's worth of knowledge (+1 science, like forest) —
+  // mirrors tileYields so worked output matches the tile inspector.
+  if (tile.wooded && tile.terrain === "hills") {
+    base.science += 1;
+  }
   // A river enriches the land it crosses (a river lake also waters fresh ideas) —
   // mirrors tileYields so worked output and citizen scoring value rivers correctly.
   if (tile.river) {

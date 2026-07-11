@@ -126,6 +126,7 @@ import {
   PROMOTION_POOL,
   TECH_DEFS,
   UNIT_DEFS,
+  unitBaseMaxHp,
   buildingInfo,
   techUnlocks,
   unitInfo,
@@ -156,14 +157,12 @@ import {
   availableLegends,
   availableLegendsForPlayer,
   canRecruitLegend,
-  legendRecruitCostFor,
   legendRecruitThreshold,
   legendTrackEarnedOf,
   legendTrackFor,
   legendTrackPointsOf,
   LEGEND_TRACKS,
   LEGEND_TRACK_LABELS,
-  legendBaseName,
   LEGEND_DEFAULT_LIFESPAN,
   legendLifeExtensions,
   eraGateLabel,
@@ -276,13 +275,14 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
   const def = terrainDefense(t);
   const wonder = getNaturalWonder(tile.naturalWonder);
 
-  let name = TERRAIN_NAMES[t];
+  const baseName = tile.wooded && t === "hills" ? "Wooded Hills" : TERRAIN_NAMES[t];
+  let name = baseName;
   if (wonder) name = `${wonder.name} ✦`;
-  else if (tile.feature === "village") name = `${TERRAIN_NAMES[t]} · Village`;
-  else if (tile.feature === "barb_camp") name = `${TERRAIN_NAMES[t]} · Barbarian Camp`;
-  else if (tile.feature === "ruin") name = `${TERRAIN_NAMES[t]} · Ruins`;
-  else if (tile.riverLake) name = `${TERRAIN_NAMES[t]} · River Lake`;
-  else if (tile.river) name = `${TERRAIN_NAMES[t]} · River`;
+  else if (tile.feature === "village") name = `${baseName} · Village`;
+  else if (tile.feature === "barb_camp") name = `${baseName} · Barbarian Camp`;
+  else if (tile.feature === "ruin") name = `${baseName} · Ruins`;
+  else if (tile.riverLake) name = `${baseName} · River Lake`;
+  else if (tile.river) name = `${baseName} · River`;
 
   let subtitle: string;
   if (water) subtitle = "Water · naval units only";
@@ -466,7 +466,7 @@ export interface UIHandlers {
   onSuggestion(): void;
   onSave(name: string): Promise<void>;
   onExportCurrentSave(): Promise<string>;
-  /** Registered players can persist single-player saves; guests cannot. */
+  /** Whether the Save Game action is offered (guests save locally too). */
   canSave: boolean;
   /** Single-player registered users are prompted to save when leaving. */
   promptSaveOnLeave: boolean;
@@ -896,7 +896,7 @@ export function createUI(handlers: UIHandlers): UI {
     const ready = unlocked && cooldown === 0;
     laDialogArt.style.display = "";
     laDialogArt.src = civ ? `${ASSET_BASE_URL}leaders/${civ.id}.png` : "";
-    laDialogTitle.textContent = `✦ ${def.name}`;
+    laDialogTitle.innerHTML = `✦ ${escapeHtml(def.name)}`;
     laDialogSub.textContent = civ ? `${civ.name} · Leader Ability` : "Leader Ability";
     const status = ready
       ? `<div class="la-dialog-ready">✓ Ready to use.</div>`
@@ -1052,6 +1052,7 @@ export function createUI(handlers: UIHandlers): UI {
   const moraleDialog = div("morale-dialog", "");
   moraleDialog.innerHTML =
     `<button type="button" class="dialog-x" id="morale-close" title="Close" aria-label="Close">✕</button>` +
+    `<div class="morale-scroll">` +
     `<div class="morale-dialog-title">Empire Morale</div>` +
     `<div id="morale-dialog-content"></div>` +
     `<button class="btn morale-explain-toggle" id="morale-explain-toggle"></button>` +
@@ -1062,6 +1063,7 @@ export function createUI(handlers: UIHandlers): UI {
     `<p><b>Drift:</b> a few quiet turns after your last morale gain, morale slowly fades back toward the base of 50 — it never decays below 50, only lost battles can push it lower.</p>` +
     `<p><b>Military pay:</b> set how much you pay your army (−100% to +200% of normal upkeep). Paying more costs gold but slows the drift; at +100% decay stops entirely, and beyond that a lavishly funded army's morale actually climbs each turn. Paying less saves gold but makes morale fade faster.</p>` +
     `<p><b>Why it matters:</b> high morale makes units hit harder and hold ground, and keeps them from breaking and routing under fire; low morale does the opposite.</p>` +
+    `</div>` +
     `</div>`;
   const moraleDialogContent = moraleDialog.querySelector<HTMLDivElement>("#morale-dialog-content")!;
   const moraleExplain = moraleDialog.querySelector<HTMLDivElement>("#morale-explain")!;
@@ -1071,7 +1073,7 @@ export function createUI(handlers: UIHandlers): UI {
   let moraleExplainOpen = false;
   const syncMoraleExplain = (): void => {
     moraleExplain.classList.toggle("hidden", !moraleExplainOpen);
-    moraleExplainToggle.textContent = moraleExplainOpen ? "How morale works ▴" : "How morale works ▾";
+    moraleExplainToggle.innerHTML = moraleExplainOpen ? "How morale works ▴" : "How morale works ▾";
   };
   syncMoraleExplain();
   const hideMoraleDialog = (): void => {
@@ -1242,6 +1244,7 @@ export function createUI(handlers: UIHandlers): UI {
   let religionOpen = false;
   let greatPeopleOpen = false;
   let legendsOpen = false;
+  let legendsHelpOpen = false;
   let productionOpen = false;
   let tileExpanded = false;
   let prodCityId: number | null = null;
@@ -1672,7 +1675,7 @@ export function createUI(handlers: UIHandlers): UI {
     const compact = activeTurnUpdateView === "compact";
     turnUpdateHeading.textContent = compact ? `Turn Updates (${turnUpdateQueue.length})` : "Turn Updates";
     // The toggle shows the layout you'd switch TO.
-    turnUpdateViewToggle.textContent = compact ? "Expanded ▦" : "Compact ☰";
+    turnUpdateViewToggle.innerHTML = compact ? "Expanded ▦" : "Compact ☰";
     turnUpdateExpanded.classList.toggle("hidden", compact);
     turnUpdateCompact.classList.toggle("hidden", !compact);
     if (compact) {
@@ -3494,9 +3497,12 @@ export function createUI(handlers: UIHandlers): UI {
       });
       return;
     }
-    html += `<div class="sub">Earn heroes by training military units and winning battles. Each legend belongs to a combat track — train matching units and fight to bank glory, then recruit from the panel.</div>`;
-    html += `<div class="csub" style="margin-top:10px">Track glory</div>`;
-    html += `<div style="display:flex;flex-direction:column;gap:5px;margin-top:4px;margin-bottom:10px">`;
+    html += `<div class="legends-layout">`;
+
+    // ---- Left rail: track glory, active legends, then the explainer --------
+    html += `<div class="legends-progress">`;
+    html += `<div class="csub" style="margin-top:0">Track glory</div>`;
+    html += `<div style="display:flex;flex-direction:column;gap:5px;margin-top:4px">`;
     for (const track of LEGEND_TRACKS) {
       const have = legendTrackPointsOf(viewer, track);
       const need = legendRecruitThreshold(legendTrackEarnedOf(viewer, track));
@@ -3508,7 +3514,7 @@ export function createUI(handlers: UIHandlers): UI {
     }
     html += `</div>`;
 
-    // Active legends (the viewer's hero units, with turns remaining).
+    // Active legends (the viewer's legend units, with turns remaining).
     const active = unitsOf(state, viewerId).filter((u) => u.legendId);
     if (active.length > 0) {
       html += `<div class="csub">Your Legends (${active.length})</div>`;
@@ -3527,58 +3533,97 @@ export function createUI(handlers: UIHandlers): UI {
           return (
             `<div class="legend-active sub">` +
             art +
-            `<div>${typeGlyph[def?.type ?? "land"]} <b style="color:#fff">${def?.name ?? "Hero"}</b> — ${left} turn${left === 1 ? "" : "s"} remain${extHint}${u.legendId ? " " + wikiBtn(`legend:${u.legendId}`) : ""}</div>` +
+            `<div>${typeGlyph[def?.type ?? "land"]} <b style="color:#fff">${def?.name ?? "Legend"}</b> · ${left} turn${left === 1 ? "" : "s"} remain${extHint}${u.legendId ? " " + wikiBtn(`legend:${u.legendId}`) : ""}</div>` +
             `</div>`
           );
         })
         .join("");
     }
 
-    // Available legends to recruit.
-    html += `<div class="csub">Available Heroes</div>`;
+    // How legends work — collapsible reference, kept below the live progress.
+    html += `<button class="btn legend-help-toggle" id="legend-help-toggle">${legendsHelpOpen ? "How legends work ▴" : "How legends work ▾"}</button>`;
+    html +=
+      `<div class="legend-help${legendsHelpOpen ? "" : " hidden"}">` +
+      `<p>Every legend is built on a base unit and belongs to one of five combat tracks: Melee, Cavalry, Ranged, Siege, or Naval. Deeds by units of that class feed the matching track.</p>` +
+      `<p><b>Earning glory:</b> training a military unit banks glory to its track. Winning battles banks more (most against rival civilizations, less against barbarians), and clearing a barbarian camp counts too.</p>` +
+      `<p><b>Recruiting:</b> once a track's glory reaches the threshold, recruit a legend of that track from one of your cities. Each recruit from a track raises the cost of the next.</p>` +
+      `<p><b>Eras:</b> legends unlock as your civilization advances. Later legends wait until you reach their era.</p>` +
+      `<p><b>Tenure:</b> a legend serves ${LEGEND_DEFAULT_LIFESPAN} turns before it retires. Many earn extra turns through deeds that suit them; some are rechargeable and return to the pool, others are claimed for good.</p>` +
+      `<p><b>In the field:</b> each legend fights with a signature ability and heartens adjacent allies with an aura. Legends are globally unique, so the first to recruit one claims it.</p>` +
+      `</div>`;
+    html += `</div>`; // .legends-progress
+
+    // ---- Right column: standardised grid of recruitable legends -----------
+    html += `<div class="legends-heroes">`;
+    html += `<div class="csub" style="margin-top:0">Available Legends</div>`;
     const avail = availableLegendsForPlayer(state, viewerId);
     if (avail.length === 0) {
       const locked = availableLegends(state).filter((l) => !eraUnlocked(viewer, l.era));
       if (locked.length > 0) {
-        html += `<div class="sub">Heroes of later eras await — reach ${playerGameEra(viewer) === "Bronze" ? "the Classical era (bronze alloying)" : "a later era"} to recruit them.</div>`;
+        html += `<div class="sub">Legends of later eras await. Reach ${playerGameEra(viewer) === "Bronze" ? "the Classical era (bronze alloying)" : "a later era"} to recruit them.</div>`;
       } else {
         html += `<div class="sub">Every Legend has been recruited.</div>`;
       }
     } else {
+      html += `<div class="legend-grid">`;
       html += avail
         .map((l) => {
           const ext = legendLifeExtensions(l.id);
           const extLine = ext.length
-            ? ` · may earn turns: ${ext.map((e) => `+${e.turns}/${e.trigger.replace(/_/g, " ")}`).join(", ")}`
-            : "";
+            ? `Gains ${ext.map((e) => `+${e.turns} per ${e.trigger.replace(/_/g, " ")}`).join(", ")}.`
+            : `No deeds extend its tenure.`;
+          const rechargeNote = l.rechargeable ? ` Rechargeable, returns to the pool when it retires.` : "";
           const track = legendTrackFor(l);
-          const need = legendRecruitCostFor(l, viewer);
-          const have = legendTrackPointsOf(viewer, track);
+          // Base unit stats plus the legend's own combat bonus, which applies to
+          // both melee and ranged strength — matching the unit panel.
+          const udef = UNIT_DEFS[l.baseType as keyof typeof UNIT_DEFS];
+          const heroBonus = Math.max(0, l.combatBonus);
+          const statChips: string[] = [];
+          if (udef) {
+            if (udef.strength > 0) statChips.push(`<span class="lchip">⚔️ ${udef.strength + heroBonus}</span>`);
+            if ((udef.rangedStrength ?? 0) > 0)
+              statChips.push(`<span class="lchip">🏹 ${(udef.rangedStrength ?? 0) + heroBonus} (rng ${udef.range})</span>`);
+            statChips.push(`<span class="lchip">❤️ ${unitBaseMaxHp(l.baseType as keyof typeof UNIT_DEFS, 1)}</span>`);
+            statChips.push(`<span class="lchip">🥾 ${udef.movement}</span>`);
+          }
           const canRecruit = canRecruitLegend(state, viewerId, l.id).ok;
           const dis = !canRecruit || !hasCity;
           return (
             `<div class="tech legend-card" data-legend="${l.id}">` +
             `<img class="portrait-thumb legend-portrait" src="${ASSET_BASE_URL}legends/${l.id}.png" alt="" onerror="this.style.display='none'">` +
-            `<div style="flex:1;min-width:0">` +
-            `<b>${typeGlyph[l.type]} ${l.name}</b> <span class="sub">· ${l.era} · ${legendBaseName(l)} · ${LEGEND_TRACK_LABELS[track]}</span>` +
-            `<div class="sub">${l.abilityDesc}</div>` +
-            `<div class="sub">Glory: <b style="color:${have >= need ? "#7ee787" : "#ffd967"}">${have}/${need}</b> ${LEGEND_TRACK_LABELS[track]} · Aura: ${l.auraDesc} (+${l.auraBonus} adjacent) · ${LEGEND_DEFAULT_LIFESPAN} turns base${extLine}${l.rechargeable ? " · recharges" : ""}</div></div>` +
-            `<div class="legend-actions">` +
+            `<div class="legend-card-main">` +
+            `<div class="legend-card-title"><b>${typeGlyph[l.type]} ${l.name}</b>${wikiBtn(`legend:${l.id}`)}</div>` +
+            `<div class="legend-chips">` +
+            `<span class="lchip">⏳ ${l.era}</span>` +
+            `<span class="lchip">${LEGEND_TRACK_LABELS[track]}</span>` +
+            statChips.join("") +
+            `</div>` +
+            `<div class="legend-sec"><span class="legend-sec-h">Ability</span>${l.abilityDesc}</div>` +
+            `<div class="legend-sec"><span class="legend-sec-h">Aura</span>Adjacent allies gain <b>+${l.auraBonus} combat strength</b>. ${l.auraDesc}</div>` +
+            `<div class="legend-sec"><span class="legend-sec-h">Earn Turns</span>${extLine}${rechargeNote}</div>` +
+            `<div class="legend-actions-row">` +
             `<button class="btn primary" data-legend-recruit="${l.id}"${dis ? " disabled" : ""}>Recruit</button>` +
-            wikiBtn(`legend:${l.id}`) +
+            `</div>` +
             `</div></div>`
           );
         })
         .join("");
+      html += `</div>`; // .legend-grid
     }
+    html += `</div>`; // .legends-heroes
 
-    html += `</div>`;
+    html += `</div>`; // .legends-layout
+    html += `</div>`; // .panel-dialog-body
     withPreservedScroll(legendsPanel, () => {
       legendsPanel.innerHTML = html;
     });
     legendsPanel.querySelector<HTMLButtonElement>("#lgclose")!.addEventListener("click", () => {
       legendsOpen = false;
       legendsPanel.classList.add("hidden");
+    });
+    legendsPanel.querySelector<HTMLButtonElement>("#legend-help-toggle")?.addEventListener("click", () => {
+      legendsHelpOpen = !legendsHelpOpen;
+      renderLegends(state);
     });
     legendsPanel.querySelectorAll<HTMLButtonElement>("[data-legend-recruit]").forEach((el) =>
       el.addEventListener("click", () => {
@@ -3893,9 +3938,12 @@ export function createUI(handlers: UIHandlers): UI {
                   const stars = "★".repeat(def.tier);
                   return (
                     `<button class="btn" data-promote="${p}" title="${escapeHtml(def.desc)}" ` +
-                    `style="text-align:left;display:flex;justify-content:space-between;gap:8px;padding:8px 10px">` +
+                    `style="text-align:left;display:flex;flex-direction:column;gap:3px;padding:8px 10px">` +
+                    `<span style="display:flex;justify-content:space-between;gap:8px;width:100%">` +
                     `<b style="color:#fff">${def.name}</b>` +
                     `<span style="color:#ffd967;letter-spacing:1px;flex:0 0 auto">${stars}</span>` +
+                    `</span>` +
+                    `<span class="sub" style="text-align:left">${escapeHtml(def.desc)}</span>` +
                     `</button>`
                   );
                 })

@@ -7,18 +7,20 @@ import {
   citiesOf,
   computeVisible,
   currentPlayer,
+  isMilitary,
   playerById,
   unitsOf,
 } from "@roc/sim";
 import { getTile } from "@roc/shared";
 import { getCiv, startingUnitsFor } from "@roc/data";
 import { TUTORIAL_COACH_TURNS } from "./tutorial";
+import { iconify } from "./icons";
 import { speakCoachLine, stopCoachVoice } from "./coach-voice";
 import { assetUrl } from "./asset-base";
 import { cutLegendPortraitBackground } from "./coach-portrait";
 
-/** Legend portrait for the tutorial advisor — file: `public/legends/<id>.png`. */
-export const TUTORIAL_COACH_LEGEND_ID = "alexander";
+/** Portrait for the tutorial advisor — file: `public/legends/<id>.png`. */
+export const TUTORIAL_COACH_LEGEND_ID = "herodotus";
 
 export function tutorialCoachPortraitUrl(): string {
   return assetUrl(`legends/${TUTORIAL_COACH_LEGEND_ID}.png`);
@@ -30,12 +32,16 @@ export function tutorialCoachCutoutUrl(): string {
 }
 
 export type TutorialStepId =
+  | "t1_intro"
   | "t1_select_scout"
+  | "t1_unit_stats"
+  | "t1_unit_kinds"
   | "t1_move_scout"
   | "t1_select_warrior"
   | "t1_move_warrior"
   | "t1_select_settler"
   | "t1_found_city"
+  | "t1_yields"
   | "t1_open_research"
   | "t1_pick_research"
   | "t1_select_city"
@@ -43,17 +49,21 @@ export type TutorialStepId =
   | "t1_pick_build"
   | "t1_open_train"
   | "t1_train_unit"
+  | "t1_next_button"
   | "t1_end_turn"
   | "spot_barbarian"
   | "spot_enemy"
   | "t2_check_city"
+  | "t2_combat_brief"
+  | "t2_attack_barbarian"
+  | "t2_victory"
   | "t2_end_turn"
   | "t3_village"
   | "t3_end_turn"
   | "t4_diplomacy"
   | "t4_end_turn"
   | "t5_wrap_up"
-  | "t5_end_turn"
+  | "t5_choice"
   | "complete";
 
 export interface TutorialCoachFlags {
@@ -74,6 +84,9 @@ export interface TutorialCoachMarks {
   warriorStartRow?: number;
   /** Positions/movement of units snapshotted when a move step begins. */
   unitSnapshots?: { id: number; type: string; move: number; col: number; row: number }[];
+  /** Nearby barbarians snapshotted when the attack lesson begins — the step
+   *  completes once any of them has bled or died. */
+  barbSnapshots?: { id: number; hp: number }[];
 }
 
 export interface TutorialCoachContext {
@@ -93,10 +106,14 @@ export interface TutorialStepDef {
   targets?: string[];
   /** Highlight a unit's map tile (scout / warrior / settler). */
   unitHighlight?: "scout" | "warrior" | "settler";
+  /** Highlight an arbitrary map tile (village, barbarian) when no DOM target fits. */
+  tileHighlight?: (ctx: TutorialCoachContext) => { col: number; row: number } | null;
   /** Dim everything except the map when the player should tap tiles. */
   mapFocus?: boolean;
   /** Tap the coach bubble to continue (barbarians, enemies, wrap-up). */
   infoOnly?: boolean;
+  /** Final step: render Keep playing / End tutorial buttons in the bubble. */
+  choice?: boolean;
   isDone(ctx: TutorialCoachContext): boolean;
 }
 
@@ -168,7 +185,7 @@ function hasQueuedProduction(state: GameState, viewerId: number, selectedCityId:
 
 function cityPanelVisible(): boolean {
   if (typeof document === "undefined") return false;
-  const panel = document.querySelector<HTMLElement>(".city-panel");
+  const panel = document.querySelector<HTMLElement>("#city-panel");
   return panel != null && !panel.classList.contains("hidden");
 }
 
@@ -183,9 +200,9 @@ function playerIsResearching(state: GameState, viewerId: number): boolean {
 function citySubpanelOpen(): boolean {
   if (typeof document === "undefined") return false;
   return (
-    document.querySelector(".production:not(.hidden)") != null ||
-    document.querySelector(".training:not(.hidden)") != null ||
-    document.querySelector(".specialists:not(.hidden)") != null
+    document.querySelector("#production:not(.hidden)") != null ||
+    document.querySelector("#training:not(.hidden)") != null ||
+    document.querySelector("#specialists:not(.hidden)") != null
   );
 }
 
@@ -279,14 +296,68 @@ export function visibleEnemyCivId(state: GameState, viewerId: number): number | 
 }
 
 export function visibleVillageTile(state: GameState, viewerId: number): boolean {
+  return nearestVisibleVillage(state, viewerId) != null;
+}
+
+/** Closest visible tribal village tile, for the highlight ring. */
+export function nearestVisibleVillage(
+  state: GameState,
+  viewerId: number,
+): { col: number; row: number } | null {
   const visible = computeVisible(state, viewerId);
+  let best: { col: number; row: number } | null = null;
+  let bestD = Infinity;
+  const homes = unitsOf(state, viewerId);
   for (const key of visible) {
     const pos = parseTileKey(key);
     if (!pos) continue;
     const tile = getTile(state.map, pos.col, pos.row);
-    if (tile?.feature === "village") return true;
+    if (tile?.feature !== "village") continue;
+    const d = Math.min(
+      ...homes.map((u) => Math.abs(u.col - pos.col) + Math.abs(u.row - pos.row)),
+      Infinity,
+    );
+    if (d < bestD) {
+      bestD = d;
+      best = pos;
+    }
   }
-  return false;
+  return best;
+}
+
+/** Closest visible barbarian unit (falling back to a camp tile), for the ring. */
+export function nearestVisibleBarbarian(
+  state: GameState,
+  viewerId: number,
+): { col: number; row: number } | null {
+  const visible = computeVisible(state, viewerId);
+  for (const u of state.units.values()) {
+    const owner = playerById(state, u.ownerId);
+    if (!owner?.isBarbarian) continue;
+    if (visible.has(tileKey(u.col, u.row))) return { col: u.col, row: u.row };
+  }
+  for (const key of visible) {
+    const pos = parseTileKey(key);
+    if (!pos) continue;
+    const tile = getTile(state.map, pos.col, pos.row);
+    if (tile?.feature === "barb_camp") return pos;
+  }
+  return null;
+}
+
+/** Barbarian units close to the player's capital — the attack lesson's targets. */
+function nearbyBarbarians(state: GameState, viewerId: number): { id: number; hp: number }[] {
+  const city = capitalCity(state, viewerId);
+  const anchor = city ?? unitsOf(state, viewerId)[0];
+  if (!anchor) return [];
+  const out: { id: number; hp: number }[] = [];
+  for (const u of state.units.values()) {
+    const owner = playerById(state, u.ownerId);
+    if (!owner?.isBarbarian) continue;
+    const d = Math.abs(u.col - anchor.col) + Math.abs(u.row - anchor.row);
+    if (d <= 8) out.push({ id: u.id, hp: u.hp });
+  }
+  return out;
 }
 
 function enemyDisplayName(state: GameState, playerId: number): string {
@@ -294,6 +365,17 @@ function enemyDisplayName(state: GameState, playerId: number): string {
   if (!p) return "an enemy civilization";
   return getCiv(p.civId)?.name ?? p.name;
 }
+
+// Static texts for conditional steps — exported so the voice generator can ship
+// clips for lines that may not appear in its synthetic playthrough.
+export const SPOT_BARBARIAN_MESSAGE =
+  "Steady. Those are barbarians, raiders bred in camps out in the wild. Left alone they will plunder your fields and harry your units. And see how they linger near your borders. We will not leave them be.";
+export const SPOT_ENEMY_FALLBACK_MESSAGE =
+  "Look there, another civilization walks this land. They found cities, study, and scheme, just as you do. Watch them, trade with them, or fight them. But never ignore them.";
+export const T3_VILLAGE_MESSAGE =
+  "There, that camp of tents is a tribal village, and they are friendly. Walk any unit onto it and the locals may offer gold, a secret of craft, or even a young warrior eager to join you. In my books, hospitality is never refused.";
+export const T4_DIPLOMACY_MESSAGE =
+  "You are not alone in this land. You have met another people. Open Diplomacy 🕊️. Wars make the loudest chapters, but trade and truces build the longest empires. Speak first. You can always fight later.";
 
 function spotEnemyMessage(state: GameState, viewerId: number, flags: TutorialCoachFlags): string {
   const me = state.players.find((p) => p.id === viewerId);
@@ -304,19 +386,9 @@ function spotEnemyMessage(state: GameState, viewerId: number, flags: TutorialCoa
   const visibleId = visibleEnemyCivId(state, viewerId);
   const name = metRival != null ? enemyDisplayName(state, metRival) : visibleId != null ? enemyDisplayName(state, visibleId) : null;
   if (name) {
-    return `Hey — that's ${name}, an enemy civilization! They expand and research just like you. Keep your warriors nearby and decide later whether to trade or tangle.`;
+    return `Look there, that is ${name}, another civilization in this land. They found cities, study, and scheme, just as you do. Watch them, trade with them, or fight them. But never ignore them.`;
   }
-  return "Heads up — there's an enemy civilization out there. They want the same land and glory you do. Scout carefully and keep fighters close.";
-}
-
-function spotBarbarianStep(): TutorialStepDef {
-  return {
-    id: "spot_barbarian",
-    message:
-      "Oh — those are barbarians. Wild raiders from camps out in the wilderness. They'll raid tiles if you let them get too close, so hunt down their camps when your army's ready.",
-    infoOnly: true,
-    isDone: infoDone,
-  };
+  return SPOT_ENEMY_FALLBACK_MESSAGE;
 }
 
 function spotEnemyStep(state: GameState, viewerId: number, flags: TutorialCoachFlags): TutorialStepDef {
@@ -328,6 +400,8 @@ function spotEnemyStep(state: GameState, viewerId: number, flags: TutorialCoachF
   };
 }
 
+/** Reactive one-time briefings. Barbarians are a SCHEDULED turn-2 lesson now
+ *  (the tutorial map plants one near the start), so only rival contact remains. */
 function encounterSteps(
   state: GameState,
   viewerId: number,
@@ -335,9 +409,6 @@ function encounterSteps(
   inProgress: ReadonlySet<TutorialStepId>,
 ): TutorialStepDef[] {
   const out: TutorialStepDef[] = [];
-  if (inProgress.has("spot_barbarian") || (!flags.barbarianExplained && visibleBarbarianThreat(state, viewerId))) {
-    out.push(spotBarbarianStep());
-  }
   const metNewRival =
     (state.players.find((p) => p.id === viewerId)?.met.length ?? 0) > flags.initialMetCount;
   if (
@@ -363,9 +434,16 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
     case 1:
       return [
         {
+          id: "t1_intro",
+          message:
+            "Ah, there you are. I am Herodotus of Halicarnassus. They call me the father of history, for I wrote down the deeds of kings so the world would not forget them. Today, I write yours. You lead the Indus Valley, among the first peoples on earth to raise true cities, planned to the very brick. Stay with me for five turns and I will teach you to rule. Tap my words when you're ready.",
+          infoOnly: true,
+          isDone: infoDone,
+        },
+        {
           id: "t1_select_scout",
           message:
-            "Hey there — glad you're here! Tap your Scout first. They're great at clearing the fog and finding a cozy spot for your first city.",
+            "Every chronicle begins with a question: what lies beyond the hill? Your Scout answers it. Select them. Tap them on the map, or open your Units list.",
           targets: ["#units-btn"],
           unitHighlight: "scout",
           isDone: ({ state, viewerId, selectedUnitId }) => {
@@ -375,14 +453,30 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
           },
         },
         {
+          id: "t1_unit_stats",
+          message:
+            "A moment, before they run off. Every unit lives by three numbers. Movement is how far it travels each turn. Sight is how far it sees. Strength is how hard it fights. Your Scout moves three tiles and sees far, but is frail in battle.",
+          infoOnly: true,
+          isDone: infoDone,
+        },
+        {
+          id: "t1_unit_kinds",
+          message:
+            "And units come in many kinds. Scouts explore. Melee troops like your Warriors hold the line. Ranged units, your Slingers and Javelineers, strike from a tile away. In time you will tame horses for cavalry, fast and fearsome on open ground. You will raise siege engines to crack city walls, and launch ships to rule the seas. And one day, gunpowder will change everything. The right unit for the right task: that is half of ruling.",
+          infoOnly: true,
+          isDone: infoDone,
+        },
+        {
           id: "t1_move_scout",
-          message: "Nice choice! Tap any tile on the map to send them out. A little scouting now goes a long way.",
+          message:
+            "Now send your Scout toward the horizon. Tap any tile and they will walk until their movement is spent. Every step reveals more of the map.",
           isDone: ({ state, viewerId, marks }) =>
             unitMoveStepDone(state, viewerId, "scout", marks, marks.scoutStartMove, marks.scoutStartCol, marks.scoutStartRow),
         },
         {
           id: "t1_select_warrior",
-          message: "Perfect. Tap any Warrior in your units list — they fight for you and keep your Settler safe.",
+          message:
+            "The wilds hold wolves of the two-legged kind. Select a Warrior. Your Settler should never wander unguarded.",
           targets: ["#units-btn"],
           unitHighlight: "warrior",
           isDone: ({ state, viewerId, selectedUnitId }) => {
@@ -393,13 +487,14 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
         },
         {
           id: "t1_move_warrior",
-          message: "Move whichever Warrior you'd like — just keep one close to your Settler, just in case.",
+          message:
+            "March them wherever you judge best. Beside your Settler is wisest. In my travels I passed many caravans. The ones with spears arrived.",
           isDone: ({ state, viewerId, marks }) => anyFighterMoveDone(state, viewerId, marks),
         },
         {
           id: "t1_select_settler",
           message:
-            "Last but not least — your Settler! Only they can found a city, and cities are really the heart of everything you'll build.",
+            "And now the one this chronicle is truly about: your Settler. Select them.",
           targets: ["#units-btn"],
           unitHighlight: "settler",
           isDone: ({ state, viewerId, selectedUnitId }) => {
@@ -411,31 +506,41 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
         {
           id: "t1_found_city",
           message:
-            "With the Settler selected, tap Found City. Grassland or plains with food 🍞 nearby is a lovely start.",
+            "Tap Found City. Only Settlers can found cities, and cities are how an empire grows. Each one works the land around it and adds its harvest, labor, and learning to your realm. More cities, more of everything. Grassland or plains near food 🍞 serves best.",
           targets: ["#found", "[data-found]"],
           isDone: ({ state, viewerId }) => citiesOf(state, viewerId).length > 0,
         },
         {
+          id: "t1_yields",
+          message:
+            "Look at what your young city now produces. Food 🍞 fills bellies and grows new citizens. Production ⚒️ is labor, and it raises your buildings. Gold 🪙 fills your treasury, paying upkeep and buying what you cannot wait for. Science 🔬 drives discovery. Culture 🎭 shapes your government and laws. And faith 🙏, in time, can found a religion. Every choice you make trades one of these for another.",
+          infoOnly: true,
+          isDone: infoDone,
+        },
+        {
           id: "t1_open_research",
           message:
-            "City founded — nice work! Tap Research up top. That's how you unlock new units, buildings, and bonuses.",
+            "A city without learning is only a camp with walls. Open Research 🔬 at the top of your screen.",
           targets: ["#research-btn"],
           isDone: ({ state, viewerId }) => {
             if (playerIsResearching(state, viewerId)) return true;
-            return document.querySelector(".research:not(.hidden) .tech[data-tech]") != null;
+            return document.querySelector("#research:not(.hidden) .tech[data-tech]") != null;
           },
         },
         {
           id: "t1_pick_research",
-          message: "Pick any tech that catches your eye. Your cities will chip in science 🔬 each turn until it's done.",
-          targets: [".research:not(.hidden) .tech[data-tech]"],
+          message:
+            "Take Plant Cultivation. It unlocks farming and opens the road to pottery and, dearest to my heart, writing. Every discovery has a price in science 🔬, and the science your cities make each turn pays it down. Citizens, buildings like the Archive, and clever specialists all add to it. More science, faster discoveries. Grow, and you will out-think the world.",
+          targets: [
+            "#research:not(.hidden) .tech[data-tech='cultivation']",
+            "#research:not(.hidden) .tech[data-tech]",
+          ],
           isDone: ({ state, viewerId }) => playerIsResearching(state, viewerId),
         },
         {
           id: "t1_select_city",
-          message:
-            "Open your new city — tap it on the map or hit Cities. That's your home base for buildings and training.",
-          targets: [".city-panel", "#cities-btn"],
+          message: "Now step inside your city. Tap it on the map, or use the Cities button.",
+          targets: ["#city-panel", "#cities-btn"],
           isDone: ({ state, viewerId, selectedCityId }) => {
             if (hasQueuedProduction(state, viewerId, selectedCityId)) return true;
             if (hasQueuedTraining(state, viewerId, selectedCityId)) return true;
@@ -448,42 +553,50 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
         {
           id: "t1_open_construction",
           message:
-            "Tap Construction 🔨 first — something like a Farm or Barracks is perfect. It'll take a few turns, but you've got time.",
+            "This is your seat of power. Open Construction 🔨. This is where labor becomes buildings. Some are specialized: a Barracks, an Archery Range, a Stable. Those do more than stand there. They train your citizens into specialized roles, turning farmhands into soldiers, archers, and riders.",
           targets: ["#open-prod"],
           isDone: (ctx) => {
             const city = coachedCity(ctx.state, ctx.viewerId, ctx.selectedCityId);
             if (city?.production != null) return true;
-            return document.querySelector(".production:not(.hidden) .pcard") != null;
+            return document.querySelector("#production:not(.hidden) .pcard") != null;
           },
         },
         {
           id: "t1_pick_build",
-          message: "Choose any building you like — your city will keep working on it each turn until it's finished.",
-          targets: [".production:not(.hidden) .pcard"],
+          message:
+            "Pick a project. A Barracks hardens the town and drills melee troops. A Farm feeds it. There is no wrong answer, labor is never wasted. Great works simply take a few turns. Patience.",
+          targets: ["#production:not(.hidden) .pcard"],
           isDone: (ctx) => hasQueuedProduction(ctx.state, ctx.viewerId, ctx.selectedCityId),
         },
         {
           id: "t1_open_train",
-          message:
-            "Now try Train Units ⚔️ — scouts and settlers come from here. Your capital is already big enough to train one!",
+          message: "Cities also raise units themselves. Open Train Units ⚔️.",
           targets: ["#open-train"],
           isDone: (ctx) =>
-            document.querySelector(".training:not(.hidden)") != null || hasQueuedTraining(ctx.state, ctx.viewerId, ctx.selectedCityId),
+            document.querySelector("#training:not(.hidden)") != null || hasQueuedTraining(ctx.state, ctx.viewerId, ctx.selectedCityId),
         },
         {
           id: "t1_train_unit",
           message:
-            "Queue up a Scout — it uses a citizen and takes a few turns. One civilian at a time for now, but that's plenty.",
-          targets: [".training:not(.hidden) [data-train]"],
+            "Queue a Scout. And mark this: training spends a citizen. A person leaves the fields and takes up the road. Spend your people wisely.",
+          targets: ["#training:not(.hidden) [data-train]"],
           isDone: (ctx) =>
             hasQueuedTraining(ctx.state, ctx.viewerId, ctx.selectedCityId) ||
             !canQueueAnyTraining(ctx.state, ctx.viewerId, ctx.selectedCityId),
         },
         {
+          id: "t1_next_button",
+          message:
+            "See the large button in the corner? It always knows what you've forgotten. Tap it at any time, even mid-turn, and it carries you to your next waiting task: an idle unit, an empty research slot, a city with nothing to build. The small button beside it is different. That one ends your turn.",
+          targets: ["#endturn"],
+          infoOnly: true,
+          isDone: infoDone,
+        },
+        {
           id: "t1_end_turn",
           message:
-            "What a great first turn! The big button hops to your next unit if anyone still has moves. The small one beside it ends your turn — hit that when you're happy with everything.",
-          targets: ["#endturn", "#endturn2"],
+            "Your first turn is written, and it reads well. When you're satisfied, tap the small button. The world will take its turn, and we will speak again.",
+          targets: ["#endturn2", "#endturn"],
           isDone: () => false,
         },
       ];
@@ -492,8 +605,8 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
         {
           id: "t2_check_city",
           message:
-            "Welcome to turn 2! Pop open your city and peek at Growth 🍞. Food builds up, then you get a new citizen who can work tiles or help train units. Your queues from last turn are still chugging along!",
-          targets: [".city-panel", "#cities-btn"],
+            "Turn two, and your city worked while you slept. Open it and look at Growth 🍞. Food fills the stores, and when they brim, a new citizen is born to work your tiles. Your building and training carry on by themselves.",
+          targets: ["#city-panel", "#cities-btn"],
           isDone: ({ state, viewerId, selectedCityId }) => {
             if (cityPanelVisible()) return true;
             if (selectedCityId == null) return false;
@@ -502,9 +615,52 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
           },
         },
         {
+          id: "spot_barbarian",
+          message: SPOT_BARBARIAN_MESSAGE,
+          infoOnly: true,
+          tileHighlight: ({ state, viewerId }) => nearestVisibleBarbarian(state, viewerId),
+          isDone: infoDone,
+        },
+        {
+          id: "t2_combat_brief",
+          message:
+            "Time for your first lesson in war. Select a unit and tap an enemy in reach to attack. In melee, both sides bleed, and strength decides who bleeds more. Ranged units strike without taking a scratch. Terrain and wounds matter too, so watch the odds shown before you commit. And wounded units heal each turn they rest.",
+          infoOnly: true,
+          isDone: infoDone,
+        },
+        {
+          id: "t2_attack_barbarian",
+          message: "Now, your Warrior. Select them, and strike that barbarian down. History smiles on the bold.",
+          tileHighlight: ({ state, viewerId }) => nearestVisibleBarbarian(state, viewerId),
+          isDone: ({ state, viewerId, marks }) => {
+            const snaps = marks.barbSnapshots;
+            if (!snaps || snaps.length === 0) return true; // no target to teach with
+            const bled = snaps.some((s) => {
+              const u = state.units.get(s.id);
+              return !u || u.hp < s.hp;
+            });
+            if (bled) return true;
+            // The raiders slipped out of reach (or the army fell): don't hold the
+            // turn hostage waiting for a fight that can no longer happen.
+            const fighters = unitsOf(state, viewerId).filter((u) => isMilitary(u.type));
+            return !snaps.some((s) => {
+              const u = state.units.get(s.id);
+              if (!u) return false;
+              return fighters.some((f) => Math.abs(f.col - u.col) + Math.abs(f.row - u.row) <= 4);
+            });
+          },
+        },
+        {
+          id: "t2_victory",
+          message:
+            "Well fought. Later, when your army is stronger, hunt down their camp as well. Raze it and you will loot a fine sum of gold 🪙. I have seen empires rise on plunder alone.",
+          infoOnly: true,
+          isDone: infoDone,
+        },
+        {
           id: "t2_end_turn",
           message:
-            "Keep scouts exploring — villages and rival borders are worth finding early. End turn when you're ready: big button for the next unit, small one to finish.",
+            "Let your Scout keep roaming. Tribal villages and rival borders are worth finding early. End the turn when the field is quiet.",
           targets: ["#endturn", "#endturn2"],
           isDone: () => false,
         },
@@ -515,8 +671,9 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
           ? [
               {
                 id: "t3_village" as const,
-                message:
-                  "See that tribal village? They're friendly — walk a unit onto it. Locals might share gold, a tech tip, or even a free warrior. Always worth saying hello!",
+                message: T3_VILLAGE_MESSAGE,
+                tileHighlight: ({ state, viewerId }: TutorialCoachContext) =>
+                  nearestVisibleVillage(state, viewerId),
                 isDone: ({ state, viewerId }: TutorialCoachContext) => {
                   const visible = computeVisible(state, viewerId);
                   for (const key of visible) {
@@ -536,7 +693,7 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
         {
           id: "t3_end_turn",
           message:
-            "Keep pushing back the fog and keep settlers safe. If barbarians show up, clear their camps before they cause trouble.",
+            "Push back the fog, and keep your Settler behind spears. The wider your maps, the wiser your choices.",
           targets: ["#endturn", "#endturn2"],
           isDone: () => false,
         },
@@ -547,8 +704,7 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
           ? [
               {
                 id: "t4_diplomacy" as const,
-                message:
-                  "You've met someone new — tap Diplomacy 🕊️ to say hi. Rivals aren't monsters; they're chasing the same victories. Trade, make peace, or pick a fight when the time is right.",
+                message: T4_DIPLOMACY_MESSAGE,
                 targets: ["#diplo-pill", "[data-bb=\"diplo\"]"],
                 isDone: () => document.querySelector("#diplomacy:not(.hidden)") != null,
               },
@@ -557,7 +713,7 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
         {
           id: "t4_end_turn",
           message:
-            "Turn 4 — grow your city, stay curious on research, and don't forget your borders. End turn whenever you feel good.",
+            "Tend the same three fires every turn: your units, your research, your cities' work. Do that, and history bends toward you.",
           targets: ["#endturn", "#endturn2"],
           isDone: () => false,
         },
@@ -567,15 +723,16 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
         {
           id: "t5_wrap_up",
           message:
-            "Last tip from me! Grow with settlers, out-research rivals, and watch out for barbarians. You can win by conquest, culture, science, and more — check Victory when you're curious. Now go make some history!",
+            "My ink runs low, so hear my last lesson. There are many roads to greatness: conquest, culture, science, faith, gold. Open Victory 🏆 now and then to see how you stand. Grow with settlers. Out-think your rivals. And never let a barbarian camp grow old.",
           infoOnly: true,
           isDone: infoDone,
         },
         {
-          id: "t5_end_turn",
-          message: "You're all set from me — end this turn and I'll step aside. You've got this. Good luck out there!",
-          targets: ["#endturn", "#endturn2"],
-          isDone: () => false,
+          id: "t5_choice",
+          message:
+            "Our five turns are spent, and your chronicle has a fine opening chapter. Will you play this game to its end, or set it down here and start fresh when you're ready? Choose below. Either way, you have my blessing... and my quill.",
+          choice: true,
+          isDone: infoDone,
         },
       ];
     default:
@@ -607,12 +764,87 @@ export function isEndTurnStep(step: TutorialStepDef | undefined): boolean {
   return step?.id.endsWith("_end_turn") ?? false;
 }
 
+/** The game canvas — clickable only on steps that ask the player to touch the map. */
+const GATE_CANVAS_SELECTOR = "#game";
+
+/**
+ * Interaction gate per step: while the tutorial coach is active, ALL clicks are
+ * blocked except on the coach itself, the selectors listed here (plus the step's
+ * own highlighted `targets`), and — when `canvas` is set — the map. Each entry
+ * deliberately re-allows the button that reopens the relevant panel so a player
+ * who closes it can never soft-lock the tutorial.
+ */
+const STEP_GATE: Partial<Record<TutorialStepId, { extra?: string[]; canvas?: boolean }>> = {
+  // Info-only briefings: only the coach bubble (tap to continue) is live.
+  t1_intro: {},
+  t1_unit_stats: {},
+  t1_unit_kinds: {},
+  t1_yields: {},
+  t2_combat_brief: {},
+  t2_victory: {},
+  t5_choice: {},
+  spot_barbarian: {},
+  spot_enemy: {},
+  // The combat lesson: select the Warrior (map or Units list) and strike.
+  t2_attack_barbarian: { extra: ["#units-btn", '[data-bb="units"]', "#empire"], canvas: true },
+  // Unit selection can happen on the map or through the Units list.
+  t1_select_scout: { extra: ["#units-btn", '[data-bb="units"]', "#empire"], canvas: true },
+  t1_move_scout: { canvas: true },
+  t1_select_warrior: { extra: ["#units-btn", '[data-bb="units"]', "#empire"], canvas: true },
+  t1_move_warrior: { canvas: true },
+  t1_select_settler: { extra: ["#units-btn", '[data-bb="units"]', "#empire"], canvas: true },
+  t1_found_city: { extra: ["#found", "[data-found]"], canvas: true },
+  t1_open_research: { extra: ["#research-btn", "#research"] },
+  t1_pick_research: { extra: ["#research"] },
+  t1_select_city: { extra: ["#cities-btn", '[data-bb="empire"]', "#empire", "#city-panel"], canvas: true },
+  t1_open_construction: { extra: ["#cities-btn", "#city-panel", "#production"], canvas: true },
+  t1_pick_build: { extra: ["#city-panel", "#production"], canvas: true },
+  t1_open_train: { extra: ["#cities-btn", "#city-panel", "#training"], canvas: true },
+  t1_train_unit: { extra: ["#city-panel", "#training"], canvas: true },
+  t2_check_city: { extra: ["#cities-btn", '[data-bb="empire"]', "#empire", "#city-panel"], canvas: true },
+  t3_village: { canvas: true },
+  t4_diplomacy: { extra: ["#diplo-pill", '[data-bb="diplo"]', "#diplomacy"] },
+};
+
+/** Selectors a click may land on for `step` (besides the coach and, if allowed, the map). */
+export function gateSelectorsForStep(step: TutorialStepDef): string[] {
+  // Read-and-continue briefings (and the final choice) confine clicks to the coach
+  // bubble, even when they highlight a HUD element for illustration — otherwise the
+  // player could, e.g., tap the highlighted End Turn button mid-explanation.
+  if (step.infoOnly || step.choice) return [];
+  const list = [...(step.targets ?? [])];
+  const gate = STEP_GATE[step.id];
+  if (gate?.extra) list.push(...gate.extra);
+  if (isEndTurnStep(step)) list.push("#endturn", "#endturn2");
+  return list;
+}
+
+/** Whether `step` lets the player interact with the map canvas. */
+export function gateAllowsCanvas(step: TutorialStepDef): boolean {
+  return STEP_GATE[step.id]?.canvas ?? false;
+}
+
 /** Strip emoji so TTS / ElevenLabs reads clean prose. */
+/** Phonetic respellings applied ONLY to the spoken (TTS) text, never the on-screen
+ *  text, so the voice pronounces names the model otherwise mangles. The bubble
+ *  still displays the correct spelling. */
+const SPEECH_PRONUNCIATIONS: [RegExp, string][] = [
+  // The narrator's own name reads badly as plain "Herodotus". Force the exact
+  // pronunciation huh-ROD-uh-tus (/həˈrɑːdətəs/) with an SSML phoneme tag. NOTE:
+  // phoneme tags need a phoneme-capable model — the voice generator auto-switches
+  // any clip containing "<phoneme" to one (see tools/generate-coach-voice.ts).
+  [/Herodotus/g, '<phoneme alphabet="cmu-arpabet" ph="HH AH0 R AA1 D AH0 T AH0 S">Herodotus</phoneme>'],
+];
+
 export function coachSpeechText(message: string): string {
-  return message
+  let text = message
     .replace(/\p{Extended_Pictographic}/gu, "")
     .replace(/\s{2,}/g, " ")
     .trim();
+  for (const [pattern, replacement] of SPEECH_PRONUNCIATIONS) {
+    text = text.replace(pattern, replacement);
+  }
+  return text;
 }
 
 export interface TutorialCoachDeps {
@@ -624,6 +856,12 @@ export interface TutorialCoachDeps {
   banner: (text: string) => void;
   /** False while the loading veil covers the map — coach waits to speak. */
   isWorldReady: () => boolean;
+  /** "End tutorial here" on the final choice — leave the game back to the menu. */
+  exitToMenu?: () => void;
+  /** Spawn the turn-3 tribal village on demand (so it can't be collected early). */
+  ensureTutorialVillage?: () => void;
+  /** Spawn the turn-2 barbarian on demand (so it can't be fought/fled early). */
+  ensureTutorialBarbarian?: () => void;
 }
 
 export interface TutorialCoach {
@@ -652,6 +890,9 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
   /** Encounter briefings in progress — kept until the player taps through even after the one-time flag is set. */
   const encounterInProgress = new Set<TutorialStepId>();
   let typeTimer = 0;
+  /** Bumped on every startTyping so a delayed audio/fallback callback from a
+   *  superseded line can't hijack the current one. */
+  let typeSeq = 0;
   const TYPE_MS = 34;
 
   const initialState = deps.getState();
@@ -676,11 +917,15 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     `<div id="tutorial-coach-dialog">` +
     `<div id="tutorial-coach-text"></div>` +
     `</div></div>` +
+    `<div id="tutorial-coach-choice" hidden>` +
+    `<button type="button" id="tutorial-coach-continue">Keep playing</button>` +
+    `<button type="button" id="tutorial-coach-finish">End tutorial here</button>` +
+    `</div>` +
     `<div id="tutorial-coach-foot">` +
     `<span id="tutorial-coach-progress"></span>` +
     `<button type="button" id="tutorial-coach-skip">Skip tutorial tips</button>` +
     `</div></div>` +
-    `<img id="tutorial-coach-portrait" alt="Tutorial advisor" />` +
+    `<img id="tutorial-coach-portrait" alt="Herodotus, your tutorial advisor" />` +
     `</div>`;
   document.body.appendChild(root);
 
@@ -691,6 +936,35 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
   const skipBtn = root.querySelector<HTMLButtonElement>("#tutorial-coach-skip")!;
   const panelEl = root.querySelector<HTMLElement>("#tutorial-coach-panel")!;
   const portraitEl = root.querySelector<HTMLImageElement>("#tutorial-coach-portrait")!;
+
+  // ---- interaction gate --------------------------------------------------
+  // While a step is active, clicks are confined to the coach, the step's allowed
+  // selectors, and (when the step needs it) the map. Everything else is swallowed
+  // in the capture phase so the game's own handlers never fire.
+  let gateActive = false;
+  let gateSelectors: string[] = [];
+  let gateCanvas = false;
+
+  function gateAllows(target: EventTarget | null): boolean {
+    const el = target instanceof Element ? target : null;
+    if (!el) return true;
+    if (root.contains(el)) return true; // coach bubble / skip
+    for (const sel of gateSelectors) {
+      if (el.closest(sel)) return true;
+    }
+    if (gateCanvas && el.closest(GATE_CANVAS_SELECTOR)) return true;
+    return false;
+  }
+
+  const gateHandler = (e: Event): void => {
+    if (!gateActive || dismissed) return;
+    if (gateAllows(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    (e as Event & { stopImmediatePropagation?: () => void }).stopImmediatePropagation?.();
+  };
+  const GATE_EVENTS = ["pointerdown", "mousedown", "click", "touchstart"] as const;
+  for (const type of GATE_EVENTS) window.addEventListener(type, gateHandler, true);
 
   function loadPortrait(): void {
     const sourceUrl = tutorialCoachPortraitUrl();
@@ -716,21 +990,37 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
   }
   loadPortrait();
 
+  const removeGate = (): void => {
+    gateActive = false;
+    for (const type of GATE_EVENTS) window.removeEventListener(type, gateHandler, true);
+  };
+
   const dismiss = (message?: string): void => {
     if (dismissed) return;
     dismissed = true;
+    removeGate();
     stopTyping();
     stopCoachVoice();
     root.remove();
     if (message) deps.banner(message);
   };
 
-  skipBtn.addEventListener("click", () => dismiss("Tutorial tips off — you've got this!"));
+  skipBtn.addEventListener("click", () => dismiss("Tutorial tips off. You've got this!"));
 
   const bubbleEl = root.querySelector<HTMLElement>("#tutorial-coach-bubble")!;
   const dialogEl = root.querySelector<HTMLElement>("#tutorial-coach-dialog")!;
+  const choiceEl = root.querySelector<HTMLElement>("#tutorial-coach-choice")!;
+  /** Whether the current step advances on a bubble tap (info-only briefings). */
+  let bubbleTapAdvances = false;
   bubbleEl.addEventListener("click", () => {
+    if (bubbleTapAdvances) flags.infoAcknowledged = true;
+  });
+  choiceEl.querySelector<HTMLButtonElement>("#tutorial-coach-continue")!.addEventListener("click", () => {
     flags.infoAcknowledged = true;
+  });
+  choiceEl.querySelector<HTMLButtonElement>("#tutorial-coach-finish")!.addEventListener("click", () => {
+    dismiss();
+    deps.exitToMenu?.();
   });
 
   function markStepExplained(stepId: TutorialStepId): void {
@@ -745,19 +1035,48 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     portraitEl.classList.remove("speaking");
   }
 
-  /** Reveal the line character-by-character while TTS reads it aloud. */
+  /** Reveal the line character-by-character, paced to Herodotus's voice so the
+   *  text appears as he speaks rather than racing ahead of the audio. */
   function startTyping(message: string, stepId: TutorialStepId): void {
     stopTyping();
     textEl.textContent = "";
     panelEl.classList.add("speaking");
     portraitEl.classList.add("speaking");
-    speakCoachLine(message, stepId);
-    let i = 0;
-    typeTimer = window.setInterval(() => {
-      i += 1;
-      textEl.textContent = message.slice(0, i);
-      if (i >= message.length) stopTyping();
-    }, TYPE_MS);
+
+    // Reveal by code point (not UTF-16 unit) so a multi-char emoji is never split
+    // mid-reveal, and render via innerHTML+iconify so emoji become the game's
+    // painted icons instead of raw system emoji.
+    const chars = Array.from(message);
+    const token = ++typeSeq;
+    let started = false;
+    const beginTyping = (perCharMs: number): void => {
+      if (started || token !== typeSeq) return; // superseded or already running
+      started = true;
+      let i = 0;
+      typeTimer = window.setInterval(() => {
+        i += 1;
+        textEl.innerHTML = iconify(chars.slice(0, i).join(""));
+        if (i >= chars.length) stopTyping();
+      }, perCharMs);
+    };
+
+    speakCoachLine(message, stepId, {
+      // Spread the reveal across ~92% of the clip so text lands just before the
+      // voice finishes; clamp per-char speed so it stays readable either way.
+      onPlay: (durationSec) => {
+        const ms =
+          durationSec > 0.3
+            ? Math.min(90, Math.max(18, (durationSec * 1000 * 0.92) / chars.length))
+            : TYPE_MS;
+        beginTyping(ms);
+      },
+      onFallback: () => beginTyping(TYPE_MS),
+    });
+
+    // Safety net: if no clip plays and no fallback fires (e.g. audio blocked and
+    // speech synthesis is silent) within a beat, reveal at the default pace so the
+    // bubble is never left blank.
+    window.setTimeout(() => beginTyping(TYPE_MS), 1400);
   }
 
   function seedMarks(step: TutorialStepDef, state: GameState, viewerId: number): void {
@@ -779,6 +1098,8 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
           .filter((u) => types.includes(u.type))
           .map((u) => ({ id: u.id, type: u.type, move: u.movementLeft, col: u.col, row: u.row })),
       };
+    } else if (step.id === "t2_attack_barbarian") {
+      marks = { ...marks, barbSnapshots: nearbyBarbarians(state, viewerId) };
     }
   }
 
@@ -809,6 +1130,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     if (dismissed) return;
 
     if (!deps.isWorldReady()) {
+      gateActive = false;
       root.classList.add("hidden");
       stopTyping();
       stopCoachVoice();
@@ -818,6 +1140,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     const state = deps.getState();
     const player = currentPlayer(state);
     if (!player.isHuman) {
+      gateActive = false;
       root.classList.add("hidden");
       return;
     }
@@ -825,7 +1148,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
 
     const turn = state.turn;
     if (turn > TUTORIAL_COACH_TURNS) {
-      dismiss("Tutorial complete — go build your empire!");
+      dismiss("The chronicle is yours. Rule well!");
       return;
     }
 
@@ -835,6 +1158,14 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
       lastStepId = null;
       completedSteps.clear();
       flags.infoAcknowledged = false;
+      // Ending the turn counts as reading any open one-time briefing — otherwise
+      // an untapped "spot barbarian/enemy" line replays at the start of every turn.
+      encounterInProgress.clear();
+      // Spawn each guaranteed encounter exactly when its lesson begins, so it
+      // cannot be fought or collected before its turn (which would strand the
+      // step waiting on a thing that's already gone).
+      if (turn === 2) deps.ensureTutorialBarbarian?.();
+      if (turn === 3) deps.ensureTutorialVillage?.();
     }
 
     const ctx: TutorialCoachContext = {
@@ -868,7 +1199,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     }
 
     if (stepIndex >= steps.length) {
-      dismiss("Tutorial complete — go build your empire!");
+      dismiss("The chronicle is yours. Rule well!");
       return;
     }
 
@@ -877,9 +1208,21 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
       seedMarks(step, state, ctx.viewerId);
     }
 
+    // Confine interaction to this step's allowed targets (plus the coach and,
+    // when the step needs it, the map). End-turn steps are free-play — the coach
+    // invites the player to explore and grow — so they lift the gate entirely.
+    if (isEndTurnStep(step)) {
+      gateActive = false;
+    } else {
+      gateActive = true;
+      gateSelectors = gateSelectorsForStep(step);
+      gateCanvas = gateAllowsCanvas(step);
+    }
+
     if (step.id === "complete") {
+      gateActive = false;
       stopTyping();
-      textEl.textContent = "Tutorial complete — explore, expand, and conquer!";
+      textEl.textContent = "The chronicle is yours. Explore, expand, and conquer!";
       progressEl.textContent = "";
       ring.hidden = true;
       dim.classList.remove("show");
@@ -896,15 +1239,22 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
       startTyping(step.message, step.id);
     }
     progressEl.textContent = `Turn ${turn} of ${TUTORIAL_COACH_TURNS}`;
+    bubbleTapAdvances = step.infoOnly === true;
     bubbleEl.classList.toggle("info-only", step.infoOnly === true);
     dialogEl.classList.toggle("info-only", step.infoOnly === true);
+    choiceEl.hidden = step.choice !== true;
 
     dim.classList.toggle("show", step.mapFocus === true);
     resetRingShape();
 
     const target = findVisibleTarget(step.targets);
+    const tilePos = step.tileHighlight?.(ctx) ?? null;
     if (target) {
       positionRing(target.getBoundingClientRect());
+    } else if (tilePos) {
+      const pt = deps.tileToScreen(tilePos.col, tilePos.row);
+      if (pt) positionRingAt(pt.x, pt.y);
+      else ring.hidden = true;
     } else if (step.unitHighlight === "warrior") {
       const selected =
         ctx.selectedUnitId != null ? state.units.get(ctx.selectedUnitId) : undefined;
@@ -934,6 +1284,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
   }
 
   function destroy(): void {
+    removeGate();
     stopTyping();
     stopCoachVoice();
     root.remove();

@@ -60,6 +60,19 @@ export async function listSavesForUser(userId: string): Promise<SaveRecord[]> {
   return all.filter((s) => s.userId === userId);
 }
 
+/**
+ * Re-tag every save owned by `fromUserId` to `toUserId`. Used when a guest signs
+ * in, so games saved while playing as a guest carry over to the account.
+ */
+export async function reassignSaves(fromUserId: string, toUserId: string): Promise<void> {
+  if (fromUserId === toUserId) return;
+  const saves = await listSavesForUser(fromUserId);
+  for (const save of saves) {
+    save.userId = toUserId;
+    await saveGame(save);
+  }
+}
+
 export async function saveGame(record: SaveRecord): Promise<void> {
   const db = await openDb();
   return new Promise((resolve, reject) => {

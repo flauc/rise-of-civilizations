@@ -10,7 +10,8 @@ import {
   cityGrowthMultiplier,
   placeResources,
 } from "./resources";
-import { getTile } from "@roc/shared";
+import { getTile, landmassSizes } from "@roc/shared";
+import { majorLandmassMin } from "../worldgen";
 import { citiesOf, unitsOf } from "./state";
 import { processCity } from "./economy";
 import { availableTraining, startTraining } from "./training";
@@ -161,6 +162,30 @@ describe("resources & amenities", () => {
 
     expect(cityAmenities(state, city)).toBe(2);
     expect(cityGrowthMultiplier(state, city)).toBeCloseTo(1.15);
+  });
+
+  it("islands are resource-rich compared to the mainland", () => {
+    const state = createGame({ seed: "isl-rich", cols: 60, rows: 40, barbarians: false, mapType: "two_continents" });
+    const sizes = landmassSizes(state.map);
+    let isleTiles = 0;
+    let isleRes = 0;
+    let mainTiles = 0;
+    let mainRes = 0;
+    for (const t of state.map.tiles) {
+      const s = sizes[t.row * state.map.cols + t.col]!;
+      if (s === 0) continue; // water
+      if (s < majorLandmassMin(60, 40)) {
+        isleTiles++;
+        if (t.resource) isleRes++;
+      } else {
+        mainTiles++;
+        if (t.resource) mainRes++;
+      }
+    }
+    expect(isleTiles).toBeGreaterThan(0);
+    expect(mainTiles).toBeGreaterThan(0);
+    // Island tiles carry resources noticeably more densely than mainland tiles.
+    expect(isleRes / isleTiles).toBeGreaterThan((mainRes / mainTiles) * 1.5);
   });
 
   it("placeResources is deterministic for the same seed", () => {

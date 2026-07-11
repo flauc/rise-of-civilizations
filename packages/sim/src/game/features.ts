@@ -4,7 +4,7 @@
 // All randomness is DETERMINISTIC — seeded from turn/unit/tile coordinates via
 // the shared RNG — so the server and clients agree (no stored RNG state needed).
 
-import { axialDistance, getTile, hashSeed, makeRng, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, hashSeed, isPolarTile, makeRng, offsetToAxial } from "@roc/shared";
 import {
   citiesOf,
   log,
@@ -366,6 +366,7 @@ export function maybeSpawnCamps(state: GameState, _barbId: number): void {
   const eligible: { col: number; row: number; key: number }[] = [];
   for (const tile of state.map.tiles) {
     if (!isPassableLand(tile.terrain) || tile.feature) continue;
+    if (isPolarTile(state.map, tile.col, tile.row)) continue; // no raiders at the poles
     if (sighted.has(`${tile.col},${tile.row}`)) continue; // must be hidden in fog
     if (unitAt(state, tile.col, tile.row)) continue;
     if (tooCloseToCamp(tile.col, tile.row)) continue;
@@ -388,13 +389,15 @@ export function placeFeatures(
 ): void {
   const { map } = state;
   const area = map.cols * map.rows;
-  const villageCount = Math.max(2, Math.floor(area / 70));
+  // ~1 village per 117 tiles (40% fewer than the original 1-per-70 density).
+  const villageCount = Math.max(2, Math.floor(area / 117));
   const campCount = barbarianCampTarget(state);
 
   // Eligible land tiles, away from starts and not already featured/occupied.
   const eligible: { col: number; row: number; key: number }[] = [];
   for (const tile of map.tiles) {
     if (!isPassableLand(tile.terrain) || tile.feature) continue;
+    if (isPolarTile(map, tile.col, tile.row)) continue; // no villages/camps at the poles
     const here = offsetToAxial({ col: tile.col, row: tile.row });
     if (starts.some((s) => s && axialDistance(here, offsetToAxial(s)) < 5)) continue;
     if (unitAt(state, tile.col, tile.row)) continue;

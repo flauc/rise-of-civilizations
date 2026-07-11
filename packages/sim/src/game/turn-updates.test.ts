@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { unitsOf, citiesOf, makeUnit, type City } from "./state";
@@ -198,6 +199,11 @@ describe("turn update events", () => {
   it("emits tradeRouteEstablished when a trader creates a route", () => {
     const state = newGame();
     const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    // Pin the capital to a known interior spot and flatten the strip to the
+    // destination, so the route never depends on the rolled terrain.
+    settler.col = 12;
+    settler.row = 10;
+    for (let c = 12; c <= 12 + 6; c++) getTile(state.map, c, 10)!.terrain = "plains";
     applyCommand(state, { type: "foundCity", unitId: settler.id });
     const from = citiesOf(state, 0)[0]!;
     const toId = state.nextEntityId++;

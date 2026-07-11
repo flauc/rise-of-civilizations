@@ -61,7 +61,7 @@ describe("legends: recruitment", () => {
     const hero = unitsOf(state, 0).find((u) => u.legendId === def.id)!;
     expect(hero).toBeTruthy();
     expect(isLegend(hero)).toBe(true);
-    expect(hero.legendExpiresOnTurn).toBe(state.turn + 15);
+    expect(hero.legendExpiresOnTurn).toBe(state.turn + def.lifespan);
     expect(hero.xp).toBe(0);
     expect(canRecruitLegend(state, 0, def.id).ok).toBe(false);
   });
@@ -117,7 +117,7 @@ describe("legends: combat aura", () => {
     const hero = makeUnit(heroId, 0, def.baseType as never, 5, 5, 0, 120);
     hero.legendId = def.id;
     state.units.set(heroId, hero);
-    expect(legendCombatBonus(state, hero)).toBeGreaterThanOrEqual(Math.max(0, def.combatBonus - 2));
+    expect(legendCombatBonus(state, hero)).toBeGreaterThanOrEqual(Math.max(0, def.combatBonus));
     const allyId = state.nextEntityId++;
     const ally = makeUnit(allyId, 0, "warrior", 6, 5, 0, 100);
     state.units.set(allyId, ally);
