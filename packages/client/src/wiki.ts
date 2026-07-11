@@ -86,7 +86,7 @@ import type { TerrainType, Unit } from "@roc/sim";
 import { geoNaturalEarth1, geoPath } from "d3-geo";
 import { feature } from "topojson-client";
 import landTopo from "world-atlas/land-110m.json";
-import { uniqueUnitBlockHtml, uniqueUnitDetailHtml, uniqueUnitFor, leaderAbilityBlockHtml, startingConditionsLine, wireUuImages } from "./unique-unit";
+import { uniqueUnitBlockHtml, uniqueUnitDetailHtml, uniqueUnitFor, leaderAbilityBlockHtml, startingConditionsLine, wireUuImages, infraYieldChips } from "./unique-unit";
 
 export type WikiCategory =
   | "civilizations"
@@ -1225,21 +1225,24 @@ function renderCivDetail(id: string): string {
   let uniques = "";
   if (uu) uniques += uniqueUnitBlockHtml(c.id); // emits data-uu-detail (delegated → uniqueUnit)
   if (inf) {
-    // Mirror uniqueUnitBlockHtml's markup (.uu-block / .uu-top / .uu-caret /
-    // .uu-hint) so the building card matches the unit card's style exactly.
+    // Mirror uniqueInfraBlockHtml's markup (.uu-block / .uu-top / .uu-caret /
+    // .uu-yields) so the building card matches the unit card's style exactly.
     const dir = inf.kind === "building" ? "buildings" : "improvements";
     const src = `${ASSET_BASE_URL}${dir}/${inf.id}.png`;
     const tech = TECH_DEFS[inf.reqTech as keyof typeof TECH_DEFS]?.name ?? inf.reqTech;
     const kindLabel = inf.kind === "building" ? "Unique building" : "Unique tile improvement";
+    let chips = infraYieldChips(inf.yields);
+    if (inf.effects) chips += `<span class="uu-yield uu-yield-empire">+empire bonus</span>`;
     uniques +=
       `<button type="button" class="uu-block uu-clickable" data-wiki-nav="uniqueInfra:${c.id}">` +
       `<div class="uu-top">` +
       `<div class="uu-icon"><img class="js-uu-img" src="${src}" alt="" /></div>` +
       `<div class="uu-info"><div class="uu-name">${escapeHtml(inf.name)}</div>` +
-      `<div class="uu-meta">${kindLabel} · unlocks with ${escapeHtml(String(tech))}</div></div>` +
+      `<div class="uu-meta">${kindLabel} · unlocks with ${escapeHtml(String(tech))}</div>` +
+      (chips ? `<div class="uu-yields">${chips}</div>` : "") +
+      `</div>` +
       `<span class="uu-caret" aria-hidden="true">&rsaquo;</span>` +
       `</div>` +
-      `<div class="uu-hint">View history</div>` +
       `</button>`;
   }
 

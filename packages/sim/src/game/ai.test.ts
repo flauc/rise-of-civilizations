@@ -215,10 +215,119 @@ describe("AI opponent", () => {
     foe.col = neighbor!.col;
     foe.row = neighbor!.row;
     const hpBefore = foe.hp;
-    city.rangedAttackUsed = false;
+    city.rangedAttacksUsed = 0;
     aiTakeTurn(s, 1);
-    expect(city.rangedAttackUsed).toBe(true);
+    expect(city.rangedAttacksUsed).toBe(1);
     expect(foe.hp).toBeLessThan(hpBefore);
+  });
+
+  it("still bombards in a save carrying the stuck pre-0.6.0 bombard flag", () => {
+    const s = aiWithCity("ai-bombard-legacy");
+    const city = citiesOf(s, 1)[0]!;
+    ensureContact(s, 0, 1);
+    expect(declareWar(s, 1, 0).ok).toBe(true);
+    for (const u of [...unitsOf(s, 1)]) {
+      if (!UNIT_DEFS[u.type].founder) s.units.delete(u.id);
+    }
+    const neighbor = offsetNeighbors(s.map, city.col, city.row).find((n) => {
+      const t = getTile(s.map, n.col, n.row);
+      return t && isPassableLand(t.terrain) && !unitAt(s, n.col, n.row);
+    })!;
+    const foe = unitsOf(s, 0).find((u) => UNIT_DEFS[u.type].strength > 0)!;
+    foe.col = neighbor.col;
+    foe.row = neighbor.row;
+    const hpBefore = foe.hp;
+    // An old save has the boolean stuck true and no counter at all; the next
+    // round's turn-start reset must clear it so the city fires again.
+    (city as { rangedAttacksUsed?: number }).rangedAttacksUsed = undefined;
+    city.rangedAttackUsed = true;
+    applyCommand(s, { type: "endTurn" }); // human passes; the AI round runs
+    expect(foe.hp).toBeLessThan(hpBefore);
+  });
+
+  it("spends every bombard a Bombard Tower grants", () => {
+    const s = aiWithCity("ai-bombard-tower");
+    const city = citiesOf(s, 1)[0]!;
+    city.buildings.push("bombard_tower"); // +1 bombard per turn
+    ensureContact(s, 0, 1);
+    expect(declareWar(s, 1, 0).ok).toBe(true);
+    for (const u of [...unitsOf(s, 1)]) {
+      if (!UNIT_DEFS[u.type].founder) s.units.delete(u.id);
+    }
+    const spots = offsetNeighbors(s.map, city.col, city.row).filter((n) => {
+      const t = getTile(s.map, n.col, n.row);
+      return t && isPassableLand(t.terrain) && !unitAt(s, n.col, n.row);
+    });
+    expect(spots.length).toBeGreaterThanOrEqual(2);
+    const foes = unitsOf(s, 0).filter((u) => UNIT_DEFS[u.type].strength > 0).slice(0, 2);
+    expect(foes.length).toBe(2);
+    foes.forEach((f, i) => {
+      f.col = spots[i]!.col;
+      f.row = spots[i]!.row;
+    });
+    city.rangedAttacksUsed = 0;
+    aiTakeTurn(s, 1);
+    expect(city.rangedAttacksUsed).toBe(2);
+  });
+
+  it("closes the last stretch and strikes in the same turn", () => {
+    const s = aiWithCity("ai-close-strike");
+    ensureContact(s, 0, 1);
+    expect(declareWar(s, 1, 0).ok).toBe(true);
+    const city = citiesOf(s, 1)[0]!;
+    city.rangedAttacksUsed = 99; // mute the city so only the warrior can deal damage
+    const warrior = unitsOf(s, 1).find((u) => u.type === "warrior")!;
+    for (const u of [...unitsOf(s, 1)]) {
+      if (u.id !== warrior.id) s.units.delete(u.id);
+    }
+    clearFeatures(s); // no villages/camps to lure the warrior elsewhere
+    // Level the land so movement costs can't eat the whole budget mid-approach.
+    for (const t of s.map.tiles) if (isPassableLand(t.terrain)) t.terrain = "grassland";
+    // Park the warrior on its city tile (garrison duty can't pull it back) and put
+    // a badly wounded enemy two steps out: beyond arm's reach, within march+strike.
+    warrior.col = city.col;
+    warrior.row = city.row;
+    const spot = landTileAtDepth(s, city, 2)!;
+    const foe = unitsOf(s, 0).find((u) => UNIT_DEFS[u.type].strength > 0)!;
+    foe.col = spot.col;
+    foe.row = spot.row;
+    foe.hp = 25;
+    warrior.movementLeft = UNIT_DEFS.warrior.movement;
+    aiTakeTurn(s, 1);
+    // The warrior must have moved AND landed the hit in one turn.
+    const after = s.units.get(foe.id);
+    expect(after === undefined || after.hp < 25).toBe(true);
+    expect(warrior.attackedThisTurn).toBe(true);
+  });
+
+  it("refuses a hopeless trade even at full health", () => {
+    const s = aiWithCity("ai-no-suicide");
+    ensureContact(s, 0, 1);
+    expect(declareWar(s, 1, 0).ok).toBe(true);
+    const warrior = unitsOf(s, 1).find((u) => u.type === "warrior")!;
+    for (const u of [...unitsOf(s, 1)]) {
+      if (u.id !== warrior.id) s.units.delete(u.id);
+    }
+    citiesOf(s, 1).forEach((c) => { c.rangedAttacksUsed = 99; }); // no bombard chip
+    clearFeatures(s);
+    // A wall of longswordsmen: the warrior would deal ~10 and take ~75. Extra
+    // defenders parked far away keep the power ratio out of "crushing" range.
+    const adj = freeNeighbor(s, warrior.col, warrior.row)!;
+    const wallId = s.nextEntityId++;
+    const wall = makeUnit(wallId, 0, "longswordsman", adj.col, adj.row);
+    s.units.set(wallId, wall);
+    for (let i = 0; i < 4; i++) {
+      const far = landTileAtDepth(s, { col: wall.col, row: wall.row }, 6 + i);
+      if (!far) continue;
+      const id = s.nextEntityId++;
+      s.units.set(id, makeUnit(id, 0, "longswordsman", far.col, far.row));
+    }
+    warrior.movementLeft = UNIT_DEFS.warrior.movement;
+    const hpBefore = warrior.hp;
+    const wallHpBefore = wall.hp;
+    aiTakeTurn(s, 1);
+    expect(wall.hp).toBe(wallHpBefore); // the warrior did not throw itself at the wall
+    expect(warrior.hp).toBe(hpBefore);
   });
 
   it("attacks a favorable adjacent enemy when at war", () => {
@@ -433,7 +542,7 @@ describe("AI opponent", () => {
     s.units.set(enemyId, enemy);
     const hp0 = enemy.hp;
     s.units.get(scoutId)!.movementLeft = UNIT_DEFS["scout"].movement;
-    city.rangedAttackUsed = true; // isolate scout movement — city bombard also chips adjacent foes
+    city.rangedAttacksUsed = 99; // isolate scout movement — city bombard also chips adjacent foes
     aiTakeTurn(s, 1);
     expect(enemy.hp).toBe(hp0); // the scout slipped away instead of attacking
   });

@@ -8,6 +8,38 @@
 <h1>Rise of Civilizations — What's New</h1>
 <p>Recent changes to Rise of Civilizations.</p>
 
+<h2>v0.7.1 <small>(July 2026)</small></h2>
+<ul>
+  <li>
+    <strong>[UI] Unique unit and building cards show their stats up front.</strong>
+    On the civ selection screen and in the wiki, a civ's unique unit now shows its strength, ranged strength, and movement, plus each special ability it has and what that ability does, directly on the card. Unique buildings and improvements now list their per-turn yields there too. Before this you had to open the unit to see any of it.
+  </li>
+  <li>
+    <strong>[UI] Tile panel shows every yield.</strong>
+    The tile information panel now lists science, faith, and culture yields, not only food and production. A tile such as Wooded Hills, which gives science, was previously shown as if it produced only food and production.
+  </li>
+  <li>
+    <strong>[Fix] Cities fire every bombard they have.</strong>
+    A city with a Bombard Tower is meant to bombard twice per turn, but AI cities were only firing once, and cities loaded from saves made before version 0.6.0 could be stuck never firing at all. Cities now use every bombard available to them each turn.
+  </li>
+  <li>
+    <strong>[Fix] An error on an opponent's turn no longer freezes the game.</strong>
+    If an AI or barbarian turn hit an error, the game could get stuck on that opponent and never hand control back to you. Errors during an opponent's turn are now caught and the game continues to the next player.
+  </li>
+  <li>
+    <strong>[Fix] Selecting a unit clears the city tile overlay.</strong>
+    The highlighted tiles a city works could stay on screen after you selected a unit. Selecting a unit now clears that overlay.
+  </li>
+  <li>
+    <strong>[Gameplay] AI attacks the same turn it reaches you.</strong>
+    AI military units used to march up next to an enemy and stop, giving the enemy the first strike. They now cover the last step and attack in the same turn whenever they have the movement to do both.
+  </li>
+  <li>
+    <strong>[Gameplay] AI stops throwing units against walls.</strong>
+    The AI no longer makes attacks that take heavy damage without scoring a kill, such as repeatedly charging a fortified barbarian camp, even when the attacking unit is at full health.
+  </li>
+</ul>
+
 <h2>v0.7.0 <small>(July 2026)</small></h2>
 <ul>
   <li>

@@ -325,6 +325,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     selectedUnitId = id;
     selectedCityId = null;
     selectedTile = null;
+    cityWorkable = new Set();
     cancelAbility();
     cancelExpandPick();
     cancelBombard();

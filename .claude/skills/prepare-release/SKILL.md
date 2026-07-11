@@ -61,23 +61,33 @@ in an earlier (already-released) changelog entry. Big systems are sometimes
 narrated a release before the code fully lands; if players already read about it,
 skip it. When in doubt, grep the existing changelog for the feature.
 
-## Step 2 — Write the changelog in the game's voice
+## Step 2 — Write the changelog plainly
 
-Match the existing entries exactly — study a couple before writing. The house
-style:
+Write it straight. State what each item is (a new feature, a change, or a bug
+fix) and explain the actual gameplay addition, change, or fix. No hype, no
+marketing voice, no evocative flourishes. A player should be able to read an
+entry and know exactly what is different in the game.
 
 - Each item is `{ tag, title, desc }` in `changelog.ts`, and
   `<li><strong>[Tag] Title.</strong> Desc</li>` in the HTML.
-- **Tags** (the badge): `New`, `Gameplay`, `Balance`, `UI`, `Fix`. Pick the one
-  that fits.
-- **Title**: short, evocative, sentence-case, no trailing period in `changelog.ts`
-  (the HTML version appends a `.` after the title).
-- **Desc**: 1–3 sentences, warm and concrete, written for a *player* not a
-  developer — name the units/wonders/mechanics, describe the felt effect, use the
-  em-dash asides the existing entries use. Never mention file names, functions,
-  tests, or refactors.
-- Order items by impact: headline systems first, then features, then
-  balance/gameplay tweaks, then fixes. AI-behaviour items usually go last.
+- **Tags** (the badge) tell the player the *kind* of change. Pick the accurate
+  one:
+  - `New` — a feature or content that did not exist before.
+  - `Gameplay` — a change to how something already in the game works.
+  - `Balance` — a numbers/tuning change (costs, stats, rates).
+  - `UI` — a change to the interface or presentation.
+  - `Fix` — a bug fix; something that was broken now works correctly.
+- **Title**: short and factual, sentence-case, names the thing that changed. No
+  trailing period in `changelog.ts` (the HTML version appends a `.` after the
+  title).
+- **Desc**: 1–3 plain sentences written for a *player*. Say what changed and, for
+  fixes, what the wrong behaviour was. Name the units/wonders/mechanics/numbers
+  involved. Do not editorialise about how exciting or impactful it is. Never
+  mention file names, functions, tests, or refactors.
+- **No em dashes** in any changelog copy (see the `no-em-dashes` house rule). Use
+  commas, periods, or colons instead.
+- Order items by impact: new features first, then gameplay/balance changes, then
+  fixes. AI-behaviour items usually go last.
 - `date`: the current month and year, e.g. `"July 2026"`.
 
 **HTML escaping:** in `docs/CHANGELOG.html`, write real ampersands as `&amp;`.

@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.7.0";
+export const CURRENT_VERSION = "0.7.1";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,54 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.7.1",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "UI",
+        title: "Unique unit and building cards show their stats up front",
+        desc:
+          "On the civ selection screen and in the wiki, a civ's unique unit now shows its strength, ranged strength, and movement, plus each special ability it has and what that ability does, directly on the card. Unique buildings and improvements now list their per-turn yields there too. Before this you had to open the unit to see any of it.",
+      },
+      {
+        tag: "UI",
+        title: "Tile panel shows every yield",
+        desc:
+          "The tile information panel now lists science, faith, and culture yields, not only food and production. A tile such as Wooded Hills, which gives science, was previously shown as if it produced only food and production.",
+      },
+      {
+        tag: "Fix",
+        title: "Cities fire every bombard they have",
+        desc:
+          "A city with a Bombard Tower is meant to bombard twice per turn, but AI cities were only firing once, and cities loaded from saves made before version 0.6.0 could be stuck never firing at all. Cities now use every bombard available to them each turn.",
+      },
+      {
+        tag: "Fix",
+        title: "An error on an opponent's turn no longer freezes the game",
+        desc:
+          "If an AI or barbarian turn hit an error, the game could get stuck on that opponent and never hand control back to you. Errors during an opponent's turn are now caught and the game continues to the next player.",
+      },
+      {
+        tag: "Fix",
+        title: "Selecting a unit clears the city tile overlay",
+        desc:
+          "The highlighted tiles a city works could stay on screen after you selected a unit. Selecting a unit now clears that overlay.",
+      },
+      {
+        tag: "Gameplay",
+        title: "AI attacks the same turn it reaches you",
+        desc:
+          "AI military units used to march up next to an enemy and stop, giving the enemy the first strike. They now cover the last step and attack in the same turn whenever they have the movement to do both.",
+      },
+      {
+        tag: "Gameplay",
+        title: "AI stops throwing units against walls",
+        desc:
+          "The AI no longer makes attacks that take heavy damage without scoring a kill, such as repeatedly charging a fortified barbarian camp, even when the attacking unit is at full health.",
+      },
+    ],
+  },
   {
     version: "0.7.0",
     date: "July 2026",

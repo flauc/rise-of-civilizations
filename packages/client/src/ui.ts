@@ -4253,6 +4253,13 @@ export function createUI(handlers: UIHandlers): UI {
     const y = r.yields;
     const chip = (icon: string, n: number) =>
       `<span style="${n ? "" : "opacity:.35"}" title="${icon}">${icon} <b>${n}</b></span>`;
+    // Every non-zero yield, so tiles like Wooded Hills (+science) aren't misread as
+    // food/production-only; a barren tile falls back to the faded food/production pair.
+    const allYields: Array<[string, number]> = [
+      ["🍞", y.food], ["⚒️", y.production], ["🪙", y.gold], ["🔬", y.science], ["🙏", y.faith], ["🎭", y.culture],
+    ];
+    const shownYields = allYields.filter(([, n]) => n);
+    const yieldChips = (shownYields.length ? shownYields : allYields.slice(0, 2)).map(([i, n]) => chip(i, n)).join("");
 
     let html =
       `<div class="sub">${r.subtitle}</div>` +
@@ -4261,6 +4268,8 @@ export function createUI(handlers: UIHandlers): UI {
       chip("⚒️", y.production) +
       chip("🪙", y.gold) +
       chip("🔬", y.science) +
+      (y.faith ? chip("🙏", y.faith) : "") +
+      (y.culture ? chip("🎭", y.culture) : "") +
       `</div>` +
       `<button class="btn tinfo-toggle" id="tile-toggle">${tileExpanded ? "Hide details ▴" : "Benefits & deficits ▾"}</button>`;
 
@@ -4403,7 +4412,7 @@ export function createUI(handlers: UIHandlers): UI {
         summaryBar({
           icon: "⬡",
           name: `<b>${r.name}</b>`,
-          stats: `${chip("🍞", y.food)}${chip("⚒️", y.production)}`,
+          stats: yieldChips,
           closeId: "tile-close",
         }) +
         `<div class="ip-detail">${html}</div>`;

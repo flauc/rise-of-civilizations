@@ -654,6 +654,17 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .uu-info{min-width:0;flex:1}
     .uu-name{font-family:'Cinzel',Georgia,serif;font-size:14px;font-weight:700;color:#f0d878}
     .uu-meta{font-size:12px;color:#b8aa8d;margin-top:2px}
+    /* Inline yield/stat chips: a civ's unique unit combat stats and unique building
+       per-turn yields, shown on the selection card so they read without a click. */
+    .uu-yields{display:flex;flex-wrap:wrap;align-items:center;gap:5px 8px;margin-top:5px}
+    .uu-yield{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:700;color:#e8dcc5}
+    .uu-yield-empire{color:#c9a227;font-weight:600;font-size:11px}
+    /* Unique-unit signature abilities (each ability it gains: glyph + name + what it does). */
+    .uu-abilities{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+    .uu-ability{padding:8px 10px;background:rgba(201,162,39,.08);border:1px solid rgba(201,162,39,.2);border-radius:8px}
+    .uu-ability-head{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#f0d878}
+    .uu-ability-glyph{font-size:13px;line-height:1}
+    .uu-ability-desc{font-size:12px;color:#c9bfa8;line-height:1.4;margin-top:3px}
     .uu-caret{flex:0 0 auto;color:#c9a227;font-size:20px;line-height:1}
     .uu-hint{font-size:11px;color:#c9a227;margin-top:7px;text-transform:uppercase;letter-spacing:.04em}
     /* Leader-ability block — the civ's active, cooldown-gated power (shared by the

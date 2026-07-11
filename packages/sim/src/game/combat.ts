@@ -989,8 +989,8 @@ export function towerBombardment(state: GameState, playerId: number): void {
   }
 }
 
-/** Simplified defense value used when a tower bombards a unit. */
-function defenseStrengthVsBombard(state: GameState, unit: Unit): number {
+/** Simplified defense value used when a tower or city bombards a unit. */
+export function defenseStrengthVsBombard(state: GameState, unit: Unit): number {
   const tile = getTile(state.map, unit.col, unit.row);
   let s = UNIT_DEFS[unit.type].strength * levelMultiplier(unit);
   if (tile) s += terrainDefense(tile.terrain);
