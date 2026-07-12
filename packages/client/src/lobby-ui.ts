@@ -631,8 +631,11 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .showcase-reroll{position:relative;flex:0 0 auto;width:100%;margin-top:0;z-index:2}
     /* Desktop / tall screens: classic hero top-right, copy anchored bottom-left. */
     @media (min-width:861px) and (min-height:521px){
-      .lobby-right{display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;gap:0;padding:48px 56px}
-      .showcase{align-self:auto;max-width:720px;max-height:none;overflow:visible;padding-right:0;padding-bottom:0}
+      .lobby-right{display:flex;flex-direction:column;align-items:stretch;gap:0;padding:48px 56px;overflow-y:auto}
+      /* margin-top:auto keeps the hero copy bottom-anchored when there's room,
+         but collapses to 0 for the tallest civs so the title stays visible and
+         the column scrolls instead of clipping off the top edge. */
+      .showcase{align-self:auto;margin-top:auto;max-width:720px;max-height:none;overflow:visible;padding-right:0;padding-bottom:0}
       .showcase-civ{font-size:52px}
       .showcase-leader{font-size:22px;margin-top:8px}
       .showcase-quote{font-size:20px;line-height:1.5;margin-top:22px;max-width:640px}

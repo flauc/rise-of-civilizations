@@ -129,10 +129,10 @@ Promotions are earned when a unit gains enough experience (XP) from combat, clea
 | guerrilla | Guerrilla | ⚔️ +3 strength in rough terrain; 🥾 ignores rough terrain penalties |
 | survivalist | Survivalist | ❤️ Heals +8 HP each turn |
 | pathfinder | Pathfinder | 🥾 All land terrain costs at most 1 movement |
-| spy | Spy | 👁️ +1 sight |
+| spy | Spy | 👁️ +1 sight (requires Scouting) |
 | ambush | Ambush | ⚔️ +4 strength on the first attack each turn |
 | ranger | Ranger | ⚔️ +2 strength; 👁️ +1 sight |
-| eagle_eye_recon | Eagle Eye | 👁️ +2 sight |
+| eagle_eye_recon | Eagle Eye | 👁️ +2 sight (requires Spy) |
 
 ## Naval Promotions
 

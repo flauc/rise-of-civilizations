@@ -425,6 +425,11 @@ export function canStartWork(
   if (kind === "farm" && tile.river && !playerById(state, playerId)?.researched.has("irrigation")) {
     return { ok: false, error: "Research Irrigation to farm river tiles" };
   }
+  // Laying a road across a river needs a bridge to carry it over the water, so a
+  // river tile can only be roaded once Bridge Building has been researched.
+  if (kind === "road" && tile.river && !playerById(state, playerId)?.researched.has("bridge_building")) {
+    return { ok: false, error: "Research Bridge Building to road river tiles" };
+  }
   const host = nearestOwningCity(state, playerId, col, row);
   if (!host) return { ok: false, error: "no city to build from" };
   const player = playerById(state, playerId);

@@ -357,6 +357,20 @@ describe("specialists & works", () => {
     expect(startWork(s, 0, "farm", tile.col, tile.row).ok).toBe(true);
   });
 
+  it("blocks roading a river tile until Bridge Building is researched", () => {
+    const { s, city } = gameWithCity();
+    const tile = grasslandTile(s, city, city.col + 1, city.row);
+    tile.river = 0b001001; // a river runs across this grassland
+
+    // The terrain is passable, but a road can't cross the river without a bridge.
+    expect(nextTierAt(tile, "road")).toBe(1);
+    expect(canStartWork(s, 0, "road", tile.col, tile.row, { skipStaffCheck: true }).ok).toBe(false);
+
+    // Once Bridge Building is researched, the river tile can be roaded.
+    s.players[0]!.researched.add("bridge_building");
+    expect(canStartWork(s, 0, "road", tile.col, tile.row, { skipStaffCheck: true }).ok).toBe(true);
+  });
+
   it("gates water improvements (fishery) behind the Maritime Foraging tech", () => {
     const { s, city } = gameWithCity();
     // Agrimensors (the survey craft water works need) require The Wheel.

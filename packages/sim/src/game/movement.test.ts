@@ -60,37 +60,27 @@ describe("river crossing movement", () => {
     b.road = true;
     a.river = 1 << 0; // direction 0 = E
 
-    // Without the Bridge Building tech the road still has to ford: 0.75 (dirt road) + 1.
-    expect(computeReachable(s, u).get("11,10")!.cost).toBe(1.75);
-
-    // Research Bridge Building and place both crossing tiles in owned territory so a
-    // bridge spans the river. The ford penalty is waived (just the road cost remains).
-    const cityId = ownedCity(s, 8, 8);
-    a.ownerCityId = cityId;
-    b.ownerCityId = cityId;
-    s.players[0]!.researched.add("bridge_building");
+    // A road can only be laid across a river with Bridge Building, so a roaded river
+    // crossing always stands on a bridge: the ford penalty is waived, leaving just the
+    // dirt-road cost (0.75) rather than 0.75 + 1.
     expect(computeReachable(s, u).get("11,10")!.cost).toBe(0.75);
   });
 
-  it("bridges a river on a neutral road for any army that knows Bridge Building", () => {
+  it("a roaded river crossing is bridged for any army, regardless of owner or tech", () => {
     const s = flatGame();
     const u = makeUnit(s.nextEntityId++, 0, "warrior", 10, 10);
     u.movementLeft = 4;
     s.units.set(u.id, u);
 
-    // A roaded river crossing on wholly unclaimed land (nobody owns these tiles).
+    // A roaded river crossing on wholly unclaimed land, and the mover has no tech.
     const a = getTile(s.map, 10, 10)!;
     const b = getTile(s.map, 11, 10)!;
     a.road = true;
     b.road = true;
     a.river = 1 << 0; // direction 0 = E
 
-    // No owner and no tech → the crossing still fords: 0.75 (dirt road) + 1.
-    expect(computeReachable(s, u).get("11,10")!.cost).toBe(1.75);
-
-    // The moving army's own civ researches Bridge Building; its engineers throw a
-    // span, so the ford penalty is waived even though the road belongs to no one.
-    s.players[0]!.researched.add("bridge_building");
+    // The bridge is a physical structure anyone may cross: the ford penalty is waived
+    // even though the road belongs to no one and this unit's civ knows no tech.
     expect(computeReachable(s, u).get("11,10")!.cost).toBe(0.75);
   });
 });

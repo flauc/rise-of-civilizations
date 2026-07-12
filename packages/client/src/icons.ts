@@ -53,6 +53,23 @@ export const EMOJI_ICON: Record<string, string> = {
   "▴": "ic_tri_up", "▲": "ic_tri_up", "●": "ic_bullet",
   "↺": "ic_reset", "▦": "ic_grid", "✦": "ic_spark_star",
   "⬡": "ic_hexagon", "⬣": "ic_hex_filled",
+  // --- Ability & religion glyphs (registered 2026-07-12; no bare emoji ships) ---
+  "💰": "ic_money_bag", "🐢": "ic_turtle", "🐎": "ic_horse", "🏇": "ic_horse",
+  "🐘": "ic_elephant", "🪤": "ic_trap", "🪜": "ic_ladder", "🥁": "ic_drum",
+  "🌿": "ic_herb", "🌵": "ic_cactus", "🌬": "ic_wind", "♾": "ic_infinity",
+  "🛞": "ic_wheel", "🪝": "ic_hook", "🦔": "ic_hedgehog", "🪓": "ic_axe",
+  "⛰": "ic_mountain", "🏔": "ic_mountain", "🌙": "ic_moon", "❄": "ic_snowflake",
+  "🚣": "ic_rowboat", "💨": "ic_dash", "🎶": "ic_music", "⭕": "ic_circle",
+  "🐺": "ic_wolf", "🌺": "ic_flower", "👣": "ic_footprints", "🪢": "ic_knot",
+  "🐝": "ic_bee", "🪨": "ic_rock", "🌊": "ic_wave", "🍂": "ic_leaves",
+  "🖤": "ic_black_heart", "🦈": "ic_shark", "🦁": "ic_lion", "💀": "ic_skull",
+  "🌩": "ic_storm", "🔮": "ic_crystal_ball", "✶": "ic_six_star", "🌑": "ic_new_moon",
+  // Religion symbols.
+  "🕉": "ic_om", "🪘": "ic_long_drum", "⛩": "ic_shrine", "☸": "ic_dharma",
+  "☪": "ic_star_crescent", "✠": "ic_maltese_cross", "✚": "ic_greek_cross",
+  "📿": "ic_prayer_beads", "✡": "ic_star_of_david", "🤲": "ic_open_hands",
+  "☯": "ic_yin_yang", "ᛟ": "ic_rune", "☥": "ic_ankh", "☀": "ic_sun",
+  "🦅": "ic_eagle", "𝍎": "ic_tetragram",
 };
 
 const iconUrl = (id: string): string => `${ASSET_BASE_URL}icons/${id}.png`;

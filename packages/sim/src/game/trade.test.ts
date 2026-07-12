@@ -15,7 +15,6 @@ import {
   isCoastalPortCity,
 } from "./trade";
 import { citiesOf, makeUnit, unitsOf, type City } from "./state";
-import { viewForPlayer } from "./serialize";
 import type { TerrainType } from "./terrain";
 
 const makeMap = (cols: number, rows: number, terrain: (col: number, row: number) => TerrainType): GameMap => ({
@@ -272,7 +271,7 @@ describe("trade routes", () => {
     expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
   });
 
-  it("a river severs the road connection unless a bridge spans it", () => {
+  it("a roaded river crossing is bridged, keeping the road connection", () => {
     const { s, from, to } = gameWithTwoCities();
     const tid = s.nextEntityId++;
     s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
@@ -291,52 +290,22 @@ describe("trade routes", () => {
     }
     expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
 
-    // Run a river along the edge between the first two intermediate road tiles.
+    // Run a river along the edge between the first two intermediate road tiles. A road
+    // can only be laid across a river with Bridge Building, so the crossing already
+    // stands on a bridge and the connection (bonus) holds.
     const a = route.path[1]!.split(",").map(Number) as [number, number];
     const b = route.path[2]!.split(",").map(Number) as [number, number];
     const dir = dirBetween(a, b);
     expect(dir).toBeGreaterThanOrEqual(0);
     getTile(s.map, a[0], a[1])!.river = 1 << dir;
-    // The unbridged river breaks the road connection, so the bonus is lost.
-    expect(tradeRouteYield(s, route).gold).toBe(baseYield);
-
-    // Research Bridge Building and bring both crossing tiles into owned territory: a
-    // bridge now carries the road over the river and the connection (bonus) returns.
-    s.players[0]!.researched.add("bridge_building");
-    getTile(s.map, a[0], a[1])!.ownerCityId = from.id;
-    getTile(s.map, b[0], b[1])!.ownerCityId = from.id;
+    getTile(s.map, b[0], b[1])!.river = 1 << ((dir + 3) % 6);
     expect(tradeRouteYield(s, route).gold).toBe(baseYield + 6);
-  });
 
-  it("serializes a bridge flag for a roaded river crossing only once the tech is researched", () => {
-    const { s, from } = gameWithTwoCities();
-    // Two owned, adjacent road tiles east of the city with a river on their shared edge.
-    const a: [number, number] = [from.col + 2, from.row];
-    const bAx = axialNeighbor(offsetToAxial({ col: a[0], row: a[1] }), 0); // E neighbour
-    const bOff = axialToOffset(bAx);
-    const b: [number, number] = [bOff.col, bOff.row];
-    const d = dirBetween(a, b);
-    for (const [col, row] of [a, b]) {
-      const tile = getTile(s.map, col, row)!;
-      tile.road = true;
-      tile.roadLevel = 1;
-      tile.ownerCityId = from.id;
-      s.players[0]!.explored.add(`${col},${row}`);
-    }
-    getTile(s.map, a[0], a[1])!.river = 1 << d;
-    getTile(s.map, b[0], b[1])!.river = 1 << ((d + 3) % 6);
-
-    const bridgeFlag = () => {
-      const view = viewForPlayer(s, 0);
-      const ta = view.tiles.find((t) => t.col === a[0] && t.row === a[1]);
-      return ta?.bridge ?? false;
-    };
-
-    // No tech → the river is unbridged, so no bridge reaches the client.
-    expect(bridgeFlag()).toBe(false);
-    // Research Bridge Building → the crossing now serializes a bridge for rendering.
-    s.players[0]!.researched.add("bridge_building");
-    expect(bridgeFlag()).toBe(true);
+    // Strip the road off the river tile: with no road there is no bridge, so the river
+    // severs the connection and the bonus is lost.
+    getTile(s.map, a[0], a[1])!.road = false;
+    getTile(s.map, a[0], a[1])!.roadLevel = undefined;
+    expect(tradeRouteYield(s, route).gold).toBe(baseYield);
   });
 
   it("uses the weakest road tier along the path", () => {

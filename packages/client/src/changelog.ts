@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.7.1";
+export const CURRENT_VERSION = "0.7.2";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,54 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.7.2",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Barbarian camps escalate through the ages",
+        desc:
+          "Camps no longer only turn out warriors and slingers. As the game goes on they field war dogs and fire hardened spears, then chariots and riders, then spearmen, axemen and archers, and eventually swordsmen, pikemen, cataphracts and longswordsmen. What a camp can raise is tied to how far a civilization racing for that unit's technology would have gotten, scaled to the game speed, and hordes lean toward the strongest units a camp has unlocked. Late game raids now hit far harder than early ones.",
+      },
+      {
+        tag: "New",
+        title: "Coastal barbarian camps raid by sea",
+        desc:
+          "A barbarian camp on the coast can now launch warships onto the water beside it: longships, galleys, biremes, triremes, dromons and quinqueremes. Coastal camps favor ships over land units, so a shoreline settlement has to watch the sea as well as the land.",
+      },
+      {
+        tag: "New",
+        title: "You are told when war is declared",
+        desc:
+          "A new alert fires the moment someone declares war on you, interrupting the turn so you see it at once. When two other civilizations you have both met go to war, you learn of it at the start of your next turn. The aggressor gets no such warning.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Bridges belong to everyone, and now need Bridge Building to lay",
+        desc:
+          "A road built across a river is now a bridge that any unit can cross without paying the river crossing penalty, no matter whose land it sits on or what technology the crossing army has. To balance that, a road can no longer be laid on a river tile until you have researched Bridge Building, just as river farms wait on Irrigation.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Recon promotions run in a line",
+        desc:
+          "The scouting promotions now chain. Spy, which grants +1 sight, requires Scouting, and Eagle Eye, which grants +2 sight, requires Spy. You climb the reconnaissance tree in order rather than taking the top rung first.",
+      },
+      {
+        tag: "UI",
+        title: "Road grades now look different on the map",
+        desc:
+          "The three road grades are now easy to tell apart at a glance: a Dirt Road shows as a warm earthen track, a Paved Road as packed stone, and an Imperial highway as pale dressed stone. Roads that cross a river now draw as a wooden bridge spanning the water instead of a road sitting on open water, and standalone stretches of road use the same painted artwork as the rest of the network.",
+      },
+      {
+        tag: "UI",
+        title: "Dozens of symbols now render as game art",
+        desc:
+          "More than fifty ability and religion symbols that used to appear as plain system emoji now show as custom icon art in the same style as the rest of the game: animals such as the horse, elephant, wolf, lion, shark and eagle, nature symbols such as the mountain, sun, moon, snowflake and wave, and faith symbols such as the Om, torii shrine, dharma wheel, star and crescent, Star of David, yin and yang and ankh.",
+      },
+    ],
+  },
   {
     version: "0.7.1",
     date: "July 2026",

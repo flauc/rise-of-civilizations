@@ -546,13 +546,75 @@ const EMOJI_ICON_DEFS: readonly (readonly [string, string])[] = [
   ["ic_spark_star", "a single four-pointed sparkle star"],
   ["ic_hexagon", "a single hollow hexagon outline"],
   ["ic_hex_filled", "a single solid filled hexagon"],
+  // Ability & religion glyphs (registered 2026-07-12). ic_skull is reused for 💀.
+  ["ic_money_bag", "a bulging drawstring sack of gold coins, a money bag, pillage"],
+  ["ic_turtle", "a turtle with a domed shell, a testudo formation"],
+  ["ic_horse", "a galloping war horse in profile, cavalry"],
+  ["ic_elephant", "a war elephant in profile, tusks forward"],
+  ["ic_trap", "a weighted entangling hunting net, bunched with rim weights, for snaring and pinning prey"],
+  ["ic_ladder", "a wooden siege ladder leaning upright"],
+  ["ic_drum", "a war drum with a pair of drumsticks"],
+  ["ic_herb", "a sprig of fresh green herb leaves"],
+  ["ic_cactus", "a green desert saguaro cactus"],
+  ["ic_wind", "a curling gust of blowing wind"],
+  ["ic_infinity", "a sideways infinity loop symbol"],
+  ["ic_wheel", "a spoked cartwheel, the wheel"],
+  ["ic_hook", "a curved metal grappling hook"],
+  ["ic_hedgehog", "a hedgehog with raised defensive spines"],
+  ["ic_axe", "a woodcutter's single-bladed felling axe"],
+  ["ic_mountain", "a rocky mountain peak"],
+  ["ic_moon", "a crescent moon"],
+  ["ic_snowflake", "a single six-armed snowflake"],
+  ["ic_rowboat", "a small rowing boat with oars, seen from the side"],
+  ["ic_dash", "three horizontal speed lines, a dash of motion"],
+  ["ic_music", "a pair of joined musical notes"],
+  ["ic_circle", "a sharp-edged steel war chakram, a circular throwing-ring blade with a hollow center"],
+  ["ic_wolf", "a grey wolf's head in profile"],
+  ["ic_flower", "a single red hibiscus flower in bloom"],
+  ["ic_footprints", "two footprints left as tracks"],
+  ["ic_knot", "a tied rope knot"],
+  ["ic_bee", "a single striped honeybee"],
+  ["ic_rock", "a solid grey boulder"],
+  ["ic_wave", "a curling cresting ocean wave"],
+  ["ic_leaves", "a few falling autumn leaves"],
+  ["ic_black_heart", "a solid black heart"],
+  ["ic_shark", "a shark seen from the side"],
+  ["ic_lion", "a lion's maned head, front on"],
+  ["ic_storm", "a storm cloud striking a lightning bolt"],
+  ["ic_crystal_ball", "a purple crystal ball on a stand, divination"],
+  ["ic_six_star", "a single six-pointed sparkle star"],
+  ["ic_new_moon", "a dark shadowed new-moon disc"],
+  // Religion symbols.
+  ["ic_om", "the Hindu Om (Aum) symbol"],
+  ["ic_long_drum", "a tall single-headed hand drum, a djembe"],
+  ["ic_shrine", "a Shinto torii shrine gate"],
+  ["ic_dharma", "an eight-spoked Buddhist dharma wheel"],
+  ["ic_star_crescent", "a star nestled in a crescent moon, star and crescent"],
+  ["ic_maltese_cross", "an eight-pointed Maltese cross"],
+  ["ic_greek_cross", "a bold equal-armed Greek cross"],
+  ["ic_prayer_beads", "a looped string of prayer beads, a rosary"],
+  ["ic_star_of_david", "a six-pointed Star of David"],
+  ["ic_open_hands", "two open cupped hands raised in offering"],
+  ["ic_yin_yang", "a yin and yang taijitu symbol"],
+  ["ic_rune", "a carved Othala rune stone glyph"],
+  ["ic_ankh", "an ankh, the looped Egyptian key of life"],
+  ["ic_sun", "a radiant sun with rays"],
+  ["ic_eagle", "an eagle with spread wings, front on"],
+  ["ic_tetragram", "an ancient stacked oracle tetragram of horizontal bars"],
 ];
 
 // Glyphs whose interior is enclosed by the art with NO intended white inside
 // (e.g. a hollow hexagon outline, an "i" inside a ring). The border-connected
 // flood-fill can't reach those pockets, so they need the extra global
 // `-transparent white` pass. Only list ids that contain no legitimate white.
-const EMOJI_SOLID_GLYPHS = new Set<string>(["ic_hexagon", "ic_info"]);
+const EMOJI_SOLID_GLYPHS = new Set<string>([
+  "ic_hexagon", "ic_info", "ic_circle", "ic_infinity",
+  // Bronze monochrome glyphs with enclosed white pockets the border flood-fill
+  // can't reach (registered 2026-07-12). No legitimate interior white, so the
+  // extra global -transparent white pass is safe.
+  "ic_wheel", "ic_star_of_david", "ic_star_crescent", "ic_prayer_beads",
+  "ic_ladder", "ic_knot", "ic_dharma", "ic_ankh",
+]);
 
 export const EMOJI_ICON_SUBSET: AssetEntry[] = EMOJI_ICON_DEFS.map(([id, description]) => ({
   id,
@@ -719,6 +781,15 @@ export const TURN_UPDATE_SUBSET: AssetEntry[] = [
     id: "civDefeated",
     name: "Civilization Defeated",
     description: "a stylized hand-painted portrait of a fallen empire: a toppled royal statue and a broken crown lying in the dust before a ruined capital, a tattered banner half-buried, distant smoke under a leaden sky. Evoke the fall of a rival civilization, finality and somber triumph, no text, no UI.",
+    aspectRatio: "3:4",
+    size: { width: 320, height: 400 },
+    category: "turn_update" as const,
+    referenceTile: DEFAULT_REFERENCE_TILE,
+  },
+  {
+    id: "warDeclared",
+    name: "War Declared",
+    description: "a stylized hand-painted portrait of a herald proclaiming war before a city gate: a scroll held aloft, spearmen mustering behind him, war banners raised, torchlight against a darkening stormy sky. Evoke sudden menace and the outbreak of war, no text, no UI.",
     aspectRatio: "3:4",
     size: { width: 320, height: 400 },
     category: "turn_update" as const,

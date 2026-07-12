@@ -602,6 +602,7 @@ export type TurnUpdateType =
   | "legendRecruited"
   | "religionFounded"
   | "civDefeated"
+  | "warDeclared"
   | "eureka"
   | "treasuryExhausted";
 

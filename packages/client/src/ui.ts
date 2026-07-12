@@ -1520,6 +1520,8 @@ export function createUI(handlers: UIHandlers): UI {
         return "Religion Founded";
       case "civDefeated":
         return "Civilization Defeated";
+      case "warDeclared":
+        return ev.payload?.onYou ? "War Declared on You!" : "War Declared";
       case "treasuryExhausted":
         return "Treasury Exhausted";
       case "eureka":
@@ -4974,7 +4976,11 @@ export function createUI(handlers: UIHandlers): UI {
         lastSeenTurnUpdateByViewer.get(view.viewerId),
       );
       lastSeenTurnUpdateByViewer.set(view.viewerId, batch.lastSeen);
-      const hasImmediateUpdate = batch.toShow.some((e) => e.type === "civDefeated");
+      // A war declared on the viewer must surface right away, even mid-turn;
+      // third-party wars wait for the regular turn-start batch.
+      const hasImmediateUpdate = batch.toShow.some(
+        (e) => e.type === "civDefeated" || (e.type === "warDeclared" && e.payload?.onYou === true),
+      );
       if ((turnChanged || hasImmediateUpdate) && batch.toShow.length > 0) {
         turnUpdateQueue = batch.toShow;
         turnUpdateIndex = 0;

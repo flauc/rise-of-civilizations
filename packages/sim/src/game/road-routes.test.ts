@@ -22,6 +22,7 @@ function grassland(s: ReturnType<typeof createGame>, city: ReturnType<typeof cit
   t.terrain = "grassland";
   t.improvement = undefined;
   t.road = false;
+  t.river = undefined; // clear any worldgen river so a road can be laid without Bridge Building
   t.ownerCityId = city.id;
   return t;
 }

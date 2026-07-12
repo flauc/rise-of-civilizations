@@ -8,6 +8,7 @@ import { startWonder, startWork } from "./works";
 import { establishTradeRoute } from "./trade";
 import { pillageTile } from "./raiding";
 import { maybeCheckCivElimination } from "./turn-updates";
+import { declareWar, ensureContact } from "./diplomacy";
 
 function newGame() {
   const state = createGame({ seed: "test-turn-updates", cols: 48, rows: 32, barbarians: false });
@@ -376,6 +377,59 @@ describe("turn update events", () => {
     const defeated = state.turnUpdates.filter((e) => e.type === "civDefeated");
     expect(defeated.some((e) => e.playerId === 0)).toBe(true);
     expect(defeated[0]!.message).toBe("Bulan defeated Tokugawa.");
+  });
+
+  it("announces a war declaration to the victim and to civs that met both sides", () => {
+    const state = createGame({
+      seed: "war-declared",
+      cols: 36,
+      rows: 24,
+      barbarians: false,
+      humanSlots: 1,
+      playerCount: 3,
+      civIds: ["khazars", "japan", "egypt"],
+    });
+    beginTurn(state);
+
+    // Player 2 has met both belligerents; the victim only knows the aggressor.
+    ensureContact(state, 0, 1);
+    ensureContact(state, 2, 0);
+    ensureContact(state, 2, 1);
+
+    declareWar(state, 1, 0);
+
+    const events = state.turnUpdates.filter((e) => e.type === "warDeclared");
+    const victim = events.find((e) => e.playerId === 0)!;
+    expect(victim.message).toBe("Japan has declared war on you!");
+    expect(victim.payload?.onYou).toBe(true);
+    // The aggressor made the declaration; no announcement for them.
+    expect(events.some((e) => e.playerId === 1)).toBe(false);
+    const bystander = events.find((e) => e.playerId === 2)!;
+    expect(bystander.message).toBe("Japan declared war on Khazars.");
+    expect(bystander.payload?.onYou).toBe(false);
+  });
+
+  it("does not announce a third-party war to civs that have not met both sides", () => {
+    const state = createGame({
+      seed: "war-declared-unmet",
+      cols: 36,
+      rows: 24,
+      barbarians: false,
+      humanSlots: 1,
+      playerCount: 3,
+      civIds: ["khazars", "japan", "egypt"],
+    });
+    beginTurn(state);
+
+    // Player 2 only knows the aggressor, not the victim.
+    ensureContact(state, 0, 1);
+    ensureContact(state, 2, 1);
+
+    declareWar(state, 1, 0);
+
+    const events = state.turnUpdates.filter((e) => e.type === "warDeclared");
+    expect(events.some((e) => e.playerId === 0)).toBe(true); // victim always told
+    expect(events.some((e) => e.playerId === 2)).toBe(false);
   });
 
   it("uses multiplayer usernames in civ-defeat announcements", () => {
