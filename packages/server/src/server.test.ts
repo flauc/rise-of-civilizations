@@ -24,6 +24,18 @@ describe("storage", () => {
     expect(listed[0]!.passwordHash).toBe("hash2");
     expect(listed[0]!.email).toBe("a@b.co");
   });
+
+  it("deletes a user and revokes their sessions", async () => {
+    const st = new MemoryStorage();
+    const u = await st.createUser("Doomed", "hash");
+    const token = await st.createSession(u.id);
+    expect(await st.userIdForToken(token)).toBe(u.id);
+    await st.deleteUser(u.id);
+    expect(await st.userById(u.id)).toBeUndefined();
+    expect(await st.userByHandle("doomed")).toBeUndefined();
+    expect(await st.userIdForToken(token)).toBeUndefined();
+    expect(await st.listUsers()).toHaveLength(0);
+  });
 });
 
 describe("lobby + game host (simultaneous multiplayer)", () => {
@@ -272,12 +284,16 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(r.message.handle).toBe("Alice");
     expect(r.message.text).toBe("hi lobby");
     expect(lobby.chatHistory(g.id)).toHaveLength(1);
+    const filtered = lobby.appendChat(g.id, "uA", "Alice", "what the fuck");
+    expect("error" in filtered).toBe(false);
+    if ("error" in filtered) return;
+    expect(filtered.message.text).toBe("what the ****");
     lobby.appendChat(g.id, "uB", "Bob", "hey");
-    expect(lobby.chatHistory(g.id)).toHaveLength(2);
+    expect(lobby.chatHistory(g.id)).toHaveLength(3);
     lobby.start(g.id);
     expect(lobby.get(g.id)!.status).toBe("active");
     const inGame = lobby.appendChat(g.id, "uA", "Alice", "still chatting");
     expect("error" in inGame).toBe(false);
-    expect(lobby.chatHistory(g.id)).toHaveLength(3);
+    expect(lobby.chatHistory(g.id)).toHaveLength(4);
   });
 });

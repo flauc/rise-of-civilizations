@@ -1,9 +1,17 @@
 [
   {
-    "id": "u_fb8iqcfkyi",
+    "id": "u_creq6opv97",
     "handle": "novi",
-    "passwordHash": "$argon2id$v=19$m=65536,t=2,p=1$OALmLcI3DxED7aTq7gINiUFKRjN3+Uvb94a5uhRPIkc$xrxsJeGaWW5BsxFvz2dX9IjToWkcAsULCUFwb0XWul4",
-    "createdAt": 1783664417185,
+    "passwordHash": "$argon2id$v=19$m=65536,t=2,p=1$fZ5pVSOvaokJ2x7ukSWMXQY3RDg2sLtdOW/lWlxGRuc$63m4q9Dw/qVkxaMZhWyCjQNxsnfisX0lWF9fPehTpuw",
+    "createdAt": 1783938447320,
+    "email": "novi@gmail.com",
+    "newsletterOptIn": true
+  },
+  {
+    "id": "u_v3s2enbqih",
+    "handle": "playreview",
+    "passwordHash": "$argon2id$v=19$m=65536,t=2,p=1$/FwO94TDvrNSVaiDwOQaSoD/du/uuGBhVXmKgbZ21Hs$a/l5wlIgrZXnwN6E8nTCHyDOTbfcVvI1ykuc0HS1WWw",
+    "createdAt": 1783935310664,
     "newsletterOptIn": false
   },
   {

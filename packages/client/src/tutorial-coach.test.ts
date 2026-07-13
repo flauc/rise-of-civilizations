@@ -8,6 +8,7 @@ import {
   visibleBarbarianThreat,
   gateSelectorsForStep,
   gateAllowsCanvas,
+  isTutorialDismissControl,
   type TutorialCoachContext,
   type TutorialCoachFlags,
 } from "./tutorial-coach";
@@ -143,6 +144,42 @@ describe("tutorial coach steps", () => {
     expect(gateSelectorsForStep(byId("t1_end_turn"))).toContain("#endturn");
     // Info-only briefings expose no HUD targets — only the coach bubble is live.
     expect(gateSelectorsForStep(byId("t1_intro"))).toHaveLength(0);
+  });
+
+  it("always allows dialog close buttons through the interaction gate", () => {
+    const stubBtn = (opts: { id?: string; classes?: string[]; ariaLabel?: string }): Element => {
+      const btn = {
+        id: opts.id ?? "",
+        classList: { contains: (c: string) => opts.classes?.includes(c) ?? false },
+        getAttribute: (n: string) => (n === "aria-label" ? opts.ariaLabel ?? null : null),
+        closest: (sel: string) => (sel === "button" ? btn : null),
+      };
+      return btn as unknown as Element;
+    };
+    expect(isTutorialDismissControl(stubBtn({ id: "trclose", classes: ["panel-close"] }))).toBe(true);
+    expect(isTutorialDismissControl(stubBtn({ id: "turn-update-close", classes: ["dialog-x"] }))).toBe(
+      true,
+    );
+    expect(isTutorialDismissControl(stubBtn({ id: "emp-close", classes: ["emp-x"] }))).toBe(true);
+    expect(isTutorialDismissControl(stubBtn({ id: "next-unit" }))).toBe(false);
+  });
+
+  it("marks city construction and training steps as speak-then-hide", () => {
+    const state = createGame({ seed: "coach-speak-hide", cols: 20, rows: 14, humanSlots: 1, playerCount: 2 });
+    beginTurn(state);
+    const viewerId = state.players[0]!.id;
+    const t1 = buildTutorialSteps(1, coachCtx(state, viewerId, 1));
+    for (const id of [
+      "t1_select_city",
+      "t1_open_construction",
+      "t1_pick_build",
+      "t1_open_train",
+      "t1_train_unit",
+    ]) {
+      expect(t1.find((s) => s.id === id)?.speakThenHide).toBe(true);
+    }
+    const t2 = buildTutorialSteps(2, coachCtx(state, viewerId, 2));
+    expect(t2.find((s) => s.id === "t2_check_city")?.speakThenHide).toBe(true);
   });
 
   it("briefs unit kinds AFTER selecting the scout but BEFORE moving it", () => {

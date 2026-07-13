@@ -29,13 +29,19 @@ const wwwDir = join(here, "www");
 
 const assetBase = (process.env.ASSET_BASE || "https://game.rise-of-civilizations.com/").trim();
 const wsUrl = (process.env.WS_URL || "wss://server.rise-of-civilizations.com/ws").trim();
+const legalBase = (process.env.LEGAL_BASE || assetBase.replace(/\/$/, "")).trim();
 
-console.log(`> building client (assets -> ${assetBase}, multiplayer -> ${wsUrl})…`);
+console.log(`> building client (assets -> ${assetBase}, multiplayer -> ${wsUrl}, legal -> ${legalBase})…`);
 const build = spawnSync("bun", ["run", "--filter", "@roc/client", "build"], {
   cwd: repoRoot,
   stdio: "inherit",
   shell: process.platform === "win32",
-  env: { ...process.env, VITE_ASSET_BASE_URL: assetBase, VITE_WS_URL: wsUrl },
+  env: {
+    ...process.env,
+    VITE_ASSET_BASE_URL: assetBase,
+    VITE_WS_URL: wsUrl,
+    VITE_LEGAL_BASE_URL: legalBase,
+  },
 });
 if (build.status !== 0) {
   console.error("! client build failed");

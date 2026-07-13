@@ -19,6 +19,7 @@ import {
   type MapType,
   type VictoryKind,
 } from "@roc/sim";
+import { filterChatText } from "@roc/shared";
 import { GameHost } from "./gamehost";
 
 export type SlotKind = "human" | "ai";
@@ -423,7 +424,12 @@ export class Lobby {
     const trimmed = text.trim();
     if (!trimmed) return { error: "empty message" };
     if (trimmed.length > MAX_LOBBY_CHAT_LEN) return { error: "message too long" };
-    const message: LobbyChatMessage = { userId, handle, text: trimmed, at: Date.now() };
+    const message: LobbyChatMessage = {
+      userId,
+      handle,
+      text: filterChatText(trimmed),
+      at: Date.now(),
+    };
     game.chat.push(message);
     while (game.chat.length > MAX_LOBBY_CHAT) game.chat.shift();
     return { message };

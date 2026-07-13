@@ -1814,6 +1814,9 @@
         border-color: #8b7340;
         color: #f0e6d0;
       }
+      #tutorial-coach.coach-action-ready #tutorial-coach-panel {
+        display: none;
+      }
       #leader-ability-overlay {
         position: fixed;
         inset: 0;
@@ -2766,6 +2769,49 @@
         color: #9fc0dc;
         margin: 2px 0 8px;
       }
+      #settings-dialog .settings-danger .settings-title {
+        color: #ff8a8a;
+      }
+      #settings-dialog .settings-delete-btn {
+        width: 100%;
+        margin-top: 4px;
+        border-color: #8a3030;
+        color: #ffb0b0;
+        background: rgba(120, 30, 30, 0.35);
+      }
+      #settings-dialog .settings-delete-btn:hover {
+        background: rgba(150, 40, 40, 0.55);
+      }
+      #settings-dialog .settings-delete-confirm {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      #settings-dialog .settings-delete-input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--edge);
+        background: rgba(0, 0, 0, 0.25);
+        color: var(--parchment);
+        font: inherit;
+      }
+      #settings-dialog .settings-delete-actions {
+        display: flex;
+        gap: 8px;
+      }
+      #settings-dialog .settings-delete-confirm-btn {
+        flex: 1;
+        border-color: #8a3030;
+        color: #ffb0b0;
+        background: rgba(120, 30, 30, 0.45);
+      }
+      #settings-dialog .settings-delete-error {
+        min-height: 1.2em;
+        font-size: 12px;
+        color: #ff8a8a;
+      }
       #settings-dialog .seg {
         display: flex;
         gap: 0;
@@ -3050,6 +3096,10 @@
           line-height: 1.4;
           min-height: 2.6em;
         }
+        /* speakThenHide steps: bubble clears after the line is spoken so city UI is free. */
+        #tutorial-coach.coach-action-ready #tutorial-coach-panel {
+          display: none;
+        }
         #research,
         #civics,
         #religion,
@@ -3145,6 +3195,20 @@
     </style>
   </head>
   <body>
+    <script>
+      window.__ROC_BOOT_ROUTE__ = (function () {
+        var q = new URLSearchParams(location.search);
+        var page = q.get("page");
+        if (page === "support" || page === "privacy" || page === "terms" || page === "delete-account") return page;
+        var path = location.pathname.replace(/\/$/, "").toLowerCase();
+        var leaf = path.split("/").pop() || "";
+        if (leaf === "privacy" || leaf === "privacy.html") return "privacy";
+        if (leaf === "terms" || leaf === "terms.html") return "terms";
+        if (leaf === "delete-account" || leaf === "delete-account.html") return "delete-account";
+        if (leaf === "support" || leaf === "support.html") return "support";
+        return null;
+      })();
+    </script>
     <canvas id="game"></canvas>
     <script type="module" src="/src/main.ts"></script>
   </body>

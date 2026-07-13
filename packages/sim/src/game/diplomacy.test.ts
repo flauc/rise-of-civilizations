@@ -8,7 +8,7 @@ import {
   relationBetween, haveMet, atWar, attitudeScore,
   declareWar, makePeace, gift, proposeDeal, demandTribute, finalizeDeal,
   canDeclareWar,
-  respondProposal, militaryPower, aiInitiateTrade, aiConsiderDiplomacy,
+  respondProposal, militaryPower, aiInitiateTrade, aiConsiderDiplomacy, previewPeace,
   ensureContact, foreignTerritoryOwner, denounce, diplomacyTick, tradeableTechs,
   cancelSharedVision, sharedVisionPartners,
 } from "./diplomacy";
@@ -16,6 +16,8 @@ import { viewForPlayer } from "./serialize";
 import { beginTurn } from "./commands";
 import { makeUnit } from "./state";
 import { areEnemies, citiesOf, unitsOf, type GameState } from "./state";
+import { UNIT_DEFS } from "./content";
+import { offsetNeighbors } from "./movement";
 
 function twoCivGame(): GameState {
   // 1 human (player 0) + 1 AI (player 1), no barbarians.
@@ -61,6 +63,40 @@ describe("diplomacy", () => {
     expect(declareWar(s, 0, 1).ok).toBe(false);
     expect(canDeclareWar(s, 0, 1).ok).toBe(false);
     expect(canDeclareWar(s, 0, 1).reason).toMatch(/Peace treaty holds/);
+  });
+
+  it("a winning AI refuses peace offers while it still holds a clear edge", () => {
+    const s = twoCivGame();
+    beginTurn(s);
+    for (const pid of [0, 1]) {
+      const settler = unitsOf(s, pid).find((u) => u.type === "settler");
+      if (settler) applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+    }
+    ensureContact(s, 0, 1);
+    declareWar(s, 1, 0);
+    relationBetween(s, 0, 1)!.lastStatusChangeTurn = s.turn - 20; // war-weary by old rules
+    // Disarm the human and mass a strong army for the AI beside the capital.
+    for (const u of unitsOf(s, 0)) if (UNIT_DEFS[u.type].strength > 0) s.units.delete(u.id);
+    const target = citiesOf(s, 0)[0]!;
+    for (const nb of offsetNeighbors(s.map, target.col, target.row)) {
+      const t = getTile(s.map, nb.col, nb.row);
+      if (t && !isPassableLand(t.terrain)) t.terrain = "plains";
+    }
+    for (let i = 0; i < 5; i++) {
+      const nb = offsetNeighbors(s.map, target.col, target.row).find((n) => {
+        const t = getTile(s.map, n.col, n.row);
+        return t && isPassableLand(t.terrain) && !unitsOf(s, 1).some((u) => u.col === n.col && u.row === n.row);
+      });
+      expect(nb).toBeTruthy();
+      const id = s.nextEntityId++;
+      s.units.set(id, makeUnit(id, 1, "swordsman", nb!.col, nb!.row));
+    }
+    expect(militaryPower(s, 1)).toBeGreaterThan(militaryPower(s, 0) * 1.1);
+    expect(previewPeace(s, 0, 1)?.accept).toBe(false);
+    expect(makePeace(s, 0, 1).ok).toBe(false);
+    expect(atWar(s, 0, 1)).toBe(true);
+    aiConsiderDiplomacy(s, 1);
+    expect(atWar(s, 0, 1)).toBe(true); // winning AI does not sue for peace itself
   });
 
   it("gifts improve the recipient's attitude; the AI accepts a one-sided deal", () => {

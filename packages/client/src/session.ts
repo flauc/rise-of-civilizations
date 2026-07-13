@@ -25,6 +25,7 @@ import {
   type VictoryKind,
   TOGGLEABLE_VICTORIES,
 } from "@roc/sim";
+import { filterChatText } from "@roc/shared";
 import type { TerrainType, Tile } from "@roc/shared";
 import { applyCheat, type CheatAction, type CheatResult } from "./god-mode";
 
@@ -301,6 +302,7 @@ export class OnlineSession implements Session {
   private chatMessages: LobbyChatMessage[] = [];
   private pendingChat: LobbyChatMessage | null = null;
   private chatHandle = "You";
+  private chatUserId = "";
   private chatHandlers = new Set<(messages: readonly LobbyChatMessage[]) => void>();
 
   constructor(private readonly url: string) {}
@@ -376,7 +378,7 @@ export class OnlineSession implements Session {
       if (msg.gameId === this.gameId) {
         this.chatMessages.push(msg.message);
         while (this.chatMessages.length > 100) this.chatMessages.shift();
-        if (this.pendingChat?.text === msg.message.text) this.pendingChat = null;
+        if (this.pendingChat && this.isOurChatMessage(msg.message)) this.pendingChat = null;
         this.emitChat();
       }
     } else if (msg.t === "deleted" || msg.t === "kicked") {
@@ -423,14 +425,23 @@ export class OnlineSession implements Session {
     this.chatHandle = handle.trim() || "You";
   }
 
+  setChatUserId(userId: string): void {
+    this.chatUserId = userId;
+  }
+
+  private isOurChatMessage(message: LobbyChatMessage): boolean {
+    if (this.chatUserId && message.userId === this.chatUserId) return true;
+    return message.handle === this.chatHandle;
+  }
+
   sendChat(text: string): void {
     if (!this.gameId) return;
     const trimmed = text.trim();
     if (!trimmed) return;
     this.pendingChat = {
-      userId: "",
+      userId: this.chatUserId,
       handle: this.chatHandle,
-      text: trimmed,
+      text: filterChatText(trimmed),
       at: Date.now(),
     };
     this.emitChat();

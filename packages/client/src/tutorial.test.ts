@@ -7,6 +7,13 @@ import {
   seedTutorialSurroundings,
   spawnTutorialBarbarian,
   spawnTutorialVillage,
+  refreshTutorialMovement,
+  TUTORIAL_MOVE_STEP_IDS,
+  canReachTileWithFullMovement,
+  nearestReachableTutorialVillage,
+  isTutorialVillageStepDone,
+  ensureReachableTutorialVillage,
+  nearestReachableTutorialVillageNow,
 } from "./tutorial";
 import { TOGGLEABLE_VICTORIES, applyCommand, beginTurn, computeVisible, createGame, unitMaxHp, unitsOf } from "@roc/sim";
 import { axialDistance, offsetToAxial } from "@roc/shared";
@@ -68,23 +75,41 @@ describe("tutorial preset", () => {
     expect([...state.units.values()].some((u) => u.ownerId === barb.id && dist(u.col, u.row) <= 3)).toBe(nearBarbBefore);
   });
 
-  it("spawns a visible village near the capital on demand, once", () => {
+  it("spawns a reachable visible village on demand, once", () => {
     const state = tutorialState();
     const human = state.players.find((p) => p.isHuman)!;
     const settler = unitsOf(state, human.id).find((u) => u.type === "settler")!;
     applyCommand(state, { type: "foundCity", unitId: settler.id });
-    const capital = state.cities.values().next().value!;
-    const capAx = offsetToAxial({ col: capital.col, row: capital.row });
-    const dist = (col: number, row: number) => axialDistance(capAx, offsetToAxial({ col, row }));
 
     expect(spawnTutorialVillage(state)).toBe(true);
+    const target = nearestReachableTutorialVillage(state, human.id);
+    expect(target).toBeDefined();
+    expect(canReachTileWithFullMovement(state, human.id, target!.col, target!.row)).toBe(true);
     const visible = computeVisible(state, human.id);
-    const village = state.map.tiles.find(
-      (t) => t.feature === "village" && dist(t.col, t.row) <= 3 && visible.has(`${t.col},${t.row}`),
-    );
-    expect(village).toBeDefined();
-    // Idempotent while a visible village is already close.
+    expect(visible.has(`${target!.col},${target!.row}`)).toBe(true);
+    // Idempotent while a reachable visible village already exists.
     expect(spawnTutorialVillage(state)).toBe(false);
+  });
+
+  it("places the village within reach of roaming units, not only the capital", () => {
+    const state = tutorialState();
+    const human = state.players.find((p) => p.isHuman)!;
+    const settler = unitsOf(state, human.id).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    const scout = unitsOf(state, human.id).find((u) => u.type === "scout")!;
+    for (const u of unitsOf(state, human.id)) {
+      u.col = scout.col + 6;
+      u.row = scout.row + 2;
+    }
+    refreshTutorialMovement(state, human.id, "t3_village");
+    // Visibility shifts when units roam — strip every village so spawn recomputes from units.
+    for (const t of state.map.tiles) {
+      if (t.feature === "village") t.feature = undefined;
+    }
+
+    expect(spawnTutorialVillage(state)).toBe(true);
+    const target = nearestReachableTutorialVillage(state, human.id)!;
+    expect(canReachTileWithFullMovement(state, human.id, target.col, target.row)).toBe(true);
   });
 
   it("spawns a weakened, reachable barbarian near the capital on demand, once", () => {
@@ -103,5 +128,36 @@ describe("tutorial preset", () => {
     expect(raider!.hp).toBeLessThan(unitMaxHp(raider!));
     // Idempotent while a barbarian is already close.
     expect(spawnTutorialBarbarian(state)).toBe(false);
+  });
+
+  it("refreshes movement for all owned units when a map-action coach step begins", () => {
+    const state = tutorialState();
+    const human = state.players.find((p) => p.isHuman)!;
+    for (const u of unitsOf(state, human.id)) u.movementLeft = 0;
+    refreshTutorialMovement(state, human.id, "t3_village");
+    expect(unitsOf(state, human.id).every((u) => u.movementLeft > 0)).toBe(true);
+    expect(TUTORIAL_MOVE_STEP_IDS.has("t3_village")).toBe(true);
+    expect(TUTORIAL_MOVE_STEP_IDS.has("t1_intro")).toBe(false);
+  });
+
+  it("advances the village step when no unit can reach it and movement is spent", () => {
+    const state = tutorialState();
+    const human = state.players.find((p) => p.isHuman)!;
+    const settler = unitsOf(state, human.id).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    ensureReachableTutorialVillage(state);
+    for (const u of unitsOf(state, human.id)) u.movementLeft = 0;
+    expect(isTutorialVillageStepDone(state, human.id)).toBe(true);
+  });
+
+  it("keeps the village step active while a reachable target still has movement", () => {
+    const state = tutorialState();
+    const human = state.players.find((p) => p.isHuman)!;
+    const settler = unitsOf(state, human.id).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    ensureReachableTutorialVillage(state);
+    refreshTutorialMovement(state, human.id, "t3_village");
+    expect(nearestReachableTutorialVillageNow(state, human.id)).toBeDefined();
+    expect(isTutorialVillageStepDone(state, human.id)).toBe(false);
   });
 });

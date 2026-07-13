@@ -36,6 +36,7 @@ import {
   assignedSpecialistIds,
 } from "./works";
 import { offsetNeighbors } from "./movement";
+import { computeRoadPath, startRoadRoute, tilesNeedingRoad } from "./road-routes";
 import { RESOURCE_DEFS, resourceActive } from "./resources";
 import { isPassableLand, isWaterTerrain, tileYields } from "./terrain";
 import { BARBARIAN_DIPLOMACY_TECH, UNIT_DEFS, getBuildingDef, isMilitary, isNaval, isRanged, type TechId, type TrainingClass, type UnitTypeId } from "./content";
@@ -434,6 +435,13 @@ function conquestLeadRatio(state: GameState, pid: number): number {
     best = Math.max(best, powerRatio(state, pid, id));
   }
   return best;
+}
+
+/** True when at war with a major civ and our military power meets or beats theirs. */
+function winningAtWar(state: GameState, pid: number): boolean {
+  const player = playerById(state, pid);
+  if (!player || player.atWar.length === 0) return false;
+  return conquestLeadRatio(state, pid) >= 1.0;
 }
 
 /** A friendly city that actually needs a defender — not a distant skirmish while we're crushing the war. */
@@ -855,7 +863,7 @@ function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPers
   // neighbours, not just defend). Cities still expanding above don't reach here, so the
   // army is mustered by frontier cities and by those that have hit the expansion target.
   const desired = ((atWar || localThreat)
-    ? cityCount * 2 + 2
+    ? cityCount * (winningAtWar(state, player.id) ? 3 : 2) + (winningAtWar(state, player.id) ? 4 : 2)
     : Math.max(cityCount + (p.aggression > 0.6 ? 3 : 2), 4)) + (escortShortfall ? 2 : 0);
   if (milCount < desired) {
     const type = bestTrainableMilitary(trainable, player.civId, atWar || localThreat);
@@ -1206,11 +1214,46 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
     if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "farm")) kind = "farm";
     else if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "lumber_camp")) kind = "lumber_camp";
     else if (!kind && haveDiscipline("masonry") && nextTierAt(tile, "mine")) kind = "mine";
-    else if (!kind && haveDiscipline("survey") && player.researched.has("maritime_foraging") && nextTierAt(tile, "fishery"))
+    else if (
+      !kind &&
+      haveDiscipline("survey") &&
+      nextTierAt(tile, "road") &&
+      (citiesOf(state, pid).length >= 2 || player.atWar.length > 0)
+    ) {
+      kind = "road";
+    } else if (!kind && haveDiscipline("survey") && player.researched.has("maritime_foraging") && nextTierAt(tile, "fishery")) {
       kind = "fishery";
-    else if (!kind && haveDiscipline("survey") && nextTierAt(tile, "road")) kind = "road";
+    }
     if (kind && startWorkStaffed(state, city, pid, kind, col, row)) return;
   }
+}
+
+/**
+ * Link the empire with paved routes once The Wheel is known. Picks the capital
+ * (or largest city) and the nearest city still missing a road connection, then
+ * queues a multi-tile route the agrimensores pave automatically — same as a
+ * human-drawn road route.
+ */
+function aiConnectRoads(state: GameState, pid: number): void {
+  const player = playerById(state, pid);
+  if (!player?.researched.has("the_wheel")) return;
+  if (state.roadRoutes.some((r) => r.ownerId === pid && r.queue.length > 0)) return;
+
+  const cities = citiesOf(state, pid);
+  if (cities.length < 2) return;
+
+  const hub = cities.find((c) => c.isCapital) ?? cities.reduce((a, b) => (a.population >= b.population ? a : b));
+  let best: { to: typeof hub; need: number } | null = null;
+  for (const other of cities) {
+    if (other.id === hub.id) continue;
+    const path = computeRoadPath(state, pid, hub.col, hub.row, other.col, other.row);
+    if (path.length === 0) continue;
+    const need = tilesNeedingRoad(state, pid, path).length;
+    if (need === 0) continue;
+    if (!best || need < best.need) best = { to: other, need };
+  }
+  if (!best) return;
+  startRoadRoute(state, pid, hub.col, hub.row, best.to.col, best.to.row);
 }
 
 // ---- governor mode (player-facing "auto mode" for a single city) ---------
@@ -1722,7 +1765,7 @@ function scoreAttackTarget(state: GameState, unit: Unit, pid: number, col: numbe
 
   if (city && city.ownerId !== pid) {
     const lead = powerRatio(state, pid, city.ownerId);
-    const crushing = lead >= 1.45;
+    const crushing = lead >= 1.0;
     const ranged = isRanged(def);
     const supported = friendlyMilitaryNear(state, pid, col, row, 2) >= (crushing ? 1 : 2);
     const canAssault =
@@ -1740,7 +1783,7 @@ function scoreAttackTarget(state: GameState, unit: Unit, pid: number, col: numbe
 
   if (enemy && isHostile(state, pid, enemy.ownerId)) {
     const lead = powerRatio(state, pid, enemy.ownerId);
-    const crushing = lead >= 1.45;
+    const crushing = lead >= 1.0;
     const kill = preview.toDefender >= enemy.hp ? SCORE_KILL_UNIT : 0;
     if (!kill) {
       if (preview.toAttacker >= unit.hp) return null;
@@ -1981,7 +2024,7 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
     }
   }
 
-  const pushOffense = conquestLeadRatio(state, pid) >= 1.35;
+  const pushOffense = winningAtWar(state, pid);
   const threatenedCity = citiesOf(state, pid).find((city) => {
     if (unit.col === city.col && unit.row === city.row) return false;
     return cityNeedsRelief(state, pid, city, pushOffense);
@@ -2031,12 +2074,8 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
     return;
   }
 
-  // Escort duty: shepherd an assigned settler to its new home instead of roaming off
-  // to clear camps. Immediate attacks were already handled above (a raider we could
-  // favourably hit, we hit), so here we position: interpose ourselves toward the
-  // nearest raider menacing the settler, else march at its side (staying adjacent so
-  // we don't block the tile it needs to move onto).
-  if (escortSettlerId !== undefined) {
+  // Escort duty: while winning a war, every sword marches on the enemy — settlers wait.
+  if (escortSettlerId !== undefined && !pushOffense) {
     const settler = state.units.get(escortSettlerId);
     if (settler && settler.ownerId === pid) {
       let menace: { col: number; row: number } | null = null;
@@ -2061,12 +2100,7 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
     }
   }
 
-  // Race for tribal villages and barbarian camps before other errands — villages
-  // are one-shot prizes any rival can steal, so grab them while we can.
-  if (aiHuntMapFeatures(state, unit, pid)) return;
-
-  // Economic warfare: raze an enemy improvement we're standing on (isHostile means
-  // we're at war with — or raiding — its owner, so this is never an unprovoked act).
+  // Economic warfare: raze an enemy improvement we're standing on.
   {
     const here = getTile(state.map, unit.col, unit.row);
     const owner = here?.ownerCityId !== undefined ? state.cities.get(here.ownerCityId) : undefined;
@@ -2075,13 +2109,15 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
     }
   }
 
-  // Converge on the enemy's nearest city to actually take it — this turns a
-  // declared war into a real campaign rather than aimless skirmishing.
+  // Converge on the enemy's nearest city — the primary objective while winning a war.
   const objective = nearestHostileCity(state, unit, pid);
   if (objective) {
     stepToward(state, unit, objective.col, objective.row, pid);
     return;
   }
+
+  // Villages/camps only when not pressing a winning war.
+  if (!pushOffense && aiHuntMapFeatures(state, unit, pid)) return;
 
   // Nothing to collect: pressure the nearest hostile unit, or scout if all is quiet.
   const enemy = nearestHostile(state, unit, pid);
@@ -2160,7 +2196,7 @@ function aiRush(state: GameState, player: Player, p: DiploPersonality, threatene
   }
   // 3) Hurry out the troops we're training — to meet a danger, push a winning war, or
   //    get a guard marching toward a stranded settler.
-  const winningWar = atWar && conquestLeadRatio(state, pid) >= 1.4;
+  const winningWar = winningAtWar(state, pid);
   if (threatened || escortShortfall || winningWar) {
     for (const city of citiesOf(state, pid)) {
       for (const order of city.trainingQueue) {
@@ -2463,6 +2499,8 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   const escortShortfall = [...settlePlans.entries()].some(
     ([id, plan]) => plan.safe === false && !guarded.has(id),
   );
+
+  aiConnectRoads(state, playerId);
 
   for (const city of citiesOf(state, playerId)) {
     if (!city.production) {

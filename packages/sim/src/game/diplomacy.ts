@@ -1017,19 +1017,21 @@ function offerOnCooldown(state: GameState, aiId: number, otherId: number): boole
 }
 
 /**
- * Whether the AI is willing to make peace, shaped by its temperament. Forgiving
- * civs sue sooner and at a higher attitude floor; bold/aggressive ones hold out
- * unless they are clearly losing.
+ * Whether the AI is willing to make peace. A civ that is stronger than its war
+ * rival never negotiates — it fights until the enemy is eliminated. Only a weaker
+ * or exhausted side may sue for peace.
  */
 function aiAcceptsPeace(state: GameState, aiId: number, otherId: number): boolean {
   const r = relationBetween(state, aiId, otherId);
   if (!r) return false;
+  const ratio = powerRatio(state, aiId, otherId);
+  if (ratio >= 1.0 && citiesOf(state, otherId).length > 0) return false;
+
   const p = personalityOf(state, aiId);
   const warDuration = state.turn - r.lastStatusChangeTurn;
-  const losing = powerRatio(state, aiId, otherId) < 0.9;
+  const losing = ratio < 0.9;
   const weary = warDuration >= Math.round(16 - p.forgiveness * 8 - (losing ? 4 : 0));
   const score = attitudeScore(state, aiId, otherId);
-  // A bold AI that is winning would rather press the war.
   if (!losing && p.boldness > 0.7 && !weary) return score > 30;
   return losing || weary || score > -40 + p.forgiveness * 40 - p.aggression * 15;
 }

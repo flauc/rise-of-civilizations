@@ -13,7 +13,15 @@ import {
 } from "@roc/sim";
 import { getTile } from "@roc/shared";
 import { getCiv, startingUnitsFor } from "@roc/data";
-import { TUTORIAL_COACH_TURNS } from "./tutorial";
+import {
+  TUTORIAL_COACH_TURNS,
+  TUTORIAL_MOVE_STEP_IDS,
+  ensureReachableTutorialVillage,
+  isTutorialVillageStepDone,
+  nearestReachableTutorialVillage,
+  nearestReachableTutorialVillageNow,
+  tutorialVillageLessonActive,
+} from "./tutorial";
 import { iconify } from "./icons";
 import { speakCoachLine, stopCoachVoice } from "./coach-voice";
 import { assetUrl } from "./asset-base";
@@ -112,6 +120,8 @@ export interface TutorialStepDef {
   mapFocus?: boolean;
   /** Tap the coach bubble to continue (barbarians, enemies, wrap-up). */
   infoOnly?: boolean;
+  /** Speak the line, then hide the bubble so HUD panels stay clear to tap. */
+  speakThenHide?: boolean;
   /** Final step: render Keep playing / End tutorial buttons in the bubble. */
   choice?: boolean;
   isDone(ctx: TutorialCoachContext): boolean;
@@ -296,7 +306,7 @@ export function visibleEnemyCivId(state: GameState, viewerId: number): number | 
 }
 
 export function visibleVillageTile(state: GameState, viewerId: number): boolean {
-  return nearestVisibleVillage(state, viewerId) != null;
+  return tutorialVillageLessonActive(state, viewerId);
 }
 
 /** Closest visible tribal village tile, for the highlight ring. */
@@ -540,6 +550,7 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
         {
           id: "t1_select_city",
           message: "Now step inside your city. Tap it on the map, or use the Cities button.",
+          speakThenHide: true,
           targets: ["#city-panel", "#cities-btn"],
           isDone: ({ state, viewerId, selectedCityId }) => {
             if (hasQueuedProduction(state, viewerId, selectedCityId)) return true;
@@ -554,6 +565,7 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
           id: "t1_open_construction",
           message:
             "This is your seat of power. Open Construction 🔨. This is where labor becomes buildings. Some are specialized: a Barracks, an Archery Range, a Stable. Those do more than stand there. They train your citizens into specialized roles, turning farmhands into soldiers, archers, and riders.",
+          speakThenHide: true,
           targets: ["#open-prod"],
           isDone: (ctx) => {
             const city = coachedCity(ctx.state, ctx.viewerId, ctx.selectedCityId);
@@ -565,12 +577,14 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
           id: "t1_pick_build",
           message:
             "Pick a project. A Barracks hardens the town and drills melee troops. A Farm feeds it. There is no wrong answer, labor is never wasted. Great works simply take a few turns. Patience.",
+          speakThenHide: true,
           targets: ["#production:not(.hidden) .pcard"],
           isDone: (ctx) => hasQueuedProduction(ctx.state, ctx.viewerId, ctx.selectedCityId),
         },
         {
           id: "t1_open_train",
           message: "Cities also raise units themselves. Open Train Units ⚔️.",
+          speakThenHide: true,
           targets: ["#open-train"],
           isDone: (ctx) =>
             document.querySelector("#training:not(.hidden)") != null || hasQueuedTraining(ctx.state, ctx.viewerId, ctx.selectedCityId),
@@ -579,6 +593,7 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
           id: "t1_train_unit",
           message:
             "Queue a Scout. And mark this: training spends a citizen. A person leaves the fields and takes up the road. Spend your people wisely.",
+          speakThenHide: true,
           targets: ["#training:not(.hidden) [data-train]"],
           isDone: (ctx) =>
             hasQueuedTraining(ctx.state, ctx.viewerId, ctx.selectedCityId) ||
@@ -606,6 +621,7 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
           id: "t2_check_city",
           message:
             "Turn two, and your city worked while you slept. Open it and look at Growth 🍞. Food fills the stores, and when they brim, a new citizen is born to work your tiles. Your building and training carry on by themselves.",
+          speakThenHide: true,
           targets: ["#city-panel", "#cities-btn"],
           isDone: ({ state, viewerId, selectedCityId }) => {
             if (cityPanelVisible()) return true;
@@ -673,20 +689,10 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
                 id: "t3_village" as const,
                 message: T3_VILLAGE_MESSAGE,
                 tileHighlight: ({ state, viewerId }: TutorialCoachContext) =>
-                  nearestVisibleVillage(state, viewerId),
-                isDone: ({ state, viewerId }: TutorialCoachContext) => {
-                  const visible = computeVisible(state, viewerId);
-                  for (const key of visible) {
-                    const pos = parseTileKey(key);
-                    if (!pos) continue;
-                    const tile = getTile(state.map, pos.col, pos.row);
-                    if (tile?.feature !== "village") continue;
-                    for (const u of unitsOf(state, viewerId)) {
-                      if (u.col === pos.col && u.row === pos.row) return true;
-                    }
-                  }
-                  return false;
-                },
+                  nearestReachableTutorialVillageNow(state, viewerId) ??
+                  nearestReachableTutorialVillage(state, viewerId),
+                isDone: ({ state, viewerId }: TutorialCoachContext) =>
+                  isTutorialVillageStepDone(state, viewerId),
               },
             ]
           : []),
@@ -766,6 +772,17 @@ export function isEndTurnStep(step: TutorialStepDef | undefined): boolean {
 
 /** The game canvas — clickable only on steps that ask the player to touch the map. */
 const GATE_CANVAS_SELECTOR = "#game";
+
+/** Close / dismiss controls stay clickable while the coach gate is active. */
+export function isTutorialDismissControl(el: Element): boolean {
+  const btn = el.closest("button");
+  if (!btn) return false;
+  if (btn.classList.contains("dialog-x") || btn.classList.contains("panel-close")) return true;
+  const id = btn.id;
+  if (id && /close$/i.test(id)) return true;
+  const label = btn.getAttribute("aria-label")?.toLowerCase();
+  return label?.includes("close") === true;
+}
 
 /**
  * Interaction gate per step: while the tutorial coach is active, ALL clicks are
@@ -860,8 +877,12 @@ export interface TutorialCoachDeps {
   exitToMenu?: () => void;
   /** Spawn the turn-3 tribal village on demand (so it can't be collected early). */
   ensureTutorialVillage?: () => void;
+  /** Replace unreachable villages so turn 3 can always be completed. */
+  ensureReachableTutorialVillage?: () => void;
   /** Spawn the turn-2 barbarian on demand (so it can't be fought/fled early). */
   ensureTutorialBarbarian?: () => void;
+  /** Give the player's units fresh movement when a map-action lesson begins. */
+  refreshTutorialMovement?: (stepId: string) => void;
 }
 
 export interface TutorialCoach {
@@ -894,6 +915,11 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
    *  superseded line can't hijack the current one. */
   let typeSeq = 0;
   const TYPE_MS = 34;
+  /** speakThenHide: wait for both text reveal and voice before clearing the bubble. */
+  let briefingTypingDone = false;
+  let briefingVoiceDone = false;
+  let briefingStepId: TutorialStepId | null = null;
+  let briefingVoiceFallbackTimer = 0;
 
   const initialState = deps.getState();
   const initialViewer = deps.getViewerId();
@@ -949,6 +975,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     const el = target instanceof Element ? target : null;
     if (!el) return true;
     if (root.contains(el)) return true; // coach bubble / skip
+    if (isTutorialDismissControl(el)) return true;
     for (const sel of gateSelectors) {
       if (el.closest(sel)) return true;
     }
@@ -990,6 +1017,23 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
   }
   loadPortrait();
 
+  function resetBriefing(stepId: TutorialStepId | null): void {
+    window.clearTimeout(briefingVoiceFallbackTimer);
+    briefingVoiceFallbackTimer = 0;
+    briefingTypingDone = false;
+    briefingVoiceDone = false;
+    briefingStepId = stepId;
+    root.classList.remove("coach-action-ready");
+  }
+
+  function enterActionPhaseIfReady(): void {
+    if (!briefingStepId) return;
+    if (!briefingTypingDone || !briefingVoiceDone) return;
+    root.classList.add("coach-action-ready");
+    panelEl.classList.remove("speaking");
+    portraitEl.classList.remove("speaking");
+  }
+
   const removeGate = (): void => {
     gateActive = false;
     for (const type of GATE_EVENTS) window.removeEventListener(type, gateHandler, true);
@@ -999,6 +1043,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     if (dismissed) return;
     dismissed = true;
     removeGate();
+    resetBriefing(null);
     stopTyping();
     stopCoachVoice();
     root.remove();
@@ -1037,11 +1082,30 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
 
   /** Reveal the line character-by-character, paced to Herodotus's voice so the
    *  text appears as he speaks rather than racing ahead of the audio. */
-  function startTyping(message: string, stepId: TutorialStepId): void {
+  function startTyping(message: string, stepId: TutorialStepId, speakThenHide: boolean): void {
     stopTyping();
     textEl.textContent = "";
     panelEl.classList.add("speaking");
     portraitEl.classList.add("speaking");
+
+    const markTypingDone = (): void => {
+      if (!speakThenHide || briefingStepId !== stepId) return;
+      briefingTypingDone = true;
+      enterActionPhaseIfReady();
+      briefingVoiceFallbackTimer = window.setTimeout(() => {
+        if (briefingStepId !== stepId || briefingVoiceDone) return;
+        briefingVoiceDone = true;
+        enterActionPhaseIfReady();
+      }, 4000);
+    };
+
+    const markVoiceDone = (): void => {
+      if (!speakThenHide || briefingStepId !== stepId) return;
+      window.clearTimeout(briefingVoiceFallbackTimer);
+      briefingVoiceFallbackTimer = 0;
+      briefingVoiceDone = true;
+      enterActionPhaseIfReady();
+    };
 
     // Reveal by code point (not UTF-16 unit) so a multi-char emoji is never split
     // mid-reveal, and render via innerHTML+iconify so emoji become the game's
@@ -1056,9 +1120,18 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
       typeTimer = window.setInterval(() => {
         i += 1;
         textEl.innerHTML = iconify(chars.slice(0, i).join(""));
-        if (i >= chars.length) stopTyping();
+        if (i >= chars.length) {
+          stopTyping();
+          markTypingDone();
+        }
       }, perCharMs);
     };
+
+    if (speakThenHide) {
+      briefingVoiceDone = false;
+    } else {
+      briefingVoiceDone = true;
+    }
 
     speakCoachLine(message, stepId, {
       // Spread the reveal across ~92% of the clip so text lands just before the
@@ -1071,6 +1144,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
         beginTyping(ms);
       },
       onFallback: () => beginTyping(TYPE_MS),
+      onEnd: speakThenHide ? markVoiceDone : undefined,
     });
 
     // Safety net: if no clip plays and no fallback fires (e.g. audio blocked and
@@ -1165,7 +1239,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
       // cannot be fought or collected before its turn (which would strand the
       // step waiting on a thing that's already gone).
       if (turn === 2) deps.ensureTutorialBarbarian?.();
-      if (turn === 3) deps.ensureTutorialVillage?.();
+      if (turn === 3) deps.ensureReachableTutorialVillage?.();
     }
 
     const ctx: TutorialCoachContext = {
@@ -1232,17 +1306,37 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     if (step.id !== lastStepId) {
       lastStepId = step.id;
       flags.infoAcknowledged = false;
+      resetBriefing(step.speakThenHide ? step.id : null);
+      if (TUTORIAL_MOVE_STEP_IDS.has(step.id)) {
+        deps.refreshTutorialMovement?.(step.id);
+        if (step.id === "t3_village") deps.ensureReachableTutorialVillage?.();
+        if (step.id === "t2_attack_barbarian") deps.ensureTutorialBarbarian?.();
+      }
       if (step.id === "spot_barbarian" || step.id === "spot_enemy") {
         encounterInProgress.add(step.id);
         markStepExplained(step.id);
       }
-      startTyping(step.message, step.id);
+      startTyping(step.message, step.id, step.speakThenHide === true);
     }
     progressEl.textContent = `Turn ${turn} of ${TUTORIAL_COACH_TURNS}`;
     bubbleTapAdvances = step.infoOnly === true;
     bubbleEl.classList.toggle("info-only", step.infoOnly === true);
     dialogEl.classList.toggle("info-only", step.infoOnly === true);
     choiceEl.hidden = step.choice !== true;
+
+    if (step.id === "t3_village" && !isTutorialVillageStepDone(state, ctx.viewerId)) {
+      if (!nearestReachableTutorialVillageNow(state, ctx.viewerId)) {
+        const full = nearestReachableTutorialVillage(state, ctx.viewerId);
+        const mobile = unitsOf(state, ctx.viewerId).filter(
+          (u) => u.aboardShipId === undefined && u.escortingRouteId === undefined,
+        );
+        if (!full) {
+          deps.ensureReachableTutorialVillage?.();
+        } else if (!mobile.some((u) => u.movementLeft > 0)) {
+          deps.refreshTutorialMovement?.(step.id);
+        }
+      }
+    }
 
     dim.classList.toggle("show", step.mapFocus === true);
     resetRingShape();
@@ -1285,6 +1379,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
 
   function destroy(): void {
     removeGate();
+    resetBriefing(null);
     stopTyping();
     stopCoachVoice();
     root.remove();

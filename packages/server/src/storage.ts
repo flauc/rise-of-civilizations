@@ -24,6 +24,7 @@ export interface Storage {
   userById(id: string): Promise<User | undefined>;
   createSession(userId: string): Promise<string>; // returns token
   userIdForToken(token: string): Promise<string | undefined>;
+  deleteUser(userId: string): Promise<void>;
   saveSnapshot(gameId: string, turn: number, blob: string): Promise<void>;
   loadSnapshot(gameId: string): Promise<{ turn: number; blob: string } | undefined>;
   /** All registered accounts, newest first (for admin). */
@@ -68,6 +69,15 @@ export class MemoryStorage implements Storage {
   }
   async userIdForToken(token: string): Promise<string | undefined> {
     return this.sessions.get(token);
+  }
+  async deleteUser(userId: string): Promise<void> {
+    const user = this.users.get(userId);
+    if (!user) return;
+    this.users.delete(userId);
+    this.byHandle.delete(user.handle.toLowerCase());
+    for (const [token, uid] of this.sessions) {
+      if (uid === userId) this.sessions.delete(token);
+    }
   }
   async saveSnapshot(gameId: string, turn: number, blob: string): Promise<void> {
     this.snapshots.set(gameId, { turn, blob });

@@ -10,10 +10,12 @@ import type { SaveRecord } from "./save-db";
 import type { CheatAction } from "./god-mode";
 import { getSettings, updateSettings, type TurnUpdateView } from "./settings";
 import {
-  bindScreenRotationControls,
-  screenRotationControlsHtml,
-  shouldOfferScreenRotation,
-} from "./screen-rotation-ui";
+  closeSettingsPanel,
+  isSettingsPanelOpen,
+  openSettingsPanel,
+  refreshSettingsPanel,
+} from "./settings-ui";
+import { isLoggedIn } from "./account";
 import { selectTurnUpdates } from "./turn-update-batch";
 import {
   researchableGovernmentsFor,
@@ -1144,9 +1146,6 @@ export function createUI(handlers: UIHandlers): UI {
   const turnUpdateNext = turnUpdateDialog.querySelector<HTMLButtonElement>("#turn-update-next")!;
   const turnUpdateClose = turnUpdateDialog.querySelector<HTMLButtonElement>("#turn-update-close")!;
 
-  const settingsOverlay = div("settings-overlay", "");
-  const settingsDialog = div("settings-dialog", "");
-
   const endturn = document.createElement("button");
   endturn.id = "endturn";
   endturn.className = "action-btn action-next";
@@ -1193,8 +1192,8 @@ export function createUI(handlers: UIHandlers): UI {
         hideUnitPromoDialog();
         return;
       }
-      if (settingsOpen) {
-        closeSettings();
+      if (isSettingsPanelOpen()) {
+        closeSettingsPanel();
         return;
       }
       if (turnUpdateDialog.classList.contains("show")) {
@@ -1235,7 +1234,7 @@ export function createUI(handlers: UIHandlers): UI {
       if (leaderboardDialog.classList.contains("show")) { leaderboardClose.click(); return; }
       // Blocking overlays with no single positive action: swallow Enter rather
       // than ending the turn behind them.
-      if (settingsOpen || menuOpen || godModeOpen) return;
+      if (isSettingsPanelOpen() || menuOpen || godModeOpen) return;
       endturn.click();
     }
   });
@@ -1288,7 +1287,6 @@ export function createUI(handlers: UIHandlers): UI {
   // during the enemy phase, which the sim tags with the previous turn number.
   const lastSeenTurnUpdateByViewer = new Map<number, number>();
   let menuOpen = false;
-  let settingsOpen = false;
   let menuView: "menu" | "save" | "leave" | "bug" = "menu";
   let isSaving = false;
   let isReporting = false;
@@ -1694,7 +1692,7 @@ export function createUI(handlers: UIHandlers): UI {
     activeTurnUpdateView = next;
     // Persist the layout chosen via the toggle so it carries across games.
     updateSettings({ turnUpdateView: next });
-    if (settingsOpen) renderSettings();
+    if (isSettingsPanelOpen()) refreshSettingsPanel();
     renderTurnUpdateDialog();
   });
 
@@ -1711,56 +1709,6 @@ export function createUI(handlers: UIHandlers): UI {
     }
   });
   turnUpdateClose.addEventListener("click", hideTurnUpdateDialog);
-
-  const closeSettings = (): void => {
-    settingsOpen = false;
-    renderSettings();
-  };
-
-  const renderSettings = (): void => {
-    settingsOverlay.classList.toggle("show", settingsOpen);
-    settingsDialog.classList.toggle("show", settingsOpen);
-    if (!settingsOpen) return;
-    const s = getSettings();
-    const tuMode = !s.turnUpdatePopup ? "off" : s.turnUpdateView;
-    withPreservedScroll(settingsDialog, () => {
-      settingsDialog.innerHTML =
-        `<button type="button" class="dialog-x" id="settings-close" title="Close" aria-label="Close">✕</button>` +
-        `<div class="settings-header"><b>⚙ Settings</b></div>` +
-        `<div class="settings-section">` +
-        `<div class="settings-title">Turn Updates</div>` +
-        `<div class="settings-hint">What happens at the start of each of your turns.</div>` +
-        `<div class="seg">` +
-        `<button class="seg-btn ${tuMode === "expanded" ? "active" : ""}" data-tu-mode="expanded" title="Pop up one event at a time">Pop up</button>` +
-        `<button class="seg-btn ${tuMode === "compact" ? "active" : ""}" data-tu-mode="compact" title="Pop up all events on one screen">Compact</button>` +
-        `<button class="seg-btn ${tuMode === "off" ? "active" : ""}" data-tu-mode="off" title="Don't pop up; still available from the Updates button">Off</button>` +
-        `</div></div>` +
-        (shouldOfferScreenRotation()
-          ? `<div class="settings-section">` +
-            `<div class="settings-title">Screen Rotation</div>` +
-            `<div class="settings-hint">Pick one orientation. The game stays fixed and does not rotate with your device.</div>` +
-            screenRotationControlsHtml({ showLabel: false }) +
-            `</div>`
-          : "");
-    });
-    settingsDialog.querySelector<HTMLButtonElement>("#settings-close")!.addEventListener("click", closeSettings);
-    settingsDialog.querySelectorAll<HTMLButtonElement>("[data-tu-mode]").forEach((el) =>
-      el.addEventListener("click", () => {
-        const mode = el.dataset.tuMode;
-        if (mode === "off") {
-          updateSettings({ turnUpdatePopup: false });
-        } else {
-          updateSettings({ turnUpdatePopup: true, turnUpdateView: mode as TurnUpdateView });
-          if (turnUpdateOpen) {
-            activeTurnUpdateView = mode as TurnUpdateView;
-            renderTurnUpdateDialog();
-          }
-        }
-        renderSettings();
-      }),
-    );
-    if (shouldOfferScreenRotation()) bindScreenRotationControls(settingsDialog);
-  };
 
   const renderAction = (view: UIView): void => {
     if (view.suggestion) {
@@ -2162,8 +2110,15 @@ export function createUI(handlers: UIHandlers): UI {
         renderMenu(state);
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
-        settingsOpen = true;
-        renderSettings();
+        openSettingsPanel({
+          showDeleteAccount: isLoggedIn(),
+          onTurnUpdateSettingsChange: (view) => {
+            if (turnUpdateOpen) {
+              activeTurnUpdateView = view;
+              renderTurnUpdateDialog();
+            }
+          },
+        });
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-save")?.addEventListener("click", () => {
         menuView = "save";
@@ -4929,7 +4884,7 @@ export function createUI(handlers: UIHandlers): UI {
         moraleDialogOpen ||
         unitPromoDialogOpen ||
         turnUpdateOpen ||
-        settingsOpen;
+        isSettingsPanelOpen();
       if (overlayOpen) {
         cityPanel.classList.add("hidden");
         unitPanel.classList.add("hidden");

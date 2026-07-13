@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="How to delete your Rise of Civilizations account and associated data." />
+    <title>Delete Account | Rise of Civilizations</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Lato:wght@400;700&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0f0e0b;
+        --card: #1f1c14;
+        --edge: rgba(201, 162, 39, 0.28);
+        --accent: #c9a227;
+        --text: #e8dcc5;
+        --muted: #b8aa8d;
+        --danger: #ff8a8a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Lato", system-ui, sans-serif;
+        font-size: 16px;
+        line-height: 1.65;
+        color: var(--text);
+        background: var(--bg);
+      }
+      a { color: var(--accent); }
+      a:hover { color: #f0d878; }
+      .wrap {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 40px 24px 64px;
+      }
+      .back {
+        display: inline-block;
+        margin-bottom: 24px;
+        font-size: 14px;
+        text-decoration: none;
+      }
+      h1 {
+        font-family: "Cinzel", Georgia, serif;
+        font-weight: 600;
+        font-size: clamp(1.75rem, 4vw, 2.25rem);
+        margin: 0 0 8px;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 14px;
+        margin-bottom: 32px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--edge);
+        border-radius: 12px;
+        padding: 28px 28px 8px;
+      }
+      h2 {
+        font-family: "Cinzel", Georgia, serif;
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin: 28px 0 10px;
+        color: #f0d878;
+      }
+      h2:first-child { margin-top: 0; }
+      p, li { color: var(--text); }
+      p { margin: 0 0 14px; }
+      ol, ul { margin: 0 0 14px; padding-left: 1.25rem; }
+      li { margin-bottom: 8px; }
+      strong { color: #f0d878; font-weight: 700; }
+      .steps {
+        counter-reset: step;
+        list-style: none;
+        padding-left: 0;
+      }
+      .steps li {
+        counter-increment: step;
+        padding-left: 2rem;
+        position: relative;
+      }
+      .steps li::before {
+        content: counter(step);
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1.4rem;
+        height: 1.4rem;
+        border-radius: 50%;
+        background: rgba(201, 162, 39, 0.2);
+        color: #f0d878;
+        font-size: 12px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .note {
+        border-left: 3px solid var(--accent);
+        padding: 10px 14px;
+        margin: 0 0 14px;
+        background: rgba(201, 162, 39, 0.08);
+        font-size: 14px;
+      }
+      .danger { color: var(--danger); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <a class="back" href="/">← Back to game</a>
+      <h1>Delete your account</h1>
+      <p class="meta">Rise of Civilizations · Account &amp; data deletion</p>
+
+      <div class="card">
+        <h2>Who this is for</h2>
+        <p>
+          This page explains how registered players of <strong>Rise of Civilizations</strong> can delete their
+          account and request removal of associated data we store on our servers.
+        </p>
+        <p class="note">
+          <strong>Guest players</strong> (not signed in) do not have a server account. Clear the app’s site data
+          or uninstall the app to remove local saves on your device.
+        </p>
+
+        <h2>Option 1 — Delete in the app (fastest)</h2>
+        <ol class="steps">
+          <li>Open <strong>Rise of Civilizations</strong> and sign in to your account.</li>
+          <li>On the <strong>home screen</strong>, tap <strong>Settings</strong>.</li>
+          <li>Scroll to <strong>Account</strong> and tap <strong>Delete account</strong>.</li>
+          <li>Enter your password and confirm. Your account is removed immediately from our servers.</li>
+        </ol>
+
+        <h2>Option 2 — Request by email</h2>
+        <p>
+          If you cannot access the app, email
+          <a href="mailto:legal@rise-of-civilizations.com">legal@rise-of-civilizations.com</a>
+          from the address linked to your account, or include your <strong>username (handle)</strong>.
+          We may ask you to verify your identity before deleting the account.
+        </p>
+
+        <h2>What we delete</h2>
+        <ul>
+          <li>Your registered account (username / handle)</li>
+          <li>Password hash and active login sessions</li>
+          <li>Email address stored for newsletter opt-in (if any)</li>
+        </ul>
+
+        <h2>What may be kept</h2>
+        <ul>
+          <li>
+            <strong>Single-player saves on your device</strong> — stored locally until you clear app data or
+            uninstall; they are not uploaded to our servers by default.
+          </li>
+          <li>
+            <strong>Analytics and bug reports</strong> — may remain in aggregated or pseudonymous form for
+            operations and security, as described in our
+            <a href="/privacy.html">Privacy Policy</a>.
+          </li>
+          <li>
+            <strong>Backups and legal records</strong> — limited retention where required by law or for abuse
+            investigations.
+          </li>
+        </ul>
+
+        <h2>How long it takes</h2>
+        <p>
+          In-app deletion is <strong>immediate</strong>. Email requests are usually processed within
+          <strong>30 days</strong>.
+        </p>
+
+        <h2>More information</h2>
+        <p>
+          See our <a href="/privacy.html">Privacy Policy</a> and
+          <a href="/terms.html">Terms of Service</a>, or contact
+          <a href="mailto:legal@rise-of-civilizations.com">legal@rise-of-civilizations.com</a>
+          with any questions.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

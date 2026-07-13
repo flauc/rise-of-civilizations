@@ -50,6 +50,9 @@ import { pickUnitAtScreen } from "./unit-pick";
 import { createUI, type CombatOdds, type TileTip } from "./ui";
 import { mountGameChat } from "./mp-chat";
 import { createLobby } from "./lobby-ui";
+import { createLegalViewer, type LegalPage } from "./legal-viewer";
+import { createSupportPage, registerSupportPage, supportPageFromLocation } from "./support-page";
+import { initialOverlayRoute, setLobbyHidden } from "./app-routes";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadCoastAtlas } from "./coast-assets";
 import { loadRiverAtlas } from "./river-assets";
@@ -70,7 +73,12 @@ import { exportSave, listSavesForUser, makeSaveRecord, saveGame, type SaveRecord
 import { getAccount, getSaveOwnerId } from "./account";
 import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, abandonActiveSession, type GameSetup } from "./analytics";
 import { createTutorialCoach } from "./tutorial-coach";
-import { spawnTutorialBarbarian, spawnTutorialVillage } from "./tutorial";
+import {
+  refreshTutorialMovement,
+  spawnTutorialBarbarian,
+  spawnTutorialVillage,
+  ensureReachableTutorialVillage,
+} from "./tutorial";
 import { installIconifyHook } from "./icons";
 import { initScreenRotation } from "./screen-rotation";
 
@@ -82,7 +90,21 @@ if (!ctx) throw new Error("2D canvas context unavailable");
 installIconifyHook();
 initAnalytics();
 initScreenRotation();
+const legalViewer = createLegalViewer();
+legalViewer.wireLinks();
+const supportPage = createSupportPage();
+registerSupportPage(supportPage);
+supportPage.wireLinks();
 createLobby(startGame);
+const bootRoute = initialOverlayRoute(location);
+if (bootRoute === "support") {
+  setLobbyHidden(true);
+  supportPage.open();
+} else if (bootRoute) {
+  setLobbyHidden(true);
+  legalViewer.open(bootRoute as LegalPage);
+}
+delete window.__ROC_BOOT_ROUTE__;
 
 function startGame(session: Session, setup: GameSetup = {}): void {
   // Loading veil: the map paints progressively as sprite atlases stream in (and
@@ -694,7 +716,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     },
   });
 
-  const unmountGameChat = session.isOnline ? mountGameChat(session as import("./session").OnlineSession) : null;
+  const unmountGameChat = session.isOnline
+    ? mountGameChat(session as import("./session").OnlineSession, getAccount()?.userId)
+    : null;
 
   const tutorialCoach = setup.isTutorial
     ? createTutorialCoach({
@@ -715,8 +739,15 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         ensureTutorialVillage: () => {
           if (spawnTutorialVillage(st())) update();
         },
+        ensureReachableTutorialVillage: () => {
+          if (ensureReachableTutorialVillage(st())) update();
+        },
         ensureTutorialBarbarian: () => {
           if (spawnTutorialBarbarian(st())) update();
+        },
+        refreshTutorialMovement: (stepId) => {
+          refreshTutorialMovement(st(), session.getViewerId(), stepId);
+          update();
         },
       })
     : null;

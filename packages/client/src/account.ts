@@ -139,6 +139,53 @@ export async function authenticate(req: AuthRequest): Promise<StoredAccount | { 
   });
 }
 
+/** Permanently delete the logged-in account after password confirmation. */
+export async function deleteAccount(
+  password: string,
+  wsUrl?: string,
+): Promise<{ ok: true } | { error: string }> {
+  const account = getAccount();
+  if (!account) return { error: "not logged in" };
+  const url = wsUrl?.trim() || DEFAULT_WS_URL;
+  return new Promise((resolve) => {
+    const ws = new WebSocket(url);
+    let settled = false;
+    let opened = false;
+    const finish = (result: { ok: true } | { error: string }): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+      resolve(result);
+    };
+    const timer = setTimeout(
+      () => finish({ error: `Could not reach ${url}. Start the server and try again.` }),
+      12_000,
+    );
+    ws.onopen = () => {
+      opened = true;
+      ws.send(JSON.stringify({ t: "deleteAccount", token: account.token, password } satisfies ClientMessage));
+    };
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(String(e.data)) as ServerMessage;
+      if (msg.t === "accountDeleted") {
+        clearAccount();
+        finish({ ok: true });
+      } else if (msg.t === "error") {
+        finish({ error: msg.message });
+      }
+    };
+    ws.onerror = () => finish({ error: `WebSocket error connecting to ${url}` });
+    ws.onclose = () => {
+      if (!settled && !opened) finish({ error: `Connection to ${url} closed before delete.` });
+    };
+  });
+}
+
 /** Try to restore a saved session on startup; clears stale tokens. */
 export async function tryResumeSession(wsUrl?: string): Promise<StoredAccount | null> {
   const existing = getAccount();

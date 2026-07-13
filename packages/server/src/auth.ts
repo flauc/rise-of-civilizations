@@ -70,3 +70,22 @@ export async function resume(storage: Storage, token: string): Promise<AuthResul
   if (!user) return { error: "invalid token" };
   return { token, userId: user.id, handle: user.handle };
 }
+
+export type DeleteAccountResult = { ok: true } | { error: string };
+
+/** Verify password and permanently remove the account and all its sessions. */
+export async function deleteAccount(
+  storage: Storage,
+  token: string,
+  password: string,
+): Promise<DeleteAccountResult> {
+  if (token.length === 0 || token.length > MAX_SESSION_TOKEN_LENGTH) return { error: "invalid token" };
+  const userId = await storage.userIdForToken(token);
+  if (!userId) return { error: "invalid token" };
+  const user = await storage.userById(userId);
+  if (!user) return { error: "invalid token" };
+  if (password.length > PASSWORD_MAX_LENGTH) return { error: "invalid credentials" };
+  if (!(await Bun.password.verify(password, user.passwordHash))) return { error: "invalid credentials" };
+  await storage.deleteUser(userId);
+  return { ok: true };
+}

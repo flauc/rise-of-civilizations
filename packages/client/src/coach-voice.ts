@@ -22,12 +22,23 @@ export function stopCoachVoice(): void {
   currentUtterance = null;
 }
 
-function speakWithBrowserTts(text: string): void {
-  if (!text || !("speechSynthesis" in window)) return;
+function speakWithBrowserTts(text: string, onEnd?: () => void): void {
+  if (!text || !("speechSynthesis" in window)) {
+    onEnd?.();
+    return;
+  }
   const u = new SpeechSynthesisUtterance(text);
   u.lang = "en-US";
   u.rate = 0.93;
   u.pitch = 0.95;
+  u.onend = () => {
+    if (currentUtterance === u) currentUtterance = null;
+    onEnd?.();
+  };
+  u.onerror = () => {
+    if (currentUtterance === u) currentUtterance = null;
+    onEnd?.();
+  };
   currentUtterance = u;
   window.speechSynthesis.speak(u);
 }
@@ -37,6 +48,8 @@ export interface CoachSpeakHandlers {
   onPlay?: (durationSec: number) => void;
   /** No timed clip is available — the caller should reveal text at its own pace. */
   onFallback?: () => void;
+  /** Speech finished (MP3 ended or browser TTS completed). */
+  onEnd?: () => void;
 }
 
 /**
@@ -54,7 +67,7 @@ export function speakCoachLine(
   stopCoachVoice();
 
   if (!stepId) {
-    speakWithBrowserTts(text);
+    speakWithBrowserTts(text, handlers?.onEnd);
     handlers?.onFallback?.();
     return;
   }
@@ -64,7 +77,7 @@ export function speakCoachLine(
   const fallback = (): void => {
     if (currentAudio !== audio) return;
     currentAudio = null;
-    speakWithBrowserTts(text);
+    speakWithBrowserTts(text, handlers?.onEnd);
     handlers?.onFallback?.();
   };
   audio.addEventListener(
@@ -73,6 +86,15 @@ export function speakCoachLine(
       if (currentAudio === audio) {
         handlers?.onPlay?.(Number.isFinite(audio.duration) ? audio.duration : 0);
       }
+    },
+    { once: true },
+  );
+  audio.addEventListener(
+    "ended",
+    () => {
+      if (currentAudio !== audio) return;
+      currentAudio = null;
+      handlers?.onEnd?.();
     },
     { once: true },
   );

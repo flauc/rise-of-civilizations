@@ -409,6 +409,22 @@ describe("AI opponent", () => {
     expect(u.promotions.length).toBeGreaterThan(0);
   });
 
+  it("paves road routes between its cities once it has surveyors", () => {
+    const s = aiWithCity("ai-roads");
+    const ai = s.players[1]!;
+    ai.researched.add("the_wheel");
+    const capital = citiesOf(s, 1)[0]!;
+    applyCommand(s, { type: "convertCitizen", cityId: capital.id, specialistId: "agrimensor", delta: 1 }, 1);
+    const spot = landTileAtDepth(s, capital, 4);
+    expect(spot).toBeTruthy();
+    const settlerId = s.nextEntityId++;
+    s.units.set(settlerId, makeUnit(settlerId, 1, "settler", spot!.col, spot!.row));
+    applyCommand(s, { type: "foundCity", unitId: settlerId }, 1);
+    expect(citiesOf(s, 1).length).toBeGreaterThanOrEqual(2);
+    aiTakeTurn(s, 1);
+    expect(s.roadRoutes.some((r) => r.ownerId === 1 && r.queue.length > 0)).toBe(true);
+  });
+
   it("fortifies a city with a tower when it has a Mason and Military Engineer", () => {
     const s = aiWithCity("ai-fort");
     const ai = s.players[1]!;

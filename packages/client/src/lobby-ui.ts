@@ -3,7 +3,8 @@
 
 import { ASSET_BASE_URL } from "./asset-base";
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
-import { isMobileMpUi, renderChatLogEl } from "./mp-chat";
+import { isMobileMpUi, renderChatLogEl, CHAT_MODERATION_CSS } from "./mp-chat";
+import { onChatModerationChange } from "./chat-moderation";
 import { createWiki } from "./wiki";
 import { createRoadmap } from "./roadmap";
 import { createCredits } from "./credits";
@@ -40,12 +41,9 @@ import {
   bindAuthLoginPanel,
   bindAuthRegisterPanel,
 } from "./auth-form";
-import {
-  bindScreenRotationControls,
-  SCREEN_ROTATION_STYLES,
-  screenRotationControlsHtml,
-  shouldOfferScreenRotation,
-} from "./screen-rotation-ui";
+import { SCREEN_ROTATION_STYLES } from "./screen-rotation-ui";
+import { openSettingsPanel } from "./settings-ui";
+import { openSupportPage } from "./support-page";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 import type { GameSetup } from "./analytics";
 import {
@@ -506,9 +504,14 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
   const style = document.createElement("style");
   style.textContent = `
-    #lobby{position:fixed;inset:0;z-index:50;background:#0f0e0b}
-    .lobby-layout{display:flex;height:100%;min-height:0;width:100%}
+    #lobby{position:fixed;inset:0;z-index:50;background:#0f0e0b;display:flex;flex-direction:column;min-height:0}
+    #lobby.hidden{display:none !important}
+    .lobby-layout{display:flex;flex:1;min-height:0;width:100%}
     .lobby-left{width:380px;max-width:92vw;flex-shrink:0;display:flex;flex-direction:column;background:linear-gradient(180deg,#1f1c14 0%,#15120c 100%);border-right:1px solid var(--edge);padding:28px;overflow:auto;box-shadow:4px 0 24px rgba(0,0,0,.55)}
+    .lobby-left.sp-panel{padding:0;overflow:hidden}
+    .sp-panel-scroll{flex:1;min-height:0;overflow:auto;padding:28px;padding-bottom:12px;-webkit-overflow-scrolling:touch}
+    .sp-panel-actions{flex:none;display:flex;gap:10px;padding:14px 28px max(14px,env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:linear-gradient(180deg,#1a1710 0%,#15120c 100%);box-shadow:0 -8px 24px rgba(0,0,0,.35)}
+    .sp-panel-actions .menu-btn{flex:1;width:auto;margin:0}
     .lobby-right{flex:1;position:relative;display:grid;grid-template-columns:minmax(0,1fr) clamp(160px,24vw,240px);grid-template-rows:minmax(0,1fr);gap:20px 24px;align-items:center;min-height:0;height:100%;padding:24px 32px;background:radial-gradient(circle at 70% 30%,rgba(201,162,39,0.14) 0%,#0f0e0b 60%);overflow:hidden}
     .lobby-right::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,14,11,0) 0%,rgba(15,14,11,.78) 100%);pointer-events:none}
     .lobby-title{font-family:'Cinzel',Georgia,serif;font-size:28px;font-weight:800;color:#e8dcc5;letter-spacing:.5px;margin-bottom:4px}
@@ -518,6 +521,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .account-bar .menu-btn{width:auto;padding:7px 12px;font-size:12px;margin:0}
     .auth-check{display:flex;align-items:flex-start;gap:8px;margin-top:14px;color:#cdbf9f;font-size:13px;cursor:pointer;line-height:1.35}
     .auth-check input{accent-color:#c9a227;margin-top:2px;flex:0 0 auto}
+    .auth-legal a{color:#f0d878;font-weight:700;text-decoration:underline;text-underline-offset:2px}
+    .auth-legal a:hover{color:#f6e6a6}
     .auth-email-wrap{margin-top:12px}
     .auth-email-wrap.hidden{display:none}
     /* Account: full-page split login / register */
@@ -800,10 +805,16 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       /* Single player: the civ picker covers leader previews, so the featured-civ
          panel is dead weight on a phone — hide it and let the form fill the view. */
       #lobby[data-screen="sp"] .lobby-right{display:none}
+      #lobby[data-screen="sp"]{overflow:hidden;height:100dvh;height:100vh}
+      #lobby[data-screen="sp"] .lobby-layout{flex:1;min-height:0;overflow:hidden}
+      #lobby[data-screen="sp"] .lobby-left.sp-panel{flex:1;min-height:0;padding:0;overflow:hidden}
+      #lobby[data-screen="sp"] .sp-panel-scroll{padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) 12px max(20px,env(safe-area-inset-left))}
+      #lobby[data-screen="sp"] .sp-panel-actions{padding:14px max(20px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
       #lobby[data-screen="load"] .lobby-right{display:none}
     }
     @media (orientation:landscape) and (max-height:520px){
       .lobby-left{width:min(340px,38vw);padding:16px 18px}
+      #lobby[data-screen="sp"] .lobby-left.sp-panel{padding:0}
       .lobby-right{grid-template-columns:minmax(0,1fr) clamp(130px,18vw,200px);gap:12px 18px;padding:16px 20px}
       .showcase-art-wrapper{max-height:min(220px,calc(100dvh - 48px))}
       .showcase-reroll{font-size:12px;padding:8px 10px}
@@ -896,6 +907,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .mp-chat-form{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--edge);background:rgba(0,0,0,.12)}
     .mp-chat-form .menu-in{flex:1;min-width:0}
     .mp-chat-form .menu-btn{width:auto;padding:8px 14px;font-size:13px;flex:0 0 auto}
+    ${CHAT_MODERATION_CSS}
     @media(max-width:900px){
       .mp-room-layout{grid-template-columns:1fr}
       .mp-chat{order:-1;max-height:none;min-height:0;display:flex;flex-direction:column}
@@ -1112,6 +1124,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     layoutEl.classList.toggle("hidden", screen === "mp" || isAuth);
     authScreen.classList.toggle("hidden", !isAuth);
     mpScreenEl.classList.toggle("hidden", screen !== "mp");
+    left.classList.toggle("sp-panel", screen === "sp");
     switch (screen) {
       case "start":
         renderStartScreen();
@@ -1155,6 +1168,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     mpConnectPromise = null;
     mpChatUnsub?.();
     mpChatUnsub = null;
+    mpChatModUnsub?.();
+    mpChatModUnsub = null;
     mpSession?.disconnect();
     mpSession = null;
     mpAuthUserId = null;
@@ -1182,10 +1197,16 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     if (account) void reassignSaves(getGuestId(), account.userId);
   }
 
+  let mpChatModUnsub: (() => void) | null = null;
+
   function renderMpChatLog(): void {
     const log = root.querySelector<HTMLDivElement>("#mp-chat-log");
     if (!log || !mpSession) return;
-    renderChatLogEl(log, mpSession.displayChatMessages());
+    renderChatLogEl(log, mpSession.displayChatMessages(), {
+      viewerUserId: state.mp.userId,
+      gameId: mpSession.gameId,
+      onChanged: renderMpChatLog,
+    });
     log.scrollTop = log.scrollHeight;
     if (isMobileMpUi()) {
       requestAnimationFrame(() => {
@@ -1206,7 +1227,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           <button class="menu-btn secondary" id="account-login" type="button">Log in / Register</button>
         </div>`;
     const loadBtn = `<button class="menu-btn" data-screen="load">Load Game</button>`;
-    const rotationBlock = shouldOfferScreenRotation() ? screenRotationControlsHtml() : "";
 
     left.innerHTML = `
       ${accountBar}
@@ -1217,12 +1237,13 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         <button class="menu-btn" data-screen="mp">Multiplayer</button>
         <button class="menu-btn" id="lobby-tutorial">Tutorial</button>
         ${loadBtn}
+        <button class="menu-btn" id="lobby-settings">Settings</button>
+        <button class="menu-btn" id="lobby-support">Support</button>
         <button class="menu-btn" id="lobby-wiki">Wiki</button>
         <button class="menu-btn" id="lobby-roadmap">Roadmap</button>
         <button class="menu-btn" id="lobby-changelog">Changelog</button>
         <button class="menu-btn" id="lobby-credits">Credits</button>
       </div>
-      ${rotationBlock}
       <button class="lobby-version" id="lobby-version" type="button">v${CURRENT_VERSION} · What's new</button>`;
     left.querySelectorAll<HTMLButtonElement>("[data-screen]").forEach((el) =>
       el.addEventListener("click", () => showScreen(el.dataset.screen as Screen)),
@@ -1232,6 +1253,18 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     });
     left.querySelector<HTMLButtonElement>("#lobby-tutorial")!.addEventListener("click", () => {
       launchTutorialGame();
+    });
+    left.querySelector<HTMLButtonElement>("#lobby-settings")!.addEventListener("click", () => {
+      openSettingsPanel({
+        showDeleteAccount: !!account,
+        onAccountDeleted: () => {
+          applyAccount(null);
+          renderStartScreen();
+        },
+      });
+    });
+    left.querySelector<HTMLButtonElement>("#lobby-support")!.addEventListener("click", () => {
+      openSupportPage();
     });
     left.querySelector<HTMLButtonElement>("#account-login")?.addEventListener("click", () => showScreen("login"));
     left.querySelector<HTMLButtonElement>("#account-logout")?.addEventListener("click", () => {
@@ -1244,7 +1277,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     left.querySelector<HTMLButtonElement>("#lobby-changelog")?.addEventListener("click", () => changelog.open());
     left.querySelector<HTMLButtonElement>("#lobby-credits")?.addEventListener("click", () => credits.open());
     left.querySelector<HTMLButtonElement>("#lobby-version")?.addEventListener("click", () => changelog.open());
-    if (shouldOfferScreenRotation()) bindScreenRotationControls(left);
   }
 
   /** Shell around a single-column auth page (login or signup) with a guest escape. */
@@ -1322,37 +1354,38 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
   function renderSinglePlayer(): void {
     left.innerHTML = `
-      <button class="menu-btn secondary" id="back" style="width:auto;padding:8px 12px;font-size:13px"><span class="icon">←</span> Back</button>
-      <div class="menu-section">
-        <div class="menu-section-title">Players & Opponents</div>
-        <div id="sp-roster"></div>
-        <div id="sp-civ-desc" class="menu-hint"></div>
-      </div>
-      <div class="menu-section">
-        <div class="menu-section-title">Game Options</div>
-        <div class="menu-row"><span>Map type</span>${mapTypeSelect("sp-maptype", state.sp.mapType)}</div>
-        <div class="menu-hint" id="sp-maptype-desc"></div>
-        <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
-        <div class="menu-row"><span>Turn limit</span>${turnLimitSelect("sp-turnlimit", state.sp.turnLimit)}</div>
-        <div class="menu-hint">Highest score wins when the turn limit is reached. "Unlimited" plays until a decisive victory.</div>
-        <div class="menu-row"><span>Game speed</span>${gameSpeedSelect("sp-speed", state.sp.gameSpeed)}</div>
-        <div class="menu-hint" id="sp-speed-desc"></div>
-        <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
-        <div class="menu-row"><span>Tribal villages</span>${onOffSelect("sp-villages", state.sp.villages)}</div>
-        <div class="menu-row"><span>Natural wonders</span>${onOffSelect("sp-wonders", state.sp.naturalWonders)}</div>
-        <div class="menu-row"><span>Legends (heroes)</span>${onOffSelect("sp-legends", state.sp.legends)}</div>
-        <div class="menu-field">
-          <span>Starting treasury</span>
-          ${goldChips("sp-gold", state.sp.startingGold)}
+      <div class="sp-panel-scroll">
+        <div class="menu-section">
+          <div class="menu-section-title">Players & Opponents</div>
+          <div id="sp-roster"></div>
+          <div id="sp-civ-desc" class="menu-hint"></div>
         </div>
-        <div class="menu-hint" id="sp-gold-desc"></div>
-        <div class="menu-field">
-          <span>Victory conditions</span>
-          ${victoryChecklist("sp-victories", state.sp.enabledVictories)}
+        <div class="menu-section">
+          <div class="menu-section-title">Game Options</div>
+          <div class="menu-row"><span>Map type</span>${mapTypeSelect("sp-maptype", state.sp.mapType)}</div>
+          <div class="menu-hint" id="sp-maptype-desc"></div>
+          <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
+          <div class="menu-row"><span>Turn limit</span>${turnLimitSelect("sp-turnlimit", state.sp.turnLimit)}</div>
+          <div class="menu-hint">Highest score wins when the turn limit is reached. "Unlimited" plays until a decisive victory.</div>
+          <div class="menu-row"><span>Game speed</span>${gameSpeedSelect("sp-speed", state.sp.gameSpeed)}</div>
+          <div class="menu-hint" id="sp-speed-desc"></div>
+          <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
+          <div class="menu-row"><span>Tribal villages</span>${onOffSelect("sp-villages", state.sp.villages)}</div>
+          <div class="menu-row"><span>Natural wonders</span>${onOffSelect("sp-wonders", state.sp.naturalWonders)}</div>
+          <div class="menu-row"><span>Legends (heroes)</span>${onOffSelect("sp-legends", state.sp.legends)}</div>
+          <div class="menu-field">
+            <span>Starting treasury</span>
+            ${goldChips("sp-gold", state.sp.startingGold)}
+          </div>
+          <div class="menu-hint" id="sp-gold-desc"></div>
+          <div class="menu-field">
+            <span>Victory conditions</span>
+            ${victoryChecklist("sp-victories", state.sp.enabledVictories)}
+          </div>
+          <div class="menu-hint">Score (at the turn limit) and elimination always apply. Disabled paths can't be won.</div>
         </div>
-        <div class="menu-hint">Score (at the turn limit) and elimination always apply. Disabled paths can't be won.</div>
       </div>
-      <div class="menu-back-row">
+      <div class="sp-panel-actions">
         <button class="menu-btn secondary" id="back2">Back</button>
         <button class="menu-btn primary" id="sp-start">Start Game</button>
       </div>`;
@@ -1494,7 +1527,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       );
     updateGoldDesc();
 
-    $("#back").addEventListener("click", () => showScreen("start"));
     $("#back2").addEventListener("click", () => showScreen("start"));
     $("#sp-start").addEventListener("click", () => {
       close();
@@ -2077,7 +2109,9 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     const bindChatLog = (): void => {
       if (!mpSession) return;
       mpChatUnsub?.();
+      mpChatModUnsub?.();
       mpChatUnsub = mpSession.onChat(() => renderChatLog());
+      mpChatModUnsub = onChatModerationChange(() => renderChatLog());
     };
 
     const renderRoom = (): void => {
@@ -2138,6 +2172,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         state.mp.userId = m.userId;
         state.mp.handle = m.handle;
         mpSession?.setChatHandle(m.handle);
+        mpSession?.setChatUserId(m.userId);
         setAccount({ token: m.token, userId: m.userId, handle: m.handle });
         goStage("browse");
       } else if (m.t === "games") {
@@ -2152,6 +2187,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         joinedGameId = m.gameId;
         mpSession!.gameId = m.gameId;
         mpSession!.setChatHandle(state.mp.handle || "You");
+        mpSession!.setChatUserId(state.mp.userId);
         goStage("room");
         bindChatLog();
         renderMpChatLog();
@@ -2398,16 +2434,12 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
   }
 
   renderShowcase();
-  // Gate the menu behind login/signup for logged-out players. A stored token
-  // lets us open the menu optimistically and resume in the background; with no
-  // token at all we show the login page first (guests continue from there).
-  const storedAccount = getAccount();
-  showScreen(storedAccount ? "start" : "login");
+  showScreen("start");
   void (async () => {
     const account = await tryResumeSession(state.mp.url);
     if (account) {
       applyAccount(account);
-      if (state.screen === "start") renderStartScreen();
+      renderStartScreen();
     }
   })();
 }

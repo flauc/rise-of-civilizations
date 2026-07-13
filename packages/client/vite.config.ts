@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: "./",
+    appType: "spa",
     resolve: {
       alias: {
         "@roc/shared": fileURLToPath(
@@ -27,6 +28,11 @@ export default defineConfig(({ mode }) => {
       hmr: disableHmr ? false : undefined,
       proxy: {
         "/analytics": {
+          target: process.env.VITE_WS_URL?.trim()?.replace(/^ws/, "http").replace(/\/ws\/?$/, "") ||
+            "http://localhost:3001",
+          changeOrigin: true,
+        },
+        "/support": {
           target: process.env.VITE_WS_URL?.trim()?.replace(/^ws/, "http").replace(/\/ws\/?$/, "") ||
             "http://localhost:3001",
           changeOrigin: true,

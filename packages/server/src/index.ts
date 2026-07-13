@@ -14,8 +14,10 @@ import { loadPersistedBugReports, persistBugReports } from "./bug-reports-persis
 import { loadPersistedSessions, persistSessions } from "./analytics-persistence";
 import { parseBugReportQuery } from "./bug-reports";
 import { loadPersistedUsers, persistUsers } from "./user-persistence";
+import { loadPersistedSupportInquiries, persistSupportInquiries } from "./support-persistence";
+import { SupportStore, parseSupportInquiryBody } from "./support";
 import { Lobby } from "./lobby";
-import { login, register, resume } from "./auth";
+import { deleteAccount, login, register, resume } from "./auth";
 import { MemoryAnalyticsStore, type AnalyticsStore } from "./analytics";
 import { PostgresAnalyticsStore } from "./analytics-postgres";
 import { parseGameSessionQuery } from "./game-sessions";
@@ -34,6 +36,8 @@ const PORT = Number(process.env.PORT ?? 3001);
 const storage = new MemoryStorage();
 await loadPersistedUsers(storage);
 const lobby = new Lobby();
+const supportStore = new SupportStore();
+await loadPersistedSupportInquiries(supportStore);
 const gameConns = new Map<string, Set<ServerWebSocket<Conn>>>();
 
 // Analytics: durable Postgres when DATABASE_URL is set, else in-memory (dev).
@@ -252,6 +256,13 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       send(ws, { t: "authOk", token: res.token, userId: res.userId, handle: res.handle });
       return;
     }
+    case "deleteAccount": {
+      const res = await deleteAccount(storage, msg.token, msg.password);
+      if ("error" in res) return send(ws, { t: "error", message: res.error });
+      persistUsers(storage).catch((err) => console.error("user persistence save failed:", err));
+      send(ws, { t: "accountDeleted" });
+      return;
+    }
     case "listGames":
       return send(ws, { t: "games", games: lobby.list() });
 
@@ -451,8 +462,6 @@ const server = Bun.serve<Conn>({
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    // Analytics ingestion: best-effort, fail-soft (always 204 so clients never
-    // retry-storm). The game works whether or not this succeeds.
     if (url.pathname === "/analytics" && req.method === "POST") {
       try {
         // Read the raw body and parse as JSON ourselves: sendBeacon delivers a
@@ -471,6 +480,21 @@ const server = Bun.serve<Conn>({
         console.error("analytics ingest error:", err);
       }
       return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    if (url.pathname === "/support" && req.method === "POST") {
+      try {
+        const parsed = parseSupportInquiryBody(JSON.parse(await req.text()));
+        if ("error" in parsed) return jsonResponse({ error: parsed.error }, 400);
+        const record = supportStore.add(parsed);
+        persistSupportInquiries(supportStore).catch((err) =>
+          console.error("support persistence save failed:", err),
+        );
+        return jsonResponse({ ok: true, inquiryId: record.id });
+      } catch (err) {
+        console.error("support ingest error:", err);
+        return jsonResponse({ error: "invalid body" }, 400);
+      }
     }
 
     // Admin read API (token-gated).

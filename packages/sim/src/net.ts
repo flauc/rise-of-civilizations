@@ -70,6 +70,7 @@ export type ClientMessage =
   | { t: "register"; handle: string; password: string; email?: string; newsletter?: boolean }
   | { t: "login"; handle: string; password: string }
   | { t: "resume"; token: string }
+  | { t: "deleteAccount"; token: string; password: string }
   | { t: "listGames" }
   | {
       t: "createGame";
@@ -143,6 +144,7 @@ export type ClientMessage =
 
 export type ServerMessage =
   | { t: "authOk"; token: string; userId: string; handle: string }
+  | { t: "accountDeleted" }
   | { t: "error"; message: string }
   | { t: "games"; games: GameSummary[] }
   | { t: "joined"; gameId: string; slotId: number }
