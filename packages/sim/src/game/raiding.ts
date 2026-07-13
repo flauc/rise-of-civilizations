@@ -7,13 +7,15 @@ import type { City, GameState, Player, TradeRoute, Unit } from "./state";
 import { cityAt, log, playerById, areEnemies } from "./state";
 import { isMilitary } from "./content";
 import { ECON_BASE, type EconKind } from "./works";
-import { tradeRouteYield } from "./trade";
+import { tradeRouteYield, escortUnitOf } from "./trade";
+import { exchangeMeleeCombat } from "./combat";
 import { playerEffects } from "./civs";
 import { cityHasWalls } from "./combat";
 import { applyVictoryCheck } from "./victory";
 import { offsetNeighbors } from "./movement";
 import { emitTradeRoutePillaged, emitImprovementPillaged } from "./turn-updates";
 import { leaveRuin } from "./features";
+import { extendLegendsOnTrigger } from "./legend-lifespan";
 
 export interface RaidResult {
   ok: boolean;
@@ -120,13 +122,14 @@ export function pillageTile(state: GameState, unitId: number, actingPlayerId: nu
     }
   }
 
+  extendLegendsOnTrigger(state, actingPlayerId, "pillage");
   return { ok: true, gold, science };
 }
 
 /** Gold from plundering a trade route. */
 export function plunderValue(state: GameState, route: TradeRoute): number {
   const y = tradeRouteYield(state, route);
-  return 20 + 10 * y.gold;
+  return 12 + 5 * y.gold;
 }
 
 /** A military unit on a trade-route path loots and destroys the route. */
@@ -155,6 +158,37 @@ export function plunderTradeRoute(
   if (!route.path.includes(unitKey)) return { ok: false, error: "unit is not on the trade route" };
 
   const tile = getTile(state.map, unit.col, unit.row);
+  const escort = escortUnitOf(state, route);
+  if (escort && state.units.has(escort.id)) {
+    // Fight the escort as a normal melee engagement at the raid site.
+    const saved = { col: escort.col, row: escort.row };
+    escort.col = unit.col;
+    escort.row = unit.row;
+    exchangeMeleeCombat(state, unit, escort, tile?.terrain ?? "plains");
+    escort.col = saved.col;
+    escort.row = saved.row;
+
+    if (!state.units.has(unit.id)) return { ok: false, error: "raider destroyed by the escort" };
+
+    if (state.units.has(escort.id)) {
+      route.repelledRaidTile = { col: unit.col, row: unit.row };
+      unit.movementLeft = 0;
+      unit.attackedThisTurn = true;
+      log(state, `${player.name}'s raid on a guarded trade route was repelled.`, {
+        actorId: actingPlayerId,
+        targetIds: [route.ownerId],
+        tile: { col: unit.col, row: unit.row },
+      });
+      return { ok: false, error: "escort repelled the raid" };
+    }
+
+    // Escort fell — clear the guard and proceed with the plunder.
+    route.escortUnitId = undefined;
+    route.escortType = undefined;
+    route.repelledRaidTile = undefined;
+    escort.escortingRouteId = undefined;
+  }
+
   let value = plunderValue(state, route);
   const { goldMult, sciencePercent } = raidModifiers(state, actingPlayerId, tile ?? undefined);
   const gold = Math.floor(value * goldMult);

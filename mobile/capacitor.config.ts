@@ -13,9 +13,9 @@ const config: CapacitorConfig = {
   webDir: "www",
   backgroundColor: "#0f0e0bff",
   android: {
-    // The client talks to wss://server.rise-of-civilizations.com and loads art
-    // over https, so cleartext is never needed.
-    allowMixedContent: false,
+    // Capacitor loads the shell over https://localhost; ws:// to 10.0.2.2 is
+    // mixed content unless this is enabled (needed for emulator dev builds).
+    allowMixedContent: true,
   },
   ios: {
     contentInset: "always",

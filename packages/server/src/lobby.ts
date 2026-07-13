@@ -9,10 +9,13 @@ import {
   createGame,
   PLAYER_COLORS,
   TOGGLEABLE_VICTORIES,
+  normalizeGameSpeed,
   type BarbarianActivity,
+  type GameSpeed,
   type GameState,
   type GameSummary,
   type LobbyRoom,
+  type LobbyChatMessage,
   type MapType,
   type VictoryKind,
 } from "@roc/sim";
@@ -48,9 +51,12 @@ export interface LobbyGame {
   mapType: MapType;
   barbarians: BarbarianActivity;
   naturalWonders: boolean;
+  villages: boolean;
   startingGold: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit: number;
+  /** How costly research and civics are. */
+  gameSpeed: GameSpeed;
   /** Decisive win conditions enabled this game (score/extinction always apply). */
   enabledVictories: VictoryKind[];
   /** Optional join password; empty/undefined means the game is open. */
@@ -59,8 +65,12 @@ export interface LobbyGame {
   slots: Slot[];
   nextSlotId: number;
   host?: GameHost;
+  /** Recent lobby chat, oldest first. Cleared when the game is deleted. */
+  chat: LobbyChatMessage[];
 }
 
+const MAX_LOBBY_CHAT = 100;
+const MAX_LOBBY_CHAT_LEN = 500;
 const MAX_HUMANS = 12;
 const MAX_TOTAL = 24;
 
@@ -75,9 +85,12 @@ export interface CreateOptions {
   mapType?: MapType;
   barbarians?: BarbarianActivity;
   naturalWonders?: boolean;
+  villages?: boolean;
   startingGold?: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
   turnLimit?: number;
+  /** How costly research and civics are. Defaults to normal. */
+  gameSpeed?: GameSpeed;
   /** Decisive win conditions enabled; omitted = all toggleable ones. */
   enabledVictories?: VictoryKind[];
   password?: string;
@@ -98,9 +111,12 @@ export interface ConfigurePatch {
   mapType?: MapType;
   barbarians?: BarbarianActivity;
   naturalWonders?: boolean;
+  villages?: boolean;
   startingGold?: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit?: number;
+  /** How costly research and civics are. */
+  gameSpeed?: GameSpeed;
   enabledVictories?: VictoryKind[];
 }
 
@@ -165,16 +181,19 @@ export class Lobby {
       cols: opts.cols,
       rows: opts.rows,
       mapSize: opts.mapSize,
-      mapType: opts.mapType ?? "continents",
+      mapType: opts.mapType ?? "random",
       barbarians: opts.barbarians ?? "normal",
       naturalWonders: opts.naturalWonders ?? true,
+      villages: opts.villages ?? true,
       startingGold: opts.startingGold ?? "balanced",
       turnLimit: opts.turnLimit ?? 120,
+      gameSpeed: normalizeGameSpeed(opts.gameSpeed),
       enabledVictories: opts.enabledVictories ?? [...TOGGLEABLE_VICTORIES],
       password: opts.password || undefined,
       hostUserId: ownerUserId,
       slots,
       nextSlotId,
+      chat: [],
     };
     // Backfill any colors the host didn't specify so the roster is fully colored.
     for (const s of slots) if (!s.color) s.color = this.firstFreeColor(game);
@@ -218,8 +237,10 @@ export class Lobby {
     if (patch.mapType !== undefined) game.mapType = patch.mapType;
     if (patch.barbarians !== undefined) game.barbarians = patch.barbarians;
     if (patch.naturalWonders !== undefined) game.naturalWonders = patch.naturalWonders;
+    if (patch.villages !== undefined) game.villages = patch.villages;
     if (patch.startingGold !== undefined) game.startingGold = patch.startingGold;
     if (patch.turnLimit !== undefined) game.turnLimit = Math.max(0, Math.floor(patch.turnLimit));
+    if (patch.gameSpeed !== undefined) game.gameSpeed = normalizeGameSpeed(patch.gameSpeed);
     if (patch.enabledVictories !== undefined) {
       game.enabledVictories = patch.enabledVictories.filter((v) => TOGGLEABLE_VICTORIES.includes(v));
     }
@@ -331,8 +352,10 @@ export class Lobby {
       mapSize: g.mapSize,
       barbarians: g.barbarians,
       naturalWonders: g.naturalWonders,
+      villages: g.villages,
       startingGold: g.startingGold,
       turnLimit: g.turnLimit,
+      gameSpeed: g.gameSpeed,
       enabledVictories: g.enabledVictories,
       hasPassword: !!g.password,
       slots: g.slots.map((s) => ({
@@ -369,8 +392,10 @@ export class Lobby {
       humanSlots: humans.length,
       barbarians: game.barbarians,
       naturalWonders: game.naturalWonders,
+      villages: game.villages,
       startingGold: game.startingGold,
       turnLimit: game.turnLimit,
+      gameSpeed: game.gameSpeed,
       enabledVictories: game.enabledVictories,
       civIds,
       colors,
@@ -383,6 +408,29 @@ export class Lobby {
   /** Which slot a user occupies in a game (if any). */
   slotOf(gameId: string, userId: string): Slot | undefined {
     return this.games.get(gameId)?.slots.find((s) => s.userId === userId);
+  }
+
+  /** Append a chat line while the game is still in the lobby. */
+  appendChat(
+    gameId: string,
+    userId: string,
+    handle: string,
+    text: string,
+  ): { message: LobbyChatMessage } | { error: string } {
+    const game = this.games.get(gameId);
+    if (!game) return { error: "no such game" };
+    if (!game.slots.some((s) => s.userId === userId)) return { error: "not in this lobby" };
+    const trimmed = text.trim();
+    if (!trimmed) return { error: "empty message" };
+    if (trimmed.length > MAX_LOBBY_CHAT_LEN) return { error: "message too long" };
+    const message: LobbyChatMessage = { userId, handle, text: trimmed, at: Date.now() };
+    game.chat.push(message);
+    while (game.chat.length > MAX_LOBBY_CHAT) game.chat.shift();
+    return { message };
+  }
+
+  chatHistory(gameId: string): LobbyChatMessage[] {
+    return this.games.get(gameId)?.chat ?? [];
   }
 
   /** Remove a game from the lobby. Only the host may delete it. */

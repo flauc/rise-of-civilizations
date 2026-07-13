@@ -26,7 +26,7 @@ import {
   BARBARIAN_BRIBE_BASE,
   barbarianRecruitCost,
   greatPersonThreshold,
-  legendCost,
+  legendRecruitThreshold,
   legendBaseName,
   legendActiveAbilityIds,
   SCORE_WEIGHTS,
@@ -668,12 +668,13 @@ function renderLegends(): string {
     ) +
     section(
       "Recruiting a Hero",
-      `<p>Legends are summoned with <b>faith</b>. Open the <b>⭐ Legends</b> panel, spend faith, and the hero appears at one of your cities (naval heroes on the adjacent water). Your first hero costs <b>${legendCost(0)} faith</b>; each later one costs <b>${legendCost(1) - legendCost(0)}</b> more (${legendCost(0)} → ${legendCost(1)} → ${legendCost(2)} → …).</p>` +
+      `<p>Legends are earned through <b>military deeds</b>, not faith. Each hero belongs to a combat track — <b>Melee</b>, <b>Cavalry</b>, <b>Ranged</b>, <b>Siege</b>, or <b>Naval</b> — based on the unit it leads. Bank <b>track glory</b> by training matching units and winning battles, then recruit from the <b>⭐ Legends</b> panel when you have enough (your first hero of a track costs <b>${legendRecruitThreshold(0)}</b> glory; each later one of that track costs <b>${legendRecruitThreshold(1) - legendRecruitThreshold(0)}</b> more).</p>` +
+        `<p><b>Training</b> military units adds glory to their track. <b>Victories</b> add more — defeating a major civilization's troops grants the most; barbarian units and cleared camps grant less, but still count. The hero appears at one of your cities (naval heroes on adjacent water).</p>` +
         `<p>Every legend is <b>globally unique</b> while alive — only one civilization can field a given hero at a time.</p>`,
     ) +
     section(
       "Lifespan",
-      `<p>Heroes are precious and do not last forever. After their <b>lifespan</b> (about 30 turns) elapses, a hero <b>passes into legend</b> and leaves the field. A few <b>rechargeable</b> heroes (such as Joan of Arc) return to the pool when they retire and may be recruited again.</p>`,
+      `<p>Heroes are precious and do not last forever. After their <b>lifespan</b> (from about 12 turns for the earliest heroes up to 25 for the longest-reigning, extendable through deeds that match each hero) elapses, a hero <b>passes into legend</b> and leaves the field. A few <b>rechargeable</b> heroes (such as Joan of Arc) return to the pool when they retire and may be recruited again.</p>`,
     ) +
     section(
       "In Battle",
@@ -1579,7 +1580,7 @@ export function createWiki(): {
       <div class="wiki-main">
         <div class="wiki-header">
           <span class="wiki-header-title" id="wiki-header-title"></span>
-          <button class="btn" id="wiki-close">Close</button>
+          <button class="btn wiki-close-desktop" id="wiki-close" aria-label="Close">✕</button>
         </div>
         <div class="wiki-content" id="wiki-content"></div>
       </div>
@@ -1593,6 +1594,8 @@ export function createWiki(): {
     .wiki-sidebar{width:260px;flex-shrink:0;background:#15120c;border-right:1px solid var(--edge);padding:20px;overflow:auto}
     .wiki-sidebar-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
     .wiki-title{font-family:'Cinzel',Georgia,serif;font-size:22px;font-weight:800;color:#e8dcc5;margin-bottom:18px}
+    .wiki-close-desktop,.wiki-close-mobile{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;width:34px;height:34px;padding:0;font-size:15px;line-height:1;border-radius:50%;border:1px solid var(--edge);background:var(--bg-card);color:var(--parchment);cursor:pointer;transition:background .15s ease,color .15s ease}
+    .wiki-close-desktop:hover,.wiki-close-mobile:hover{background:rgba(201,162,39,.14);color:#f0d878}
     .wiki-close-mobile{display:none}
     .wiki-categories{display:flex;flex-direction:column;gap:6px}
     .wiki-cat{padding:10px 12px;border-radius:8px;cursor:pointer;color:#b8aa8d;background:transparent;border:1px solid transparent;font:inherit;font-size:14px;text-align:left;transition:background .12s,border-color .12s,color .12s}
@@ -1762,6 +1765,9 @@ export function createWiki(): {
   };
   root.querySelector<HTMLButtonElement>("#wiki-close")!.addEventListener("click", doClose);
   root.querySelector<HTMLButtonElement>("#wiki-close-mobile")!.addEventListener("click", doClose);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && open) doClose();
+  });
 
   return {
     open() {

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getGreatPerson, GREAT_PEOPLE, LEGENDS } from "@roc/data";
 import { createGame } from "./setup";
 import { serializeState, deserializeState } from "./serialize";
-import { playerById, unitsOf, type City } from "./state";
+import { citiesOf, playerById, unitsOf, type City } from "./state";
 import {
   accrueGreatPeople,
   activateGreatPerson,
@@ -89,36 +89,36 @@ describe("great people: recruitment", () => {
   it("recruits the earliest-era figure when a pool fills", () => {
     const state = newGame();
     const player = playerById(state, 0)!;
-    player.greatPeoplePoints.scientist = 60;
+    player.greatPeoplePoints.engineer = 60;
     accrueGreatPeople(state, player);
-    // Archimedes is the first scientist in the roster.
-    expect(player.greatPeople).toContain("archimedes");
-    expect(state.recruitedGreatPeople).toContain("archimedes");
+    // Imhotep is the first engineer in the roster (Bronze era).
+    expect(player.greatPeople).toContain("imhotep");
+    expect(state.recruitedGreatPeople).toContain("imhotep");
     // Pool drained by the threshold; lifetime count incremented.
-    expect(player.greatPeoplePoints.scientist).toBe(0);
-    expect(player.greatPeopleEarned.scientist).toBe(1);
+    expect(player.greatPeoplePoints.engineer).toBe(0);
+    expect(player.greatPeopleEarned.engineer).toBe(1);
   });
 
   it("a figure is globally unique — once taken it is skipped", () => {
     const state = newGame();
     const player = playerById(state, 0)!;
-    state.recruitedGreatPeople.push("archimedes");
-    const next = nextAvailableFigure(state, "scientist");
-    expect(next?.id).not.toBe("archimedes");
-    expect(next?.cls).toBe("scientist");
+    state.recruitedGreatPeople.push("imhotep");
+    player.researched.add("bronze_alloying");
+    const next = nextAvailableFigure(state, "engineer", player);
+    expect(next?.id).not.toBe("imhotep");
+    expect(next?.id).toBe("vitruvius");
+    expect(next?.cls).toBe("engineer");
   });
 
   it("does not recruit when no figures of a class remain", () => {
     const state = newGame();
     const player = playerById(state, 0)!;
-    // Exhaust every scientist globally.
-    for (const g of state.recruitedGreatPeople) void g;
-    nextAvailableFigure(state, "scientist"); // sanity
+    // Exhaust every engineer globally.
     let guard = 0;
-    while (nextAvailableFigure(state, "scientist") && guard++ < 99) {
-      state.recruitedGreatPeople.push(nextAvailableFigure(state, "scientist")!.id);
+    while (nextAvailableFigure(state, "engineer", player) && guard++ < 99) {
+      state.recruitedGreatPeople.push(nextAvailableFigure(state, "engineer", player)!.id);
     }
-    player.greatPeoplePoints.scientist = 9999;
+    player.greatPeoplePoints.engineer = 9999;
     accrueGreatPeople(state, player);
     expect(player.greatPeople).toHaveLength(0);
   });
@@ -242,6 +242,58 @@ describe("great prophets: faith burst + secondary gift", () => {
   });
 });
 
+describe("great people: per-figure gifts", () => {
+  it("every non-prophet figure carries a distinct gift", () => {
+    for (const g of GREAT_PEOPLE) {
+      if (g.cls === "prophet") {
+        expect(g.prophetGift, g.name).toBeTruthy();
+      } else {
+        expect(g.gift, g.name).toBeTruthy();
+      }
+    }
+  });
+
+  it("Gaius Marius grants two promotions per land soldier", () => {
+    const state = newGame();
+    const player = playerById(state, 0)!;
+    const land = unitsOf(state, 0).filter((u) => u.type === "warrior" || u.type === "javelineer");
+    const before = land[0]!.unspentPromotions;
+    player.greatPeople = ["gaius_marius"];
+    activateGreatPerson(state, player, "gaius_marius");
+    expect(land[0]!.unspentPromotions).toBe(before + 2);
+  });
+
+  it("Scipio Africanus adds a timed bonus vs unique units", () => {
+    const state = newGame();
+    const player = playerById(state, 0)!;
+    player.greatPeople = ["scipio_africanus"];
+    activateGreatPerson(state, player, "scipio_africanus");
+    const mod = player.modifiers.find((m) => m.effect.combatVsUniqueUnit);
+    expect(mod?.effect.combatVsUniqueUnit).toBe(4);
+    expect(mod?.expiresOnTurn).toBe(state.turn + 15);
+  });
+
+  it("Homer leaves a named Great Work", () => {
+    const state = newGame();
+    const player = playerById(state, 0)!;
+    addCity(state, 0, [], true);
+    player.greatPeople = ["homer"];
+    activateGreatPerson(state, player, "homer");
+    const city = citiesOf(state, 0)[0]!;
+    expect(city.greatWorks?.some((w) => w.title === "The Iliad")).toBe(true);
+  });
+
+  it("Marco Polo reveals distant tiles", () => {
+    const state = newGame();
+    const player = playerById(state, 0)!;
+    addCity(state, 0, [], true);
+    player.explored.clear();
+    player.greatPeople = ["marco_polo"];
+    activateGreatPerson(state, player, "marco_polo");
+    expect(player.explored.size).toBeGreaterThan(0);
+  });
+});
+
 describe("great people vs legends: no double-dipping", () => {
   it("no historical person appears in both rosters", () => {
     // A person lives in ONE system: either a Great Person or a Legend, never
@@ -260,16 +312,16 @@ describe("great people: persistence", () => {
   it("survives a serialize round-trip", () => {
     const state = newGame();
     const player = playerById(state, 0)!;
-    player.greatPeoplePoints.scientist = 60;
+    player.greatPeoplePoints.engineer = 60;
     accrueGreatPeople(state, player);
     player.greatPeoplePoints.merchant = 25;
 
     const round = deserializeState(serializeState(state));
     const rp = playerById(round, 0)!;
-    expect(round.recruitedGreatPeople).toContain("archimedes");
-    expect(rp.greatPeople).toContain("archimedes");
+    expect(round.recruitedGreatPeople).toContain("imhotep");
+    expect(rp.greatPeople).toContain("imhotep");
     expect(rp.greatPeoplePoints.merchant).toBe(25);
-    expect(rp.greatPeopleEarned.scientist).toBe(1);
-    expect(getGreatPerson(rp.greatPeople[0])?.cls).toBe("scientist");
+    expect(rp.greatPeopleEarned.engineer).toBe(1);
+    expect(getGreatPerson(rp.greatPeople[0])?.cls).toBe("engineer");
   });
 });

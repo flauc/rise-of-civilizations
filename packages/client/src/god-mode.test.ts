@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { getTile } from "@roc/shared";
-import { beginTurn, createGame, currentPlayer, unitAt } from "@roc/sim";
+import { beginTurn, createGame, currentPlayer, territorySize, unitAt } from "@roc/sim";
 import { applyCheat } from "./god-mode";
 
 function newGame() {
@@ -47,6 +47,21 @@ test("founds a city by spawning a settler", () => {
   const res = applyCheat(s, p.id, { type: "foundCity", col: tile.col, row: tile.row });
   expect(res.ok).toBe(true);
   expect(s.cities.size).toBe(before + 1);
+});
+
+test("expands every city border by one ring", () => {
+  const s = newGame();
+  const p = currentPlayer(s);
+  const tile = s.map.tiles.find(
+    (t) =>
+      (t.terrain === "grassland" || t.terrain === "plains") && !unitAt(s, t.col, t.row),
+  )!;
+  applyCheat(s, p.id, { type: "foundCity", col: tile.col, row: tile.row });
+  const city = [...s.cities.values()].find((c) => c.ownerId === p.id)!;
+  const before = territorySize(s, city);
+  const res = applyCheat(s, p.id, { type: "addPopulation" });
+  expect(res.ok).toBe(true);
+  expect(territorySize(s, city)).toBeGreaterThan(before);
 });
 
 test("spawns a unit and adds gold", () => {

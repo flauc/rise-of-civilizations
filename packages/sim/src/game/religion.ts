@@ -13,6 +13,7 @@ import { RELIGION_REQUIRED_TECH, UNIT_DEFS, type UnitTypeId } from "./content";
 import type { City, GameState, Religion, Unit } from "./state";
 import { citiesOf, cityAt, log, makeUnit, playerById } from "./state";
 import { emitReligionFounded } from "./turn-updates";
+import { extendLegendsOnTrigger } from "./legend-lifespan";
 import { tradeRouteYield } from "./trade";
 import { playerEffects } from "./civs";
 
@@ -237,7 +238,11 @@ export function spreadReligion(state: GameState): void {
   }
 
   // 5. Recompute each city's dominant religion from the new pressure.
-  for (const c of cities) c.religion = dominantReligion(c);
+  for (const c of cities) {
+    const before = c.religion;
+    c.religion = dominantReligion(c);
+    onCityReligionFlip(state, before, c);
+  }
 }
 
 // ---- faith-purchased religious units --------------------------------------
@@ -284,6 +289,15 @@ export function buyReligiousUnit(
   return { ok: true, unitId: id };
 }
 
+/** Notify founders when a city's dominant religion flips to their faith. */
+function onCityReligionFlip(state: GameState, before: string | undefined, city: City): void {
+  const after = dominantReligion(city);
+  if (!after || after === before) return;
+  for (const p of state.players) {
+    if (p.isBarbarian || p.foundedReligionId !== after) continue;
+    extendLegendsOnTrigger(state, p.id, "city_converted");
+  }
+}
 /** A player's national religion: the one they founded, else whatever faith their
  *  cities predominantly follow. Drives missionary spread AND religion-conditional
  *  civics/governments (combatVsOtherReligion, convertOnCapture). */
@@ -314,8 +328,10 @@ export function convertCityToPlayerReligion(state: GameState, city: City, player
   }
   const target = Math.max(CONVERSION_PRESSURE, others * 2 + 1);
   const current = city.religionPressure?.[rel] ?? 0;
+  const before = city.religion;
   if (current < target) addPressure(city, rel, target - current);
   city.religion = dominantReligion(city);
+  onCityReligionFlip(state, before, city);
   return true;
 }
 
@@ -335,8 +351,10 @@ export function evangelize(state: GameState, unitId: number, cityId: number): Bu
   }
   const rel = spreadFaithOf(state, unit.ownerId);
   if (!rel) return { ok: false, error: "you have no religion to spread" };
+  const before = city.religion;
   addPressure(city, rel, MISSIONARY_PRESSURE);
   city.religion = dominantReligion(city);
+  onCityReligionFlip(state, before, city);
   spendCharge(state, unit);
   return { ok: true };
 }
@@ -496,6 +514,7 @@ export function upgradeReligion(state: GameState, playerId: number): TierResult 
     actorId: playerId,
     world: true,
   });
+  extendLegendsOnTrigger(state, playerId, "religion_tier");
   return { ok: true };
 }
 

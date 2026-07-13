@@ -269,8 +269,8 @@ export function createRoadmap(): { open(): void; close(): void } {
     root.classList.add("hidden");
   };
   root.querySelector<HTMLButtonElement>("#roadmap-close")!.addEventListener("click", doClose);
-  root.addEventListener("click", (e) => {
-    if (e.target === root) doClose();
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !root.classList.contains("hidden")) doClose();
   });
 
   return {

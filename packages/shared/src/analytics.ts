@@ -18,6 +18,10 @@ export interface SessionStartEvent {
   t: "session_start";
   sessionId: string;
   clientId: string;
+  /** Registered account username, when the player was logged in at session start. */
+  handle?: string;
+  /** Registered account id, when logged in. */
+  userId?: string;
   mode: GameMode;
   /** The human player's civilization id (e.g. "rome"); omitted if unknown. */
   civId?: string;
@@ -37,10 +41,14 @@ export interface SessionStartEvent {
   barbarianLevel?: string;
   /** Whether natural wonders were scattered on the map. */
   naturalWonders?: boolean;
+  /** Whether tribal villages were scattered on the map. */
+  villages?: boolean;
   /** Starting treasury preset, e.g. "tight"/"balanced"/"generous". */
   startingGold?: string;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit?: number;
+  /** How costly research and civics are, e.g. "fast"/"normal"/"slow"/"epic". */
+  gameSpeed?: string;
   /** Chosen civ per AI opponent (null = random). */
   aiCivIds?: (string | null)[];
   /** Decisive win conditions enabled this game (e.g. ["domination","science"]). */
@@ -63,6 +71,10 @@ export interface SessionEndEvent {
   score?: number;
   /** 1-based rank of the viewing player among all players by score. */
   scoreRank?: number;
+  /** Registered account username, when logged in at session end. */
+  handle?: string;
+  /** Registered account id, when logged in at session end. */
+  userId?: string;
   ts: number;
 }
 
@@ -102,6 +114,10 @@ export interface BugReportEvent {
   clientId: string;
   /** The active game session, when one is running. */
   sessionId?: string;
+  /** Registered account username, when logged in. */
+  handle?: string;
+  /** Registered account id, when logged in. */
+  userId?: string;
   /** What the player wrote. */
   message: string;
   mode?: GameMode;
@@ -109,6 +125,22 @@ export interface BugReportEvent {
   turn?: number;
   /** The viewing player's civilization id. */
   civId?: string;
+  /** Game setup at report time (mirrors session_start when a game is running). */
+  mapType?: string;
+  mapSize?: string;
+  cols?: number;
+  rows?: number;
+  aiCount?: number;
+  barbarians?: boolean;
+  legends?: boolean;
+  barbarianLevel?: string;
+  naturalWonders?: boolean;
+  villages?: boolean;
+  startingGold?: string;
+  turnLimit?: number;
+  gameSpeed?: string;
+  aiCivIds?: (string | null)[];
+  enabledVictories?: string[];
   /** Recent client error messages (window errors / console.error), newest last. */
   errors?: string[];
   context?: BugReportContext;
@@ -140,7 +172,8 @@ export interface AdminOverview {
 }
 
 export interface PlayerSessionStats {
-  clientId: string;
+  /** Registered username when known; guests have no handle. */
+  handle?: string;
   sessions: number;
   wins: number;
   losses: number;
@@ -170,7 +203,8 @@ export interface VictoryTypeCount {
 }
 
 export interface LeaderboardEntry {
-  clientId: string;
+  /** Registered username when known. */
+  handle?: string;
   sessionId: string;
   civId?: string;
   score: number;
@@ -184,7 +218,48 @@ export interface VoteTotal {
   votes: number;
 }
 
-/** A bug report as shown in the admin list (no heavy `state` payload). */
+/** A bug report row in the admin list (no heavy `state` payload). */
+export interface AdminBugReport {
+  reportId: string;
+  clientId: string;
+  sessionId?: string;
+  message: string;
+  ts: number;
+  /** Whether a full state snapshot was captured (fetch the detail to get it). */
+  hasState: boolean;
+  /** Registered username when the reporter was logged in. */
+  handle?: string;
+  userId?: string;
+  mode?: GameMode;
+  turn?: number;
+  civId?: string;
+  mapType?: string;
+  mapSize?: string;
+  cols?: number;
+  rows?: number;
+  aiCount?: number;
+  barbarians?: boolean;
+  legends?: boolean;
+  barbarianLevel?: string;
+  naturalWonders?: boolean;
+  villages?: boolean;
+  startingGold?: string;
+  turnLimit?: number;
+  gameSpeed?: string;
+  aiCivIds?: (string | null)[];
+  enabledVictories?: string[];
+  /** Linked session outcome, when known at report time. */
+  outcome?: SessionOutcome;
+  condition?: string;
+  /** Total turns recorded on the linked session (may differ from `turn` at report). */
+  sessionTurns?: number;
+  score?: number;
+  scoreRank?: number;
+  startedAt?: number;
+  endedAt?: number;
+}
+
+/** @deprecated Use AdminBugReport — kept for older admin payloads. */
 export interface BugReportSummary {
   reportId: string;
   clientId: string;
@@ -194,12 +269,11 @@ export interface BugReportSummary {
   turn?: number;
   civId?: string;
   ts: number;
-  /** Whether a full state snapshot was captured (fetch the detail to get it). */
   hasState: boolean;
 }
 
 /** A bug report with its full captured payload, for the admin detail view. */
-export interface BugReportDetail extends BugReportSummary {
+export interface BugReportDetail extends AdminBugReport {
   context?: BugReportContext;
   errors?: string[];
   state?: string;
@@ -211,6 +285,15 @@ export interface LabelCount {
   count: number;
 }
 
+/** A registered game account as shown in the admin dashboard (bcrypt hash only). */
+export interface AdminRegisteredUser {
+  id: string;
+  handle: string;
+  createdAt: number;
+  email?: string;
+  newsletterOptIn?: boolean;
+}
+
 /** Distribution of the game-setup choices players made. */
 export interface ConfigBreakdown {
   mapTypes: LabelCount[];
@@ -220,6 +303,190 @@ export interface ConfigBreakdown {
   aiCount: LabelCount[];
   naturalWonders: { on: number; off: number };
   legends: { on: number; off: number };
+  villages: { on: number; off: number };
   /** How often each decisive victory was enabled (multi-select per session). */
   enabledVictories: LabelCount[];
+}
+
+/** One played game session as shown in the admin games table. */
+export interface AdminGameSession {
+  sessionId: string;
+  clientId: string;
+  /** Registered username when the player was logged in; omitted for guests. */
+  handle?: string;
+  userId?: string;
+  mode?: GameMode;
+  civId?: string;
+  mapType?: string;
+  mapSize?: string;
+  cols?: number;
+  rows?: number;
+  aiCount?: number;
+  barbarians?: boolean;
+  barbarianLevel?: string;
+  legends?: boolean;
+  naturalWonders?: boolean;
+  villages?: boolean;
+  startingGold?: string;
+  turnLimit?: number;
+  gameSpeed?: string;
+  aiCivIds?: (string | null)[];
+  enabledVictories?: string[];
+  outcome?: SessionOutcome;
+  condition?: string;
+  turns?: number;
+  score?: number;
+  scoreRank?: number;
+  startedAt?: number;
+  endedAt?: number;
+}
+
+/** Optional column filters for the admin games table (server-side). */
+export interface GameSessionFilters {
+  /** Free-text search across visible session fields. */
+  q?: string;
+  /** Partial match on session start time (timestamp / locale date). */
+  startedAt?: string;
+  sessionId?: string;
+  clientId?: string;
+  handle?: string;
+  userId?: string;
+  mode?: string;
+  civId?: string;
+  mapType?: string;
+  mapSize?: string;
+  outcome?: string;
+  condition?: string;
+  barbarianLevel?: string;
+  startingGold?: string;
+  gameSpeed?: string;
+  aiCount?: number;
+  cols?: number;
+  rows?: number;
+  turnLimit?: number;
+  /** Partial match on turn count text. */
+  turns?: string;
+  /** Partial match on score text. */
+  score?: string;
+  barbarians?: boolean;
+  legends?: boolean;
+  naturalWonders?: boolean;
+  villages?: boolean;
+  /** Match sessions where this victory was enabled at setup. */
+  victory?: string;
+  startedFrom?: number;
+  startedTo?: number;
+  endedFrom?: number;
+  endedTo?: number;
+}
+
+export type GameSessionSortField =
+  | "startedAt"
+  | "endedAt"
+  | "sessionId"
+  | "clientId"
+  | "handle"
+  | "mode"
+  | "civId"
+  | "mapType"
+  | "mapSize"
+  | "outcome"
+  | "condition"
+  | "turns"
+  | "score"
+  | "aiCount"
+  | "barbarianLevel"
+  | "startingGold"
+  | "gameSpeed"
+  | "turnLimit";
+
+export interface GameSessionListQuery {
+  page?: number;
+  pageSize?: number;
+  sort?: GameSessionSortField;
+  order?: "asc" | "desc";
+  filters?: GameSessionFilters;
+}
+
+export interface GameSessionListResponse {
+  items: AdminGameSession[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+/** Optional column filters for the admin bug reports table (server-side). */
+export interface BugReportFilters {
+  /** Free-text search across visible report fields. */
+  q?: string;
+  /** Partial match on report timestamp (timestamp / locale date). */
+  ts?: string;
+  reportId?: string;
+  clientId?: string;
+  handle?: string;
+  userId?: string;
+  sessionId?: string;
+  message?: string;
+  mode?: string;
+  civId?: string;
+  mapType?: string;
+  mapSize?: string;
+  outcome?: string;
+  condition?: string;
+  barbarianLevel?: string;
+  startingGold?: string;
+  gameSpeed?: string;
+  aiCount?: number;
+  cols?: number;
+  rows?: number;
+  turnLimit?: number;
+  /** Partial match on in-game turn text. */
+  turn?: string;
+  sessionTurns?: number;
+  score?: number;
+  barbarians?: boolean;
+  legends?: boolean;
+  naturalWonders?: boolean;
+  villages?: boolean;
+  hasState?: boolean;
+  tsFrom?: number;
+  tsTo?: number;
+}
+
+export type BugReportSortField =
+  | "ts"
+  | "reportId"
+  | "clientId"
+  | "handle"
+  | "sessionId"
+  | "mode"
+  | "civId"
+  | "mapType"
+  | "mapSize"
+  | "outcome"
+  | "condition"
+  | "turn"
+  | "sessionTurns"
+  | "score"
+  | "aiCount"
+  | "barbarianLevel"
+  | "startingGold"
+  | "gameSpeed"
+  | "turnLimit";
+
+export interface BugReportListQuery {
+  page?: number;
+  pageSize?: number;
+  sort?: BugReportSortField;
+  order?: "asc" | "desc";
+  filters?: BugReportFilters;
+}
+
+export interface BugReportListResponse {
+  items: AdminBugReport[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }

@@ -1,5 +1,6 @@
 import {
   axialNeighbor,
+  axialNeighbors,
   axialRound,
   axialToOffset,
   axialToPixel,
@@ -32,6 +33,38 @@ export const BASE_SIZE = 26;
 // grid but compress the vertical axis by this factor so the on-screen hex
 // footprint becomes square and the art tessellates perfectly.
 export const VSQUISH = Math.sqrt(3) / 2;
+
+/** Screen-space corners of the squished pointy-top hex (matches drawScene). */
+export function squishedHexCornersScreen(cx: number, cy: number, size: number): Point[] {
+  const corners: Point[] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 180) * (60 * i - 30);
+    corners.push({ x: cx + size * Math.cos(a), y: cy + size * Math.sin(a) * VSQUISH });
+  }
+  return corners;
+}
+
+function pointInPolygon(px: number, py: number, poly: Point[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i]!.x;
+    const yi = poly[i]!.y;
+    const xj = poly[j]!.x;
+    const yj = poly[j]!.y;
+    const intersect = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** True when a screen point lies inside a tile's on-screen hex outline. */
+export function pointInTileHex(camera: Camera, col: number, row: number, sx: number, sy: number): boolean {
+  const size = BASE_SIZE * camera.zoom;
+  const c = tileCenterWorld(col, row);
+  const cx = camera.worldToScreenX(c.x);
+  const cy = camera.worldToScreenY(c.y);
+  return pointInPolygon(sx, sy, squishedHexCornersScreen(cx, cy, size));
+}
 
 /** Footprint width of a tile (== height after squish) for a given hex size. */
 export function tileFootprint(size: number): number {
@@ -85,6 +118,20 @@ function roadMask(map: GameMap, col: number, row: number, cityKeys: Set<string>)
   }
   return mask;
 }
+
+/** True when the tile has at least one road neighbour (used to pick procedural
+ *  segments that join at shared edge midpoints). */
+function hasRoadNeighbor(map: GameMap, col: number, row: number): boolean {
+  const here = offsetToAxial({ col, row });
+  for (let d = 0; d < 6; d++) {
+    const nb = axialToOffset(axialNeighbor(here, d));
+    if (getTile(map, nb.col, nb.row)?.road) return true;
+  }
+  return false;
+}
+
+/** Straight-through masks where the painted overlay spans edge-to-edge cleanly. */
+const PAINTED_ROAD_MASKS = new Set([9, 18, 36]);
 
 /** Highest road level among a tile's road neighbors (defaults to 1). */
 function maxNeighborRoadLevel(map: GameMap, col: number, row: number): number {
@@ -203,6 +250,33 @@ function drawRoadSegment(
   }
 }
 
+/** A lone road with no neighbours to join — a small worn patch in the tile centre. */
+function drawIsolatedRoad(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  level: number,
+  size: number,
+): void {
+  const base = Math.max(2.2, size * 0.15);
+  const s = roadStyle(level, base);
+  const r = base * 1.15;
+  ctx.beginPath();
+  ctx.arc(sx, sy, r, 0, Math.PI * 2);
+  ctx.fillStyle = s.edge;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(sx, sy, r * 0.68, 0, Math.PI * 2);
+  ctx.fillStyle = s.surface;
+  ctx.fill();
+  if (s.center && size > 22) {
+    ctx.beginPath();
+    ctx.arc(sx, sy, r * 0.22, 0, Math.PI * 2);
+    ctx.fillStyle = s.center;
+    ctx.fill();
+  }
+}
+
 /** Which map tile (if any) is under a screen-space point. */
 export function screenToTile(
   camera: Camera,
@@ -212,13 +286,50 @@ export function screenToTile(
 ): Offset | undefined {
   const world: Point = {
     x: camera.screenToWorldX(sx),
-    y: camera.screenToWorldY(sy) / VSQUISH, // undo the vertical squish for hit-testing
+    y: camera.screenToWorldY(sy) / VSQUISH,
   };
-  const off = axialToOffset(axialRound(pixelToAxial(world, BASE_SIZE)));
-  if (off.col < 0 || off.row < 0 || off.col >= map.cols || off.row >= map.rows) {
-    return undefined;
+  const roughAxial = axialRound(pixelToAxial(world, BASE_SIZE));
+  const rough = axialToOffset(roughAxial);
+
+  const candidates: Offset[] = [];
+  const seen = new Set<string>();
+  const add = (col: number, row: number): void => {
+    const key = `${col},${row}`;
+    if (seen.has(key)) return;
+    if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return;
+    seen.add(key);
+    candidates.push({ col, row });
+  };
+
+  add(rough.col, rough.row);
+  for (const nb of axialNeighbors(roughAxial)) {
+    const off = axialToOffset(nb);
+    add(off.col, off.row);
   }
-  return off;
+
+  const hits: Offset[] = [];
+  for (const off of candidates) {
+    if (pointInTileHex(camera, off.col, off.row, sx, sy)) hits.push(off);
+  }
+
+  if (hits.length === 1) return hits[0];
+
+  if (hits.length > 1) {
+    let best: { off: Offset; dist: number } | undefined;
+    for (const off of hits) {
+      const c = tileCenterWorld(off.col, off.row);
+      const cx = camera.worldToScreenX(c.x);
+      const cy = camera.worldToScreenY(c.y);
+      const dist = Math.hypot(sx - cx, sy - cy);
+      if (!best || dist < best.dist) best = { off, dist };
+    }
+    return best!.off;
+  }
+
+  if (rough.col >= 0 && rough.row >= 0 && rough.col < map.cols && rough.row < map.rows) {
+    return rough;
+  }
+  return undefined;
 }
 
 export interface FogState {
@@ -514,6 +625,13 @@ export function drawScene(
   const fogDraws: { img: HTMLImageElement | undefined; sx: number; sy: number }[] = [];
   const unexploredDraws: { sx: number; sy: number }[] = [];
 
+  // Distance (in tiles) from a tile to its nearest polar map edge, and the width
+  // of the polar zone — used to place crevasse and iceberg decor near the caps.
+  const polarDim = map.poleAxis === "ew" ? map.cols : map.rows;
+  const polarBand = Math.max(4, Math.round(polarDim * 0.16));
+  const polarEdgeDist = (col: number, row: number): number =>
+    map.poleAxis === "ew" ? Math.min(col, map.cols - 1 - col) : Math.min(row, map.rows - 1 - row);
+
   for (const t of map.tiles) {
     const c = tileCenterWorld(t.col, t.row);
     const sx = camera.worldToScreenX(c.x);
@@ -572,6 +690,45 @@ export function drawScene(
       ctx.fill();
     }
 
+    // Wooded hills: a tree cluster grows on the hill crest (decor over terrain).
+    if (t.wooded && !t.naturalWonder) {
+      const clusters = opts.terrainAtlas?.hillTrees;
+      if (clusters && clusters.length > 0) {
+        const treeImg = clusters[hashSeed(`trees:${t.col},${t.row}`) % clusters.length]!;
+        if (isImageReady(treeImg)) {
+          const treeW = footprint * 0.52;
+          const treeH = treeImg.naturalHeight * (treeW / treeImg.naturalWidth);
+          // Deterministic nudge so plantations don't line up in rows.
+          const jx = ((hashSeed(`treesx:${t.col},${t.row}`) % 100) / 100 - 0.5) * footprint * 0.14;
+          const jy = ((hashSeed(`treesy:${t.col},${t.row}`) % 100) / 100 - 0.5) * footprint * 0.1;
+          ctx.drawImage(treeImg, sx - treeW / 2 + jx, sy - treeH * 0.78 + jy, treeW, treeH);
+        }
+      }
+    }
+
+    // Cold-lands decor on snow: 5% get a crevasse, another 5% a frozen pond. A
+    // single roll partitions the two so a tile never shows both.
+    if (!t.naturalWonder && !t.wonder && t.terrain === "snow") {
+      const crevasses = opts.terrainAtlas?.iceCrevasses;
+      const frozen = opts.terrainAtlas?.frozenLakes;
+      const roll = hashSeed(`icedecor:${t.col},${t.row}`) % 100;
+      let decor: HTMLImageElement | undefined;
+      let decorScale = 0.55;
+      if (roll < 5 && crevasses && crevasses.length > 0) {
+        decor = crevasses[hashSeed(`crevasse-v:${t.col},${t.row}`) % crevasses.length];
+        decorScale = 0.64;
+      } else if (roll < 10 && frozen && frozen.length > 0) {
+        decor = frozen[hashSeed(`frozen-v:${t.col},${t.row}`) % frozen.length];
+      }
+      if (decor && isImageReady(decor)) {
+        const dW = footprint * decorScale;
+        const dH = decor.naturalHeight * (dW / decor.naturalWidth);
+        const jx = ((hashSeed(`icex:${t.col},${t.row}`) % 100) / 100 - 0.5) * footprint * 0.12;
+        const jy = ((hashSeed(`icey:${t.col},${t.row}`) % 100) / 100 - 0.5) * footprint * 0.1;
+        ctx.drawImage(decor, sx - dW / 2 + jx, sy - dH / 2 + jy, dW, dH);
+      }
+    }
+
     // A completed built wonder draws its decor sprite on top of the terrain (the
     // sprite shares the 256×384 hex-tile format, anchored like a natural wonder
     // but with a transparent background so the terrain shows through).
@@ -600,6 +757,33 @@ export function drawScene(
           drawFootprintOverlay(ctx, riverMouthFrame(opts.riverAtlas, 1 << d, t.col, t.row), sx, sy, footprint);
         }
       }
+      // Icebergs drift in the open water near the poles — a few small floes per
+      // tile, kept from overlapping by rejecting positions too close to a placed one.
+      // Both the reach from the pole and the spawn rate are kept sparse (~30%
+      // tighter than the ice-cap band) so they hug the caps.
+      const bergs = opts.terrainAtlas?.icebergs;
+      const bergBand = Math.round((polarBand + 2) * 0.7);
+      if (
+        bergs &&
+        bergs.length > 0 &&
+        polarEdgeDist(t.col, t.row) <= bergBand &&
+        hashSeed(`berg:${t.col},${t.row}`) % 100 < 29
+      ) {
+        const count = 1 + (hashSeed(`bergn:${t.col},${t.row}`) % 3); // 1..3 floes
+        const placedBergs: { x: number; y: number; r: number }[] = [];
+        for (let k = 0; k < count * 4 && placedBergs.length < count; k++) {
+          const img = bergs[hashSeed(`bergv:${t.col},${t.row}:${k}`) % bergs.length]!;
+          if (!isImageReady(img)) continue;
+          const bW = footprint * 0.2;
+          const bH = img.naturalHeight * (bW / img.naturalWidth);
+          const px = ((hashSeed(`bergx:${t.col},${t.row}:${k}`) % 1000) / 1000 - 0.5) * footprint * 0.62;
+          const py = ((hashSeed(`bergy:${t.col},${t.row}:${k}`) % 1000) / 1000 - 0.5) * footprint * 0.5;
+          const r = Math.max(bW, bH) * 0.5;
+          if (placedBergs.some((p) => Math.hypot(p.x - px, p.y - py) < p.r + r)) continue;
+          placedBergs.push({ x: px, y: py, r });
+          ctx.drawImage(img, sx + px - bW / 2, sy + py - bH / 2, bW, bH);
+        }
+      }
     } else if (t.river && !mtnRiverImg) {
       // River overlay on land: the channel reaches every connected edge (including
       // the one that meets the sea, so the river-mouth tile reads as a real
@@ -619,14 +803,20 @@ export function drawScene(
       const isCity = cityKeys.has(key);
       if (t.road || isCity) {
         const mask = roadMask(map, t.col, t.row, cityKeys);
-        if (mask !== 0) {
-          // Prefer the painted road overlay; fall back to the procedural segment
-          // while the atlas is still loading (or a variant failed to load).
-          const img = roadFrame(opts.roadAtlas, mask, false, t.col, t.row);
+        const level = t.road ? (t.roadLevel ?? 1) : maxNeighborRoadLevel(map, t.col, t.row);
+        if (t.road && mask === 0) {
+          // No road/city neighbour — a standalone patch on this tile only.
+          drawIsolatedRoad(ctx, sx, sy, level, size);
+        } else if (mask !== 0) {
+          // Painted dead-ends and corners do not always meet at edge midpoints,
+          // so use procedural segments whenever a road touches another road; keep
+          // painted art for long straight runs and city stubs.
+          const usePainted =
+            !hasRoadNeighbor(map, t.col, t.row) && PAINTED_ROAD_MASKS.has(mask);
+          const img = usePainted ? roadFrame(opts.roadAtlas, mask, false, t.col, t.row) : undefined;
           if (img && isImageReady(img)) {
             drawFootprintOverlay(ctx, img, sx, sy, footprint);
           } else {
-            const level = t.road ? (t.roadLevel ?? 1) : maxNeighborRoadLevel(map, t.col, t.row);
             drawRoadSegment(ctx, sx, sy, corners, mask, level, size);
           }
         }

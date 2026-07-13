@@ -211,7 +211,7 @@ export const ACTIVE_ABILITY_DEFS: Record<ActiveAbilityId, ActiveAbilityDef> = {
   sunder: A({ id: "sunder", name: "Sunder", verb: "Sunder", glyph: "🔨", kind: "targeted", cooldown: 0, desc: "A crushing blow: lighter damage but the target loses 25% defense until its next turn." }),
   pierce: A({ id: "pierce", name: "Pierce", verb: "Pierce", glyph: "🎯", kind: "targeted", cooldown: 0, desc: "Armor-piercing bolt: ignores 6 points of the target's defense. Reduced range this shot." }),
   harry: A({ id: "harry", name: "Harry", verb: "Harry", glyph: "🪤", kind: "targeted", cooldown: 0, desc: "Low-damage strike that pins the target — it cannot move on its next turn." }),
-  reconnoiter: A({ id: "reconnoiter", name: "Reconnoiter", verb: "Scout Ahead", glyph: "🔭", kind: "self", cooldown: 0, desc: "Forfeit the turn for a vision pulse: +2 sight until your next turn, and reveal hidden enemy units in sight." }),
+  reconnoiter: A({ id: "reconnoiter", name: "Reconnoiter", verb: "Scout Ahead", glyph: "👁", kind: "self", cooldown: 0, desc: "Forfeit the turn for a vision pulse: +2 sight until your next turn, and reveal hidden enemy units in sight." }),
   hide: A({ id: "hide", name: "Hide", verb: "Hide", glyph: "🌲 ", kind: "self", cooldown: 0, desc: "Conceal in cover (needs ≥1 movement, forfeits the rest). Invisible to enemies until you act or are discovered. An enemy stepping onto you is ambushed; breaking cover near foes grants an ambush attack bonus." }),
   // civ-unique / enhanced (docs/UNIT-ABILITIES.md §8)
   war_cart_charge: A({ id: "war_cart_charge", name: "War-Cart Charge", verb: "Charge", glyph: "🐎", kind: "targeted", cooldown: 0, desc: "An early, lighter charge (+2 attack) that rides through the target — but not over rough terrain." }),
@@ -357,6 +357,20 @@ export type TechId =
   | "gunpowder" | "firearms";
 
 export const UNIT_MAX_HP = 100;
+
+/** Extra max HP from a unit type's combat tier — stronger units are sturdier.
+ *  Civilians get no tier bonus. */
+export function unitTypeHpBonus(type: UnitTypeId): number {
+  const d = UNIT_DEFS[type];
+  if (d.cls === "settler" || d.cls === "trader" || d.cls === "religious") return 0;
+  const combat = Math.max(d.strength, d.rangedStrength ?? 0);
+  return Math.max(0, (combat - 4) * 2);
+}
+
+/** Base max HP from type tier and experience level (before promotion extras). */
+export function unitBaseMaxHp(type: UnitTypeId, level: number): number {
+  return Math.floor(UNIT_MAX_HP * (1 + 0.05 * (level - 1))) + unitTypeHpBonus(type);
+}
 
 export interface UnitDef {
   id: UnitTypeId;
@@ -720,14 +734,17 @@ export const LEGEND_ABILITY_OVERRIDES: Record<string, ActiveAbilityId[]> = {
   alexander: ["hammer_and_anvil", "shock_charge"], // the Companion charge where the phalanx holds
   ashoka: [], // after Kalinga the emperor renounced the charge — he rides unarmed
   boudica: ["uprising", "charge"], // the tribes rise where her chariot passes
-  julius_caesar_legend: ["pilum", "plunder", "hide"], // the legion's volley, and Gaul's gold
+  julius_caesar_legend: ["pilum", "plunder"], // the legion's volley, and Gaul's gold
+  amanirenas: ["aimed_shot", "skirmish"], // the one-eyed kandake and her feared Kushite archers
+  demetrius: ["siege_volley"], // Poliorcetes, the Besieger, and his great engines
   attila: ["terrorize", "fire_and_retreat"], // the Scourge of God on a steppe pony
   charlemagne: ["heroic_challenge", "sunder", "hide"], // the emperor of the chansons de geste
   saladin: ["feigned_retreat", "harry"], // Hattin — lure, exhaust, deny water, destroy
   genghis_khan: ["nerge", "fire_and_retreat"], // the great hunt's ring, closed on men
   subutai: ["parthian_shot", "feigned_retreat"], // Kalka's nine-day false flight
   joan_of_arc_legend: ["sacred_banner", "sunder", "hide"], // the banner she bore instead of a sword
-  tomoe_gozen: ["heroic_challenge", "fire_and_retreat"], // single combat and mounted archery
+  tomoe_gozen: ["heroic_challenge", "parthian_shot"], // single combat and mounted archery
+  zhuge_liang: ["repeating_fire"], // the Sleeping Dragon and his repeating crossbow
   tamerlane: ["pyramid_of_skulls", "shock_charge"], // the towers of skulls at Isfahan and Delhi
   mehmed_ii: ["basilica_bombard", "emplace"], // Orban's bombard before the Theodosian walls
   harald_hardrada: ["ram", "strandhogg"], // the last great Viking, raiding as he ever did
@@ -1248,6 +1265,65 @@ export const TECH_SYSTEM_UNLOCKS: Partial<Record<TechId, string[]>> = {
 /** Map/mechanic/system unlocks for a tech (not units or buildings). */
 export function techSystemUnlocks(techId: TechId): string[] {
   return TECH_SYSTEM_UNLOCKS[techId] ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Unit upgrade paths
+// ---------------------------------------------------------------------------
+
+/**
+ * For each unit type, the next unit it can be upgraded to (in friendly territory,
+ * for gold, provided the target's tech and resource requirements are met).
+ * Only military units (melee, ranged, cavalry, siege, naval) are upgradeable;
+ * civilians and religious units are not.
+ */
+export const UNIT_UPGRADES: Partial<Record<UnitTypeId, UnitTypeId>> = {
+  // Melee line
+  clubman:        "warrior",
+  warrior:        "spearman",
+  firehard_spear: "spearman",
+  spearman:       "hoplite",
+  hoplite:        "pikeman",
+  axeman:         "swordsman",
+  maceman:        "swordsman",
+  swordsman:      "longswordsman",
+  pikeman:        "longswordsman",
+  longswordsman:  "legionary",
+  // Ranged line
+  slinger:        "javelineer",
+  hunter:         "archer",
+  javelineer:     "archer",
+  archer:         "crossbowman",
+  crossbowman:    "hand_cannon",
+  hand_cannon:    "matchlock",
+  // Cavalry line
+  light_chariot:  "war_chariot",
+  war_chariot:    "rider",
+  rider:          "cataphract",
+  horse_archer:   "cataphract",
+  // Siege line
+  battering_ram:  "catapult",
+  catapult:       "ballista",
+  ballista:       "bombard",
+  // Naval melee
+  galley:         "bireme",
+  bireme:         "trireme",
+  trireme:        "quinquereme",
+  longship:       "caravel",
+  // Naval ranged
+  dromon:         "galleass",
+  war_junk:       "galleass",
+  galleass:       "galleon",
+};
+
+/**
+ * Gold cost to upgrade a unit from `fromType` to `toType`.
+ * Scales with the target unit's production cost.
+ */
+export function unitUpgradeCost(fromType: UnitTypeId, toType: UnitTypeId): number {
+  const to = UNIT_DEFS[toType];
+  const from = UNIT_DEFS[fromType];
+  return Math.max(20, to.cost + 10 - Math.floor(from.cost * 0.3));
 }
 
 /** Names of everything a tech unlocks — units, buildings, and mechanics (for the research picker). */

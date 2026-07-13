@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
-import { territorySize, expandTerritory, expansionCandidates, canExpandTo, cityTerritory } from "./territory";
+import { territorySize, expandTerritory, expandTerritoryRing, expansionCandidates, canExpandTo, cityTerritory } from "./territory";
 import { ejectTrespassers, offsetNeighbors } from "./movement";
 import { isPassableLand, isWaterTerrain } from "./terrain";
 import { citiesOf, makeUnit, unitsOf } from "./state";
@@ -53,6 +53,19 @@ describe("territory", () => {
     // The chosen tile is now owned, and the target is consumed (back to auto).
     expect(getTile(state.map, target.col, target.row)!.ownerCityId).toBe(city.id);
     expect(city.expandTarget).toBeUndefined();
+  });
+
+  it("expandTerritoryRing claims every adjacent frontier tile at once", () => {
+    const state = createGame({ seed: "terr-ring", cols: 40, rows: 28, barbarians: false });
+    beginTurn(state);
+    const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    const city = citiesOf(state, 0)[0]!;
+    const before = territorySize(state, city);
+    const ring = expandTerritoryRing(state, city);
+    expect(ring).toBeGreaterThan(0);
+    expect(territorySize(state, city)).toBe(before + ring);
+    expect(expansionCandidates(state, city).length).toBeGreaterThan(0); // still room toward max radius
   });
 
   it("rejects an unclaimable expand target and clears one via setExpandTarget", () => {

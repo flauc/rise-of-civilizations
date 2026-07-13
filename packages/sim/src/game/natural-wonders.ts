@@ -200,8 +200,10 @@ export function placeNaturalWonders(
   };
   const farFromStarts = (col: number, row: number): boolean =>
     starts.every((s) => !s || axialDistance(offsetToAxial(s), offsetToAxial({ col, row })) >= 6);
+  // Hard spacing guarantee: two wonders never sit within sight of each other.
+  const MIN_WONDER_SPACING = 6;
   const tooClose = (col: number, row: number): boolean =>
-    placed.some((p) => axialDistance(offsetToAxial(p), offsetToAxial({ col, row })) < 4);
+    placed.some((p) => axialDistance(offsetToAxial(p), offsetToAxial({ col, row })) < MIN_WONDER_SPACING);
 
   for (const def of order) {
     if (placedIds.length >= targetCount) break;
@@ -220,8 +222,10 @@ export function placeNaturalWonders(
     }
     if (candidates.length === 0) continue;
     candidates.sort((a, b) => a.key - b.key);
-    // Prefer a spot well-separated from other wonders; fall back to the best hash.
-    const pick = candidates.find((c) => !tooClose(c.col, c.row)) ?? candidates[0]!;
+    // Spacing is a hard rule: if this wonder can't be placed far enough from the
+    // others, skip it (another def with different terrain may still fit).
+    const pick = candidates.find((c) => !tooClose(c.col, c.row));
+    if (!pick) continue;
     const t = getTile(map, pick.col, pick.row);
     if (t) {
       t.naturalWonder = def.id;

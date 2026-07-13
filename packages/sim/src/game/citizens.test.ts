@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { workableTiles, toggleCitizen, getCityYields, autoAssignCitizens } from "./economy";
+import { expandTerritoryRing, territorySize } from "./territory";
 import { convertCitizen, workerSlots } from "./specialists";
 import { citiesOf, makeUnit, unitsOf } from "./state";
 import { getTile } from "@roc/shared";
@@ -141,5 +142,15 @@ describe("citizen assignment", () => {
     expect(y1.food + y1.production + y1.gold + y1.science).toBeGreaterThanOrEqual(
       y0.food + y0.production + y0.gold + y0.science,
     );
+  });
+
+  it("outer territory tiles become workable as borders expand", () => {
+    const { s, city } = foundedGame();
+    const before = workableTiles(s, city).length;
+    while (expandTerritoryRing(s, city) > 0) { /* grow to max */ }
+    expect(territorySize(s, city)).toBeGreaterThan(before + 1);
+    const workable = workableTiles(s, city);
+    expect(workable.length).toBe(territorySize(s, city) - 1); // all territory except center
+    expect(workable.length).toBeGreaterThan(before);
   });
 });

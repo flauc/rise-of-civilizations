@@ -4,6 +4,7 @@ import { cityAt, log, playerById, unitAt, areEnemies } from "./state";
 import {
   UNIT_DEFS,
   UNIT_MAX_HP,
+  unitBaseMaxHp,
   isRanged,
   PROMOTION_DEFS,
   PROMOTION_POOL,
@@ -15,9 +16,11 @@ import { isRough, terrainDefense, isWaterTerrain, isForestTerrain } from "./terr
 import { structureDefense, towerBombard } from "./fortifications";
 import { civCombatBonus, uniqueUnitForUnit, unitDisplayName } from "./civs";
 import { legendCombatBonus } from "./legends";
+import { extendLegendsOnTrigger } from "./legend-lifespan";
+import { scuttleShipCargo } from "./naval-cargo";
 import { legendCityDefenseBonus } from "./legend-effects";
 import { applyVictoryCheck } from "./victory";
-import { emitCityLost, emitUnitDied } from "./turn-updates";
+import { emitCityLost, emitUnitDied, maybeCheckCivElimination } from "./turn-updates";
 import { isNavalUnit, isWaterDomain, isCoastalLand, isForestTile, riverBetween } from "./movement";
 import { playerEffects } from "./civs";
 import { breakCover } from "./stealth";
@@ -44,6 +47,17 @@ function conditionalCombatBonus(state: GameState, unit: Unit, opponent: Unit): n
     // theirs differs (including having none — e.g. barbarians).
     if (mine && playerReligionId(state, opponent.ownerId) !== mine) b += eff.combatVsOtherReligion;
   }
+  if (eff.combatVsUniqueUnit && uniqueUnitForUnit(state, opponent)) b += eff.combatVsUniqueUnit;
+  return b;
+}
+
+/** Combat bonuses from timed modifiers that depend on the unit's own type. */
+function typedCombatBonus(state: GameState, unit: Unit, ranged: boolean): number {
+  const eff = playerEffects(state, unit.ownerId);
+  let b = 0;
+  if (eff.gunpowderCombatBonus && UNIT_DEFS[unit.type].gunpowder) b += eff.gunpowderCombatBonus;
+  const cls = UNIT_DEFS[unit.type].cls;
+  if (!ranged && eff.navalMeleeCombatBonus && cls === "naval_melee") b += eff.navalMeleeCombatBonus;
   return b;
 }
 
@@ -51,12 +65,12 @@ function conditionalCombatBonus(state: GameState, unit: Unit, opponent: Unit): n
  *  lands slightly harder than a regular thrust (and takes no retaliation). */
 const FIRE_LANCE_BONUS = 3;
 
-/** Maximum HP for a unit, increasing by 5% per level above 1 plus promotion bonuses. */
+/** Maximum HP for a unit, increasing by 5% per level above 1, unit tier, and promotions. */
 export function unitMaxHp(unit: Unit): number {
   let bonus = 0;
   if (has(unit, "toughness")) bonus += 15;
   if (has(unit, "colonist")) bonus += 20;
-  return Math.floor(UNIT_MAX_HP * (1 + 0.05 * (unit.level - 1))) + bonus;
+  return unitBaseMaxHp(unit.type, unit.level) + bonus;
 }
 
 /** Combat-strength multiplier from experience level (+5% per level). */
@@ -91,6 +105,32 @@ function hasBushido(state: GameState, unit: Unit): boolean {
 export function damageFrom(attEff: number, defEff: number): number {
   const d = Math.round(30 * Math.pow(attEff / Math.max(1, defEff), 1.4));
   return Math.max(1, Math.min(75, d));
+}
+
+/** Melee exchange without moving either unit or spending the attacker's turn pool.
+ *  Used when a trade-route escort intercepts a plunder attempt. Both may die. */
+export function exchangeMeleeCombat(
+  state: GameState,
+  attacker: Unit,
+  defender: Unit,
+  terrain: TerrainType,
+): void {
+  const attEff = attackStrength(state, attacker, defender, terrain, false, undefined);
+  const defEff = defenseStrength(state, defender, attacker, false);
+  defender.hp -= damageFrom(attEff, defEff);
+  let retaliation = damageFrom(defEff, attEff);
+  if (has(attacker, "suppression")) retaliation = Math.max(0, retaliation - 3);
+  attacker.hp -= retaliation;
+  awardXp(state, attacker, 4);
+  awardXp(state, defender, 4);
+  if (defender.hp <= 0) {
+    killUnit(state, defender, { victorOwnerId: attacker.ownerId });
+    onEnemyDefeated(state, attacker, defender);
+    harvestFaithOnKill(state, attacker);
+  } else {
+    maybeRoute(state, defender);
+  }
+  if (attacker.hp <= 0) killUnit(state, attacker, { victorOwnerId: defender.ownerId });
 }
 
 function adjacentFriendlies(state: GameState, unit: Unit): number {
@@ -133,6 +173,7 @@ function attackStrength(
   if (ranged && ability === "double_ballista") s = Math.max(4, def.strength - 2) * levelMultiplier(unit);
   s += civCombatBonus(state, unit);
   s += conditionalCombatBonus(state, unit, defender); // civics: home/foreign/all-unit/other-religion
+  s += typedCombatBonus(state, unit, ranged);
   s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
   s += religionUnitCombatBonus(state, unit); // faith-tier strength + religious auras
   if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) s -= unit.cursedPenalty ?? 3;
@@ -342,6 +383,7 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
 
   s += civCombatBonus(state, unit);
   s += conditionalCombatBonus(state, unit, attacker); // civics: home/foreign/all-unit/other-religion
+  s += typedCombatBonus(state, unit, vsRanged);
   s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
   s += religionUnitCombatBonus(state, unit); // faith-tier strength + religious auras
   if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) s -= unit.cursedPenalty ?? 3;
@@ -604,6 +646,9 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
       emitCityLost(state, oldOwner.id, city.id, city.name, city.col, city.row);
     }
     applyVictoryCheck(state);
+    if (oldOwner && !oldOwner.isBarbarian) {
+      maybeCheckCivElimination(state, oldOwner.id, taker0?.id ?? attacker.ownerId, { col: city.col, row: city.row });
+    }
     return;
   }
 
@@ -630,7 +675,11 @@ function captureCity(state: GameState, city: City, attacker: Unit): void {
   if (oldOwner && !oldOwner.isBarbarian) {
     emitCityLost(state, oldOwner.id, city.id, city.name, city.col, city.row);
   }
+  extendLegendsOnTrigger(state, attacker.ownerId, "city_capture");
   applyVictoryCheck(state);
+  if (oldOwner && !oldOwner.isBarbarian) {
+    maybeCheckCivElimination(state, oldOwner.id, attacker.ownerId, { col: city.col, row: city.row });
+  }
 }
 
 /** Resolve an attack by `attacker` against whatever is on (col,row). */
@@ -777,7 +826,7 @@ export function resolveAttack(
       if (ability === "stone_hail" && enemyUnit.hp > 0) enemyUnit.sunderedUntilTurn = state.turn + 1; // shields cracked
       if ((ability === "bolas" || ability === "hornet_bomb") && enemyUnit.hp > 0) enemyUnit.pinnedUntilTurn = state.turn + 1; // entangled / swarmed
       if (enemyUnit.hp <= 0) {
-        killUnit(state, enemyUnit);
+        killUnit(state, enemyUnit, { victorOwnerId: attacker.ownerId });
         onEnemyDefeated(state, attacker, enemyUnit); // the marksman and nearby allies rally
         harvestFaithOnKill(state, attacker); // Zealotry / Ghazi / Eagle Priest &c.
       } else {
@@ -820,7 +869,7 @@ export function resolveAttack(
       const defenderDead = enemyUnit.hp <= 0;
       const attackerDead = attacker.hp <= 0;
       if (defenderDead) {
-        killUnit(state, enemyUnit);
+        killUnit(state, enemyUnit, { victorOwnerId: attacker.ownerId });
         onEnemyDefeated(state, attacker, enemyUnit); // the victor and nearby allies rally
         harvestFaithOnKill(state, attacker); // Zealotry / Ghazi / Eagle Priest &c.
         if (!attackerDead) {
@@ -833,7 +882,7 @@ export function resolveAttack(
         maybeRoute(state, enemyUnit); // a battered defender may break and flee
       }
       if (attackerDead) {
-        killUnit(state, attacker);
+        killUnit(state, attacker, { victorOwnerId: enemyUnit.ownerId });
         return { ok: true };
       }
       if (defenderDead && !cityAt(state, col, row) && !unitAt(state, col, row) && !targetTile.structure) {
@@ -876,7 +925,7 @@ export function resolveAttack(
         });
       }
       if (attacker.hp <= 0) {
-        killUnit(state, attacker);
+        killUnit(state, attacker, { victorOwnerId: sCity.ownerId });
         return { ok: true };
       }
       finishAttack(state, attacker);
@@ -914,7 +963,7 @@ export function towerBombardment(state: GameState, playerId: number): void {
         targetIds: [target.ownerId],
         tile: { col: target.col, row: target.row },
       });
-      if (target.hp <= 0) killUnit(state, target);
+      if (target.hp <= 0) killUnit(state, target, { victorOwnerId: playerId });
     }
   }
 }
@@ -955,8 +1004,8 @@ export function cityBombardTargets(state: GameState, city: City): Unit[] {
 
 /**
  * Manual city bombardment: one strength-scaled ranged hit per turn on a nearby
- * enemy unit. Player-triggered only (never automatic) — wired to the cityBombard
- * command and the bombard button on the city panel. The city takes no retaliation.
+ * enemy unit. Wired to the cityBombard command (human UI + AI aiCityBombard).
+ * The city takes no retaliation.
  */
 export function cityBombard(
   state: GameState,
@@ -983,11 +1032,12 @@ export function cityBombard(
     targetIds: [target.ownerId],
     tile: { col: target.col, row: target.row },
   });
-  if (target.hp <= 0) killUnit(state, target);
+  if (target.hp <= 0) killUnit(state, target, { victorOwnerId: playerId });
   return { ok: true };
 }
 
-export function killUnit(state: GameState, unit: Unit): void {
+export function killUnit(state: GameState, unit: Unit, _opts?: { victorOwnerId?: number }): void {
+  if (isNavalUnit(unit)) scuttleShipCargo(state, unit.id, killUnit);
   religionRitesOnDeath(state, unit); // mortuary harvests + Valhalla rallies (before removal)
   onUnitLost(state, unit); // nearby friendlies waver + global morale drops (before removal)
   const wasLegend = !!unit.legendId;
@@ -1026,7 +1076,7 @@ export function resolveAmbush(state: GameState, hider: Unit, intruder: Unit): vo
   intruder.hp -= damageFrom(attEff, defEff);
   awardXp(state, hider, 4);
   awardXp(state, intruder, 2);
-  if (intruder.hp <= 0) killUnit(state, intruder);
+  if (intruder.hp <= 0) killUnit(state, intruder, { victorOwnerId: hider.ownerId });
 }
 
 /** A melee sweep hit at `factor` of full strength drawing no retaliation (Chakkar). */
@@ -1038,7 +1088,7 @@ export function sweepMeleeDamage(state: GameState, attacker: Unit, target: Unit,
   target.hp -= damageFrom(attEff, defEff);
   awardXp(state, attacker, 2);
   if (target.hp <= 0) {
-    killUnit(state, target);
+    killUnit(state, target, { victorOwnerId: attacker.ownerId });
     onEnemyDefeated(state, attacker, target);
     harvestFaithOnKill(state, attacker);
   }
@@ -1052,7 +1102,7 @@ export function secondaryRangedDamage(state: GameState, attacker: Unit, target: 
   const defEff = defenseStrength(state, target, attacker, true);
   target.hp -= damageFrom(attEff, defEff);
   awardXp(state, attacker, 1);
-  if (target.hp <= 0) killUnit(state, target);
+  if (target.hp <= 0) killUnit(state, target, { victorOwnerId: attacker.ownerId });
 }
 
 function finishAttack(state: GameState, attacker: Unit): void {

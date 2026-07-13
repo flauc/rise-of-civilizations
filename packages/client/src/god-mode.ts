@@ -18,6 +18,8 @@ import {
   makeUnit,
   STRUCTURE_HP,
   TECH_DEFS,
+  expandTerritoryRing,
+  citiesOf,
   unitAt,
   unitMaxHp,
   workName,
@@ -32,6 +34,8 @@ export type CheatAction =
   | { type: "completeWorks" }
   | { type: "healUnits" }
   | { type: "addGold"; amount: number }
+  | { type: "addPopulation" }
+  | { type: "addResource"; resource: string; amount: number }
   | { type: "revealMap" }
   | { type: "spawnUnit"; unitType: UnitTypeId; col: number; row: number }
   | { type: "foundCity"; col: number; row: number }
@@ -113,6 +117,25 @@ export function applyCheat(
     case "addGold": {
       player.gold += action.amount;
       log(state, `${player.name} gained ${action.amount} gold (cheat).`, { actorId: playerId, targetIds: [playerId] });
+      return { ok: true };
+    }
+
+    case "addPopulation": {
+      const cities = citiesOf(state, playerId);
+      if (cities.length === 0) return { ok: false, error: "you have no cities" };
+      let claimed = 0;
+      for (const city of cities) claimed += expandTerritoryRing(state, city);
+      if (claimed === 0) return { ok: false, error: "no room to expand" };
+      log(state, `${player.name} expanded every city's borders (cheat).`, {
+        actorId: playerId,
+        targetIds: [playerId],
+      });
+      return { ok: true };
+    }
+
+    case "addResource": {
+      player.resources[action.resource] = (player.resources[action.resource] ?? 0) + action.amount;
+      log(state, `${player.name} gained ${action.amount} ${action.resource} (cheat).`, { actorId: playerId, targetIds: [playerId] });
       return { ok: true };
     }
 

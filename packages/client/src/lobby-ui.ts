@@ -3,6 +3,7 @@
 
 import { ASSET_BASE_URL } from "./asset-base";
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
+import { isMobileMpUi, renderChatLogEl } from "./mp-chat";
 import { createWiki } from "./wiki";
 import { createRoadmap } from "./roadmap";
 import { createCredits } from "./credits";
@@ -14,14 +15,46 @@ import {
   type GameSummary,
   type LobbyRoom,
   type MapType,
+  type GameSpeed,
   type SerializedState,
   type ServerMessage,
   type VictoryKind,
 } from "@roc/sim";
 import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, startingConditionsLine, wireUuImages, wireUuDetail } from "./unique-unit";
-import { deleteSave, exportSave, importSave, listSaves, loadSave, type SaveRecord } from "./save-db";
+import { deleteSave, exportSave, importSave, listSavesForUser, loadSave, reassignSaves, saveGame, type SaveRecord } from "./save-db";
+import {
+  authenticate,
+  clearAccount,
+  getAccount,
+  getGuestId,
+  getSaveOwnerId,
+  setAccount,
+  tryResumeSession,
+  type StoredAccount,
+} from "./account";
+import {
+  authSplitPanelHtml,
+  bindAuthSplitPanel,
+  authLoginPanelHtml,
+  authRegisterPanelHtml,
+  bindAuthLoginPanel,
+  bindAuthRegisterPanel,
+} from "./auth-form";
+import {
+  bindScreenRotationControls,
+  SCREEN_ROTATION_STYLES,
+  screenRotationControlsHtml,
+  shouldOfferScreenRotation,
+} from "./screen-rotation-ui";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 import type { GameSetup } from "./analytics";
+import {
+  createTutorialSession,
+  createTutorialSetup,
+  dismissTutorialPrompt,
+  markGameStarted,
+  shouldRecommendTutorial,
+} from "./tutorial";
 
 const DEFAULT_WS_SCHEME = location.protocol === "https:" ? "wss" : "ws";
 const DEFAULT_WS =
@@ -30,17 +63,19 @@ const DEFAULT_WS =
 /** Civilizations sorted alphabetically by display name for the setup UI. */
 const CIVS_BY_NAME = [...CIVILIZATIONS].sort((a, b) => a.name.localeCompare(b.name));
 
-type Screen = "start" | "sp" | "mp" | "load";
+type Screen = "start" | "login" | "signup" | "sp" | "mp" | "load";
 
 type BarbLevel = "none" | "minimal" | "low" | "normal" | "high";
 type StartingGold = "tight" | "balanced" | "generous";
 
 /** Map layout presets, in menu order, each with a short explanation. */
 const MAP_TYPE_OPTIONS: { value: MapType; label: string; desc: string }[] = [
-  { value: "continents", label: "Continents", desc: "A balanced spread of landmasses separated by sea — the classic default." },
-  { value: "pangaea", label: "One Big Continent", desc: "A single supercontinent: everyone shares one landmass with little ocean between." },
+  { value: "random", label: "Random", desc: "Roll any map layout — random or fixed continents, archipelago, inland sea, islands, or real world." },
+  { value: "continents", label: "Continents (1-4)", desc: "Each game rolls one to four separate continents, from one supercontinent up to four distant landmasses." },
+  { value: "pangaea", label: "One Continent", desc: "A single supercontinent: everyone shares one landmass with little ocean between." },
   { value: "two_continents", label: "Two Continents", desc: "Two major landmasses divided by open ocean." },
   { value: "three_continents", label: "Three Continents", desc: "Three landmasses scattered across the sea." },
+  { value: "four_continents", label: "Four Continents", desc: "Four separate continents — wide oceans between every rival." },
   { value: "archipelago", label: "Archipelago", desc: "Many medium islands — exploration and naval play matter more." },
   { value: "inland_sea", label: "Inland Sea", desc: "A ring of land wrapped around a central sea." },
   { value: "islands", label: "Islands", desc: "Lots of small, scattered islands across a wide ocean." },
@@ -66,6 +101,16 @@ const TURN_LIMIT_OPTIONS: { value: number; label: string }[] = [
 
 const DEFAULT_TURN_LIMIT = 120;
 
+/** Game-speed presets — only research and civic costs change. */
+const GAME_SPEED_OPTIONS: { value: GameSpeed; label: string; desc: string }[] = [
+  { value: "slow", label: "Slow", desc: "Cheaper research and civics — eras pass quickly." },
+  { value: "normal", label: "Normal", desc: "Default pacing for the technology and civics trees." },
+  { value: "fast", label: "Fast", desc: "Higher research and civic costs — linger longer in each age." },
+  { value: "epic", label: "Epic", desc: "Much higher costs — a long march through every era." },
+];
+
+const DEFAULT_GAME_SPEED: GameSpeed = "normal";
+
 /** "random" = let the sim assign a random unique civ when the game starts. */
 const RANDOM_CIV = "random";
 
@@ -87,9 +132,11 @@ interface MenuState {
     ais: AiConfig[];
     barbarians: BarbLevel;
     naturalWonders: boolean;
+    villages: boolean;
     legends: boolean;
     startingGold: StartingGold;
     turnLimit: number;
+    gameSpeed: GameSpeed;
     enabledVictories: VictoryKind[];
   };
   mp: {
@@ -172,6 +219,16 @@ function turnLimitSelect(id: string, value: number): string {
   return `<select id="${id}" class="menu-in">${TURN_LIMIT_OPTIONS.map(
     (o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`,
   ).join("")}</select>`;
+}
+
+function gameSpeedSelect(id: string, value: GameSpeed): string {
+  return `<select id="${id}" class="menu-in">${GAME_SPEED_OPTIONS.map(
+    (o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`,
+  ).join("")}</select>`;
+}
+
+function gameSpeedLabel(value: GameSpeed): string {
+  return GAME_SPEED_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
 
 /** Human-readable turn-limit label for read-only displays. */
@@ -263,13 +320,38 @@ function escapeHtml(text: string): string {
 /** The single-player setup, persisted so the next new game defaults to it. */
 type SpSetup = MenuState["sp"];
 
+/** Fresh single-player defaults — one AI opponent, standard map options. */
+function defaultSpSetup(): SpSetup {
+  return {
+    civId: CIVS_BY_NAME[0]!.id,
+    color: PLAYER_COLORS[0]!,
+    mapSize: "medium",
+    mapType: "random",
+    ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],
+    barbarians: "normal",
+    naturalWonders: true,
+    villages: true,
+    legends: true,
+    startingGold: "balanced",
+    turnLimit: DEFAULT_TURN_LIMIT,
+    gameSpeed: DEFAULT_GAME_SPEED,
+    enabledVictories: [...TOGGLEABLE_VICTORIES],
+  };
+}
+
 const SP_SETUP_KEY = "roc:sp-setup";
 const BARB_LEVELS: BarbLevel[] = ["none", "minimal", "low", "normal", "high"];
 
-/** Persist the single-player setup so the next new game starts from it. */
+/**
+ * Persist the single-player setup so the next new game starts from it. The AI
+ * roster's specific civ/color picks are not kept, but its *size* is — the next
+ * game defaults to the same number of AI opponents the player last used.
+ */
 function saveSpSetup(sp: SpSetup): void {
   try {
-    localStorage.setItem(SP_SETUP_KEY, JSON.stringify(sp));
+    const { ais, ...rest } = sp;
+    const persisted = { ...rest, aiCount: ais.length };
+    localStorage.setItem(SP_SETUP_KEY, JSON.stringify(persisted));
   } catch {
     // Ignore write failures (quota, private mode); the game still starts.
   }
@@ -298,22 +380,26 @@ function loadSpSetup(defaults: SpSetup): SpSetup {
   const out: SpSetup = { ...defaults };
   if (isCiv(saved.civId)) out.civId = saved.civId;
   if (isColor(saved.color)) out.color = saved.color;
+  // Restore the last roster *size* (not the specific picks): rebuild that many
+  // random-civ opponents, each in a distinct free color.
+  const savedCount = (saved as { aiCount?: unknown }).aiCount;
+  if (typeof savedCount === "number" && Number.isInteger(savedCount) && savedCount >= 0 && savedCount <= MAX_AI) {
+    const used = new Set<string>([out.color]);
+    out.ais = Array.from({ length: savedCount }, () => {
+      const color = firstFreeColor(used);
+      used.add(color);
+      return { civId: RANDOM_CIV, color };
+    });
+  }
   if (typeof saved.mapSize === "string" && saved.mapSize in MAP_DIMENSIONS) out.mapSize = saved.mapSize;
   if (MAP_TYPE_OPTIONS.some((o) => o.value === saved!.mapType)) out.mapType = saved.mapType!;
-  if (Array.isArray(saved.ais)) {
-    out.ais = saved.ais
-      .filter(
-        (a): a is AiConfig =>
-          !!a && (a.civId === RANDOM_CIV || isCiv(a.civId)) && isColor(a.color),
-      )
-      .slice(0, MAX_AI)
-      .map((a) => ({ civId: a.civId, color: a.color }));
-  }
   if (BARB_LEVELS.includes(saved.barbarians as BarbLevel)) out.barbarians = saved.barbarians!;
   if (typeof saved.naturalWonders === "boolean") out.naturalWonders = saved.naturalWonders;
+  if (typeof saved.villages === "boolean") out.villages = saved.villages;
   if (typeof saved.legends === "boolean") out.legends = saved.legends;
   if (GOLD_OPTIONS.some((o) => o.value === saved!.startingGold)) out.startingGold = saved.startingGold!;
   if (TURN_LIMIT_OPTIONS.some((o) => o.value === saved!.turnLimit)) out.turnLimit = saved.turnLimit!;
+  if (GAME_SPEED_OPTIONS.some((o) => o.value === saved!.gameSpeed)) out.gameSpeed = saved.gameSpeed!;
   if (Array.isArray(saved.enabledVictories)) {
     out.enabledVictories = TOGGLEABLE_VICTORIES.filter((v) =>
       (saved!.enabledVictories as VictoryKind[]).includes(v),
@@ -322,28 +408,76 @@ function loadSpSetup(defaults: SpSetup): SpSetup {
   return out;
 }
 
-export function createLobby(onStart: (session: Session, setup?: GameSetup) => void): void {
+export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) => void): void {
+  const onStart = (session: Session, setup?: GameSetup): void => {
+    markGameStarted();
+    onStartRaw(session, setup);
+  };
+
+  const launchTutorialGame = (): void => {
+    close();
+    onStart(createTutorialSession(), createTutorialSetup());
+  };
+
+  const showTutorialRecommendModal = (onSkip: () => void): void => {
+    const overlay = document.createElement("div");
+    overlay.className = "tutorial-prompt-overlay";
+    overlay.innerHTML = `
+      <div class="tutorial-prompt" role="dialog" aria-modal="true" aria-label="Tutorial recommendation">
+        <button class="tutorial-prompt-close" id="tp-close" type="button" aria-label="Close">✕</button>
+        <div class="tutorial-prompt-icon">📜</div>
+        <div class="tutorial-prompt-title">New to Rise of Civilizations?</div>
+        <p class="tutorial-prompt-body">
+          We recommend playing the <b>Tutorial</b> first — a short game on a small map with one AI opponent
+          and light barbarian activity. You can always start a custom game instead.
+        </p>
+        <div class="tutorial-prompt-actions">
+          <button class="menu-btn primary" id="tp-play" type="button" style="width:auto">Play Tutorial</button>
+          <button class="menu-btn secondary" id="tp-skip" type="button" style="width:auto">Skip — custom game</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = (): void => {
+      overlay.remove();
+      document.removeEventListener("keydown", onKey);
+    };
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === "Escape") {
+        dismissTutorialPrompt();
+        close();
+        onSkip();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    overlay.querySelector<HTMLButtonElement>("#tp-close")!.addEventListener("click", () => {
+      dismissTutorialPrompt();
+      close();
+      onSkip();
+    });
+    overlay.querySelector<HTMLButtonElement>("#tp-skip")!.addEventListener("click", () => {
+      dismissTutorialPrompt();
+      close();
+      onSkip();
+    });
+    overlay.querySelector<HTMLButtonElement>("#tp-play")!.addEventListener("click", () => {
+      close();
+      launchTutorialGame();
+    });
+  };
+
+  const maybeOfferTutorial = (onSkip: () => void): void => {
+    if (shouldRecommendTutorial()) showTutorialRecommendModal(onSkip);
+    else onSkip();
+  };
   const state: MenuState = {
     screen: "start",
-    sp: loadSpSetup({
-      civId: CIVS_BY_NAME[0]!.id,
-      color: PLAYER_COLORS[0]!,
-      mapSize: "medium",
-      mapType: "continents",
-      ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],
-      barbarians: "normal",
-      naturalWonders: true,
-      legends: true,
-      startingGold: "balanced",
-      turnLimit: DEFAULT_TURN_LIMIT,
-      enabledVictories: [...TOGGLEABLE_VICTORIES],
-    }),
+    sp: loadSpSetup(defaultSpSetup()),
     mp: {
       url: DEFAULT_WS,
       handle: "",
       password: "",
       capacity: 2,
-      mapType: "continents",
+      mapType: "random",
       humanColors: [PLAYER_COLORS[0]!, PLAYER_COLORS[1]!],
       ais: [],
       userId: "",
@@ -367,17 +501,60 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       <div class="lobby-left" id="lobby-left"></div>
       <div class="lobby-right" id="lobby-right"></div>
     </div>
+    <div class="auth-screen hidden" id="auth-screen"></div>
     <div class="mp-screen hidden" id="mp-screen"></div>`;
 
   const style = document.createElement("style");
   style.textContent = `
     #lobby{position:fixed;inset:0;z-index:50;background:#0f0e0b}
-    .lobby-layout{display:flex;height:100%;width:100%}
+    .lobby-layout{display:flex;height:100%;min-height:0;width:100%}
     .lobby-left{width:380px;max-width:92vw;flex-shrink:0;display:flex;flex-direction:column;background:linear-gradient(180deg,#1f1c14 0%,#15120c 100%);border-right:1px solid var(--edge);padding:28px;overflow:auto;box-shadow:4px 0 24px rgba(0,0,0,.55)}
-    .lobby-right{flex:1;position:relative;display:flex;flex-direction:column;justify-content:flex-end;padding:48px 56px;background:radial-gradient(circle at 70% 30%,rgba(201,162,39,0.14) 0%,#0f0e0b 60%);overflow:hidden}
+    .lobby-right{flex:1;position:relative;display:grid;grid-template-columns:minmax(0,1fr) clamp(160px,24vw,240px);grid-template-rows:minmax(0,1fr);gap:20px 24px;align-items:center;min-height:0;height:100%;padding:24px 32px;background:radial-gradient(circle at 70% 30%,rgba(201,162,39,0.14) 0%,#0f0e0b 60%);overflow:hidden}
     .lobby-right::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,14,11,0) 0%,rgba(15,14,11,.78) 100%);pointer-events:none}
     .lobby-title{font-family:'Cinzel',Georgia,serif;font-size:28px;font-weight:800;color:#e8dcc5;letter-spacing:.5px;margin-bottom:4px}
     .lobby-subtitle{color:#b8aa8d;font-size:13px;margin-bottom:24px}
+    .account-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;margin-bottom:16px;border:1px solid var(--edge);border-radius:12px;background:rgba(201,162,39,.06);font-size:13px;color:#b8aa8d}
+    .account-bar b{color:#e8dcc5}
+    .account-bar .menu-btn{width:auto;padding:7px 12px;font-size:12px;margin:0}
+    .auth-check{display:flex;align-items:flex-start;gap:8px;margin-top:14px;color:#cdbf9f;font-size:13px;cursor:pointer;line-height:1.35}
+    .auth-check input{accent-color:#c9a227;margin-top:2px;flex:0 0 auto}
+    .auth-email-wrap{margin-top:12px}
+    .auth-email-wrap.hidden{display:none}
+    /* Account: full-page split login / register */
+    .auth-screen{position:absolute;inset:0;overflow:auto;background:linear-gradient(180deg,#15120c 0%,#0f0e0b 100%)}
+    .auth-screen::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,rgba(15,14,11,0) 55%);pointer-events:none}
+    .auth-shell{position:relative;z-index:1;width:100%;max-width:920px;margin:0 auto;padding:28px 28px 56px;box-sizing:border-box}
+    .auth-topbar{display:flex;align-items:center;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+    .auth-brand{font-family:'Cinzel',Georgia,serif;font-size:24px;font-weight:800;color:#e8dcc5;letter-spacing:.5px}
+    .auth-brand small{display:block;font-family:'Inter',system-ui,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#b8aa8d;margin-top:3px}
+    .auth-split-card{padding:0;overflow:hidden}
+    .auth-split{display:grid;grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr);align-items:stretch}
+    .auth-pane{padding:26px 28px 28px}
+    .auth-pane-title{font-family:'Cinzel',Georgia,serif;font-size:18px;font-weight:800;color:#e8dcc5;margin:0 0 6px}
+    .auth-pane-hint{color:#b8aa8d;font-size:13px;line-height:1.45;margin:0 0 16px}
+    .auth-pane-actions{margin-top:18px}
+    .auth-pane-actions .menu-btn{width:100%;justify-content:center;text-align:center}
+    .auth-split-divider{background:var(--edge)}
+    .auth-split-status{text-align:center;padding:14px 20px 18px;border-top:1px solid var(--edge);margin:0}
+    .auth-advanced{margin:0;padding:14px 20px 18px;border-top:1px solid var(--edge)}
+    @media(max-width:760px){
+      .auth-split{grid-template-columns:1fr;grid-template-rows:auto 1px auto}
+      .auth-split-divider{height:1px;width:100%}
+      .auth-pane{padding:22px 20px}
+    }
+    /* Single-column login / signup pages */
+    .auth-shell-narrow{max-width:440px}
+    .auth-header{display:flex;flex-direction:column;align-items:center;text-align:center;gap:14px;margin-bottom:24px}
+    .auth-logo{width:96px;height:96px;border-radius:22px;box-shadow:0 10px 30px rgba(0,0,0,.5),0 0 0 1px var(--edge);user-select:none}
+    .auth-header .auth-brand{font-size:26px}
+    .auth-header .auth-brand small{margin-top:6px}
+    .auth-single-card{padding:0;overflow:hidden}
+    .auth-switch{margin:16px 0 0;text-align:center;color:#b8aa8d;font-size:13px}
+    .auth-link{background:none;border:none;padding:0;font:inherit;font-weight:700;color:#f0d878;cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+    .auth-link:hover{color:#f6e6a6}
+    .auth-guest{margin-top:18px;text-align:center}
+    .auth-guest .menu-btn{width:100%;justify-content:center;text-align:center}
+    .auth-guest-note{margin:10px 2px 0;color:#8f8467;font-size:12px;line-height:1.4}
     .lobby-version{margin-top:auto;color:#b8aa8d;font:inherit;font-size:12px;text-align:center;padding:18px 0 0;background:none;border:none;cursor:pointer;transition:color .12s}
     .lobby-version:hover{color:#f0d878}
     .menu-actions{display:flex;flex-direction:column;gap:10px;margin-top:8px}
@@ -420,36 +597,51 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .roster-add{margin-top:10px}
     .cp-sel{flex:0 0 auto;width:96px}
     .save-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-    .save-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;border:1px solid var(--edge);border-radius:10px;background:#1f1c14;cursor:pointer;transition:background .12s,border-color .12s}
+    .save-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px;border:1px solid var(--edge);border-radius:10px;background:#1f1c14;transition:background .12s,border-color .12s}
     .save-row:hover{background:#29251b;border-color:#c9a227}
-    .save-row .info{min-width:0}
+    .save-row .info{cursor:pointer;flex:1;min-width:0}
     .save-row .name{font-weight:600;color:#e8dcc5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .save-row .meta{color:#b8aa8d;font-size:11.5px;margin-top:2px}
-    .save-row .actions{display:flex;gap:6px;flex-shrink:0}
-    .save-menu{position:relative;width:32px;height:32px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px;line-height:1;pointer-events:auto;flex-shrink:0;transition:background .12s,border-color .12s}
+    .save-row .actions{display:flex;gap:6px;flex-shrink:0;position:relative;z-index:1}
+    .save-menu{width:32px;height:32px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px;line-height:1;flex-shrink:0;transition:background .12s,border-color .12s}
     .save-menu:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
-    .save-dropdown{display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:140px;background:#1f1c14;border:1px solid var(--edge);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.55);z-index:10;overflow:hidden}
+    .save-dropdown{display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:140px;background:#1f1c14;border:1px solid var(--edge);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.55);z-index:20;overflow:hidden}
     .save-dropdown.open{display:block}
     .save-dropdown-item{width:100%;padding:9px 12px;text-align:left;font:inherit;font-size:13px;color:#e8dcc5;background:transparent;border:none;cursor:pointer;white-space:nowrap}
     .save-dropdown-item:hover{background:rgba(201,162,39,.12);color:#f0d878}
     .save-dropdown-item.delete{color:#e0907d}
     .save-dropdown-item.delete:hover{background:rgba(138,44,44,.18);color:#e0a69a}
     .hidden{display:none !important}
-    .showcase{position:relative;z-index:1;max-width:720px}
+    .showcase{position:relative;z-index:1;grid-column:1;grid-row:1;align-self:end;min-width:0;max-height:100%;overflow-y:auto;padding-right:8px;padding-bottom:4px}
     .showcase-label{font-family:'Cinzel',Georgia,serif;font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#c9a227;margin-bottom:10px;opacity:.85}
-    .showcase-civ{font-family:'Cinzel',Georgia,serif;font-size:52px;font-weight:900;color:#e8dcc5;line-height:1.05;text-shadow:0 4px 24px rgba(0,0,0,.55)}
-    .showcase-leader{font-family:'Cinzel',Georgia,serif;font-size:22px;color:#f0d878;margin-top:8px;font-weight:600}
-    .showcase-quote{font-size:20px;color:#e8dcc5;line-height:1.5;margin-top:22px;font-style:italic;max-width:640px;text-shadow:0 2px 12px rgba(0,0,0,.5)}
+    .showcase-civ{font-family:'Cinzel',Georgia,serif;font-size:clamp(28px,4.2vw,52px);font-weight:900;color:#e8dcc5;line-height:1.05;text-shadow:0 4px 24px rgba(0,0,0,.55)}
+    .showcase-leader{font-family:'Cinzel',Georgia,serif;font-size:clamp(16px,2vw,22px);color:#f0d878;margin-top:8px;font-weight:600}
+    .showcase-quote{font-size:clamp(14px,1.6vw,20px);color:#e8dcc5;line-height:1.45;margin-top:16px;font-style:italic;max-width:640px;text-shadow:0 2px 12px rgba(0,0,0,.5)}
     .showcase-quote::before{content:"“";margin-right:4px;opacity:.7}
     .showcase-quote::after{content:"”";margin-left:4px;opacity:.7}
-    .showcase-ability{margin-top:26px;background:rgba(31,28,20,.78);border:1px solid rgba(201,162,39,.25);border-radius:12px;padding:16px 18px;backdrop-filter:blur(10px)}
+    .showcase-ability{margin-top:18px;background:rgba(31,28,20,.78);border:1px solid rgba(201,162,39,.25);border-radius:12px;padding:14px 16px;backdrop-filter:blur(10px)}
     .showcase-ability-name{font-family:'Cinzel',Georgia,serif;font-size:15px;font-weight:700;color:#f0d878;margin-bottom:4px}
     .showcase-ability-desc{font-size:13px;color:#e8dcc5;line-height:1.4}
     .showcase-uniques{margin-top:10px;font-size:12px;color:#b8aa8d}
-    .showcase-art-wrapper{position:absolute;top:48px;right:56px;width:260px;height:320px;border-radius:16px;overflow:hidden;z-index:1;box-shadow:0 8px 32px rgba(0,0,0,.55);border:1px solid rgba(201,162,39,.25)}
-    .showcase-art{width:100%;height:100%;object-fit:cover;display:block;border-radius:16px}
+    .showcase-wiki{width:auto;margin-top:18px;padding:9px 16px;font-size:14px}
+    .showcase-side{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:12px;align-self:center;justify-self:end;width:100%;max-height:100%;min-height:0;z-index:2}
+    .showcase-art-wrapper{position:relative;flex:0 1 auto;width:100%;max-height:min(300px,calc(100dvh - 96px));aspect-ratio:13/16;min-height:0;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.55);border:1px solid rgba(201,162,39,.25)}
+    .showcase-art{width:100%;height:100%;object-fit:cover;object-position:50% 18%;display:block;border-radius:16px}
     .showcase-art-placeholder{position:absolute;inset:0;border:2px dashed rgba(201,162,39,.2);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#b8aa8d;font-size:13px;text-align:center;background:rgba(201,162,39,.05)}
-    .showcase-reroll{position:absolute;top:48px;right:56px;z-index:2;margin-top:338px;width:260px}
+    .showcase-reroll{position:relative;flex:0 0 auto;width:100%;margin-top:0;z-index:2}
+    /* Desktop / tall screens: classic hero top-right, copy anchored bottom-left. */
+    @media (min-width:861px) and (min-height:521px){
+      .lobby-right{display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;gap:0;padding:48px 56px}
+      .showcase{align-self:auto;max-width:720px;max-height:none;overflow:visible;padding-right:0;padding-bottom:0}
+      .showcase-civ{font-size:52px}
+      .showcase-leader{font-size:22px;margin-top:8px}
+      .showcase-quote{font-size:20px;line-height:1.5;margin-top:22px;max-width:640px}
+      .showcase-ability{margin-top:26px;padding:16px 18px}
+      .showcase-side{position:absolute;top:48px;right:56px;width:260px;align-self:auto;justify-self:auto;max-height:none;gap:12px}
+      .showcase-art-wrapper{width:260px;height:320px;max-height:320px;aspect-ratio:auto;flex:none;border-radius:16px}
+      .showcase-art{object-position:50% 50%;border-radius:16px}
+      .showcase-reroll{width:100%}
+    }
     /* Unique-unit block — shared by the showcase and the civ picker. Clickable
        (a button) to open the expanded ability detail; no ability text inline. */
     .uu-block{display:block;width:100%;margin-top:12px;padding:10px 12px;background:rgba(201,162,39,.06);border:1px solid rgba(201,162,39,.2);border-radius:10px;text-align:left;font:inherit;color:inherit}
@@ -528,6 +720,15 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .cp-item-name{font-weight:700;font-size:14px}
     .cp-item-leader{font-size:12px;color:#b8aa8d}
     .cp-detail{flex:1;overflow-y:auto;padding:22px 24px}
+    /* First-game tutorial recommendation */
+    .tutorial-prompt-overlay{position:fixed;inset:0;z-index:75;background:rgba(8,7,5,.82);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
+    .tutorial-prompt{position:relative;width:min(480px,100%);background:linear-gradient(180deg,#1f1c14,#15120c);border:1px solid var(--edge);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:28px 24px 22px;text-align:center}
+    .tutorial-prompt-close{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px}
+    .tutorial-prompt-close:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
+    .tutorial-prompt-icon{font-size:40px;line-height:1;margin-bottom:8px}
+    .tutorial-prompt-title{font-family:'Cinzel',Georgia,serif;font-size:22px;font-weight:800;color:#e8dcc5;margin-bottom:12px}
+    .tutorial-prompt-body{color:#cdbfa6;font-size:14px;line-height:1.55;margin:0 0 20px}
+    .tutorial-prompt-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
     .cp-detail-top{display:flex;gap:18px}
     .cp-portrait{position:relative;flex:0 0 auto;width:170px;height:212px;border-radius:14px;overflow:hidden;border:1px solid var(--edge);background:var(--bg-card)}
     .cp-portrait-img{width:100%;height:100%;object-fit:cover;display:block}
@@ -561,15 +762,16 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       #lobby{overflow-x:hidden;overflow-y:auto}
       .lobby-layout{flex-direction:column;height:auto;min-height:100%;width:100%;max-width:100%}
       .lobby-left{width:100%;max-width:100%;border-right:none;padding:max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));overflow:visible}
-      .lobby-right{position:relative;flex:none;width:100%;max-width:100%;padding:24px max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left));justify-content:flex-start;overflow:visible;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,#0f0e0b 70%)}
-      .showcase{max-width:none}
-      .showcase-art-wrapper{position:static;width:100%;max-width:260px;height:auto;margin:0 auto 16px;border-radius:14px}
+      .lobby-right{display:flex;flex-direction:column;position:relative;flex:none;width:100%;max-width:100%;padding:24px max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left));justify-content:flex-start;overflow:visible;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,#0f0e0b 70%)}
+      .showcase{grid-column:auto;grid-row:auto;align-self:auto;max-height:none;overflow:visible;padding-right:0;order:0}
+      .showcase-side{display:contents}
+      .showcase-art-wrapper{position:static;grid-column:auto;grid-row:auto;order:-1;width:100%;max-width:260px;max-height:none;aspect-ratio:auto;height:auto;margin:0 auto 16px;border-radius:14px}
       .showcase-art{height:auto;border-radius:14px}
       .showcase-civ{font-size:34px}
       .showcase-leader{font-size:20px}
       .showcase-quote{font-size:16px;margin-top:14px}
       .showcase-ability{margin-top:18px;padding:14px}
-      .showcase-reroll{display:none}
+      .showcase-reroll{display:none;grid-column:auto;grid-row:auto;width:100%;max-width:none}
       #sp-civ-desc{display:none}
       .menu-btn{padding:14px 16px}
       .menu-in{padding:10px 12px}
@@ -579,9 +781,21 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       #lobby[data-screen="start"] .lobby-title,#lobby[data-screen="start"] .lobby-subtitle{width:100%}
       #lobby[data-screen="start"] .menu-actions{width:100%;max-width:360px}
       #lobby[data-screen="start"] .lobby-right{order:2;padding-top:8px}
+      #lobby[data-screen="start"] .rotation-controls{width:100%;max-width:360px}
+      #lobby[data-screen="start"] .rotation-controls-label{text-align:center}
       /* Single player: the civ picker covers leader previews, so the featured-civ
          panel is dead weight on a phone — hide it and let the form fill the view. */
       #lobby[data-screen="sp"] .lobby-right{display:none}
+      #lobby[data-screen="load"] .lobby-right{display:none}
+    }
+    @media (orientation:landscape) and (max-height:520px){
+      .lobby-left{width:min(340px,38vw);padding:16px 18px}
+      .lobby-right{grid-template-columns:minmax(0,1fr) clamp(130px,18vw,200px);gap:12px 18px;padding:16px 20px}
+      .showcase-art-wrapper{max-height:min(220px,calc(100dvh - 48px))}
+      .showcase-reroll{font-size:12px;padding:8px 10px}
+      .showcase-civ{font-size:clamp(22px,3.6vw,34px)}
+      .showcase-quote{margin-top:10px;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
+      .showcase-ability{margin-top:12px;padding:10px 12px}
     }
     /* ---- Multiplayer: a full-screen, multi-stage flow (no sidebar) ---- */
     .mp-screen{position:absolute;inset:0;overflow:auto;background:linear-gradient(180deg,#15120c 0%,#0f0e0b 100%)}
@@ -606,11 +820,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .mp-panel-title .count{margin-left:auto;font-size:12px;color:#b8aa8d;letter-spacing:.04em}
     /* Auth */
     .mp-auth-wrap{display:flex;justify-content:center;padding-top:10px}
-    .mp-auth-card{width:min(440px,100%)}
-    .mp-auth-heading{font-family:'Cinzel',Georgia,serif;font-size:20px;font-weight:800;color:#e8dcc5;text-align:center;margin-bottom:4px}
-    .mp-auth-actions{display:flex;justify-content:center;gap:12px;margin-top:20px}
-    .mp-auth-actions .menu-btn{width:auto;min-width:140px}
-    .mp-auth-switch{text-align:center;margin-top:14px;color:#b8aa8d;font-size:13px}
+    .mp-auth-wrap .auth-split-card{width:min(920px,100%)}
     .mp-link{background:none;border:none;color:#f0d878;font:inherit;font-weight:700;cursor:pointer;padding:0;text-decoration:underline}
     .mp-link:hover{color:#fbe9a8}
     .mp-field{margin-top:14px}
@@ -618,10 +828,11 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .mp-advanced{margin-top:16px;border-top:1px solid var(--edge);padding-top:12px}
     .mp-advanced summary{cursor:pointer;color:#b8aa8d;font-size:12px;list-style:none}
     .mp-advanced summary::-webkit-details-marker{display:none}
-    .mp-advanced summary::before{content:"▸ ";color:#c9a227}
-    .mp-advanced[open] summary::before{content:"▾ "}
+    .mp-advanced summary::before{content:"";display:inline-block;width:.7em;height:.7em;margin-right:4px;vertical-align:-.08em;background:url(${ASSET_BASE_URL}icons/ic_tri_right.png) center/contain no-repeat}
+    .mp-advanced[open] summary::before{background-image:url(${ASSET_BASE_URL}icons/ic_tri_down.png)}
     /* Browse / create */
     .mp-browse-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:22px;align-items:start}
+    .mp-browse-stack{display:flex;flex-direction:column;gap:22px;min-width:0}
     .mp-opt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
     .mp-opt{display:flex;flex-direction:column;gap:6px}
     .mp-opt.wide{grid-column:1/-1}
@@ -658,16 +869,40 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     .mp-kind-btn.sel{background:linear-gradient(135deg,#c9a227,#a6821f);color:#15120c}
     .mp-mini{padding:6px 10px;font-size:12px}
     .mp-add-row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+    .mp-room-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,340px);gap:18px;align-items:start}
+    .mp-chat{display:flex;flex-direction:column;min-height:280px;max-height:min(520px,calc(100vh - 220px));border:1px solid var(--edge);border-radius:12px;background:rgba(0,0,0,.18);overflow:hidden}
+    .mp-chat-title{font-family:'Cinzel',Georgia,serif;font-size:12px;font-weight:700;color:#c9a227;text-transform:uppercase;letter-spacing:.08em;padding:12px 14px 0}
+    .mp-chat-log{flex:1;overflow-y:auto;padding:10px 14px 12px;min-height:180px}
+    .mp-chat-empty{color:#8a7f6a;font-size:13px;text-align:center;padding:24px 8px}
+    .mp-chat-msg{margin-bottom:10px}
+    .mp-chat-msg:last-child{margin-bottom:0}
+    .mp-chat-meta{font-size:11px;color:#8a7f6a;line-height:1.3}
+    .mp-chat-meta b{color:#e8dcc5;font-weight:700}
+    .mp-chat-text{font-size:13px;color:#b8aa8d;margin-top:3px;line-height:1.45;word-break:break-word}
+    .mp-chat-form{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--edge);background:rgba(0,0,0,.12)}
+    .mp-chat-form .menu-in{flex:1;min-width:0}
+    .mp-chat-form .menu-btn{width:auto;padding:8px 14px;font-size:13px;flex:0 0 auto}
+    @media(max-width:900px){
+      .mp-room-layout{grid-template-columns:1fr}
+      .mp-chat{order:-1;max-height:none;min-height:0;display:flex;flex-direction:column}
+      .mp-chat-log{flex:0 0 auto;display:block;height:200px;min-height:200px;max-height:200px;overflow-y:scroll;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;color:#e8dcc5}
+      .mp-chat-text{color:#e8dcc5}
+      .mp-chat-form .menu-btn{touch-action:manipulation}
+    }
     @media(max-width:820px){
       .mp-browse-grid{grid-template-columns:1fr}
       .mp-shell{padding:max(18px,env(safe-area-inset-top)) 18px 40px}
     }
-    @media(max-width:560px){.mp-opt-grid{grid-template-columns:1fr}}`;
+    @media(max-width:560px){.mp-opt-grid{grid-template-columns:1fr}}
+    ${SCREEN_ROTATION_STYLES}
+    #lobby[data-screen="start"] .rotation-controls{width:100%;max-width:360px}
+    #lobby[data-screen="start"] .rotation-controls-label{text-align:center}`;
   document.head.appendChild(style);
   document.body.appendChild(root);
 
   const left = root.querySelector<HTMLDivElement>("#lobby-left")!;
   const right = root.querySelector<HTMLDivElement>("#lobby-right")!;
+  const authScreen = root.querySelector<HTMLDivElement>("#auth-screen")!;
   const $ = <T extends HTMLElement>(sel: string) => left.querySelector<T>(sel)!;
   const $input = (sel: string) => $<HTMLInputElement>(sel);
   const $select = (sel: string) => $<HTMLSelectElement>(sel);
@@ -688,11 +923,6 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       ? `<button class="menu-btn secondary showcase-reroll" id="showcase-reroll">Show another civilization</button>`
       : "";
     right.innerHTML = `
-      <div class="showcase-art-wrapper">
-        <img id="showcase-art" class="showcase-art hidden" src="${src}" alt="" />
-        <div id="showcase-art-placeholder" class="showcase-art-placeholder">Leader art<br/>coming soon</div>
-      </div>
-      ${rerollBtn}
       <div class="showcase">
         <div class="showcase-label">Featured Civilization</div>
         <div class="showcase-civ">${escapeHtml(civ.name)}</div>
@@ -709,6 +939,14 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           <div class="showcase-ability-name">Starting Conditions</div>
           <div class="showcase-ability-desc">${escapeHtml(startingConditionsLine(civ.id))}</div>
         </div>
+        <button class="menu-btn secondary showcase-wiki" id="showcase-wiki" type="button">📖 Read about ${escapeHtml(civ.name)} in the Encyclopedia</button>
+      </div>
+      <div class="showcase-side">
+        <div class="showcase-art-wrapper">
+          <img id="showcase-art" class="showcase-art hidden" src="${src}" alt="" />
+          <div id="showcase-art-placeholder" class="showcase-art-placeholder">Leader art<br/>coming soon</div>
+        </div>
+        ${rerollBtn}
       </div>`;
     const img = right.querySelector<HTMLImageElement>("#showcase-art");
     const placeholder = right.querySelector<HTMLDivElement>("#showcase-art-placeholder");
@@ -728,6 +966,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     wireUuImages(right);
     wireUuDetail(right);
     right.querySelector<HTMLButtonElement>("#showcase-reroll")?.addEventListener("click", () => renderShowcase());
+    right.querySelector<HTMLButtonElement>("#showcase-wiki")?.addEventListener("click", () => wiki.openDetail("civ", civ.id));
   }
 
   /**
@@ -836,9 +1075,6 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
 
     overlay.querySelector<HTMLButtonElement>("#cp-close")!.addEventListener("click", close);
     overlay.querySelector<HTMLButtonElement>("#cp-cancel")!.addEventListener("click", close);
-    overlay.addEventListener("click", (e) => {
-      if (e.target === overlay) close();
-    });
     overlay.querySelector<HTMLButtonElement>("#cp-confirm")!.addEventListener("click", () => {
       onPick(selected);
       close();
@@ -849,19 +1085,31 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     listEl.querySelector<HTMLButtonElement>(".cp-item.sel")?.scrollIntoView({ block: "center" });
   }
 
+  function resetSpSetupForMenu(): void {
+    state.sp = loadSpSetup(defaultSpSetup());
+  }
+
   function showScreen(screen: Screen): void {
     state.screen = screen;
     root.dataset.screen = screen;
-    // Multiplayer breaks out of the sidebar layout into its own full-screen flow.
     const layoutEl = root.querySelector<HTMLDivElement>("#lobby-layout")!;
     const mpScreenEl = root.querySelector<HTMLDivElement>("#mp-screen")!;
-    layoutEl.classList.toggle("hidden", screen === "mp");
+    const isAuth = screen === "login" || screen === "signup";
+    layoutEl.classList.toggle("hidden", screen === "mp" || isAuth);
+    authScreen.classList.toggle("hidden", !isAuth);
     mpScreenEl.classList.toggle("hidden", screen !== "mp");
     switch (screen) {
       case "start":
         renderStartScreen();
         break;
+      case "login":
+        renderLogin();
+        break;
+      case "signup":
+        renderSignup();
+        break;
       case "sp":
+        resetSpSetupForMenu();
         renderSinglePlayer();
         break;
       case "mp":
@@ -873,28 +1121,189 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     }
   }
 
+  /** Tear down the multiplayer WebSocket when the account changes or user logs out. */
+  let mpSession: OnlineSession | null = null;
+  let mpAuthUserId: string | null = null;
+  let joinedGameId: string | null = null;
+  let mpRoom: LobbyRoom | null = null;
+  let mpSetup: GameSetup | undefined;
+  type MpStage = "auth" | "browse" | "room";
+  let mpStage: MpStage = "auth";
+  let mpGames: GameSummary[] = [];
+  let mpChatUnsub: (() => void) | null = null;
+  let mpDispatch: (m: ServerMessage) => void = () => {};
+  let mpAuthWaiter: { resolve: () => void; reject: (msg: string) => void } | null = null;
+  let mpConnectPromise: Promise<void> | null = null;
+
+  function resetMpSession(): void {
+    mpAuthWaiter?.reject("Connection reset.");
+    mpAuthWaiter = null;
+    mpConnectPromise = null;
+    mpChatUnsub?.();
+    mpChatUnsub = null;
+    mpSession?.disconnect();
+    mpSession = null;
+    mpAuthUserId = null;
+    joinedGameId = null;
+    mpRoom = null;
+    mpGames = [];
+    mpSetup = undefined;
+    mpStage = "auth";
+  }
+
+  function syncAccountToMp(account: StoredAccount | null): void {
+    if (!account) {
+      state.mp.userId = "";
+      return;
+    }
+    state.mp.userId = account.userId;
+    state.mp.handle = account.handle;
+  }
+
+  function applyAccount(account: StoredAccount | null): void {
+    const prevId = state.mp.userId;
+    syncAccountToMp(account);
+    if ((account?.userId ?? "") !== prevId) resetMpSession();
+    // Carry any games saved while playing as a guest over to the account.
+    if (account) void reassignSaves(getGuestId(), account.userId);
+  }
+
+  function renderMpChatLog(): void {
+    const log = root.querySelector<HTMLDivElement>("#mp-chat-log");
+    if (!log || !mpSession) return;
+    renderChatLogEl(log, mpSession.displayChatMessages());
+    log.scrollTop = log.scrollHeight;
+    if (isMobileMpUi()) {
+      requestAnimationFrame(() => {
+        log.scrollTop = log.scrollHeight;
+      });
+    }
+  }
+
   function renderStartScreen(): void {
+    const account = getAccount();
+    const accountBar = account
+      ? `<div class="account-bar">
+          <span>Signed in as <b>${escapeHtml(account.handle)}</b></span>
+          <button class="menu-btn secondary" id="account-logout" type="button">Log out</button>
+        </div>`
+      : `<div class="account-bar">
+          <span>Playing as <b>Guest</b> — saves stay on this device</span>
+          <button class="menu-btn secondary" id="account-login" type="button">Log in / Register</button>
+        </div>`;
+    const loadBtn = `<button class="menu-btn" data-screen="load">Load Game</button>`;
+    const rotationBlock = shouldOfferScreenRotation() ? screenRotationControlsHtml() : "";
+
     left.innerHTML = `
+      ${accountBar}
       <div class="lobby-title">Rise of Civilizations</div>
       <div class="lobby-subtitle">Ancient Era → Age of Exploration</div>
       <div class="menu-actions">
-        <button class="menu-btn primary" data-screen="sp">Single Player</button>
+        <button class="menu-btn primary" id="lobby-sp">Single Player</button>
         <button class="menu-btn" data-screen="mp">Multiplayer</button>
-        <button class="menu-btn" data-screen="load">Load Game</button>
+        <button class="menu-btn" id="lobby-tutorial">Tutorial</button>
+        ${loadBtn}
         <button class="menu-btn" id="lobby-wiki">Wiki</button>
         <button class="menu-btn" id="lobby-roadmap">Roadmap</button>
         <button class="menu-btn" id="lobby-changelog">Changelog</button>
         <button class="menu-btn" id="lobby-credits">Credits</button>
       </div>
+      ${rotationBlock}
       <button class="lobby-version" id="lobby-version" type="button">v${CURRENT_VERSION} · What's new</button>`;
     left.querySelectorAll<HTMLButtonElement>("[data-screen]").forEach((el) =>
       el.addEventListener("click", () => showScreen(el.dataset.screen as Screen)),
     );
+    left.querySelector<HTMLButtonElement>("#lobby-sp")!.addEventListener("click", () => {
+      maybeOfferTutorial(() => showScreen("sp"));
+    });
+    left.querySelector<HTMLButtonElement>("#lobby-tutorial")!.addEventListener("click", () => {
+      launchTutorialGame();
+    });
+    left.querySelector<HTMLButtonElement>("#account-login")?.addEventListener("click", () => showScreen("login"));
+    left.querySelector<HTMLButtonElement>("#account-logout")?.addEventListener("click", () => {
+      clearAccount();
+      applyAccount(null);
+      renderStartScreen();
+    });
     left.querySelector<HTMLButtonElement>("#lobby-wiki")?.addEventListener("click", () => wiki.open());
     left.querySelector<HTMLButtonElement>("#lobby-roadmap")?.addEventListener("click", () => roadmap.open());
     left.querySelector<HTMLButtonElement>("#lobby-changelog")?.addEventListener("click", () => changelog.open());
     left.querySelector<HTMLButtonElement>("#lobby-credits")?.addEventListener("click", () => credits.open());
     left.querySelector<HTMLButtonElement>("#lobby-version")?.addEventListener("click", () => changelog.open());
+    if (shouldOfferScreenRotation()) bindScreenRotationControls(left);
+  }
+
+  /** Shell around a single-column auth page (login or signup) with a guest escape. */
+  function authShellHtml(brandSub: string, panel: string): string {
+    return `
+      <div class="auth-shell auth-shell-narrow">
+        <div class="auth-header">
+          <img class="auth-logo" src="${ASSET_BASE_URL}icon-512.png" alt="Rise of Civilizations" draggable="false" />
+          <div class="auth-brand">Rise of Civilizations<small>${escapeHtml(brandSub)}</small></div>
+        </div>
+        ${panel}
+        <div class="auth-guest">
+          <button class="menu-btn secondary" id="auth-guest" type="button">Continue as guest</button>
+        </div>
+      </div>`;
+  }
+
+  function renderLogin(): void {
+    authScreen.innerHTML = authShellHtml(
+      "Log in to save progress remotely and play online",
+      authLoginPanelHtml({ idPrefix: "auth", defaultHandle: state.mp.handle }),
+    );
+    authScreen.querySelector<HTMLButtonElement>("#auth-guest")!.addEventListener("click", () => showScreen("start"));
+    bindAuthLoginPanel(authScreen, {
+      idPrefix: "auth",
+      onSwitch: () => showScreen("signup"),
+      onLogin: async (handle, password) => {
+        const res = await authenticate({ kind: "login", handle, password, wsUrl: state.mp.url });
+        if ("error" in res) return friendlyAuthError(res.error);
+        applyAccount(res);
+        showScreen("start");
+      },
+    });
+  }
+
+  function renderSignup(): void {
+    authScreen.innerHTML = authShellHtml(
+      "Create an account to save progress remotely and play online",
+      authRegisterPanelHtml({ idPrefix: "auth", defaultHandle: state.mp.handle }),
+    );
+    authScreen.querySelector<HTMLButtonElement>("#auth-guest")!.addEventListener("click", () => showScreen("start"));
+    bindAuthRegisterPanel(authScreen, {
+      idPrefix: "auth",
+      onSwitch: () => showScreen("login"),
+      onRegister: async ({ handle, password, newsletter, email }) => {
+        const res = await authenticate({
+          kind: "register",
+          handle,
+          password,
+          newsletter,
+          email,
+          wsUrl: state.mp.url,
+        });
+        if ("error" in res) return friendlyAuthError(res.error);
+        applyAccount(res);
+        showScreen("start");
+      },
+    });
+  }
+
+  function friendlyAuthError(message: string): string {
+    if (message === "handle taken") return "That username is already taken.";
+    if (message === "invalid credentials") return "Wrong username or password.";
+    if (message === "email required for newsletter") return "Enter an email to receive newsletter and notifications.";
+    if (message === "invalid email") return "Enter a valid email address.";
+    if (message === "handle too short") return "Username must be at least 2 characters.";
+    if (message === "handle too long") return "Username must be at most 32 characters.";
+    if (message === "email too long") return "Email address is too long.";
+    if (message === "password too short") return "Password must be at least 8 characters.";
+    if (message === "password too long") return "Password must be at most 128 characters.";
+    if (message === "password needs letter") return "Password must include at least one letter.";
+    if (message === "password needs digit") return "Password must include at least one number.";
+    return message;
   }
 
   function renderSinglePlayer(): void {
@@ -912,7 +1321,10 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
         <div class="menu-row"><span>Turn limit</span>${turnLimitSelect("sp-turnlimit", state.sp.turnLimit)}</div>
         <div class="menu-hint">Highest score wins when the turn limit is reached. "Unlimited" plays until a decisive victory.</div>
+        <div class="menu-row"><span>Game speed</span>${gameSpeedSelect("sp-speed", state.sp.gameSpeed)}</div>
+        <div class="menu-hint" id="sp-speed-desc"></div>
         <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
+        <div class="menu-row"><span>Tribal villages</span>${onOffSelect("sp-villages", state.sp.villages)}</div>
         <div class="menu-row"><span>Natural wonders</span>${onOffSelect("sp-wonders", state.sp.naturalWonders)}</div>
         <div class="menu-row"><span>Legends (heroes)</span>${onOffSelect("sp-legends", state.sp.legends)}</div>
         <div class="menu-field">
@@ -1039,6 +1451,17 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     });
     updateMapTypeDesc();
 
+    const speedSel = $select("#sp-speed");
+    const updateSpeedDesc = () => {
+      $("#sp-speed-desc").textContent =
+        GAME_SPEED_OPTIONS.find((o) => o.value === state.sp.gameSpeed)?.desc ?? "";
+    };
+    speedSel.addEventListener("change", () => {
+      state.sp.gameSpeed = speedSel.value as GameSpeed;
+      updateSpeedDesc();
+    });
+    updateSpeedDesc();
+
     // Starting treasury: chips with tooltips, mirrored into a description line.
     const updateGoldDesc = () => {
       $("#sp-gold-desc").textContent =
@@ -1063,17 +1486,21 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       close();
       const spMapSize = $select("#sp-map").value as MapSize;
       const spBarb = $select("#sp-barb").value as BarbLevel;
+      const spVillages = $select("#sp-villages").value === "on";
       const spWonders = $select("#sp-wonders").value === "on";
       const spLegends = $select("#sp-legends").value === "on";
       const spTurnLimit = Number($select("#sp-turnlimit").value);
+      const spGameSpeed = $select("#sp-speed").value as GameSpeed;
       const spVictories = readVictoryChecklist("sp-victories");
       // Sync the DOM-read options back into state.sp (civ/color/mapType/ais/gold
       // already live there), then persist so the next new game defaults to it.
       state.sp.mapSize = spMapSize;
       state.sp.barbarians = spBarb;
+      state.sp.villages = spVillages;
       state.sp.naturalWonders = spWonders;
       state.sp.legends = spLegends;
       state.sp.turnLimit = spTurnLimit;
+      state.sp.gameSpeed = spGameSpeed;
       state.sp.enabledVictories = spVictories;
       saveSpSetup(state.sp);
       const spAiCivIds = state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId));
@@ -1085,10 +1512,12 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           aiCivIds: spAiCivIds,
           colors: [state.sp.color, ...state.sp.ais.map((a) => a.color)],
           barbarians: spBarb,
+          villages: spVillages,
           naturalWonders: spWonders,
           legends: spLegends,
           startingGold: state.sp.startingGold,
           turnLimit: spTurnLimit,
+          gameSpeed: spGameSpeed,
           enabledVictories: spVictories,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
         }),
@@ -1096,41 +1525,29 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           mapType: state.sp.mapType,
           mapSize: spMapSize,
           startingGold: state.sp.startingGold,
+          villages: spVillages,
           naturalWonders: spWonders,
           barbarianLevel: spBarb,
           aiCivIds: spAiCivIds,
           legends: spLegends,
           turnLimit: spTurnLimit,
+          gameSpeed: spGameSpeed,
           enabledVictories: spVictories,
         },
       );
     });
   }
 
-  let mpSession: OnlineSession | null = null;
-  let joinedGameId: string | null = null;
-  // The live lobby roster for the game we're seated in (null when not in one).
-  let mpRoom: LobbyRoom | null = null;
-  // The host's chosen setup, captured at create time and attached to analytics
-  // when the game starts. Stays undefined for a joiner (they didn't configure it).
-  let mpSetup: GameSetup | undefined;
-  // Which stage of the full-screen multiplayer flow is on screen.
-  type MpStage = "auth" | "browse" | "room";
-  let mpStage: MpStage = "auth";
-  // Last game list received, so re-rendering the browse stage can repopulate it.
-  let mpGames: GameSummary[] = [];
-  // Stable indirection so the (once-attached) socket handler always calls the
-  // latest render closures, even after the screen is re-entered.
-  let mpDispatch: (m: ServerMessage) => void = () => {};
-
   // The full-screen multiplayer flow: sign in → find/create a game → lobby room.
-  // Renders into #mp-screen (outside the sidebar layout) and walks three stages.
   function renderMultiplayer(): void {
     const screen = root.querySelector<HTMLDivElement>("#mp-screen")!;
-    // Which auth view is showing — login and signup are separate forms.
-    let authView: "login" | "signup" = "login";
+    const existing = getAccount();
+    if (existing && mpSession && mpAuthUserId !== existing.userId) resetMpSession();
+    if (existing) applyAccount(existing);
+    else if (state.mp.userId) applyAccount(null);
 
-    const authed = !!(mpSession && state.mp.userId);
+    const accountUserId = existing?.userId ?? "";
+    const authed = !!(mpSession && mpAuthUserId && mpAuthUserId === accountUserId && accountUserId);
     if (!authed) mpStage = "auth";
     else if (joinedGameId && mpRoom && mpRoom.gameId === joinedGameId) mpStage = "room";
     else mpStage = "browse";
@@ -1138,6 +1555,38 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     const setStatus = (t: string): void => {
       const el = screen.querySelector<HTMLElement>("#mp-status");
       if (el) el.textContent = t;
+    };
+
+    const waitForAuth = (): Promise<void> =>
+      new Promise((resolve, reject) => {
+        mpAuthWaiter = { resolve, reject };
+      });
+
+    const mpServerUrl = (): string => {
+      const fromInput = screen.querySelector<HTMLInputElement>("#mp-url")?.value.trim();
+      return fromInput || state.mp.url.trim() || DEFAULT_WS;
+    };
+
+    const ensureMpConnected = async (url: string): Promise<void> => {
+      state.mp.url = url;
+      if (mpSession?.isOpen()) return;
+      if (mpSession && !mpSession.isOpen()) {
+        mpSession.disconnect();
+        mpSession = null;
+      }
+      if (mpConnectPromise) return mpConnectPromise;
+      mpConnectPromise = (async () => {
+        if (!mpSession) {
+          mpSession = new OnlineSession(url);
+          mpSession.on((m) => mpDispatch(m));
+        }
+        await mpSession.connect();
+      })();
+      try {
+        await mpConnectPromise;
+      } finally {
+        mpConnectPromise = null;
+      }
     };
 
     // Three-step progress indicator shared across stages.
@@ -1162,71 +1611,55 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       </div>`;
     const whoChip = (): string => `<div class="mp-who">Signed in as <b>${escapeHtml(state.mp.handle || "Player")}</b></div>`;
 
-    // ===== Stage 1: authentication (login and signup are separate views) =====
+    // ===== Stage 1: authentication — split login / register panel =====
     const renderAuth = (): void => {
-      const isSignup = authView === "signup";
-      const heading = isSignup ? "Create your account" : "Log in";
-      const blurb = isSignup
-        ? "Pick a handle and password to play online."
-        : "Welcome back, commander.";
-      const confirmField = isSignup
-        ? `<div class="mp-field"><label>Repeat password</label><input id="mp-pw2" class="menu-in" type="password" placeholder="Repeat password" autocomplete="new-password" /></div>`
-        : "";
-      const primary = isSignup
-        ? `<button class="menu-btn primary" id="mp-signup">Sign up</button>`
-        : `<button class="menu-btn primary" id="mp-login">Log in</button>`;
-      const switcher = isSignup
-        ? `Already have an account? <button class="mp-link" id="mp-go-login">Log in</button>`
-        : `Need an account? <button class="mp-link" id="mp-go-signup">Sign up</button>`;
       screen.innerHTML = `
         <div class="mp-shell">
           ${topbar("")}
           ${steps("auth")}
           <div class="mp-auth-wrap">
-            <div class="mp-panel mp-auth-card">
-              <div class="mp-auth-heading">${heading}</div>
-              <div class="menu-hint" style="text-align:center;margin-bottom:18px">${blurb}</div>
-              <div class="mp-field"><label>Handle</label><input id="mp-handle" class="menu-in" value="${escapeHtml(state.mp.handle)}" placeholder="Your name" autocomplete="username" /></div>
-              <div class="mp-field"><label>Password</label><input id="mp-pw" class="menu-in" type="password" value="${escapeHtml(state.mp.password)}" placeholder="Password" autocomplete="${isSignup ? "new-password" : "current-password"}" /></div>
-              ${confirmField}
-              <div class="mp-auth-actions">${primary}</div>
-              <div id="mp-status" class="menu-status" style="text-align:center"></div>
-              <div class="mp-auth-switch">${switcher}</div>
-              <details class="mp-advanced">
-                <summary>Advanced — server address</summary>
-                <div class="mp-field" style="margin-top:10px"><input id="mp-url" class="menu-in" value="${escapeHtml(state.mp.url)}" placeholder="ws://host:port/ws" /></div>
-              </details>
-            </div>
+            ${authSplitPanelHtml({
+              idPrefix: "mp",
+              defaultHandle: state.mp.handle,
+              defaultLoginPassword: state.mp.password,
+              showAdvanced: true,
+              advancedUrl: state.mp.url,
+            })}
           </div>
         </div>`;
       screen.querySelector<HTMLButtonElement>("#mp-back")!.addEventListener("click", () => showScreen("start"));
-      const handleEl = screen.querySelector<HTMLInputElement>("#mp-handle")!;
-      const pwEl = screen.querySelector<HTMLInputElement>("#mp-pw")!;
-      const urlEl = screen.querySelector<HTMLInputElement>("#mp-url")!;
-      handleEl.addEventListener("input", () => (state.mp.handle = handleEl.value));
-      pwEl.addEventListener("input", () => (state.mp.password = pwEl.value));
-      urlEl.addEventListener("change", () => (state.mp.url = urlEl.value));
 
-      const switchTo = (v: "login" | "signup"): void => {
-        authView = v;
-        renderAuth();
-      };
-      screen.querySelector<HTMLButtonElement>("#mp-go-signup")?.addEventListener("click", () => switchTo("signup"));
-      screen.querySelector<HTMLButtonElement>("#mp-go-login")?.addEventListener("click", () => switchTo("login"));
-
-      const submit = (): void => {
-        if (isSignup) {
-          const pw2 = screen.querySelector<HTMLInputElement>("#mp-pw2")!.value;
-          if (state.mp.password !== pw2) return setStatus("Passwords don't match.");
-          void connectAndAuth("register");
-        } else {
-          void connectAndAuth("login");
-        }
-      };
-      screen.querySelector<HTMLButtonElement>(isSignup ? "#mp-signup" : "#mp-login")!.addEventListener("click", submit);
-      // Enter on the last field submits the current form.
-      screen.querySelector<HTMLInputElement>(isSignup ? "#mp-pw2" : "#mp-pw")!.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") submit();
+      bindAuthSplitPanel(screen, {
+        idPrefix: "mp",
+        defaultHandle: state.mp.handle,
+        defaultLoginPassword: state.mp.password,
+        showAdvanced: true,
+        advancedUrl: state.mp.url,
+        onAdvancedUrlChange: (url) => {
+          state.mp.url = url;
+        },
+        onLogin: async (handle, password) => {
+          const urlInput = screen.querySelector<HTMLInputElement>("#mp-url");
+          if (urlInput?.value.trim()) state.mp.url = urlInput.value.trim();
+          state.mp.handle = handle;
+          state.mp.password = password;
+          try {
+            await connectAndAuth("login");
+          } catch (e) {
+            return e instanceof Error ? e.message : String(e);
+          }
+        },
+        onRegister: async ({ handle, password, newsletter, email }) => {
+          const urlInput = screen.querySelector<HTMLInputElement>("#mp-url");
+          if (urlInput?.value.trim()) state.mp.url = urlInput.value.trim();
+          state.mp.handle = handle;
+          state.mp.password = password;
+          try {
+            await connectAndAuth("register", { newsletter, email });
+          } catch (e) {
+            return e instanceof Error ? e.message : String(e);
+          }
+        },
       });
     };
 
@@ -1274,13 +1707,15 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       const dims = MAP_DIMENSIONS["medium"];
       // Sensible defaults; the host tweaks everything in the lobby afterward.
       mpSetup = {
-        mapType: "continents",
+        mapType: "random",
         mapSize: "medium",
         startingGold: "balanced",
         naturalWonders: true,
+        villages: true,
         barbarianLevel: "normal",
         aiCivIds: [],
         turnLimit: DEFAULT_TURN_LIMIT,
+        gameSpeed: DEFAULT_GAME_SPEED,
         enabledVictories: [...TOGGLEABLE_VICTORIES],
       };
       mpSession?.send({
@@ -1289,12 +1724,14 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         cols: dims.cols,
         rows: dims.rows,
         mapSize: "medium",
-        mapType: "continents",
+        mapType: "random",
         capacity: 2,
         barbarians: "normal",
         naturalWonders: true,
+        villages: true,
         startingGold: "balanced",
         turnLimit: DEFAULT_TURN_LIMIT,
+        gameSpeed: DEFAULT_GAME_SPEED,
       });
     };
 
@@ -1304,11 +1741,18 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           ${topbar(whoChip())}
           ${steps("browse")}
           <div class="mp-browse-grid">
-            <div class="mp-panel">
-              <div class="mp-panel-title">Create a game</div>
-              <div class="menu-hint" style="margin-bottom:14px">Name your game, then set the map, players and an optional password in the lobby.</div>
-              <div class="mp-field"><label>Game name</label><input id="mp-name" class="menu-in" placeholder="${escapeHtml((state.mp.handle || "Player") + "'s game")}" /></div>
-              <div class="mp-create-foot"><button class="menu-btn primary" id="mp-create" style="width:auto">Create game</button></div>
+            <div class="mp-browse-stack">
+              <div class="mp-panel">
+                <div class="mp-panel-title">Create a game</div>
+                <div class="menu-hint" style="margin-bottom:14px">Name your game, then set the map, players and an optional password in the lobby.</div>
+                <div class="mp-field"><label>Game name</label><input id="mp-name" class="menu-in" placeholder="${escapeHtml((state.mp.handle || "Player") + "'s game")}" /></div>
+                <div class="mp-create-foot"><button class="menu-btn primary" id="mp-create" style="width:auto">Create game</button></div>
+              </div>
+              <div class="mp-panel">
+                <div class="mp-panel-title">Tutorial</div>
+                <div class="menu-hint" style="margin-bottom:14px">Learn the basics in a short offline game — small map, one AI, minimal barbarians.</div>
+                <div class="mp-create-foot"><button class="menu-btn" id="mp-tutorial" style="width:auto">Play Tutorial</button></div>
+              </div>
             </div>
             <div class="mp-panel">
               <div class="mp-panel-title">Open games <button class="menu-btn secondary" id="mp-refresh" style="margin-left:auto;width:auto;padding:6px 12px;font-size:12px">Refresh</button></div>
@@ -1320,6 +1764,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       screen.querySelector<HTMLButtonElement>("#mp-back")!.addEventListener("click", () => showScreen("start"));
       screen.querySelector<HTMLButtonElement>("#mp-refresh")!.addEventListener("click", () => mpSession?.send({ t: "listGames" }));
       screen.querySelector<HTMLButtonElement>("#mp-create")!.addEventListener("click", doCreate);
+      screen.querySelector<HTMLButtonElement>("#mp-tutorial")!.addEventListener("click", () => launchTutorialGame());
       screen.querySelector<HTMLInputElement>("#mp-name")!.addEventListener("keydown", (e) => {
         if (e.key === "Enter") doCreate();
       });
@@ -1361,7 +1806,9 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
             <div class="mp-opt"><span>Map type</span>${mapTypeSelect("rm-maptype", room.mapType)}</div>
             <div class="mp-opt"><span>Map size</span>${mapSelect("rm-map", (room.mapSize as MapSize) || "medium")}</div>
             <div class="mp-opt"><span>Turn limit</span>${turnLimitSelect("rm-turnlimit", room.turnLimit ?? DEFAULT_TURN_LIMIT)}</div>
+            <div class="mp-opt"><span>Game speed</span>${gameSpeedSelect("rm-speed", room.gameSpeed ?? DEFAULT_GAME_SPEED)}</div>
             <div class="mp-opt"><span>Barbarians</span>${barbarianSelect("rm-barb", room.barbarians)}</div>
+            <div class="mp-opt"><span>Tribal villages</span>${onOffSelect("rm-villages", room.villages ?? true)}</div>
             <div class="mp-opt"><span>Natural wonders</span>${onOffSelect("rm-wonders", room.naturalWonders)}</div>
             <div class="mp-opt"><span>Starting treasury</span>${goldChips("rm-gold", room.startingGold)}</div>
             <div class="mp-opt mp-opt-wide"><span>Victory conditions</span>${victoryChecklist("rm-victories", room.enabledVictories ?? [...TOGGLEABLE_VICTORIES])}</div>
@@ -1370,7 +1817,9 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           <div class="mp-settings-readonly">
             <span><b>Map:</b> ${escapeHtml(MAP_TYPE_OPTIONS.find((o) => o.value === room.mapType)?.label ?? room.mapType)} · ${escapeHtml(room.mapSize || "medium")}</span>
             <span><b>Turn limit:</b> ${escapeHtml(turnLimitLabel(room.turnLimit ?? DEFAULT_TURN_LIMIT))}</span>
+            <span><b>Game speed:</b> ${escapeHtml(gameSpeedLabel(room.gameSpeed ?? DEFAULT_GAME_SPEED))}</span>
             <span><b>Barbarians:</b> ${escapeHtml(room.barbarians)}</span>
+            <span><b>Tribal villages:</b> ${(room.villages ?? true) ? "On" : "Off"}</span>
             <span><b>Natural wonders:</b> ${room.naturalWonders ? "On" : "Off"}</span>
             <span><b>Treasury:</b> ${escapeHtml(room.startingGold)}</span>
             <span><b>Victories:</b> ${escapeHtml(victorySummary(room.enabledVictories ?? [...TOGGLEABLE_VICTORIES]))}</span>
@@ -1422,7 +1871,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
                  ${kindToggle}
                  ${colorCtl}
                  ${occupied && s.kind === "human" ? `<button type="button" class="menu-btn secondary mp-mini" data-kick="${s.id}">Kick</button>` : ""}
-                 <button type="button" class="roster-remove" data-remove-slot="${s.id}" title="Remove this slot">×</button>
+                 <button type="button" class="roster-remove" data-remove-slot="${s.id}" title="Remove this slot">✕</button>
                </div>`
             : meHost && isHostSeat
               ? `<div class="mp-pcard-manage">${colorCtl}</div>`
@@ -1478,9 +1927,17 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         body.querySelector<HTMLSelectElement>("#rm-turnlimit")?.addEventListener("change", (e) =>
           configure({ turnLimit: Number((e.target as HTMLSelectElement).value) }),
         );
+        body.querySelector<HTMLSelectElement>("#rm-speed")?.addEventListener("change", (e) =>
+          configure({ gameSpeed: (e.target as HTMLSelectElement).value as GameSpeed }),
+        );
         body.querySelector<HTMLSelectElement>("#rm-barb")?.addEventListener("change", (e) =>
           configure({ barbarians: (e.target as HTMLSelectElement).value }),
         );
+        body.querySelector<HTMLSelectElement>("#rm-villages")?.addEventListener("change", (e) => {
+          const villages = (e.target as HTMLSelectElement).value === "on";
+          if (mpSetup) mpSetup.villages = villages;
+          configure({ villages });
+        });
         body.querySelector<HTMLSelectElement>("#rm-wonders")?.addEventListener("change", (e) =>
           configure({ naturalWonders: (e.target as HTMLSelectElement).value === "on" }),
         );
@@ -1573,7 +2030,52 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       body.querySelector<HTMLButtonElement>("#mp-room-leave")?.addEventListener("click", () => goStage("browse"));
     };
 
+    const renderChatLog = renderMpChatLog;
+
+    const wireChatForm = (): void => {
+      const input = screen.querySelector<HTMLInputElement>("#mp-chat-input");
+      const sendBtn = screen.querySelector<HTMLButtonElement>("#mp-chat-send");
+      const submit = (): void => {
+        const text = input?.value.trim() ?? "";
+        if (!text) return;
+        if (!mpSession?.gameId) {
+          setStatus("Chat is not ready yet — wait a moment after joining the lobby.");
+          return;
+        }
+        mpSession.sendChat(text);
+        if (input) input.value = "";
+      };
+      sendBtn?.addEventListener("click", submit);
+      input?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          submit();
+        }
+      });
+      if (isMobileMpUi()) {
+        screen.querySelector<HTMLFormElement>("#mp-chat-form")?.addEventListener("submit", (e) => {
+          e.preventDefault();
+          submit();
+        });
+      }
+    };
+
+    const bindChatLog = (): void => {
+      if (!mpSession) return;
+      mpChatUnsub?.();
+      mpChatUnsub = mpSession.onChat(() => renderChatLog());
+    };
+
     const renderRoom = (): void => {
+      const chatForm = isMobileMpUi()
+        ? `<form id="mp-chat-form" class="mp-chat-form">
+                  <input id="mp-chat-input" class="menu-in" type="text" maxlength="500" placeholder="Message the lobby…" autocomplete="off" enterkeyhint="send" />
+                  <button type="submit" class="menu-btn primary" id="mp-chat-send">Send</button>
+                </form>`
+        : `<div class="mp-chat-form">
+                  <input id="mp-chat-input" class="menu-in" type="text" maxlength="500" placeholder="Message the lobby…" autocomplete="off" />
+                  <button type="button" class="menu-btn primary" id="mp-chat-send">Send</button>
+                </div>`;
       screen.innerHTML = `
         <div class="mp-shell">
           ${topbar(whoChip())}
@@ -1581,12 +2083,21 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
           <div class="mp-panel">
             <div class="mp-panel-title" id="mp-room-title">Lobby</div>
             <div class="menu-hint" style="margin-bottom:16px">Set up the game, then choose your civilization. Civs already taken are disabled.</div>
-            <div id="mp-room-body"></div>
+            <div class="mp-room-layout">
+              <div id="mp-room-body"></div>
+              <div class="mp-chat">
+                <div class="mp-chat-title">Game chat</div>
+                <div id="mp-chat-log" class="mp-chat-log"></div>
+                ${chatForm}
+              </div>
+            </div>
             <div id="mp-status" class="menu-status"></div>
           </div>
         </div>`;
       screen.querySelector<HTMLButtonElement>("#mp-back")!.addEventListener("click", () => showScreen("start"));
       renderRoomBody();
+      renderChatLog();
+      wireChatForm();
     };
 
     const goStage = (s: MpStage): void => {
@@ -1599,16 +2110,21 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     // Latest-closure socket dispatch (the .on handler is attached once per session).
     mpDispatch = (m: ServerMessage): void => {
       if (m.t === "error") {
-        // Make the common auth failures actionable rather than cryptic.
-        const friendly =
-          m.message === "handle taken"
-            ? "That handle is already registered — try logging in instead."
-            : m.message === "invalid credentials"
-              ? "Wrong handle or password. New here? Sign up instead."
-              : m.message;
-        setStatus(friendly);
+        const msg = friendlyAuthError(m.message);
+        if (mpAuthWaiter) {
+          mpAuthWaiter.reject(msg);
+          mpAuthWaiter = null;
+          resetMpSession();
+        }
+        setStatus(msg);
       } else if (m.t === "authOk") {
+        mpAuthWaiter?.resolve();
+        mpAuthWaiter = null;
+        mpAuthUserId = m.userId;
         state.mp.userId = m.userId;
+        state.mp.handle = m.handle;
+        mpSession?.setChatHandle(m.handle);
+        setAccount({ token: m.token, userId: m.userId, handle: m.handle });
         goStage("browse");
       } else if (m.t === "games") {
         mpGames = m.games;
@@ -1616,14 +2132,21 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       } else if (m.t === "lobby") {
         mpRoom = m.room;
         if (mpStage === "room" && joinedGameId === m.room.gameId) renderRoomBody();
+      } else if (isMobileMpUi() && (m.t === "lobbyChat" || m.t === "lobbyChatHistory")) {
+        renderMpChatLog();
       } else if (m.t === "joined") {
         joinedGameId = m.gameId;
+        mpSession!.gameId = m.gameId;
+        mpSession!.setChatHandle(state.mp.handle || "You");
         goStage("room");
+        bindChatLog();
+        renderMpChatLog();
         mpSession!.send({ t: "listGames" });
       } else if (m.t === "deleted") {
         if (joinedGameId === m.gameId) {
           joinedGameId = null;
           mpRoom = null;
+          mpSession!.gameId = undefined;
           goStage("browse");
           setStatus("Game deleted by host.");
         }
@@ -1632,6 +2155,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         if (joinedGameId === m.gameId) {
           joinedGameId = null;
           mpRoom = null;
+          mpSession!.gameId = undefined;
           goStage("browse");
           setStatus("The host removed you from the game.");
         }
@@ -1643,24 +2167,57 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       }
     };
 
-    const connectAndAuth = async (kind: "register" | "login"): Promise<void> => {
-      const handle = state.mp.handle.trim();
-      const password = state.mp.password;
-      if (!handle || !password) return setStatus("Enter a handle and password.");
-      if (!mpSession) {
-        mpSession = new OnlineSession(state.mp.url.trim());
-        mpSession.on((m) => mpDispatch(m));
-        try {
-          await mpSession.connect();
-        } catch {
-          mpSession = null;
-          return setStatus("Could not connect to server.");
-        }
+    const connectAndAuth = async (
+      kind: "register" | "login" | "resume",
+      opts: { newsletter?: boolean; email?: string; token?: string } = {},
+    ): Promise<void> => {
+      if (kind !== "resume") {
+        const handle = state.mp.handle.trim();
+        const password = state.mp.password;
+        if (!handle || !password) throw new Error("Enter a username and password.");
+        resetMpSession();
       }
-      mpSession.send({ t: kind, handle, password });
+      const url = mpServerUrl();
+      try {
+        await ensureMpConnected(url);
+        bindChatLog();
+        const authDone = waitForAuth();
+        if (kind === "resume") {
+          mpSession!.send({ t: "resume", token: opts.token ?? getAccount()?.token ?? "" });
+        } else if (kind === "register") {
+          mpSession!.send({
+            t: "register",
+            handle: state.mp.handle.trim(),
+            password: state.mp.password,
+            email: opts.email,
+            newsletter: opts.newsletter,
+          });
+        } else {
+          mpSession!.send({ t: "login", handle: state.mp.handle.trim(), password: state.mp.password });
+        }
+        await authDone;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (mpAuthWaiter) {
+          mpAuthWaiter = null;
+          resetMpSession();
+        }
+        setStatus(msg);
+        throw e;
+      }
     };
 
+    bindChatLog();
     goStage(mpStage);
+
+    // Resume when signed in locally but the socket is missing or still on another account.
+    if (existing && (!mpSession || mpAuthUserId !== existing.userId)) {
+      void connectAndAuth("resume", { token: existing.token }).catch(() => {
+        clearAccount();
+        applyAccount(null);
+        setStatus("Session expired — log in or register again.");
+      });
+    }
   }
 
   function downloadSave(record: SaveRecord): void {
@@ -1677,6 +2234,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
   }
 
   async function renderLoadGame(): Promise<void> {
+    const ownerId = getSaveOwnerId();
+
     left.innerHTML = `
       <button class="menu-btn secondary" id="back" style="width:auto;padding:8px 12px;font-size:13px"><span class="icon">←</span> Back</button>
       <div class="menu-section">
@@ -1704,6 +2263,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
       try {
         const text = await file.text();
         const stored = await importSave(text);
+        stored.userId = ownerId;
+        await saveGame(stored);
         errorEl.textContent = `Imported “${stored.name}”.`;
         await renderLoadGame();
       } catch (err) {
@@ -1713,7 +2274,7 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
 
     let saves: SaveRecord[] = [];
     try {
-      saves = await listSaves();
+      saves = await listSavesForUser(ownerId);
     } catch {
       errorEl.textContent = "Could not open saved games.";
       emptyEl.classList.add("hidden");
@@ -1730,32 +2291,35 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
     listEl.innerHTML = saves
       .map(
         (s) =>
-          `<div class="save-row" data-load="${s.id}" role="button" tabindex="0">` +
-          `<span class="info">` +
+          `<div class="save-row">` +
+          `<span class="info" data-load="${s.id}" role="button" tabindex="0">` +
           `<span class="name">${escapeHtml(s.name)}</span>` +
           `<span class="meta">${s.mode === "sp" ? "Single Player" : "Multiplayer"} · Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}${s.gameId ? ` · ${s.gameId}` : ""}</span>` +
           `</span>` +
           `<span class="actions">` +
-          `<button type="button" class="save-menu" data-menu="${s.id}" aria-label="Save options" aria-haspopup="true">⋯</button>` +
-          `<div class="save-dropdown" data-dropdown="${s.id}">` +
-          `<button type="button" class="save-dropdown-item" data-export="${s.id}">Export to file</button>` +
-          `<button type="button" class="save-dropdown-item delete" data-delete="${s.id}">Delete</button>` +
+          `<button type="button" class="save-menu" data-menu="${s.id}" aria-label="Save options" aria-haspopup="true" aria-expanded="false">⋯</button>` +
+          `<div class="save-dropdown" data-dropdown="${s.id}" role="menu">` +
+          `<button type="button" class="save-dropdown-item" data-export="${s.id}" role="menuitem">Export to file</button>` +
+          `<button type="button" class="save-dropdown-item delete" data-delete="${s.id}" role="menuitem">Delete</button>` +
           `</div>` +
           `</span>` +
           `</div>`,
       )
       .join("");
 
-    let dropdownCloser: (() => void) | null = null;
+    let dropdownCloser: ((ev: MouseEvent) => void) | null = null;
     const closeAllDropdowns = () => {
       listEl.querySelectorAll<HTMLDivElement>(".save-dropdown.open").forEach((d) => d.classList.remove("open"));
+      listEl.querySelectorAll<HTMLButtonElement>(".save-menu[aria-expanded='true']").forEach((b) => {
+        b.setAttribute("aria-expanded", "false");
+      });
       if (dropdownCloser) {
         document.removeEventListener("click", dropdownCloser);
         dropdownCloser = null;
       }
     };
 
-    listEl.querySelectorAll<HTMLDivElement>(".save-row").forEach((el) => {
+    listEl.querySelectorAll<HTMLSpanElement>(".save-row .info[data-load]").forEach((el) => {
       const load = async () => {
         const id = el.dataset.load!;
         const record = await loadSave(id);
@@ -1767,9 +2331,8 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
         close();
         onStart(new LocalSession({ savedState: JSON.parse(record.blob) as SerializedState }));
       };
-      el.addEventListener("click", load);
+      el.addEventListener("click", () => void load());
       el.addEventListener("keydown", (e) => {
-        if (e.target !== el) return;
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           void load();
@@ -1779,14 +2342,20 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
 
     listEl.querySelectorAll<HTMLButtonElement>(".save-menu").forEach((el) =>
       el.addEventListener("click", (e) => {
+        e.preventDefault();
         e.stopPropagation();
         const dropdown = listEl.querySelector<HTMLDivElement>(`[data-dropdown="${el.dataset.menu}"]`);
         const isOpen = dropdown?.classList.contains("open") ?? false;
         closeAllDropdowns();
         if (dropdown && !isOpen) {
           dropdown.classList.add("open");
-          dropdownCloser = () => closeAllDropdowns();
-          document.addEventListener("click", dropdownCloser);
+          el.setAttribute("aria-expanded", "true");
+          dropdownCloser = (ev) => {
+            if (ev.target instanceof Node && el.contains(ev.target)) return;
+            if (ev.target instanceof Node && dropdown.contains(ev.target)) return;
+            closeAllDropdowns();
+          };
+          window.setTimeout(() => document.addEventListener("click", dropdownCloser!), 0);
         }
       }),
     );
@@ -1815,5 +2384,16 @@ export function createLobby(onStart: (session: Session, setup?: GameSetup) => vo
   }
 
   renderShowcase();
-  showScreen("start");
+  // Gate the menu behind login/signup for logged-out players. A stored token
+  // lets us open the menu optimistically and resume in the background; with no
+  // token at all we show the login page first (guests continue from there).
+  const storedAccount = getAccount();
+  showScreen(storedAccount ? "start" : "login");
+  void (async () => {
+    const account = await tryResumeSession(state.mp.url);
+    if (account) {
+      applyAccount(account);
+      if (state.screen === "start") renderStartScreen();
+    }
+  })();
 }

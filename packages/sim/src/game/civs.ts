@@ -175,6 +175,9 @@ function mergeInto(acc: CivEffects, e: CivEffects | undefined): void {
   if (e.foreignCombat) acc.foreignCombat = (acc.foreignCombat ?? 0) + e.foreignCombat;
   if (e.allUnitCombat) acc.allUnitCombat = (acc.allUnitCombat ?? 0) + e.allUnitCombat;
   if (e.combatVsOtherReligion) acc.combatVsOtherReligion = (acc.combatVsOtherReligion ?? 0) + e.combatVsOtherReligion;
+  if (e.combatVsUniqueUnit) acc.combatVsUniqueUnit = (acc.combatVsUniqueUnit ?? 0) + e.combatVsUniqueUnit;
+  if (e.gunpowderCombatBonus) acc.gunpowderCombatBonus = (acc.gunpowderCombatBonus ?? 0) + e.gunpowderCombatBonus;
+  if (e.navalMeleeCombatBonus) acc.navalMeleeCombatBonus = (acc.navalMeleeCombatBonus ?? 0) + e.navalMeleeCombatBonus;
   if (e.cultureOnKill) acc.cultureOnKill = (acc.cultureOnKill ?? 0) + e.cultureOnKill;
   if (e.enemyReligionPressurePercent) acc.enemyReligionPressurePercent = (acc.enemyReligionPressurePercent ?? 0) + e.enemyReligionPressurePercent;
   if (e.cityDefenseBonus) acc.cityDefenseBonus = (acc.cityDefenseBonus ?? 0) + e.cityDefenseBonus;

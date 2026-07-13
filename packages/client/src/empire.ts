@@ -3,6 +3,8 @@
 // stays out of the busy ui.ts; ui.ts only toggles it and re-renders it per frame
 // while open.
 
+import { gameHud } from "./hud-root";
+import { withPreservedScroll } from "./panel-scroll";
 import {
   UNIT_DEFS,
   TRAINING_BUILDING_DEFS,
@@ -46,6 +48,7 @@ export interface EmpireHandlers {
   onCancelWork(workId: number): void;
   /** Close a trade route — the trader that established it is lost. */
   onCancelTradeRoute(routeId: number): void;
+  onLeaveTradeEscort(routeId: number): void;
 }
 
 export type Tab = "units" | "cities" | "specialists" | "trade";
@@ -112,13 +115,10 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     `<button class="emp-tab" data-tab="trade">Trade</button>` +
     `<button class="emp-x" id="emp-close" title="Close" aria-label="Close">✕</button></div>` +
     `<div class="emp-body" id="emp-body"></div></div>`;
-  document.body.appendChild(root);
+  gameHud().appendChild(root);
 
   const body = root.querySelector<HTMLDivElement>("#emp-body")!;
   root.querySelector<HTMLButtonElement>("#emp-close")!.addEventListener("click", () => close());
-  root.addEventListener("click", (e) => {
-    if (e.target === root) close();
-  });
   root.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((el) =>
     el.addEventListener("click", () => {
       tab = el.dataset.tab as Tab;
@@ -250,9 +250,16 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         `</div>`;
     }
 
-    // Wonders.
-    html += `<div class="emp-card"><div class="emp-name">🏛️ Wonders</div>`;
-    for (const w of WONDER_DEFS) {
+    // Wonders — only list those whose unlocking tech is known (or already built / in progress).
+    const player = state.players.find((p) => p.id === viewerId)!;
+    const visibleWonders = WONDER_DEFS.filter((w) => {
+      if (state.completedWonders.includes(w.id)) return true;
+      if (worksOf(state, viewerId).some((x) => x.wonderId === w.id)) return true;
+      return !w.reqTech || player.researched.has(w.reqTech as TechId);
+    });
+    if (visibleWonders.length > 0) {
+      html += `<div class="emp-card"><div class="emp-name">🏛️ Wonders</div>`;
+      for (const w of visibleWonders) {
       const built = state.completedWonders.includes(w.id);
       const inProg = worksOf(state, viewerId).find((x) => x.wonderId === w.id);
       const reqStr = Object.entries(w.crew)
@@ -283,8 +290,9 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         `<div class="emp-sub">${w.desc}</div><div class="emp-sub" style="color:#c9a24a">Crew: ${reqStr}</div>` +
         (gateBits ? `<div class="emp-sub" style="color:#9fc3e0">Unlock: ${gateBits}</div>` : "") +
         `</div>${action}</div>`;
+      }
+      html += `</div>`;
     }
-    html += `</div>`;
     return html;
   }
 
@@ -300,7 +308,8 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
       return (
         `<div class="emp-empty">No trade routes yet.<br>` +
         `Move a Trader into one of your cities and use “Establish trade route” to open one.<br>` +
-        `<span style="color:#9fc3e0">Tip: connect cities with roads — and upgrade them — to grow a route's gold past the base cap.</span></div>`
+        `<span style="color:#9fc3e0">Tip: connect cities with roads — and upgrade them — to grow a route's gold past the base cap.<br>` +
+        `Post a warrior on a route's path and choose <b>🛡 Escort</b> to guard it from barbarian raids.</span></div>`
       );
     }
     const totalGold = routes.reduce((sum, r) => sum + tradeRouteYield(state, r).gold, 0);
@@ -334,6 +343,12 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
             b.roadTier > 0
               ? `<div class="emp-sub" style="color:#8fce8f">🛣️ ${workName("road", b.roadTier)} link · +${b.road}🪙</div>`
               : `<div class="emp-sub" style="color:#c98f8f">⚠ No road link — pave every tile of the path to boost this route</div>`;
+          const escortLine = r.escortUnitId
+            ? `<div class="emp-sub" style="color:#8cb8ff">🛡 Escorted${r.escortType ? ` (${r.escortType.replace(/_/g, " ")})` : ""} — visible to all players</div>`
+            : `<div class="emp-sub" style="color:#c98f8f">⚠ Unguarded — move a soldier onto the route and choose Escort</div>`;
+          const leaveBtn = r.repelledRaidTile
+            ? `<button class="btn primary" data-leave-escort="${r.id}" title="Spawn the escort where the raid was stopped">Recall escort</button>`
+            : "";
           // Gold breakdown so it's clear how the total is built up.
           const goldParts = [
             `base ${b.base}`,
@@ -351,7 +366,11 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
             `<div class="emp-sub">${yieldBits || "no yield"} / turn · ${r.path.length} tiles</div>` +
             `<div class="emp-sub" style="opacity:.75">${goldParts}</div>` +
             roadLine +
+            escortLine +
+            (r.repelledRaidTile ? `<div class="emp-sub" style="color:#ffd967">⚔️ Escort repelled a raid — recall it to disembark at the ambush site.</div>` : "") +
             `</div>` +
+            `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">` +
+            leaveBtn +
             `<button class="btn" data-cancel-route="${r.id}" title="Disband this route — the trader is lost">Cancel</button>` +
             `</div></div>`
           );
@@ -366,14 +385,16 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     root.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((el) =>
       el.classList.toggle("active", el.dataset.tab === tab),
     );
-    body.innerHTML =
-      tab === "cities"
-        ? renderCities(state, viewerId)
-        : tab === "units"
-          ? renderUnits(state, viewerId)
-          : tab === "trade"
-            ? renderTrade(state, viewerId)
-            : renderSpecialists(state, viewerId);
+    withPreservedScroll(body, () => {
+      body.innerHTML =
+        tab === "cities"
+          ? renderCities(state, viewerId)
+          : tab === "units"
+            ? renderUnits(state, viewerId)
+            : tab === "trade"
+              ? renderTrade(state, viewerId)
+              : renderSpecialists(state, viewerId);
+    });
 
     body.querySelectorAll<HTMLDivElement>("[data-city]").forEach((el) => {
       if (el.classList.contains("emp-row")) {
@@ -412,6 +433,12 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
       el.addEventListener("click", () => {
         if (!confirm("Cancel this trade route? The trader that opened it is lost.")) return;
         handlers.onCancelTradeRoute(Number(el.dataset.cancelRoute));
+        render(state, viewerId);
+      }),
+    );
+    body.querySelectorAll<HTMLButtonElement>("[data-leave-escort]").forEach((el) =>
+      el.addEventListener("click", () => {
+        handlers.onLeaveTradeEscort(Number(el.dataset.leaveEscort));
         render(state, viewerId);
       }),
     );

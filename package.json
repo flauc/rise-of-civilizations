@@ -1,7 +1,7 @@
 {
   "name": "rise-of-civilizations",
   "private": true,
-  "version": "0.5.1",
+  "version": "0.6.0",
   "type": "module",
   "description": "A turn-based 4X (Ancient Era -> Age of Exploration). Canvas + TypeScript client, Bun + Postgres server.",
   "workspaces": [
@@ -26,10 +26,13 @@
     "generate-legend-units": "bun run tools/art-generator/generate.ts --subset legend-units",
     "generate-unique-infra": "bun run tools/art-generator/generate.ts --subset unique-infra",
     "generate-icons": "bun run tools/art-generator/generate.ts --subset emoji-icons",
+    "generate-coach-voice": "bun run tools/generate-coach-voice.ts",
     "balance": "bun run tools/balance/score.ts"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
+    "@types/pngjs": "^6.0.5",
+    "pngjs": "^7.0.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "vitest": "^2.1.4"

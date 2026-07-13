@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { GameMap } from "@roc/shared";
 import type { City, GameState, Player, Unit } from "./state";
-import { makeUnit } from "./state";
+import { makeUnit, unitAt } from "./state";
 import { applyCommand } from "./commands";
+import { shipCargoCapacity } from "./naval-cargo";
 import { computeReachable, isCoastalLand } from "./movement";
 import { resolveAttack, computeAttackTargets } from "./combat";
 import { establishTradeRoute } from "./trade";
@@ -110,6 +111,9 @@ const addUnit = (state: GameState, unit: Unit): Unit => {
 
 // Land on cols 0-2, shallow coast on cols 3-5, with an ocean tile beyond for ocean tests.
 const coastalMap = makeMap(6, 4, (col) => (col >= 3 ? "coast" : "plains"));
+
+// Two landmasses with a water channel between (cols 4–5).
+const twoPortMap = makeMap(10, 4, (col) => (col >= 4 && col <= 5 ? "coast" : "plains"));
 
 const oceanMap = makeMap(8, 4, (col) => {
   if (col === 7) return "ocean";
@@ -305,21 +309,113 @@ describe("naval production", () => {
 });
 
 describe("trade routes over water", () => {
-  it("computes a trade route path across coastal water", () => {
-    const state = baseState(coastalMap);
-    const cityA = makeCity(1, 0, "Roma", 1, 1);
-    const cityB = makeCity(2, 0, "Neapolis", 5, 1);
+  it("computes a trade route path across coastal water between two ports", () => {
+    const state = baseState(twoPortMap);
+    const cityA = makeCity(1, 0, "Roma", 3, 1); // coastal land — water east at col 4
+    const cityB = makeCity(2, 0, "Neapolis", 6, 1); // coastal land — water west at col 5
     state.cities.set(1, cityA);
     state.cities.set(2, cityB);
-    const trader = addUnit(state, makeUnit(1, 0, "trader", 1, 1));
+    expect(isCoastalLand(state, 3, 1)).toBe(true);
+    expect(isCoastalLand(state, 6, 1)).toBe(true);
+    const trader = addUnit(state, makeUnit(1, 0, "trader", 3, 1));
     const res = establishTradeRoute(state, trader.id, 2, 0);
     expect(res.ok).toBe(true);
     const route = state.tradeRoutes[0]!;
     expect(route.path.length).toBeGreaterThan(2);
     const crossesWater = route.path.some((key) => {
       const [c, r] = key.split(",").map(Number) as [number, number];
-      return coastalMap.tiles[r * 6 + c]!.terrain === "coast";
+      return twoPortMap.tiles[r * 10 + c]!.terrain === "coast";
     });
     expect(crossesWater).toBe(true);
+  });
+
+  it("rejects a sea lane from an inland city to a port", () => {
+    const state = baseState(twoPortMap);
+    const inland = makeCity(1, 0, "Arretium", 1, 1);
+    const port = makeCity(2, 0, "Neapolis", 6, 1);
+    state.cities.set(1, inland);
+    state.cities.set(2, port);
+    const trader = addUnit(state, makeUnit(1, 0, "trader", 1, 1));
+    expect(establishTradeRoute(state, trader.id, 2, 0).ok).toBe(false);
+  });
+});
+
+describe("ship cargo", () => {
+  it("rejects boarding a trader onto a galley", () => {
+    const state = baseState(coastalMap);
+    state.players[0]!.researched.add("sailing");
+    const galley = addUnit(state, makeUnit(1, 0, "galley", 3, 1));
+    const trader = addUnit(state, makeUnit(2, 0, "trader", 2, 1));
+    trader.movementLeft = 2;
+    const res = applyCommand(state, { type: "boardShip", unitId: trader.id, shipId: galley.id }, 0);
+    expect(res.ok).toBe(false);
+  });
+
+  it("boards a coastal warrior onto an adjacent galley and hides them from the map", () => {
+    const state = baseState(coastalMap);
+    state.players[0]!.researched.add("sailing");
+    const galley = addUnit(state, makeUnit(1, 0, "galley", 3, 1));
+    const warrior = addUnit(state, makeUnit(2, 0, "warrior", 2, 1));
+    warrior.movementLeft = 2;
+    const res = applyCommand(state, { type: "boardShip", unitId: warrior.id, shipId: galley.id }, 0);
+    expect(res.ok).toBe(true);
+    expect(warrior.aboardShipId).toBe(galley.id);
+    expect(unitAt(state, 2, 1)).toBeUndefined();
+    expect(unitAt(state, 3, 1)?.id).toBe(galley.id);
+  });
+
+  it("capacity scales with ship level (level 1 → 6)", () => {
+    const state = baseState(coastalMap);
+    state.players[0]!.researched.add("sailing");
+    const galley = addUnit(state, makeUnit(1, 0, "galley", 3, 1));
+    galley.level = 1;
+    expect(shipCargoCapacity(galley)).toBe(6);
+    galley.level = 3;
+    expect(shipCargoCapacity(galley)).toBe(10);
+  });
+
+  it("moves cargo with the ship", () => {
+    const state = baseState(coastalMap);
+    state.players[0]!.researched.add("sailing");
+    const galley = addUnit(state, makeUnit(1, 0, "galley", 3, 1));
+    galley.movementLeft = 3;
+    const warrior = addUnit(state, makeUnit(2, 0, "warrior", 2, 1));
+    warrior.movementLeft = 2;
+    expect(applyCommand(state, { type: "boardShip", unitId: warrior.id, shipId: galley.id }, 0).ok).toBe(true);
+    expect(applyCommand(state, { type: "move", unitId: galley.id, col: 4, row: 1 }, 0).ok).toBe(true);
+    expect(warrior.col).toBe(4);
+    expect(warrior.row).toBe(1);
+  });
+
+  it("disembarks onto adjacent shore", () => {
+    const state = baseState(coastalMap);
+    state.players[0]!.researched.add("sailing");
+    const galley = addUnit(state, makeUnit(1, 0, "galley", 3, 1));
+    const warrior = addUnit(state, makeUnit(2, 0, "warrior", 2, 1));
+    warrior.movementLeft = 2;
+    expect(applyCommand(state, { type: "boardShip", unitId: warrior.id, shipId: galley.id }, 0).ok).toBe(true);
+    warrior.movementLeft = 2;
+    const res = applyCommand(state, { type: "disembarkFromShip", unitId: warrior.id }, 0);
+    expect(res.ok).toBe(true);
+    expect(warrior.aboardShipId).toBeUndefined();
+    expect(warrior.col).toBe(2);
+    expect(warrior.row).toBe(1);
+  });
+
+  it("destroys cargo when the ship is sunk", () => {
+    const state = baseState(coastalMap);
+    state.players[0]!.researched.add("sailing");
+    state.players[0]!.atWar.push(1);
+    state.players[1]!.atWar.push(0);
+    const galley = addUnit(state, makeUnit(1, 0, "galley", 3, 1));
+    galley.hp = 1;
+    const warrior = addUnit(state, makeUnit(2, 0, "warrior", 2, 1));
+    warrior.movementLeft = 2;
+    expect(applyCommand(state, { type: "boardShip", unitId: warrior.id, shipId: galley.id }, 0).ok).toBe(true);
+    const foe = addUnit(state, makeUnit(3, 1, "galley", 4, 1));
+    foe.movementLeft = 2;
+    resolveAttack(state, foe, 3, 1);
+    expect(state.units.has(warrior.id)).toBe(false);
+    expect(state.units.has(galley.id)).toBe(false);
   });
 });

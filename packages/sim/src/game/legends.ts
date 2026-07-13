@@ -1,11 +1,11 @@
 // Legends (Heroes) — the core "Legends" feature. Powerful, limited unique units
-// recruited with faith. Each reskins a base unit, carries its own combat bonus,
-// heartens adjacent friendly units (aura), and has a lifespan after which it
-// "passes into legend" (retires). Globally unique; rechargeable legends return to
-// the pool when they retire. Toggleable per game (state.legendsEnabled). Every
-// hero also carries a real signature power: active kits in content.ts
-// (LEGEND_ABILITY_OVERRIDES), passives in legend-passives.ts / legend-effects.ts.
-// See docs/GREAT-PEOPLE.md §2 and docs/UNIT-ABILITIES.md §9.
+// earned through military deeds (training and battle), not faith. Each reskins a
+// base unit, carries its own combat bonus, heartens adjacent friendly units
+// (aura), and has a lifespan after which it "passes into legend" (retires).
+// Globally unique; rechargeable legends return to the pool when they retire.
+// Toggleable per game (state.legendsEnabled). Every hero also carries a real
+// signature power: active kits in content.ts (LEGEND_ABILITY_OVERRIDES), passives
+// in legend-passives.ts / legend-effects.ts. See docs/GREAT-PEOPLE.md §2.
 
 import { getTile } from "@roc/shared";
 import { LEGENDS, getLegend, type LegendDef } from "@roc/data";
@@ -15,18 +15,34 @@ import { UNIT_DEFS, isMilitary, type UnitTypeId } from "./content";
 import { offsetNeighbors } from "./movement";
 import { isWaterTerrain } from "./terrain";
 import { startingUnitMorale } from "./morale";
+import { eraUnlocked } from "./era";
 import { legendSituationalCombatBonus } from "./legend-effects";
+import { LEGEND_DEFAULT_LIFESPAN } from "./legend-lifespan";
 import { grantLegendDeathFaith } from "./works";
+import {
+  LEGEND_TRACK_LABELS,
+  LEGEND_TRACKS,
+  canAffordLegendRecruit,
+  legendRecruitCostFor,
+  legendRecruitThreshold,
+  legendTrackEarnedOf,
+  legendTrackFor,
+  legendTrackPointsOf,
+  spendLegendTrackPoints,
+  type LegendTrack,
+} from "./legend-earning";
 
-export type { LegendDef };
-
-const LEGEND_COST_BASE = 150;
-const LEGEND_COST_STEP = 100;
-
-/** Faith cost of a player's next legend, given how many they've already recruited. */
-export function legendCost(recruitedCount: number): number {
-  return LEGEND_COST_BASE + LEGEND_COST_STEP * recruitedCount;
-}
+export type { LegendDef, LegendTrack };
+export {
+  LEGEND_TRACKS,
+  LEGEND_TRACK_LABELS,
+  legendRecruitThreshold,
+  legendRecruitCostFor,
+  legendTrackFor,
+  legendTrackPointsOf,
+  legendTrackEarnedOf,
+  canAffordLegendRecruit,
+} from "./legend-earning";
 
 /** True if a unit is a Legend. */
 export function isLegend(unit: Unit): boolean {
@@ -39,12 +55,19 @@ export function availableLegends(state: GameState): LegendDef[] {
   return LEGENDS.filter((l) => !taken.has(l.id));
 }
 
+/** Globally available legends the player has reached the right era to recruit. */
+export function availableLegendsForPlayer(state: GameState, playerId: number): LegendDef[] {
+  const player = playerById(state, playerId);
+  if (!player) return [];
+  return availableLegends(state).filter((l) => eraUnlocked(player, l.era));
+}
+
 export interface LegendResult {
   ok: boolean;
   error?: string;
 }
 
-/** Whether `playerId` may recruit `legendId` right now (toggle/taken/faith/city). */
+/** Whether `playerId` may recruit `legendId` right now. */
 export function canRecruitLegend(state: GameState, playerId: number, legendId: string): LegendResult {
   if (!state.legendsEnabled) return { ok: false, error: "Legends are disabled this game" };
   const player = playerById(state, playerId);
@@ -52,9 +75,17 @@ export function canRecruitLegend(state: GameState, playerId: number, legendId: s
   const def = getLegend(legendId);
   if (!def) return { ok: false, error: "unknown legend" };
   if ((state.recruitedLegends ?? []).includes(legendId)) return { ok: false, error: "already recruited" };
-  const cost = legendCost(player.legendsRecruited ?? 0);
-  if (player.faith < cost) return { ok: false, error: `not enough faith (need ${cost})` };
+  if (!eraUnlocked(player, def.era)) return { ok: false, error: `${def.era} era not reached yet` };
   if (citiesOf(state, playerId).length === 0) return { ok: false, error: "you have no city" };
+  if (!canAffordLegendRecruit(player, def)) {
+    const track = legendTrackFor(def);
+    const need = legendRecruitCostFor(def, player);
+    const have = legendTrackPointsOf(player, track);
+    return {
+      ok: false,
+      error: `need ${need} ${LEGEND_TRACK_LABELS[track]} glory (have ${have}) — train ${track} units and win battles`,
+    };
+  }
   return { ok: true };
 }
 
@@ -71,8 +102,8 @@ function spawnTileFor(state: GameState, city: City, wantsWater: boolean): { col:
 }
 
 /**
- * Recruit a legend for `playerId`, spending faith and spawning the hero unit at
- * (or beside) one of the player's cities. Globally unique.
+ * Recruit a legend for `playerId`, spending track glory and spawning the hero
+ * unit at (or beside) one of the player's cities. Globally unique.
  */
 export function recruitLegend(
   state: GameState,
@@ -93,20 +124,17 @@ export function recruitLegend(
     return { ok: false, error: wantsWater ? "no open coastal water beside the city" : "no open tile beside the city" };
   }
 
-  const cost = legendCost(player.legendsRecruited ?? 0);
-  player.faith -= cost;
+  spendLegendTrackPoints(player, def);
   player.legendsRecruited = (player.legendsRecruited ?? 0) + 1;
   (state.recruitedLegends ??= []).push(legendId);
 
   const id = state.nextEntityId++;
   const morale = Math.min(200, startingUnitMorale(state, playerId) + 50); // heroes are steadfast
-  const unit = makeUnit(id, playerId, def.baseType as UnitTypeId, spawn.col, spawn.row, 30, morale);
+  const unit = makeUnit(id, playerId, def.baseType as UnitTypeId, spawn.col, spawn.row, 0, morale);
   unit.legendId = def.id;
-  unit.legendExpiresOnTurn = state.turn + def.lifespan;
+  unit.legendExpiresOnTurn = state.turn + (def.lifespan || LEGEND_DEFAULT_LIFESPAN);
   state.units.set(id, unit);
 
-  // No turn-start pop-up for your own recruitment (you just chose it); the log
-  // entry above records it and the Legends panel is where you review the hero.
   log(state, `${player.name} recruited the Legend ${def.name}!`, {
     actorId: playerId,
     targetIds: [playerId],
@@ -134,7 +162,6 @@ export function tickLegends(state: GameState, playerId: number): void {
       targetIds: [playerId],
       tile: { col: unit.col, row: unit.row },
     });
-    // A wonder (the Great Pyramid) may sanctify the hero's passing with faith.
     grantLegendDeathFaith(state, playerId, { col: unit.col, row: unit.row });
   }
 }
@@ -148,8 +175,9 @@ export function tickLegends(state: GameState, playerId: number): void {
  */
 export function legendCombatBonus(state: GameState, unit: Unit): number {
   let bonus = 0;
-  if (unit.legendId) bonus += getLegend(unit.legendId)?.combatBonus ?? 0;
-  // Aura: only military units benefit from a nearby hero's inspiration.
+  if (unit.legendId) {
+    bonus += Math.max(0, getLegend(unit.legendId)?.combatBonus ?? 0);
+  }
   if (isMilitary(unit.type)) {
     let aura = 0;
     for (const n of offsetNeighbors(state.map, unit.col, unit.row)) {

@@ -7,6 +7,7 @@ import { isPassableLand } from "./terrain";
 import {
   relationBetween, haveMet, atWar, attitudeScore,
   declareWar, makePeace, gift, proposeDeal, demandTribute, finalizeDeal,
+  canDeclareWar,
   respondProposal, militaryPower, aiInitiateTrade, aiConsiderDiplomacy,
   ensureContact, foreignTerritoryOwner, denounce, diplomacyTick, tradeableTechs,
   cancelSharedVision, sharedVisionPartners,
@@ -58,6 +59,8 @@ describe("diplomacy", () => {
     expect(s.players[0]!.atWar).not.toContain(1);
     // peace cooldown forbids re-declaring war right away
     expect(declareWar(s, 0, 1).ok).toBe(false);
+    expect(canDeclareWar(s, 0, 1).ok).toBe(false);
+    expect(canDeclareWar(s, 0, 1).reason).toMatch(/Peace treaty holds/);
   });
 
   it("gifts improve the recipient's attitude; the AI accepts a one-sided deal", () => {

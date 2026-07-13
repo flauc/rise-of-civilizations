@@ -4,8 +4,8 @@ import type { AnalyticsEvent } from "@roc/shared";
 
 const now = Date.now();
 
-function start(sessionId: string, clientId: string, civId?: string): AnalyticsEvent {
-  return { t: "session_start", sessionId, clientId, mode: "sp", civId, ts: now };
+function start(sessionId: string, clientId: string, civId?: string, handle?: string): AnalyticsEvent {
+  return { t: "session_start", sessionId, clientId, handle, mode: "sp", civId, ts: now };
 }
 function startCfg(sessionId: string, clientId: string, cfg: Partial<Extract<AnalyticsEvent, { t: "session_start" }>>): AnalyticsEvent {
   return { t: "session_start", sessionId, clientId, mode: "sp", ts: now, ...cfg };
@@ -69,29 +69,39 @@ describe("MemoryAnalyticsStore", () => {
   it("counts sessions per player with win/loss/abandoned splits", async () => {
     const a = new MemoryAnalyticsStore();
     await a.record([
-      start("s1", "p1"),
+      start("s1", "p1", undefined, "Alice"),
       end("s1", "p1", "win", 20, 100),
-      start("s2", "p1"),
+      start("s2", "p1", undefined, "Alice"),
       end("s2", "p1", "abandoned", 5),
     ]);
     const per = await a.sessionsPerPlayer();
     expect(per).toHaveLength(1);
-    expect(per[0]).toMatchObject({ clientId: "p1", sessions: 2, wins: 1, losses: 0, abandoned: 1 });
+    expect(per[0]).toMatchObject({ handle: "Alice", sessions: 2, wins: 1, losses: 0, abandoned: 1 });
+  });
+
+  it("stores handle on session_end when provided", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      start("s1", "p1", "rome", "Alice"),
+      { t: "session_end", sessionId: "s1", clientId: "p1", handle: "Alice", userId: "u1", outcome: "win", turns: 20, score: 100, ts: now + 1000 },
+    ]);
+    const lb = await a.leaderboard();
+    expect(lb[0]?.handle).toBe("Alice");
   });
 
   it("ranks the leaderboard by score, completed games only", async () => {
     const a = new MemoryAnalyticsStore();
     await a.record([
-      start("s1", "p1", "rome"),
+      start("s1", "p1", "rome", "Alice"),
       end("s1", "p1", "win", 40, 250),
-      start("s2", "p2", "egypt"),
+      start("s2", "p2", "egypt", "Bob"),
       end("s2", "p2", "loss", 30, 400),
       start("s3", "p3"),
       end("s3", "p3", "abandoned", 5), // no score -> excluded
     ]);
     const lb = await a.leaderboard();
     expect(lb.map((e) => e.score)).toEqual([400, 250]);
-    expect(lb[0]!.clientId).toBe("p2");
+    expect(lb[0]!.handle).toBe("Bob");
   });
 
   it("aggregates the game-setup config players chose", async () => {
@@ -161,6 +171,57 @@ describe("MemoryAnalyticsStore", () => {
     ]);
   });
 
+  it("records the registered username on session start when logged in", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      {
+        t: "session_start",
+        sessionId: "s1",
+        clientId: "anon-uuid",
+        handle: "user1",
+        userId: "u_abc",
+        mode: "sp",
+        ts: now,
+      },
+      end("s1", "anon-uuid", "win", 10, 100),
+    ]);
+    const list = await a.listGameSessions({ filters: { handle: "user1" } });
+    expect(list.total).toBe(1);
+    expect(list.items[0]?.handle).toBe("user1");
+    expect(list.items[0]?.clientId).toBe("anon-uuid");
+  });
+
+  it("lists game sessions with pagination and column filters", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      startCfg("s1", "p1", { mapType: "continents", mapSize: "medium", barbarianLevel: "normal", villages: true, turnLimit: 120, gameSpeed: "normal" }),
+      end("s1", "p1", "win", 40, 300),
+      startCfg("s2", "p2", { mapType: "realworld", mapSize: "small", barbarianLevel: "none", villages: false, turnLimit: 0, gameSpeed: "fast" }),
+      end("s2", "p2", "abandoned", 5),
+    ]);
+
+    const page1 = await a.listGameSessions({ page: 1, pageSize: 1, sort: "startedAt", order: "desc" });
+    expect(page1.total).toBe(2);
+    expect(page1.items).toHaveLength(1);
+
+    const filtered = await a.listGameSessions({
+      page: 1,
+      pageSize: 25,
+      filters: { mapType: "realworld", villages: false },
+    });
+    expect(filtered.total).toBe(1);
+    expect(filtered.items[0]).toMatchObject({
+      sessionId: "s2",
+      mapType: "realworld",
+      villages: false,
+      outcome: "abandoned",
+    });
+
+    const byText = await a.listGameSessions({ filters: { q: "continents" } });
+    expect(byText.total).toBe(1);
+    expect(byText.items[0]?.sessionId).toBe("s1");
+  });
+
   it("stores bug reports, lists summaries newest-first, and fetches full detail", async () => {
     const a = new MemoryAnalyticsStore();
     await a.record([
@@ -181,5 +242,42 @@ describe("MemoryAnalyticsStore", () => {
     const detail = await a.bugReport("r1");
     expect(detail).toMatchObject({ message: "older", state: '{"x":1}', errors: ["boom"], context: { url: "u" } });
     expect(await a.bugReport("nope")).toBeUndefined();
+  });
+
+  it("enriches bug reports from the linked session and supports paginated list", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      startCfg("s1", "p1", { civId: "rome", mapType: "continents", handle: "Caesar", userId: "u1", cols: 80, rows: 56 }),
+      end("s1", "p1", "win", 42, 300),
+      { t: "bug_report", reportId: "r1", clientId: "p1", sessionId: "s1", message: "stuck", mode: "sp", turn: 10, ts: now + 500 },
+    ]);
+    const detail = await a.bugReport("r1");
+    expect(detail).toMatchObject({
+      handle: "Caesar",
+      userId: "u1",
+      mapType: "continents",
+      cols: 80,
+      rows: 56,
+      outcome: "win",
+      sessionTurns: 42,
+      score: 300,
+    });
+    const page = await a.listBugReports({ page: 1, pageSize: 10, filters: { handle: "Caesar" } });
+    expect(page.total).toBe(1);
+    expect(page.items[0]?.message).toBe("stuck");
+  });
+
+  it("exports and restores session rows for dev persistence", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([start("s1", "p1", "rome"), end("s1", "p1", "win", 42, 300)]);
+    const exported = a.exportSessions();
+    expect(exported).toHaveLength(1);
+    expect(exported[0]).toMatchObject({ sessionId: "s1", clientId: "p1", civId: "rome", outcome: "win" });
+
+    const b = new MemoryAnalyticsStore();
+    expect(b.restoreSessions(exported)).toBe(1);
+    const o = await b.overview();
+    expect(o.totalSessions).toBe(1);
+    expect(o.completedSessions).toBe(1);
   });
 });

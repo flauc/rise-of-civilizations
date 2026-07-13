@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
-import { resolveAttack } from "./combat";
+import { resolveAttack, unitMaxHp } from "./combat";
 import { useAbility, canUseAbility, tickAbilities, abilityTargets } from "./abilities";
 import { makeUnit, playerById, type GameState, type Unit } from "./state";
 
@@ -16,6 +16,14 @@ function warAll(state: GameState): void {
 function bareGame(): GameState {
   const state = createGame({ seed: "abil", cols: 30, rows: 20, barbarians: false });
   state.units.clear();
+  // Flatten the arena: ability mechanics shouldn't depend on rolled terrain.
+  for (const t of state.map.tiles) {
+    t.terrain = "plains";
+    delete t.river;
+    delete t.riverLake;
+    delete t.feature;
+    delete t.resource;
+  }
   warAll(state);
   return state;
 }
@@ -349,7 +357,7 @@ describe("active abilities", () => {
     const ghulam = place(state, 0, "cataphract", 5, 5);
     const foe = place(state, 1, "hoplite", 6, 5);
     expect(useAbility(state, ghulam, "drilled_charge", foe.col, foe.row).ok).toBe(true);
-    expect(ghulam.hp).toBe(100); // executed too cleanly to answer
+    expect(ghulam.hp).toBe(unitMaxHp(ghulam)); // executed too cleanly to answer
     if (state.units.has(foe.id)) expect(foe.hp).toBeLessThan(100);
   });
 
@@ -386,10 +394,12 @@ describe("active abilities", () => {
     const beggar = place(state, 0, "galleass", 5, 5);
     const target = place(state, 1, "galleon", 6, 5);
     const bystander = place(state, 1, "war_junk", 7, 5); // adjacent to the target
+    const targetMax = unitMaxHp(target);
+    const bystanderMax = unitMaxHp(bystander);
     expect(useAbility(state, beggar, "hellburner", target.col, target.row).ok).toBe(true);
     expect(state.units.has(beggar.id)).toBe(false); // consumed in the blast
-    expect(target.hp).toBeLessThanOrEqual(50);
-    expect(bystander.hp).toBeLessThan(100); // splash to the adjacent enemy ship
+    expect(target.hp).toBeLessThanOrEqual(targetMax - 50);
+    expect(bystander.hp).toBeLessThan(bystanderMax); // splash to the adjacent enemy ship
   });
 
   it("Broadside fires at range without retaliation and wrecks the survivor's rigging", () => {
@@ -398,7 +408,7 @@ describe("active abilities", () => {
     const galleass = place(state, 0, "galleass", 5, 5);
     const foe = place(state, 1, "galleon", 6, 5);
     expect(useAbility(state, galleass, "broadside", foe.col, foe.row).ok).toBe(true);
-    expect(galleass.hp).toBe(100); // gunnery draws no reply
+    expect(galleass.hp).toBe(unitMaxHp(galleass)); // gunnery draws no reply
     if (state.units.has(foe.id)) expect(foe.sunderedUntilTurn).toBe(state.turn + 1);
   });
 
@@ -679,7 +689,7 @@ describe("active abilities", () => {
     const elephant = place(state, 0, "war_elephant", 5, 5);
     const foe = place(state, 1, "hoplite", 6, 5);
     expect(useAbility(state, elephant, "howdah_volley", foe.col, foe.row).ok).toBe(true);
-    expect(elephant.hp).toBe(100); // ranged: no counter-attack
+    expect(elephant.hp).toBe(unitMaxHp(elephant)); // ranged: no counter-attack
     expect(foe.hp).toBeLessThan(100);
   });
 
@@ -690,7 +700,7 @@ describe("active abilities", () => {
     const far = place(state, 1, "hoplite", 7, 5); // two tiles out
     expect(useAbility(state, domrey, "double_ballista", far.col, far.row).ok).toBe(true);
     expect(far.hp).toBeLessThan(100);
-    expect(domrey.hp).toBe(100);
+    expect(domrey.hp).toBe(unitMaxHp(domrey));
   });
 
   it("Duel of Kings hits mounted foes far harder", () => {

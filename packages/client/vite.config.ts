@@ -25,6 +25,13 @@ export default defineConfig(({ mode }) => {
       host: true, // expose on the LAN so a phone can load it for mobile testing
       port: process.env.PORT ? Number(process.env.PORT) : 5173,
       hmr: disableHmr ? false : undefined,
+      proxy: {
+        "/analytics": {
+          target: process.env.VITE_WS_URL?.trim()?.replace(/^ws/, "http").replace(/\/ws\/?$/, "") ||
+            "http://localhost:3001",
+          changeOrigin: true,
+        },
+      },
     },
   };
 });

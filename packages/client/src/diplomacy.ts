@@ -14,6 +14,8 @@
 // Re-renders are signature-gated so the deal builder's inputs survive frames.
 
 import { ASSET_BASE_URL } from "./asset-base";
+import { gameHud } from "./hud-root";
+import { withPreservedScroll } from "./panel-scroll";
 import {
   relationBetween,
   attitudeScore,
@@ -21,6 +23,7 @@ import {
   reputationOf,
   previewProposal,
   previewPeace,
+  canDeclareWar,
   tradeableLuxuries,
   tradeableTechs,
   citiesOf,
@@ -63,9 +66,9 @@ export interface DiploHandlers {
 }
 
 const STYLE = `
-#diplo-contact,#diplo-proposal{position:fixed;inset:0;z-index:65;background:rgba(10,9,6,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px}
+#diplo-contact,#diplo-proposal{position:fixed;inset:0;z-index:65;background:rgba(10,9,6,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px;pointer-events:none}
 #diplo-proposal{z-index:66}
-#diplo-contact.show,#diplo-proposal.show{display:flex}
+#diplo-contact.show,#diplo-proposal.show{display:flex;pointer-events:auto}
 .dpm-body{display:flex;gap:16px;padding:18px;align-items:flex-start}
 .dpm-portrait{width:96px;height:112px;object-fit:cover;border-radius:10px;border:1px solid var(--edge);background:var(--bg-card);flex:none}
 .dpm-info{flex:1;min-width:0}
@@ -139,7 +142,7 @@ const STYLE = `
 .dp-chip-toggle{font:inherit;font-size:12.5px;font-weight:700;color:var(--parchment);background:var(--bg-card);border:1px solid var(--edge);border-radius:20px;padding:8px 14px;cursor:pointer;min-height:40px;display:inline-flex;align-items:center;gap:5px;transition:background .15s ease,border-color .15s ease,color .15s ease}
 .dp-chip-toggle:hover{border-color:var(--accent);background:rgba(201,162,39,.10)}
 .dp-chip-toggle.on{background:rgba(74,110,70,.35);border-color:#6f9e5f;color:#d3e8bd}
-.dp-chip-toggle.on::before{content:"✓";font-size:11px}
+.dp-chip-toggle.on::before{content:"";display:inline-block;width:11px;height:11px;margin-right:3px;vertical-align:-1px;background:url(${ASSET_BASE_URL}icons/ic_check.png) center/contain no-repeat}
 /* the give / receive trays */
 .dp-tray{border:1px solid var(--edge);border-radius:11px;padding:11px;background:var(--bg-card);margin-bottom:10px}
 .dp-tray h5{font-family:'Cinzel',Georgia,serif;margin:0 0 8px;font-size:12px;color:var(--accent);letter-spacing:.03em;display:flex;align-items:center;gap:6px}
@@ -257,13 +260,13 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   // --- first-contact modal ---
   const modal = document.createElement("div");
   modal.id = "diplo-contact";
-  document.body.appendChild(modal);
+  gameHud().appendChild(modal);
   let showingContact: number | null = null; // otherId currently in the modal
 
   // --- incoming-proposal modal (pops the instant another civ proposes to us) ---
   const propModal = document.createElement("div");
   propModal.id = "diplo-proposal";
-  document.body.appendChild(propModal);
+  gameHud().appendChild(propModal);
   let showingProposal: number | null = null; // proposal id currently in the modal
   const seenProposals = new Set<number>(); // proposals we've already surfaced
 
@@ -271,7 +274,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   const panel = document.createElement("div");
   panel.id = "diplomacy";
   panel.className = "hidden";
-  document.body.appendChild(panel);
+  gameHud().appendChild(panel);
   let open = false;
   let selected: number | null = null; // civ id in the negotiation view
   let tab: "overview" | "deal" = "overview"; // negotiation sub-tab
@@ -476,12 +479,14 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       body += renderNegotiation(state, viewerId, selected);
     }
 
-    panel.innerHTML =
-      `<div class="dp-head">` +
-      (selected !== null ? `<button class="btn" id="dp-back">←</button>` : "") +
-      `<span class="dp-title">🕊️ Diplomacy</span>` +
-      `<button class="dp-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
-      `<div class="dp-body">${body}${resultMsg ? `<div class="dp-empty" style="color:#ffd967">${resultMsg}</div>` : ""}</div>`;
+    withPreservedScroll(panel, () => {
+      panel.innerHTML =
+        `<div class="dp-head">` +
+        (selected !== null ? `<button class="btn" id="dp-back">←</button>` : "") +
+        `<span class="dp-title">🕊️ Diplomacy</span>` +
+        `<button class="dp-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
+        `<div class="dp-body">${body}${resultMsg ? `<div class="dp-empty" style="color:#ffd967">${resultMsg}</div>` : ""}</div>`;
+    });
     wire(state, viewerId);
   }
 
@@ -597,6 +602,10 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       const left = rel.pactUntilTurn !== undefined ? ` · ${Math.max(0, rel.pactUntilTurn - state.turn)}t left` : "";
       chips.push(`<span class="dp-chip treaty">🤝 ${rel.pact.replace("_", " ")}${left}</span>`);
     }
+    if (rel?.warAllowedTurn !== undefined && state.turn < rel.warAllowedTurn) {
+      const left = rel.warAllowedTurn - state.turn;
+      chips.push(`<span class="dp-chip treaty">🕊 No war for ${left}t</span>`);
+    }
     if (rep > 0) chips.push(`<span class="dp-chip warn">⚠ Warmonger ${rep}</span>`);
 
     return (
@@ -632,10 +641,16 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   /** The Overview tab: live offers, standing actions, agreements, opinion/history. */
   function overviewTab(state: GameState, viewerId: number, cid: number, war: boolean, rel: Relation | undefined): string {
     const yourGold = Math.floor(state.players.find((p) => p.id === viewerId)?.gold ?? 0);
+    const warCheck = canDeclareWar(state, viewerId, cid);
+    const warBtn = war
+      ? ""
+      : warCheck.ok
+        ? `<button class="btn" data-act="war" style="color:#d98a6a">⚔ Declare war</button>`
+        : `<button class="btn" data-act="war" disabled title="${warCheck.reason ?? ""}">⚔ Declare war (locked)</button>`;
     const actionBar =
       `<div class="dp-sec"><h4>Actions</h4>` +
       `<div class="dp-actbar">` +
-      (war ? "" : `<button class="btn" data-act="war" style="color:#d98a6a">⚔ Declare war</button>`) +
+      warBtn +
       `<button class="btn" data-act="denounce">📢 Denounce</button>` +
       `</div>` +
       `<div class="dp-actbtns">` +
@@ -646,7 +661,9 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       `<label>⚔ Demand <input type="number" id="demand-amt" min="0" value="50"/>🪙</label>` +
       `<button class="btn" data-act="demand">Demand</button>` +
       `<span id="demand-verdict" class="dp-verdict-inline"></span>` +
-      `</div></div>`;
+      `</div>` +
+      (!war && !warCheck.ok ? `<div class="dp-sub" style="margin-top:6px">${warCheck.reason}</div>` : "") +
+      `</div>`;
     const detailsToggle =
       `<div class="dp-sec">` +
       `<button class="btn dp-builder-toggle" id="dp-details-toggle"><span>📜 Opinion & history</span><span>${detailsOpen ? "▾" : "▸"}</span></button>` +
@@ -814,7 +831,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     const amt = Math.max(0, Number(panel.querySelector<HTMLInputElement>("#demand-amt")?.value ?? 0));
     const v = amt > 0 ? previewProposal(state, viewerId, cid, [], [{ kind: "gold", amount: amt }], true) : null;
     el.className = `dp-verdict-inline ${v ? (v.accept ? "yes" : "no") : ""}`;
-    el.textContent = v ? (v.accept ? "✓ would pay" : "✗ would refuse") : "";
+    el.innerHTML = v ? (v.accept ? "✓ would pay" : "✗ would refuse") : "";
   }
 
   function wire(state: GameState, viewerId: number): void {

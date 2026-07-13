@@ -18,6 +18,7 @@ import { canTrainReligionUnit, religionUnitKit, unitPassive } from "./religion-u
 import { isCoastalLand } from "./movement";
 import { autoAssignCitizens, placeUnit } from "./economy";
 import { emitUnitTrained } from "./turn-updates";
+import { onLegendUnitTrained } from "./legend-earning";
 
 /** Civilian/recon units trainable from the city center (no training building). */
 export const CITY_CENTER_UNITS: UnitTypeId[] = ["settler", "trader", "scout"];
@@ -181,6 +182,7 @@ export function advanceTraining(state: GameState, city: City, owner: Player): vo
     const xp = (tierDef?.xp ?? 0) + (eff.startXpBonus ?? 0);
     const moraleBonus = (tierDef?.moraleBonus ?? 0) + (eff.startMoraleBonus ?? 0);
     placeUnit(state, city, order.unit, xp, moraleBonus);
+    onLegendUnitTrained(state, owner.id, order.unit);
     const def = UNIT_DEFS[order.unit];
     if (def.reqResource) {
       owner.resources[def.reqResource.resource] = Math.max(

@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.5.1";
+export const CURRENT_VERSION = "0.6.0";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,96 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.6.0",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "A world of continents and land bridges",
+        desc:
+          "Every map is now generated fresh from a constellation of drifting continents. Roll a single great landmass or as many as four, each its own size and shape, and every so often a Panama or Suez style isthmus reaches out to join two of them, so an overland march between worlds is sometimes possible and sometimes not. Choose your layout in the lobby, or leave it to Random and let the discovery of how many lands there are become part of the game.",
+      },
+      {
+        tag: "New",
+        title: "Frozen poles and cold frontiers",
+        desc:
+          "The far edges of the world now freeze. A band of ice caps girds each pole, drifting icebergs dot the polar seas, and crevasses split the frozen ground, while moist highlands rise into rolling, tree-cloaked hills. On a fantasy map the poles can lie along any pair of opposite edges, not only north and south, so no two worlds feel quite alike. All of it is newly painted, from the hill forests to the ice.",
+      },
+      {
+        tag: "New",
+        title: "Herodotus guides your first turns",
+        desc:
+          "A new tutorial welcomes newcomers with Herodotus, the father of history himself, as their coach. Across the opening five turns he speaks his lessons aloud and lights the way: how units and yields work, how to found a city, how to meet a barbarian in battle, what a tribal village offers, and how to treat with a neighbor. The board even arranges for a barbarian and a village to appear right when the lesson calls for them.",
+      },
+      {
+        tag: "New",
+        title: "Sign in and carry your empire with you",
+        desc:
+          "You can now create an account and sign in. Your games are saved to your name, so you can leave a match and return to it later, while guests still jump straight in and play on their own device. A rebuilt sign-in screen greets you at the door.",
+      },
+      {
+        tag: "New",
+        title: "Three new legends answer the call",
+        desc:
+          "Three heroes join the roster, each with a power drawn from their history. Amanirenas, the warrior queen of Kush who fought Rome to a standstill, leads from the front. Demetrius the Besieger brings Siege Volley, an arcing barrage that falls hardest on the defenders of walls and forts. And Zhuge Liang, the Sleeping Dragon, looses Repeating Fire, two volleys in a single breath, while his presence yields a steady trickle of science and sharpens the archers around him.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Legends earn their years",
+        desc:
+          "A hero no longer lives on a fixed clock. Each legend begins with a short tenure and extends it by doing what made them legendary: a conqueror wins turns by taking cities, a warrior by slaying foes, a lawgiver by adopting civics, a scholar by completing research. Live up to your legend and the legend lives longer.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Call on your leader's signature power",
+        desc:
+          "Your civilization's leader now carries an ability you can invoke yourself. Once it unlocks, a button on the HUD lets you unleash it, then holds it on cooldown until the moment comes again, so the defining power of your civ is a card in your hand rather than a passive footnote.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Upgrade your veterans",
+        desc:
+          "An aging unit need not fall behind. In friendly territory you can now pay gold to upgrade a unit into its modern successor, carrying its hard-won experience forward, so the warrior who has fought since the Bronze Age can march into a new era as a proper soldier.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Set the pace of history",
+        desc:
+          "A new game speed setting lets you choose how long an age lasts. Slow makes research and civics cheaper so the eras rush by, Epic raises their cost for a long, deliberate march through every stage of history, and Normal sits between the two. Pick your tempo when you set up a game.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Ferry your armies across the sea",
+        desc:
+          "Land units can now board a transport ship and ride it overseas as cargo, then step ashore on a distant coast, so moving an army across open water is a matter of loading the fleet rather than sending every soldier swimming.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Set a guard on your caravans",
+        desc:
+          "A trade route can now be given an escort, a unit that travels with the caravan to fend off the raiders who prey on unprotected lanes. Guard the routes that matter and your commerce keeps flowing where before it bled.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Islands are worth the voyage",
+        desc:
+          "Small islands are now deliberately rich. Set sail for one and you are far more likely to find luxuries waiting, and a fishing bounty in the waters around it, so the trouble of crossing the sea to settle a speck of land finally pays off.",
+      },
+      {
+        tag: "Balance",
+        title: "Trade routes pay their due, not a fortune",
+        desc:
+          "The gold a trade route earns has been reined in, with the richest routes capped lower than before and international lanes granting a touch less on top. Trade remains a fine income, but it no longer outpaces every other road to prosperity.",
+      },
+      {
+        tag: "UI",
+        title: "Know when a rival falls",
+        desc:
+          "When a civilization is knocked out of the game, a turn notification now marks the moment, so the fall of a great power never slips by unnoticed.",
+      },
+    ],
+  },
   {
     version: "0.5.1",
     date: "July 2026",
@@ -797,8 +887,8 @@ export function createChangelog(): { open(): void; close(): void } {
     root.classList.add("hidden");
   };
   root.querySelector<HTMLButtonElement>("#changelog-close")!.addEventListener("click", doClose);
-  root.addEventListener("click", (e) => {
-    if (e.target === root) doClose();
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !root.classList.contains("hidden")) doClose();
   });
 
   return {
