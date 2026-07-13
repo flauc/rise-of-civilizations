@@ -32,6 +32,7 @@ import {
   UNIT_DEFS,
   advanceResearchQueue,
   getBuildingDef,
+  sumBuildingEffects,
   trainingTier,
   type TechId,
   type TrainingClass,
@@ -639,6 +640,12 @@ export function processCity(state: GameState, city: City, owner: Player): void {
     if (city.foodStored >= need) {
       city.foodStored -= need;
       city.population += 1;
+      // Storehouse: a food reserve carries part of the next citizen forward, so the
+      // city never restarts growth from empty. Never *reduces* natural overflow.
+      const carryover = sumBuildingEffects(city.buildings).growthCarryover;
+      if (carryover > 0) {
+        city.foodStored = Math.max(city.foodStored, carryover * foodToGrow(city.population));
+      }
       expandTerritory(state, city); // borders grow with the city
       autoAssignCitizens(state, city, city.autoMode); // new citizen works the best free tile
       log(state, `${city.name} grew to pop ${city.population}.`, {
@@ -870,6 +877,8 @@ export function availableProduction(state: GameState, player: Player, city: City
     if (def.reqTech && !player.researched.has(def.reqTech)) continue;
     if (def.reqResource && resourceStock(player, def.reqResource.resource) < def.reqResource.count) continue;
     if (def.requiresCoastal && !coastal) continue;
+    // Fortification chain: a prerequisite building must already stand here.
+    if (def.reqBuilding && !city.buildings.includes(def.reqBuilding)) continue;
     if (city.buildings.includes(def.id)) continue;
     out.push({
       item: { kind: "building", id: def.id },

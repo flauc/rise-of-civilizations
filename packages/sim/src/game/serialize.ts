@@ -6,7 +6,6 @@ import type {
 } from "./state";
 import { defaultEnabledVictories } from "./state";
 import { computeVisible } from "./visibility";
-import { tileHasBridge } from "./movement";
 import { attitudeLabel, attitudeScore, sharedVisionPartners } from "./diplomacy";
 import { GLOBAL_MORALE_BASE } from "./morale";
 import { victoryProgress, type VictoryProgressEntry } from "./victory";
@@ -47,7 +46,6 @@ export interface TileView {
   wonder?: string;
   river?: number;
   riverLake?: boolean;
-  bridge?: boolean;
   /** Tree-clad hills (visual decor overlay). */
   wooded?: boolean;
 }
@@ -224,7 +222,6 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     if (t.river) tv.river = t.river;
     if (t.riverLake) tv.riverLake = true;
     if (t.wooded) tv.wooded = true;
-    if (tileHasBridge(state, col, row)) tv.bridge = true;
     tiles.push(tv);
   }
 

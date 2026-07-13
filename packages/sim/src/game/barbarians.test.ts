@@ -53,6 +53,28 @@ describe("barbarian raiding", () => {
     expect(tile.improvement).toBeUndefined(); // burned to the ground
   });
 
+  it("drives a barbarian warship toward a coastal enemy without crashing", () => {
+    const { state, barb, civ } = setup();
+    // Carve a small sea and put an enemy galley in it, with a barbarian galley two
+    // tiles away — the barbarian AI must be able to path/attack over water.
+    for (let c = 3; c <= 8; c++) {
+      const t = getTile(state.map, c, 5)!;
+      t.terrain = "coast";
+      t.feature = undefined;
+    }
+    const barbShip = makeUnit(state.nextEntityId++, barb.id, "galley", 3, 5);
+    barbShip.movementLeft = 3;
+    state.units.set(barbShip.id, barbShip);
+    const prey = makeUnit(state.nextEntityId++, civ.id, "galley", 6, 5);
+    state.units.set(prey.id, prey);
+
+    expect(() => barbarianTurn(state, barb.id)).not.toThrow();
+    // It should have closed the distance (moved) or struck the enemy ship.
+    const moved = barbShip.col !== 3 || barbShip.row !== 5;
+    const struck = (state.units.get(prey.id)?.hp ?? 0) < prey.hp;
+    expect(moved || struck).toBe(true);
+  });
+
   it("plunders an enemy trade route running under it", () => {
     const { state, barb, civ, city } = setup();
     const here = "5,5";

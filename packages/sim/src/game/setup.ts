@@ -172,14 +172,15 @@ function spawnBarbarians(
 ): void {
   const { map } = state;
   const placed: { col: number; row: number }[] = [];
+  // Starting garrison is always Ancient-era (tier 0): raiders only grow stronger
+  // over time via the camp tier schedule (see BARB_TIERS in features.ts). Activity
+  // level sets how MANY seed units appear, not how strong they are at turn 0.
   const types: UnitTypeId[] =
-    activity === "minimal"
+    activity === "minimal" || activity === "low"
       ? ["warrior", "slinger"]
-      : activity === "low"
-        ? ["warrior", "slinger"]
-        : activity === "high"
-          ? ["warrior", "slinger", "warrior", "spearman", "warrior", "archer"]
-          : ["warrior", "slinger", "warrior", "spearman"];
+      : activity === "high"
+        ? ["warrior", "slinger", "warrior", "slinger", "warrior", "slinger"]
+        : ["warrior", "slinger", "warrior", "slinger"];
   let ti = 0;
   const farFromStarts = (col: number, row: number) =>
     starts.every((s) => axialDistance(offsetToAxial(s), offsetToAxial({ col, row })) > 5);

@@ -42,7 +42,10 @@ export function startSimultaneousTurn(state: GameState): void {
     gatherPlayerResources(state, p.id); // stockpile strategic resources for the turn
     tickWonders(state, p.id); // active wonder effects (e.g. the Colossus's free warships)
     for (const c of state.cities.values()) {
-      if (c.ownerId === p.id) c.rangedAttackUsed = false;
+      if (c.ownerId === p.id) {
+        c.rangedAttacksUsed = 0;
+        c.rangedAttackUsed = false; // legacy flag: pre-0.6.0 saves carry it stuck true
+      }
     }
     towerBombardment(state, p.id);
     updateExplored(state, p.id);
@@ -57,8 +60,14 @@ export function resolveSimultaneousTurn(state: GameState): void {
   // AI civs play a full turn; barbarians raid.
   for (const p of state.players) {
     if (p.isHuman) continue;
-    if (p.isBarbarian) barbarianTurn(state, p.id);
-    else aiTakeTurn(state, p.id);
+    // A crash in one AI/barbarian turn must never stall the whole resolution:
+    // log it and move on so the round always completes for the human players.
+    try {
+      if (p.isBarbarian) barbarianTurn(state, p.id);
+      else aiTakeTurn(state, p.id);
+    } catch (err) {
+      console.error(`AI turn failed for ${p.name} (id ${p.id}):`, err);
+    }
   }
   // Economy for every civ — humans AND AI alike. (Barbarians own no cities or
   // works, so skipping them just avoids needless iteration.) Without this the AI

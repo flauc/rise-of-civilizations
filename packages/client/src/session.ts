@@ -176,7 +176,6 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     if (t.river) tile.river = t.river;
     if (t.riverLake) tile.riverLake = true;
     if (t.wooded) tile.wooded = true;
-    if (t.bridge) tile.bridge = true;
     tiles[t.row * view.cols + t.col] = tile;
     explored.add(`${t.col},${t.row}`);
   }

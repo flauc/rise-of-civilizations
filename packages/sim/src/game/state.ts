@@ -179,7 +179,12 @@ export interface City {
   foundedAsCapital: boolean;
   hp: number;
   lastAttackedTurn: number;
-  rangedAttackUsed: boolean;
+  /** Legacy per-turn "has bombarded" flag. Retained (optional) so old saves load;
+   *  the runtime now uses the `rangedAttacksUsed` counter (see combat.ts). */
+  rangedAttackUsed?: boolean;
+  /** City bombards used this turn (reset each turn). Undefined on legacy saves →
+   *  treated as 0 (or 1 if the legacy `rangedAttackUsed` flag was set). */
+  rangedAttacksUsed?: number;
   /** Active timed city-specific modifiers from leader abilities. */
   modifiers: CityModifier[];
 }
@@ -597,6 +602,7 @@ export type TurnUpdateType =
   | "legendRecruited"
   | "religionFounded"
   | "civDefeated"
+  | "warDeclared"
   | "eureka"
   | "treasuryExhausted";
 

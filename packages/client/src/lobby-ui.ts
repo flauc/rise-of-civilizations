@@ -631,8 +631,11 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .showcase-reroll{position:relative;flex:0 0 auto;width:100%;margin-top:0;z-index:2}
     /* Desktop / tall screens: classic hero top-right, copy anchored bottom-left. */
     @media (min-width:861px) and (min-height:521px){
-      .lobby-right{display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch;gap:0;padding:48px 56px}
-      .showcase{align-self:auto;max-width:720px;max-height:none;overflow:visible;padding-right:0;padding-bottom:0}
+      .lobby-right{display:flex;flex-direction:column;align-items:stretch;gap:0;padding:48px 56px;overflow-y:auto}
+      /* margin-top:auto keeps the hero copy bottom-anchored when there's room,
+         but collapses to 0 for the tallest civs so the title stays visible and
+         the column scrolls instead of clipping off the top edge. */
+      .showcase{align-self:auto;margin-top:auto;max-width:720px;max-height:none;overflow:visible;padding-right:0;padding-bottom:0}
       .showcase-civ{font-size:52px}
       .showcase-leader{font-size:22px;margin-top:8px}
       .showcase-quote{font-size:20px;line-height:1.5;margin-top:22px;max-width:640px}
@@ -654,6 +657,17 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .uu-info{min-width:0;flex:1}
     .uu-name{font-family:'Cinzel',Georgia,serif;font-size:14px;font-weight:700;color:#f0d878}
     .uu-meta{font-size:12px;color:#b8aa8d;margin-top:2px}
+    /* Inline yield/stat chips: a civ's unique unit combat stats and unique building
+       per-turn yields, shown on the selection card so they read without a click. */
+    .uu-yields{display:flex;flex-wrap:wrap;align-items:center;gap:5px 8px;margin-top:5px}
+    .uu-yield{display:inline-flex;align-items:center;gap:3px;font-size:12px;font-weight:700;color:#e8dcc5}
+    .uu-yield-empire{color:#c9a227;font-weight:600;font-size:11px}
+    /* Unique-unit signature abilities (each ability it gains: glyph + name + what it does). */
+    .uu-abilities{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+    .uu-ability{padding:8px 10px;background:rgba(201,162,39,.08);border:1px solid rgba(201,162,39,.2);border-radius:8px}
+    .uu-ability-head{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:#f0d878}
+    .uu-ability-glyph{font-size:13px;line-height:1}
+    .uu-ability-desc{font-size:12px;color:#c9bfa8;line-height:1.4;margin-top:3px}
     .uu-caret{flex:0 0 auto;color:#c9a227;font-size:20px;line-height:1}
     .uu-hint{font-size:11px;color:#c9a227;margin-top:7px;text-transform:uppercase;letter-spacing:.04em}
     /* Leader-ability block — the civ's active, cooldown-gated power (shared by the

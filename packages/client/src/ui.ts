@@ -91,6 +91,8 @@ import {
   unitsOf,
   cityDefenseStrength,
   cityBombardTargets,
+  cityBombardsUsed,
+  cityBombardAllowance,
   cityMaxHp,
   foodToGrow,
   cityFoodGrowth,
@@ -1518,6 +1520,8 @@ export function createUI(handlers: UIHandlers): UI {
         return "Religion Founded";
       case "civDefeated":
         return "Civilization Defeated";
+      case "warDeclared":
+        return ev.payload?.onYou ? "War Declared on You!" : "War Declared";
       case "treasuryExhausted":
         return "Treasury Exhausted";
       case "eureka":
@@ -2826,7 +2830,31 @@ export function createUI(handlers: UIHandlers): UI {
         );
       })
       .join("");
-    if (!shown.length) html += `<div class="sub" style="margin-top:10px">Nothing available here yet.</div>`;
+    // Greyed, non-buildable rows for buildings whose tech is known but whose
+    // prerequisite building isn't up yet (the fortification chain) — so the player can
+    // see what unlocks next (same idea as the coastal-only greying).
+    const lockedBuildings =
+      prodTab === "building"
+        ? Object.values(BUILDING_DEFS).filter(
+            (def) =>
+              def.reqBuilding &&
+              (!def.reqTech || player.researched.has(def.reqTech)) &&
+              !city.buildings.includes(def.id) &&
+              !city.buildings.includes(def.reqBuilding),
+          )
+        : [];
+    html += lockedBuildings
+      .map((def) => {
+        const reqName = getBuildingDef(def.reqBuilding!)?.name ?? def.reqBuilding;
+        return (
+          `<div class="pcard locked" data-locked="1">` +
+          `<div style="flex:1"><div><b>${def.name}</b> <span class="sub">· 🔒 Requires ${reqName}</span></div>` +
+          `<div class="sub">${buildingInfo(def.id)}</div></div>` +
+          `<span class="cost">${def.cost}⚒️</span></div>`
+        );
+      })
+      .join("");
+    if (!shown.length && !lockedBuildings.length) html += `<div class="sub" style="margin-top:10px">Nothing available here yet.</div>`;
     html += `</div>`;
     withPreservedScroll(production, () => {
       production.innerHTML = html;
@@ -2844,6 +2872,7 @@ export function createUI(handlers: UIHandlers): UI {
     );
     production.querySelectorAll<HTMLDivElement>(".pcard").forEach((el) =>
       el.addEventListener("click", () => {
+        if (el.dataset.locked) return; // greyed prerequisite row — not buildable yet
         const kind = el.dataset.kind;
         const item: ProductionItem =
           kind === "trainingBuilding"
@@ -4226,6 +4255,13 @@ export function createUI(handlers: UIHandlers): UI {
     const y = r.yields;
     const chip = (icon: string, n: number) =>
       `<span style="${n ? "" : "opacity:.35"}" title="${icon}">${icon} <b>${n}</b></span>`;
+    // Every non-zero yield, so tiles like Wooded Hills (+science) aren't misread as
+    // food/production-only; a barren tile falls back to the faded food/production pair.
+    const allYields: Array<[string, number]> = [
+      ["🍞", y.food], ["⚒️", y.production], ["🪙", y.gold], ["🔬", y.science], ["🙏", y.faith], ["🎭", y.culture],
+    ];
+    const shownYields = allYields.filter(([, n]) => n);
+    const yieldChips = (shownYields.length ? shownYields : allYields.slice(0, 2)).map(([i, n]) => chip(i, n)).join("");
 
     let html =
       `<div class="sub">${r.subtitle}</div>` +
@@ -4234,6 +4270,8 @@ export function createUI(handlers: UIHandlers): UI {
       chip("⚒️", y.production) +
       chip("🪙", y.gold) +
       chip("🔬", y.science) +
+      (y.faith ? chip("🙏", y.faith) : "") +
+      (y.culture ? chip("🎭", y.culture) : "") +
       `</div>` +
       `<button class="btn tinfo-toggle" id="tile-toggle">${tileExpanded ? "Hide details ▴" : "Benefits & deficits ▾"}</button>`;
 
@@ -4376,7 +4414,7 @@ export function createUI(handlers: UIHandlers): UI {
         summaryBar({
           icon: "⬡",
           name: `<b>${r.name}</b>`,
-          stats: `${chip("🍞", y.food)}${chip("⚒️", y.production)}`,
+          stats: yieldChips,
           closeId: "tile-close",
         }) +
         `<div class="ip-detail">${html}</div>`;
@@ -4645,8 +4683,13 @@ export function createUI(handlers: UIHandlers): UI {
     // Bombard button: only shown when an enemy is actually in range, greyed once the
     // city has fired this turn (one shot per turn). Manual — never auto-fires.
     const canBombardNow = isOwner && cityBombardTargets(state, city).length > 0;
+    const bombardsLeft = cityBombardAllowance(city) - cityBombardsUsed(city);
+    const bombardSpent = bombardsLeft <= 0;
+    const bombardTitle = bombardSpent
+      ? "No bombards left this turn"
+      : `Bombard a nearby enemy (${bombardsLeft} left this turn)`;
     const bombardBtn = canBombardNow
-      ? `<button class="mini-btn${city.rangedAttackUsed ? "" : " bombard-ready"}" id="city-bombard"${city.rangedAttackUsed ? " disabled" : ""} title="${city.rangedAttackUsed ? "Already bombarded this turn" : "Bombard a nearby enemy (once per turn)"}">💥</button>`
+      ? `<button class="mini-btn${bombardSpent ? "" : " bombard-ready"}" id="city-bombard"${bombardSpent ? " disabled" : ""} title="${bombardTitle}">💥</button>`
       : "";
     const governorPicker =
       isOwner && governorPickerOpen
@@ -4933,7 +4976,11 @@ export function createUI(handlers: UIHandlers): UI {
         lastSeenTurnUpdateByViewer.get(view.viewerId),
       );
       lastSeenTurnUpdateByViewer.set(view.viewerId, batch.lastSeen);
-      const hasImmediateUpdate = batch.toShow.some((e) => e.type === "civDefeated");
+      // A war declared on the viewer must surface right away, even mid-turn;
+      // third-party wars wait for the regular turn-start batch.
+      const hasImmediateUpdate = batch.toShow.some(
+        (e) => e.type === "civDefeated" || (e.type === "warDeclared" && e.payload?.onYou === true),
+      );
       if ((turnChanged || hasImmediateUpdate) && batch.toShow.length > 0) {
         turnUpdateQueue = batch.toShow;
         turnUpdateIndex = 0;

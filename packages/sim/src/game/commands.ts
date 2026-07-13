@@ -253,7 +253,8 @@ export function beginTurn(state: GameState): void {
   gatherPlayerResources(state, player.id);
   tickWonders(state, player.id); // active wonder effects (e.g. the Colossus's free warships)
   for (const c of citiesOf(state, player.id)) {
-    c.rangedAttackUsed = false;
+    c.rangedAttacksUsed = 0;
+    c.rangedAttackUsed = false; // legacy flag: pre-0.6.0 saves carry it stuck true
     processCity(state, c, player);
   }
   autoManageCities(state, player); // governor mode: opted-in cities manage themselves
@@ -291,8 +292,15 @@ export function endTurn(state: GameState): void {
   let guard = 0;
   while (!currentPlayer(state).isHuman && guard++ < state.players.length + 1) {
     const p = currentPlayer(state);
-    if (p.isBarbarian) barbarianTurn(state);
-    else aiTakeTurn(state, p.id);
+    // A crash in one AI/barbarian turn must never strand the loop: if the body
+    // throws we log it and still advance, so control always returns to the human
+    // rather than leaving the (client-derived) viewer stuck on an opponent.
+    try {
+      if (p.isBarbarian) barbarianTurn(state);
+      else aiTakeTurn(state, p.id);
+    } catch (err) {
+      console.error(`AI turn failed for ${p.name} (id ${p.id}):`, err);
+    }
     advance();
   }
   applyVictoryCheck(state);
@@ -427,7 +435,7 @@ export function applyCommand(
         foundedAsCapital: isCapital,
         hp: 0,
         lastAttackedTurn: 0,
-        rangedAttackUsed: false,
+        rangedAttacksUsed: 0,
         modifiers: [],
       };
       state.cities.set(id, city);

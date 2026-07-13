@@ -5,7 +5,7 @@
       "name": "client",
       "runtimeExecutable": "C:/Users/filip/.bun/bin/bun.exe",
       "runtimeArgs": ["run", "--filter", "@roc/client", "dev"],
-      "port": 5173,
+      "port": 5176,
       "autoPort": true
     },
     {

@@ -20,7 +20,7 @@ import {
   type UnitAbility,
   type ActiveAbilityId,
 } from "@roc/sim";
-import { startingUnitsFor, capitalPopulationBonusFor, uniqueUnitForCiv, uuAbilityLore, uniqueInfraHistoryByCiv, BASE_CITY_POPULATION } from "@roc/data";
+import { startingUnitsFor, capitalPopulationBonusFor, uniqueUnitForCiv, uuAbilityLore, uniqueInfraHistoryByCiv, BASE_CITY_POPULATION, type CityYieldBonus } from "@roc/data";
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -67,6 +67,54 @@ const PASSIVE_ABILITY_INFO: Record<UnitAbility, { name: string; desc: string }> 
   bonus_vs_city: { name: "City Assault", desc: "Bonus combat strength when attacking cities." },
 };
 
+/** Yield → game-icon glyph. Matches the HUD resource bar (faith is ☮️, not 🙏). */
+const YIELD_GLYPH: Record<string, string> = {
+  food: "🍞", production: "⚒️", gold: "🪙", science: "🔬", culture: "🎭", faith: "☮️",
+};
+const YIELD_ORDER = ["food", "production", "gold", "science", "culture", "faith"] as const;
+
+/** "+2 ⚒️ · +1 🪙" chips for a unique building/improvement's flat per-turn yields ("" if none). */
+export function infraYieldChips(y: CityYieldBonus): string {
+  return YIELD_ORDER.filter((k) => y[k]).map((k) => `<span class="uu-yield">+${y[k]} ${YIELD_GLYPH[k]}</span>`).join("");
+}
+
+/** Compact combat stat chips for a unique unit (effective strength / ranged / movement). */
+function unitStatChips(uu: typeof UNIQUE_UNITS[number]): string {
+  const base = UNIT_DEFS[uu.replaces as UnitTypeId];
+  const ranged = base ? isRanged(base) : false;
+  const bonus = uu.bonus ?? 0;
+  const effStr = (base?.strength ?? 0) + (ranged ? 0 : bonus);
+  const effRanged = (base?.rangedStrength ?? 0) + (ranged ? bonus : 0);
+  const chips: string[] = [];
+  if (effStr > 0) chips.push(`<span class="uu-yield">⚔ ${effStr}</span>`);
+  if (effRanged > 0) chips.push(`<span class="uu-yield">🏹 ${effRanged}</span>`);
+  if (base?.movement) chips.push(`<span class="uu-yield">🥾 ${base.movement}</span>`);
+  return chips.join("");
+}
+
+/**
+ * The unit's signature abilities: the active abilities it GAINS over the base unit
+ * it replaces, each with glyph, name, and what it does — the tactical edge that
+ * makes fielding the UU matter. Empty when the UU's advantage is raw combat
+ * strength alone.
+ */
+function unitAbilityHtml(uu: typeof UNIQUE_UNITS[number]): string {
+  const baseActive = UNIT_DEFS[uu.replaces as UnitTypeId]?.activeAbilities ?? [];
+  const effActive = unitActiveAbilityIds(uu.replaces as UnitTypeId, uu.id);
+  const gained = effActive.filter((a) => !baseActive.includes(a));
+  return gained
+    .map((a) => {
+      const d = ACTIVE_ABILITY_DEFS[a];
+      return (
+        `<div class="uu-ability">` +
+        `<div class="uu-ability-head"><span class="uu-ability-glyph" aria-hidden="true">${d.glyph}</span>` +
+        `<b>${escapeHtml(d.name)}</b></div>` +
+        `<div class="uu-ability-desc">${escapeHtml(d.desc)}</div></div>`
+      );
+    })
+    .join("");
+}
+
 /**
  * A small icon + name + meta block describing a civ's unique unit. The block is
  * clickable: it opens an expanded view of the unit's abilities (see
@@ -83,13 +131,9 @@ export function uniqueUnitBlockHtml(civId: string): string {
   }
   const base = UNIT_DEFS[uu.replaces as UnitTypeId];
   const src = `${ASSET_BASE_URL}units/${uu.id}.png`;
-  const meta = [
-    "Unique unit",
-    base ? `replaces ${escapeHtml(base.name)}` : "",
-    uu.bonus ? `+${uu.bonus} strength` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const meta = ["Unique unit", base ? `replaces ${escapeHtml(base.name)}` : ""].filter(Boolean).join(" · ");
+  const chips = unitStatChips(uu);
+  const abilities = unitAbilityHtml(uu);
   return `
     <button type="button" class="uu-block uu-clickable" data-uu-detail="${uu.id}">
       <div class="uu-top">
@@ -97,10 +141,11 @@ export function uniqueUnitBlockHtml(civId: string): string {
         <div class="uu-info">
           <div class="uu-name">${escapeHtml(uu.name)}</div>
           <div class="uu-meta">${meta}</div>
+          ${chips ? `<div class="uu-yields">${chips}</div>` : ""}
         </div>
         <span class="uu-caret" aria-hidden="true">&rsaquo;</span>
       </div>
-      <div class="uu-hint">View abilities</div>
+      ${abilities ? `<div class="uu-abilities">${abilities}</div>` : ""}
     </button>`;
 }
 
@@ -139,6 +184,8 @@ export function uniqueInfraBlockHtml(civId: string): string {
   const src = `${ASSET_BASE_URL}${dir}/${inf.id}.png`;
   const tech = TECH_DEFS[inf.reqTech as keyof typeof TECH_DEFS]?.name ?? inf.reqTech;
   const kindLabel = inf.kind === "building" ? "Unique building" : "Unique tile improvement";
+  let chips = infraYieldChips(inf.yields);
+  if (inf.effects) chips += `<span class="uu-yield uu-yield-empire">+empire bonus</span>`;
   return `
     <button type="button" class="uu-block uu-clickable" data-infra-detail="${civId}">
       <div class="uu-top">
@@ -146,10 +193,10 @@ export function uniqueInfraBlockHtml(civId: string): string {
         <div class="uu-info">
           <div class="uu-name">${escapeHtml(inf.name)}</div>
           <div class="uu-meta">${kindLabel} · unlocks with ${escapeHtml(String(tech))}</div>
+          ${chips ? `<div class="uu-yields">${chips}</div>` : ""}
         </div>
         <span class="uu-caret" aria-hidden="true">&rsaquo;</span>
       </div>
-      <div class="uu-hint">View history</div>
     </button>`;
 }
 

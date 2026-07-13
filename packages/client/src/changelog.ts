@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.6.0";
+export const CURRENT_VERSION = "0.7.2";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -22,7 +22,103 @@ interface Release {
 /** Newest release first. */
 const CHANGELOG: Release[] = [
   {
-    version: "0.6.0",
+    version: "0.7.2",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Barbarian camps escalate through the ages",
+        desc:
+          "Camps no longer only turn out warriors and slingers. As the game goes on they field war dogs and fire hardened spears, then chariots and riders, then spearmen, axemen and archers, and eventually swordsmen, pikemen, cataphracts and longswordsmen. What a camp can raise is tied to how far a civilization racing for that unit's technology would have gotten, scaled to the game speed, and hordes lean toward the strongest units a camp has unlocked. Late game raids now hit far harder than early ones.",
+      },
+      {
+        tag: "New",
+        title: "Coastal barbarian camps raid by sea",
+        desc:
+          "A barbarian camp on the coast can now launch warships onto the water beside it: longships, galleys, biremes, triremes, dromons and quinqueremes. Coastal camps favor ships over land units, so a shoreline settlement has to watch the sea as well as the land.",
+      },
+      {
+        tag: "New",
+        title: "You are told when war is declared",
+        desc:
+          "A new alert fires the moment someone declares war on you, interrupting the turn so you see it at once. When two other civilizations you have both met go to war, you learn of it at the start of your next turn. The aggressor gets no such warning.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Bridges belong to everyone, and now need Bridge Building to lay",
+        desc:
+          "A road built across a river is now a bridge that any unit can cross without paying the river crossing penalty, no matter whose land it sits on or what technology the crossing army has. To balance that, a road can no longer be laid on a river tile until you have researched Bridge Building, just as river farms wait on Irrigation.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Recon promotions run in a line",
+        desc:
+          "The scouting promotions now chain. Spy, which grants +1 sight, requires Scouting, and Eagle Eye, which grants +2 sight, requires Spy. You climb the reconnaissance tree in order rather than taking the top rung first.",
+      },
+      {
+        tag: "UI",
+        title: "Road grades now look different on the map",
+        desc:
+          "The three road grades are now easy to tell apart at a glance: a Dirt Road shows as a warm earthen track, a Paved Road as packed stone, and an Imperial highway as pale dressed stone. Roads that cross a river now draw as a wooden bridge spanning the water instead of a road sitting on open water, and standalone stretches of road use the same painted artwork as the rest of the network.",
+      },
+      {
+        tag: "UI",
+        title: "Dozens of symbols now render as game art",
+        desc:
+          "More than fifty ability and religion symbols that used to appear as plain system emoji now show as custom icon art in the same style as the rest of the game: animals such as the horse, elephant, wolf, lion, shark and eagle, nature symbols such as the mountain, sun, moon, snowflake and wave, and faith symbols such as the Om, torii shrine, dharma wheel, star and crescent, Star of David, yin and yang and ankh.",
+      },
+    ],
+  },
+  {
+    version: "0.7.1",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "UI",
+        title: "Unique unit and building cards show their stats up front",
+        desc:
+          "On the civ selection screen and in the wiki, a civ's unique unit now shows its strength, ranged strength, and movement, plus each special ability it has and what that ability does, directly on the card. Unique buildings and improvements now list their per-turn yields there too. Before this you had to open the unit to see any of it.",
+      },
+      {
+        tag: "UI",
+        title: "Tile panel shows every yield",
+        desc:
+          "The tile information panel now lists science, faith, and culture yields, not only food and production. A tile such as Wooded Hills, which gives science, was previously shown as if it produced only food and production.",
+      },
+      {
+        tag: "Fix",
+        title: "Cities fire every bombard they have",
+        desc:
+          "A city with a Bombard Tower is meant to bombard twice per turn, but AI cities were only firing once, and cities loaded from saves made before version 0.6.0 could be stuck never firing at all. Cities now use every bombard available to them each turn.",
+      },
+      {
+        tag: "Fix",
+        title: "An error on an opponent's turn no longer freezes the game",
+        desc:
+          "If an AI or barbarian turn hit an error, the game could get stuck on that opponent and never hand control back to you. Errors during an opponent's turn are now caught and the game continues to the next player.",
+      },
+      {
+        tag: "Fix",
+        title: "Selecting a unit clears the city tile overlay",
+        desc:
+          "The highlighted tiles a city works could stay on screen after you selected a unit. Selecting a unit now clears that overlay.",
+      },
+      {
+        tag: "Gameplay",
+        title: "AI attacks the same turn it reaches you",
+        desc:
+          "AI military units used to march up next to an enemy and stop, giving the enemy the first strike. They now cover the last step and attack in the same turn whenever they have the movement to do both.",
+      },
+      {
+        tag: "Gameplay",
+        title: "AI stops throwing units against walls",
+        desc:
+          "The AI no longer makes attacks that take heavy damage without scoring a kill, such as repeatedly charging a fortified barbarian camp, even when the attacking unit is at full health.",
+      },
+    ],
+  },
+  {
+    version: "0.7.0",
     date: "July 2026",
     changes: [
       {
@@ -108,6 +204,48 @@ const CHANGELOG: Release[] = [
         title: "Know when a rival falls",
         desc:
           "When a civilization is knocked out of the game, a turn notification now marks the moment, so the fall of a great power never slips by unnoticed.",
+      },
+    ],
+  },
+  {
+    version: "0.6.0",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Cities with plenty to build again",
+        desc:
+          "Now that soldiers are trained from citizens rather than hammered out on the production line, cities had run short of things to build. Ten new buildings fill the gap — spanning growth, city defence and military support — so a developed city has a real construction queue from the ancient era to the age of gunpowder, instead of running out of work by the classical age. Every one is unlocked by research and slots into the techs you already climb.",
+      },
+      {
+        tag: "New",
+        title: "A fortress worth besieging",
+        desc:
+          "Walls now anchor a whole chain of fortifications. A Castle raises a stone keep that outlasts the outer wall — adding defence and a deep reserve of city health — while Ballista Towers turn the ramparts into artillery, striking bombarded foes far harder. A Bombard Tower mounts gun batteries that let a city fire twice in a single turn, and a Beacon Tower lights a signal chain that lends its defence to every friendly city within sight of its flame. Layer them and a frontier capital becomes a nightmare to storm.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Armies forged, not just fielded",
+        desc:
+          "Three new buildings back the muster field. A Drill Yard drills recruits so they train faster; an Armoury issues standardized iron arms, so soldiers march out already blooded with extra experience; and a late-era Arsenal — the pride of a great city — speeds production further and sends its troops off in high spirits. A city that invests in all three fields a faster, sharper, steadier army.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Storehouses, infirmaries and arches of triumph",
+        desc:
+          "A Storehouse keeps a grain reserve, so a growing city never restarts its next citizen from empty — every generation builds on the last. An Infirmary tends the wounded, healing your units for a couple of tiles around it each turn, so a city that stages armies also mends them. And a Triumphal Arch turns victory into an address: when an enemy falls near it, your nearby soldiers are steeled by the sight and fight the harder for it.",
+      },
+      {
+        tag: "UI",
+        title: "See what unlocks next",
+        desc:
+          "The construction menu no longer hides a building you can't yet raise because it needs another first. A Castle, its towers and the great gun batteries appear greyed out with the prerequisite spelled beneath them, so you can plan the whole fortification chain ahead. The in-game encyclopedia's Buildings page is rebuilt too — a complete, always-accurate roster of every building, its cost, its tech and exactly what it does.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Rivals fortify and equip",
+        desc:
+          "Rival empires make full use of the new roster. Cities near a war front raise walls, castles and towers before the blow lands and light beacon networks across a threatened frontier; war-minded civilizations equip their armies with drill yards and armouries; and every empire stocks storehouses and infirmaries to grow and heal — so an AI capital is now as hard to crack as one of your own.",
       },
     ],
   },

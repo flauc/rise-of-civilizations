@@ -13,6 +13,8 @@ import {
   VILLAGE_UNIT_MORALE,
 } from "./morale";
 import { getTile, isPolarTile } from "@roc/shared";
+import type { GameSpeed } from "./game-speed";
+import { UNIT_DEFS, type UnitTypeId } from "./content";
 
 function firstUnit(state: GameState, ownerId: number): Unit {
   return unitsOf(state, ownerId)[0]!;
@@ -92,6 +94,82 @@ describe("map features", () => {
       }
     }
     expect(unitsOf(state, barbId).length).toBeGreaterThan(12); // old "normal" cap
+  });
+
+  // Sweep a barbarians game, spawning from camps each turn and clearing the raiders
+  // afterward so camps keep producing. Records the first turn each unit type appeared.
+  function tierSweep(speed: GameSpeed, turns = 200) {
+    const state = createGame({ seed: "barb-tier", cols: 60, rows: 40, barbarians: true, gameSpeed: speed });
+    const barbId = state.players.find((p) => p.isBarbarian)!.id;
+    const first: Record<string, number> = {};
+    for (let t = 1; t <= turns; t++) {
+      state.turn = t;
+      spawnFromCamps(state, barbId);
+      for (const u of unitsOf(state, barbId)) {
+        if (first[u.type] === undefined) first[u.type] = t;
+      }
+      for (const u of [...unitsOf(state, barbId)]) state.units.delete(u.id); // clear for next turn
+    }
+    return first;
+  }
+
+  it("barbarian camps field progressively stronger units, including cavalry", () => {
+    const first = tierSweep("normal");
+    // A unit can never spawn before its unlock turn (cumulative tech cost / rate):
+    // fire-hardened spears and war dogs within a few turns, riders (cavalry!) by
+    // ~turn 10, then bronze, iron, and finally steel/cataphracts.
+    expect(first.warrior!).toBeLessThan(5); // Ancient raiders from the start
+    expect(first.firehard_spear!).toBeGreaterThanOrEqual(3);
+    expect(first.firehard_spear!).toBeLessThan(15);
+    expect(first.war_dog!).toBeGreaterThanOrEqual(4);
+    expect(first.rider!).toBeGreaterThanOrEqual(10); // cavalry, and it does appear
+    expect(first.rider!).toBeLessThan(30);
+    expect(first.spearman!).toBeGreaterThanOrEqual(27);
+    expect(first.swordsman!).toBeGreaterThanOrEqual(29);
+    expect(first.longswordsman!).toBeGreaterThanOrEqual(42);
+    expect(first.cataphract!).toBeGreaterThanOrEqual(48); // late heavy cavalry
+    // Ordering: cavalry and bronze precede iron precede steel.
+    expect(first.rider!).toBeLessThan(first.swordsman!);
+    expect(first.spearman!).toBeLessThan(first.longswordsman!);
+  });
+
+  it("stretches the barbarian roster for slower game speeds", () => {
+    const normal = tierSweep("normal");
+    const epic = tierSweep("epic");
+    // Epic multiplies tech costs 2.5x; unlocks stretch ~1.7x, so the iron age
+    // reaches the horde far later (swordsman unlock 29 -> ~49, rider 10 -> ~17).
+    expect(epic.rider!).toBeGreaterThanOrEqual(17);
+    expect(epic.swordsman!).toBeGreaterThanOrEqual(49);
+    expect(epic.swordsman!).toBeGreaterThan(normal.swordsman! + 10);
+  });
+
+  it("coastal barbarian camps launch warships", () => {
+    const state = createGame({ seed: "barb-sea", cols: 40, rows: 30, barbarians: true });
+    const barbId = state.players.find((p) => p.isBarbarian)!.id;
+    for (const t of state.map.tiles) t.feature = undefined; // start from a clean map
+    for (const u of [...unitsOf(state, barbId)]) state.units.delete(u.id);
+    // Craft several coastal camps: a strip of coast with camps on the land beside it.
+    let camps = 0;
+    for (let row = 3; row < state.map.rows - 3 && camps < 5; row += 4) {
+      const land = getTile(state.map, 10, row);
+      const sea = getTile(state.map, 11, row);
+      if (!land || !sea) continue;
+      land.terrain = "grassland";
+      land.feature = "barb_camp";
+      sea.terrain = "coast";
+      camps++;
+    }
+    expect(camps).toBeGreaterThan(0);
+
+    const seenTypes = new Set<UnitTypeId>();
+    for (let t = 14; t <= 150; t++) {
+      state.turn = t;
+      spawnFromCamps(state, barbId);
+      for (const u of unitsOf(state, barbId)) seenTypes.add(u.type);
+      for (const u of [...unitsOf(state, barbId)]) state.units.delete(u.id);
+    }
+    const spawnedNaval = [...seenTypes].some((ty) => UNIT_DEFS[ty].cls.startsWith("naval"));
+    expect(spawnedNaval).toBe(true); // ships raid from the sea
   });
 
   it("new camps emerge only in the fog of war, up to the target density", () => {

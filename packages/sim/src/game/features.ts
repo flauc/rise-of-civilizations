@@ -16,17 +16,18 @@ import {
   type Player,
   type Unit,
 } from "./state";
-import { isMilitary, type UnitTypeId } from "./content";
+import { isMilitary, UNIT_DEFS, TECH_DEFS, type UnitTypeId, type TechId } from "./content";
 import { unitMaxHp } from "./combat";
 import { hasMorale, onBarbCampCleared, onUnitPromoted, onVillageGlobalMorale, onVillageUnitMorale, startingUnitMorale } from "./morale";
 import { onLegendCampCleared } from "./legend-earning";
 import { availableTechs, autoAssignCitizens } from "./economy";
 import { getGovernment, unitDisplayName } from "./civs";
 import { expandTerritory } from "./territory";
-import { offsetNeighbors } from "./movement";
+import { offsetNeighbors, isCoastalLand, isCoastalWater } from "./movement";
 import { isPassableLand } from "./terrain";
 import { computeVisible } from "./visibility";
 import { religionUnlocked } from "./religion";
+import { gameSpeedMultiplier } from "./game-speed";
 
 /** Target number of barbarian camps for the map — scales with area and activity.
  *  Used both at map generation and to replenish cleared camps out in the fog, so
@@ -76,6 +77,128 @@ function barbarianCampCadence(state: GameState, tileCol: number, tileRow: number
     default:
       return base;
   }
+}
+
+// ---- barbarian roster (grows with the game) -------------------------------
+//
+// Barbarian camps escalate over time: they open with clubmen and warriors, pick
+// up fire-hardened spears and war dogs within a few turns, field riders and
+// chariots soon after, and eventually raid with swordsmen, cataphracts and
+// (from coastal camps) warships. Each unit becomes available once the game has
+// run long enough that a civ beelining its unlocking tech would have it — see
+// `barbUnitUnlockTurn`. Barbarians spawn directly, ignoring the strategic
+// resources (copper/iron/horses) a real civ's version of the unit would need.
+
+/** Curated land raiders, in rough order of tech reach (order is cosmetic; the
+ *  actual gate is each unit's `barbUnitUnlockTurn`). */
+const BARB_LAND_ROSTER: readonly UnitTypeId[] = [
+  "clubman", "warrior", "slinger", "javelineer", "hunter", // turn 0 (no tech)
+  "war_dog", "firehard_spear", // fire_hardening / animal_taming — a few turns in
+  "light_chariot", "rider", // the_wheel / equestrian — cavalry by ~turn 10
+  "spearman", "axeman", "archer", // bronze / composite bow
+  "war_chariot", "horse_archer", // chariotry / horse archery
+  "swordsman", "pikeman", // iron
+  "cataphract", "longswordsman", // cavalry doctrine / steel
+];
+
+/** Coastal camps also launch raiders by sea, oldest hull first. */
+const BARB_NAVAL_ROSTER: readonly UnitTypeId[] = [
+  "longship", "galley", "bireme", "trireme", "dromon", "quinquereme",
+];
+
+/** Effective research pace (science/turn) of a civ beelining a military tech.
+ *  Calibrated to observed real-game pacing rather than the heuristic AI (which
+ *  is far slower): a player reaches Equestrianism (Riders, cumulative cost ~54)
+ *  by roughly turn 10, and Fire-Hardening / Animal Taming (cost 15-20) within a
+ *  handful of turns. `cumCost / RATE` gives the NORMAL-speed unlock turn. */
+const BARB_TECH_RATE = 5.5;
+
+/** Turn-scaling exponent applied to game speed. Game speed multiplies tech COSTS
+ *  (slow 0.67 → epic 2.5), but the turn a civ actually reaches a tech stretches
+ *  less than that, because science output accelerates over the game: a pricier
+ *  tech is reached when the civ's science rate is already higher. */
+const BARB_TIER_SPEED_EXPONENT = 0.58;
+
+/** Total science to research a tech and every prerequisite (cached). */
+const cumTechCostCache = new Map<string, number>();
+function cumulativeTechCost(tech: TechId): number {
+  const cached = cumTechCostCache.get(tech);
+  if (cached !== undefined) return cached;
+  const seen = new Set<TechId>();
+  const visit = (id: TechId) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    for (const p of TECH_DEFS[id].prereqs) visit(p);
+  };
+  visit(tech);
+  let sum = 0;
+  for (const id of seen) sum += TECH_DEFS[id].cost;
+  cumTechCostCache.set(tech, sum);
+  return sum;
+}
+
+/** The turn a barbarian unit becomes eligible to spawn, scaled for game speed.
+ *  Techless units (clubman, warrior, slinger, ...) are available from turn 0. */
+function barbUnitUnlockTurn(state: GameState, type: UnitTypeId, speedScale: number): number {
+  const tech = UNIT_DEFS[type].reqTech;
+  if (!tech) return 0;
+  return Math.round((cumulativeTechCost(tech) / BARB_TECH_RATE) * speedScale);
+}
+
+/** Weight multiplier on warships relative to land raiders of equal strength. Above
+ *  1 makes coastal camps lean into sea raiding — their high-strength hulls already
+ *  score well, and this tips the balance so ships are a headline threat, not a
+ *  garnish. Ships can still only strike coastal tiles, so land units stay common. */
+const BARB_NAVAL_WEIGHT = 1.4;
+
+/** A unit's raw combat weight for spawn selection: melee or ranged strength,
+ *  whichever is higher, squared so the horde skews toward its newest, strongest
+ *  units while still throwing the odd cheaper raider for variety. */
+function barbSpawnWeight(type: UnitTypeId): number {
+  const def = UNIT_DEFS[type];
+  const eff = Math.max(def.strength, def.rangedStrength ?? 0);
+  const naval = def.cls === "naval_melee" || def.cls === "naval_ranged";
+  return eff * eff * (naval ? BARB_NAVAL_WEIGHT : 1);
+}
+
+/** Weighted pool of unit types a camp may spawn this turn. Land units always;
+ *  naval units only for `coastal` camps (a land tile beside open water). */
+function barbarianPool(state: GameState, speedScale: number, coastal: boolean): UnitTypeId[] {
+  const pool: UnitTypeId[] = [];
+  for (const type of BARB_LAND_ROSTER) {
+    if (state.turn >= barbUnitUnlockTurn(state, type, speedScale)) pool.push(type);
+  }
+  if (coastal) {
+    for (const type of BARB_NAVAL_ROSTER) {
+      if (state.turn >= barbUnitUnlockTurn(state, type, speedScale)) pool.push(type);
+    }
+  }
+  return pool;
+}
+
+/** Weighted-random pick from a spawn pool using `rng` (0..1). */
+function pickBarbUnit(pool: UnitTypeId[], rng: () => number): UnitTypeId {
+  let total = 0;
+  for (const t of pool) total += barbSpawnWeight(t);
+  let r = rng() * total;
+  for (const t of pool) {
+    r -= barbSpawnWeight(t);
+    if (r <= 0) return t;
+  }
+  return pool[pool.length - 1]!;
+}
+
+/** Place a barbarian warship on a coastal-water tile beside (col,row). */
+function spawnNavalNear(state: GameState, ownerId: number, type: UnitTypeId, col: number, row: number): Unit | null {
+  for (const n of offsetNeighbors(state.map, col, row)) {
+    if (isCoastalWater(state, n.col, n.row) && !unitAt(state, n.col, n.row)) {
+      const id = state.nextEntityId++;
+      const u = makeUnit(id, ownerId, type, n.col, n.row, 0, startingUnitMorale(state, ownerId));
+      state.units.set(id, u);
+      return u;
+    }
+  }
+  return null;
 }
 
 function barbarianId(state: GameState): number | undefined {
@@ -225,13 +348,16 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
       reward: "promotion",
     });
   } else if (barbId !== undefined) {
-    // Negative: an ambush — barbarians appear nearby.
+    // Negative: an ambush — barbarians appear nearby, drawn from the land pool
+    // the horde currently fields.
+    const speedScale = Math.pow(gameSpeedMultiplier(state), BARB_TIER_SPEED_EXPONENT);
+    const pool = barbarianPool(state, speedScale, false);
     let spawned = 0;
     for (const n of offsetNeighbors(state.map, unit.col, unit.row)) {
       if (spawned >= 2) break;
       const tile = getTile(state.map, n.col, n.row);
       if (tile && isPassableLand(tile.terrain) && !unitAt(state, n.col, n.row)) {
-        spawnUnitNear(state, barbId, rng.next() < 0.5 ? "warrior" : "slinger", n.col, n.row);
+        spawnUnitNear(state, barbId, pickBarbUnit(pool, () => rng.next()), n.col, n.row);
         spawned++;
       }
     }
@@ -325,14 +451,25 @@ export function onUnitEnter(state: GameState, unit: Unit): void {
  *  is no global cap on the horde: each camp simply births a raider on its own
  *  cadence (set by activity level), so bigger maps with more camps sustain
  *  proportionally more barbarians. A camp only spawns when it has a free tile
- *  beside it, which keeps any single camp from flooding one spot. */
+ *  beside it, which keeps any single camp from flooding one spot. The unit is
+ *  drawn from the camp's currently-unlocked pool (see BARB_LAND_ROSTER); coastal
+ *  camps may launch a warship onto the adjacent sea. */
 export function spawnFromCamps(state: GameState, barbId: number): void {
+  const speedScale = Math.pow(gameSpeedMultiplier(state), BARB_TIER_SPEED_EXPONENT);
   for (const tile of state.map.tiles) {
     if (tile.feature !== "barb_camp") continue;
     const cadence = barbarianCampCadence(state, tile.col, tile.row);
     if (state.turn % cadence !== 0) continue;
-    const type: UnitTypeId = makeRng(hashSeed(`camp:${tile.col},${tile.row}:${state.turn}`)).next() < 0.5 ? "warrior" : "slinger";
-    const spawned = spawnUnitNear(state, barbId, type, tile.col, tile.row);
+    const coastal = isCoastalLand(state, tile.col, tile.row);
+    const pool = barbarianPool(state, speedScale, coastal);
+    if (pool.length === 0) continue;
+    const rng = makeRng(hashSeed(`camp:${tile.col},${tile.row}:${state.turn}`));
+    const type = pickBarbUnit(pool, () => rng.next());
+    const def = UNIT_DEFS[type];
+    const naval = def.cls === "naval_melee" || def.cls === "naval_ranged";
+    const spawned = naval
+      ? spawnNavalNear(state, barbId, type, tile.col, tile.row)
+      : spawnUnitNear(state, barbId, type, tile.col, tile.row);
     if (spawned) spawned.campKey = `${tile.col},${tile.row}`; // tag the war-band for bribery
   }
 }

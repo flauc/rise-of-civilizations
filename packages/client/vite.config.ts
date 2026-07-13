@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       host: true, // expose on the LAN so a phone can load it for mobile testing
-      port: process.env.PORT ? Number(process.env.PORT) : 5173,
+      port: process.env.PORT ? Number(process.env.PORT) : 5176,
       hmr: disableHmr ? false : undefined,
       proxy: {
         "/analytics": {

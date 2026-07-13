@@ -19,7 +19,7 @@ import { isImageReady, type TerrainAtlas } from "./terrain-assets";
 import { improvementFrameFor, type ImprovementAtlas } from "./improvement-assets";
 import { coastFrameFor, type CoastAtlas } from "./coast-assets";
 import { riverChannelFrame, riverMouthFrame, riverMountainFrame, type RiverAtlas } from "./river-assets";
-import { roadFrame, type RoadAtlas } from "./road-assets";
+import { roadFrame, isolatedRoadFrame, type RoadAtlas } from "./road-assets";
 import { RESOURCE_DEFS, resourceActive, type GameState, type ResourceId } from "@roc/sim";
 import { type ResourceAtlas } from "./resource-assets";
 import { naturalWonderTileImage, type NaturalWonderAtlas } from "./natural-wonder-assets";
@@ -113,25 +113,16 @@ function roadMask(map: GameMap, col: number, row: number, cityKeys: Set<string>)
     if (!t?.road && !cityKeys.has(`${nb.col},${nb.row}`)) continue;
     const opp = (d + 3) % 6;
     const river = (((self?.river ?? 0) & (1 << d)) | ((t?.river ?? 0) & (1 << opp))) !== 0;
-    if (river && !self?.bridge && !t?.bridge) continue; // unbridged river severs the link
+    // A road on a river tile is a bridge (road+river), so it keeps the link across the
+    // water. Derive it inline rather than from the serialization-only `bridge` flag,
+    // which is absent on the raw sim tiles a local single-player game renders.
+    const selfBridge = !!self?.road && !!self.river;
+    const tBridge = !!t?.road && !!t.river;
+    if (river && !selfBridge && !tBridge) continue; // unbridged river severs the link
     mask |= 1 << d;
   }
   return mask;
 }
-
-/** True when the tile has at least one road neighbour (used to pick procedural
- *  segments that join at shared edge midpoints). */
-function hasRoadNeighbor(map: GameMap, col: number, row: number): boolean {
-  const here = offsetToAxial({ col, row });
-  for (let d = 0; d < 6; d++) {
-    const nb = axialToOffset(axialNeighbor(here, d));
-    if (getTile(map, nb.col, nb.row)?.road) return true;
-  }
-  return false;
-}
-
-/** Straight-through masks where the painted overlay spans edge-to-edge cleanly. */
-const PAINTED_ROAD_MASKS = new Set([9, 18, 36]);
 
 /** Highest road level among a tile's road neighbors (defaults to 1). */
 function maxNeighborRoadLevel(map: GameMap, col: number, row: number): number {
@@ -614,11 +605,6 @@ export function drawScene(
     cityKeys.add(`${c.col},${c.row}`);
   }
 
-  // Bridges span the river edge SHARED by two road tiles, so they are collected
-  // during the tile loop and painted afterwards (once per edge) on top of the
-  // road network, centred on that edge's midpoint.
-  const bridgeDraws: { img: HTMLImageElement; mx: number; my: number }[] = [];
-
   // Fog is painted in a dedicated pass AFTER all terrain (below), so it covers
   // overhanging sprites and the seams where neighbouring tiles overlap. Here we
   // just record which tiles need fog and the sprite drawn on each.
@@ -805,43 +791,28 @@ export function drawScene(
         const mask = roadMask(map, t.col, t.row, cityKeys);
         const level = t.road ? (t.roadLevel ?? 1) : maxNeighborRoadLevel(map, t.col, t.row);
         if (t.road && mask === 0) {
-          // No road/city neighbour — a standalone patch on this tile only.
-          drawIsolatedRoad(ctx, sx, sy, level, size);
+          // No road/city neighbour — a standalone patch on this tile only. Use a
+          // real painted road segment (picked deterministically) so it matches the
+          // rest of the network; fall back to a procedural patch while loading.
+          const img = isolatedRoadFrame(opts.roadAtlas, t.col, t.row, level);
+          if (img && isImageReady(img)) {
+            drawFootprintOverlay(ctx, img, sx, sy, footprint);
+          } else {
+            drawIsolatedRoad(ctx, sx, sy, level, size);
+          }
         } else if (mask !== 0) {
-          // Painted dead-ends and corners do not always meet at edge midpoints,
-          // so use procedural segments whenever a road touches another road; keep
-          // painted art for long straight runs and city stubs.
-          const usePainted =
-            !hasRoadNeighbor(map, t.col, t.row) && PAINTED_ROAD_MASKS.has(mask);
-          const img = usePainted ? roadFrame(opts.roadAtlas, mask, false, t.col, t.row) : undefined;
+          // Prefer the painted road overlay (keyed by connection mask; each edge
+          // reaches its midpoint so neighbours join seamlessly). A road that sits on a
+          // river tile is a bridge (it could only be laid there with Bridge Building):
+          // for the straight-through masks that have bridge art (9/18/36) roadFrame
+          // swaps in the wooden-bridge sprite, so the crossing renders as a span rather
+          // than a road drawn over open water. Fall back to the procedural segment only
+          // while the atlas is still loading or a variant failed to load.
+          const img = roadFrame(opts.roadAtlas, mask, !!t.river, t.col, t.row, level);
           if (img && isImageReady(img)) {
             drawFootprintOverlay(ctx, img, sx, sy, footprint);
           } else {
             drawRoadSegment(ctx, sx, sy, corners, mask, level, size);
-          }
-        }
-        // A bridge spans a river along the edge between this road tile and a road or
-        // city neighbour. Paint each shared edge once, with the straight-through
-        // bridge centred on that edge's midpoint.
-        if (t.road) {
-          const here = offsetToAxial({ col: t.col, row: t.row });
-          for (let d = 0; d < 6; d++) {
-            const nb = axialToOffset(axialNeighbor(here, d));
-            const n = getTile(map, nb.col, nb.row);
-            const nIsCity = cityKeys.has(`${nb.col},${nb.row}`);
-            if (!n?.road && !nIsCity) continue;
-            const opp = (d + 3) % 6;
-            const riverOnEdge = (((t.river ?? 0) & (1 << d)) | ((n?.river ?? 0) & (1 << opp))) !== 0;
-            if (!riverOnEdge || (!t.bridge && !n?.bridge)) continue;
-            // Draw each shared edge once: a road↔road edge from the lower-coordinate
-            // tile; a road↔city edge always from the road tile (cities never initiate).
-            if (n?.road && !nIsCity && (nb.row < t.row || (nb.row === t.row && nb.col < t.col))) continue;
-            const bridgeMask = (1 << d) | (1 << opp); // one of 9/18/36
-            const bImg = roadFrame(opts.roadAtlas, bridgeMask, true, t.col, t.row);
-            if (bImg && isImageReady(bImg)) {
-              const m = sideMidpoint(corners, (6 - d) % 6, sx, sy);
-              bridgeDraws.push({ img: bImg, mx: m.x, my: m.y });
-            }
           }
         }
       }
@@ -871,11 +842,6 @@ export function drawScene(
       }
     }
     drawn++;
-  }
-
-  // Bridges last, so they sit on top of the road network at each river crossing.
-  for (const b of bridgeDraws) {
-    drawFootprintOverlay(ctx, b.img, b.mx, b.my, footprint);
   }
 
   // ---- Fog of war -------------------------------------------------------

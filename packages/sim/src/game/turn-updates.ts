@@ -350,6 +350,35 @@ export function emitCivDefeated(
   });
 }
 
+/** Announce a declaration of war. The victim is alerted immediately (the client
+ *  treats an on-you war as an immediate update); every other civ that has met
+ *  BOTH belligerents learns of it at the start of its next turn. The aggressor
+ *  gets no event: they made the declaration themselves. The shared log entry is
+ *  written by declareWar, so none is added here. */
+export function emitWarDeclared(state: GameState, aggressorId: number, targetId: number): void {
+  const aggressor = playerById(state, aggressorId);
+  const target = playerById(state, targetId);
+  if (!aggressor || !target || aggressor.isBarbarian || target.isBarbarian) return;
+  const aggressorName = getCiv(aggressor.civId)?.name ?? aggressor.name;
+  const targetName = getCiv(target.civId)?.name ?? target.name;
+  for (const p of state.players) {
+    if (p.isBarbarian || p.id === aggressorId) continue;
+    const onYou = p.id === targetId;
+    if (!onYou && !(p.met.includes(aggressorId) && p.met.includes(targetId))) continue;
+    const id = state.nextTurnUpdateId++;
+    state.turnUpdates.push({
+      id,
+      turn: state.turn,
+      type: "warDeclared",
+      playerId: p.id,
+      message: onYou
+        ? `${aggressorName} has declared war on you!`
+        : `${aggressorName} declared war on ${targetName}.`,
+      payload: { aggressorId, targetId, aggressorName, targetName, onYou },
+    });
+  }
+}
+
 /** Fire a civ-defeat announcement once when a major civ loses its last city. */
 export function maybeCheckCivElimination(
   state: GameState,

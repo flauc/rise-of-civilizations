@@ -84,32 +84,25 @@ export function riverBetween(state: GameState, fromCol: number, fromRow: number,
   return false;
 }
 
-/** True if a road on this tile is carried over its river by a bridge: the tile has
- *  both a road and a river, and Bridge Building is known. Roads may be used by
- *  anyone, so the span exists if the tile's territory owner has the tech OR — for a
- *  neutral or foreign road — the passing army's own civ does (its engineers throw
- *  the span). Callers that describe a *tile* (rendering, trade connectivity) pass no
- *  `moverId` and so see only the owner's bridge; movement passes the moving unit's
- *  owner so every unit gets the road's crossing, even on unclaimed land. */
-export function tileHasBridge(state: GameState, col: number, row: number, moverId?: number): boolean {
+/** True if a road on this tile is carried over its river by a bridge. A road can
+ *  only be laid on a river tile once its builder has Bridge Building, so any road
+ *  on a river tile already stands on a bridge, and anyone may use it regardless of
+ *  their own tech. */
+export function tileHasBridge(state: GameState, col: number, row: number): boolean {
   const tile = getTile(state.map, col, row);
-  if (!tile?.road || !tile.river) return false;
-  const ownerId = tile.ownerCityId !== undefined ? state.cities.get(tile.ownerCityId)?.ownerId : undefined;
-  if (ownerId !== undefined && hasTech(state, ownerId, "bridge_building")) return true;
-  if (moverId !== undefined && hasTech(state, moverId, "bridge_building")) return true;
-  return false;
+  return !!tile?.road && !!tile.river;
 }
 
 /** True if the river along the edge between two adjacent road connectors (a road
  *  tile or a city) is spanned by a bridge. Such a crossing neither costs the extra
  *  fording movement nor breaks a city-to-city road connection — but the assault
  *  penalty for it still applies. */
-export function bridgedRiverCrossing(state: GameState, fromCol: number, fromRow: number, toCol: number, toRow: number, moverId?: number): boolean {
+export function bridgedRiverCrossing(state: GameState, fromCol: number, fromRow: number, toCol: number, toRow: number): boolean {
   if (!riverBetween(state, fromCol, fromRow, toCol, toRow)) return false;
   const fromConn = !!getTile(state.map, fromCol, fromRow)?.road || !!cityAt(state, fromCol, fromRow);
   const toConn = !!getTile(state.map, toCol, toRow)?.road || !!cityAt(state, toCol, toRow);
   if (!fromConn || !toConn) return false;
-  return tileHasBridge(state, fromCol, fromRow, moverId) || tileHasBridge(state, toCol, toRow, moverId);
+  return tileHasBridge(state, fromCol, fromRow) || tileHasBridge(state, toCol, toRow);
 }
 
 /** Move cost to enter a graded road tile, by road tier. A road's surface sets the
@@ -247,7 +240,7 @@ export function computeReachable(
       // Fording a river costs an extra movement point (like entering rough terrain),
       // unless a bridge carries the road across it.
       if (!isWaterDomain(unit) && riverBetween(state, cur.col, cur.row, n.col, n.row) &&
-        !bridgedRiverCrossing(state, cur.col, cur.row, n.col, n.row, unit.ownerId)) enterCost += 1;
+        !bridgedRiverCrossing(state, cur.col, cur.row, n.col, n.row)) enterCost += 1;
       const step = curCost + enterCost;
       if (step <= budget && step < (best.get(nk) ?? Infinity)) {
         best.set(nk, step);

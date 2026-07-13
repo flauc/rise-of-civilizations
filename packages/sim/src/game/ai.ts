@@ -10,7 +10,7 @@
 import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import { applyCommand } from "./commands";
 import { computeReachable, isNavalUnit } from "./movement";
-import { computeAttackTargets, unitMaxHp, combatPreview, cityBombardTargets, cityBombardStrength, damageFrom, cityMaxHp } from "./combat";
+import { computeAttackTargets, unitMaxHp, combatPreview, cityBombardTargets, cityBombardStrength, cityBombardAllowance, cityBombardsUsed, defenseStrengthVsBombard, damageFrom, cityMaxHp } from "./combat";
 import { abilityTargets, canUseAbility, unitAbilities } from "./abilities";
 import { religionUnitKit, religionInstanceForDefId, cityMajorityFaith } from "./religion-units";
 import { availableProduction, availableTechs, workableTiles } from "./economy";
@@ -38,7 +38,7 @@ import {
 import { offsetNeighbors } from "./movement";
 import { RESOURCE_DEFS, resourceActive } from "./resources";
 import { isPassableLand, isWaterTerrain, tileYields } from "./terrain";
-import { BARBARIAN_DIPLOMACY_TECH, UNIT_DEFS, isMilitary, isNaval, isRanged, type TechId, type TrainingClass, type UnitTypeId } from "./content";
+import { BARBARIAN_DIPLOMACY_TECH, UNIT_DEFS, getBuildingDef, isMilitary, isNaval, isRanged, type TechId, type TrainingClass, type UnitTypeId } from "./content";
 import { barbarianBribeCost, barbarianRecruitCost, canParleyWith, isBarbarianPacified } from "./bribery";
 import { victoryProgress } from "./victory";
 import {
@@ -683,11 +683,30 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
   if (warMinded && !city.training.stable) { const s = findTraining("stable"); if (s) return s; }
 
   // 2. Economy / infrastructure buildings (skips any already built / not unlocked).
-  // Growth first (a Granary feeds bigger cities → more pop for everything), then the
-  // commerce/science/culture core, including the Bank and Museum that drive the
-  // economic and culture victories.
-  const order: string[] = ["granary", "workshop", "market", "library"];
+  // Growth first (a Granary + Storehouse feed bigger cities → more pop for
+  // everything), then the commerce/science/culture core, including the Bank and
+  // Museum that drive the economic and culture victories.
+  const order: string[] = ["granary", "storehouse", "workshop", "market", "library"];
   if (coastal) order.unshift("harbor");
+  // Frontier / war cities harden themselves: Walls → Castle → Ballista Towers, plus a
+  // Beacon network where two or more of our cities sit within signalling range, and an
+  // Infirmary to keep the staged army healed. (availableProduction enforces the chain,
+  // so Castle only surfaces once Walls stand.)
+  const beaconAura = getBuildingDef("beacon_tower")?.effects?.cityDefenseAura;
+  const beaconCluster = beaconAura
+    ? citiesOf(state, player.id).some((c) =>
+        c.id !== city.id &&
+        axialDistance(offsetToAxial(city), offsetToAxial(c)) <= beaconAura.radius)
+    : false;
+  const localThreat = hostileNearCity(state, player.id, city, 3);
+  if (warMinded || localThreat) {
+    order.unshift("infirmary", "ballista_towers", "castle", "walls");
+    if (beaconCluster) order.unshift("beacon_tower");
+    order.push("bombard_tower"); // late-era gun tower
+  }
+  // Military-production support once the city trains a real army (barracks/range tier 2+).
+  const trainsArmies = (city.training.barracks ?? 0) >= 2 || (city.training.archery_range ?? 0) >= 2;
+  if (trainsArmies || warMinded) order.unshift("armoury", "drill_yard");
   if (warMinded) order.unshift("walls"); // fortify the frontier before it's tested
   if (player.gold <= 0) order.unshift("market"); // prioritise income when broke
   // The civ's victory focus pulls its win-condition buildings to the front of the queue:
@@ -695,14 +714,17 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
   // for the Great Endeavor, shrines/temples for a religious crusade.
   const focusBuildings: Partial<Record<VictoryKind, string[]>> = {
     economic: ["market", "bank", "harbor"],
-    culture: ["amphitheater", "monument", "museum", "temple"],
+    culture: ["amphitheater", "monument", "triumphal_arch", "museum", "temple"],
     science: ["library", "academy"],
     religious: ["shrine", "temple"],
   };
   for (const id of [...(focusBuildings[focus] ?? [])].reverse()) order.unshift(id);
+  // A Triumphal Arch (culture + a battlefield morale aura) is worth more while at war.
+  if (atWar) order.unshift("triumphal_arch");
   order.push(
-    "forge", "bank", "monument", "amphitheater", "academy", "museum",
-    "aqueduct", "temple", "shrine", "walls", "lighthouse",
+    "forge", "bank", "monument", "amphitheater", "triumphal_arch", "academy", "museum",
+    "aqueduct", "temple", "shrine", "walls", "castle", "ballista_towers", "arsenal",
+    "armoury", "drill_yard", "storehouse", "infirmary", "beacon_tower", "bombard_tower", "lighthouse",
   );
   const seen = new Set<string>();
   for (const id of order) {
@@ -1723,10 +1745,106 @@ function scoreAttackTarget(state: GameState, unit: Unit, pid: number, col: numbe
     if (!kill) {
       if (preview.toAttacker >= unit.hp) return null;
       if (!crushing && preview.toAttacker > preview.toDefender + 5 && unit.hp < 70) return null;
+      // Even at full health, never trade into a wall: taking double-plus damage
+      // for no kill just feeds the enemy (the classic barbarian-camp meat grinder).
+      if (!crushing && preview.toAttacker > preview.toDefender * 2 + 8) return null;
     }
     return kill + preview.toDefender * 2 - preview.toAttacker * (crushing ? 1.5 : 2);
   }
   return null;
+}
+
+/** Land the chosen strike, preferring a matching combat ability over a plain attack. */
+function executeAttack(state: GameState, unit: Unit, pid: number, chosen: { col: number; row: number }): void {
+  const abilities = unitAbilities(state, unit);
+  // Cavalry strike with a charge (extra punch + breakthrough) when hitting a unit.
+  const enemy = unitAt(state, chosen.col, chosen.row);
+  const charge = abilities.find((a) => a === "shock_charge" || a === "charge" || a === "hussar_charge" || a === "war_cart_charge" || a === "furor" || a === "deus_vult");
+  if (enemy && charge && abilityTargets(state, unit, charge).has(`${chosen.col},${chosen.row}`)) {
+    applyCommand(state, { type: "useAbility", unitId: unit.id, ability: charge, col: chosen.col, row: chosen.row }, pid);
+    return;
+  }
+  const ranged2 = abilities.find((a) => a === "repeating_fire" || a === "arrow_storm");
+  if (enemy && ranged2 && abilityTargets(state, unit, ranged2).has(`${chosen.col},${chosen.row}`)) {
+    applyCommand(state, { type: "useAbility", unitId: unit.id, ability: ranged2, col: chosen.col, row: chosen.row }, pid);
+    return;
+  }
+  const sunder = abilities.find((a) => a === "sunder" || a === "pierce" || a === "harry" || a === "siege_assault" || a === "slay_the_beast" || a === "pyramid_of_skulls");
+  if (enemy && sunder && abilityTargets(state, unit, sunder).has(`${chosen.col},${chosen.row}`)) {
+    applyCommand(state, { type: "useAbility", unitId: unit.id, ability: sunder, col: chosen.col, row: chosen.row }, pid);
+    return;
+  }
+  applyCommand(state, { type: "attack", attackerId: unit.id, col: chosen.col, row: chosen.row }, pid);
+}
+
+/** One favourable strike from where the unit now stands, if any. Used after a unit
+ *  has repositioned so a soldier who marched up to an enemy still gets the first
+ *  blow in the same turn instead of gifting the opening hit. */
+function aiTryAttack(state: GameState, unit: Unit, pid: number): boolean {
+  if (unit.attackedThisTurn || unit.movementLeft <= 0) return false;
+  const choice = pickBestAttackTarget(state, unit, pid, computeAttackTargets(state, unit));
+  if (!choice) return false;
+  executeAttack(state, unit, pid, { col: choice.col, row: choice.row });
+  return true;
+}
+
+/** Close the last stretch AND strike in one turn: when nothing is in range from
+ *  where the unit stands, march to a reachable tile that leaves movement to spare
+ *  (an attack needs movement left) and puts a favourably-scored enemy in range,
+ *  then hit it. Without this the AI parks adjacent to its target and hands the
+ *  enemy the first blow every time. */
+function approachAndStrike(state: GameState, unit: Unit, pid: number): boolean {
+  if (unit.attackedThisTurn || unit.movementLeft <= 0 || unit.embarked) return false;
+  const def = UNIT_DEFS[unit.type];
+  if (def.strength <= 0 && (def.rangedStrength ?? 0) <= 0) return false;
+  if (def.gunpowder && isRanged(def) && (!unit.loaded || unit.reloading)) return false;
+  const range = isRanged(def) ? def.range ?? 1 : 1;
+
+  // Cheap pre-check before any pathfinding: is any hostile even close enough?
+  const maxD = unit.movementLeft + range;
+  const near: { col: number; row: number }[] = [];
+  for (const e of state.units.values()) {
+    if (isHostile(state, pid, e.ownerId) && axialDistance(ax(unit), ax(e)) <= maxD) near.push(e);
+  }
+  for (const c of state.cities.values()) {
+    if (c.ownerId !== pid && isHostile(state, pid, c.ownerId) && axialDistance(ax(unit), ax(c)) <= maxD) near.push(c);
+  }
+  if (near.length === 0) return false;
+
+  // Tiles we can move to while keeping movement for the strike itself.
+  const strikeTiles: { col: number; row: number; cost: number }[] = [];
+  for (const [key, entry] of computeReachable(state, unit)) {
+    if (entry.cost >= unit.movementLeft) continue;
+    const [c, r] = key.split(",").map(Number) as [number, number];
+    if (aiPeaceBlocked(state, pid, c, r)) continue;
+    strikeTiles.push({ col: c, row: r, cost: entry.cost });
+  }
+  if (strikeTiles.length === 0) return false;
+
+  // Score (same trade discipline as a standing attack) only the foes we could
+  // genuinely reach-and-hit, and remember the cheapest firing tile for each.
+  let bestFoe: { col: number; row: number; score: number; from: { col: number; row: number } } | null = null;
+  for (const foe of near) {
+    let from: { col: number; row: number; cost: number } | null = null;
+    for (const t of strikeTiles) {
+      if (axialDistance(ax(t), ax(foe)) > range) continue;
+      if (!from || t.cost < from.cost) from = t;
+    }
+    if (!from) continue;
+    const score = scoreAttackTarget(state, unit, pid, foe.col, foe.row);
+    if (score == null) continue;
+    if (!bestFoe || score > bestFoe.score) bestFoe = { col: foe.col, row: foe.row, score, from };
+  }
+  if (!bestFoe) return false;
+
+  if (!applyCommand(state, { type: "move", unitId: unit.id, col: bestFoe.from.col, row: bestFoe.from.row }, pid).ok) return false;
+  // Validate from the new tile (domain/loaded checks live in computeAttackTargets).
+  if (computeAttackTargets(state, unit).has(`${bestFoe.col},${bestFoe.row}`)) {
+    executeAttack(state, unit, pid, { col: bestFoe.col, row: bestFoe.row });
+  } else {
+    aiTryAttack(state, unit, pid);
+  }
+  return true;
 }
 
 function pickBestAttackTarget(
@@ -1745,29 +1863,28 @@ function pickBestAttackTarget(
   return best;
 }
 
-/** Fire each city's once-per-turn bombard at the best nearby enemy. */
+/** Fire each city's bombards (base 1/turn, +extra from a Bombard Tower) at the
+ *  best nearby enemies, preferring kills, then the most damage dealt. */
 function aiCityBombard(state: GameState, pid: number): void {
   for (const city of citiesOf(state, pid)) {
-    if (city.rangedAttackUsed) continue;
-    const targets = cityBombardTargets(state, city);
-    if (targets.length === 0) continue;
-    const str = cityBombardStrength(state, city);
-    let best: Unit | null = null;
-    let bestScore = -Infinity;
-    for (const t of targets) {
-      const tile = getTile(state.map, t.col, t.row);
-      let def = UNIT_DEFS[t.type].strength * (t.hp / unitMaxHp(t));
-      if (tile) def += 2; // rough terrain cushion
-      const dmg = damageFrom(str, Math.max(1, Math.round(def)));
-      const kill = dmg >= t.hp ? 1000 : 0;
-      const score = kill - t.hp + dmg;
-      if (score > bestScore) {
-        bestScore = score;
-        best = t;
+    while (cityBombardsUsed(city) < cityBombardAllowance(city)) {
+      const targets = cityBombardTargets(state, city);
+      if (targets.length === 0) break;
+      const str = cityBombardStrength(state, city);
+      let best: Unit | null = null;
+      let bestScore = -Infinity;
+      for (const t of targets) {
+        const dmg = damageFrom(str, defenseStrengthVsBombard(state, t));
+        const kill = dmg >= t.hp ? 1000 : 0;
+        const score = kill - t.hp + dmg;
+        if (score > bestScore) {
+          bestScore = score;
+          best = t;
+        }
       }
-    }
-    if (best) {
-      applyCommand(state, { type: "cityBombard", cityId: city.id, col: best.col, row: best.row }, pid);
+      if (!best) break;
+      const res = applyCommand(state, { type: "cityBombard", cityId: city.id, col: best.col, row: best.row }, pid);
+      if (!res.ok) break; // never spin on a rejected shot
     }
   }
 }
@@ -1884,27 +2001,12 @@ function aiMilitary(state: GameState, unit: Unit, pid: number, escortSettlerId?:
   }
 
   if (attackChoice) {
-    const chosen = { col: attackChoice.col, row: attackChoice.row };
-    // Cavalry strike with a charge (extra punch + breakthrough) when hitting a unit.
-    const enemy = unitAt(state, chosen.col, chosen.row);
-    const charge = abilities.find((a) => a === "shock_charge" || a === "charge" || a === "hussar_charge" || a === "war_cart_charge" || a === "furor" || a === "deus_vult");
-    if (enemy && charge && abilityTargets(state, unit, charge).has(`${chosen.col},${chosen.row}`)) {
-      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: charge, col: chosen.col, row: chosen.row }, pid);
-      return;
-    }
-    const ranged2 = abilities.find((a) => a === "repeating_fire" || a === "arrow_storm");
-    if (enemy && ranged2 && abilityTargets(state, unit, ranged2).has(`${chosen.col},${chosen.row}`)) {
-      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: ranged2, col: chosen.col, row: chosen.row }, pid);
-      return;
-    }
-    const sunder = abilities.find((a) => a === "sunder" || a === "pierce" || a === "harry" || a === "siege_assault" || a === "slay_the_beast" || a === "pyramid_of_skulls");
-    if (enemy && sunder && abilityTargets(state, unit, sunder).has(`${chosen.col},${chosen.row}`)) {
-      applyCommand(state, { type: "useAbility", unitId: unit.id, ability: sunder, col: chosen.col, row: chosen.row }, pid);
-      return;
-    }
-    applyCommand(state, { type: "attack", attackerId: unit.id, col: chosen.col, row: chosen.row }, pid);
+    executeAttack(state, unit, pid, { col: attackChoice.col, row: attackChoice.row });
     return;
   }
+
+  // Nothing in range from here — close the gap and strike in the same turn.
+  if (approachAndStrike(state, unit, pid)) return;
 
   // No good attack: brace spears against adjacent enemy cavalry rather than idling.
   const braceLike = abilities.find((a) => a === "shield_wall" || a === "othismos" || a === "last_stand" || a === "brace");
@@ -2394,7 +2496,13 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
       if (unit.id === voyagerId && aiCircumnavigate(state, unit, playerId)) continue;
       aiScout(state, unit, playerId);
     }
-    else aiMilitary(state, unit, playerId, escorts.get(unit.id));
+    else {
+      aiMilitary(state, unit, playerId, escorts.get(unit.id));
+      // aiMilitary may have marched the unit next to an enemy: with movement (and
+      // the attack) still unspent, strike now rather than let the foe swing first.
+      const moved = state.units.get(unit.id);
+      if (moved) aiTryAttack(state, moved, playerId);
+    }
   }
 
   // After the army has manoeuvred, parley with any barbarians it now stands beside —
