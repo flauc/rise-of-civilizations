@@ -1,4 +1,5 @@
 import type {
+  AdminGameSession,
   AdminOverview,
   AdminRegisteredUser,
   BugReportSummary,
@@ -14,6 +15,8 @@ import { API_BASE, getToken } from "./util";
 
 export interface AllData {
   overview: AdminOverview;
+  /** Latest sessions for the overview dashboard. */
+  recentGames: AdminGameSession[];
   sessions: PlayerSessionStats[];
   civs: CivCount[];
   config: ConfigBreakdown;
@@ -37,6 +40,7 @@ const EMPTY: AllData = {
     avgTurns: 0,
     sessionsToday: 0,
   },
+  recentGames: [],
   sessions: [],
   civs: [],
   config: {
@@ -90,6 +94,7 @@ export async function fetchAll(token: string): Promise<AllData> {
 
   return {
     overview: raw.overview ?? EMPTY.overview,
+    recentGames: applyPlayerHandles(raw.recentGames ?? [], raw.playerHandles),
     sessions: applyPlayerHandles(raw.sessions ?? [], raw.playerHandles),
     civs: raw.civs ?? [],
     config: raw.config ?? EMPTY.config,

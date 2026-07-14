@@ -1,12 +1,12 @@
 // Trade routes. A Trader unit (unlocked by The Wheel) is consumed in one of your
-// cities to establish a permanent route to another of your cities. The route yields
-// gold (scaling with distance, Markets/Banks, roads and cross-border reach), and
-// every other yield — food, production, science, culture — rides on that same value,
-// so improving a route lifts all of them. The origin city takes the bulk; the
+// cities to establish a permanent route to another city. Routes pay a flat base
+// gold (distance does not change income), plus Markets/Banks, fully roaded paths,
+// and cross-border or overseas premiums. Caravans chain through your port cities
+// to reach distant shores in one action. The origin city takes the bulk; the
 // destination a smaller share. Routes are pruned when either endpoint is lost or
 // changes owner.
 
-import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
+import { getTile } from "@roc/shared";
 import type { City, GameState, TradeRoute, Unit } from "./state";
 import { cityAt, log, playerById, unitAt } from "./state";
 import { UNIT_DEFS, isMilitary, type UnitTypeId } from "./content";
@@ -36,9 +36,9 @@ export interface TradeYield {
 }
 
 const ZERO: TradeYield = { gold: 0, food: 0, production: 0, science: 0, culture: 0 };
-/** The distance-based base gold is capped here; roads (and buildings) lift a route
- *  above this ceiling, so paving a route is the way to grow it past the early game. */
-const MAX_ROUTE_GOLD = 6;
+/** Every route earns the same base gold; distance does not change income. Roads and
+ *  buildings lift yields above this floor. */
+const BASE_ROUTE_GOLD = 4;
 
 /** Bonus gold for a route whose entire land path is connected by roads (or, with
  *  Sailing, rivers). The weakest road tier along the path determines the bonus, and
@@ -46,7 +46,16 @@ const MAX_ROUTE_GOLD = 6;
  *  base cap. */
 const ROAD_BONUS_BY_TIER: Record<number, number> = { 1: 2, 2: 4, 3: 6 };
 
-const ax = (c: { col: number; row: number }) => offsetToAxial({ col: c.col, row: c.row });
+/** Tiles queued on the player's agrimensore road routes — caravans prefer them even
+ *  before paving finishes so trade lanes hug planned highways. */
+function plannedRoadTileKeys(state: GameState, ownerId: number): Set<string> {
+  const keys = new Set<string>();
+  for (const rr of state.roadRoutes) {
+    if (rr.ownerId !== ownerId) continue;
+    for (const t of rr.queue) keys.add(`${t.col},${t.row}`);
+  }
+  return keys;
+}
 
 /** Once Sailing is researched a player's rivers become navigable trade arteries,
  *  carrying caravans like a road and counting as a top-grade road for the route
@@ -118,7 +127,7 @@ function routeIsOverseas(state: GameState, route: TradeRoute): boolean {
  *  route's income comes from — and how paving it (road tier) grows it past the base
  *  cap. `total` is the gold actually granted per turn. */
 export interface TradeGoldBreakdown {
-  /** Distance-based base income, capped at MAX_ROUTE_GOLD. */
+  /** Flat base income — identical for every route length. */
   base: number;
   /** Extra from Markets (both ends) and a Bank at the origin. */
   buildings: number;
@@ -148,8 +157,7 @@ export function tradeRouteGoldBreakdown(state: GameState, route: TradeRoute): Tr
   const from = state.cities.get(route.fromCityId);
   const to = state.cities.get(route.toCityId);
   if (!from || !to) return empty;
-  const dist = axialDistance(ax(from), ax(to));
-  const base = Math.min(MAX_ROUTE_GOLD, 3 + Math.floor(dist / 2));
+  const base = BASE_ROUTE_GOLD;
   let buildings = 0;
   if (from.buildings.includes("market")) buildings += 2;
   if (to.buildings.includes("market")) buildings += 1;
@@ -173,11 +181,9 @@ export function tradeRouteYield(state: GameState, route: TradeRoute): TradeYield
   if (!from || !to) return ZERO;
   const b = tradeRouteGoldBreakdown(state, route);
   const g = b.total;
-  // Every yield rides on the route's overall value, so anything that grows a route —
-  // paving and upgrading its roads, Markets/Banks at the ends, reaching a foreign
-  // partner or an overseas port, or simply spanning a longer distance — lifts its
-  // food, production, science and culture too, not just its gold. Gold stays the
-  // headline (full value); the others accrue at a gentler rate.
+  // Every yield rides on the route's overall value, so paving its roads, Markets/Banks
+  // at the ends, or reaching a foreign partner lifts food, production, science and
+  // culture too — not just gold.
   const food = 1 + Math.floor(g / 8);
   const production = 1 + Math.floor(g / 8);
   let science = (to.buildings.includes("library") || to.buildings.includes("academy") ? 1 : 0) + Math.floor(g / 12);
@@ -241,14 +247,178 @@ function pathUsesWater(state: GameState, path: string[]): boolean {
   return false;
 }
 
-/** Whether a caravan can link two cities. Overseas lanes require both ends to be ports. */
-export function canConnectCities(state: GameState, from: City, to: City): boolean {
+/** Whether a direct caravan path links two cities (no multi-hop through hubs). */
+export function canConnectCitiesDirect(state: GameState, from: City, to: City): boolean {
   const path = computeTradeRoutePath(state, from, to);
   if (path.length < 2) return false;
   if (pathUsesWater(state, path) && !(isCoastalPortCity(state, from) && isCoastalPortCity(state, to))) {
     return false;
   }
   return true;
+}
+
+const MAX_TRADE_HUB_HOPS = 12;
+
+/** Sum caravan traversal cost along a stored tile path. */
+export function pathCaravanCost(state: GameState, path: string[], ownerId: number): number {
+  if (path.length < 2) return Infinity;
+  const riverConnects = riversConnectFor(state, ownerId);
+  const plannedRoadKeys = plannedRoadTileKeys(state, ownerId);
+  let total = 0;
+  for (let i = 1; i < path.length; i++) {
+    const [col, row] = path[i]!.split(",").map(Number) as [number, number];
+    const tile = getTile(state.map, col, row);
+    if (!tile) return Infinity;
+    total += caravanTileCost(state, tile, col, row, riverConnects, plannedRoadKeys);
+  }
+  return total;
+}
+
+function segmentCaravanCost(state: GameState, from: City, to: City): number {
+  const path = computeTradeRoutePath(state, from, to);
+  if (path.length < 2) return Infinity;
+  if (pathUsesWater(state, path) && !(isCoastalPortCity(state, from) && isCoastalPortCity(state, to))) {
+    return Infinity;
+  }
+  return pathCaravanCost(state, path, from.ownerId);
+}
+
+/** Cheapest chain of cities linking origin to destination, hopping through owned
+ *  ports when a direct lane is blocked by open ocean. */
+export function findTradeHubChain(state: GameState, from: City, to: City): City[] | null {
+  if (from.id === to.id) return null;
+
+  const ownerId = from.ownerId;
+  const candidates = [...state.cities.values()].filter(
+    (c) => !c.isBarbarian && (c.ownerId === ownerId || c.id === to.id),
+  );
+  const byId = new Map(candidates.map((c) => [c.id, c]));
+  if (!byId.has(from.id) || !byId.has(to.id)) return null;
+
+  const dist = new Map<number, number>();
+  const prev = new Map<number, number>();
+  dist.set(from.id, 0);
+
+  const settled = new Set<number>();
+  while (settled.size < candidates.length) {
+    let cur: number | null = null;
+    let best = Infinity;
+    for (const c of candidates) {
+      if (settled.has(c.id)) continue;
+      const d = dist.get(c.id);
+      if (d === undefined || d >= best) continue;
+      best = d;
+      cur = c.id;
+    }
+    if (cur === null || best === Infinity) break;
+    settled.add(cur);
+
+    if (cur === to.id) {
+      const chain: City[] = [];
+      let walk: number | undefined = to.id;
+      while (walk !== undefined) {
+        chain.unshift(byId.get(walk)!);
+        if (walk === from.id) break;
+        walk = prev.get(walk);
+      }
+      return chain.length >= 2 && chain.length <= MAX_TRADE_HUB_HOPS ? chain : null;
+    }
+
+    const last = byId.get(cur)!;
+    for (const cand of candidates) {
+      if (cand.id === last.id || settled.has(cand.id)) continue;
+      const seg = segmentCaravanCost(state, last, cand);
+      if (!Number.isFinite(seg)) continue;
+      const next = best + seg;
+      if (next < (dist.get(cand.id) ?? Infinity)) {
+        dist.set(cand.id, next);
+        prev.set(cand.id, cur);
+      }
+    }
+  }
+  return null;
+}
+
+/** Intermediate hub city names on a route (empty when direct). */
+export function tradeRouteViaNames(state: GameState, from: City, to: City): string[] {
+  const chain = findTradeHubChain(state, from, to);
+  if (!chain || chain.length <= 2) return [];
+  return chain.slice(1, -1).map((c) => c.name);
+}
+
+/** Human-readable via line for UI — highlights the player's departure port on sea lanes. */
+export function tradeRouteViaMessage(state: GameState, from: City, to: City): string | null {
+  const chain = findTradeHubChain(state, from, to);
+  if (!chain || chain.length <= 2) return null;
+  const path = computeChainedTradePath(state, chain);
+  const hubs = chain.slice(1, -1);
+  if (hubs.length === 0) return null;
+  const overseas = pathUsesWater(state, path);
+  if (overseas && !isCoastalPortCity(state, from)) {
+    const depart =
+      hubs.find((c) => c.ownerId === from.ownerId && isCoastalPortCity(state, c)) ?? hubs[0]!;
+    const rest = hubs.filter((c) => c.id !== depart.id).map((c) => c.name);
+    if (rest.length === 0) return `your port ${depart.name}`;
+    return `your port ${depart.name}, then ${rest.join(", ")}`;
+  }
+  return hubs.map((c) => c.name).join(", ");
+}
+
+/** Recompute every route's tile path when a faster lane opens (e.g. new roads). */
+export function refreshTradeRoutePaths(state: GameState): number {
+  let updated = 0;
+  for (const route of state.tradeRoutes) {
+    const from = state.cities.get(route.fromCityId);
+    const to = state.cities.get(route.toCityId);
+    if (!from || !to) continue;
+    const draft = draftTradeRoute(state, from, to);
+    if (!draft) continue;
+    const oldCost = pathCaravanCost(state, route.path, route.ownerId);
+    const newCost = pathCaravanCost(state, draft.path, route.ownerId);
+    const pathChanged = draft.path.join("|") !== route.path.join("|");
+    if (newCost < oldCost - 1e-6 || (pathChanged && newCost <= oldCost + 1e-6)) {
+      route.path = draft.path;
+      route.viaCityIds = draft.viaCityIds;
+      updated++;
+    }
+  }
+  return updated;
+}
+
+/** Stitch segment paths into one caravan track, dropping duplicate join tiles. */
+function computeChainedTradePath(state: GameState, chain: City[]): string[] {
+  const full: string[] = [];
+  for (let i = 0; i < chain.length - 1; i++) {
+    const seg = computeTradeRoutePath(state, chain[i]!, chain[i + 1]!);
+    if (seg.length < 2) return [];
+    if (full.length === 0) full.push(...seg);
+    else full.push(...seg.slice(1));
+  }
+  return full;
+}
+
+/** Build a draft route (path + hub ids) for previews and establishment. */
+export function draftTradeRoute(state: GameState, from: City, to: City): Omit<TradeRoute, "id"> | null {
+  const chain = findTradeHubChain(state, from, to);
+  if (!chain) return null;
+  const path = computeChainedTradePath(state, chain);
+  if (path.length < 2) return null;
+  const international = to.ownerId !== from.ownerId;
+  const viaCityIds = chain.length > 2 ? chain.slice(1, -1).map((c) => c.id) : undefined;
+  return {
+    ownerId: from.ownerId,
+    fromCityId: from.id,
+    toCityId: to.id,
+    toOwnerId: to.ownerId,
+    international,
+    path,
+    viaCityIds,
+  };
+}
+
+/** Whether a caravan can link two cities, including multi-hop through owned hubs. */
+export function canConnectCities(state: GameState, from: City, to: City): boolean {
+  return findTradeHubChain(state, from, to) !== null;
 }
 
 /** Cities a trader (standing in one of its owner's cities) can connect to. */
@@ -282,12 +452,15 @@ function caravanTileCost(
   col: number,
   row: number,
   riverConnects: boolean,
+  plannedRoadKeys: Set<string>,
 ): number {
+  const key = `${col},${row}`;
   if (cityAt(state, col, row)) return 0.08; // a city is a road hub — traverse it freely
   if (tile.road) {
     const tier = tile.roadLevel ?? 1;
-    return tier >= 3 ? 0.08 : tier === 2 ? 0.1 : 0.12; // hug roads, prefer the better grade
+    return tier >= 3 ? 0.06 : tier === 2 ? 0.08 : 0.1; // hug roads, prefer the better grade
   }
+  if (plannedRoadKeys.has(key)) return 0.05; // snap to agrimensore road routes before paving
   if (riverConnects && tile.river) return 0.1; // a navigable river carries the caravan like a road
   if (isWaterTerrain(tile.terrain)) return 3; // detour over water only when unavoidable
   return moveCost(tile.terrain); // 1 for open land, 2 for rough (forest/jungle/hills/mesa)
@@ -302,6 +475,7 @@ function computeTradeRoutePath(state: GameState, from: City, to: City): string[]
   const goal = `${to.col},${to.row}`;
   if (start === goal) return [start];
   const riverConnects = riversConnectFor(state, from.ownerId);
+  const plannedRoadKeys = plannedRoadTileKeys(state, from.ownerId);
   const allowWater = isCoastalPortCity(state, from) && isCoastalPortCity(state, to);
 
   const dist = new Map<string, number>();
@@ -329,7 +503,7 @@ function computeTradeRoutePath(state: GameState, from: City, to: City): string[]
         continue;
       }
       const nk = `${n.col},${n.row}`;
-      const next = curCost + caravanTileCost(state, tile, n.col, n.row, riverConnects);
+      const next = curCost + caravanTileCost(state, tile, n.col, n.row, riverConnects, plannedRoadKeys);
       if (next < (dist.get(nk) ?? Infinity)) {
         dist.set(nk, next);
         cameFrom.set(nk, key);
@@ -379,29 +553,25 @@ export function establishTradeRoute(
     return { ok: false, error: "route already exists" };
   }
   if (!canConnectCities(state, origin, dest)) {
-    const needsPorts = !isCoastalPortCity(state, origin) || !isCoastalPortCity(state, dest);
     return {
       ok: false,
-      error: needsPorts
-        ? "no overland path — link inland cities through a port on the same continent, or open a sea lane between two ports"
-        : "no caravan path between these cities",
+      error: "no caravan path between these cities — link inland settlements through your port cities",
     };
   }
-  const path = computeTradeRoutePath(state, origin, dest);
+  const draft = draftTradeRoute(state, origin, dest);
+  if (!draft) return { ok: false, error: "no caravan path between these cities" };
+  const path = draft.path;
   if (path.length < 2) return { ok: false, error: "no caravan path between these cities" };
   const routeId = state.nextEntityId++;
   state.tradeRoutes.push({
     id: routeId,
-    ownerId: unit.ownerId,
-    fromCityId: origin.id,
-    toCityId: dest.id,
-    toOwnerId: dest.ownerId,
-    international,
-    path,
+    ...draft,
   });
   state.units.delete(unit.id);
   const owner = playerById(state, unit.ownerId);
-  log(state, `${owner?.name ?? "A trader"} opened a trade route ${origin.name} → ${dest.name}.`, {
+  const viaMsg = tradeRouteViaMessage(state, origin, dest);
+  const viaText = viaMsg ? ` via ${viaMsg}` : "";
+  log(state, `${owner?.name ?? "A trader"} opened a trade route ${origin.name} → ${dest.name}${viaText}.`, {
     actorId: unit.ownerId,
     targetIds: [unit.ownerId],
     tile: { col: origin.col, row: origin.row },

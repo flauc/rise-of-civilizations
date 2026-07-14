@@ -1,7 +1,8 @@
-export type AdminPage = "overview" | "games" | "users" | "votes" | "reports";
+export type AdminPage = "overview" | "reporting" | "games" | "users" | "votes" | "reports";
 
 export const PAGES: { id: AdminPage; label: string }[] = [
   { id: "overview", label: "Overview" },
+  { id: "reporting", label: "Reporting" },
   { id: "games", label: "Games" },
   { id: "users", label: "Users" },
   { id: "votes", label: "Feature votes" },
@@ -10,7 +11,7 @@ export const PAGES: { id: AdminPage; label: string }[] = [
 
 export function parsePage(hash: string): AdminPage {
   const path = hash.replace(/^#\/?/, "").split("?")[0]?.toLowerCase() ?? "";
-  if (path === "games" || path === "users" || path === "votes" || path === "reports") return path;
+  if (path === "reporting" || path === "games" || path === "users" || path === "votes" || path === "reports") return path;
   return "overview";
 }
 

@@ -3251,54 +3251,68 @@ export interface NaturalWonderDef {
    *  those front neighbours (SW and SE) are sea, so the fixed art already faces the
    *  water without needing any sprite rotation. Implies `coastal`. */
   coastalFront?: boolean;
+  /** Remote ocean feature (Galápagos): only on open-ocean tiles ringed by ocean,
+   *  never on coast or beside land/islands. */
+  openOcean?: boolean;
+  /** Shallow-water feature along a shoreline (Great Barrier Reef): a water tile
+   *  that borders at least one passable land tile. */
+  coastalWater?: boolean;
+  /** Land feature beside moving or standing water (waterfalls): the tile or a
+   *  neighbour must be a river, lake, ocean, or coast. */
+  adjacentToWater?: boolean;
+  /** On Real World maps, the wonder may only spawn inside this lat/lon box. */
+  realWorldBox?: { latMin: number; latMax: number; lonMin: number; lonMax: number };
 }
 
 const NW = (d: NaturalWonderDef): NaturalWonderDef => d;
+/** Real World map lat/lon placement box (degrees). */
+const RW = (latMin: number, latMax: number, lonMin: number, lonMax: number) =>
+  ({ latMin, latMax, lonMin, lonMax });
 
 // Every natural wonder is a single, full map tile. Worked-tile yields are strong
 // (these are rare, unique tiles) and the discovery reward to the FIRST civ to
 // sight each is a meaningful one-time burst, themed to the wonder.
 export const NATURAL_WONDER_DEFS: NaturalWonderDef[] = [
   // ---- sacred & towering peaks (science / faith) --------------------------
-  NW({ id: "mount_everest", name: "Mount Everest", desc: "The highest peak on Earth, roof of the world.", validTerrain: ["mountains"], tileYields: { science: 3, faith: 1 }, discoveryBonus: { science: 90, faith: 40 } }),
-  NW({ id: "mount_kilimanjaro", name: "Mount Kilimanjaro", desc: "A snow-capped volcano towering over the savanna.", validTerrain: ["mountains"], tileYields: { food: 2, faith: 2 }, discoveryBonus: { faith: 70, culture: 40 } }),
-  NW({ id: "mount_fuji", name: "Mount Fuji", desc: "A sacred, perfectly symmetrical volcanic cone.", validTerrain: ["mountains", "volcano"], tileYields: { faith: 3, culture: 1 }, discoveryBonus: { faith: 90, culture: 40 } }),
-  NW({ id: "matterhorn", name: "Matterhorn", desc: "An iconic pyramidal Alpine peak on the Swiss-Italian border.", validTerrain: ["mountains"], tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 50 } }),
-  NW({ id: "mount_vesuvius", name: "Mount Vesuvius", desc: "A restless volcano whose ash preserves whole cities.", validTerrain: ["volcano", "mountains"], tileYields: { production: 3, science: 1 }, discoveryBonus: { science: 60, gold: 40 } }),
-  NW({ id: "table_mountain", name: "Table Mountain", desc: "A flat-topped massif guarding a great cape.", validTerrain: ["mountains", "mesa"], tileYields: { culture: 2, gold: 1, science: 1 }, discoveryBonus: { culture: 70, gold: 40 } }),
-  NW({ id: "uluru", name: "Uluru", desc: "A vast red monolith sacred to its people.", validTerrain: ["desert", "mesa"], tileYields: { faith: 3, culture: 1 }, discoveryBonus: { faith: 80, culture: 50 } }),
-  NW({ id: "mount_roraima", name: "Mount Roraima", desc: "A sheer-walled tabletop mountain wreathed in cloud.", validTerrain: ["mesa", "mountains"], tileYields: { science: 3, food: 1 }, discoveryBonus: { science: 90 } }),
+  NW({ id: "mount_everest", name: "Mount Everest", desc: "The highest peak on Earth, roof of the world.", validTerrain: ["mountains"], realWorldBox: RW(26, 29, 84, 89), tileYields: { science: 3, faith: 1 }, discoveryBonus: { science: 90, faith: 40 } }),
+  NW({ id: "mount_kilimanjaro", name: "Mount Kilimanjaro", desc: "A snow-capped volcano towering over the savanna.", validTerrain: ["mountains"], realWorldBox: RW(-4, 0, 36, 39), tileYields: { food: 2, faith: 2 }, discoveryBonus: { faith: 70, culture: 40 } }),
+  NW({ id: "mount_fuji", name: "Mount Fuji", desc: "A sacred, perfectly symmetrical volcanic cone.", validTerrain: ["mountains", "volcano"], realWorldBox: RW(35, 36, 138, 139), tileYields: { faith: 3, culture: 1 }, discoveryBonus: { faith: 90, culture: 40 } }),
+  NW({ id: "matterhorn", name: "Matterhorn", desc: "An iconic pyramidal Alpine peak on the Swiss-Italian border.", validTerrain: ["mountains"], realWorldBox: RW(45, 47, 6, 9), tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 50 } }),
+  NW({ id: "mount_vesuvius", name: "Mount Vesuvius", desc: "A restless volcano whose ash preserves whole cities.", validTerrain: ["volcano", "mountains"], realWorldBox: RW(40, 41, 14, 15), tileYields: { production: 3, science: 1 }, discoveryBonus: { science: 60, gold: 40 } }),
+  NW({ id: "table_mountain", name: "Table Mountain", desc: "A flat-topped massif guarding a great cape.", validTerrain: ["mountains", "mesa"], realWorldBox: RW(-34, -33, 18, 19), tileYields: { culture: 2, gold: 1, science: 1 }, discoveryBonus: { culture: 70, gold: 40 } }),
+  NW({ id: "uluru", name: "Uluru", desc: "A vast red monolith sacred to its people.", validTerrain: ["desert", "mesa"], realWorldBox: RW(-26, -25, 130, 133), tileYields: { faith: 3, culture: 1 }, discoveryBonus: { faith: 80, culture: 50 } }),
+  NW({ id: "mount_roraima", name: "Mount Roraima", desc: "A sheer-walled tabletop mountain wreathed in cloud.", validTerrain: ["mesa", "mountains"], realWorldBox: RW(4, 6, -62, -59), tileYields: { science: 3, food: 1 }, discoveryBonus: { science: 90 } }),
 
   // ---- rock & desert wonders (science / gold / faith) ---------------------
-  NW({ id: "eye_of_the_sahara", name: "Eye of the Sahara", desc: "A colossal bullseye of rock rings in the desert.", validTerrain: ["desert"], tileYields: { science: 3, gold: 1 }, discoveryBonus: { science: 80, gold: 50 } }),
-  NW({ id: "grand_canyon", name: "Grand Canyon", desc: "A mile-deep gorge carved over eons.", validTerrain: ["mesa", "desert"], tileYields: { science: 2, gold: 2 }, discoveryBonus: { science: 90, gold: 50 } }),
-  NW({ id: "salar_de_uyuni", name: "Salar de Uyuni", desc: "The world's largest salt flat, a mirror to the sky.", validTerrain: ["desert"], tileYields: { gold: 3, production: 1 }, discoveryBonus: { gold: 110 } }),
-  NW({ id: "zhangye_danxia", name: "Zhangye Danxia", desc: "Rainbow-banded sandstone ridges.", validTerrain: ["mesa", "desert"], tileYields: { culture: 2, science: 1, gold: 1 }, discoveryBonus: { culture: 60, science: 40 } }),
-  NW({ id: "cappadocia", name: "Cappadocia", desc: "Fairy-chimney spires and hidden cave cities.", validTerrain: ["mesa", "hills"], tileYields: { faith: 2, culture: 1, production: 1 }, discoveryBonus: { faith: 60, culture: 60 } }),
-  NW({ id: "pamukkale", name: "Pamukkale", desc: "Cascading white travertine terraces and hot springs.", validTerrain: ["hills"], tileYields: { faith: 2, gold: 1, culture: 1 }, discoveryBonus: { faith: 50, culture: 50 } }),
-  NW({ id: "sahara_dunes", name: "Sahara", desc: "An endless sea of wind-sculpted dunes.", validTerrain: ["desert"], tileYields: { gold: 2, faith: 1, production: 1 }, discoveryBonus: { gold: 90, faith: 40 } }),
+  NW({ id: "eye_of_the_sahara", name: "Eye of the Sahara", desc: "A colossal bullseye of rock rings in the desert.", validTerrain: ["desert"], realWorldBox: RW(19, 22, -13, -8), tileYields: { science: 3, gold: 1 }, discoveryBonus: { science: 80, gold: 50 } }),
+  NW({ id: "grand_canyon", name: "Grand Canyon", desc: "A mile-deep gorge carved over eons.", validTerrain: ["mesa", "desert"], realWorldBox: RW(36, 37, -113, -111), tileYields: { science: 2, gold: 2 }, discoveryBonus: { science: 90, gold: 50 } }),
+  NW({ id: "salar_de_uyuni", name: "Salar de Uyuni", desc: "The world's largest salt flat, a mirror to the sky.", validTerrain: ["desert"], realWorldBox: RW(-21, -20, -68, -67), tileYields: { gold: 3, production: 1 }, discoveryBonus: { gold: 110 } }),
+  NW({ id: "zhangye_danxia", name: "Zhangye Danxia", desc: "Rainbow-banded sandstone ridges.", validTerrain: ["mesa", "desert"], realWorldBox: RW(37, 39, 99, 101), tileYields: { culture: 2, science: 1, gold: 1 }, discoveryBonus: { culture: 60, science: 40 } }),
+  NW({ id: "cappadocia", name: "Cappadocia", desc: "Fairy-chimney spires and hidden cave cities.", validTerrain: ["mesa", "hills"], realWorldBox: RW(38, 39, 34, 35), tileYields: { faith: 2, culture: 1, production: 1 }, discoveryBonus: { faith: 60, culture: 60 } }),
+  NW({ id: "pamukkale", name: "Pamukkale", desc: "Cascading white travertine terraces and hot springs.", validTerrain: ["hills"], realWorldBox: RW(37, 38, 28, 30), tileYields: { faith: 2, gold: 1, culture: 1 }, discoveryBonus: { faith: 50, culture: 50 } }),
+  NW({ id: "sahara_dunes", name: "Sahara", desc: "An endless sea of wind-sculpted dunes.", validTerrain: ["desert"], realWorldBox: RW(15, 30, -15, 35), tileYields: { gold: 2, faith: 1, production: 1 }, discoveryBonus: { gold: 90, faith: 40 } }),
 
   // ---- coasts, reefs & islands (gold / science) ---------------------------
-  NW({ id: "great_barrier_reef", name: "Great Barrier Reef", desc: "The largest living structure on Earth.", validTerrain: ["coast"], tileYields: { food: 3, gold: 2, science: 1 }, discoveryBonus: { gold: 80, science: 60 } }),
-  NW({ id: "galapagos_islands", name: "Galápagos Islands", desc: "Isolated isles teeming with singular life.", validTerrain: ["coast"], tileYields: { science: 3, food: 1 }, discoveryBonus: { science: 90, freeTech: true } }),
-  NW({ id: "cliffs_of_dover", name: "White Cliffs of Dover", desc: "Gleaming chalk cliffs facing the sea.", validTerrain: ["grassland", "plains", "hills"], coastalFront: true, tileYields: { gold: 3, culture: 1 }, discoveryBonus: { gold: 70, culture: 30 } }),
-  NW({ id: "giants_causeway", name: "Giant's Causeway", desc: "Interlocking basalt columns marching into the sea.", validTerrain: ["hills", "grassland", "plains"], coastal: true, tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 40 } }),
+  NW({ id: "great_barrier_reef", name: "Great Barrier Reef", desc: "The largest living structure on Earth.", validTerrain: ["coast"], coastalWater: true, realWorldBox: RW(-22, -10, 142, 155), tileYields: { food: 3, gold: 2, science: 1 }, discoveryBonus: { gold: 80, science: 60 } }),
+  NW({ id: "galapagos_islands", name: "Galápagos Islands", desc: "Isolated isles teeming with singular life.", validTerrain: ["ocean"], openOcean: true, realWorldBox: RW(-2, 2, -93, -89), tileYields: { science: 3, food: 1 }, discoveryBonus: { science: 90, freeTech: true } }),
+  NW({ id: "cliffs_of_dover", name: "White Cliffs of Dover", desc: "Gleaming chalk cliffs facing the sea.", validTerrain: ["grassland", "plains", "hills"], coastalFront: true, realWorldBox: RW(50.5, 51.5, 0, 2), tileYields: { gold: 3, culture: 1 }, discoveryBonus: { gold: 70, culture: 30 } }),
+  NW({ id: "giants_causeway", name: "Giant's Causeway", desc: "Interlocking basalt columns marching into the sea.", validTerrain: ["hills", "grassland", "plains"], coastal: true, realWorldBox: RW(55, 55.5, -7, -5.5), tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 40 } }),
 
   // ---- lakes & waterfalls (food / culture / gold) -------------------------
-  NW({ id: "dead_sea", name: "Dead Sea", desc: "The lowest, saltiest water on the planet.", validTerrain: ["lake"], tileYields: { gold: 3, faith: 1 }, discoveryBonus: { gold: 90, faith: 30 } }),
-  NW({ id: "lake_baikal", name: "Lake Baikal", desc: "The deepest, oldest freshwater lake on Earth.", validTerrain: ["lake"], tileYields: { food: 2, science: 2 }, discoveryBonus: { science: 80, gold: 30 } }),
-  NW({ id: "niagara_falls", name: "Niagara Falls", desc: "A thundering curtain of falling water.", validTerrain: ["lake", "coast"], tileYields: { food: 2, gold: 2, culture: 1 }, discoveryBonus: { culture: 60, gold: 40 } }),
-  NW({ id: "victoria_falls", name: "Victoria Falls", desc: "\"The Smoke That Thunders\" — a mile-wide cataract.", validTerrain: ["jungle", "grassland"], tileYields: { food: 2, culture: 2 }, discoveryBonus: { culture: 80, gold: 20 } }),
-  NW({ id: "iguazu_falls", name: "Iguazú Falls", desc: "A vast horseshoe of jungle waterfalls.", validTerrain: ["jungle"], tileYields: { food: 2, gold: 2 }, discoveryBonus: { culture: 70, gold: 40 } }),
-  NW({ id: "angel_falls", name: "Angel Falls", desc: "The world's tallest waterfall, plunging from a jungle tepui.", validTerrain: ["jungle", "hills"], tileYields: { food: 2, culture: 2 }, discoveryBonus: { culture: 90, science: 30 } }),
-  NW({ id: "plitvice_lakes", name: "Plitvice Lakes", desc: "Terraced turquoise lakes linked by waterfalls.", validTerrain: ["lake", "forest"], tileYields: { food: 2, culture: 1, gold: 1 }, discoveryBonus: { culture: 60, gold: 30 } }),
-  NW({ id: "moraine_lake", name: "Moraine Lake", desc: "Glacial meltwater of impossible blue beneath the peaks.", validTerrain: ["mountains", "lake"], tileYields: { science: 2, culture: 2 }, discoveryBonus: { culture: 50, science: 50 } }),
+  NW({ id: "dead_sea", name: "Dead Sea", desc: "The lowest, saltiest water on the planet.", validTerrain: ["lake"], realWorldBox: RW(31, 32, 35, 36), tileYields: { gold: 3, faith: 1 }, discoveryBonus: { gold: 90, faith: 30 } }),
+  NW({ id: "lake_baikal", name: "Lake Baikal", desc: "The deepest, oldest freshwater lake on Earth.", validTerrain: ["lake"], realWorldBox: RW(51, 56, 104, 110), tileYields: { food: 2, science: 2 }, discoveryBonus: { science: 80, gold: 30 } }),
+  NW({ id: "niagara_falls", name: "Niagara Falls", desc: "A thundering curtain of falling water.", validTerrain: ["lake"], realWorldBox: RW(43, 44, -80, -78), tileYields: { food: 2, gold: 2, culture: 1 }, discoveryBonus: { culture: 60, gold: 40 } }),
+  NW({ id: "victoria_falls", name: "Victoria Falls", desc: "\"The Smoke That Thunders\" — a mile-wide cataract.", validTerrain: ["jungle", "grassland"], adjacentToWater: true, realWorldBox: RW(-18.5, -17, 25, 26), tileYields: { food: 2, culture: 2 }, discoveryBonus: { culture: 80, gold: 20 } }),
+  NW({ id: "iguazu_falls", name: "Iguazú Falls", desc: "A vast horseshoe of jungle waterfalls.", validTerrain: ["jungle"], adjacentToWater: true, realWorldBox: RW(-26, -25, -55, -53), tileYields: { food: 2, gold: 2 }, discoveryBonus: { culture: 70, gold: 40 } }),
+  NW({ id: "angel_falls", name: "Angel Falls", desc: "The world's tallest waterfall, plunging from a jungle tepui.", validTerrain: ["jungle", "hills"], adjacentToWater: true, realWorldBox: RW(5, 7, -63, -61), tileYields: { food: 2, culture: 2 }, discoveryBonus: { culture: 90, science: 30 } }),
+  NW({ id: "plitvice_lakes", name: "Plitvice Lakes", desc: "Terraced turquoise lakes linked by waterfalls.", validTerrain: ["lake", "forest"], realWorldBox: RW(44, 45.5, 15, 16.5), tileYields: { food: 2, culture: 1, gold: 1 }, discoveryBonus: { culture: 60, gold: 30 } }),
+  NW({ id: "moraine_lake", name: "Moraine Lake", desc: "Glacial meltwater of impossible blue beneath the peaks.", validTerrain: ["mountains", "lake"], realWorldBox: RW(51, 52, -117, -115), tileYields: { science: 2, culture: 2 }, discoveryBonus: { culture: 50, science: 50 } }),
 
   // ---- great forests & valleys (science / production / culture) -----------
-  NW({ id: "amazon_rainforest", name: "Amazon Rainforest", desc: "An immense, teeming green ocean of trees.", validTerrain: ["jungle"], tileYields: { food: 2, production: 2, science: 1 }, discoveryBonus: { science: 100, freeTech: true } }),
-  NW({ id: "pantanal", name: "Pantanal", desc: "The world's largest tropical wetland.", validTerrain: ["grassland", "jungle"], tileYields: { food: 3, gold: 1 }, discoveryBonus: { gold: 60, science: 40 } }),
-  NW({ id: "yosemite", name: "Yosemite Valley", desc: "Sheer granite walls above ancient sequoias.", validTerrain: ["mountains", "forest"], tileYields: { production: 2, culture: 1, science: 1 }, discoveryBonus: { culture: 60, science: 40 } }),
-  NW({ id: "zhangjiajie", name: "Zhangjiajie", desc: "A forest of towering quartzite pillars.", validTerrain: ["mountains", "forest"], tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 50 } }),
+  NW({ id: "amazon_rainforest", name: "Amazon Rainforest", desc: "An immense, teeming green ocean of trees.", validTerrain: ["jungle"], realWorldBox: RW(-10, 5, -70, -45), tileYields: { food: 2, production: 2, science: 1 }, discoveryBonus: { science: 100, freeTech: true } }),
+  NW({ id: "pantanal", name: "Pantanal", desc: "The world's largest tropical wetland.", validTerrain: ["grassland", "jungle"], realWorldBox: RW(-22, -15, -60, -54), tileYields: { food: 3, gold: 1 }, discoveryBonus: { gold: 60, science: 40 } }),
+  NW({ id: "yosemite", name: "Yosemite Valley", desc: "Sheer granite walls above ancient sequoias.", validTerrain: ["mountains", "forest"], realWorldBox: RW(37.5, 38, -120, -119), tileYields: { production: 2, culture: 1, science: 1 }, discoveryBonus: { culture: 60, science: 40 } }),
+  NW({ id: "zhangjiajie", name: "Zhangjiajie", desc: "A forest of towering quartzite pillars.", validTerrain: ["mountains", "forest"], realWorldBox: RW(29, 30, 110, 111), tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 50 } }),
 ];
 
 const NATURAL_WONDER_BY_ID = new Map(NATURAL_WONDER_DEFS.map((w) => [w.id, w]));

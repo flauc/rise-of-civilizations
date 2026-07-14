@@ -58,6 +58,9 @@ import {
   cityAt,
   tradeRouteDestinations,
   tradeRouteYield,
+  draftTradeRoute,
+  tradeRouteViaNames,
+  tradeRouteViaMessage,
   tradeRoutesFrom,
   tradeRoutesOf,
   tradeRoutesAtTile,
@@ -135,6 +138,8 @@ import {
   techUnlocks,
   unitInfo,
   tileYieldReport,
+  naturalWonderTerritoryCulture,
+  naturalWonderTerritoryTourism,
   resourceActive,
   RESOURCE_DEFS,
   ACTIVE_ABILITY_DEFS,
@@ -150,6 +155,7 @@ import {
   barbarianRecruitCost,
   isBarbarianPacified,
   isLogEntryVisible,
+  exploredForPlayer,
   canParleyWith,
   BRIBE_TURNS,
   BARBARIAN_DIPLOMACY_TECH,
@@ -158,6 +164,7 @@ import {
   playerGreatPersonPerTurn,
   previewGreatPersonEffect,
   scoreBreakdown,
+  buildSessionScoreboard,
   availableLegends,
   availableLegendsForPlayer,
   canRecruitLegend,
@@ -345,7 +352,12 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
       const owner = state.players.find((p) => p.id === claimed);
       lines.push({ kind: "neutral", text: `Discovered by ${owner?.name ?? "another civ"}` });
     }
-    lines.push({ kind: "good", text: "Worked by a citizen, this tile yields bonus output" });
+    if (tileOwnerId(state, tile.col, tile.row) === viewerId) {
+      const tc = naturalWonderTerritoryCulture(tile);
+      const tt = naturalWonderTerritoryTourism(tile);
+      lines.push({ kind: "good", text: `Your borders: +${tc} culture and +${tt} tourism each turn` });
+    }
+    lines.push({ kind: "good", text: "Worked by a citizen: bonus food, production, science, and faith" });
   }
   if (tile.feature === "village") lines.push({ kind: "good", text: "Village — a reward when one of your units enters" });
   if (tile.feature === "ruin") lines.push({ kind: "neutral", text: "Ruins of a fallen city — fades over time, or build a new city here" });
@@ -385,6 +397,8 @@ export interface UIView {
   cheatsEnabled?: boolean;
   /** True while God Mode's "Lift Fog of War" reveal is active. */
   liftFog?: boolean;
+  /** True when the player dismissed the summary to pan the revealed end-game map. */
+  gameOverExploreMap?: boolean;
 }
 
 export interface UIHandlers {
@@ -486,6 +500,12 @@ export interface UIHandlers {
   onCheat(action: CheatAction): void;
   /** Toggle God Mode's render-only "Lift Fog of War" reveal. */
   onToggleLiftFog(enabled: boolean): void;
+  /** Leave the summary overlay and reveal the full map (fog lifted). */
+  onGameOverExploreMap(): void;
+  /** Return from map exploration to the end-game summary overlay. */
+  onGameOverBackToSummary(): void;
+  /** Exit to the main menu after the game has ended. */
+  onGameOverQuit(): void;
   /** Set the empire's military-pay level (percent of base upkeep, −100…+200). */
   onSetUpkeepModifier(pct: number): void;
   onTurnUpdateLocate(tile: { col: number; row: number }): void;
@@ -576,17 +596,13 @@ function trainingIconImg(family: TrainingClass, glyph: string, px = 28): string 
 
 /** Trade-route destination buttons for a trader standing in a city. */
 function tradeRouteChoicesHtml(state: GameState, trader: Unit, origin: City, dests: City[], onlyMineId?: string): string {
+  const zeroYield = { gold: 0, food: 0, production: 0, science: 0, culture: 0 };
   const destBtn = (c: City): string => {
     const international = c.ownerId !== trader.ownerId;
-    const y = tradeRouteYield(state, {
-      id: 0,
-      ownerId: trader.ownerId,
-      fromCityId: origin.id,
-      toCityId: c.id,
-      toOwnerId: c.ownerId,
-      international,
-      path: [],
-    });
+    const draft = draftTradeRoute(state, origin, c);
+    const y = draft ? tradeRouteYield(state, { id: 0, ...draft }) : zeroYield;
+    const via = tradeRouteViaMessage(state, origin, c);
+    const viaTag = via ? `<div class="sub" style="margin-top:2px;color:#9fc0dc">via ${escapeHtml(via)}</div>` : "";
     const extra =
       (y.food ? ` +${y.food}🍞` : "") +
       (y.production ? ` +${y.production}⚒️` : "") +
@@ -597,7 +613,7 @@ function tradeRouteChoicesHtml(state: GameState, trader: Unit, origin: City, des
       : "";
     return (
       `<button class="btn" data-trade-dest="${c.id}" style="text-align:left;display:flex;justify-content:space-between;gap:8px">` +
-      `<span><b style="color:#fff">${escapeHtml(c.name)}</b>${civTag}</span>` +
+      `<span><b style="color:#fff">${escapeHtml(c.name)}</b>${civTag}${viaTag}</span>` +
       `<span class="sub">+${y.gold}🪙${extra}</span></button>`
     );
   };
@@ -680,11 +696,13 @@ const GOVERNOR_MODES: { mode: CityAutoFocus | null; icon: string; label: string;
 ];
 
 /** One-line summary of what a governed city is currently doing, per focus. */
+const GOVERNOR_SPECIALIST_NOTE =
+  "Trains craftsmen only when starting a work; idle AI picks are freed each turn. Your manual +1 picks stay and may take new work.";
 const GOVERNOR_NOTE: Record<CityAutoFocus, string> = {
-  growth: "Auto: favouring food tiles & growth buildings, plus works & specialists.",
-  military: "Auto: training troops, war buildings & tiles, plus works & specialists.",
-  science: "Auto: favouring science tiles & buildings, plus works & specialists.",
-  money: "Auto: favouring gold tiles & buildings, plus works & specialists.",
+  growth: `Auto: favouring food tiles & growth buildings, plus works & specialists. ${GOVERNOR_SPECIALIST_NOTE}`,
+  military: `Auto: training troops & war buildings. ${GOVERNOR_SPECIALIST_NOTE}`,
+  science: `Auto: favouring science tiles & buildings, plus works & specialists. ${GOVERNOR_SPECIALIST_NOTE}`,
+  money: `Auto: favouring gold tiles & buildings, plus works & specialists. ${GOVERNOR_SPECIALIST_NOTE}`,
 };
 
 /** Full promotion catalog + earned perks for the unit promotion info dialog. */
@@ -778,6 +796,16 @@ export function createUI(handlers: UIHandlers): UI {
   const log = div("log", "");
   const bannerEl = div("banner", "");
   const gameover = div("gameover", "hidden");
+  const gameoverExploreBar = div("gameover-explore-bar", "hidden");
+  gameoverExploreBar.innerHTML =
+    `<button type="button" class="btn" id="go-back-summary">Back to Summary</button>` +
+    `<button type="button" class="btn primary" id="go-quit-map">Quit to Menu</button>`;
+  gameoverExploreBar.querySelector<HTMLButtonElement>("#go-back-summary")?.addEventListener("click", () =>
+    handlers.onGameOverBackToSummary(),
+  );
+  gameoverExploreBar.querySelector<HTMLButtonElement>("#go-quit-map")?.addEventListener("click", () =>
+    handlers.onGameOverQuit(),
+  );
   const saveModal = div("save-modal", "panel hidden");
   const godPanel = div("god-panel", "panel hidden");
   const wiki = createWiki();
@@ -1005,7 +1033,7 @@ export function createUI(handlers: UIHandlers): UI {
         const m = VICTORY_META[e.kind] ?? { icon: "•", name: e.kind, color: "#cdbf9f" };
         const pct = Math.round(Math.min(1, Math.max(0, e.progress)) * 100);
         const dim = e.enabled ? "" : "opacity:0.45";
-        const off = e.enabled ? ` <span class="lb-sub">(disabled)</span>` : "";
+        const off = e.enabled ? "" : ` <span class="lb-sub">(disabled)</span>`;
         return (
           `<div class="lb-vic-row" style="${dim}">` +
           `<div class="lb-vic-head"><b>${m.icon} ${m.name}${off}</b><span class="lb-sub">${pct}%</span></div>` +
@@ -1296,6 +1324,8 @@ export function createUI(handlers: UIHandlers): UI {
   /** Skip god-panel DOM rebuilds when cheat UI content is unchanged (preserves scroll). */
   let godModeRenderSig = "";
   let lastView: UIView | null = null;
+  /** Game-over standings row selected to show that player's victory progress. */
+  let gameOverDetailPlayerId: number | null = null;
   // Docked info-panel collapse state. Each panel starts minimized on mobile and
   // expanded on desktop, and resets whenever the selection changes so each new
   // selection opens at its default size.
@@ -1711,6 +1741,12 @@ export function createUI(handlers: UIHandlers): UI {
   turnUpdateClose.addEventListener("click", hideTurnUpdateDialog);
 
   const renderAction = (view: UIView): void => {
+    if (view.state.gameOver) {
+      endturn.classList.add("hidden");
+      endturn2.classList.add("hidden");
+      return;
+    }
+    endturn.classList.remove("hidden");
     if (view.suggestion) {
       endturn.title = view.suggestion.label;
       endturn.onclick = () => handlers.onSuggestion();
@@ -4786,7 +4822,7 @@ export function createUI(handlers: UIHandlers): UI {
   // The viewer only sees their own moves, world news, events aimed at them, and
   // things on tiles they've explored — never other players' private actions.
   const visibleLog = (state: GameState, viewerId: number): LogEntry[] => {
-    const known = state.players.find((p) => p.id === viewerId)?.explored ?? new Set<string>();
+    const known = exploredForPlayer(state, viewerId);
     return state.log.filter((l) => isLogEntryVisible(l, viewerId, known));
   };
 
@@ -4797,26 +4833,182 @@ export function createUI(handlers: UIHandlers): UI {
       .join("");
   };
 
-  const renderGameOver = (state: GameState): void => {
+  const VICTORY_CONDITION_LABELS: Record<string, string> = {
+    domination: "Domination",
+    science: "Science",
+    culture: "Culture",
+    religious: "Religious",
+    economic: "Economic",
+    score: "Score",
+    extinction: "Extinction",
+  };
+
+  const renderGameOverVictoryProgress = (
+    state: GameState,
+    playerId: number,
+    gameOver: NonNullable<GameState["gameOver"]>,
+  ): string => {
+    const player = state.players.find((p) => p.id === playerId);
+    const civ = player ? getCiv(player.civId) : undefined;
+    const label = civ ? civ.name : player?.name ?? "Civilization";
+    const vic = victoryProgress(state, playerId);
+    const vicBody = vic
+      .map((e) => {
+        const m = VICTORY_META[e.kind] ?? { icon: "•", name: e.kind, color: "#cdbf9f" };
+        const pct = Math.round(Math.min(1, Math.max(0, e.progress)) * 100);
+        const dim = e.enabled ? "" : "opacity:0.45";
+        const off = e.enabled ? "" : ` <span class="lb-sub">(disabled)</span>`;
+        const wonHere = gameOver.winnerId === playerId && gameOver.condition === e.kind;
+        return (
+          `<div class="lb-vic-row${wonHere ? " go-vic-won" : ""}" style="${dim}">` +
+          `<div class="lb-vic-head"><b>${m.icon} ${m.name}${off}${wonHere ? " ✓" : ""}</b><span class="lb-sub">${pct}%</span></div>` +
+          `<div class="bar"><i style="width:${pct}%;background:${m.color}"></i></div>` +
+          `<div class="lb-sub">${escapeHtml(e.detail)}</div>` +
+          `</div>`
+        );
+      })
+      .join("");
+    if (!vicBody) return "";
+    return (
+      `<div class="go-section-title">Victory Progress · ${escapeHtml(label)}</div>` +
+      `<div class="lb-vic go-vic">${vicBody}</div>`
+    );
+  };
+
+  const renderGameOver = (view: UIView): void => {
+    const { state, viewerId, gameOverExploreMap } = view;
     if (!state.gameOver) {
       gameover.classList.add("hidden");
+      gameoverExploreBar.classList.add("hidden");
+      gameHud().classList.remove("game-over-map");
+      topbar.classList.remove("hidden");
+      gameOverDetailPlayerId = null;
       return;
     }
-    const viewerId = state.players[state.currentPlayerIndex]?.id;
+
     const gameOver = state.gameOver;
-    const winner = gameOver.winnerId !== undefined ? state.players.find((p) => p.id === gameOver.winnerId) : undefined;
+    const winner =
+      gameOver.winnerId !== undefined ? state.players.find((p) => p.id === gameOver.winnerId) : undefined;
     const won = winner?.id === viewerId;
+    const conditionLabel = VICTORY_CONDITION_LABELS[gameOver.condition] ?? gameOver.condition;
+    const board = buildSessionScoreboard(state, viewerId);
+    const viewer = board.find((e) => e.isViewer) ?? board[0];
+    const viewerRank = viewer ? board.indexOf(viewer) + 1 : 0;
+
+    if (gameOverExploreMap) {
+      gameover.classList.add("hidden");
+      gameoverExploreBar.classList.remove("hidden");
+      gameHud().classList.add("game-over-map");
+      topbar.classList.add("hidden");
+      return;
+    }
+
+    gameoverExploreBar.classList.add("hidden");
     gameover.classList.remove("hidden");
+    gameHud().classList.remove("game-over-map");
+    topbar.classList.remove("hidden");
+
     const title = gameOver.condition === "extinction" ? "Draw" : won ? "Victory!" : "Defeat";
     const sub =
       gameOver.condition === "extinction"
-        ? `<div class="sub">Every civilization has fallen on turn ${state.turn}.</div>`
-        : `<div class="sub"><b style="color:${winner?.color}">${winner?.name ?? "Someone"}</b> wins by ${gameOver.condition} on turn ${state.turn}.</div>`;
+        ? `Every civilization has fallen on turn ${state.turn}.`
+        : `<b style="color:${winner?.color}">${escapeHtml(winner?.name ?? "Someone")}</b> wins by ${escapeHtml(conditionLabel)} on turn ${state.turn}.`;
+
+    const stat = (label: string, value: string | number, hint?: string): string =>
+      `<div class="go-stat">` +
+      `<div class="go-stat-label">${label}</div>` +
+      `<div class="go-stat-value">${value}</div>` +
+      (hint ? `<div class="go-stat-hint">${hint}</div>` : "") +
+      `</div>`;
+
+    const viewerStats = viewer
+      ? [
+          stat("Score", viewer.score ?? 0, `#${viewerRank} of ${board.length}`),
+          stat("Cities", viewer.cities ?? 0),
+          stat("Population", viewer.population ?? 0),
+          stat("Gold", viewer.gold ?? 0),
+          stat("Technologies", viewer.techs?.length ?? 0, viewer.researching ? `Researching ${viewer.researching}` : undefined),
+          stat("Wonders", viewer.wonders?.length ?? 0),
+          stat("Battles Won", viewer.battlesWon ?? 0),
+          stat("Cities Captured", viewer.citiesCaptured ?? 0),
+        ].join("")
+      : "";
+
+    const standingRows = state.players
+      .filter((p) => !p.isBarbarian)
+      .map((p) => {
+        const breakdown = scoreBreakdown(state, p.id);
+        const cities = citiesOf(state, p.id).length;
+        const units = unitsOf(state, p.id).length;
+        const alive = cities > 0 || units > 0;
+        const civ = getCiv(p.civId);
+        const boardEntry = board.find((e) => e.name === p.name);
+        return { player: p, breakdown, alive, civ, boardEntry };
+      })
+      .sort((a, b) => b.breakdown.total - a.breakdown.total);
+
+    const standings = standingRows
+      .map((r, i) => {
+        const { player: p, breakdown: b, alive, civ, boardEntry } = r;
+        const selected = gameOverDetailPlayerId === p.id;
+        const you = p.id === viewerId ? `<span class="lb-you">you</span>` : "";
+        const fallen = !alive || boardEntry?.eliminated ? `<span class="lb-fallen">fallen</span>` : "";
+        const label = civ ? escapeHtml(civ.name) : escapeHtml(p.name);
+        const sub = civ ? escapeHtml(p.name) : p.isHuman ? "Human" : "AI";
+        const portrait = civ
+          ? `<img class="go-civ-portrait" src="${ASSET_BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" loading="lazy" onerror="this.style.visibility='hidden'">`
+          : `<div class="go-civ-portrait go-civ-portrait-fallback" style="background:${p.color}"></div>`;
+        const detail =
+          `<span title="Cities">🏛️ ${boardEntry?.cities ?? b.cities}</span>` +
+          `<span title="Population">👥 ${boardEntry?.population ?? b.population}</span>` +
+          `<span title="Technologies">🔬 ${boardEntry?.techs?.length ?? b.techs}</span>` +
+          `<span title="Wonders">🏗️ ${boardEntry?.wonders?.length ?? 0}</span>`;
+        return (
+          `<button type="button" class="lb-row go-row${p.id === viewerId ? " lb-self" : ""}${!alive ? " lb-dead" : ""}${selected ? " go-row-selected" : ""}" data-go-player="${p.id}">` +
+          `<div class="lb-rank">${i + 1}</div>` +
+          `<div class="go-portrait-wrap" style="border-color:${p.color}">${portrait}</div>` +
+          `<div class="lb-name"><b>${label}${you}${fallen}</b><span class="lb-sub">${sub}</span></div>` +
+          `<div class="lb-detail">${detail}</div>` +
+          `<div class="lb-total">${b.total}</div>` +
+          `</button>`
+        );
+      })
+      .join("");
+
+    const vicSection =
+      gameOverDetailPlayerId != null
+        ? renderGameOverVictoryProgress(state, gameOverDetailPlayerId, gameOver)
+        : `<div class="go-hint">Tap a civilization to view their victory progress.</div>`;
+
     gameover.innerHTML =
+      `<div class="go-panel">` +
+      `<div class="go-scroll">` +
       `<div class="title" style="color:${won ? "#ffd967" : "#e0533d"}">${title}</div>` +
-      sub +
-      `<button class="btn primary" id="go-menu" style="font-size:15px;padding:10px 18px">Back to Menu</button>`;
-    gameover.querySelector<HTMLButtonElement>("#go-menu")?.addEventListener("click", () => location.reload());
+      `<div class="sub">${sub}</div>` +
+      (viewerStats
+        ? `<div class="go-section-title">Your Empire</div><div class="go-stats">${viewerStats}</div>`
+        : "") +
+      `<div class="go-section-title">Final Standings</div>` +
+      `<div class="lb-list go-standings">${standings}</div>` +
+      vicSection +
+      `</div>` +
+      `<div class="go-actions">` +
+      `<button type="button" class="btn" id="go-view-map">View Map</button>` +
+      `<button type="button" class="btn primary" id="go-quit">Quit to Menu</button>` +
+      `</div>` +
+      `</div>`;
+
+    gameover.querySelectorAll<HTMLButtonElement>("[data-go-player]").forEach((el) => {
+      el.addEventListener("click", () => {
+        const id = Number(el.dataset.goPlayer);
+        gameOverDetailPlayerId = gameOverDetailPlayerId === id ? null : id;
+        if (lastView) renderGameOver(lastView);
+      });
+    });
+    gameover.querySelector<HTMLButtonElement>("#go-view-map")?.addEventListener("click", () =>
+      handlers.onGameOverExploreMap(),
+    );
+    gameover.querySelector<HTMLButtonElement>("#go-quit")?.addEventListener("click", () => handlers.onGameOverQuit());
   };
 
   // Empire overview (Units / Cities / Specialists & Wonders) side panel.
@@ -4864,7 +5056,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderGodMode(view);
       renderCityPanel(view.state, view.selectedCity);
       renderLog(view.state, view.viewerId);
-      renderGameOver(view.state);
+      renderGameOver(view);
       renderMenu(view.state);
       renderGoldDialog(view.state);
       renderMoraleDialog(view.state);
@@ -4874,6 +5066,7 @@ export function createUI(handlers: UIHandlers): UI {
       // is open so they don't peek through or fight for pointer events. Top-bar
       // pickers (research, civics, …) stay non-blocking — they dismiss on outside click.
       const overlayOpen =
+        !!view.state.gameOver ||
         empire.isOpen() ||
         diplomacy.isOpen() ||
         wiki.isOpen() ||

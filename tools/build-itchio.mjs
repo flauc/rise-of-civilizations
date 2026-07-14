@@ -89,7 +89,7 @@ const build = spawnSync("bun", ["run", "--filter", "@roc/client", "build"], {
   cwd: repoRoot,
   stdio: "inherit",
   shell: process.platform === "win32",
-  env: { ...process.env, VITE_ASSET_BASE_URL: assetBase, VITE_WS_URL: wsUrl },
+  env: { ...process.env, VITE_ASSET_BASE_URL: assetBase, VITE_WS_URL: wsUrl, VITE_BASE: "./" },
 });
 if (build.status !== 0) {
   console.error("! client build failed");

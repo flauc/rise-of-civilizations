@@ -544,6 +544,26 @@ function wonderPlacementError(state: GameState, playerId: number, def: WonderDef
   return ok ? null : `requires ${pl.site}`;
 }
 
+/** Whether this civ owns at least one legal tile to site a wonder (ignores crew/cost). */
+export function wonderHasBuildSite(state: GameState, playerId: number, wonderId: string): boolean {
+  const def = getWonder(wonderId);
+  if (!def) return false;
+  if (state.completedWonders.includes(wonderId)) return false;
+  const player = playerById(state, playerId);
+  if (player && def.reqTech && !player.researched.has(def.reqTech as TechId)) return false;
+  for (const t of state.map.tiles) {
+    if (!tileOwnedBy(state, t, playerId)) continue;
+    if (cityAt(state, t.col, t.row)) continue;
+    const onWater = !!def.placement?.coastalWater;
+    if (!isWonderBuildableTile(t, onWater)) continue;
+    if (wonderPlacementError(state, playerId, def, t)) continue;
+    if (state.works.some((w) => w.ownerId === playerId && w.target?.col === t.col && w.target?.row === t.row)) continue;
+    if (!nearestOwningCity(state, playerId, t.col, t.row)) continue;
+    return true;
+  }
+  return false;
+}
+
 /** Validate starting a wonder on a tile without mutating (drives the wonder UI).
  *  Wonders are tile-targeted like improvements: the player picks an empty tile in
  *  their territory and the nearest city with every required craft hosts the work. */
@@ -801,6 +821,20 @@ function needs(w: Work, d: Discipline): boolean {
 }
 function isComplete(w: Work): boolean {
   return (Object.keys(w.requirement) as Discipline[]).every((d) => (w.progress[d] ?? 0) >= (w.requirement[d] ?? 0));
+}
+
+/** True when every discipline requirement on a work has been met. */
+export function isWorkComplete(w: Work): boolean {
+  return isComplete(w);
+}
+
+/** True while a specialist is assigned to a work that has not finished yet. */
+export function specialistBusyOnWork(state: GameState, playerId: number, specialistId: number): boolean {
+  for (const w of worksOf(state, playerId)) {
+    if (!w.assignedSpecialistIds.includes(specialistId)) continue;
+    if (!isComplete(w)) return true;
+  }
+  return false;
 }
 
 /** Labour-per-turn an assigned crew contributes to a work, by discipline. */

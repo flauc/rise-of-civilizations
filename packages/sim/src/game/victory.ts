@@ -344,8 +344,6 @@ export interface VictoryProgressEntry {
   detail: string;
 }
 
-const ALL_TECH_COUNT_HINT = 1; // avoids div-by-zero before content is counted
-
 /** Per-condition progress for a player, for the Victory Progress UI and the AI.
  *  Only enabled decisive conditions plus the always-on Score finish are returned. */
 export function victoryProgress(state: GameState, playerId: number): VictoryProgressEntry[] {
@@ -423,23 +421,39 @@ export function victoryProgress(state: GameState, playerId: number): VictoryProg
     });
   }
 
-  // Score — your score vs. the current leader, and turns elapsed.
+  // Score — only resolves at the turn limit; the bar tracks calendar progress,
+  // while detail shows absolute score and standing vs. other humans.
   {
     const humans = state.players.filter((p) => p.isHuman);
-    const scores = humans.map((p) => playerScore(state, p.id));
-    const leader = Math.max(1, ...scores, ALL_TECH_COUNT_HINT);
-    const mine = playerScore(state, playerId);
-    const turnFrac = state.turnLimit > 0 ? Math.min(1, state.turn / state.turnLimit) : 0;
+    const ranked = humans
+      .map((p) => ({ id: p.id, score: playerScore(state, p.id) }))
+      .sort((a, b) => b.score - a.score);
+    const mine = ranked.find((r) => r.id === playerId)?.score ?? playerScore(state, playerId);
+    const rank = ranked.findIndex((r) => r.id === playerId) + 1;
+    const leaderScore = ranked[0]?.score ?? mine;
+    const turnLimit = state.turnLimit;
+    const hasTurnLimit = turnLimit > 0;
+    const turnFrac = hasTurnLimit ? Math.min(1, state.turn / turnLimit) : 0;
+    const rankLabel = humans.length > 0 && rank > 0 ? `#${rank} of ${humans.length}` : "";
+
+    let detail: string;
+    if (hasTurnLimit) {
+      detail = rankLabel
+        ? `Score ${mine} · ${rankLabel} · turn ${state.turn}/${turnLimit}`
+        : `Score ${mine} · turn ${state.turn}/${turnLimit}`;
+      if (leaderScore > mine) detail += ` · leader ${leaderScore}`;
+    } else {
+      detail = rankLabel
+        ? `Score ${mine} · ${rankLabel} · no turn limit`
+        : `Score ${mine} · no turn limit`;
+    }
+
     out.push({
       kind: "score",
       enabled: true,
-      progress: Math.min(1, mine / leader),
-      detail:
-        state.turnLimit > 0
-          ? `Score ${mine} · turn ${state.turn}/${state.turnLimit}`
-          : `Score ${mine} · unlimited`,
+      progress: hasTurnLimit ? turnFrac : 0,
+      detail,
     });
-    void turnFrac;
   }
 
   return out;

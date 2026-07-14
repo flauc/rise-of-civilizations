@@ -16,6 +16,9 @@ const config: CapacitorConfig = {
     // Capacitor loads the shell over https://localhost; ws:// to 10.0.2.2 is
     // mixed content unless this is enabled (needed for emulator dev builds).
     allowMixedContent: true,
+    // Edge-to-edge is enabled in MainActivity (EdgeToEdge.enable). The web client
+    // handles insets via viewport-fit=cover and env(safe-area-inset-*).
+    backgroundColor: "#0f0e0b",
   },
   ios: {
     contentInset: "always",

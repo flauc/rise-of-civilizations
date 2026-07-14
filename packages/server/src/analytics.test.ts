@@ -280,4 +280,55 @@ describe("MemoryAnalyticsStore", () => {
     expect(o.totalSessions).toBe(1);
     expect(o.completedSessions).toBe(1);
   });
+
+  it("returns game session detail with full setup and scoreboard", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      startCfg("s1", "p1", {
+        handle: "Caesar",
+        civId: "rome",
+        mapType: "continents",
+        mapSize: "medium",
+        cols: 80,
+        rows: 56,
+        aiCount: 2,
+        barbarianLevel: "normal",
+        naturalWonders: true,
+        villages: true,
+        legends: false,
+        startingGold: "balanced",
+        turnLimit: 0,
+        gameSpeed: "normal",
+        aiCivIds: ["greece", "egypt"],
+        enabledVictories: ["domination", "science"],
+      }),
+      {
+        t: "session_end",
+        sessionId: "s1",
+        clientId: "p1",
+        outcome: "win",
+        condition: "domination",
+        turns: 88,
+        score: 1200,
+        scoreRank: 1,
+        scoreboard: [
+          { name: "Caesar", civId: "rome", isHuman: true, score: 1200, isViewer: true },
+          { name: "Athens", civId: "greece", isHuman: false, score: 900 },
+          { name: "Memphis", civId: "egypt", isHuman: false, score: 700 },
+        ],
+        ts: now + 1000,
+      },
+    ]);
+    const detail = await a.gameSession("s1");
+    expect(detail).toMatchObject({
+      mapType: "continents",
+      naturalWonders: true,
+      enabledVictories: ["domination", "science"],
+      outcome: "win",
+      score: 1200,
+    });
+    expect(detail?.scoreboard).toHaveLength(3);
+    expect(detail?.scoreboard[0]?.name).toBe("Caesar");
+    expect(await a.gameSession("missing")).toBeUndefined();
+  });
 });

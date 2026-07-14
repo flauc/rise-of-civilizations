@@ -560,7 +560,8 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     if (rel.sharedVision) {
       rows.push(
         `<div class="dp-agree"><span>🗺 Shared vision <span class="dp-sub">(indefinite)</span></span>` +
-        `<button class="btn" data-cancelsv="${otherId}">End sharing</button></div>`,
+        `<button class="btn" data-cancelsv="${otherId}">End sharing</button></div>` +
+        `<div class="dp-sub" style="margin:-4px 0 8px">Their explored map and current unit/city sight appear on your map — fogged where they've been, clear where they see now.</div>`,
       );
     }
     if (rows.length === 0) return "";

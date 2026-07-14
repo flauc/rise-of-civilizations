@@ -538,9 +538,11 @@ export function createProposal(
     prop.reason = decision.reason;
     prop.status = decision.accept ? "accepted" : "declined";
     if (decision.accept) {
-      const proposerIsAI = !playerById(state, fromId)?.isHuman;
-      // Coercive demands and AI-initiated deals conclude without a finalize step.
-      if (coercive || proposerIsAI) settleProposal(state, prop);
+      const proposer = playerById(state, fromId);
+      const proposerIsAI = proposer && !proposer.isHuman;
+      // Coercive demands, AI-initiated deals, and human→AI deals all conclude
+      // once the AI accepts. Only human↔human needs a proposer finalize step.
+      if (coercive || proposerIsAI || proposer?.isHuman) settleProposal(state, prop);
     } else if (!coercive && !decision.accept && decision.counter && playerById(state, fromId)?.isHuman) {
       // Rather than a flat "no", the AI volleys back a fair counter for the human
       // to weigh. (Recipient is human → this stays pending until they respond.)

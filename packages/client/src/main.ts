@@ -4,6 +4,7 @@ import {
   availableTechs,
   canFoundReligion,
   cityAt,
+  tradeRouteViaMessage,
   citiesOf,
   combatPreview,
   computeAttackTargets,
@@ -29,7 +30,6 @@ import {
   UNIT_DEFS,
   TERRAIN_NAMES,
   isRough,
-  playerScore,
   serializeState,
   uniqueUnitForCiv,
   type ActiveAbilityId,
@@ -71,7 +71,7 @@ import { MAP_DIMENSIONS, type Session } from "./session";
 import type { CheatAction } from "./god-mode";
 import { exportSave, listSavesForUser, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
 import { getAccount, getSaveOwnerId } from "./account";
-import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, abandonActiveSession, type GameSetup } from "./analytics";
+import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, abandonActiveSession, buildSessionScoreboard, viewerScoreFromBoard, registerSessionSnapshotProvider, type GameSetup } from "./analytics";
 import { createTutorialCoach } from "./tutorial-coach";
 import {
   refreshTutorialMovement,
@@ -95,15 +95,21 @@ legalViewer.wireLinks();
 const supportPage = createSupportPage();
 registerSupportPage(supportPage);
 supportPage.wireLinks();
-createLobby(startGame);
+
 const bootRoute = initialOverlayRoute(location);
-if (bootRoute === "support") {
-  setLobbyHidden(true);
-  supportPage.open();
-} else if (bootRoute) {
-  setLobbyHidden(true);
-  legalViewer.open(bootRoute as LegalPage);
+
+function openBootRoute(): void {
+  if (bootRoute === "support") {
+    setLobbyHidden(true);
+    supportPage.open();
+  } else if (bootRoute) {
+    setLobbyHidden(true);
+    legalViewer.open(bootRoute as LegalPage);
+  }
 }
+
+createLobby(startGame);
+openBootRoute();
 delete window.__ROC_BOOT_ROUTE__;
 
 function startGame(session: Session, setup: GameSetup = {}): void {
@@ -168,6 +174,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   let visible = new Set<string>();
   let liftFog = false; // God Mode: render the whole map with no fog
   let gameOverShown = false;
+  let gameOverExploreMap = false;
   let sessionTracked = false;
   let hoverOdds: CombatOdds | null = null;
   let idleCycle = 0;
@@ -303,25 +310,26 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     const over = st().gameOver;
     if (over && !gameOverShown) {
       gameOverShown = true;
-      const winner = st().players.find((p) => p.id === over.winnerId);
-      ui.banner(`🏆 ${winner?.name ?? "Someone"} wins by ${over.condition}!`);
+      clearSelection();
       // Analytics: clean win/loss end. Rank the viewer among all players by score.
       const me = session.getViewerId();
-      const ranked = st()
-        .players.map((p) => ({ id: p.id, score: playerScore(st(), p.id) }))
-        .sort((a, b) => b.score - a.score);
-      const myIndex = ranked.findIndex((r) => r.id === me);
+      const snap = sessionEndSnapshot();
       trackSessionEnd({
         outcome: over.winnerId === me ? "win" : "loss",
         condition: over.condition,
         turns: st().turn,
-        score: myIndex >= 0 ? ranked[myIndex]!.score : undefined,
-        scoreRank: myIndex >= 0 ? myIndex + 1 : undefined,
+        ...snap,
       });
     }
     needsRedraw = true;
   }
   session.onUpdate(update);
+
+  function sessionEndSnapshot(): ReturnType<typeof viewerScoreFromBoard> {
+    return viewerScoreFromBoard(buildSessionScoreboard(st(), session.getViewerId()));
+  }
+
+  registerSessionSnapshotProvider(() => sessionEndSnapshot());
 
   // Guests can save locally too (keyed by a device-local guest id); saving is
   // always available offline. Online games still require an account to have
@@ -452,7 +460,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       }
     },
     onConvertCitizen: (cityId, specialistId, delta) =>
-      session.order({ type: "convertCitizen", cityId, specialistId, delta }),
+      session.order({ type: "convertCitizen", cityId, specialistId, delta, manual: delta > 0 }),
     onSetCityAutoMode: (cityId, mode) => session.order({ type: "setCityAutoMode", cityId, mode }),
     onPickExpandTile: (cityId) => {
       // Toggle the border-tile picker: highlight every tile the city could claim next,
@@ -567,7 +575,16 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onRecruitLegend: (legendId) => session.order({ type: "recruitLegend", legendId }),
     onUseLeaderAbility: () => session.order({ type: "useLeaderAbility" }),
     onEstablishTrade: (destCityId) => {
-      if (selectedUnitId != null) session.order({ type: "establishTradeRoute", unitId: selectedUnitId, destCityId });
+      if (selectedUnitId != null) {
+        const unit = st().units.get(selectedUnitId);
+        const origin = unit ? cityAt(st(), unit.col, unit.row) : undefined;
+        const dest = st().cities.get(destCityId);
+        if (origin && dest) {
+          const via = tradeRouteViaMessage(st(), origin, dest);
+          if (via) ui.banner(`🐪 Caravan will travel via ${via}`);
+        }
+        session.order({ type: "establishTradeRoute", unitId: selectedUnitId, destCityId });
+      }
       clearSelection();
     },
     onCancelTradeRoute: (routeId) => session.order({ type: "cancelTradeRoute", routeId }),
@@ -586,7 +603,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     canSave,
     promptSaveOnLeave: canSave && !session.isOnline,
     onLeaveGame: () => {
-      abandonActiveSession();
+      abandonActiveSession(sessionEndSnapshot());
       location.reload();
     },
     onSave: async (name) => {
@@ -681,6 +698,20 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       liftFog = enabled;
       needsRedraw = true;
     },
+    onGameOverExploreMap: () => {
+      gameOverExploreMap = true;
+      liftFog = true;
+      camera.fitToView(computeWorldBounds(st().map), cssWidth, cssHeight, BASE_SIZE * 2);
+      needsRedraw = true;
+    },
+    onGameOverBackToSummary: () => {
+      gameOverExploreMap = false;
+      needsRedraw = true;
+    },
+    onGameOverQuit: () => {
+      abandonActiveSession(sessionEndSnapshot());
+      location.reload();
+    },
     onSetUpkeepModifier: (pct) => session.order({ type: "setUpkeepModifier", pct }),
     onTurnUpdateLocate: (tile) => {
       centerOn(tile.col, tile.row);
@@ -733,7 +764,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         banner: (text) => ui.banner(text),
         isWorldReady: () => loadingHidden,
         exitToMenu: () => {
-          abandonActiveSession();
+          abandonActiveSession(sessionEndSnapshot());
           location.reload();
         },
         ensureTutorialVillage: () => {
@@ -933,7 +964,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
 
   function isExplored(col: number, row: number): boolean {
     const me = session.getViewerId();
-    return st().players.find((p) => p.id === me)?.explored?.has(`${col},${row}`) ?? false;
+    return session.getExplored().has(`${col},${row}`);
   }
 
   /** Limited tile info for the cursor-following hover tooltip. */
@@ -1107,10 +1138,11 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     if (needsRedraw && session.hasState()) {
       needsRedraw = false;
       const me = session.getViewerId();
+      visible = session.getVisible();
       // God Mode "Lift Fog": reveal the entire map (local single-player only —
       // the online session is server-filtered and never holds hidden state).
       const allKeys = liftFog ? allTileKeys(st()) : null;
-      const explored = allKeys ?? st().players.find((p) => p.id === me)?.explored ?? new Set<string>();
+      const explored = allKeys ?? session.getExplored();
       const drawVisible = allKeys ?? visible;
       drawScene(ctx!, st(), camera, {
         dpr,
@@ -1146,7 +1178,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         expandMarker: selCity ? selCity.expandTarget ?? nextExpansionTile(st(), selCity) : null,
         tradeRoutes: st().tradeRoutes.filter((r) => r.ownerId === me || r.escortUnitId !== undefined),
         works: st()
-          .works.filter((w) => w.ownerId === me && w.target)
+          .works.filter((w) => w.target && drawVisible.has(`${w.target.col},${w.target.row}`))
           .map((w) => ({ col: w.target!.col, row: w.target!.row, kind: w.kind })),
         unitAtlas,
         cityAtlas,
@@ -1169,6 +1201,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         mpSaves,
         cheatsEnabled: !session.isOnline,
         liftFog,
+        gameOverExploreMap,
       });
       } catch (err) {
         console.error("RENDER-THREW", (err as Error)?.stack || err);
@@ -1235,7 +1268,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
 if ("serviceWorker" in navigator && !import.meta.env.DEV) {
   window.addEventListener("load", () => {
     navigator.serviceWorker
-      .register("sw.js")
+      .register(`${import.meta.env.BASE_URL}sw.js`)
       .catch((err) => console.error("Service worker registration failed:", err));
   });
 }

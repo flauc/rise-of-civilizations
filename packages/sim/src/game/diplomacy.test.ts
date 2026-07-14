@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { getTile, axialDistance, offsetToAxial } from "@roc/shared";
 import { createGame } from "./setup";
 import { applyCommand } from "./commands";
-import { updateExplored } from "./visibility";
+import { updateExplored, visibleForPlayer, exploredForPlayer } from "./visibility";
 import { isPassableLand } from "./terrain";
 import {
   relationBetween, haveMet, atWar, attitudeScore,
@@ -106,17 +106,13 @@ describe("diplomacy", () => {
     s.players[0]!.gold = 100;
     expect(gift(s, 0, 1, 60).ok).toBe(true);
     expect(attitudeScore(s, 1, 0)).toBeGreaterThan(before);
-    // Offer the AI gold for nothing → it accepts, but a human-initiated deal
-    // must be finalized by the proposer before the gold actually moves.
+    // Offer the AI gold for nothing → it accepts and the deal applies at once
+    // (human↔AI never needs a separate finalize step).
     s.players[0]!.gold = 100;
     const aiGold = s.players[1]!.gold;
     expect(proposeDeal(s, 0, 1, [{ kind: "gold", amount: 40 }], []).ok).toBe(true);
-    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
-    expect(prop.status).toBe("accepted"); // AI gave instant feedback
-    expect(s.players[1]!.gold).toBe(aiGold); // not yet applied
-    expect(finalizeDeal(s, 0, prop.id, true).ok).toBe(true);
-    expect(s.players[1]!.gold).toBe(aiGold + 40); // applied on finalize
-    expect(s.diploProposals.find((p) => p.id === prop.id)).toBeUndefined();
+    expect(s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)).toBeUndefined();
+    expect(s.players[1]!.gold).toBe(aiGold + 40);
   });
 
   it("a coercive tribute demand only succeeds with overwhelming military advantage", () => {
@@ -374,11 +370,9 @@ describe("diplomacy", () => {
     s.cities.set(c0, { id: c0, ownerId: 0, name: "Mine", col: 5, row: 5, population: 3, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [{ id: 900, type: "carpenter", name: "Test", xp: 0, level: 2 }], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
     const c1 = s.nextEntityId++;
     s.cities.set(c1, { id: c1, ownerId: 1, name: "Theirs", col: 20, row: 12, population: 1, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
-    // Offer the AI the carpenter for free (3 turns) — it accepts; we finalize.
+    // Offer the AI the carpenter for free (3 turns) — it accepts and applies at once.
     expect(proposeDeal(s, 0, 1, [{ kind: "specialist", specialistType: "carpenter", turns: 3 }], []).ok).toBe(true);
-    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
-    expect(prop.status).toBe("accepted");
-    expect(finalizeDeal(s, 0, prop.id, true).ok).toBe(true);
+    expect(s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)).toBeUndefined();
     expect(s.cities.get(c1)!.specialists.some((sp) => sp.type === "carpenter")).toBe(true);
     expect(s.cities.get(c0)!.specialists.length).toBe(0); // moved out of the lender
   });
@@ -556,9 +550,7 @@ describe("shared vision (map exchange)", () => {
     expect(
       proposeDeal(s, 0, 1, [{ kind: "sharedVision" }, { kind: "gold", amount: 40 }], [{ kind: "sharedVision" }]).ok,
     ).toBe(true);
-    const prop = s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!;
-    expect(prop.status).toBe("accepted");
-    expect(finalizeDeal(s, 0, prop.id, true).ok).toBe(true);
+    expect(s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)).toBeUndefined();
     expect(relationBetween(s, 0, 1)!.sharedVision).toBe(true);
     expect(sharedVisionPartners(s, 0)).toContain(1);
     expect(sharedVisionPartners(s, 1)).toContain(0);
@@ -588,6 +580,8 @@ describe("shared vision (map exchange)", () => {
     const view = viewForPlayer(s, 0);
     expect(view.visible).toContain(key); // live sight is shared
     expect(view.tiles.some((t) => `${t.col},${t.row}` === key)).toBe(true); // remembered map too
+    expect(visibleForPlayer(s, 0).has(key)).toBe(true);
+    expect(exploredForPlayer(s, 0).has(key)).toBe(true);
   });
 
   it("cancelling revokes the borrowed sight without leaking into the player's own map", () => {

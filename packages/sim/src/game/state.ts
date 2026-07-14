@@ -155,6 +155,12 @@ export interface City {
    *  auto-optimisation (manual picks are respected); only unlocked citizens are
    *  reshuffled onto more profitable tiles. */
   lockedTiles?: string[];
+  /** Specialist entity ids the player manually trained (+1). Governor/AI never
+   *  releases these when rebalancing focus. */
+  lockedSpecialists?: number[];
+  /** AI-trained specialists marked to finish their current work, then be released
+   *  (set when governor focus changes). They are not assigned to new works. */
+  pendingSpecialistRelease?: number[];
   /** Governor mode: when set, `autoManageCity` (ai.ts) runs every turn for this
    *  city — biasing worked-tile assignment, choosing production/buildings, and
    *  (military only) training units toward the given focus, falling back to
@@ -306,6 +312,8 @@ export interface Player {
   greatPeopleEarned: Partial<Record<GreatPersonClass, number>>;
   /** Recruited Great People not yet activated (figure ids, ready to use). */
   greatPeople: string[];
+  /** Every Great Person figure id this civ has ever recruited (for analytics). */
+  greatPeopleRecruited?: string[];
   /** Lifetime count of Legends this player has recruited (score / analytics). */
   legendsRecruited: number;
   /** Legend track points earned by training and battle (melee, cavalry, …). */
@@ -557,6 +565,8 @@ export interface TradeRoute {
   international?: boolean;
   /** Tile keys "col,row" the caravan travels through; used for plundering. */
   path: string[];
+  /** Intermediate owned cities the caravan passes through (multi-hop sea lanes). */
+  viaCityIds?: number[];
   /** Military unit id guarding this route off-map, if any. */
   escortUnitId?: number;
   /** Escort unit type — copied at assignment so every player can render the guard. */
@@ -566,6 +576,16 @@ export interface TradeRoute {
 }
 
 export type BarbarianActivity = "none" | "minimal" | "low" | "normal" | "high";
+
+/** Tribal village density on the map (lobby option). */
+export type VillageDensity = "none" | "medium" | "high";
+
+/** Accept legacy boolean setup (`true` → medium, `false` → none). */
+export function normalizeVillageDensity(v: boolean | VillageDensity | undefined): VillageDensity {
+  if (v === false || v === "none") return "none";
+  if (v === "high") return "high";
+  return "medium";
+}
 
 /** Possible outcomes when a tribal village or barbarian camp feature is resolved. */
 export type FeatureRewardType =

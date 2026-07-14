@@ -15,6 +15,8 @@ import {
   type GameState,
   type Player,
   type Unit,
+  normalizeVillageDensity,
+  type VillageDensity,
 } from "./state";
 import { isMilitary, UNIT_DEFS, TECH_DEFS, type UnitTypeId, type TechId } from "./content";
 import { unitMaxHp } from "./combat";
@@ -522,13 +524,16 @@ export function placeFeatures(
   state: GameState,
   starts: ({ col: number; row: number } | null)[],
   activity: BarbarianActivity,
-  villages = true,
+  villages: boolean | VillageDensity = "medium",
 ): void {
   const { map } = state;
   const area = map.cols * map.rows;
-  // ~1 village per 117 tiles (40% fewer than the original 1-per-70 density).
-  const villageCount = Math.max(2, Math.floor(area / 117));
+  const density = normalizeVillageDensity(villages);
+  // Medium ≈1 village per 117 tiles; High ≈1 per 70 (original density).
+  const villageCount =
+    density === "none" ? 0 : Math.max(2, Math.floor(area / (density === "high" ? 70 : 117)));
   const campCount = barbarianCampTarget(state);
+  const startClearance = density === "high" ? 3 : 5;
 
   // Eligible land tiles, away from starts and not already featured/occupied.
   const eligible: { col: number; row: number; key: number }[] = [];
@@ -536,18 +541,29 @@ export function placeFeatures(
     if (!isPassableLand(tile.terrain) || tile.feature) continue;
     if (isPolarTile(map, tile.col, tile.row)) continue; // no villages/camps at the poles
     const here = offsetToAxial({ col: tile.col, row: tile.row });
-    if (starts.some((s) => s && axialDistance(here, offsetToAxial(s)) < 5)) continue;
+    if (starts.some((s) => s && axialDistance(here, offsetToAxial(s)) < startClearance)) continue;
     if (unitAt(state, tile.col, tile.row)) continue;
     eligible.push({ col: tile.col, row: tile.row, key: hashSeed(`feat:${tile.col},${tile.row}`) });
   }
   eligible.sort((a, b) => a.key - b.key); // deterministic pseudo-shuffle
 
-  const placed: { col: number; row: number }[] = [];
-  const tooClose = (c: number, r: number) =>
-    placed.some((p) => axialDistance(offsetToAxial(p), offsetToAxial({ col: c, row: r })) < 3);
+  const placedVillages: { col: number; row: number }[] = [];
+  const placedCamps: { col: number; row: number }[] = [];
+  const MIN_VILLAGE_SPACING = 7;
+  const MIN_CAMP_SPACING = 3;
+  const villageTooClose = (c: number, r: number) =>
+    [...placedVillages, ...placedCamps].some(
+      (p) => axialDistance(offsetToAxial(p), offsetToAxial({ col: c, row: r })) < MIN_VILLAGE_SPACING,
+    );
+  const campTooClose = (c: number, r: number) =>
+    [...placedVillages, ...placedCamps].some(
+      (p) => axialDistance(offsetToAxial(p), offsetToAxial({ col: c, row: r })) < MIN_CAMP_SPACING,
+    );
 
-  const claim = (feature: string, count: number) => {
+  const claim = (feature: "village" | "barb_camp", count: number) => {
     let n = 0;
+    const tooClose = feature === "village" ? villageTooClose : campTooClose;
+    const placed = feature === "village" ? placedVillages : placedCamps;
     for (const e of eligible) {
       if (n >= count) break;
       if (tooClose(e.col, e.row)) continue;
@@ -558,6 +574,6 @@ export function placeFeatures(
       n++;
     }
   };
-  if (villages) claim("village", villageCount);
+  if (villageCount > 0) claim("village", villageCount);
   claim("barb_camp", campCount);
 }

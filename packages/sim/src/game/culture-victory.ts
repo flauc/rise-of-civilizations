@@ -7,6 +7,7 @@
 
 import type { GameState, Player } from "./state";
 import { citiesOf, playerById } from "./state";
+import { naturalWonderTerritoryTourismForPlayer } from "./natural-wonders";
 
 /** Renown radiated by a single wonder, and by each tier of cultural building. */
 const TOURISM_PER_WONDER = 3;
@@ -25,6 +26,7 @@ export function baseTourism(state: GameState, playerId: number): number {
     for (const b of c.buildings) t += CULTURE_BUILDING_TOURISM[b] ?? 0;
     t += (c.greatWorks?.length ?? 0) * 2; // forward-compat with explicit Great Works
   }
+  t += naturalWonderTerritoryTourismForPlayer(state, playerId);
   return t;
 }
 

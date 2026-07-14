@@ -20,7 +20,7 @@ import { barbarianTurn } from "./barbarians";
 import { useAbility, tickAbilities } from "./abilities";
 import { breakCover, canStealthMove, stealthMovement } from "./stealth";
 import { applyVictoryCheck } from "./victory";
-import { convertCitizen, type SpecialistId } from "./specialists";
+import { convertCitizen, releaseIdleGovernorSpecialists, markAiSpecialistsForGovernorRelease, type SpecialistId } from "./specialists";
 import {
   advanceWorks,
   tickWonders,
@@ -38,7 +38,7 @@ import { onUnitEnter, tickRuins, clearRuin } from "./features";
 import { foundReligion, spreadReligion, buyReligiousUnit, evangelize, purgeHeresy, boardTradeRoute, processTransit, upgradeReligion, pickReligionPerk, moveHolyCity } from "./religion";
 import { trackCircumnavigation } from "./science-victory";
 import { accrueInfluence } from "./culture-victory";
-import { establishTradeRoute, cancelTradeRoute, assignTradeEscort, leaveTradeEscort, pruneTradeRoutes } from "./trade";
+import { establishTradeRoute, cancelTradeRoute, assignTradeEscort, leaveTradeEscort, pruneTradeRoutes, refreshTradeRoutePaths } from "./trade";
 import { pillageTile, plunderTradeRoute, sackCityCommand } from "./raiding";
 import { bribeBarbarian, recruitBarbarian, pruneBarbarianBribes } from "./bribery";
 import { useLeaderAbility } from "./leader-abilities";
@@ -152,7 +152,7 @@ export type Command =
   | { type: "useAbility"; unitId: number; ability: ActiveAbilityId; col?: number; row?: number }
   | { type: "sleep"; unitId: number }
   | { type: "wake"; unitId: number }
-  | { type: "convertCitizen"; cityId: number; specialistId: string; delta: number }
+  | { type: "convertCitizen"; cityId: number; specialistId: string; delta: number; manual?: boolean }
   | { type: "startWork"; kind: string; col: number; row: number }
   | {
       type: "startRoadRoute";
@@ -234,6 +234,9 @@ const MIN_CITY_DISTANCE = 3;
 export function beginTurn(state: GameState): void {
   const player = currentPlayer(state);
   pruneTradeRoutes(state); // drop routes whose cities were lost/captured
+  if (state.currentPlayerIndex === 0) {
+    refreshTradeRoutePaths(state); // snap routes onto faster roads once per round
+  }
   if (state.currentPlayerIndex === 0) tickRuins(state); // ruins fade once per round
   for (const u of unitsOf(state, player.id)) {
     if (u.sleeping) continue;
@@ -270,6 +273,12 @@ export function beginTurn(state: GameState): void {
   if (state.enabledVictories?.has("culture")) accrueInfluence(state, player.id);
   accrueGreatPeople(state, player); // class points -> recruit Great People
   advanceWorks(state, player.id); // specialists labour on public works
+  for (const c of citiesOf(state, player.id)) {
+    if (!c.autoMode) continue;
+    const released = releaseIdleGovernorSpecialists(state, c, player.id);
+    for (const id of released) unassignSpecialistEverywhere(state, player.id, id);
+    if (released.length > 0) autoAssignCitizens(state, c, c.autoMode);
+  }
   towerBombardment(state, player.id); // towers fire on adjacent enemies
   // Religion spreads + diplomacy ticks once per round (at the start of player 0's turn).
   if (state.currentPlayerIndex === 0) {
@@ -463,7 +472,9 @@ export function applyCommand(
       const city = state.cities.get(cmd.cityId);
       if (!city) return fail("no such city");
       if (city.ownerId !== player.id) return fail("not your city");
-      const res = convertCitizen(state, city, cmd.specialistId as SpecialistId, cmd.delta);
+      const res = convertCitizen(state, city, cmd.specialistId as SpecialistId, cmd.delta, {
+        manual: cmd.manual && cmd.delta > 0,
+      });
       if (res.ok) {
         // A released craftsman must drop off any Work it was labouring on.
         if (res.releasedId !== undefined) unassignSpecialistEverywhere(state, player.id, res.releasedId);
@@ -640,6 +651,13 @@ export function applyCommand(
       if (!city) return fail("no such city");
       if (city.ownerId !== player.id) return fail("not your city");
       city.autoMode = cmd.mode ?? undefined;
+      // Focus change: AI-trained specialists finish their current work, then are
+      // freed; manual +1 picks stay. Idle marked specialists release immediately.
+      if (city.autoMode) {
+        markAiSpecialistsForGovernorRelease(city);
+        const released = releaseIdleGovernorSpecialists(state, city, player.id);
+        for (const id of released) unassignSpecialistEverywhere(state, player.id, id);
+      }
       autoAssignCitizens(state, city, city.autoMode); // re-skew worked tiles toward the new focus immediately
       // Pick production this same turn (if the city isn't already building something).
       // Other governor actions (works, training) still wait for the normal turn tick.

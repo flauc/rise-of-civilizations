@@ -160,6 +160,17 @@ describe("victory", () => {
     expect(rel.enabled).toBe(false);
   });
 
+  it("score progress tracks turn limit, not ratio to leader score", () => {
+    const state = createGame({ seed: "vic-score-prog", cols: 36, rows: 24, barbarians: false, humanSlots: 1, playerCount: 2 });
+    state.turnLimit = 200;
+    state.turn = 50;
+    const scoreEntry = victoryProgress(state, 0).find((e) => e.kind === "score")!;
+    expect(scoreEntry.progress).toBeCloseTo(0.25);
+    expect(scoreEntry.detail).toContain("Score");
+    expect(scoreEntry.detail).toContain("50/200");
+    expect(scoreEntry.detail).toMatch(/#1 of/);
+  });
+
   it("declares an economic victory for a clear mercantile hegemony", () => {
     const state = createGame({ seed: "vic-econ", cols: 36, rows: 24, barbarians: false, humanSlots: 1, playerCount: 2 });
     beginTurn(state);

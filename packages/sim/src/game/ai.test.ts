@@ -90,6 +90,39 @@ function aiWithCity(seed: string): GameState {
   return s;
 }
 
+/** Second developed city so wonder logic treats the empire as past the opening. */
+function addDevelopedSisterCity(s: GameState, main: { id: number; col: number; row: number }): void {
+  const id = s.nextEntityId++;
+  const col = main.col + 4;
+  const row = main.row;
+  const tile = s.map.tiles[row * s.map.cols + col];
+  if (tile) tile.ownerCityId = id;
+  s.cities.set(id, {
+    id,
+    ownerId: 1,
+    name: "Sister",
+    col,
+    row,
+    population: 8,
+    foodStored: 0,
+    productionStored: 0,
+    production: null,
+    buildings: [],
+    training: {},
+    trainingQueue: [],
+    specialists: [],
+    wonders: [],
+    workedTiles: [],
+    isCapital: false,
+    foundedAsCapital: false,
+    hp: 100,
+    lastAttackedTurn: 0,
+    rangedAttacksUsed: 0,
+    rangedAttackUsed: false,
+    modifiers: [],
+  } as never);
+}
+
 describe("AI opponent", () => {
   it("founds a city, researches, and grows when run", () => {
     const state = createGame({ seed: "ai-test", cols: 40, rows: 28, barbarians: false, humanSlots: 1 });
@@ -454,6 +487,7 @@ describe("AI opponent", () => {
     ai.gold = 2000; // afford a wonder's one-time gold cost
     const city = citiesOf(s, 1)[0]!;
     city.population = 40;
+    addDevelopedSisterCity(s, city);
     // A wonder now needs its ENTIRE crew idle before it can start (11 Masons, etc.),
     // so hand the AI a generous bench covering every non-survey wonder's crafts.
     let id = 5000;
@@ -473,6 +507,26 @@ describe("AI opponent", () => {
       site.wonder = undefined;
       site.naturalWonder = undefined;
     }
+    aiTakeTurn(s, 1);
+    expect(worksOf(s, 1).some((w) => w.kind === "wonder")).toBe(true);
+  });
+
+  it("builds world wonders when it has the crew and treasury", () => {
+    const s = aiWithCity("ai-wonder-build2");
+    const ai = s.players[1]!;
+    ai.researched.add("writing");
+    ai.researched.add("engineering");
+    ai.researched.add("masonry");
+    ai.gold = 2000;
+    ai.cultureProgress = 150;
+    const city = citiesOf(s, 1)[0]!;
+    city.population = 35;
+    addDevelopedSisterCity(s, city);
+    let id = 5000;
+    for (const [type, n] of [["architect", 8], ["engineer", 6]] as const) {
+      for (let i = 0; i < n; i++) city.specialists.push({ id: id++, type, xp: 0, level: 1 });
+    }
+    s.works = s.works.filter((w) => w.ownerId !== 1);
     aiTakeTurn(s, 1);
     expect(worksOf(s, 1).some((w) => w.kind === "wonder")).toBe(true);
   });

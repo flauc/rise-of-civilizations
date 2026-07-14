@@ -5,13 +5,17 @@ import { updateExplored } from "./visibility";
 import {
   naturalWonderYields,
   naturalWonderCulture,
+  naturalWonderTerritoryCulture,
+  naturalWonderTerritoryTourism,
   checkNaturalWonderDiscovery,
   placeNaturalWonders,
 } from "./natural-wonders";
 import { getCityYields } from "./economy";
+import { baseTourism } from "./culture-victory";
 import { citiesOf, unitsOf } from "./state";
 import { axialDistance, getTile, offsetToAxial, axialNeighbor, axialToOffset } from "@roc/shared";
 import { getNaturalWonder, NATURAL_WONDER_DEFS, NATURAL_WONDER_IDS } from "@roc/data";
+import { inRealWorldWonderBox, worldTileLatLon } from "../worldmask";
 
 function foundCapital(state: ReturnType<typeof createGame>) {
   const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
@@ -21,8 +25,8 @@ function foundCapital(state: ReturnType<typeof createGame>) {
 
 describe("natural wonders", () => {
   it("places several single-tile natural wonders on the map", () => {
-    const state = createGame({ seed: "nw-map", cols: 48, rows: 32, barbarians: false, naturalWonders: true });
-    expect(state.naturalWonderIds.length).toBeGreaterThan(5);
+    const state = createGame({ seed: "nw-map", cols: 80, rows: 56, barbarians: false, naturalWonders: true });
+    expect(state.naturalWonderIds.length).toBeGreaterThanOrEqual(6);
     // Every placed wonder occupies exactly one tile and is a known def.
     for (const id of state.naturalWonderIds) {
       expect(getNaturalWonder(id)).toBeDefined();
@@ -40,7 +44,7 @@ describe("natural wonders", () => {
       expect(spots.length).toBeGreaterThanOrEqual(3);
       for (let i = 0; i < spots.length; i++) {
         for (let j = i + 1; j < spots.length; j++) {
-          expect(axialDistance(spots[i]!, spots[j]!), seed).toBeGreaterThanOrEqual(6);
+          expect(axialDistance(spots[i]!, spots[j]!), seed).toBeGreaterThanOrEqual(10);
         }
       }
     }
@@ -65,19 +69,46 @@ describe("natural wonders", () => {
     expect(naturalWonderCulture(getTile(state.map, 5, 5)!)).toBe(def.tileYields.culture ?? 0);
   });
 
-  it("a worked wonder tile raises the city's yields", () => {
+  it("a natural wonder inside city borders passively adds culture", () => {
     const state = createGame({ seed: "nw-city", cols: 30, rows: 20, barbarians: false });
     const city = foundCapital(state);
     const tile = getTile(state.map, city.col + 1, city.row)!;
     tile.terrain = "grassland";
-    tile.naturalWonder = "victoria_falls"; // +2 culture, +1 food
+    const before = getCityYields(state, city);
+
+    tile.naturalWonder = "victoria_falls"; // +2 culture when held in territory
+    tile.ownerCityId = city.id;
+    const after = getCityYields(state, city);
+
+    expect(naturalWonderTerritoryCulture(tile)).toBe(2);
+    expect(after.culture).toBe(before.culture + 2);
+  });
+
+  it("working a wonder tile does not double-count its culture", () => {
+    const state = createGame({ seed: "nw-worked", cols: 30, rows: 20, barbarians: false });
+    const city = foundCapital(state);
+    const tile = getTile(state.map, city.col + 1, city.row)!;
+    tile.terrain = "grassland";
+    tile.naturalWonder = "victoria_falls";
     tile.ownerCityId = city.id;
 
-    const before = getCityYields(state, city);
+    const unworked = getCityYields(state, city);
     city.lockedTiles = [`${tile.col},${tile.row}`];
     city.workedTiles = [`${tile.col},${tile.row}`];
-    const after = getCityYields(state, city);
-    expect(after.culture).toBeGreaterThan(before.culture);
+    const worked = getCityYields(state, city);
+    expect(worked.culture).toBe(unworked.culture);
+  });
+
+  it("natural wonders in territory add tourism for culture victory", () => {
+    const state = createGame({ seed: "nw-tourism", cols: 30, rows: 20, barbarians: false });
+    const city = foundCapital(state);
+    const tile = getTile(state.map, city.col + 1, city.row)!;
+    tile.naturalWonder = "mount_everest"; // no culture on def → min 1 culture, 2 tourism
+    tile.ownerCityId = city.id;
+
+    expect(naturalWonderTerritoryCulture(tile)).toBe(1);
+    expect(naturalWonderTerritoryTourism(tile)).toBe(2);
+    expect(baseTourism(state, 0)).toBeGreaterThanOrEqual(2);
   });
 
   it("the first civ to sight a wonder claims its one-time bonus, announced world-wide", () => {
@@ -203,6 +234,110 @@ describe("natural wonders", () => {
     }
     // Across all sampled seeds at least one coastal cliff wonder was placed and met
     // its rule (the invariant above is what matters; this guards against a no-op).
+    expect(sawAny).toBe(true);
+  });
+
+  it("places Galápagos on open ocean, never beside land or coast", () => {
+    const isLand = (terrain: string) => terrain !== "ocean" && terrain !== "coast" && terrain !== "lake";
+    let sawAny = false;
+    for (let i = 0; i < 24; i++) {
+      const state = createGame({ seed: `galapagos-${i}`, cols: 60, rows: 40, barbarians: false, naturalWonders: true });
+      for (const t of state.map.tiles) {
+        if (t.naturalWonder !== "galapagos_islands") continue;
+        sawAny = true;
+        expect(t.terrain).toBe("ocean");
+        const here = offsetToAxial({ col: t.col, row: t.row });
+        for (let d = 0; d < 6; d++) {
+          const nb = axialToOffset(axialNeighbor(here, d));
+          const n = getTile(state.map, nb.col, nb.row)!;
+          expect(n.terrain).toBe("ocean");
+          expect(isLand(n.terrain)).toBe(false);
+        }
+      }
+    }
+    expect(sawAny).toBe(true);
+  });
+
+  it("places Great Barrier Reef on coastal water beside land", () => {
+    let sawAny = false;
+    for (let i = 0; i < 24; i++) {
+      const state = createGame({ seed: `reef-${i}`, cols: 60, rows: 40, barbarians: false, naturalWonders: true });
+      for (const t of state.map.tiles) {
+        if (t.naturalWonder !== "great_barrier_reef") continue;
+        sawAny = true;
+        expect(t.terrain).toBe("coast");
+        const here = offsetToAxial({ col: t.col, row: t.row });
+        const touchesLand = [0, 1, 2, 3, 4, 5].some((d) => {
+          const nb = axialToOffset(axialNeighbor(here, d));
+          const n = getTile(state.map, nb.col, nb.row)!;
+          return n.terrain !== "ocean" && n.terrain !== "coast" && n.terrain !== "lake";
+        });
+        expect(touchesLand).toBe(true);
+      }
+    }
+    expect(sawAny).toBe(true);
+  });
+
+  it("places waterfall wonders beside rivers or water, not on open coast", () => {
+    const fallIds = new Set(["victoria_falls", "iguazu_falls", "angel_falls", "niagara_falls"]);
+    let sawAny = false;
+    for (let i = 0; i < 24; i++) {
+      const state = createGame({ seed: `falls-${i}`, cols: 60, rows: 40, barbarians: false, naturalWonders: true });
+      for (const t of state.map.tiles) {
+        if (!t.naturalWonder || !fallIds.has(t.naturalWonder)) continue;
+        sawAny = true;
+        expect(t.terrain).not.toBe("coast");
+        if (t.naturalWonder === "niagara_falls") {
+          expect(t.terrain).toBe("lake");
+          continue;
+        }
+        const here = offsetToAxial({ col: t.col, row: t.row });
+        const besideWater =
+          t.river ||
+          t.riverLake ||
+          [0, 1, 2, 3, 4, 5].some((d) => {
+            const nb = axialToOffset(axialNeighbor(here, d));
+            const n = getTile(state.map, nb.col, nb.row)!;
+            return n.terrain === "ocean" || n.terrain === "coast" || n.terrain === "lake" || n.river || n.riverLake;
+          });
+        expect(besideWater).toBe(true);
+      }
+    }
+    expect(sawAny).toBe(true);
+  });
+
+  it("on Real World maps, wonders spawn inside their geographic lat/lon boxes", () => {
+    const REAL_WORLD_BOX_PAD = 2;
+    const expandedBox = (box: NonNullable<ReturnType<typeof getNaturalWonder>>["realWorldBox"]) => ({
+      latMin: box!.latMin - REAL_WORLD_BOX_PAD,
+      latMax: box!.latMax + REAL_WORLD_BOX_PAD,
+      lonMin: box!.lonMin - REAL_WORLD_BOX_PAD,
+      lonMax: box!.lonMax + REAL_WORLD_BOX_PAD,
+    });
+    let sawAny = false;
+    for (let i = 0; i < 16; i++) {
+      const state = createGame({
+        seed: `rw-geo-${i}`,
+        cols: 110,
+        rows: 64,
+        mapType: "realworld",
+        barbarians: false,
+        naturalWonders: true,
+      });
+      expect(state.map.mapType).toBe("realworld");
+      for (const t of state.map.tiles) {
+        if (!t.naturalWonder) continue;
+        const def = getNaturalWonder(t.naturalWonder);
+        expect(def?.realWorldBox).toBeDefined();
+        const { lat, lon } = worldTileLatLon(t.col, t.row, state.map.cols, state.map.rows);
+        expect(inRealWorldWonderBox(lat, lon, expandedBox(def!.realWorldBox!))).toBe(true);
+        sawAny = true;
+        if (t.naturalWonder === "plitvice_lakes") {
+          expect(lat).toBeGreaterThan(40);
+          expect(lat).toBeLessThan(50);
+        }
+      }
+    }
     expect(sawAny).toBe(true);
   });
 });

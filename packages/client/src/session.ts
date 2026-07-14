@@ -8,9 +8,9 @@
 import {
   applyCommand,
   beginTurn,
-  computeVisible,
+  exploredForPlayer,
   createGame,
-  currentPlayer,
+  visibleForPlayer,
   deserializeState,
   type BarbarianActivity,
   type ClientMessage,
@@ -35,6 +35,7 @@ export interface Session {
   getState(): GameState;
   getViewerId(): number;
   getVisible(): Set<string>;
+  getExplored(): Set<string>;
   order(cmd: Command): void;
   /** Cheats are only available in single-player local sessions. */
   cheat?(action: CheatAction): CheatResult;
@@ -66,8 +67,8 @@ export interface LocalGameOptions {
   legends?: boolean;
   /** Scatter natural wonders across the map. Defaults to off. */
   naturalWonders?: boolean;
-  /** Scatter tribal villages that grant rewards when visited. Defaults to on. */
-  villages?: boolean;
+  /** Tribal village density. Defaults to medium. Legacy boolean: true → medium, false → none. */
+  villages?: boolean | import("@roc/sim").VillageDensity;
   /** Starting gold treasury preset. */
   startingGold?: "tight" | "balanced" | "generous";
   /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
@@ -89,6 +90,8 @@ export interface LocalGameOptions {
 export class LocalSession implements Session {
   readonly isOnline = false;
   private state: GameState;
+  /** The human's player id — fog/UI always render for them, not whoever's turn it is. */
+  private readonly humanPlayerId: number;
   private cb: () => void = () => {};
 
   constructor(opts: LocalGameOptions = {}) {
@@ -111,7 +114,7 @@ export class LocalSession implements Session {
         barbarians: opts.barbarians ?? true,
         legends: opts.legends ?? true,
         naturalWonders: opts.naturalWonders ?? true,
-        villages: opts.villages ?? true,
+        villages: opts.villages ?? "medium",
         startingGold: opts.startingGold ?? "balanced",
         turnLimit: opts.turnLimit ?? 120,
         gameSpeed: opts.gameSpeed ?? "normal",
@@ -121,6 +124,8 @@ export class LocalSession implements Session {
       });
       beginTurn(this.state);
     }
+    this.humanPlayerId =
+      this.state.players.find((p) => p.isHuman && !p.isBarbarian)?.id ?? 0;
   }
   hasState(): boolean {
     return true;
@@ -129,10 +134,13 @@ export class LocalSession implements Session {
     return this.state;
   }
   getViewerId(): number {
-    return currentPlayer(this.state).id;
+    return this.humanPlayerId;
   }
   getVisible(): Set<string> {
-    return computeVisible(this.state, this.getViewerId());
+    return visibleForPlayer(this.state, this.getViewerId());
+  }
+  getExplored(): Set<string> {
+    return exploredForPlayer(this.state, this.getViewerId());
   }
   order(cmd: Command): void {
     applyCommand(this.state, cmd);
@@ -174,6 +182,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     if (t.feature) tile.feature = t.feature;
     if (t.resource) tile.resource = t.resource;
     if (t.naturalWonder) tile.naturalWonder = t.naturalWonder;
+    if (t.wonder) tile.wonder = t.wonder;
     if (t.river) tile.river = t.river;
     if (t.riverLake) tile.riverLake = true;
     if (t.wooded) tile.wooded = true;
@@ -495,6 +504,10 @@ export class OnlineSession implements Session {
   }
   getVisible(): Set<string> {
     return this.visible;
+  }
+  getExplored(): Set<string> {
+    if (!this.state) return new Set();
+    return this.state.players.find((p) => p.id === this.viewerId)?.explored ?? new Set();
   }
   order(cmd: Command): void {
     this.send({ t: "order", cmd });

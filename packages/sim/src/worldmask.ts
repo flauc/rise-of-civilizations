@@ -57,3 +57,33 @@ export function isWorldLand(col: number, row: number, cols: number, rows: number
   const i = mr * WORLD_MASK_COLS + mc;
   return (bits[i >> 3]! & (1 << (i & 7))) !== 0;
 }
+
+/** Lat/lon of a tile on a Real World map, sampled through the baked Earth mask grid. */
+export function worldTileLatLon(
+  col: number,
+  row: number,
+  cols: number,
+  rows: number,
+): { lat: number; lon: number } {
+  const mc = cols <= 1 ? 0 : Math.round((col / (cols - 1)) * (WORLD_MASK_COLS - 1));
+  const mr = rows <= 1 ? 0 : Math.round((row / (rows - 1)) * (WORLD_MASK_ROWS - 1));
+  return {
+    lat: 90 - (mr + 0.5) * (180 / WORLD_MASK_ROWS),
+    lon: -180 + (mc + 0.5) * (360 / WORLD_MASK_COLS),
+  };
+}
+
+export interface RealWorldWonderBox {
+  latMin: number;
+  latMax: number;
+  lonMin: number;
+  lonMax: number;
+}
+
+export function inRealWorldWonderBox(
+  lat: number,
+  lon: number,
+  box: RealWorldWonderBox,
+): boolean {
+  return lat >= box.latMin && lat <= box.latMax && lon >= box.lonMin && lon <= box.lonMax;
+}

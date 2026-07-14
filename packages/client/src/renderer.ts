@@ -24,6 +24,7 @@ import { RESOURCE_DEFS, resourceActive, type GameState, type ResourceId } from "
 import { type ResourceAtlas } from "./resource-assets";
 import { naturalWonderTileImage, type NaturalWonderAtlas } from "./natural-wonder-assets";
 import { wonderTileImage, type WonderAtlas } from "./wonder-assets";
+import { drawGlyph } from "./icons";
 
 // Hex size (center-to-corner) in world units at zoom 1.
 export const BASE_SIZE = 26;
@@ -364,6 +365,44 @@ const UNEXPLORED_FILL = "#0a1624";
 // darker seams. (Same hue/strength as the old "rgba(8,16,26,0.5)" overlay.)
 const FOG_SOLID = "rgb(8,16,26)";
 const FOG_ALPHA = 0.5;
+
+/** Vector fallback when a built-wonder decor PNG is missing or still loading. */
+function drawWonderStandin(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  footprint: number,
+  wonderId: string,
+): void {
+  const h = footprint * 1.05;
+  const w = footprint * 0.72;
+  const baseY = sy + footprint / 2;
+  const topY = baseY - h;
+  const cx = sx;
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  ctx.beginPath();
+  ctx.ellipse(cx, baseY + footprint * 0.04, w * 0.55, footprint * 0.08, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const tiers = wonderId.includes("pyramid") || wonderId.includes("sphinx") ? 4 : 3;
+  for (let i = 0; i < tiers; i++) {
+    const t = i / tiers;
+    const tierW = w * (1 - t * 0.55);
+    const tierH = h / tiers;
+    const y0 = baseY - tierH * (i + 1);
+    ctx.fillStyle = i % 2 === 0 ? "#c9a24a" : "#b08830";
+    ctx.strokeStyle = "#6b4f1d";
+    ctx.lineWidth = Math.max(1, footprint * 0.025);
+    ctx.fillRect(cx - tierW / 2, y0, tierW, tierH);
+    ctx.strokeRect(cx - tierW / 2, y0, tierW, tierH);
+  }
+  ctx.fillStyle = "#f0d77a";
+  ctx.font = `${Math.max(10, Math.round(footprint * 0.22))}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  drawGlyph(ctx, "🏛", cx, topY + footprint * 0.12, Math.round(footprint * 0.28));
+  ctx.restore();
+}
 
 // A fog "silhouette" is the terrain sprite recoloured to a flat fog colour, so a
 // fogged tile's tall art (mountains, forests) is covered all the way to its peak
@@ -725,6 +764,8 @@ export function drawScene(
         const wW = wImg.naturalWidth * wScale;
         const wH = wImg.naturalHeight * wScale;
         ctx.drawImage(wImg, sx - wW / 2, sy + footprint / 2 - wH, wW, wH);
+      } else {
+        drawWonderStandin(ctx, sx, sy, footprint, t.wonder);
       }
     }
 

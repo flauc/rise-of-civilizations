@@ -7,6 +7,7 @@ import {
   type HeaderColumn,
   type SortOrder,
 } from "./table-ui";
+import { bindGameDetailButtons } from "./game-detail";
 import { esc } from "./util";
 
 export type { SortOrder };
@@ -31,6 +32,8 @@ export interface ClientTableOptions<T> {
   noMatchMessage?: string;
   compact?: boolean;
   pageSize?: number;
+  /** When set, rows become clickable and open the game detail modal. */
+  clickableRow?: (row: T) => string | undefined;
 }
 
 interface TableState {
@@ -106,7 +109,9 @@ export function mountClientTable<T>(host: HTMLElement, options: ClientTableOptio
     }
     return pageRows
       .map((row) => {
-        return `<tr>${options.columns
+        const gameId = options.clickableRow?.(row);
+        const rowAttrs = gameId ? ` class="clickable-row" data-game="${esc(gameId)}" title="View game details"` : "";
+        return `<tr${rowAttrs}>${options.columns
           .map((c) => {
             const html = c.render ? c.render(row) : esc(c.text(row));
             const cls = c.align === "num" ? ' class="num"' : "";
@@ -215,4 +220,5 @@ export function mountClientTable<T>(host: HTMLElement, options: ClientTableOptio
     ${pagerHtml(total, totalPages)}`;
 
   paintHead();
+  if (options.clickableRow) bindGameDetailButtons(host);
 }

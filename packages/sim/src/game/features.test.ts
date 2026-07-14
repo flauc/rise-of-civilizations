@@ -12,7 +12,7 @@ import {
   VILLAGE_GLOBAL_MORALE,
   VILLAGE_UNIT_MORALE,
 } from "./morale";
-import { getTile, isPolarTile } from "@roc/shared";
+import { getTile, isPolarTile, axialDistance, offsetToAxial } from "@roc/shared";
 import type { GameSpeed } from "./game-speed";
 import { UNIT_DEFS, type UnitTypeId } from "./content";
 
@@ -46,10 +46,26 @@ describe("map features", () => {
     }
   });
 
-  it("skips villages when disabled at game setup", () => {
-    const state = createGame({ seed: "no-villages", cols: 44, rows: 30, barbarians: true, villages: false });
+  it("skips villages when density is none", () => {
+    const state = createGame({ seed: "no-villages", cols: 44, rows: 30, barbarians: true, villages: "none" });
     const villages = state.map.tiles.filter((t) => t.feature === "village").length;
     expect(villages).toBe(0);
+  });
+
+  it("high village density places more villages than medium, at least 7 hexes apart", () => {
+    const medium = createGame({ seed: "vil-dens", cols: 80, rows: 56, barbarians: false, villages: "medium" });
+    const high = createGame({ seed: "vil-dens", cols: 80, rows: 56, barbarians: false, villages: "high" });
+    const medSpots = medium.map.tiles.filter((t) => t.feature === "village");
+    const highSpots = high.map.tiles.filter((t) => t.feature === "village");
+    expect(highSpots.length).toBeGreaterThan(medSpots.length);
+    for (const spots of [medSpots, highSpots]) {
+      const ax = spots.map((t) => offsetToAxial({ col: t.col, row: t.row }));
+      for (let i = 0; i < ax.length; i++) {
+        for (let j = i + 1; j < ax.length; j++) {
+          expect(axialDistance(ax[i]!, ax[j]!)).toBeGreaterThanOrEqual(7);
+        }
+      }
+    }
   });
 
   it("a village grants a perk and is consumed on entry", () => {

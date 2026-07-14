@@ -70,6 +70,8 @@
       .col-filter-in:focus { outline: none; border-color: var(--gold); }
       .btn-link { font: inherit; font-size: inherit; color: var(--gold-bright); background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
       .btn-link:hover { color: var(--gold); }
+      tr.clickable-row { cursor: pointer; }
+      tr.clickable-row:hover td { background: rgba(201,162,39,.06); }
       .bar-row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; margin: 6px 0; font-size: 14px; }
       .bar-row .v { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 700; }
       .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
@@ -94,6 +96,41 @@
       .table-pager select { font: inherit; color: var(--ink); background: #15130d; border: 1px solid var(--edge); border-radius: 6px; padding: 4px 8px; margin-left: 6px; }
       .table-pager .btn:disabled { opacity: .4; cursor: not-allowed; }
       .btn-sm { padding: 5px 10px; font-size: 12px; }
+      .report-filters { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px 16px; margin-bottom: 0; padding: 16px; background: rgba(0,0,0,.15); border: 1px solid rgba(58,51,36,.6); border-radius: 12px; }
+      .report-filters-panel { display: none; margin-bottom: 18px; }
+      .report-filters-panel.open { display: block; }
+      .report-filter-bar { margin-bottom: 12px; }
+      .report-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+      .report-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+      .report-sel { width: 100%; }
+      .report-actions { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 4px; }
+      .report-cards { margin-top: 4px; }
+      .report-grid section { margin-top: 0; }
+      .report-breakdown h3 { font-family: "Cinzel", Georgia, serif; font-size: 14px; margin: 0 0 10px; color: var(--ink); }
+      .overview-page .dash-cards { margin-top: 0; }
+      .dash-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; }
+      .dash-grid section { margin-top: 0; }
+      .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+      .section-head h2 { margin: 0; }
+      .section-link { font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+      .section-link:hover { text-decoration: underline; }
+      .pill.in-progress { background: rgba(184,170,141,.12); color: var(--muted); }
+      .report-sessions { margin-top: 28px; }
+      .report-sessions h3 { font-family: "Cinzel", Georgia, serif; font-size: 16px; margin: 0 0 8px; }
+      .report-sessions-lead { margin: 0 0 12px; font-size: 13px; }
+      .game-modal-panel { max-width: 960px; width: 100%; margin: 0; background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 20px 22px; }
+      .player-panels { display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px; }
+      .player-panel { border: 1px solid rgba(58,51,36,.65); border-radius: 12px; padding: 12px 14px; background: rgba(0,0,0,.12); }
+      .player-panel-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+      .player-panel-head .grow { flex: 1; min-width: 0; }
+      .player-sub { font-size: 13px; margin-top: 2px; }
+      .player-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px 12px; margin-bottom: 12px; font-size: 13px; }
+      .player-stat { display: flex; flex-direction: column; gap: 2px; }
+      .player-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 16px; font-size: 13px; }
+      .detail-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+      .tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+      .tag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: rgba(201,162,39,.1); border: 1px solid rgba(201,162,39,.25); color: var(--ink); }
+      .player-legacy { font-size: 13px; margin: 0; }
     </style>
   </head>
   <body>

@@ -15,16 +15,25 @@ import { abilityTargets, canUseAbility, unitAbilities } from "./abilities";
 import { religionUnitKit, religionInstanceForDefId, cityMajorityFaith } from "./religion-units";
 import { availableProduction, availableTechs, workableTiles } from "./economy";
 import { adoptableCivics, researchableGovernmentsFor, switchableGovernments, slottableCivics, civicSlotCapacity, getCivic, getGovernment, governmentTier, CIVICS, civicLegal } from "./civs";
-import { canFoundReligion, availableReligionNames, buyReligiousUnit, religiousUnitCost, availablePerks, canUpgradeReligion, nextTierRequirement, takenPerkIds } from "./religion";
-import { availableLegendsForPlayer, canRecruitLegend } from "./legends";
+import { canFoundReligion, availableReligionNames, buyReligiousUnit, religiousUnitCost, availablePerks, canUpgradeReligion, nextTierRequirement, takenPerkIds, religionUnlocked } from "./religion";
+import { availableLegendsForPlayer, canRecruitLegend, legendRecruitCostFor, legendTrackFor, legendTrackPointsOf } from "./legends";
 import { canUseLeaderAbility } from "./leader-abilities";
 import { canEstablishTradeRoute, tradeRouteDestinations } from "./trade";
 import { aiConsiderDiplomacy, atWar, personalityOf, proposeDeal, relationBetween, attitudeScore, powerRatio, declareWar } from "./diplomacy";
 import { availablePromotions } from "./combat";
 import { rushCurrencies, canRushWork, canRushTraining, canRushCity, type RushCurrency } from "./rush";
-import { availableTraining } from "./training";
-import { BELIEFS, WONDER_DEFS, uniqueUnitForCiv, type CivEffects, type DiploPersonality } from "@roc/data";
-import { availableSpecialists, workerSlots, SPECIALIST_DEFS, type SpecialistId } from "./specialists";
+import { availableTraining, freeCitizens } from "./training";
+import { BELIEFS, WONDER_DEFS, uniqueUnitForCiv, type CivEffects, type DiploPersonality, type WonderDef } from "@roc/data";
+import {
+  availableSpecialists,
+  workerSlots,
+  SPECIALIST_DEFS,
+  releaseIdleGovernorSpecialists,
+  isPendingGovernorRelease,
+  specialistIdForDiscipline,
+  specialistUnlocked,
+  type SpecialistId,
+} from "./specialists";
 import {
   nextTierAt,
   worksOf,
@@ -32,8 +41,13 @@ import {
   workDiscipline,
   workDisciplines,
   canStartWonder,
+  cancelWork,
+  crewShortfall,
   assignSpecialist,
   assignedSpecialistIds,
+  unassignSpecialistEverywhere,
+  wonderStartCost,
+  wonderHasBuildSite,
 } from "./works";
 import { offsetNeighbors } from "./movement";
 import { computeRoadPath, startRoadRoute, tilesNeedingRoad } from "./road-routes";
@@ -50,12 +64,211 @@ import {
   unitsOf,
   type City,
   type CityAutoFocus,
+  type Discipline,
   type GameState,
   type Player,
   type ProductionItem,
   type Unit,
   type VictoryKind,
 } from "./state";
+
+interface AiWonderContext {
+  target?: WonderDef;
+  gatheringCrew: boolean;
+  building: boolean;
+}
+
+function wonderCrewSize(crew: Record<string, number>): number {
+  return Object.values(crew).reduce((sum, n) => sum + n, 0);
+}
+
+/** True once the empire has grown past the opening — enough cities and population
+ *  to justify a grand wonder project while tile works (farms, mines, roads) continue. */
+function empireDevelopedForWonders(state: GameState, pid: number, player: Player): boolean {
+  const cities = citiesOf(state, pid);
+  if (cities.length < 2) return false;
+  if (!player.researched.has("masonry" as TechId)) return false;
+  const pop = cities.reduce((sum, c) => sum + c.population, 0);
+  if (pop < 16) return false;
+  if (pop / cities.length < 4) return false;
+  if (!cities.some((c) => c.population >= 6)) return false;
+  return true;
+}
+
+function empireHasDiscipline(state: GameState, pid: number, disc: Discipline): boolean {
+  return citiesOf(state, pid).some((c) =>
+    c.specialists.some((s) => SPECIALIST_DEFS[s.type as SpecialistId]?.discipline === disc),
+  );
+}
+
+function wonderDisciplinesReady(state: GameState, pid: number, player: Player, wonder: WonderDef): boolean {
+  for (const disc of Object.keys(wonder.crew) as Discipline[]) {
+    const specId = specialistIdForDiscipline(disc);
+    if (!specId) return false;
+    if (!specialistUnlocked(player, specId) && !empireHasDiscipline(state, pid, disc)) return false;
+  }
+  return true;
+}
+
+function crewReadinessGap(state: GameState, pid: number, crew: Partial<Record<Discipline, number>>): number {
+  return crewShortfall(state, pid, crew).reduce((sum, s) => sum + (s.need - s.have), 0);
+}
+
+function wonderAffordGap(player: Player, wonder: WonderDef): number {
+  const cost = wonderStartCost(wonder);
+  return Math.max(0, cost.gold - player.gold)
+    + Math.max(0, cost.faith - player.faith) * 2
+    + Math.max(0, cost.culture - player.cultureProgress) * 2;
+}
+
+function wonderStartAffordable(player: Player, wonder: WonderDef): boolean {
+  const cost = wonderStartCost(wonder);
+  return player.gold >= cost.gold && player.faith >= cost.faith && player.cultureProgress >= cost.culture;
+}
+
+/** Lower = easier to finish sooner (prefer smaller crews and gold-only starts). */
+function wonderPriorityScore(w: WonderDef): number {
+  const cost = wonderStartCost(w);
+  return wonderCrewSize(w.crew) * 10 + (cost.culture > 0 ? 150 : 0) + (cost.faith > 0 ? 90 : 0) + cost.gold / 10;
+}
+
+/** Wonders this civ could build once tech and treasury are ready. */
+function aiWonderPlanCandidates(
+  state: GameState,
+  pid: number,
+  player: Player,
+  p: DiploPersonality,
+  focus: VictoryKind,
+): WonderDef[] {
+  if (!empireDevelopedForWonders(state, pid, player)) return [];
+  return WONDER_DEFS.filter(
+    (w) => !state.completedWonders.includes(w.id) && !worksOf(state, pid).some((x) => x.wonderId === w.id),
+  )
+    .filter((w) => !w.reqTech || player.researched.has(w.reqTech as TechId))
+    .filter((w) => wonderHasBuildSite(state, pid, w.id))
+    .filter((w) => wonderDisciplinesReady(state, pid, player, w))
+    .sort((a, b) => {
+      const ready = crewReadinessGap(state, pid, a.crew) - crewReadinessGap(state, pid, b.crew);
+      if (ready !== 0) return ready;
+      const afford = wonderAffordGap(player, a) - wonderAffordGap(player, b);
+      if (afford !== 0) return afford;
+      const pri = wonderPriorityScore(a) - wonderPriorityScore(b);
+      if (pri !== 0) return pri;
+      return wonderScore(b.effect, p, focus) - wonderScore(a.effect, p, focus);
+    });
+}
+
+/** Wonders the civ can break ground on this turn. */
+function aiWonderCandidates(
+  state: GameState,
+  pid: number,
+  player: Player,
+  p: DiploPersonality,
+  focus: VictoryKind,
+): WonderDef[] {
+  return aiWonderPlanCandidates(state, pid, player, p, focus).filter((w) => wonderStartAffordable(player, w));
+}
+
+function pickAiWonderTarget(
+  state: GameState,
+  pid: number,
+  player: Player,
+  p: DiploPersonality,
+  focus: VictoryKind,
+): WonderDef | undefined {
+  if (worksOf(state, pid).some((w) => w.kind === "wonder")) return undefined;
+  const ready = aiWonderPlanCandidates(state, pid, player, p, focus).filter((w) => {
+    const cost = wonderStartCost(w);
+    if (cost.culture > 0 && player.cultureProgress < cost.culture) return false;
+    if (cost.faith > 0 && player.faith < cost.faith) return false;
+    return true;
+  });
+  if (ready[0]) return ready[0];
+  return aiWonderPlanCandidates(state, pid, player, p, focus)[0];
+}
+
+function specialistById(state: GameState, pid: number, specialistId: number) {
+  for (const city of citiesOf(state, pid)) {
+    const found = city.specialists.find((s) => s.id === specialistId);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function aiWonderContext(state: GameState, pid: number, player: Player, p: DiploPersonality, focus: VictoryKind): AiWonderContext {
+  if (!empireDevelopedForWonders(state, pid, player)) {
+    return { gatheringCrew: false, building: false };
+  }
+  const building = worksOf(state, pid).some((w) => w.kind === "wonder");
+  const target = building
+    ? WONDER_DEFS.find((w) => worksOf(state, pid).some((x) => x.wonderId === w.id))
+    : pickAiWonderTarget(state, pid, player, p, focus);
+  const techReady = !target?.reqTech || player.researched.has(target.reqTech as TechId);
+  const crewReady =
+    !target || crewShortfall(state, pid, target.crew as Partial<Record<Discipline, number>>).length === 0;
+  const affordable = !target || wonderStartAffordable(player, target);
+  // Only freeze tile works the turn we break ground (crew + gold ready). Until then
+  // keep improving farms, mines, and roads while training specialists organically.
+  const breakingGround = !!target && !building && techReady && crewReady && affordable;
+  return { target, gatheringCrew: breakingGround, building };
+}
+
+function aiWonderResearchPick(
+  state: GameState,
+  pid: number,
+  player: Player,
+  techs: TechId[],
+  atWarNow: boolean,
+  threatened: boolean,
+): TechId | null {
+  if (threatened && atWarNow) return null;
+  if (!empireDevelopedForWonders(state, pid, player)) return null;
+  const p = personalityOf(state, pid);
+  const focus = aiVictoryFocus(state, player, p);
+  const target = pickAiWonderTarget(state, pid, player, p, focus);
+  if (target?.reqTech && techs.includes(target.reqTech as TechId) && !player.researched.has(target.reqTech as TechId)) {
+    return target.reqTech as TechId;
+  }
+  for (const t of ["masonry", "writing", "irrigation", "engineering", "bronze_alloying", "sailing"] as TechId[]) {
+    if (techs.includes(t) && !player.researched.has(t)) return t;
+  }
+  if (target) {
+    for (const disc of Object.keys(target.crew)) {
+      if (disc === "engineering" && !player.researched.has("engineering") && techs.includes("engineering")) return "engineering";
+      if (disc === "architecture" && !player.researched.has("masonry") && techs.includes("masonry")) return "masonry";
+      if (disc === "masonry" && !player.researched.has("masonry") && techs.includes("masonry")) return "masonry";
+      if (disc === "carpentry" && !player.researched.has("native_copper") && techs.includes("native_copper")) return "native_copper";
+    }
+  }
+  return null;
+}
+
+function aiCancelNonWonderWorks(state: GameState, pid: number): void {
+  for (const w of [...worksOf(state, pid)]) {
+    if (w.kind !== "wonder") cancelWork(state, w.id, pid);
+  }
+}
+
+/** Drop competing tile works only while a wonder is actively under construction,
+ *  or on the single turn we break ground (crew and treasury are finally ready). */
+function aiWonderClearDistractions(state: GameState, pid: number, wonderCtx: AiWonderContext): void {
+  if (!wonderCtx.building && !wonderCtx.gatheringCrew) return;
+  aiCancelNonWonderWorks(state, pid);
+}
+
+function aiFreeWonderCrew(state: GameState, pid: number, wonder: WonderDef): void {
+  const short = crewShortfall(state, pid, wonder.crew as Partial<Record<Discipline, number>>);
+  if (short.length === 0) return;
+  const needDisc = new Set(short.map((s) => s.disc));
+  for (const w of worksOf(state, pid)) {
+    if (w.kind === "wonder") continue;
+    for (const sid of [...w.assignedSpecialistIds]) {
+      const spec = specialistById(state, pid, sid);
+      const disc = spec ? SPECIALIST_DEFS[spec.type as SpecialistId]?.discipline : undefined;
+      if (disc && needDisc.has(disc)) unassignSpecialistEverywhere(state, pid, sid);
+    }
+  }
+}
 
 // Growth/expansion-first ordering. Because units now cost population, a bigger,
 // wider empire fuels everything (army, settlers, science, gold), so the AI beelines
@@ -694,7 +907,7 @@ function chooseConstruction(state: GameState, player: Player, city: City, p: Dip
   // Growth first (a Granary + Storehouse feed bigger cities → more pop for
   // everything), then the commerce/science/culture core, including the Bank and
   // Museum that drive the economic and culture victories.
-  const order: string[] = ["granary", "storehouse", "workshop", "market", "library"];
+  const order: string[] = ["granary", "storehouse", "shrine", "workshop", "market", "library", "monument"];
   if (coastal) order.unshift("harbor");
   // Frontier / war cities harden themselves: Walls → Castle → Ballista Towers, plus a
   // Beacon network where two or more of our cities sit within signalling range, and an
@@ -1124,13 +1337,39 @@ function aiSettler(state: GameState, unit: Unit, pid: number, plan?: SettlePlan 
  *  the system never starts an improvement it can't staff right away, and — because
  *  the freshly assigned craftsmen leave the idle pool immediately — it can't
  *  over-commit several works to a single specialist within one turn. */
-function startWorkStaffed(state: GameState, city: City, pid: number, kind: string, col: number, row: number): boolean {
+function startWorkStaffed(
+  state: GameState,
+  city: City,
+  pid: number,
+  kind: string,
+  col: number,
+  row: number,
+  opts?: { trainIfNeeded?: boolean; player?: Player },
+): boolean {
+  const player = opts?.player ?? playerById(state, pid);
   const assigned = assignedSpecialistIds(state, pid);
   const picks: number[] = [];
   for (const disc of workDisciplines(kind)) {
-    const s = city.specialists.find(
-      (sp) => !assigned.has(sp.id) && !picks.includes(sp.id) && SPECIALIST_DEFS[sp.type as SpecialistId]?.discipline === disc,
+    let s = city.specialists.find(
+      (sp) =>
+        !assigned.has(sp.id) &&
+        !picks.includes(sp.id) &&
+        !isPendingGovernorRelease(city, sp.id) &&
+        SPECIALIST_DEFS[sp.type as SpecialistId]?.discipline === disc,
     );
+    if (!s && opts?.trainIfNeeded && player) {
+      const specId = specialistIdForDiscipline(disc);
+      if (specId && specialistUnlocked(player, specId) && workerSlots(city) >= 1) {
+        applyCommand(state, { type: "convertCitizen", cityId: city.id, specialistId: specId, delta: 1 }, pid);
+        s = city.specialists.find(
+          (sp) =>
+            !assigned.has(sp.id) &&
+            !picks.includes(sp.id) &&
+            !isPendingGovernorRelease(city, sp.id) &&
+            SPECIALIST_DEFS[sp.type as SpecialistId]?.discipline === disc,
+        );
+      }
+    }
     if (!s) return false; // no free craftsman for this craft — don't start an unstaffable work
     picks.push(s.id);
   }
@@ -1142,38 +1381,99 @@ function startWorkStaffed(state: GameState, city: City, pid: number, kind: strin
 }
 
 /** Train craftsmen and queue public works for one city. */
-function aiManageCity(state: GameState, city: City, player: Player, pid: number): void {
+function aiManageCity(
+  state: GameState,
+  city: City,
+  player: Player,
+  pid: number,
+  wonderCtx: AiWonderContext = { gatheringCrew: false, building: false },
+): void {
+  const focus = city.autoMode;
   const unlocked = availableSpecialists(player);
   const countOf = (id: SpecialistId) => city.specialists.filter((s) => s.type === id).length;
   const haveDiscipline = (d: string) =>
     city.specialists.some((s) => SPECIALIST_DEFS[s.type as SpecialistId]?.discipline === d);
+  const canSupplyDiscipline = (d: string) => {
+    if (haveDiscipline(d)) return true;
+    if (!focus) return false;
+    const specId = specialistIdForDiscipline(d as Discipline);
+    return !!specId && unlocked.includes(specId) && workerSlots(city) >= 1;
+  };
+  const workOpts = focus ? { trainIfNeeded: true as const, player } : undefined;
 
-  // Train a balanced crew, scaling with size and always leaving free workers. Bigger
-  // cities support deeper benches so their public works actually keep pace.
-  const wants: SpecialistId[] = [];
-  const wantCarpenter = Math.min(3, Math.floor(city.population / 3));
-  // Masons earn their keep on mines/quarries, so a deep bench is never wasted — and a
-  // large empire needs it to ever pool a wonder's heavy masonry crew. Architects and
-  // engineers scale up with size too so a big civ can gather a full wonder workforce.
-  const wantMason = Math.min(4, Math.floor(city.population / 3));
-  if (unlocked.includes("carpenter") && countOf("carpenter") < wantCarpenter) wants.push("carpenter");
-  // A surveyor (agrimensor) is what lets a city lay roads — keep one on staff so every
-  // city, whatever its governor focus, can build roads (see the road work below).
-  if (unlocked.includes("agrimensor") && countOf("agrimensor") < 1) wants.push("agrimensor");
-  if (unlocked.includes("mason") && countOf("mason") < wantMason) wants.push("mason");
-  if (city.population >= 6 && unlocked.includes("engineer") && countOf("engineer") < 1) wants.push("engineer");
-  if (city.population >= 7 && unlocked.includes("architect") && countOf("architect") < 1) wants.push("architect");
-  if (city.population >= 9 && unlocked.includes("engineer") && countOf("engineer") < 2) wants.push("engineer");
-  if (city.population >= 11 && unlocked.includes("architect") && countOf("architect") < 2) wants.push("architect");
-  for (const id of wants) {
-    if (workerSlots(city) > 1) applyCommand(state, { type: "convertCitizen", cityId: city.id, specialistId: id, delta: 1 }, pid);
+  // Every turn: release AI specialists marked at the last focus change once idle.
+  // Governor mode also drops any other idle AI-trained bench — citizens stay free
+  // for tiles unless a specialist is actively staffing a work.
+  if (focus) {
+    const released = releaseIdleGovernorSpecialists(state, city, pid, { allIdleUnlocked: true });
+    for (const id of released) unassignSpecialistEverywhere(state, pid, id);
+  } else {
+    const released = releaseIdleGovernorSpecialists(state, city, pid);
+    for (const id of released) unassignSpecialistEverywhere(state, pid, id);
   }
+
+  // Full AI keeps a standing bench; governor trains on demand when queueing work.
+  const wants: SpecialistId[] = [];
+  if (!focus) {
+    let wantCarpenter = Math.min(3, Math.floor(city.population / 3));
+    let wantMason = Math.min(4, Math.floor(city.population / 3));
+    let wantArchitect = city.population >= 7 ? 1 : 0;
+    let wantEngineer = city.population >= 6 ? 1 : 0;
+    if (wonderCtx.gatheringCrew && wonderCtx.target) {
+      for (const gap of crewShortfall(state, pid, wonderCtx.target.crew as Partial<Record<Discipline, number>>)) {
+        const specId = specialistIdForDiscipline(gap.disc);
+        if (specId === "mason") wantMason = Math.max(wantMason, Math.min(12, gap.need));
+        if (specId === "architect") wantArchitect = Math.max(wantArchitect, Math.min(8, gap.need));
+        if (specId === "engineer") wantEngineer = Math.max(wantEngineer, Math.min(8, gap.need));
+        if (specId === "carpenter") wantCarpenter = Math.max(wantCarpenter, Math.min(8, gap.need));
+      }
+    } else if (wonderCtx.target && !wonderCtx.building) {
+      // Soft wonder interest: nudge a modest bench while farms and mines keep running.
+      wantMason = Math.max(wantMason, Math.min(6, Math.floor(city.population / 2)));
+      if (city.population >= 8) wantArchitect = Math.max(wantArchitect, 1);
+      if (city.population >= 7) wantEngineer = Math.max(wantEngineer, 1);
+    }
+    if (unlocked.includes("carpenter") && countOf("carpenter") < wantCarpenter) wants.push("carpenter");
+    // A surveyor (agrimensor) is what lets a city lay roads — keep one on staff so every
+    // city, whatever its governor focus, can build roads (see the road work below).
+    if (unlocked.includes("agrimensor") && countOf("agrimensor") < 1) wants.push("agrimensor");
+    if (unlocked.includes("mason") && countOf("mason") < wantMason) wants.push("mason");
+    if (unlocked.includes("engineer") && countOf("engineer") < wantEngineer) wants.push("engineer");
+    if (unlocked.includes("architect") && countOf("architect") < wantArchitect) wants.push("architect");
+    if (city.population >= 9 && unlocked.includes("engineer") && countOf("engineer") < Math.max(wantEngineer, 2)) wants.push("engineer");
+    if (city.population >= 11 && unlocked.includes("architect") && countOf("architect") < Math.max(wantArchitect, 2)) wants.push("architect");
+  }
+  for (const id of wants) {
+    while (workerSlots(city) >= 1) {
+      const specId = id as SpecialistId;
+      const disc = SPECIALIST_DEFS[specId]?.discipline;
+      const prepGap = wonderCtx.gatheringCrew && wonderCtx.target && disc
+        ? crewShortfall(state, pid, wonderCtx.target.crew as Partial<Record<Discipline, number>>).find((g) => g.disc === disc)
+        : undefined;
+      const empireCount = prepGap
+        ? citiesOf(state, pid).reduce((n, c) => n + c.specialists.filter((s) => s.type === specId).length, 0)
+        : 0;
+      const targetCount = prepGap
+        ? prepGap.need
+        : specId === "mason" ? Math.min(12, Math.floor(city.population / 2))
+        : specId === "architect" || specId === "engineer" ? Math.min(8, Math.floor(city.population / 3))
+        : specId === "carpenter" ? Math.min(8, Math.floor(city.population / 3))
+        : 1;
+      if (prepGap ? empireCount >= prepGap.need : countOf(specId) >= targetCount) break;
+      if (!applyCommand(state, { type: "convertCitizen", cityId: city.id, specialistId: specId, delta: 1 }, pid).ok) break;
+    }
+  }
+
+  if (focus === "military") return;
+
+  // While a wonder is actively under construction, skip new tile works in this city.
+  if (wonderCtx.building) return;
 
   if (worksOfCity(state, city.id).length >= 3) return; // don't over-queue
 
   // Defensive structure: a capital/large city with both crafts fortifies a
   // border tile (towers bombard; walls just block).
-  if (city.population >= 6 && haveDiscipline("masonry") && haveDiscipline("engineering")) {
+  if (city.population >= 6 && canSupplyDiscipline("masonry") && canSupplyDiscipline("engineering")) {
     const hasStructureNearby = state.map.tiles.some(
       (t) => t.structure && t.ownerCityId === city.id,
     );
@@ -1181,7 +1481,7 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
       for (const n of offsetNeighbors(state.map, city.col, city.row)) {
         const tile = getTile(state.map, n.col, n.row);
         if (!tile || tile.ownerCityId !== city.id || tile.improvement || tile.structure) continue;
-        if (nextTierAt(tile, "tower") && startWorkStaffed(state, city, pid, "tower", n.col, n.row)) return;
+        if (nextTierAt(tile, "tower") && startWorkStaffed(state, city, pid, "tower", n.col, n.row, workOpts)) return;
       }
     }
   }
@@ -1206,25 +1506,25 @@ function aiManageCity(state: GameState, city: City, player: Player, pid: number)
       const rdef = RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS];
       if (rdef) {
         const needed = rdef.improvement;
-        if (haveDiscipline(workDiscipline(needed)) && nextTierAt(tile, needed)) {
+        if (canSupplyDiscipline(workDiscipline(needed)) && nextTierAt(tile, needed)) {
           kind = needed;
         }
       }
     }
-    if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "farm")) kind = "farm";
-    else if (!kind && haveDiscipline("carpentry") && nextTierAt(tile, "lumber_camp")) kind = "lumber_camp";
-    else if (!kind && haveDiscipline("masonry") && nextTierAt(tile, "mine")) kind = "mine";
+    if (!kind && canSupplyDiscipline("carpentry") && nextTierAt(tile, "farm")) kind = "farm";
+    else if (!kind && canSupplyDiscipline("carpentry") && nextTierAt(tile, "lumber_camp")) kind = "lumber_camp";
+    else if (!kind && canSupplyDiscipline("masonry") && nextTierAt(tile, "mine")) kind = "mine";
     else if (
       !kind &&
-      haveDiscipline("survey") &&
+      canSupplyDiscipline("survey") &&
       nextTierAt(tile, "road") &&
       (citiesOf(state, pid).length >= 2 || player.atWar.length > 0)
     ) {
       kind = "road";
-    } else if (!kind && haveDiscipline("survey") && player.researched.has("maritime_foraging") && nextTierAt(tile, "fishery")) {
+    } else if (!kind && canSupplyDiscipline("survey") && player.researched.has("maritime_foraging") && nextTierAt(tile, "fishery")) {
       kind = "fishery";
     }
-    if (kind && startWorkStaffed(state, city, pid, kind, col, row)) return;
+    if (kind && startWorkStaffed(state, city, pid, kind, col, row, workOpts)) return;
   }
 }
 
@@ -1319,17 +1619,22 @@ function chooseAutoProduction(state: GameState, player: Player, city: City, focu
 }
 
 /** Keep a military-focus governed city training soldiers up to a standing
- *  garrison target, without draining it below a safe population floor or
- *  stacking up orders faster than they can be trained. */
+ *  garrison target, filling every open barracks slot each turn. */
 function autoTrainMilitary(state: GameState, city: City, player: Player): void {
-  if (city.population <= 2 || city.trainingQueue.length > 0) return;
-  const trainable = availableTraining(state, player, city);
-  const type = bestTrainableMilitary(trainable, player.civId);
-  if (!type) return;
   const cityCount = citiesOf(state, player.id).length;
-  const milCount = unitsOf(state, player.id).filter((u) => isMilitary(u.type)).length;
-  if (milCount >= cityCount * 2 + 2) return;
-  applyCommand(state, { type: "startTraining", cityId: city.id, unit: type }, player.id);
+  const milCap = cityCount * 2 + 2;
+
+  while (city.population >= 2 && freeCitizens(city) >= 1) {
+    const milCount =
+      unitsOf(state, player.id).filter((u) => isMilitary(u.type)).length +
+      city.trainingQueue.filter((o) => isMilitary(o.unit)).length;
+    if (milCount >= milCap) break;
+
+    const trainable = availableTraining(state, player, city);
+    const type = bestTrainableMilitary(trainable, player.civId);
+    if (!type) break;
+    if (!applyCommand(state, { type: "startTraining", cityId: city.id, unit: type }, player.id).ok) break;
+  }
 }
 
 /**
@@ -1351,9 +1656,27 @@ export function governorPickProduction(state: GameState, city: City, player: Pla
 export function autoManageCity(state: GameState, city: City, player: Player): void {
   const focus = city.autoMode;
   if (!focus) return;
+
+  // Free idle AI-trained craftsmen before skewing citizens toward the new focus.
+  const released = releaseIdleGovernorSpecialists(state, city, player.id);
+  for (const id of released) unassignSpecialistEverywhere(state, player.id, id);
+
   governorPickProduction(state, city, player);
-  if (focus === "military") autoTrainMilitary(state, city, player);
-  aiManageCity(state, city, player, player.id); // generic: specialists, tile works, roads
+  if (focus === "military") {
+    autoTrainMilitary(state, city, player);
+    return; // no new public works or specialist training while mustering troops
+  }
+  aiManageCity(state, city, player, player.id);
+}
+
+/** Wonder prep/build context shared by the main AI turn and governor auto-manage
+ *  (which runs at beginTurn before aiTakeTurn and must not steal wonder crews). */
+export function aiWonderTurnContext(state: GameState, playerId: number): AiWonderContext {
+  const player = playerById(state, playerId);
+  if (!player) return { gatheringCrew: false, building: false };
+  const p = personalityOf(state, playerId);
+  const focus = aiVictoryFocus(state, player, p);
+  return aiWonderContext(state, playerId, player, p, focus);
 }
 
 /** Run governor mode for every auto-managed city this player owns, then let
@@ -1362,8 +1685,13 @@ export function autoManageCity(state: GameState, city: City, player: Player): vo
 export function autoManageCities(state: GameState, player: Player): void {
   const autoCities = citiesOf(state, player.id).filter((c) => c.autoMode);
   if (autoCities.length === 0) return;
-  for (const city of autoCities) autoManageCity(state, city, player);
-  aiAssignSpecialists(state, player.id, autoCities);
+  const pid = player.id;
+  const wonderCtx = aiWonderTurnContext(state, pid);
+  aiWonderClearDistractions(state, pid, wonderCtx);
+  for (const city of autoCities) aiManageCity(state, city, player, pid, wonderCtx);
+  // Military-focus cities keep citizens free for training — don't re-staff works.
+  const staffCities = autoCities.filter((c) => c.autoMode !== "military");
+  if (staffCities.length > 0) aiAssignSpecialists(state, pid, staffCities, wonderCtx);
 }
 
 /**
@@ -1405,20 +1733,38 @@ export function aiBarbarianDiplomacy(state: GameState, player: Player, threatene
   }
 }
 
-/** Start the wonder that best fits the civ, on an owned tile a capable city can reach. */
-function aiWonders(state: GameState, pid: number, p: DiploPersonality, focus: VictoryKind): void {
-  if (worksOf(state, pid).some((w) => w.kind === "wonder")) return; // one at a time
-  // Rank still-available wonders by how well their effect suits this civ, then take
-  // the first we can actually start (canStartWonder checks craftsmen + an empty tile).
-  const candidates = WONDER_DEFS.filter(
-    (w) => !state.completedWonders.includes(w.id) && !worksOf(state, pid).some((x) => x.wonderId === w.id),
-  ).sort((a, b) => wonderScore(b.effect, p, focus) - wonderScore(a.effect, p, focus));
-  for (const wonder of candidates) {
+/** Gently train specialists toward a wonder crew while tile works continue. */
+function aiWonderCrewPrep(state: GameState, pid: number, wonder: WonderDef, maxConverts = 4): void {
+  if (worksOf(state, pid).some((w) => w.kind === "wonder")) return;
+  const player = playerById(state, pid);
+  if (!player) return;
+  if (crewShortfall(state, pid, wonder.crew as Partial<Record<Discipline, number>>).length === 0) return;
+
+  const unlocked = availableSpecialists(player);
+  let converted = 0;
+  for (const city of [...citiesOf(state, pid)].sort((a, b) => b.population - a.population)) {
+    for (let guard = 0; guard < 40 && workerSlots(city) >= 1 && converted < maxConverts; guard++) {
+      const short = crewShortfall(state, pid, wonder.crew as Partial<Record<Discipline, number>>);
+      if (short.length === 0) return;
+      const gap = short.sort((a, b) => b.need - b.have - (a.need - a.have))[0]!;
+      const specId = specialistIdForDiscipline(gap.disc);
+      if (!specId || !unlocked.includes(specId) || !specialistUnlocked(player, specId)) break;
+      if (!applyCommand(state, { type: "convertCitizen", cityId: city.id, specialistId: specId, delta: 1 }, pid).ok) break;
+      converted++;
+    }
+  }
+}
+
+function aiWonders(state: GameState, pid: number, player: Player, p: DiploPersonality, focus: VictoryKind): void {
+  if (worksOf(state, pid).some((w) => w.kind === "wonder")) return;
+  for (const wonder of aiWonderCandidates(state, pid, player, p, focus)) {
+    if (crewShortfall(state, pid, wonder.crew as Partial<Record<Discipline, number>>).length > 0) continue;
     for (const t of state.map.tiles) {
       const owner = t.ownerCityId !== undefined ? state.cities.get(t.ownerCityId) : undefined;
       if (!owner || owner.ownerId !== pid) continue;
       if (canStartWonder(state, pid, wonder.id, t.col, t.row).ok) {
         applyCommand(state, { type: "startWonder", wonderId: wonder.id, col: t.col, row: t.row }, pid);
+        aiCancelNonWonderWorks(state, pid);
         return;
       }
     }
@@ -1432,13 +1778,25 @@ function aiWonders(state: GameState, pid: number, p: DiploPersonality, focus: Vi
  * `cities` scopes which cities' specialists are considered (default: all of them);
  * `autoManageCities` passes only the player's governor-mode cities.
  */
-function aiAssignSpecialists(state: GameState, pid: number, cities: City[] = citiesOf(state, pid)): void {
-  const works = worksOf(state, pid);
+function aiAssignSpecialists(
+  state: GameState,
+  pid: number,
+  cities: City[] = citiesOf(state, pid),
+  wonderCtx: AiWonderContext = { gatheringCrew: false, building: false },
+): void {
+  let works = [...worksOf(state, pid)];
+  if (wonderCtx.building) works = works.filter((w) => w.kind === "wonder");
+  works.sort((a, b) => {
+    if (a.kind === "wonder" && b.kind !== "wonder") return -1;
+    if (b.kind === "wonder" && a.kind !== "wonder") return 1;
+    return a.id - b.id;
+  });
   if (works.length === 0) return;
   const assigned = assignedSpecialistIds(state, pid);
   for (const city of cities) {
     for (const s of city.specialists) {
       if (assigned.has(s.id)) continue;
+      if (isPendingGovernorRelease(city, s.id)) continue;
       const disc = SPECIALIST_DEFS[s.type as SpecialistId]?.discipline;
       if (!disc) continue;
       // Try each work needing this craft in turn — a wonder may refuse us (its
@@ -2151,14 +2509,27 @@ function aiScout(state: GameState, unit: Unit, pid: number): void {
  * and culture (cheaper, and only via perks) are spent before precious gold, and each
  * pool keeps a reserve so rushing never bankrupts religion, civics, or the treasury.
  */
-function aiRush(state: GameState, player: Player, p: DiploPersonality, threatened: boolean, escortShortfall = false): void {
+function aiRush(
+  state: GameState,
+  player: Player,
+  p: DiploPersonality,
+  threatened: boolean,
+  escortShortfall = false,
+  wonderCtx: AiWonderContext = { gatheringCrew: false, building: false },
+): void {
   const pid = player.id;
   const avail = rushCurrencies(state, pid);
   if (avail.length === 0) return;
   const atWar = player.atWar.length > 0;
+  const wonderGoldFloor =
+    wonderCtx.gatheringCrew && wonderCtx.target ? wonderStartCost(wonderCtx.target).gold + 10 : 0;
   // Keep a war chest while fighting; at peace, spend more freely to out-tempo rivals
   // (but never so low that next turn's upkeep tips us into bankruptcy and disbanding).
-  const reserve: Record<RushCurrency, number> = { gold: atWar ? 30 : 50, faith: 40, culture: 40 };
+  const reserve: Record<RushCurrency, number> = {
+    gold: wonderCtx.building ? 5 : Math.max(atWar ? 30 : 50, wonderGoldFloor),
+    faith: wonderCtx.building ? 5 : 40,
+    culture: wonderCtx.building ? 5 : 40,
+  };
   const poolOf = (c: RushCurrency) => (c === "gold" ? player.gold : c === "faith" ? player.faith : player.cultureProgress);
   // Choose the cheapest affordable currency (culture → faith → gold) that still
   // leaves its reserve intact after paying.
@@ -2176,9 +2547,22 @@ function aiRush(state: GameState, player: Player, p: DiploPersonality, threatene
   // 1) Race to finish wonders — being first to a wonder is worth the splurge.
   for (const w of worksOf(state, pid)) {
     if (w.kind !== "wonder") continue;
-    const c = choose((cur) => canRushWork(state, pid, w.id, cur));
-    if (c) applyCommand(state, { type: "rushWork", workId: w.id, currency: c }, pid);
+    let guard = 0;
+    while (guard++ < 20) {
+      let rushed = false;
+      for (const cur of avail) {
+        const r = canRushWork(state, pid, w.id, cur);
+        if (!r.ok || r.cost == null) continue;
+        const minLeft = wonderCtx.building ? 0 : cur === "gold" ? 5 : 10;
+        if (poolOf(cur) - r.cost < minLeft) continue;
+        applyCommand(state, { type: "rushWork", workId: w.id, currency: cur }, pid);
+        rushed = true;
+        break;
+      }
+      if (!rushed) break;
+    }
   }
+  if (wonderCtx.gatheringCrew) return; // hoard gold/faith/culture for breaking ground
   // 2) Win the land grab: while still expanding at peace, hurry any settler in muster
   //    out the door. A rushed settler founds a whole city many turns ahead of schedule
   //    — the single biggest tempo swing the AI can buy.
@@ -2399,7 +2783,22 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
           ? BARBARIAN_DIPLOMACY_TECH
           : (techs.includes("foraging" as TechId) ? ("foraging" as TechId) : pickTech(techs, p, atWarNow));
       } else {
-        techId = pickTech(techs, p, atWarNow);
+        const wonderTech = aiWonderResearchPick(state, playerId, player, techs, atWarNow, threatened);
+        const wonderReady = empireDevelopedForWonders(state, playerId, player);
+        if (wonderTech && wonderReady && techs.includes(wonderTech)) {
+          techId = wonderTech;
+        } else if (
+          !player.foundedReligionId &&
+          !atWarNow &&
+          citiesOf(state, playerId).length >= 2 &&
+          techs.includes("ritual_burial" as TechId) &&
+          !religionUnlocked(state, playerId) &&
+          !wonderReady
+        ) {
+          techId = "ritual_burial" as TechId;
+        } else {
+          techId = wonderTech ?? pickTech(techs, p, atWarNow);
+        }
       }
       applyCommand(state, { type: "setResearch", techId }, playerId);
     }
@@ -2442,21 +2841,31 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     applyCommand(state, { type: "slotCivic", civicId: cid }, playerId);
   }
 
-  // Recruit a Legend when enough track glory is banked — prefer the track with the most progress.
-  if (state.legendsEnabled) {
-    const options = availableLegendsForPlayer(state, playerId)
-      .filter((l) => canRecruitLegend(state, playerId, l.id).ok);
-    const pick = options[0];
-    if (pick) applyCommand(state, { type: "recruitLegend", legendId: pick.id }, playerId);
-  }
-
-  // Found a religion once enough faith is stored.
+  // Found a religion once enough faith is stored (before legends can spend faith).
   if (canFoundReligion(state, playerId)) {
     const city = citiesOf(state, playerId)[0];
     if (city) {
       const name = availableReligionNames(state)[0] ?? "";
       applyCommand(state, { type: "foundReligion", cityId: city.id, name, beliefs: pickBeliefs(state, p) }, playerId);
     }
+  }
+
+  // Recruit a Legend when enough track glory is banked — pick the hero we can
+  // afford soonest on the track with the most surplus glory.
+  if (state.legendsEnabled) {
+    const options = availableLegendsForPlayer(state, playerId)
+      .map((l) => ({ l, check: canRecruitLegend(state, playerId, l.id) }))
+      .filter((x) => x.check.ok)
+      .sort((a, b) => {
+        const trackA = legendTrackFor(a.l);
+        const trackB = legendTrackFor(b.l);
+        const surplusA = legendTrackPointsOf(player, trackA) - legendRecruitCostFor(a.l, player);
+        const surplusB = legendTrackPointsOf(player, trackB) - legendRecruitCostFor(b.l, player);
+        if (surplusB !== surplusA) return surplusB - surplusA;
+        return legendRecruitCostFor(a.l, player) - legendRecruitCostFor(b.l, player);
+      });
+    const pick = options[0]?.l;
+    if (pick) applyCommand(state, { type: "recruitLegend", legendId: pick.id }, playerId);
   }
 
   // Tend the founded faith: spend any unspent perk picks, then rise a tier when
@@ -2502,6 +2911,12 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
 
   aiConnectRoads(state, playerId);
 
+  const wonderCtx = aiWonderContext(state, playerId, player, p, focus);
+  aiWonderClearDistractions(state, playerId, wonderCtx);
+  if (wonderCtx.gatheringCrew && wonderCtx.target) {
+    aiFreeWonderCrew(state, playerId, wonderCtx.target);
+  }
+
   for (const city of citiesOf(state, playerId)) {
     if (!city.production) {
       const item = chooseConstruction(state, player, city, p, focus);
@@ -2509,11 +2924,18 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     }
     aiTrainUnits(state, player, city, p, escortShortfall);
     aiTrainReligionUnit(state, player, city, p, focus); // muster the faith's holy unit
-    aiManageCity(state, city, player, playerId);
+    aiManageCity(state, city, player, playerId, wonderCtx);
   }
-  aiWonders(state, playerId, p, focus);
-  aiAssignSpecialists(state, playerId); // staff the works just queued (manual assignment)
-  aiRush(state, player, p, threatened, escortShortfall); // hurry wonders / settlers / troops
+  if (wonderCtx.target) {
+    aiWonderCrewPrep(state, playerId, wonderCtx.target, wonderCtx.gatheringCrew ? 40 : 4);
+  }
+  aiWonders(state, playerId, player, p, focus);
+  const wonderActive = worksOf(state, playerId).some((w) => w.kind === "wonder");
+  const staffCtx: AiWonderContext = wonderActive
+    ? { target: wonderCtx.target, gatheringCrew: false, building: true }
+    : wonderCtx;
+  aiAssignSpecialists(state, playerId, citiesOf(state, playerId), staffCtx); // staff the works just queued (manual assignment)
+  aiRush(state, player, p, threatened, escortShortfall, staffCtx); // hurry wonders / settlers / troops
   aiCityBombard(state, playerId);
 
   // A science civ dedicates its first recon unit to the circumnavigation capstone —

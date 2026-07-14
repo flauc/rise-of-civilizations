@@ -359,11 +359,17 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
           ]
             .filter(Boolean)
             .join(" · ");
+          const viaNames =
+            r.viaCityIds?.map((id) => state.cities.get(id)?.name).filter(Boolean).join(", ") ?? "";
+          const viaLine = viaNames
+            ? `<div class="emp-sub" style="color:#9fc0dc">↪ via ${viaNames}</div>`
+            : "";
           return (
             `<div class="emp-card">` +
             `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">` +
             `<div class="grow"><div class="emp-name">🐫 ${from?.name ?? "?"} → ${to?.name ?? "?"} ${tag}</div>` +
             `<div class="emp-sub">${yieldBits || "no yield"} / turn · ${r.path.length} tiles</div>` +
+            viaLine +
             `<div class="emp-sub" style="opacity:.75">${goldParts}</div>` +
             roadLine +
             escortLine +

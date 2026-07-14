@@ -5,7 +5,7 @@ import { isAtWarWithMajor } from "./diplomacy";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, isForestTerrain, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
 import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
-import { naturalWonderYields, naturalWonderCulture } from "./natural-wonders";
+import { naturalWonderYields, naturalWonderTerritoryCultureForCity, naturalWonderTerritoryCulture } from "./natural-wonders";
 import { expandTerritory, cityTerritory } from "./territory";
 import { getWonder, uniqueBuildingForCiv, type CivEffects } from "@roc/data";
 import { civEffectsOf, cityEffects, getGovernment, effectSources, cityEffectSources, type EffectSource } from "./civs";
@@ -199,7 +199,7 @@ export function ownedTileYields(state: GameState, col: number, row: number): Yie
   const eff: CivEffects = ownerCity
     ? mergeCivEffects(civEffectsOf(state, ownerCity.ownerId), cityEffects(state, ownerCity))
     : {};
-  return { ...tileWorkYields(state, col, row, eff), culture: naturalWonderCulture(tile) };
+  return { ...tileWorkYields(state, col, row, eff), culture: naturalWonderTerritoryCulture(tile) };
 }
 
 /** One named trait's contribution to a specific tile's worked yields. */
@@ -228,11 +228,11 @@ export function tileYieldReport(state: GameState, col: number, row: number, view
   const tile = getTile(state.map, col, row);
   if (!tile) return { yields: { ...ZERO_YIELDS, culture: 0 }, sources: [], preview: false };
   const base = tileWorkYields(state, col, row, {});
-  const culture = naturalWonderCulture(tile);
+  const ownerCity = tile.ownerCityId !== undefined ? state.cities.get(tile.ownerCityId) : undefined;
+  const culture = ownerCity ? naturalWonderTerritoryCulture(tile) : 0;
 
   // Whose traits do we attribute? The owning player for a claimed tile (actual
   // output); otherwise the viewer as a foresight preview.
-  const ownerCity = tile.ownerCityId !== undefined ? state.cities.get(tile.ownerCityId) : undefined;
   const preview = !ownerCity;
   const attributedId = ownerCity ? ownerCity.ownerId : viewerId;
 
@@ -279,7 +279,7 @@ function cityCenterTileYields(state: GameState, city: City): Yields & { culture:
     gold,
     science: cBase.science,
     faith: cBase.faith,
-    culture: tile ? naturalWonderCulture(tile) : 0,
+    culture: 0, // natural-wonder culture is a territory passive, not from the city center
   };
 }
 
@@ -334,9 +334,11 @@ export function getCityYields(state: GameState, city: City): CityYields {
     gold += y.gold;
     science += y.science;
     faith += y.faith;
-    culture += naturalWonderCulture(tile); // scenic wonders inspire culture
     if (tile.terrain === "desert") gold += desertGold;
   }
+
+  // Scenic wonders inside this city's borders inspire culture even when unworked.
+  culture += naturalWonderTerritoryCultureForCity(state, city);
 
   // Specialists give a small flat craft upkeep to their city between/while at work.
   production += Math.floor(city.specialists.length * 0.25);
@@ -514,9 +516,8 @@ function tileScorer(state: GameState, city: City, focus?: CityAutoFocus): (key: 
     const [c, r] = key.split(",").map(Number) as [number, number];
     const tile = getTile(state.map, c, r);
     if (!tile) return -Infinity;
-    // Culture from natural wonders is summed separately in getCityYields (not part
-    // of tileWorkYields), so fold it in here or scenic tiles look worthless.
-    return citizenScore({ ...tileWorkYields(state, c, r, eff), culture: naturalWonderCulture(tile) }, focus);
+    // Culture from natural wonders is territorial — citizen assignment values only yields from working.
+    return citizenScore(tileWorkYields(state, c, r, eff), focus);
   };
 }
 

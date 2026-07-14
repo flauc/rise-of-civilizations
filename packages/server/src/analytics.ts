@@ -23,6 +23,7 @@ import type {
   OutcomeBreakdown,
   PlayerSessionStats,
   SessionOutcome,
+  SessionScoreboardEntry,
   VictoryTypeCount,
   VoteTotal,
 } from "@roc/shared";
@@ -58,6 +59,7 @@ export interface SessionRow {
   turns?: number;
   score?: number;
   scoreRank?: number;
+  scoreboard?: SessionScoreboardEntry[];
 }
 
 /** Full stored bug report row (list fields + heavy detail payload). */
@@ -85,6 +87,8 @@ export interface AnalyticsStore {
   /** A single bug report with its full captured payload. */
   bugReport(reportId: string): Promise<BugReportDetail | undefined>;
   listGameSessions(query: import("@roc/shared").GameSessionListQuery): Promise<import("@roc/shared").GameSessionListResponse>;
+  gameSession(sessionId: string): Promise<import("@roc/shared").AdminGameSessionDetail | undefined>;
+  sessionReport(filters: import("@roc/shared").GameSessionFilters): Promise<import("@roc/shared").SessionReportResponse>;
   listBugReports(query: import("@roc/shared").BugReportListQuery): Promise<import("@roc/shared").BugReportListResponse>;
 }
 
@@ -136,6 +140,7 @@ export class MemoryAnalyticsStore implements AnalyticsStore {
         row.turns = e.turns;
         row.score = e.score;
         row.scoreRank = e.scoreRank;
+        if (e.scoreboard?.length) row.scoreboard = e.scoreboard;
         row.endedAt = e.ts;
         this.sessions.set(e.sessionId, row);
       } else if (e.t === "feature_vote") {
@@ -345,6 +350,17 @@ export class MemoryAnalyticsStore implements AnalyticsStore {
   async listGameSessions(query: import("@roc/shared").GameSessionListQuery): Promise<import("@roc/shared").GameSessionListResponse> {
     const { listGameSessionsFromRows } = await import("./game-sessions");
     return listGameSessionsFromRows(this.rows(), query);
+  }
+
+  async gameSession(sessionId: string): Promise<import("@roc/shared").AdminGameSessionDetail | undefined> {
+    const { rowToAdminGameSessionDetail } = await import("./game-sessions");
+    const row = this.sessions.get(sessionId);
+    return row ? rowToAdminGameSessionDetail(row) : undefined;
+  }
+
+  async sessionReport(filters: import("@roc/shared").GameSessionFilters): Promise<import("@roc/shared").SessionReportResponse> {
+    const { buildSessionReportResponse } = await import("./session-report");
+    return buildSessionReportResponse(this.rows(), filters);
   }
 
   /** All session rows (for dev JSON persistence). */

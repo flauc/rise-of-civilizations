@@ -1,6 +1,20 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      window.__ROC_BOOT_ROUTE__ = (function () {
+        var q = new URLSearchParams(location.search);
+        var page = q.get("page");
+        if (page === "support" || page === "privacy" || page === "terms" || page === "delete-account") return page;
+        var path = location.pathname.replace(/\/$/, "").toLowerCase();
+        var leaf = path.split("/").pop() || "";
+        if (leaf === "privacy" || leaf === "privacy.html") return "privacy";
+        if (leaf === "terms" || leaf === "terms.html") return "terms";
+        if (leaf === "delete-account" || leaf === "delete-account.html") return "delete-account";
+        if (leaf === "support" || leaf === "support.html") return "support";
+        return null;
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta
       name="viewport"
@@ -626,20 +640,173 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 14px;
-        background: rgba(15, 14, 11, 0.88);
+        padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+        background: rgba(15, 14, 11, 0.92);
         z-index: 60;
         text-align: center;
       }
+      #gameover .go-panel {
+        display: flex;
+        flex-direction: column;
+        width: min(520px, 100%);
+        max-height: min(88vh, calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+        border: 1px solid var(--edge);
+        border-radius: 14px;
+        background: linear-gradient(180deg, rgba(36, 32, 24, 0.98), rgba(22, 20, 16, 0.98));
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+      }
+      #gameover .go-scroll {
+        flex: 1;
+        overflow: auto;
+        padding: 22px 20px 12px;
+      }
       #gameover .title {
         font-family: 'Cinzel', Georgia, serif;
-        font-size: 40px;
+        font-size: clamp(28px, 7vw, 40px);
         font-weight: 800;
         color: var(--accent-bright);
+        margin-bottom: 8px;
       }
       #gameover .sub {
         color: var(--parchment);
-        font-size: 16px;
+        font-size: 15px;
+        line-height: 1.45;
+        margin-bottom: 18px;
+      }
+      #gameover .go-section-title {
+        font-family: 'Cinzel', Georgia, serif;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #c9a227;
+        margin: 16px 0 10px;
+        text-align: left;
+      }
+      #gameover .go-stats {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        text-align: left;
+      }
+      #gameover .go-stat {
+        padding: 10px 12px;
+        border: 1px solid var(--edge);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      #gameover .go-stat-label {
+        font-size: 11px;
+        color: #9fc0dc;
+        margin-bottom: 4px;
+      }
+      #gameover .go-stat-value {
+        font-family: 'Cinzel', Georgia, serif;
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--parchment);
+        line-height: 1.1;
+      }
+      #gameover .go-stat-hint {
+        font-size: 10px;
+        color: #9fc0dc;
+        margin-top: 4px;
+      }
+      #gameover .go-standings {
+        text-align: left;
+      }
+      #gameover .go-row {
+        width: 100%;
+        font: inherit;
+        color: inherit;
+        cursor: pointer;
+        text-align: left;
+        transition: border-color 0.15s ease, background 0.15s ease;
+      }
+      #gameover .go-row:hover {
+        border-color: rgba(201, 162, 39, 0.55);
+        background: rgba(201, 162, 39, 0.06);
+      }
+      #gameover .go-row.go-row-selected {
+        border-color: #c9a227;
+        background: rgba(201, 162, 39, 0.12);
+        box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.25);
+      }
+      #gameover .go-portrait-wrap {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        border: 2px solid rgba(255, 255, 255, 0.25);
+        overflow: hidden;
+        flex-shrink: 0;
+        background: rgba(0, 0, 0, 0.25);
+      }
+      #gameover .go-civ-portrait {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+      #gameover .go-civ-portrait-fallback {
+        width: 100%;
+        height: 100%;
+      }
+      #gameover .go-hint {
+        margin-top: 10px;
+        font-size: 12px;
+        color: #9fc0dc;
+        text-align: left;
+        font-style: italic;
+      }
+      #gameover .go-vic {
+        text-align: left;
+      }
+      #gameover .go-vic-won {
+        border: 1px solid #c9a227;
+        border-radius: 10px;
+        background: rgba(201, 162, 39, 0.1);
+        padding: 8px 10px;
+      }
+      #gameover .go-actions {
+        display: flex;
+        gap: 10px;
+        padding: 14px 16px max(14px, env(safe-area-inset-bottom));
+        border-top: 1px solid var(--edge);
+        background: rgba(0, 0, 0, 0.18);
+      }
+      #gameover .go-actions .btn {
+        flex: 1;
+        font-size: 15px;
+        padding: 12px 14px;
+      }
+      #gameover-explore-bar {
+        position: fixed;
+        left: 50%;
+        transform: translateX(-50%);
+        bottom: max(14px, env(safe-area-inset-bottom));
+        display: flex;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--edge);
+        border-radius: 999px;
+        background: rgba(15, 14, 11, 0.92);
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4);
+        z-index: 61;
+      }
+      #gameover-explore-bar .btn {
+        font-size: 14px;
+        padding: 10px 16px;
+        white-space: nowrap;
+      }
+      #game-hud.game-over-map #topbar,
+      #game-hud.game-over-map #endturn,
+      #game-hud.game-over-map #endturn2,
+      #game-hud.game-over-map #log,
+      #game-hud.game-over-map #tile-tip:not(.hidden),
+      #game-hud.game-over-map #empire:not(.hidden),
+      #game-hud.game-over-map #diplomacy:not(.hidden) {
+        display: none !important;
       }
       /* Research / civics / religion / great people / production / save modal */
       #save-modal {
@@ -2902,7 +3069,8 @@
       #game-hud #diplomacy:not(.hidden),
       #game-hud #diplo-contact.show,
       #game-hud #diplo-proposal.show,
-      #game-hud #gameover:not(.hidden) {
+      #game-hud #gameover:not(.hidden),
+      #game-hud #gameover-explore-bar:not(.hidden) {
         pointer-events: auto;
       }
 
@@ -3195,20 +3363,6 @@
     </style>
   </head>
   <body>
-    <script>
-      window.__ROC_BOOT_ROUTE__ = (function () {
-        var q = new URLSearchParams(location.search);
-        var page = q.get("page");
-        if (page === "support" || page === "privacy" || page === "terms" || page === "delete-account") return page;
-        var path = location.pathname.replace(/\/$/, "").toLowerCase();
-        var leaf = path.split("/").pop() || "";
-        if (leaf === "privacy" || leaf === "privacy.html") return "privacy";
-        if (leaf === "terms" || leaf === "terms.html") return "terms";
-        if (leaf === "delete-account" || leaf === "delete-account.html") return "delete-account";
-        if (leaf === "support" || leaf === "support.html") return "support";
-        return null;
-      })();
-    </script>
     <canvas id="game"></canvas>
     <script type="module" src="/src/main.ts"></script>
   </body>

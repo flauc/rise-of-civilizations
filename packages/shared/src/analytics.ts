@@ -57,6 +57,45 @@ export interface SessionStartEvent {
   ts: number;
 }
 
+/** One row in the end-of-game scoreboard (human or AI). */
+export interface SessionScoreboardEntry {
+  /** In-game civ name at end of session. */
+  name: string;
+  civId?: string;
+  isHuman: boolean;
+  isBarbarian?: boolean;
+  score?: number;
+  /** True for the account that recorded this analytics session. */
+  isViewer?: boolean;
+  /** Rich end-of-game snapshot (absent on legacy sessions). */
+  cities?: number;
+  cityNames?: string[];
+  gold?: number;
+  population?: number;
+  /** Researched technology display names. */
+  techs?: string[];
+  /** Tech display name in progress at session end, if any. */
+  researching?: string;
+  government?: string;
+  civics?: string[];
+  wonders?: string[];
+  /** Active legend display names on the map at session end. */
+  legends?: string[];
+  legendsRecruited?: number;
+  /** Natural wonders this civ was first to discover. */
+  naturalWonders?: string[];
+  /** Great People recruited over the game (including activated). */
+  greatPeopleRecruited?: string[];
+  greatPeople?: string[];
+  faith?: number;
+  religion?: string;
+  battlesWon?: number;
+  citiesCaptured?: number;
+  eliminated?: boolean;
+  units?: number;
+  militaryUnits?: number;
+}
+
 /** A game session ended — win, loss, or abandoned (left before resolution). */
 export interface SessionEndEvent {
   t: "session_end";
@@ -71,6 +110,8 @@ export interface SessionEndEvent {
   score?: number;
   /** 1-based rank of the viewing player among all players by score. */
   scoreRank?: number;
+  /** Final standings when the game ended cleanly (all civs + scores). */
+  scoreboard?: SessionScoreboardEntry[];
   /** Registered account username, when logged in at session end. */
   handle?: string;
   /** Registered account id, when logged in at session end. */
@@ -341,6 +382,12 @@ export interface AdminGameSession {
   endedAt?: number;
 }
 
+/** Full detail for a single played game (admin drill-down). */
+export interface AdminGameSessionDetail extends AdminGameSession {
+  /** Final standings; derived from setup when older sessions lack a stored board. */
+  scoreboard: SessionScoreboardEntry[];
+}
+
 /** Optional column filters for the admin games table (server-side). */
 export interface GameSessionFilters {
   /** Free-text search across visible session fields. */
@@ -414,6 +461,53 @@ export interface GameSessionListResponse {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+/** Distinct values for reporting filter dropdowns. */
+export interface SessionReportFacets {
+  mapTypes: string[];
+  mapSizes: string[];
+  gameSpeeds: string[];
+  startingGold: string[];
+  barbarianLevels: string[];
+  aiCounts: number[];
+  modes: string[];
+  outcomes: string[];
+  turnLimits: number[];
+  civIds: string[];
+  conditions: string[];
+  victories: string[];
+}
+
+/** Aggregated metrics for a filtered slice of game sessions. */
+export interface SessionReport {
+  totalSessions: number;
+  uniquePlayers: number;
+  uniqueRegisteredUsers: number;
+  wins: number;
+  losses: number;
+  abandoned: number;
+  /** Sessions with no recorded outcome yet. */
+  inProgress: number;
+  completedSessions: number;
+  avgTurns: number;
+  avgScore?: number;
+  /** Share of sessions that ended in win or loss (0–100). */
+  completionRate: number;
+  /** Share of completed sessions that were wins (0–100). */
+  winRate: number;
+  byMode: LabelCount[];
+  byMapType: LabelCount[];
+  byMapSize: LabelCount[];
+  byGameSpeed: LabelCount[];
+  byVictoryCondition: LabelCount[];
+  topCivs: CivCount[];
+}
+
+export interface SessionReportResponse {
+  facets: SessionReportFacets;
+  report: SessionReport;
+  filters: GameSessionFilters;
 }
 
 /** Optional column filters for the admin bug reports table (server-side). */

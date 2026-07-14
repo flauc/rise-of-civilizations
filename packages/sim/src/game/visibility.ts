@@ -2,7 +2,7 @@ import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import type { GameState, Player, Unit } from "./state";
 import { citiesOf, unitsOf } from "./state";
 import { unitSight } from "./movement";
-import { detectContacts } from "./diplomacy";
+import { detectContacts, sharedVisionPartners } from "./diplomacy";
 import { checkNaturalWonderDiscovery } from "./natural-wonders";
 import { detectHiddenUnits } from "./stealth";
 import { UNIT_DEFS } from "./content";
@@ -32,6 +32,26 @@ export function computeVisible(state: GameState, playerId: number): Set<string> 
 
   for (const u of unitsOf(state, playerId)) reveal(u.col, u.row, unitSight(state, u));
   for (const c of citiesOf(state, playerId)) reveal(c.col, c.row, CITY_SIGHT);
+  return visible;
+}
+
+/** Explored tiles the player may know about, including map-exchange partners' fog memory. */
+export function exploredForPlayer(state: GameState, playerId: number): Set<string> {
+  const me = state.players.find((p) => p.id === playerId);
+  const explored = new Set<string>(me?.explored ?? []);
+  for (const partnerId of sharedVisionPartners(state, playerId)) {
+    const partner = state.players.find((p) => p.id === partnerId);
+    if (partner) for (const k of partner.explored) explored.add(k);
+  }
+  return explored;
+}
+
+/** Live sight for a player, including tiles currently visible to map-exchange partners. */
+export function visibleForPlayer(state: GameState, playerId: number): Set<string> {
+  const visible = computeVisible(state, playerId);
+  for (const partnerId of sharedVisionPartners(state, playerId)) {
+    for (const k of computeVisible(state, partnerId)) visible.add(k);
+  }
   return visible;
 }
 

@@ -2,6 +2,7 @@
 // Paginated games table for the admin dashboard.
 
 import type { AdminGameSession, GameSessionListResponse } from "@roc/shared";
+import { bindGameDetailButtons } from "./game-detail";
 import {
   bindTableHeader,
   hasActiveFilters,
@@ -97,7 +98,7 @@ function bodyHtml(data: GameSessionListResponse | undefined, err: string | undef
   return data.items
     .map((g) => {
       const startedTitle = g.startedAt ? new Date(g.startedAt).toLocaleString() : "";
-      return `<tr>${COLUMNS.map((col) => {
+      return `<tr class="clickable-row" data-game="${esc(g.sessionId)}" title="View game details">${COLUMNS.map((col) => {
         const key = col.filterKey as FilterKey;
         const v = cellValue(g, key);
         if (col.id === "outcome" && g.outcome) {
@@ -187,6 +188,7 @@ export function mountGamesTable(host: HTMLElement, token: string): void {
   const paintBody = (): void => {
     const tbody = host.querySelector("tbody");
     if (tbody) tbody.innerHTML = bodyHtml(latestData, latestErr, loading);
+    bindGameDetailButtons(host);
     const meta = host.querySelector(".table-meta");
     if (meta) meta.innerHTML = metaHtml();
     const pager = host.querySelector(".table-pager");

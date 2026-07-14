@@ -79,6 +79,7 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
     await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS game_speed TEXT`;
     await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id TEXT`;
     await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handle TEXT`;
+    await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS scoreboard TEXT`;
     await sql`CREATE INDEX IF NOT EXISTS sessions_client_id_idx ON sessions (client_id)`;
     await sql`CREATE INDEX IF NOT EXISTS sessions_outcome_idx ON sessions (outcome)`;
     await sql`CREATE INDEX IF NOT EXISTS sessions_civ_id_idx ON sessions (civ_id)`;
@@ -159,16 +160,19 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
             game_speed = EXCLUDED.game_speed, ai_civ_ids = EXCLUDED.ai_civ_ids,
             enabled_victories = EXCLUDED.enabled_victories, started_at = EXCLUDED.started_at`;
       } else if (e.t === "session_end") {
+        const scoreboard = e.scoreboard?.length ? JSON.stringify(e.scoreboard) : null;
         await sql`
-          INSERT INTO sessions (session_id, client_id, user_id, handle, outcome, condition, turns, score, score_rank, ended_at)
+          INSERT INTO sessions (session_id, client_id, user_id, handle, outcome, condition, turns, score, score_rank, scoreboard, ended_at)
           VALUES (${e.sessionId}, ${e.clientId}, ${e.userId ?? null}, ${e.handle ?? null}, ${e.outcome}, ${e.condition ?? null},
-            ${e.turns}, ${e.score ?? null}, ${e.scoreRank ?? null}, ${e.ts})
+            ${e.turns}, ${e.score ?? null}, ${e.scoreRank ?? null}, ${scoreboard}, ${e.ts})
           ON CONFLICT (session_id) DO UPDATE SET
             client_id = COALESCE(sessions.client_id, EXCLUDED.client_id),
             user_id = COALESCE(sessions.user_id, EXCLUDED.user_id),
             handle = COALESCE(sessions.handle, EXCLUDED.handle),
             outcome = EXCLUDED.outcome, condition = EXCLUDED.condition, turns = EXCLUDED.turns,
-            score = EXCLUDED.score, score_rank = EXCLUDED.score_rank, ended_at = EXCLUDED.ended_at`;
+            score = EXCLUDED.score, score_rank = EXCLUDED.score_rank,
+            scoreboard = COALESCE(EXCLUDED.scoreboard, sessions.scoreboard),
+            ended_at = EXCLUDED.ended_at`;
       } else if (e.t === "feature_vote") {
         if (e.action === "add") {
           await sql`
@@ -446,13 +450,29 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
     return listGameSessionsFromRows(rows, query);
   }
 
+  async gameSession(sessionId: string): Promise<import("@roc/shared").AdminGameSessionDetail | undefined> {
+    const { rowToAdminGameSessionDetail } = await import("./game-sessions");
+    const [r] = await this.sql<Record<string, unknown>>`
+      SELECT session_id, client_id, user_id, handle, mode, civ_id, map_type, map_size, map_cols, map_rows,
+        ai_count, barbarians, legends, barbarian_level, natural_wonders, villages,
+        starting_gold, turn_limit, game_speed, ai_civ_ids, enabled_victories,
+        started_at, ended_at, outcome, condition, turns, score, score_rank, scoreboard
+      FROM sessions WHERE session_id = ${sessionId} LIMIT 1`;
+    return r ? rowToAdminGameSessionDetail(pgRowToSessionRow(r)) : undefined;
+  }
+
+  async sessionReport(filters: import("@roc/shared").GameSessionFilters): Promise<import("@roc/shared").SessionReportResponse> {
+    const { buildSessionReportResponse } = await import("./session-report");
+    return buildSessionReportResponse(await this.allSessionRows(), filters);
+  }
+
   /** Load all session rows for admin list/filter (analytics scale is modest). */
   private async allSessionRows(): Promise<SessionRow[]> {
     const rows = await this.sql<Record<string, unknown>>`
       SELECT session_id, client_id, user_id, handle, mode, civ_id, map_type, map_size, map_cols, map_rows,
         ai_count, barbarians, legends, barbarian_level, natural_wonders, villages,
         starting_gold, turn_limit, game_speed, ai_civ_ids, enabled_victories,
-        started_at, ended_at, outcome, condition, turns, score, score_rank
+        started_at, ended_at, outcome, condition, turns, score, score_rank, scoreboard
       FROM sessions`;
     return rows.map(pgRowToSessionRow);
   }
@@ -538,6 +558,7 @@ function pgRowToSessionRow(r: Record<string, unknown>): SessionRow {
     turns: r.turns == null ? undefined : num(r.turns),
     score: r.score == null ? undefined : num(r.score),
     scoreRank: r.score_rank == null ? undefined : num(r.score_rank),
+    scoreboard: parseJson<import("@roc/shared").SessionScoreboardEntry[]>(r.scoreboard),
   };
 }
 

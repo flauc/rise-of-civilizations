@@ -7,6 +7,7 @@ import { specialistNameCandidates } from "@roc/data";
 import type { City, Discipline, GameState, Player, Specialist } from "./state";
 import { playerById } from "./state";
 import type { TechId } from "./content";
+import { specialistBusyOnWork } from "./works";
 
 export type SpecialistId = "carpenter" | "agrimensor" | "mason" | "architect" | "engineer";
 
@@ -96,6 +97,79 @@ export function workerSlots(city: City): number {
   return Math.max(0, city.population - city.specialists.length);
 }
 
+export function isSpecialistLocked(city: City, specialistId: number): boolean {
+  return (city.lockedSpecialists ?? []).includes(specialistId);
+}
+
+function lockSpecialist(city: City, specialistId: number): void {
+  city.lockedSpecialists ??= [];
+  if (!city.lockedSpecialists.includes(specialistId)) city.lockedSpecialists.push(specialistId);
+}
+
+function unlockSpecialist(city: City, specialistId: number): void {
+  city.lockedSpecialists = (city.lockedSpecialists ?? []).filter((id) => id !== specialistId);
+}
+
+export function isPendingGovernorRelease(city: City, specialistId: number): boolean {
+  return (city.pendingSpecialistRelease ?? []).includes(specialistId);
+}
+
+/** When governor focus changes, existing AI-trained specialists finish their
+ *  current job then return to the citizen pool — they must not pick up new work. */
+export function markAiSpecialistsForGovernorRelease(city: City): void {
+  city.pendingSpecialistRelease ??= [];
+  for (const s of city.specialists) {
+    if (isSpecialistLocked(city, s.id)) continue;
+    if (!city.pendingSpecialistRelease.includes(s.id)) city.pendingSpecialistRelease.push(s.id);
+  }
+}
+
+function clearPendingGovernorRelease(city: City, specialistId: number): void {
+  city.pendingSpecialistRelease = (city.pendingSpecialistRelease ?? []).filter((id) => id !== specialistId);
+}
+
+/** Release one specialist by entity id (used when governor mode rebalances). */
+export function releaseSpecialist(state: GameState, city: City, specialistId: number): SpecialistResult {
+  const drop = city.specialists.find((s) => s.id === specialistId);
+  if (!drop) return { ok: false, error: "no such specialist" };
+  city.specialists = city.specialists.filter((s) => s.id !== specialistId);
+  unlockSpecialist(city, specialistId);
+  clearPendingGovernorRelease(city, specialistId);
+  return { ok: true, releasedId: specialistId };
+}
+
+/**
+ * Release AI-trained specialists that were marked at a governor focus change and
+ * are now idle. Manual (+1) picks are never released. Specialists still on their
+ * current work stay until that job finishes.
+ */
+export function releaseIdleGovernorSpecialists(
+  state: GameState,
+  city: City,
+  playerId: number,
+  opts?: { allIdleUnlocked?: boolean },
+): number[] {
+  const pending = city.pendingSpecialistRelease ?? [];
+  if (!opts?.allIdleUnlocked && pending.length === 0) return [];
+  const released: number[] = [];
+  for (const s of [...city.specialists]) {
+    if (isSpecialistLocked(city, s.id)) continue;
+    if (!opts?.allIdleUnlocked && !isPendingGovernorRelease(city, s.id)) continue;
+    if (specialistBusyOnWork(state, playerId, s.id)) continue;
+    const res = releaseSpecialist(state, city, s.id);
+    if (res.ok && res.releasedId !== undefined) released.push(res.releasedId);
+  }
+  return released;
+}
+
+/** Map a work discipline back to the specialist type that supplies it. */
+export function specialistIdForDiscipline(discipline: Discipline): SpecialistId | null {
+  for (const id of SPECIALIST_IDS) {
+    if (SPECIALIST_DEFS[id].discipline === discipline) return id;
+  }
+  return null;
+}
+
 export interface SpecialistResult {
   ok: boolean;
   error?: string;
@@ -142,13 +216,16 @@ export function convertCitizen(
   city: City,
   id: SpecialistId,
   delta: number,
+  opts?: { manual?: boolean },
 ): SpecialistResult {
   const player = state.players.find((p) => p.id === city.ownerId);
   if (delta > 0) {
     if (!player || !specialistUnlocked(player, id)) return { ok: false, error: "specialist not unlocked" };
     if (city.specialists.length >= city.population) return { ok: false, error: "no free citizens" };
     const name = pickSpecialistName(state, city.ownerId, id);
-    city.specialists.push({ id: state.nextEntityId++, type: id, name, xp: 0, level: 1 });
+    const spec: Specialist = { id: state.nextEntityId++, type: id, name, xp: 0, level: 1 };
+    city.specialists.push(spec);
+    if (opts?.manual) lockSpecialist(city, spec.id);
     // If we've over-committed the population, drop the lowest-value worked tile.
     while (city.workedTiles.length + city.specialists.length > city.population && city.workedTiles.length > 0) {
       city.workedTiles.pop();
@@ -162,6 +239,7 @@ export function convertCitizen(
     pool.sort((a, b) => a.level - b.level || a.xp - b.xp);
     const drop = pool[0]!;
     city.specialists = city.specialists.filter((s) => s.id !== drop.id);
+    unlockSpecialist(city, drop.id);
     return { ok: true, releasedId: drop.id };
   }
   return { ok: false, error: "no-op" };

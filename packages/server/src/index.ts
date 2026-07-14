@@ -20,7 +20,7 @@ import { Lobby } from "./lobby";
 import { deleteAccount, login, register, resume } from "./auth";
 import { MemoryAnalyticsStore, type AnalyticsStore } from "./analytics";
 import { PostgresAnalyticsStore } from "./analytics-postgres";
-import { parseGameSessionQuery } from "./game-sessions";
+import { parseGameSessionFilters, parseGameSessionQuery } from "./game-sessions";
 import { buildHandleByClientId, enrichLeaderboard, enrichSessionsPerPlayer } from "./player-handles";
 import type { SessionRow } from "./analytics";
 
@@ -129,6 +129,8 @@ async function adminQuery(name: string, searchParams?: URLSearchParams): Promise
       return adminListUsers();
     case "games":
       return analytics.listGameSessions(parseGameSessionQuery(searchParams ?? new URLSearchParams()));
+    case "reporting":
+      return analytics.sessionReport(parseGameSessionFilters(searchParams ?? new URLSearchParams()));
     case "bug-reports":
       return analytics.listBugReports(parseBugReportQuery(searchParams ?? new URLSearchParams()));
     case "sessions":
@@ -148,9 +150,10 @@ async function adminQuery(name: string, searchParams?: URLSearchParams): Promise
     case "bugReports":
       return analytics.bugReports();
     case "all": {
-      const [overview, sessions, civs, config, outcomes, victories, leaderboard, votes, bugReports, users] =
+      const [overview, recentGamesList, sessions, civs, config, outcomes, victories, leaderboard, votes, bugReports, users] =
         await Promise.all([
           analytics.overview(),
+          analytics.listGameSessions({ page: 1, pageSize: 12, sort: "startedAt", order: "desc" }),
           adminSessionsPerPlayer(),
           analytics.civDistribution(),
           analytics.configBreakdown(),
@@ -158,10 +161,10 @@ async function adminQuery(name: string, searchParams?: URLSearchParams): Promise
           analytics.victoryBreakdown(),
           adminLeaderboard(),
           analytics.voteTotals(),
-          analytics.bugReports(),
+          analytics.bugReports(12),
           adminListUsers(),
         ]);
-      return { overview, sessions, civs, config, outcomes, victories, leaderboard, votes, bugReports, users,
+      return { overview, recentGames: recentGamesList.items, sessions, civs, config, outcomes, victories, leaderboard, votes, bugReports, users,
         playerHandles: Object.fromEntries(buildHandleByClientId(await loadSessionRows())),
       };
     }
@@ -508,6 +511,14 @@ const server = Bun.serve<Conn>({
         const report = await analytics.bugReport(id);
         if (!report) return jsonResponse({ error: "not found" }, 404);
         return jsonResponse(report);
+      }
+      // Single game session detail: /admin/api/game/<sessionId>.
+      if (name.startsWith("game/")) {
+        const id = decodeURIComponent(name.slice("game/".length));
+        if (!isSafeLookupId(id)) return jsonResponse({ error: "not found" }, 404);
+        const game = await analytics.gameSession(id);
+        if (!game) return jsonResponse({ error: "not found" }, 404);
+        return jsonResponse(game);
       }
       const result = await adminQuery(name, url.searchParams);
       if (result === undefined) return jsonResponse({ error: "not found" }, 404);

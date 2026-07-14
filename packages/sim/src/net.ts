@@ -3,7 +3,7 @@
 // and the Bun server import these.
 
 import type { Command } from "./game/commands";
-import type { BarbarianActivity, VictoryKind } from "./game/state";
+import type { BarbarianActivity, VictoryKind, VillageDensity } from "./game/state";
 import type { PlayerView } from "./game/serialize";
 import type { MapType } from "./worldgen";
 import type { GameSpeed } from "./game/game-speed";
@@ -44,8 +44,8 @@ export interface LobbyRoom {
   mapSize?: string;
   barbarians: BarbarianActivity;
   naturalWonders: boolean;
-  /** Tribal villages that grant rewards when visited. */
-  villages: boolean;
+  /** Tribal village density. */
+  villages: VillageDensity;
   startingGold: "tight" | "balanced" | "generous";
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit: number;
@@ -83,8 +83,8 @@ export type ClientMessage =
       barbarians?: BarbarianActivity;
       /** Scatter natural wonders across the map. Defaults to off. */
       naturalWonders?: boolean;
-      /** Scatter tribal villages that grant rewards when visited. Defaults to on. */
-      villages?: boolean;
+      /** Tribal village density. Defaults to medium. Legacy boolean accepted. */
+      villages?: boolean | VillageDensity;
       /** Landmass layout to generate (one big continent, archipelago, real world…). */
       mapType?: MapType;
       /** Starting gold treasury preset for major civ players. */
@@ -119,8 +119,8 @@ export type ClientMessage =
       mapType?: MapType;
       barbarians?: BarbarianActivity;
       naturalWonders?: boolean;
-      /** Scatter tribal villages that grant rewards when visited. */
-      villages?: boolean;
+      /** Tribal village density. Legacy boolean accepted. */
+      villages?: boolean | VillageDensity;
       startingGold?: "tight" | "balanced" | "generous";
       /** Turn at which the score victory triggers; 0 = unlimited. */
       turnLimit?: number;

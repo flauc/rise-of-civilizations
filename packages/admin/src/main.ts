@@ -5,12 +5,14 @@ import { fetchAll, type AllData } from "./api";
 import { mountBugReportsTable } from "./bug-reports-table";
 import { mountGamesTable } from "./games-table";
 import { mountOverviewTables } from "./overview-tables";
+import { mountReportingPage } from "./reporting";
 import { type AdminPage, parsePage } from "./router";
 import { renderShell } from "./shell";
 import { mountUsersTable } from "./users-table";
 import { mountVotesTable } from "./votes-table";
 import { gamesContent } from "./views/games";
 import { overviewContent } from "./views/overview";
+import { reportingContent } from "./views/reporting";
 import { reportsContent } from "./views/reports";
 import { usersContent } from "./views/users";
 import { votesContent } from "./views/votes";
@@ -66,6 +68,8 @@ function pageContent(page: AdminPage, data: AllData | null): string {
   switch (page) {
     case "games":
       return gamesContent();
+    case "reporting":
+      return reportingContent();
     case "users":
       return data ? usersContent(data) : `<div class="muted">Loading…</div>`;
     case "reports":
@@ -88,7 +92,7 @@ async function renderPage(page: AdminPage, forceRefresh = false): Promise<void> 
   loadingView(page);
 
   try {
-    const needsData = page !== "games" && page !== "reports";
+    const needsData = page !== "games" && page !== "reports" && page !== "reporting";
     const data = needsData ? await ensureData(token, forceRefresh) : cachedData;
     const banner =
       page === "users" && data?.usersApiMissing
@@ -103,6 +107,9 @@ async function renderPage(page: AdminPage, forceRefresh = false): Promise<void> 
     if (page === "games") {
       const host = app.querySelector("#games-table-host");
       if (host instanceof HTMLElement) void mountGamesTable(host, getToken());
+    } else if (page === "reporting") {
+      const host = app.querySelector("#reporting-host");
+      if (host instanceof HTMLElement) void mountReportingPage(host, getToken());
     } else if (page === "reports") {
       const host = app.querySelector("#bug-reports-table-host");
       if (host instanceof HTMLElement) void mountBugReportsTable(host, getToken());

@@ -11,7 +11,7 @@ import {
   type ConstructionAtlas,
   type ConstructionCategory,
 } from "./construction-assets";
-import { getNaturalWonder, getLegend, getReligionByName } from "@roc/data";
+import { getNaturalWonder, getLegend, getReligionByName, getWonder } from "@roc/data";
 import type { ReligionIconAtlas } from "./religion-assets";
 import { drawGlyph } from "./icons";
 
@@ -72,12 +72,8 @@ function drawConstructionStandin(
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
   if (size > 12) {
-    const glyph = cat === "wonder" ? "🏛️" : cat === "defense" ? "🧱" : cat === "road" ? "🛤️" : "🛠️";
-    ctx.fillStyle = "#f0d77a";
-    ctx.font = `${Math.round(size * 0.34)}px system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(glyph, x, y + 1);
+    const glyph = cat === "wonder" ? "🏛" : cat === "defense" ? "🧱" : cat === "road" ? "🛤️" : "🛠️";
+    drawGlyph(ctx, glyph, x, y + 1, Math.round(size * 0.34));
   }
   ctx.restore();
 }
@@ -390,6 +386,29 @@ export function drawOverlay(
       ctx.roundRect(s.x - labelW / 2, labelY, labelW, labelH, labelH / 2);
       ctx.fill();
       ctx.fillStyle = "#f0d77a";
+      ctx.fillText(label, s.x, labelY + labelH / 2);
+    }
+    // Built world wonders: name label (decor art or vector stand-in is in the renderer).
+    for (const t of state.map.tiles) {
+      if (!t.wonder) continue;
+      if (!o.explored.has(`${t.col},${t.row}`)) continue;
+      const s = screen(t.col, t.row);
+      const label = getWonder(t.wonder)?.name ?? "World Wonder";
+      const fontSize = Math.max(8, Math.round(size * 0.22));
+      ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
+      const textW = ctx.measureText(label).width;
+      const pad = Math.max(1, size * 0.05);
+      const labelH = fontSize + pad * 2;
+      const labelW = textW + pad * 4;
+      const labelY = s.y + size * 0.62;
+      ctx.fillStyle = "rgba(40,24,8,0.72)";
+      ctx.beginPath();
+      ctx.roundRect(s.x - labelW / 2, labelY, labelW, labelH, labelH / 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(201,162,74,0.85)";
+      ctx.lineWidth = Math.max(1, size * 0.04);
+      ctx.stroke();
+      ctx.fillStyle = "#f5e6a8";
       ctx.fillText(label, s.x, labelY + labelH / 2);
     }
   }

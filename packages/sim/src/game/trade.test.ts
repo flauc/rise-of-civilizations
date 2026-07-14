@@ -12,7 +12,11 @@ import {
   pruneTradeRoutes,
   tradeRouteDestinations,
   canConnectCities,
+  canConnectCitiesDirect,
   isCoastalPortCity,
+  tradeRouteViaMessage,
+  refreshTradeRoutePaths,
+  pathCaravanCost,
 } from "./trade";
 import { citiesOf, makeUnit, unitsOf, type City } from "./state";
 import type { TerrainType } from "./terrain";
@@ -108,6 +112,104 @@ describe("trade routes", () => {
     expect(establishTradeRoute(s, tid3, to.id, 0).ok).toBe(false);
   });
 
+  it("describes overseas routes via the player's departure port", () => {
+    const s = gameOnMap(twoPortMap);
+    const inlandId = s.nextEntityId++;
+    const inland: City = {
+      id: inlandId, ownerId: 0, name: "Inland", col: 1, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(inlandId, inland);
+    const homePortId = s.nextEntityId++;
+    const homePort: City = {
+      id: homePortId, ownerId: 0, name: "Harbour", col: 3, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(homePortId, homePort);
+    const overseasPortId = s.nextEntityId++;
+    const overseasPort: City = {
+      id: overseasPortId, ownerId: 0, name: "Port Beta", col: 6, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(overseasPortId, overseasPort);
+    expect(tradeRouteViaMessage(s, inland, overseasPort)).toBe("your port Harbour");
+  });
+
+  it("refreshes a route onto a faster roaded path after paving", () => {
+    const { s, from, to } = gameWithTwoCities();
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tid, to.id, 0);
+    const route = s.tradeRoutes[0]!;
+    const before = [...route.path];
+    const beforeCost = pathCaravanCost(s, route.path, 0);
+
+    const roadTiles: [number, number][] = [];
+    for (let c = from.col; c <= to.col; c++) roadTiles.push([c, from.row + 1]);
+    roadTiles.push([to.col, from.row]);
+    for (const [col, row] of roadTiles) {
+      const tile = getTile(s.map, col, row);
+      if (tile) {
+        tile.road = true;
+        tile.roadLevel = 3;
+      }
+    }
+
+    expect(refreshTradeRoutePaths(s)).toBe(1);
+    expect(route.path).not.toEqual(before);
+    expect(pathCaravanCost(s, route.path, 0)).toBeLessThan(beforeCost);
+  });
+
+  it("allows inland cities to reach overseas destinations through owned port hubs", () => {
+    const s = gameOnMap(twoPortMap);
+    const inlandId = s.nextEntityId++;
+    const inland: City = {
+      id: inlandId, ownerId: 0, name: "Inland", col: 1, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(inlandId, inland);
+    const homePortId = s.nextEntityId++;
+    const homePort: City = {
+      id: homePortId, ownerId: 0, name: "Harbour", col: 3, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(homePortId, homePort);
+    const overseasPortId = s.nextEntityId++;
+    const overseasPort: City = {
+      id: overseasPortId, ownerId: 0, name: "Port Beta", col: 6, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(overseasPortId, overseasPort);
+    const farInlandId = s.nextEntityId++;
+    const farInland: City = {
+      id: farInlandId, ownerId: 0, name: "Colony", col: 8, row: 1, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(farInlandId, farInland);
+
+    expect(isCoastalPortCity(s, homePort)).toBe(true);
+    expect(isCoastalPortCity(s, overseasPort)).toBe(true);
+    expect(canConnectCitiesDirect(s, inland, homePort)).toBe(true);
+    expect(canConnectCitiesDirect(s, inland, overseasPort)).toBe(false);
+    expect(canConnectCities(s, inland, overseasPort)).toBe(true);
+    expect(canConnectCities(s, inland, farInland)).toBe(true);
+
+    const tid = s.nextEntityId++;
+    s.units.set(tid, makeUnit(tid, 0, "trader", inland.col, inland.row));
+    expect(tradeRouteDestinations(s, s.units.get(tid)!).map((c) => c.id)).toContain(overseasPortId);
+    expect(tradeRouteDestinations(s, s.units.get(tid)!).map((c) => c.id)).toContain(farInlandId);
+    expect(establishTradeRoute(s, tid, farInlandId, 0).ok).toBe(true);
+    const route = s.tradeRoutes[0]!;
+    expect(route.viaCityIds).toEqual([homePortId, overseasPortId]);
+  });
+
   it("rejects ocean routes unless both cities are coastal ports", () => {
     const s = gameOnMap(twoPortMap);
     const inlandId = s.nextEntityId++;
@@ -192,6 +294,29 @@ describe("trade routes", () => {
     s.cities.delete(to.id); // destination razed
     pruneTradeRoutes(s);
     expect(s.tradeRoutes).toHaveLength(0);
+  });
+
+  it("pays the same base gold regardless of distance between cities", () => {
+    const { s, from, to } = gameWithTwoCities();
+    const nearId = s.nextEntityId++;
+    const near: City = {
+      id: nearId, ownerId: 0, name: "Near", col: from.col + 2, row: from.row, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [],
+      isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, training: {}, trainingQueue: [], modifiers: [],
+    };
+    s.cities.set(nearId, near);
+
+    const tidNear = s.nextEntityId++;
+    s.units.set(tidNear, makeUnit(tidNear, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tidNear, nearId, 0);
+    const nearBase = tradeRouteGoldBreakdown(s, s.tradeRoutes[0]!).base;
+
+    const tidFar = s.nextEntityId++;
+    s.units.set(tidFar, makeUnit(tidFar, 0, "trader", from.col, from.row));
+    establishTradeRoute(s, tidFar, to.id, 0);
+    const farBase = tradeRouteGoldBreakdown(s, s.tradeRoutes[1]!).base;
+
+    expect(nearBase).toBe(farBase);
   });
 
   it("gains a gold bonus when the route runs over a fully roaded path", () => {

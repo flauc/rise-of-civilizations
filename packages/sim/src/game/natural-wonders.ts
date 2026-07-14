@@ -1,23 +1,26 @@
 // Natural wonders: awe-inspiring single tiles placed on the map at world-gen
 // (Mount Everest, the Grand Canyon, the Great Barrier Reef…). Each occupies ONE
 // full tile whose art replaces the terrain. The FIRST civ to sight a wonder
-// claims a one-time bonus; worked by a citizen inside a civ's borders, the tile
-// also yields strong bonus output; and the first civ to have sighted EVERY
-// natural wonder earns a grand reward. All placement is deterministic (seeded).
+// claims a one-time bonus; tiles inside a civ's borders passively inspire culture
+// and tourism, and citizens working the tile also harvest its food/production/
+// science/faith yields; the first civ to have sighted EVERY natural wonder earns
+// a grand reward. All placement is deterministic (seeded).
 
-import { axialDistance, axialNeighbor, axialToOffset, getTile, hashSeed, offsetToAxial, type Tile } from "@roc/shared";
+import { axialDistance, axialNeighbor, axialToOffset, getTile, hashSeed, isWater, offsetToAxial, type Tile } from "@roc/shared";
 import {
   ALL_NATURAL_WONDERS_BONUS,
   NATURAL_WONDER_DEFS,
   getNaturalWonder,
   type NaturalWonderBonus,
 } from "@roc/data";
-import { log, playerById, unitAt, type GameState, type Player, type WonderDiscoveryInfo } from "./state";
+import { log, playerById, unitAt, citiesOf, type City, type GameState, type Player, type WonderDiscoveryInfo } from "./state";
 import { TECH_DEFS, type TechId } from "./content";
-import { ZERO_YIELDS, type Yields } from "./terrain";
+import { inRealWorldWonderBox, worldTileLatLon } from "../worldmask";
+import { isPassableLand, ZERO_YIELDS, type Yields } from "./terrain";
+import { cityTerritory } from "./territory";
 
-/** Bonus yields a citizen working a natural-wonder tile adds (excludes culture,
- *  which is summed separately in getCityYields — see naturalWonderCulture). */
+/** Bonus yields a citizen working a natural-wonder tile adds (culture is territorial,
+ *  not from working — see naturalWonderTerritoryCulture). */
 export function naturalWonderYields(tile: Tile): Yields {
   const def = getNaturalWonder(tile.naturalWonder);
   if (!def) return ZERO_YIELDS;
@@ -31,10 +34,49 @@ export function naturalWonderYields(tile: Tile): Yields {
   };
 }
 
-/** Culture a worked natural-wonder tile adds to its city (culture is a city-level
- *  yield, not part of the per-tile Yields vector). */
-export function naturalWonderCulture(tile: Tile): number {
+/** Culture listed on the wonder definition (may be 0). */
+export function naturalWonderCultureYield(tile: Tile): number {
   return getNaturalWonder(tile.naturalWonder)?.tileYields.culture ?? 0;
+}
+
+/** Culture a worked natural-wonder tile adds (alias of the def yield). */
+export function naturalWonderCulture(tile: Tile): number {
+  return naturalWonderCultureYield(tile);
+}
+
+/** Passive culture each turn while the wonder tile sits inside a city's borders. */
+export function naturalWonderTerritoryCulture(tile: Tile): number {
+  if (!tile.naturalWonder) return 0;
+  const c = naturalWonderCultureYield(tile);
+  return c > 0 ? c : 1;
+}
+
+/** Tourism (renown) projected while the wonder is held in your territory. */
+export function naturalWonderTerritoryTourism(tile: Tile): number {
+  if (!tile.naturalWonder) return 0;
+  return Math.max(2, naturalWonderTerritoryCulture(tile));
+}
+
+/** Sum passive culture from every natural-wonder tile in a city's territory. */
+export function naturalWonderTerritoryCultureForCity(state: GameState, city: City): number {
+  let total = 0;
+  for (const { col, row } of cityTerritory(state, city)) {
+    const tile = getTile(state.map, col, row);
+    if (tile) total += naturalWonderTerritoryCulture(tile);
+  }
+  return total;
+}
+
+/** Total tourism from natural wonders held across a player's empire. */
+export function naturalWonderTerritoryTourismForPlayer(state: GameState, playerId: number): number {
+  let total = 0;
+  for (const city of citiesOf(state, playerId)) {
+    for (const { col, row } of cityTerritory(state, city)) {
+      const tile = getTile(state.map, col, row);
+      if (tile) total += naturalWonderTerritoryTourism(tile);
+    }
+  }
+  return total;
 }
 
 // ---- discovery -----------------------------------------------------------
@@ -155,14 +197,12 @@ export function placeNaturalWonders(
   const placedIds: string[] = [];
   const placed: { col: number; row: number }[] = [];
 
-  // Scale the number of wonders to the map size (the old generator placed one of
-  // every wonder regardless of size). ~1 wonder per WONDER_TILES_PER tiles, floored
-  // so small maps still get a few and capped at the unique wonders we have.
-  // e.g. small≈4, medium≈7, large≈12, huge≈20, giant≈28.
-  const WONDER_TILES_PER = 240;
+  // Scale wonder count to map size: ~8–10 on giant maps, fewer on small ones.
+  // Cap at 10 so the world never feels overcrowded with wonders.
+  const WONDER_TILES_PER = 750;
   const targetCount = Math.max(
     3,
-    Math.min(NATURAL_WONDER_DEFS.length, Math.round((map.cols * map.rows) / WONDER_TILES_PER)),
+    Math.min(10, Math.round((map.cols * map.rows) / WONDER_TILES_PER)),
   );
 
   // Deterministically shuffle the wonder defs so each game places a varied subset
@@ -198,12 +238,48 @@ export function placeNaturalWonders(
       return isSea(nb.col, nb.row);
     });
   };
-  const farFromStarts = (col: number, row: number): boolean =>
-    starts.every((s) => !s || axialDistance(offsetToAxial(s), offsetToAxial({ col, row })) >= 6);
-  // Hard spacing guarantee: two wonders never sit within sight of each other.
-  const MIN_WONDER_SPACING = 6;
+  const neighborTilesAt = (col: number, row: number): Tile[] => {
+    const here = offsetToAxial({ col, row });
+    const out: Tile[] = [];
+    for (let d = 0; d < 6; d++) {
+      const nb = axialToOffset(axialNeighbor(here, d));
+      const t = getTile(map, nb.col, nb.row);
+      if (t) out.push(t);
+    }
+    return out;
+  };
+  const bordersLand = (col: number, row: number): boolean =>
+    neighborTilesAt(col, row).some((n) => isPassableLand(n.terrain));
+  /** Every neighbour is open ocean (not coast beside land). */
+  const ringedByOcean = (col: number, row: number): boolean =>
+    neighborTilesAt(col, row).every((n) => n.terrain === "ocean");
+  const besideWater = (t: Tile): boolean => {
+    if (isWater(t.terrain) || t.river || t.riverLake) return true;
+    return neighborTilesAt(t.col, t.row).some(
+      (n) => isWater(n.terrain) || n.river || n.riverLake,
+    );
+  };
+  const farFromStarts = (col: number, row: number): boolean => {
+    const minDist = realWorld ? 4 : 6;
+    return starts.every((s) => !s || axialDistance(offsetToAxial(s), offsetToAxial({ col, row })) >= minDist);
+  };
+  // Hard spacing guarantee: two wonders never sit within 10 hexes of each other.
+  const MIN_WONDER_SPACING = 10;
   const tooClose = (col: number, row: number): boolean =>
     placed.some((p) => axialDistance(offsetToAxial(p), offsetToAxial({ col, row })) < MIN_WONDER_SPACING);
+  const realWorld = map.mapType === "realworld";
+  type RealWorldBox = NonNullable<(typeof NATURAL_WONDER_DEFS)[number]["realWorldBox"]>;
+  const REAL_WORLD_BOX_PAD = 2;
+  const expandedBox = (box: RealWorldBox): RealWorldBox => ({
+    latMin: box.latMin - REAL_WORLD_BOX_PAD,
+    latMax: box.latMax + REAL_WORLD_BOX_PAD,
+    lonMin: box.lonMin - REAL_WORLD_BOX_PAD,
+    lonMax: box.lonMax + REAL_WORLD_BOX_PAD,
+  });
+  const inWonderRegion = (col: number, row: number, box: RealWorldBox): boolean => {
+    const { lat, lon } = worldTileLatLon(col, row, map.cols, map.rows);
+    return inRealWorldWonderBox(lat, lon, realWorld ? expandedBox(box) : box);
+  };
 
   for (const def of order) {
     if (placedIds.length >= targetCount) break;
@@ -213,9 +289,13 @@ export function placeNaturalWonders(
       if (occupied(t) || t.river || !def.validTerrain.includes(t.terrain)) continue;
       // Coastline wonders additionally require adjacent sea. Front-facing cliffs
       // need their two lower edges on the water; others just need any sea neighbour.
+      if (def.openOcean && (t.terrain !== "ocean" || !ringedByOcean(t.col, t.row))) continue;
+      if (def.coastalWater && (!isWater(t.terrain) || !bordersLand(t.col, t.row))) continue;
+      if (def.adjacentToWater && !besideWater(t)) continue;
       if (def.coastalFront) {
         if (!frontFacesSea(t.col, t.row)) continue;
       } else if (def.coastal && !bordersSea(t.col, t.row)) continue;
+      if (realWorld && def.realWorldBox && !inWonderRegion(t.col, t.row, def.realWorldBox)) continue;
       if (!farFromStarts(t.col, t.row)) continue;
       if (unitAt(state, t.col, t.row)) continue;
       candidates.push({ col: t.col, row: t.row, key: hashSeed(`nw:${def.id}:${t.col},${t.row}:${seed}`) });

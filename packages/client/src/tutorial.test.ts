@@ -43,7 +43,7 @@ describe("tutorial preset", () => {
     expect(setup.aiCivIds).toEqual([null]);
     expect(setup.barbarianLevel).toBe("minimal");
     expect(setup.gameSpeed).toBe("normal");
-    expect(setup.villages).toBe(true);
+    expect(setup.villages).toBe("medium");
     expect(setup.naturalWonders).toBe(true);
     expect(setup.legends).toBe(true);
     expect(setup.startingGold).toBe("balanced");

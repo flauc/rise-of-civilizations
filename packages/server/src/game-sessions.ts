@@ -3,12 +3,14 @@
 
 import type {
   AdminGameSession,
+  AdminGameSessionDetail,
   GameMode,
   GameSessionFilters,
   GameSessionListQuery,
   GameSessionListResponse,
   GameSessionSortField,
   SessionOutcome,
+  SessionScoreboardEntry,
 } from "@roc/shared";
 import { clampFilterText, resolveSqlSortColumn } from "@roc/shared";
 import type { SessionRow } from "./analytics";
@@ -66,13 +68,8 @@ function parseSort(v: string | null): GameSessionSortField | undefined {
   return SORT_FIELDS.has(v as GameSessionSortField) ? (v as GameSessionSortField) : undefined;
 }
 
-/** Parse /admin/api/games query params into a normalized list query. */
-export function parseGameSessionQuery(params: URLSearchParams): GameSessionListQuery {
-  const page = Math.max(1, parseIntOpt(params.get("page")) ?? 1);
-  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseIntOpt(params.get("pageSize")) ?? DEFAULT_PAGE_SIZE));
-  const sort = parseSort(params.get("sort"));
-  const order = params.get("order") === "asc" ? "asc" : "desc";
-
+/** Parse filter query params shared by the games table and reporting screen. */
+export function parseGameSessionFilters(params: URLSearchParams): GameSessionFilters {
   const filters: GameSessionFilters = {};
   const text = (key: keyof GameSessionFilters): void => {
     const v = parseText(params.get(String(key)));
@@ -112,6 +109,17 @@ export function parseGameSessionQuery(params: URLSearchParams): GameSessionListQ
     if (n !== undefined) filters[key] = n;
   }
 
+  return filters;
+}
+
+/** Parse /admin/api/games query params into a normalized list query. */
+export function parseGameSessionQuery(params: URLSearchParams): GameSessionListQuery {
+  const page = Math.max(1, parseIntOpt(params.get("page")) ?? 1);
+  const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, parseIntOpt(params.get("pageSize")) ?? DEFAULT_PAGE_SIZE));
+  const sort = parseSort(params.get("sort"));
+  const order = params.get("order") === "asc" ? "asc" : "desc";
+
+  const filters = parseGameSessionFilters(params);
   const hasFilters = Object.keys(filters).length > 0;
   return { page, pageSize, sort, order, filters: hasFilters ? filters : undefined };
 }
@@ -147,6 +155,42 @@ export function rowToAdminGameSession(row: SessionRow): AdminGameSession {
     startedAt: row.startedAt,
     endedAt: row.endedAt,
   };
+}
+
+/** Build a scoreboard for older sessions that predate the scoreboard field. */
+function formatAiCivLabel(civ: string | null | undefined, slot: number): string {
+  if (!civ) return `AI ${slot + 1} (random)`;
+  return civ
+    .split(/[_-]/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+export function deriveScoreboard(row: SessionRow): SessionScoreboardEntry[] {
+  if (row.scoreboard?.length) return row.scoreboard;
+  const entries: SessionScoreboardEntry[] = [];
+  if (row.civId || row.handle || row.score != null) {
+    entries.push({
+      name: row.handle?.trim() || "You",
+      civId: row.civId,
+      isHuman: true,
+      score: row.score,
+      isViewer: true,
+    });
+  }
+  for (let i = 0; i < (row.aiCivIds?.length ?? 0); i++) {
+    const civ = row.aiCivIds![i];
+    entries.push({
+      name: formatAiCivLabel(civ, i),
+      civId: civ ?? undefined,
+      isHuman: false,
+    });
+  }
+  return entries;
+}
+
+export function rowToAdminGameSessionDetail(row: SessionRow): AdminGameSessionDetail {
+  return { ...rowToAdminGameSession(row), scoreboard: deriveScoreboard(row) };
 }
 
 function sortValue(row: SessionRow, field: GameSessionSortField): string | number {

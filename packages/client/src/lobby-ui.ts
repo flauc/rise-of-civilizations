@@ -130,7 +130,7 @@ interface MenuState {
     ais: AiConfig[];
     barbarians: BarbLevel;
     naturalWonders: boolean;
-    villages: boolean;
+    villages: VillageLevel;
     legends: boolean;
     startingGold: StartingGold;
     turnLimit: number;
@@ -205,6 +205,26 @@ function barbarianSelect(id: string, value: string): string {
     { value: "minimal", label: "Minimal" },
     { value: "low", label: "Low" },
     { value: "normal", label: "Normal" },
+    { value: "high", label: "High" },
+  ];
+  return `<select id="${id}" class="menu-in">${opts
+    .map((o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${o.label}</option>`)
+    .join("")}</select>`;
+}
+
+const VILLAGE_LEVELS = ["none", "medium", "high"] as const;
+type VillageLevel = (typeof VILLAGE_LEVELS)[number];
+
+function normalizeVillageLevel(v: boolean | string | undefined): VillageLevel {
+  if (v === false || v === "none" || v === "off") return "none";
+  if (v === "high") return "high";
+  return "medium";
+}
+
+function villageSelect(id: string, value: VillageLevel): string {
+  const opts = [
+    { value: "none", label: "None" },
+    { value: "medium", label: "Medium" },
     { value: "high", label: "High" },
   ];
   return `<select id="${id}" class="menu-in">${opts
@@ -328,7 +348,7 @@ function defaultSpSetup(): SpSetup {
     ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],
     barbarians: "normal",
     naturalWonders: true,
-    villages: true,
+    villages: "medium",
     legends: true,
     startingGold: "balanced",
     turnLimit: DEFAULT_TURN_LIMIT,
@@ -393,7 +413,7 @@ function loadSpSetup(defaults: SpSetup): SpSetup {
   if (MAP_TYPE_OPTIONS.some((o) => o.value === saved!.mapType)) out.mapType = saved.mapType!;
   if (BARB_LEVELS.includes(saved.barbarians as BarbLevel)) out.barbarians = saved.barbarians!;
   if (typeof saved.naturalWonders === "boolean") out.naturalWonders = saved.naturalWonders;
-  if (typeof saved.villages === "boolean") out.villages = saved.villages;
+  out.villages = normalizeVillageLevel(saved.villages);
   if (typeof saved.legends === "boolean") out.legends = saved.legends;
   if (GOLD_OPTIONS.some((o) => o.value === saved!.startingGold)) out.startingGold = saved.startingGold!;
   if (TURN_LIMIT_OPTIONS.some((o) => o.value === saved!.turnLimit)) out.turnLimit = saved.turnLimit!;
@@ -512,7 +532,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .sp-panel-scroll{flex:1;min-height:0;overflow:auto;padding:28px;padding-bottom:12px;-webkit-overflow-scrolling:touch}
     .sp-panel-actions{flex:none;display:flex;gap:10px;padding:14px 28px max(14px,env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:linear-gradient(180deg,#1a1710 0%,#15120c 100%);box-shadow:0 -8px 24px rgba(0,0,0,.35)}
     .sp-panel-actions .menu-btn{flex:1;width:auto;margin:0}
-    .lobby-right{flex:1;position:relative;display:grid;grid-template-columns:minmax(0,1fr) clamp(160px,24vw,240px);grid-template-rows:minmax(0,1fr);gap:20px 24px;align-items:center;min-height:0;height:100%;padding:24px 32px;background:radial-gradient(circle at 70% 30%,rgba(201,162,39,0.14) 0%,#0f0e0b 60%);overflow:hidden}
+    .lobby-right{flex:1;position:relative;display:grid;grid-template-columns:minmax(0,1fr) clamp(160px,24vw,240px);grid-template-rows:minmax(0,1fr);gap:20px 24px;align-items:start;min-height:0;height:100%;padding:24px 32px;background:radial-gradient(circle at 70% 30%,rgba(201,162,39,0.14) 0%,#0f0e0b 60%);overflow:hidden}
     .lobby-right::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,14,11,0) 0%,rgba(15,14,11,.78) 100%);pointer-events:none}
     .lobby-title{font-family:'Cinzel',Georgia,serif;font-size:28px;font-weight:800;color:#e8dcc5;letter-spacing:.5px;margin-bottom:4px}
     .lobby-subtitle{color:#b8aa8d;font-size:13px;margin-bottom:24px}
@@ -617,7 +637,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .save-dropdown-item.delete{color:#e0907d}
     .save-dropdown-item.delete:hover{background:rgba(138,44,44,.18);color:#e0a69a}
     .hidden{display:none !important}
-    .showcase{position:relative;z-index:1;grid-column:1;grid-row:1;align-self:end;min-width:0;max-height:100%;overflow-y:auto;padding-right:8px;padding-bottom:4px}
+    .showcase{position:relative;z-index:1;grid-column:1;grid-row:1;align-self:start;min-width:0;max-height:100%;overflow-y:auto;padding-right:8px;padding-top:4px;padding-bottom:4px}
     .showcase-label{font-family:'Cinzel',Georgia,serif;font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#c9a227;margin-bottom:10px;opacity:.85}
     .showcase-civ{font-family:'Cinzel',Georgia,serif;font-size:clamp(28px,4.2vw,52px);font-weight:900;color:#e8dcc5;line-height:1.05;text-shadow:0 4px 24px rgba(0,0,0,.55)}
     .showcase-leader{font-family:'Cinzel',Georgia,serif;font-size:clamp(16px,2vw,22px);color:#f0d878;margin-top:8px;font-weight:600}
@@ -629,25 +649,22 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .showcase-ability-desc{font-size:13px;color:#e8dcc5;line-height:1.4}
     .showcase-uniques{margin-top:10px;font-size:12px;color:#b8aa8d}
     .showcase-wiki{width:auto;margin-top:18px;padding:9px 16px;font-size:14px}
-    .showcase-side{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:12px;align-self:center;justify-self:end;width:100%;max-height:100%;min-height:0;z-index:2}
+    .showcase-side{grid-column:2;grid-row:1;display:flex;flex-direction:column;gap:12px;align-self:start;justify-self:end;width:100%;max-height:100%;min-height:0;z-index:2}
     .showcase-art-wrapper{position:relative;flex:0 1 auto;width:100%;max-height:min(300px,calc(100dvh - 96px));aspect-ratio:13/16;min-height:0;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.55);border:1px solid rgba(201,162,39,.25)}
-    .showcase-art{width:100%;height:100%;object-fit:cover;object-position:50% 18%;display:block;border-radius:16px}
+    .showcase-art{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;border-radius:16px}
     .showcase-art-placeholder{position:absolute;inset:0;border:2px dashed rgba(201,162,39,.2);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#b8aa8d;font-size:13px;text-align:center;background:rgba(201,162,39,.05)}
     .showcase-reroll{position:relative;flex:0 0 auto;width:100%;margin-top:0;z-index:2}
-    /* Desktop / tall screens: classic hero top-right, copy anchored bottom-left. */
+    /* Desktop / tall screens: hero copy and portrait both anchored from the top. */
     @media (min-width:861px) and (min-height:521px){
       .lobby-right{display:flex;flex-direction:column;align-items:stretch;gap:0;padding:48px 56px;overflow-y:auto}
-      /* margin-top:auto keeps the hero copy bottom-anchored when there's room,
-         but collapses to 0 for the tallest civs so the title stays visible and
-         the column scrolls instead of clipping off the top edge. */
-      .showcase{align-self:auto;margin-top:auto;max-width:720px;max-height:none;overflow:visible;padding-right:0;padding-bottom:0}
+      .showcase{align-self:start;margin-top:0;max-width:720px;max-height:none;overflow:visible;padding-right:0;padding-bottom:0}
       .showcase-civ{font-size:52px}
       .showcase-leader{font-size:22px;margin-top:8px}
       .showcase-quote{font-size:20px;line-height:1.5;margin-top:22px;max-width:640px}
       .showcase-ability{margin-top:26px;padding:16px 18px}
       .showcase-side{position:absolute;top:48px;right:56px;width:260px;align-self:auto;justify-self:auto;max-height:none;gap:12px}
       .showcase-art-wrapper{width:260px;height:320px;max-height:320px;aspect-ratio:auto;flex:none;border-radius:16px}
-      .showcase-art{object-position:50% 50%;border-radius:16px}
+      .showcase-art{object-position:top center;border-radius:16px}
       .showcase-reroll{width:100%}
     }
     /* Unique-unit block — shared by the showcase and the civ picker. Clickable
@@ -785,7 +802,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       .showcase{grid-column:auto;grid-row:auto;align-self:auto;max-height:none;overflow:visible;padding-right:0;order:0}
       .showcase-side{display:contents}
       .showcase-art-wrapper{position:static;grid-column:auto;grid-row:auto;order:-1;width:100%;max-width:260px;max-height:none;aspect-ratio:auto;height:auto;margin:0 auto 16px;border-radius:14px}
-      .showcase-art{height:auto;border-radius:14px}
+      .showcase-art{height:auto;object-position:top center;border-radius:14px}
       .showcase-civ{font-size:34px}
       .showcase-leader{font-size:20px}
       .showcase-quote{font-size:16px;margin-top:14px}
@@ -1370,7 +1387,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           <div class="menu-row"><span>Game speed</span>${gameSpeedSelect("sp-speed", state.sp.gameSpeed)}</div>
           <div class="menu-hint" id="sp-speed-desc"></div>
           <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
-          <div class="menu-row"><span>Tribal villages</span>${onOffSelect("sp-villages", state.sp.villages)}</div>
+          <div class="menu-row"><span>Tribal villages</span>${villageSelect("sp-villages", state.sp.villages)}</div>
           <div class="menu-row"><span>Natural wonders</span>${onOffSelect("sp-wonders", state.sp.naturalWonders)}</div>
           <div class="menu-row"><span>Legends (heroes)</span>${onOffSelect("sp-legends", state.sp.legends)}</div>
           <div class="menu-field">
@@ -1532,7 +1549,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       close();
       const spMapSize = $select("#sp-map").value as MapSize;
       const spBarb = $select("#sp-barb").value as BarbLevel;
-      const spVillages = $select("#sp-villages").value === "on";
+      const spVillages = normalizeVillageLevel($select("#sp-villages").value);
       const spWonders = $select("#sp-wonders").value === "on";
       const spLegends = $select("#sp-legends").value === "on";
       const spTurnLimit = Number($select("#sp-turnlimit").value);
@@ -1757,7 +1774,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         mapSize: "medium",
         startingGold: "balanced",
         naturalWonders: true,
-        villages: true,
+        villages: "medium",
         barbarianLevel: "normal",
         aiCivIds: [],
         turnLimit: DEFAULT_TURN_LIMIT,
@@ -1774,7 +1791,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         capacity: 2,
         barbarians: "normal",
         naturalWonders: true,
-        villages: true,
+        villages: "medium",
         startingGold: "balanced",
         turnLimit: DEFAULT_TURN_LIMIT,
         gameSpeed: DEFAULT_GAME_SPEED,
@@ -1854,7 +1871,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
             <div class="mp-opt"><span>Turn limit</span>${turnLimitSelect("rm-turnlimit", room.turnLimit ?? DEFAULT_TURN_LIMIT)}</div>
             <div class="mp-opt"><span>Game speed</span>${gameSpeedSelect("rm-speed", room.gameSpeed ?? DEFAULT_GAME_SPEED)}</div>
             <div class="mp-opt"><span>Barbarians</span>${barbarianSelect("rm-barb", room.barbarians)}</div>
-            <div class="mp-opt"><span>Tribal villages</span>${onOffSelect("rm-villages", room.villages ?? true)}</div>
+            <div class="mp-opt"><span>Tribal villages</span>${villageSelect("rm-villages", normalizeVillageLevel(room.villages))}</div>
             <div class="mp-opt"><span>Natural wonders</span>${onOffSelect("rm-wonders", room.naturalWonders)}</div>
             <div class="mp-opt"><span>Starting treasury</span>${goldChips("rm-gold", room.startingGold)}</div>
             <div class="mp-opt mp-opt-wide"><span>Victory conditions</span>${victoryChecklist("rm-victories", room.enabledVictories ?? [...TOGGLEABLE_VICTORIES])}</div>
@@ -1865,7 +1882,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
             <span><b>Turn limit:</b> ${escapeHtml(turnLimitLabel(room.turnLimit ?? DEFAULT_TURN_LIMIT))}</span>
             <span><b>Game speed:</b> ${escapeHtml(gameSpeedLabel(room.gameSpeed ?? DEFAULT_GAME_SPEED))}</span>
             <span><b>Barbarians:</b> ${escapeHtml(room.barbarians)}</span>
-            <span><b>Tribal villages:</b> ${(room.villages ?? true) ? "On" : "Off"}</span>
+            <span><b>Tribal villages:</b> ${escapeHtml(normalizeVillageLevel(room.villages).replace(/^./, (c) => c.toUpperCase()))}</span>
             <span><b>Natural wonders:</b> ${room.naturalWonders ? "On" : "Off"}</span>
             <span><b>Treasury:</b> ${escapeHtml(room.startingGold)}</span>
             <span><b>Victories:</b> ${escapeHtml(victorySummary(room.enabledVictories ?? [...TOGGLEABLE_VICTORIES]))}</span>
@@ -1980,7 +1997,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           configure({ barbarians: (e.target as HTMLSelectElement).value }),
         );
         body.querySelector<HTMLSelectElement>("#rm-villages")?.addEventListener("change", (e) => {
-          const villages = (e.target as HTMLSelectElement).value === "on";
+          const villages = normalizeVillageLevel((e.target as HTMLSelectElement).value);
           if (mpSetup) mpSetup.villages = villages;
           configure({ villages });
         });

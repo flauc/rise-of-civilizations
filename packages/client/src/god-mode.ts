@@ -18,7 +18,7 @@ import {
   makeUnit,
   STRUCTURE_HP,
   TECH_DEFS,
-  expandTerritoryRing,
+  expandTerritory,
   citiesOf,
   unitAt,
   unitMaxHp,
@@ -123,10 +123,11 @@ export function applyCheat(
     case "addPopulation": {
       const cities = citiesOf(state, playerId);
       if (cities.length === 0) return { ok: false, error: "you have no cities" };
-      let claimed = 0;
-      for (const city of cities) claimed += expandTerritoryRing(state, city);
-      if (claimed === 0) return { ok: false, error: "no room to expand" };
-      log(state, `${player.name} expanded every city's borders (cheat).`, {
+      for (const city of cities) {
+        city.population += 1;
+        expandTerritory(state, city); // same one-tile grow as natural city growth
+      }
+      log(state, `${player.name} added population to every city (cheat).`, {
         actorId: playerId,
         targetIds: [playerId],
       });

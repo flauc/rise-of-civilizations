@@ -6,6 +6,9 @@ import { autoManageCities } from "./ai";
 import { resolveAttack } from "./combat";
 import { isMilitary } from "./content";
 import { citiesOf, makeUnit, playerById, unitsOf } from "./state";
+import { specialistsByType, workerSlots } from "./specialists";
+import { assignSpecialist, startWork } from "./works";
+import { getTile } from "@roc/shared";
 
 function foundedGame() {
   const s = createGame({ seed: "gov", cols: 40, rows: 28, barbarians: false });
@@ -95,6 +98,20 @@ describe("governor mode (city auto-management)", () => {
     expect(city.trainingQueue.some((o) => isMilitary(o.unit))).toBe(true);
   });
 
+  it("military focus fills every open barracks slot and does not queue new public works", () => {
+    const { s, city } = foundedGame();
+    const player = playerById(s, 0)!;
+    city.population = 6;
+    city.training.barracks = 3; // tier 3 → 2 concurrent training slots
+    const worksBefore = s.works.length;
+
+    applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode: "military" });
+    autoManageCities(s, player);
+
+    expect(city.trainingQueue.filter((o) => isMilitary(o.unit)).length).toBe(2);
+    expect(s.works.length).toBe(worksBefore);
+  });
+
   it("does nothing for cities left in manual mode", () => {
     const { s, city } = foundedGame();
     const player = playerById(s, 0)!;
@@ -122,4 +139,100 @@ describe("governor mode (city auto-management)", () => {
     expect(city.ownerId).toBe(1); // captured
     expect(city.autoMode).toBeUndefined(); // governor cleared for the new owner
   });
+
+  it("switching governor focus releases AI-trained idle carpenters but keeps manual ones", () => {
+    const { s, city } = foundedGame();
+    city.population = 6;
+
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const aiCarpenter = specialistsByType(city, "carpenter")[0]!;
+
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1, manual: true });
+    const manualCarpenter = specialistsByType(city, "carpenter").find((sp) => sp.id !== aiCarpenter.id)!;
+    expect(city.lockedSpecialists).toContain(manualCarpenter.id);
+
+    for (const mode of ["military", "science", "money"] as const) {
+      applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+      const extraAi = specialistsByType(city, "carpenter").find(
+        (sp) => sp.id !== aiCarpenter.id && sp.id !== manualCarpenter.id,
+      )!;
+      applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode });
+      expect(city.specialists.some((sp) => sp.id === extraAi.id)).toBe(false);
+      expect(city.specialists.some((sp) => sp.id === manualCarpenter.id)).toBe(true);
+    }
+    expect(workerSlots(city)).toBeGreaterThan(0);
+  });
+
+  it("AI carpenter finishes the current job after a focus change, then is freed without starting a new one", () => {
+    const { s, city } = foundedGame();
+    city.population = 6;
+
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1 });
+    const aiCarpenter = specialistsByType(city, "carpenter")[0]!;
+    const tile = workableFarmTile(s, city);
+    expect(startWork(s, 0, "farm", tile.col, tile.row).ok).toBe(true);
+    const work = s.works.find((w) => w.target?.col === tile.col)!;
+    expect(assignSpecialist(s, 0, work.id, aiCarpenter.id, true).ok).toBe(true);
+
+    applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode: "military" });
+    expect(city.specialists.some((sp) => sp.id === aiCarpenter.id)).toBe(true);
+    expect(work.assignedSpecialistIds).toContain(aiCarpenter.id);
+    expect(city.pendingSpecialistRelease).toContain(aiCarpenter.id);
+
+    // Work completes — next governed turn releases the carpenter; no new work is queued.
+    const worksBefore = s.works.length;
+    work.progress.carpentry = work.requirement.carpentry ?? 999;
+    autoManageCities(s, playerById(s, 0)!);
+    expect(city.specialists.some((sp) => sp.id === aiCarpenter.id)).toBe(false);
+    expect(s.works.length).toBeLessThanOrEqual(worksBefore);
+  });
+
+  it("manual carpenters stay when governor focus changes, even after AI ones are freed", () => {
+    const { s, city } = foundedGame();
+    city.population = 4;
+    applyCommand(s, { type: "convertCitizen", cityId: city.id, specialistId: "carpenter", delta: 1, manual: true });
+    const manual = city.specialists[0]!;
+    applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode: "military" });
+    expect(city.specialists.some((sp) => sp.id === manual.id)).toBe(true);
+    expect(city.pendingSpecialistRelease ?? []).not.toContain(manual.id);
+  });
+
+  it("growth governor keeps citizens free when no public works are queued", () => {
+    const { s, city } = foundedGame();
+    const player = playerById(s, 0)!;
+    city.population = 6;
+    player.researched.add("masonry");
+    player.researched.add("the_wheel");
+    for (const t of s.map.tiles) {
+      if (t.ownerCityId !== city.id) continue;
+      t.improvement = "farm";
+      t.improvementLevel = 3;
+    }
+    applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode: "growth" });
+    autoManageCities(s, player);
+    expect(city.specialists.length).toBe(0);
+    expect(workerSlots(city)).toBe(6);
+  });
+
+  it("growth governor trains a specialist on demand when queueing a farm", () => {
+    const { s, city } = foundedGame();
+    const player = playerById(s, 0)!;
+    city.population = 4;
+    workableFarmTile(s, city);
+    applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode: "growth" });
+    autoManageCities(s, player);
+    expect(specialistsByType(city, "carpenter").length).toBe(1);
+    expect(s.works.some((w) => w.kind === "farm")).toBe(true);
+  });
 });
+
+function workableFarmTile(s: ReturnType<typeof createGame>, city: ReturnType<typeof citiesOf>[0]) {
+  for (const t of s.map.tiles) {
+    if (t.ownerCityId !== city.id || t.improvement || t.resource) continue;
+    if (t.terrain === "grassland" || t.terrain === "plains") return t;
+  }
+  const t = getTile(s.map, city.col + 1, city.row)!;
+  t.terrain = "grassland";
+  t.ownerCityId = city.id;
+  return t;
+}

@@ -1,15 +1,18 @@
-const CACHE_NAME = "rise-of-civ-v1";
+const CACHE_NAME = "rise-of-civ-v2";
 
 // Core shell files that should be available immediately after install.
 const PRECACHE = [
-  "./",
-  "./index.html",
-  "./manifest.json",
-  "./icon.svg",
-  "./icon-192.png",
-  "./icon-512.png",
-  "./apple-touch-icon.png",
-  "./maskable-icon-192.png",
+  "/",
+  "/index.html",
+  "/manifest.json",
+  "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png",
+  "/maskable-icon-192.png",
+  "/privacy.html",
+  "/terms.html",
+  "/delete-account.html",
 ];
 
 self.addEventListener("install", (event) => {
@@ -41,6 +44,18 @@ self.addEventListener("fetch", (event) => {
 
   // Only handle GET requests for same-origin resources.
   if (request.method !== "GET" || !new URL(request.url).origin.includes(self.location.origin)) {
+    return;
+  }
+
+  const url = new URL(request.url);
+
+  // Standalone legal pages (no JS required) — network first, do not SPA-fallback.
+  if (
+    url.pathname === "/privacy.html" ||
+    url.pathname === "/terms.html" ||
+    url.pathname === "/delete-account.html"
+  ) {
+    event.respondWith(fetch(request).catch(() => caches.match(request)));
     return;
   }
 

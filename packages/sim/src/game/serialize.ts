@@ -5,8 +5,8 @@ import type {
   Unit, VictoryKind, Work,
 } from "./state";
 import { defaultEnabledVictories } from "./state";
-import { computeVisible } from "./visibility";
-import { attitudeLabel, attitudeScore, sharedVisionPartners } from "./diplomacy";
+import { exploredForPlayer, visibleForPlayer } from "./visibility";
+import { attitudeLabel, attitudeScore } from "./diplomacy";
 import { GLOBAL_MORALE_BASE } from "./morale";
 import { victoryProgress, type VictoryProgressEntry } from "./victory";
 import type { TechId } from "./content";
@@ -194,17 +194,10 @@ function buildDiploView(state: GameState, playerId: number): DiploView {
 /** Build the state a player is allowed to see (fog of war enforced here). */
 export function viewForPlayer(state: GameState, playerId: number): PlayerView {
   const me = state.players.find((p) => p.id === playerId);
-  // Start from the player's own knowledge, then fold in every civ they've swapped
-  // maps with: their explored tiles (fog memory) and current sight. Working on
-  // copies means cancelling the pact cleanly revokes the borrowed vision — nothing
-  // partner-owned ever leaks into the player's persisted `explored` set.
-  const explored = new Set<string>(me?.explored ?? []);
-  const visible = computeVisible(state, playerId);
-  for (const partnerId of sharedVisionPartners(state, playerId)) {
-    const partner = state.players.find((p) => p.id === partnerId);
-    if (partner) for (const k of partner.explored) explored.add(k);
-    for (const k of computeVisible(state, partnerId)) visible.add(k);
-  }
+  // Borrowed map-exchange sight is folded in here; partner tiles never mutate the
+  // viewer's persisted `explored` set, so cancelling the pact revokes them cleanly.
+  const explored = exploredForPlayer(state, playerId);
+  const visible = visibleForPlayer(state, playerId);
 
   const tiles: TileView[] = [];
   for (const key of explored) {
@@ -288,7 +281,12 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
       .filter((r, i, arr) => arr.findIndex((x) => x.id === r.id) === i)
       .map((r) => ({ ...r, path: [...r.path] })),
     works: state.works
-      .filter((w) => w.ownerId === playerId)
+      .filter((w) => {
+        if (w.ownerId === playerId) return true;
+        // Opponent wonder build sites are visible once the tile is in sight.
+        if (w.kind !== "wonder" || !w.target) return false;
+        return visible.has(`${w.target.col},${w.target.row}`);
+      })
       .map((w) => ({ ...w, cityIds: [...w.cityIds], assignedSpecialistIds: [...w.assignedSpecialistIds] })),
     roadRoutes: state.roadRoutes
       .filter((r) => r.ownerId === playerId)

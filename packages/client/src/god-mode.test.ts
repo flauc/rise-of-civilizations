@@ -49,7 +49,7 @@ test("founds a city by spawning a settler", () => {
   expect(s.cities.size).toBe(before + 1);
 });
 
-test("expands every city border by one ring", () => {
+test("adds population and expands each city by one tile", () => {
   const s = newGame();
   const p = currentPlayer(s);
   const tile = s.map.tiles.find(
@@ -58,10 +58,12 @@ test("expands every city border by one ring", () => {
   )!;
   applyCheat(s, p.id, { type: "foundCity", col: tile.col, row: tile.row });
   const city = [...s.cities.values()].find((c) => c.ownerId === p.id)!;
-  const before = territorySize(s, city);
+  const beforePop = city.population;
+  const beforeTerritory = territorySize(s, city);
   const res = applyCheat(s, p.id, { type: "addPopulation" });
   expect(res.ok).toBe(true);
-  expect(territorySize(s, city)).toBeGreaterThan(before);
+  expect(city.population).toBe(beforePop + 1);
+  expect(territorySize(s, city)).toBeGreaterThan(beforeTerritory);
 });
 
 test("spawns a unit and adds gold", () => {

@@ -13,7 +13,9 @@ import {
   type BugReportContext,
   type GameMode,
   type SessionOutcome,
+  type SessionScoreboardEntry,
 } from "@roc/shared";
+import { buildSessionScoreboard } from "@roc/sim";
 
 const CLIENT_ID_KEY = "roc-client-id";
 const QUEUE_KEY = "roc-analytics-queue";
@@ -160,11 +162,34 @@ function flushBeacon(): void {
 
 // ---- active-session tracking (for abandoned detection) -------------------
 
+interface SessionEndExtras {
+  score?: number;
+  scoreRank?: number;
+  scoreboard?: SessionScoreboardEntry[];
+}
+
+/** Build final standings from a live game state (human + AI scores). Re-exported from sim. */
+export { buildSessionScoreboard } from "@roc/sim";
+
+/** Viewer score + 1-based rank from a sorted scoreboard. */
+export function viewerScoreFromBoard(board: SessionScoreboardEntry[]): SessionEndExtras {
+  const idx = board.findIndex((p) => p.isViewer);
+  if (idx < 0) return { scoreboard: board };
+  return { scoreboard: board, score: board[idx]!.score, scoreRank: idx + 1 };
+}
+
+/** Optional hook so tab-close abandon can snapshot scores from the running game. */
+let sessionSnapshotProvider: (() => SessionEndExtras | undefined) | null = null;
+
+export function registerSessionSnapshotProvider(fn: (() => SessionEndExtras | undefined) | null): void {
+  sessionSnapshotProvider = fn;
+}
+let active: ActiveSession | null = null;
+
 interface ActiveSession extends SessionStartMeta {
   sessionId: string;
   turns: number;
 }
-let active: ActiveSession | null = null;
 
 function persistActive(): void {
   try {
@@ -209,7 +234,7 @@ export interface SessionStartMeta {
   legends?: boolean;
   barbarianLevel?: string;
   naturalWonders?: boolean;
-  villages?: boolean;
+  villages?: boolean | "none" | "medium" | "high";
   startingGold?: string;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit?: number;
@@ -245,12 +270,25 @@ function sessionEndPayload(
   };
 }
 
-export function abandonActiveSession(): void {
+function mergeSessionEndExtras(extras?: SessionEndExtras): SessionEndExtras {
+  return extras ?? sessionSnapshotProvider?.() ?? {};
+}
+
+export function abandonActiveSession(extras?: SessionEndExtras): void {
   if (!active) return;
   const { sessionId, turns } = active;
+  const snap = mergeSessionEndExtras(extras);
   active = null;
   persistActive();
-  enqueue(sessionEndPayload(sessionId, { outcome: "abandoned", turns }));
+  enqueue(
+    sessionEndPayload(sessionId, {
+      outcome: "abandoned",
+      turns,
+      score: snap.score,
+      scoreRank: snap.scoreRank,
+      scoreboard: snap.scoreboard,
+    }),
+  );
 }
 
 /** Record the start of a game session and become the "active" session. */
@@ -302,6 +340,7 @@ export function trackSessionEnd(args: {
   turns: number;
   score?: number;
   scoreRank?: number;
+  scoreboard?: SessionScoreboardEntry[];
 }): void {
   if (!active) return;
   const sessionId = active.sessionId;
@@ -319,6 +358,7 @@ export function trackSessionEnd(args: {
     turns: args.turns,
     score: args.score,
     scoreRank: args.scoreRank,
+    scoreboard: args.scoreboard,
     ts: Date.now(),
   });
 }

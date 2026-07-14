@@ -5,9 +5,12 @@ import { fileURLToPath } from "node:url";
 // them directly (no build step needed for shared/sim during development).
 export default defineConfig(({ mode }) => {
   const disableHmr = mode === "no-hmr";
+  // Web deploy uses "/" so deep links like /privacy load /assets/… correctly.
+  // itch.io and similar builds pass VITE_BASE=./ for relative asset paths.
+  const base = process.env.VITE_BASE?.trim() || "./";
 
   return {
-    base: "./",
+    base,
     appType: "spa",
     resolve: {
       alias: {

@@ -18,6 +18,8 @@ import {
   type LobbyChatMessage,
   type MapType,
   type VictoryKind,
+  type VillageDensity,
+  normalizeVillageDensity,
 } from "@roc/sim";
 import { filterChatText } from "@roc/shared";
 import { GameHost } from "./gamehost";
@@ -52,7 +54,7 @@ export interface LobbyGame {
   mapType: MapType;
   barbarians: BarbarianActivity;
   naturalWonders: boolean;
-  villages: boolean;
+  villages: VillageDensity;
   startingGold: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit: number;
@@ -86,7 +88,7 @@ export interface CreateOptions {
   mapType?: MapType;
   barbarians?: BarbarianActivity;
   naturalWonders?: boolean;
-  villages?: boolean;
+  villages?: boolean | VillageDensity;
   startingGold?: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
   turnLimit?: number;
@@ -112,7 +114,7 @@ export interface ConfigurePatch {
   mapType?: MapType;
   barbarians?: BarbarianActivity;
   naturalWonders?: boolean;
-  villages?: boolean;
+  villages?: boolean | VillageDensity;
   startingGold?: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. */
   turnLimit?: number;
@@ -185,7 +187,7 @@ export class Lobby {
       mapType: opts.mapType ?? "random",
       barbarians: opts.barbarians ?? "normal",
       naturalWonders: opts.naturalWonders ?? true,
-      villages: opts.villages ?? true,
+      villages: normalizeVillageDensity(opts.villages),
       startingGold: opts.startingGold ?? "balanced",
       turnLimit: opts.turnLimit ?? 120,
       gameSpeed: normalizeGameSpeed(opts.gameSpeed),
@@ -238,7 +240,7 @@ export class Lobby {
     if (patch.mapType !== undefined) game.mapType = patch.mapType;
     if (patch.barbarians !== undefined) game.barbarians = patch.barbarians;
     if (patch.naturalWonders !== undefined) game.naturalWonders = patch.naturalWonders;
-    if (patch.villages !== undefined) game.villages = patch.villages;
+    if (patch.villages !== undefined) game.villages = normalizeVillageDensity(patch.villages);
     if (patch.startingGold !== undefined) game.startingGold = patch.startingGold;
     if (patch.turnLimit !== undefined) game.turnLimit = Math.max(0, Math.floor(patch.turnLimit));
     if (patch.gameSpeed !== undefined) game.gameSpeed = normalizeGameSpeed(patch.gameSpeed);
