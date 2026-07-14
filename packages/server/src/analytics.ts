@@ -27,6 +27,7 @@ import type {
   VictoryTypeCount,
   VoteTotal,
 } from "@roc/shared";
+import { villagesEnabled } from "@roc/shared";
 import { bugReportFromEvent, enrichBugReportFromSession, listBugReportsFromRows } from "./bug-reports";
 import { buildHandleByClientId, resolvePlayerHandle } from "./player-handles";
 
@@ -122,7 +123,7 @@ export class MemoryAnalyticsStore implements AnalyticsStore {
         row.legends = e.legends;
         row.barbarianLevel = e.barbarianLevel;
         row.naturalWonders = e.naturalWonders;
-        row.villages = e.villages;
+        row.villages = villagesEnabled(e.villages);
         row.startingGold = e.startingGold;
         row.turnLimit = e.turnLimit;
         row.gameSpeed = e.gameSpeed;

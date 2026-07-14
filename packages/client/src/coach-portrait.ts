@@ -348,6 +348,6 @@ export function cutLegendPortraitBackground(img: HTMLImageElement, pad = 8): str
   out.height = outH;
   const octx = out.getContext("2d");
   if (!octx) return null;
-  octx.putImageData(new ImageData(data, outW, outH), 0, 0);
+  octx.putImageData(new ImageData(data as Uint8ClampedArray<ArrayBuffer>, outW, outH), 0, 0);
   return out.toDataURL("image/png");
 }

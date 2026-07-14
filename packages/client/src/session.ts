@@ -46,6 +46,8 @@ export interface Session {
 
 // ---- local (single-player hotseat) --------------------------------------
 
+export type { MapType };
+
 export type MapSize = "small" | "medium" | "large" | "huge" | "giant";
 
 export const MAP_DIMENSIONS: Record<MapSize, { cols: number; rows: number }> = {
@@ -330,7 +332,7 @@ export class OnlineSession implements Session {
         else reject(err ?? new Error("connection failed"));
       };
       const timer = setTimeout(
-        () => finish(false, new Error(`Could not reach ${url}. Run: bun run server, then adb reverse tcp:3001 tcp:3001`)),
+        () => finish(false, new Error(`Could not reach ${this.url}. Run: bun run server, then adb reverse tcp:3001 tcp:3001`)),
         12_000,
       );
       ws.onopen = () => {

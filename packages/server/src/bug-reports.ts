@@ -11,7 +11,7 @@ import type {
   GameMode,
   SessionOutcome,
 } from "@roc/shared";
-import { clampFilterText } from "@roc/shared";
+import { clampFilterText, villagesEnabled } from "@roc/shared";
 import type { BugReportRow, SessionRow } from "./analytics";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -140,7 +140,7 @@ export function bugReportFromEvent(e: BugReportEvent): BugReportRow {
     legends: e.legends,
     barbarianLevel: e.barbarianLevel,
     naturalWonders: e.naturalWonders,
-    villages: e.villages,
+    villages: villagesEnabled(e.villages),
     startingGold: e.startingGold,
     turnLimit: e.turnLimit,
     gameSpeed: e.gameSpeed,

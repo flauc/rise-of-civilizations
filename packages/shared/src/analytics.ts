@@ -14,6 +14,15 @@ export type SessionOutcome = "win" | "loss" | "abandoned";
 export type VoteAction = "add" | "remove";
 
 /** A game session began (single-player or multiplayer). */
+/** Tribal village setting a player chose: a density level, or a legacy on/off boolean. */
+export type VillageSetting = boolean | "none" | "medium" | "high";
+
+/** Reduce a village setting to on/off for boolean storage and the admin on/off buckets. */
+export function villagesEnabled(v: VillageSetting | undefined): boolean | undefined {
+  if (v === undefined) return undefined;
+  return v !== false && v !== "none";
+}
+
 export interface SessionStartEvent {
   t: "session_start";
   sessionId: string;
@@ -41,8 +50,8 @@ export interface SessionStartEvent {
   barbarianLevel?: string;
   /** Whether natural wonders were scattered on the map. */
   naturalWonders?: boolean;
-  /** Whether tribal villages were scattered on the map. */
-  villages?: boolean;
+  /** Tribal village density the player chose (legacy boolean: on = medium, off = none). */
+  villages?: VillageSetting;
   /** Starting treasury preset, e.g. "tight"/"balanced"/"generous". */
   startingGold?: string;
   /** Turn at which the score victory triggers; 0 = unlimited. */
@@ -176,7 +185,7 @@ export interface BugReportEvent {
   legends?: boolean;
   barbarianLevel?: string;
   naturalWonders?: boolean;
-  villages?: boolean;
+  villages?: VillageSetting;
   startingGold?: string;
   turnLimit?: number;
   gameSpeed?: string;

@@ -10,6 +10,7 @@ import {
   ANALYTICS_SCHEMA_VERSION,
   type AnalyticsBatch,
   type AnalyticsEvent,
+  type BugReportEvent,
   type BugReportContext,
   type GameMode,
   type SessionOutcome,
@@ -430,7 +431,7 @@ export interface BugReportInput {
  */
 export async function trackBugReport(input: BugReportInput): Promise<boolean> {
   const account = getAccount();
-  const event: AnalyticsEvent = {
+  const event: BugReportEvent = {
     t: "bug_report",
     reportId: uuid(),
     clientId,

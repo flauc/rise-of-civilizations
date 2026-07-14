@@ -1,7 +1,7 @@
 // Tutorial coach voice scripts — no Vite/DOM deps (used by generate-coach-voice.ts).
 
 import { createGame, beginTurn } from "@roc/sim";
-import { TUTORIAL_COACH_TURNS } from "./tutorial.ts";
+import { TUTORIAL_COACH_TURNS } from "./tutorial";
 import {
   buildTutorialSteps,
   coachSpeechText,
@@ -10,7 +10,7 @@ import {
   T3_VILLAGE_MESSAGE,
   T4_DIPLOMACY_MESSAGE,
   type TutorialStepId,
-} from "./tutorial-coach.ts";
+} from "./tutorial-coach";
 
 export type TutorialCoachVoiceStep = {
   id: Exclude<TutorialStepId, "complete">;

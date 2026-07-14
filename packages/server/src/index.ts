@@ -451,6 +451,9 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
 
 const server = Bun.serve<Conn>({
   port: PORT,
+  // hostname is a valid Bun.serve runtime option; the ambient bun types available to
+  // tsc here omit it, so suppress the excess-property check on this one line.
+  // @ts-expect-error - bun-types gap, not a real error
   hostname: "0.0.0.0",
   async fetch(req, server) {
     const url = new URL(req.url);

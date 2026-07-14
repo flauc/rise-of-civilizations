@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.7.2";
+export const CURRENT_VERSION = "0.7.3";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,96 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.7.3",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Report, mute, and block players in chat",
+        desc:
+          "Multiplayer chat now has a menu on each message where you can mute a player to hide their messages, block them, or report them. Muted and blocked players' messages no longer show in your chat. Offensive language is also filtered automatically.",
+      },
+      {
+        tag: "New",
+        title: "Support form and legal pages",
+        desc:
+          "You can now open a support form from the menu to send a question or a bug report, and read the Privacy Policy and Terms of Service from inside the game. New players are asked to accept the terms when they register.",
+      },
+      {
+        tag: "New",
+        title: "Delete your account",
+        desc:
+          "Registered players can permanently delete their account and its saved games from the Settings panel, confirming with their password.",
+      },
+      {
+        tag: "New",
+        title: "Natural wonders sit where they belong on Real World maps",
+        desc:
+          "On a Real World map, natural wonders now appear in their true locations. Mount Everest rises in the Himalayas, Uluru in the Australian outback, the Grand Canyon in North America, and the Great Barrier Reef off the Australian coast.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Natural wonders enrich your borders",
+        desc:
+          "A natural wonder inside your territory now grants culture and tourism just for sitting within your borders, instead of only when a citizen works its tile. Natural wonders are also rarer and spread further apart on the map.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Trade routes chain through your ports",
+        desc:
+          "An inland or coast-locked city can now trade with distant and overseas partners by routing through your own port cities. The route lists the cities it travels via on the way there.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Trade income no longer depends on distance",
+        desc:
+          "Every trade route now earns the same base income no matter how far apart the two cities are. You grow a route by paving its roads, building Markets and Banks at each end, and reaching a foreign or overseas partner. The route's food, production, science, and culture all rise together with its gold.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Tribal village density",
+        desc:
+          "When setting up a game, tribal villages are now set to None, Medium, or High, instead of a single on or off switch.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Score victory resolves at the turn limit",
+        desc:
+          "The score victory now decides at the turn limit and shows your current rank and the leader's score, instead of a progress bar measured against the leader.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Governors protect the specialists you trained",
+        desc:
+          "A city run by a governor no longer disbands craftsmen you assigned by hand. When you change a city's focus, only the specialists the governor itself trained are freed and put back to work. A city set to a Military focus keeps every barracks slot filled.",
+      },
+      {
+        tag: "UI",
+        title: "Redesigned end of game screen",
+        desc:
+          "The finish screen now shows a full scoreboard with every civilization's score broken down, your empire's final stats, and a View Map mode that lets you pan the revealed map after the game is over.",
+      },
+      {
+        tag: "UI",
+        title: "World wonders show while under construction",
+        desc:
+          "A world wonder being built now appears as a labelled marker on its tile, and you can see a rival's wonder site once it comes into view.",
+      },
+      {
+        tag: "Gameplay",
+        title: "The AI builds wonders that suit its strategy",
+        desc:
+          "An AI now develops its empire, gathers the specialist crew a world wonder needs, and builds one that serves its plan. It picks a wonder its civilization actually benefits from rather than the cheapest one it can start.",
+      },
+      {
+        tag: "Gameplay",
+        title: "A winning AI presses the war but will still make peace",
+        desc:
+          "An AI with an overwhelming advantage now fights a war through to the end. One holding only a slight edge will agree to a reasonable peace once the fighting drags on, instead of refusing every offer while it is ahead.",
+      },
+    ],
+  },
   {
     version: "0.7.2",
     date: "July 2026",
