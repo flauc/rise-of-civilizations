@@ -8,6 +8,7 @@ dist-itchio/
 .roc-users.json
 .roc-games.json
 .roc-bug-reports.json
+.idea/workspace.xml
 tools/geodata-poc/*.hexmap.json
 Hex Samples
 assets/generated/
