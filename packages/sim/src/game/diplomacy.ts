@@ -1019,17 +1019,25 @@ function offerOnCooldown(state: GameState, aiId: number, otherId: number): boole
 }
 
 /**
- * Whether the AI is willing to make peace. A civ that is stronger than its war
- * rival never negotiates — it fights until the enemy is eliminated. Only a weaker
- * or exhausted side may sue for peace.
+ * Whether the AI is willing to make peace. A civ that is CRUSHING its rival — or a
+ * warmonger holding a clear upper hand — fights on to finish the job. Short of that
+ * threshold a mere edge is no longer a life sentence of war: a marginally-ahead civ
+ * can still come to terms once the fighting drags on (war-weariness) or attitudes
+ * soften. Only truly dominant or bloodthirsty civs press a war to elimination.
  */
 function aiAcceptsPeace(state: GameState, aiId: number, otherId: number): boolean {
   const r = relationBetween(state, aiId, otherId);
   if (!r) return false;
-  const ratio = powerRatio(state, aiId, otherId);
-  if (ratio >= 1.0 && citiesOf(state, otherId).length > 0) return false;
-
   const p = personalityOf(state, aiId);
+  const ratio = powerRatio(state, aiId, otherId);
+  // Press on to elimination only with an overwhelming edge, or as a warmonger with a
+  // solid lead. Below that, fall through to the weariness/attitude logic so the AI
+  // will take a reasonable peace instead of grinding every war to annihilation.
+  if (citiesOf(state, otherId).length > 0) {
+    if (ratio >= 2.0) return false;
+    if (p.aggression > 0.7 && ratio >= 1.4) return false;
+  }
+
   const warDuration = state.turn - r.lastStatusChangeTurn;
   const losing = ratio < 0.9;
   const weary = warDuration >= Math.round(16 - p.forgiveness * 8 - (losing ? 4 : 0));

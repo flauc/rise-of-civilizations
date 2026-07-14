@@ -135,7 +135,7 @@ export interface TradeGoldBreakdown {
   road: number;
   /** Connection tier driving the road bonus: 0 none, 1 Dirt, 2 Paved, 3 Imperial. */
   roadTier: number;
-  /** Extra gold from the international ×1.5 premium (0 for a domestic route). */
+  /** Extra gold from the international ×1.25 premium (0 for a domestic route). */
   international: number;
   /** Overseas (over-water) lane premium. */
   overseas: number;
@@ -290,7 +290,7 @@ export function findTradeHubChain(state: GameState, from: City, to: City): City[
 
   const ownerId = from.ownerId;
   const candidates = [...state.cities.values()].filter(
-    (c) => !c.isBarbarian && (c.ownerId === ownerId || c.id === to.id),
+    (c) => !playerById(state, c.ownerId)?.isBarbarian && (c.ownerId === ownerId || c.id === to.id),
   );
   const byId = new Map(candidates.map((c) => [c.id, c]));
   if (!byId.has(from.id) || !byId.has(to.id)) return null;

@@ -94,6 +94,7 @@ const baseState = (map: GameMap, overrides?: Partial<GameState>): GameState => (
   turnLimit: 200,
   religions: [],
   tradeRoutes: [],
+  roadRoutes: [],
   works: [],
   completedWonders: [],
   turnUpdates: [],

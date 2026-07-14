@@ -78,10 +78,6 @@ interface AiWonderContext {
   building: boolean;
 }
 
-function wonderCrewSize(crew: Record<string, number>): number {
-  return Object.values(crew).reduce((sum, n) => sum + n, 0);
-}
-
 /** True once the empire has grown past the opening — enough cities and population
  *  to justify a grand wonder project while tile works (farms, mines, roads) continue. */
 function empireDevelopedForWonders(state: GameState, pid: number, player: Player): boolean {
@@ -126,10 +122,29 @@ function wonderStartAffordable(player: Player, wonder: WonderDef): boolean {
   return player.gold >= cost.gold && player.faith >= cost.faith && player.cultureProgress >= cost.culture;
 }
 
-/** Lower = easier to finish sooner (prefer smaller crews and gold-only starts). */
-function wonderPriorityScore(w: WonderDef): number {
-  const cost = wonderStartCost(w);
-  return wonderCrewSize(w.crew) * 10 + (cost.culture > 0 ? 150 : 0) + (cost.faith > 0 ? 90 : 0) + cost.gold / 10;
+/** The least strategic value (see wonderScore) a wonder must offer this civ before it
+ *  is worth committing crew and treasury to. wonderScore starts every wonder at 1, so a
+ *  bar of 2 keeps any wonder with at least one yield this civ actually values and drops
+ *  pure filler — a faith wonder for a warmonger, a gold-only Colossus for a civ that
+ *  isn't chasing wealth — that the AI is better off not breaking ground on. */
+const MIN_WONDER_VALUE = 2;
+
+/** How badly the AI wants a given wonder: its strategic value LEADS, discounted by how
+ *  far it still is from buildable (missing crew, unaffordable) so an equally-useful but
+ *  reachable wonder wins. Value-first means the AI commits to the wonder that serves its
+ *  strategy, not merely the cheapest one it happens to be able to break ground on. */
+function wonderDesirability(
+  state: GameState,
+  pid: number,
+  player: Player,
+  w: WonderDef,
+  p: DiploPersonality,
+  focus: VictoryKind,
+): number {
+  const value = wonderScore(w.effect, p, focus);
+  const crewGap = crewReadinessGap(state, pid, w.crew as Partial<Record<Discipline, number>>);
+  const affordGap = wonderAffordGap(player, w);
+  return value - crewGap * 0.5 - affordGap / 400;
 }
 
 /** Wonders this civ could build once tech and treasury are ready. */
@@ -147,15 +162,14 @@ function aiWonderPlanCandidates(
     .filter((w) => !w.reqTech || player.researched.has(w.reqTech as TechId))
     .filter((w) => wonderHasBuildSite(state, pid, w.id))
     .filter((w) => wonderDisciplinesReady(state, pid, player, w))
-    .sort((a, b) => {
-      const ready = crewReadinessGap(state, pid, a.crew) - crewReadinessGap(state, pid, b.crew);
-      if (ready !== 0) return ready;
-      const afford = wonderAffordGap(player, a) - wonderAffordGap(player, b);
-      if (afford !== 0) return afford;
-      const pri = wonderPriorityScore(a) - wonderPriorityScore(b);
-      if (pri !== 0) return pri;
-      return wonderScore(b.effect, p, focus) - wonderScore(a.effect, p, focus);
-    });
+    // Only wonders whose effect actually serves this civ — no chasing filler.
+    .filter((w) => wonderScore(w.effect, p, focus) >= MIN_WONDER_VALUE)
+    // Most wanted first: strategic value, discounted by how far off it still is.
+    .sort(
+      (a, b) =>
+        wonderDesirability(state, pid, player, b, p, focus) -
+        wonderDesirability(state, pid, player, a, p, focus),
+    );
 }
 
 /** Wonders the civ can break ground on this turn. */
@@ -1653,7 +1667,12 @@ export function governorPickProduction(state: GameState, city: City, player: Pla
   if (item) applyCommand(state, { type: "setProduction", cityId: city.id, item }, player.id);
 }
 
-export function autoManageCity(state: GameState, city: City, player: Player): void {
+export function autoManageCity(
+  state: GameState,
+  city: City,
+  player: Player,
+  wonderCtx: AiWonderContext = { gatheringCrew: false, building: false },
+): void {
   const focus = city.autoMode;
   if (!focus) return;
 
@@ -1666,7 +1685,7 @@ export function autoManageCity(state: GameState, city: City, player: Player): vo
     autoTrainMilitary(state, city, player);
     return; // no new public works or specialist training while mustering troops
   }
-  aiManageCity(state, city, player, player.id);
+  aiManageCity(state, city, player, player.id, wonderCtx);
 }
 
 /** Wonder prep/build context shared by the main AI turn and governor auto-manage
@@ -1688,7 +1707,10 @@ export function autoManageCities(state: GameState, player: Player): void {
   const pid = player.id;
   const wonderCtx = aiWonderTurnContext(state, pid);
   aiWonderClearDistractions(state, pid, wonderCtx);
-  for (const city of autoCities) aiManageCity(state, city, player, pid, wonderCtx);
+  // Route each governed city through the full governor logic (focus-building choice
+  // and, for a military focus, troop training) — not the raw specialist/works manager,
+  // which would leave production unset and never muster an army.
+  for (const city of autoCities) autoManageCity(state, city, player, wonderCtx);
   // Military-focus cities keep citizens free for training — don't re-staff works.
   const staffCities = autoCities.filter((c) => c.autoMode !== "military");
   if (staffCities.length > 0) aiAssignSpecialists(state, pid, staffCities, wonderCtx);
