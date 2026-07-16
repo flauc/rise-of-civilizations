@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.7.3";
+export const CURRENT_VERSION = "0.7.4";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,78 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.7.4",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Your leader speaks over a new loading screen",
+        desc:
+          "Starting a game now opens on a leader's scroll instead of a spinner. Your leader's portrait sits beside a parchment that writes itself out in time with a spoken, first-person monologue: who they are, where the civilization came from, what your unique ability does, and how to use your unique unit and unique building. All 137 civilizations have their own script and recording, with the narrator's voice matched to the civilization's region. Cards below the portrait show your unique unit and unique building. The world generates behind the scroll, so the menu closes at once, and a Skip button appears once the game is ready.",
+      },
+      {
+        tag: "New",
+        title: "Attack preview before you commit",
+        desc:
+          "Ordering an attack now opens a preview showing both units side by side: estimated damage dealt and taken, the HP each side is left with, whether the target dies, and whether the defender can retaliate. Every modifier that fed the numbers is listed by name, including terrain, fortification, experience, wounds, promotions, defensive stances, active abilities and city defenses. You confirm or cancel from there. A new Combat section in Settings switches between Preview and Auto attack, which fires immediately as before.",
+      },
+      {
+        tag: "New",
+        title: "Research shows how many turns a tech will take",
+        desc:
+          "Each available technology in the research dialog now lists an estimate in turns next to its science cost, based on your science per turn and the science already banked. With no science output it reads as never.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Inland Sea rebuilt on the Seto model",
+        desc:
+          "Inland Sea is no longer a ring of land around a lake. It now has two long facing shores and a third western landmass around a sheltered basin, modeled on Japan's Seto Inland Sea. A narrow strait cuts the western end and a wider channel opens the east to the ocean. The basin is dotted with a few larger islands, curved island chains, and at least sixteen islets, and every map generates two to four major landmasses.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Islands maps actually have islands",
+        desc:
+          "The Islands map used to break into scattered crumbs. It now generates two to four large islands, a few curved arcs, and a wide scatter of medium islets, at least fifteen distinct islands in all, with the tiny one to five tile specks pruned away. Islands here are allowed to grow large rather than being capped as offshore scenery.",
+      },
+      {
+        tag: "Gameplay",
+        title: "No more starting marooned on a rock",
+        desc:
+          "On every map except Islands, civilizations will no longer start on an island smaller than nineteen land tiles, the minimum needed to fit a city's borders and still research Sailing and build a navy to leave. Starts still prefer continents where the map has them. Islands maps are exempt by design, since that layout is about small islets.",
+      },
+      {
+        tag: "UI",
+        title: "The game opens on the login screen",
+        desc:
+          "The app now starts at login or register rather than the main menu. Signed-in players go straight through to the menu, and guests choose guest play from the login screen. Logging out, or returning with an expired sign-in, takes you back to login.",
+      },
+      {
+        tag: "UI",
+        title: "Portrait is the default on phones and tablets",
+        desc:
+          "Mobile and the installed app now default to portrait, with desktop unchanged on landscape. Existing mobile players are moved to portrait once. The orientation lock also re-applies after launch and whenever you return to the game from the background.",
+      },
+      {
+        tag: "Fix",
+        title: "Attack odds against cities were wrong",
+        desc:
+          "The odds shown when hovering an attack left out several things that actually applied when the attack resolved, including city defenses, siege assault ignoring walls, the halved return damage from a city tower, and bonuses against cities. Shown odds now come from the same calculation that resolves the attack, so they match the result. Walking into an empty city now reads as captured without a fight instead of showing damage numbers.",
+      },
+      {
+        tag: "Fix",
+        title: "Mobile menu and lobby layout",
+        desc:
+          "The Featured Civilization portrait was overlapping the main menu buttons and the login form on phones and in touch landscape, and is now hidden there. The single-player setup panel scrolls with Start and Back pinned at the bottom, taps on the menu no longer reach the map underneath in the installed app, and the lobby respects notches and the home indicator.",
+      },
+      {
+        tag: "Fix",
+        title: "Installed app started on the wrong page",
+        desc:
+          "Opening Support, Privacy Policy or Terms of Service in the installed app could make the next cold start relaunch into that page. It now always opens on the home screen.",
+      },
+    ],
+  },
   {
     version: "0.7.3",
     date: "July 2026",
