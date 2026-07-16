@@ -445,7 +445,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     overlay.className = "tutorial-prompt-overlay";
     overlay.innerHTML = `
       <div class="tutorial-prompt" role="dialog" aria-modal="true" aria-label="Tutorial recommendation">
-        <button class="tutorial-prompt-close" id="tp-close" type="button" aria-label="Close">✕</button>
+        <button class="dialog-x" id="tp-close" type="button" aria-label="Close">✕</button>
         <div class="tutorial-prompt-icon">📜</div>
         <div class="tutorial-prompt-title">New to Rise of Civilizations?</div>
         <p class="tutorial-prompt-body">
@@ -715,13 +715,12 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     /* Expanded unique-unit detail dialog */
     .uud-overlay{position:fixed;inset:0;z-index:80;background:rgba(8,7,5,.8);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
     .uud-modal{position:relative;width:min(560px,100%);max-height:88%;overflow:auto;background:linear-gradient(180deg,#1f1c14,#15120c);border:1px solid var(--edge);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:22px}
-    .uud-close{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px;z-index:1}
-    .uud-close:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
     .uud-head{display:flex;gap:16px;align-items:flex-start}
     .uud-img{flex:0 0 auto;width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);border:1px solid var(--edge);border-radius:12px;overflow:hidden}
     .uud-img img{max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}
     .uud-headinfo{min-width:0;flex:1}
-    .uud-title{font-family:'Cinzel',Georgia,serif;font-size:22px;font-weight:800;color:#e8dcc5;padding-right:36px}
+    /* Typography from the shared .dialog-title rule; the ✕ overlaps this row. */
+    .uud-title{padding-right:var(--dialog-x-gutter)}
     .uud-subtitle{color:#b8aa8d;font-size:12.5px;margin-top:3px}
     .uud-stats{display:flex;flex-wrap:wrap;gap:6px 8px;margin-top:12px}
     .uud-stat{display:flex;align-items:center;gap:6px;font-size:12px;color:#b8aa8d;background:rgba(201,162,39,.08);border:1px solid var(--edge);border-radius:8px;padding:5px 9px}
@@ -768,10 +767,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     /* First-game tutorial recommendation */
     .tutorial-prompt-overlay{position:fixed;inset:0;z-index:75;background:rgba(8,7,5,.82);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
     .tutorial-prompt{position:relative;width:min(480px,100%);background:linear-gradient(180deg,#1f1c14,#15120c);border:1px solid var(--edge);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:28px 24px 22px;text-align:center}
-    .tutorial-prompt-close{position:absolute;top:12px;right:12px;width:34px;height:34px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px}
-    .tutorial-prompt-close:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
     .tutorial-prompt-icon{font-size:40px;line-height:1;margin-bottom:8px}
-    .tutorial-prompt-title{font-family:'Cinzel',Georgia,serif;font-size:22px;font-weight:800;color:#e8dcc5;margin-bottom:12px}
+    .tutorial-prompt-title{margin-bottom:12px}
     .tutorial-prompt-body{color:#cdbfa6;font-size:14px;line-height:1.55;margin:0 0 20px}
     .tutorial-prompt-actions{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
     .cp-detail-top{display:flex;gap:18px}
@@ -801,7 +798,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       .uud-modal{width:100%;height:100%;max-height:100%;border-radius:0;border:none;
         padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
       .uud-img{width:96px;height:96px}
-      .uud-title{font-size:19px}
     }
     @media(max-width:860px){
       #lobby{overflow-x:hidden;overflow-y:auto}

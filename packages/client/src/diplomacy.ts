@@ -79,7 +79,7 @@ const STYLE = `
 .dpm-exch b{color:var(--accent-bright)}
 .dpm-reason{font-size:12.5px;color:var(--parchment-dim);font-style:italic;margin-top:8px}
 .dc-box{width:min(760px,96vw);background:var(--bg-elevated);border:1px solid var(--edge);border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
-.dc-title{font-family:'Cinzel',Georgia,serif;text-align:center;font-weight:700;font-size:16px;color:var(--accent-bright);padding:14px;border-bottom:1px solid var(--edge)}
+.dc-title{text-align:center;padding:14px;border-bottom:1px solid var(--edge)}
 .dc-cards{display:flex;align-items:stretch}
 .dc-card{flex:1;padding:18px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
 .dc-vs{display:flex;align-items:center;justify-content:center;padding:0 6px;color:var(--parchment-dim);font-weight:700}
@@ -91,10 +91,9 @@ const STYLE = `
 .dc-actions{display:flex;gap:10px;justify-content:center;padding:14px;border-top:1px solid var(--edge)}
 #diplomacy{position:fixed;top:0;right:0;bottom:0;width:min(480px,100vw);z-index:54;background:var(--panel);backdrop-filter:blur(8px);border-left:1px solid var(--edge);box-shadow:-8px 0 32px rgba(0,0,0,.45);display:flex;flex-direction:column;transform:translateX(0);transition:transform .2s ease}
 #diplomacy.hidden{transform:translateX(100%);pointer-events:none}
-.dp-head{position:relative;display:flex;align-items:center;gap:8px;padding:14px 16px;padding-right:54px;border-bottom:1px solid var(--edge)}
-.dp-title{font-family:'Cinzel',Georgia,serif;font-weight:700;font-size:17px;color:var(--accent-bright);flex:1}
-.dp-x{position:absolute;top:10px;right:12px;width:36px;height:36px;display:flex;align-items:center;justify-content:center;padding:0;border-radius:50%;border:1px solid var(--edge);background:var(--bg-card);color:var(--parchment);font-size:16px;line-height:1;cursor:pointer}
-.dp-x:hover{background:rgba(201,162,39,.14);border-color:var(--accent);color:var(--accent-bright)}
+/* Title and ✕ come from the shared .dialog-title / .dialog-x rules in index.html. */
+.dp-head{position:relative;display:flex;align-items:center;gap:8px;padding:14px 16px;padding-right:calc(var(--dialog-x-gutter) + 8px);border-bottom:1px solid var(--edge);min-height:var(--dialog-x-size)}
+.dp-title{flex:1}
 .dp-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px}
 /* contacts list rows */
 .dp-row{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--edge);border-radius:11px;margin-top:8px;cursor:pointer;background:var(--bg-card)}
@@ -484,7 +483,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
         `<div class="dp-head">` +
         (selected !== null ? `<button class="btn" id="dp-back">←</button>` : "") +
         `<span class="dp-title">🕊️ Diplomacy</span>` +
-        `<button class="dp-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
+        `<button class="dialog-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
         `<div class="dp-body">${body}${resultMsg ? `<div class="dp-empty" style="color:#ffd967">${resultMsg}</div>` : ""}</div>`;
     });
     wire(state, viewerId);

@@ -30,7 +30,7 @@ function escapeHtml(text: string): string {
 function tokenSrc(d: CombatPreviewDetail, side: "attacker" | "defender"): string {
   if (side === "attacker") return assetUrl(`units/${d.attackerTokenId}.png`);
   if (d.defenderTokenId) return assetUrl(`units/${d.defenderTokenId}.png`);
-  const tier = d.defenderCityTier ?? 0;
+  const tier = d.defenderCityTier ?? 1;
   return assetUrl(`buildings/city_${tier}.png`);
 }
 

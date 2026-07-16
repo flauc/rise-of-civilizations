@@ -787,6 +787,12 @@ export function createUI(handlers: UIHandlers): UI {
   const topbar = div("topbar", "panel");
   const bottomBar = div("bottom-bar", "panel");
   const leaderAvatar = div("leader-avatar", "");
+  // The mobile leader portrait is sized to the top bar, whose height depends on
+  // how the pills wrap, so publish the measured height as a CSS variable.
+  new ResizeObserver(() => {
+    const h = topbar.offsetHeight;
+    if (h > 0) gameHud().style.setProperty("--topbar-h", `${h}px`);
+  }).observe(topbar);
   const unitPanel = div("unit-panel", "panel hidden");
   const tilePanel = div("tile-panel", "panel hidden");
   const tileTip = div("tile-tip", "hidden");
@@ -2526,21 +2532,36 @@ export function createUI(handlers: UIHandlers): UI {
     if (!researchOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const techs = availableTechs(player);
+    // Science accumulates in one pool that carries over between techs, so the
+    // estimate counts what's already banked against each tech's cost.
+    const sciPerTurn = citiesOf(state, player.id).reduce(
+      (n, c) => n + cityDisplayYields(state, c).science,
+      0,
+    );
+    const turnsFor = (cost: number): string => {
+      const left = cost - player.scienceProgress;
+      if (left <= 0) return "1 turn";
+      if (sciPerTurn <= 0) return "never at +0";
+      const t = Math.ceil(left / sciPerTurn);
+      return `${t} turn${t === 1 ? "" : "s"}`;
+    };
     withPreservedScroll(research, () => {
       research.innerHTML =
-        dialogHeader("Choose research", "rclose") +
+        dialogHeader("Choose research", "rclose", {
+          extra: `<button type="button" class="btn dialog-head-btn" id="open-techtree">🌳 View full</button>`,
+        }) +
         `<div class="panel-dialog-body">` +
-        `<button class="btn" id="open-techtree" style="width:100%;margin:6px 0">🌳 View Full Tech Tree</button>` +
         (techs.length === 0
           ? `<div style="margin-top:8px;color:#9fc0dc">All available techs researched.</div>`
           : techs
               .map((t) => {
                 const u = techUnlocks(t);
+                const cost = scaledTechCost(state, t);
                 return (
                   `<div class="tech" data-tech="${t}"><div style="flex:1">` +
                   `<div><b>${TECH_DEFS[t].name}</b></div>` +
                   (u.length ? `<div class="sub">Unlocks: ${u.join(", ")}</div>` : "") +
-                  `</div><span class="cost">${scaledTechCost(state, t)}🔬</span></div>`
+                  `</div><span class="cost">${cost}🔬<span class="sub tech-eta">${turnsFor(cost)}</span></span></div>`
                 );
               })
               .join("")) +

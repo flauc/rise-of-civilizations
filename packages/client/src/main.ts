@@ -7,6 +7,7 @@ import {
   tradeRouteViaMessage,
   citiesOf,
   combatPreview,
+  combatPreviewDetail,
   computeAttackTargets,
   computeReachable,
   peaceWarTargets,
@@ -48,6 +49,8 @@ import { drawOverlay } from "./overlay";
 import { attachInput } from "./input";
 import { pickUnitAtScreen } from "./unit-pick";
 import { createUI, type CombatOdds, type TileTip } from "./ui";
+import { showCombatPreviewDialog } from "./combat-preview-ui";
+import { getSettings } from "./settings";
 import { mountGameChat } from "./mp-chat";
 import { createLobby } from "./lobby-ui";
 import { createLegalViewer, type LegalPage } from "./legal-viewer";
@@ -933,7 +936,22 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       return;
     }
 
-    const attack = () => session.order({ type: "attack", attackerId: selectedUnitId!, col: off.col, row: off.row });
+    const attack = () => {
+      const attackerId = selectedUnitId!;
+      const doAttack = () => session.order({ type: "attack", attackerId, col: off.col, row: off.row });
+      if (getSettings().autoAttack) {
+        doAttack();
+        return;
+      }
+      const attacker = st().units.get(attackerId);
+      const detail = attacker ? combatPreviewDetail(st(), attacker, off.col, off.row) : null;
+      // No estimate available means the tap was already vetted as a legal target, so attack anyway.
+      if (!detail) {
+        doAttack();
+        return;
+      }
+      showCombatPreviewDialog(detail, doAttack);
+    };
     const move = () => session.order({ type: "move", unitId: selectedUnitId!, col: off.col, row: off.row });
     const targetOwner = u && u.ownerId !== me ? u.ownerId : c && c.ownerId !== me ? c.ownerId : null;
     const warnAttack = (owner: number) => {

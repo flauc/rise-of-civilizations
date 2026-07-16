@@ -348,7 +348,7 @@ export function openUnitDetail(uuId: string): void {
   overlay.className = "uud-overlay";
   overlay.innerHTML = `
     <div class="uud-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(uu.name)}">
-      <button class="uud-close" aria-label="Close">✕</button>
+      <button class="dialog-x" aria-label="Close">✕</button>
       <div class="uud-content">${uniqueUnitDetailHtml(uu)}</div>
     </div>`;
   document.body.appendChild(overlay);
@@ -361,7 +361,7 @@ export function openUnitDetail(uuId: string): void {
     if (e.key === "Escape") close();
   };
   document.addEventListener("keydown", onKey);
-  overlay.querySelector<HTMLButtonElement>(".uud-close")!.addEventListener("click", close);
+  overlay.querySelector<HTMLButtonElement>(".dialog-x")!.addEventListener("click", close);
 }
 
 /**
@@ -375,7 +375,7 @@ export function openInfraDetail(civId: string): void {
   overlay.className = "uud-overlay";
   overlay.innerHTML = `
     <div class="uud-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(inf.name)}">
-      <button class="uud-close" aria-label="Close">✕</button>
+      <button class="dialog-x" aria-label="Close">✕</button>
       <div class="uud-content">${uniqueInfraDetailHtml(civId)}</div>
     </div>`;
   document.body.appendChild(overlay);
@@ -388,7 +388,7 @@ export function openInfraDetail(civId: string): void {
     if (e.key === "Escape") close();
   };
   document.addEventListener("keydown", onKey);
-  overlay.querySelector<HTMLButtonElement>(".uud-close")!.addEventListener("click", close);
+  overlay.querySelector<HTMLButtonElement>(".dialog-x")!.addEventListener("click", close);
 }
 
 /** Wire clickable unique-unit and unique-infra blocks within `root` to open their

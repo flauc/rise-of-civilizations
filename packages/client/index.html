@@ -53,6 +53,19 @@
         --parchment-dim: #b8aa8d;
         --danger: #8a2c2c;
         --success: #4a6e46;
+        /* One title scale for every dialog that opens over the map. Full-screen
+           pages (changelog, credits, roadmap, legal, support) keep their own
+           larger page-title scale. */
+        --dialog-title-size: 18px;
+        /* The pinned ✕ is --dialog-x-size square, inset from the dialog's
+           padding box, so it eats (right-inset + size) = 48px of the right edge.
+           Titles reserve --dialog-x-gutter to clear it horizontally; headers
+           reserve --dialog-x-size of height so body content, which scrolls,
+           can't pass under it. */
+        --dialog-x-size: 34px;
+        --dialog-x-top: 12px;
+        --dialog-x-right: 14px;
+        --dialog-x-gutter: 44px;
       }
       * {
         box-sizing: border-box;
@@ -158,11 +171,11 @@
         align-items: center;
         flex-wrap: wrap;
       }
-      /* Top status bar — stretches from the left to the leader avatar */
+      /* Top status bar — stretches from the leader avatar to the right edge */
       #topbar {
         top: max(6px, env(safe-area-inset-top));
-        left: max(6px, env(safe-area-inset-left));
-        right: calc(96px + env(safe-area-inset-right));
+        left: calc(96px + env(safe-area-inset-left));
+        right: max(6px, env(safe-area-inset-right));
         transform: none;
         max-width: none;
         display: flex;
@@ -178,7 +191,7 @@
       #leader-avatar {
         position: fixed;
         top: max(6px, env(safe-area-inset-top));
-        right: max(6px, env(safe-area-inset-right));
+        left: max(6px, env(safe-area-inset-left));
         width: 84px;
         z-index: 21;
         display: flex;
@@ -189,7 +202,9 @@
       }
       #leader-avatar > img {
         width: 84px;
-        height: 96px;
+        /* Leader art is 1.6:2; derive the height so nothing gets cropped. */
+        height: auto;
+        aspect-ratio: 1.6 / 2;
         object-fit: cover;
         border-radius: 12px;
         border: 1px solid var(--edge);
@@ -214,7 +229,7 @@
       }
       .tb-turn {
         display: inline-flex;
-        align-items: baseline;
+        align-items: center;
         gap: 6px;
         font-weight: 700;
         color: var(--accent-bright);
@@ -842,6 +857,10 @@
       #research {
         max-height: min(80vh, calc(100vh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
       }
+      /* Clear both the close button and the "View full" button beside it. */
+      #research .panel-dialog-header {
+        padding-right: 158px;
+      }
       /* Great People & Legends — richer cards, wider/taller panels. */
       #great-people,
       #legends {
@@ -893,6 +912,16 @@
       }
       .tech .cost {
         margin-left: 8px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 1px;
+      }
+      /* Turns-to-complete estimate under each tech's science cost. */
+      .tech .cost .tech-eta {
+        margin-top: 0;
+        font-size: 10.5px;
+        white-space: nowrap;
       }
       #production,
       #specialists,
@@ -909,7 +938,6 @@
       }
       .panel-dialog-header {
         flex: none;
-        padding-right: 40px;
       }
       .panel-dialog-header .row > b {
         min-width: 0;
@@ -1600,10 +1628,6 @@
         border-radius: 12px;
       }
       #village-dialog .village-title {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 20px;
-        font-weight: 700;
-        color: var(--accent-bright);
         margin-bottom: 10px;
       }
       #village-dialog .village-msg {
@@ -1656,12 +1680,6 @@
         margin: 0 auto 10px;
         display: block;
         border-radius: 12px;
-      }
-      #gp-activate-dialog .gp-activate-title {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 20px;
-        font-weight: 700;
-        color: var(--accent-bright);
       }
       #gp-activate-dialog .gp-activate-sub {
         font-size: 13px;
@@ -2031,12 +2049,6 @@
         border-radius: 12px;
         border: 1px solid var(--edge);
       }
-      #leader-ability-dialog .la-dialog-title {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 20px;
-        font-weight: 700;
-        color: var(--accent-bright);
-      }
       #leader-ability-dialog .la-dialog-sub {
         font-size: 13px;
         color: var(--muted, #9a8c78);
@@ -2116,12 +2128,7 @@
         pointer-events: auto;
       }
       .log-dialog-title {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--parchment);
         margin-bottom: 12px;
-        padding-right: 40px;
       }
       #log-dialog,
       #leaderboard-dialog,
@@ -2353,12 +2360,7 @@
         pointer-events: auto;
       }
       .gold-dialog-title {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--parchment);
         margin-bottom: 12px;
-        padding-right: 40px;
       }
       #gold-dialog-content {
         flex: 1;
@@ -2423,13 +2425,16 @@
         font-weight: 700;
         font-size: 14px;
       }
-      /* Top-right ✕ on overlay dialogs (treasury, morale, …). */
+      /* The one top-right ✕ for every dialog that opens over the map: treasury,
+         morale, diplomacy, empire, the city sub-dialogs, unique-unit cards. Add
+         .dialog-title (or .panel-dialog-header) to the title beside it and the
+         gutter is reserved for you. */
       .dialog-x {
         position: absolute;
-        top: 12px;
-        right: 14px;
-        width: 34px;
-        height: 34px;
+        top: var(--dialog-x-top);
+        right: var(--dialog-x-right);
+        width: var(--dialog-x-size);
+        height: var(--dialog-x-size);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -2441,11 +2446,88 @@
         font-size: 16px;
         line-height: 1;
         cursor: pointer;
+        /* Stays above positioned siblings, e.g. the unique-unit card's art. */
+        z-index: 1;
         transition: background 0.15s ease, color 0.15s ease;
       }
       .dialog-x:hover {
         background: rgba(201, 162, 39, 0.14);
         color: var(--accent-bright);
+      }
+      /* Every in-game dialog title, one scale. Keep this list and the header-band
+         list below in sync when a dialog is added. */
+      .dialog-title,
+      .panel-dialog-header > b,
+      .log-dialog-title,
+      .gold-dialog-title,
+      .morale-dialog-title,
+      .unit-promo-dialog-title,
+      #settings-dialog .settings-header b,
+      #combat-preview-dialog .combat-preview-header b,
+      #village-dialog .village-title,
+      #gp-activate-dialog .gp-activate-title,
+      #leader-ability-dialog .la-dialog-title,
+      #turn-update-dialog .turn-update-title,
+      .dp-title,
+      .dc-title,
+      .emp-title,
+      .uud-title,
+      .tutorial-prompt-title {
+        font-family: 'Cinzel', Georgia, serif;
+        font-size: var(--dialog-title-size);
+        font-weight: 700;
+        color: var(--accent-bright);
+      }
+      /* The header band a pinned ✕ shares. min-height holds the row open to the
+         button's height, so the scrolling body beneath can't pass under it, and
+         the gutter keeps the title text clear of it. */
+      .dialog-title,
+      .panel-dialog-header,
+      .log-dialog-title,
+      .gold-dialog-title,
+      .morale-dialog-title,
+      .unit-promo-dialog-title,
+      #settings-dialog .settings-header,
+      #combat-preview-dialog .combat-preview-header {
+        min-height: var(--dialog-x-size);
+        padding-right: var(--dialog-x-gutter);
+      }
+      /* Bands whose whole content is the title: centre it against the ✕. The
+         headers left out here lay their own children out in a row. */
+      .dialog-title,
+      .panel-dialog-header,
+      .log-dialog-title,
+      .gold-dialog-title,
+      .morale-dialog-title,
+      .unit-promo-dialog-title {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+      }
+      /* Art-topped dialogs centre their title, and hide the art entirely when it
+         fails to load, which lifts the title up beside the ✕. A symmetric gutter
+         clears the button without pulling the text off centre. Turn updates are
+         exempt: their own header row sits between the ✕ and the title. */
+      #village-dialog .village-title,
+      #gp-activate-dialog .gp-activate-title,
+      #leader-ability-dialog .la-dialog-title {
+        padding-left: var(--dialog-x-gutter);
+        padding-right: var(--dialog-x-gutter);
+      }
+      /* Small action parked on the header line, just left of the close button. */
+      .dialog-head-btn {
+        position: absolute;
+        top: 12px;
+        right: 56px;
+        height: 34px;
+        padding: 0 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        border-radius: 999px;
+        font-size: 12px;
+        line-height: 1;
+        white-space: nowrap;
       }
       /* Morale dialog — mirrors the treasury dialog, plus an expandable explainer. */
       #morale-overlay {
@@ -2495,12 +2577,7 @@
         flex-direction: column;
       }
       .morale-dialog-title {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--parchment);
         margin-bottom: 12px;
-        padding-right: 40px;
       }
       #morale-dialog-content {
         font-size: 13px;
@@ -2613,12 +2690,7 @@
         pointer-events: auto;
       }
       .unit-promo-dialog-title {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--parchment);
         margin-bottom: 12px;
-        padding-right: 40px;
       }
       #unit-promo-dialog-content {
         flex: 1;
@@ -2769,12 +2841,6 @@
         border-radius: 12px;
         border: 1px solid var(--edge);
       }
-      #turn-update-dialog .turn-update-title {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 20px;
-        font-weight: 700;
-        color: var(--accent-bright);
-      }
       #turn-update-dialog .turn-update-msg {
         font-size: 15px;
         line-height: 1.5;
@@ -2806,7 +2872,8 @@
         align-items: center;
         justify-content: space-between;
         gap: 10px;
-        padding-right: 36px;
+        min-height: var(--dialog-x-size);
+        padding-right: var(--dialog-x-gutter);
       }
       #turn-update-dialog .turn-update-heading {
         font-family: 'Cinzel', Georgia, serif;
@@ -2922,12 +2989,6 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-      }
-      #settings-dialog .settings-header b {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 18px;
-        color: var(--accent-bright);
-        padding-right: 40px;
       }
       #settings-dialog .settings-section {
         border-top: 1px solid var(--edge);
@@ -3049,12 +3110,6 @@
         opacity: 1;
         pointer-events: auto;
       }
-      #combat-preview-dialog .combat-preview-header b {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 18px;
-        color: var(--accent-bright);
-        padding-right: 40px;
-      }
       #combat-preview-dialog .combat-preview-matchup {
         display: grid;
         grid-template-columns: 1fr auto 1fr;
@@ -3161,6 +3216,11 @@
         min-width: 100px;
       }
       @media (max-width: 520px) {
+        /* Every dialog title steps down together on phones, rather than each
+           dialog picking its own mobile size. */
+        :root {
+          --dialog-title-size: 17px;
+        }
         #combat-preview-dialog .combat-preview-matchup {
           grid-template-columns: 1fr;
         }
@@ -3282,7 +3342,10 @@
           gap: 6px 8px;
           padding: 6px 10px;
           top: max(6px, env(safe-area-inset-top));
-          left: calc(54px + env(safe-area-inset-left));
+          /* Gutter for the leader portrait: 6px inset + its 60px max width + gap.
+             Static on purpose, so the portrait sizing off #topbar's height can't
+             feed back into the bar's width and change how its pills wrap. */
+          left: calc(72px + env(safe-area-inset-left));
           right: max(6px, env(safe-area-inset-right));
           font-size: 13px;
         }
@@ -3340,20 +3403,25 @@
           top: max(6px, env(safe-area-inset-top));
           left: max(6px, env(safe-area-inset-left));
           right: auto;
-          width: 44px;
+          /* Shrink-wrap the portrait so the badge stays on its corner. */
+          width: auto;
           z-index: 25;
         }
         #leader-avatar .leader-avatar-label {
           display: none;
         }
+        /* Match the height of the top bar next to it (--topbar-h is measured in
+           ui.ts, since the bar's height depends on how its pills wrap), and let
+           the leaders' native 1.6:2 ratio set the width. The 75px ceiling keeps
+           the portrait inside the 72px gutter the top bar's `left` reserves. */
         #leader-avatar > img {
           display: block;
-          width: 44px;
-          height: 52px;
-          max-width: 44px;
-          max-height: 52px;
+          height: clamp(52px, var(--topbar-h, 60px), 75px);
+          width: auto;
+          aspect-ratio: 1.6 / 2;
+          max-width: none;
+          max-height: none;
           object-fit: cover;
-          object-position: center top;
           flex-shrink: 0;
           border-radius: 8px;
         }
@@ -3559,9 +3627,6 @@
         #turn-update-dialog .turn-update-art {
           width: 130px;
           height: 162px;
-        }
-        #turn-update-dialog .turn-update-title {
-          font-size: 17px;
         }
         #turn-update-dialog .turn-update-msg {
           font-size: 13px;

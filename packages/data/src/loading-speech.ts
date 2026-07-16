@@ -4,6 +4,7 @@
 
 import type { CivDef } from "./index";
 import { civHistory, type CivHistory } from "./history-civs";
+import { CIV_LOADING_SCRIPTS } from "./loading-speech-scripts";
 
 export interface CivLoadingSpeech {
   civId: string;
@@ -31,6 +32,9 @@ export interface CivLoadingSpeechContext {
 
 /** ElevenLabs loading clips stay under ~500 chars so the full narration plays. */
 const MAX_SPEECH_CHARS = 500;
+
+/** Hand-written scripts get a roomier budget (longer, richer narration). */
+export const MAX_HANDWRITTEN_SPEECH_CHARS = 1000;
 
 const IRREGULAR_PAST_TO_PRESENT: Record<string, string> = {
   was: "is",
@@ -306,6 +310,26 @@ export function buildCivLoadingSpeech(civ: CivDef, ctx: CivLoadingSpeechContext)
   const hist = civHistory(civ.id);
   const intro = `I am ${civ.leader}, leader of ${civ.name}.`;
   const start = `I open with ${capitalSpoken(ctx.capitalPopulation)}, ${startingUnitsSpoken(ctx)}.`;
+
+  // Hand-written leader script wins over the auto-derived encyclopedia voice.
+  const script = CIV_LOADING_SCRIPTS[civ.id];
+  if (script) {
+    const spoken = {
+      story: sanitizeScrollCopy(script.story),
+      ability: sanitizeScrollCopy(script.ability),
+      leverage: sanitizeScrollCopy(script.leverage),
+    };
+    return {
+      civId: civ.id,
+      leader: civ.leader,
+      civName: civ.name,
+      story: spoken.story,
+      ability: spoken.ability,
+      leverage: spoken.leverage,
+      spoken,
+      text: sanitizeScrollCopy(civLoadingSpeechText(spoken)),
+    };
+  }
   const unique = `We field the ${civ.uniqueUnit} and build the ${civ.uniqueInfra}.`;
 
   const origin1 = wikiOriginVoice(hist, civ, 1);

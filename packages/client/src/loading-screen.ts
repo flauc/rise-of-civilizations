@@ -1,7 +1,19 @@
-// Themed loading veil: parchment scroll with the player's civ leader speaking.
+// Themed loading veil: the player's civ leader speaking, with their portrait and
+// unique unit/building. Styled to the game's house panels (dark card, gold edge,
+// cream text) using the :root tokens from index.html.
 
-import { civLoadingSpeech, type CivLoadingSpeech } from "@roc/data";
-import { assetUrl } from "./asset-base";
+import { civLoadingSpeech, sanitizeScrollCopy, type CivLoadingSpeech } from "@roc/data";
+import {
+  ACTIVE_ABILITY_DEFS,
+  TECH_DEFS,
+  UNIQUE_UNITS,
+  UNIT_DEFS,
+  isRanged,
+  uniqueInfraForCiv,
+  unitActiveAbilityIds,
+  type UnitTypeId,
+} from "@roc/sim";
+import { ASSET_BASE_URL, assetUrl } from "./asset-base";
 import { iconify } from "./icons";
 import { buildWordRevealTimeline, charCountAtTime, smoothCharCount, type WordRevealMark } from "./loading-sync";
 import {
@@ -102,137 +114,127 @@ function ensureStyles(): void {
       opacity:0;pointer-events:none;
       transition:opacity .45s ease;
     }
-    /* Keep the canvas hidden until the first full-quality frame has painted. */
-    body.roc-loading-scroll:not(.roc-map-painted) #game{
-      visibility:hidden;
+    /* Canvas stays invisible until the first full-quality frame has painted,
+       then fades in behind the translucent veil. */
+    body.roc-loading-scroll #game{
+      opacity:0;transition:opacity 1.2s ease;
+    }
+    body.roc-map-painted #game{
+      opacity:1;
     }
     #game-loading .gl-panel{
-      width:min(680px,100%);max-height:min(92vh,820px);display:flex;flex-direction:column;align-items:center;gap:14px;
+      width:min(1040px,100%);max-height:min(94vh,860px);min-height:0;
+      display:flex;flex-direction:column;align-items:stretch;gap:14px;
     }
+    /* Bottom slot: "Loading..." while the world builds, cross-fading into Skip
+       the moment it is ready. Both sit in one grid cell so nothing shifts. */
+    #game-loading .gl-foot{
+      flex-shrink:0;display:grid;justify-items:end;align-items:center;min-height:44px;
+    }
+    #game-loading .gl-foot > *{grid-area:1/1}
     #game-loading .gl-loading-status{
-      font-family:'Cinzel',Georgia,serif;font-size:clamp(14px,3.2vw,18px);letter-spacing:.16em;text-transform:uppercase;
-      color:#d4bc8a;text-shadow:0 2px 10px rgba(0,0,0,.55);flex-shrink:0;transition:opacity .35s ease,max-height .35s ease;
+      font-family:'Cinzel',Georgia,serif;font-size:clamp(13px,3.2vw,16px);letter-spacing:.16em;text-transform:uppercase;
+      color:var(--parchment-dim);text-shadow:0 2px 10px rgba(0,0,0,.55);
+      transition:opacity .45s ease,visibility 0s linear .45s;
     }
-    #game-loading .gl-loading-status.done{opacity:0;max-height:0;overflow:hidden;margin:0;padding:0}
-    #game-loading .gl-scroll{
-      width:100%;height:min(72vh,680px);max-height:min(72vh,680px);display:flex;flex-direction:column;align-items:stretch;
-      filter:drop-shadow(0 22px 48px rgba(0,0,0,.72)) sepia(.12);
+    #game-loading.game-ready .gl-loading-status{opacity:0;visibility:hidden}
+    #game-loading .gl-columns{
+      display:grid;grid-template-columns:320px minmax(0,1fr);grid-template-rows:auto auto;
+      grid-template-areas:"hero scroll" "uniques uniques";
+      gap:16px 24px;min-height:0;
     }
-    #game-loading .gl-scroll-rod{
-      height:20px;border-radius:10px;flex-shrink:0;position:relative;
-      background:
-        linear-gradient(180deg,rgba(255,255,255,.04),transparent 32%),
-        linear-gradient(180deg,#4a3218 0%,#352410 38%,#24180a 72%,#140e06 100%);
-      border:1px solid #3d2810;
-      box-shadow:inset 0 2px 3px rgba(255,255,255,.04),inset 0 -4px 8px rgba(0,0,0,.5),0 4px 10px rgba(0,0,0,.45);
+    #game-loading .gl-hero{
+      grid-area:hero;position:relative;border-radius:14px;overflow:hidden;
+      height:min(400px,52vh);
+      border:1px solid var(--edge);background:#15120c;
+      box-shadow:0 18px 40px rgba(0,0,0,.6);
     }
-    #game-loading .gl-scroll-rod::before,#game-loading .gl-scroll-rod::after{
-      content:"";position:absolute;top:50%;transform:translateY(-50%);
-      width:11px;height:11px;border-radius:50%;
-      background:radial-gradient(circle at 35% 28%,#6a5030,#2a1c0a 72%);
-      border:1px solid #1a1208;box-shadow:inset 0 1px 2px rgba(255,255,255,.08),0 1px 3px rgba(0,0,0,.4);
-    }
-    #game-loading .gl-scroll-rod::before{left:8px}
-    #game-loading .gl-scroll-rod::after{right:8px}
-    #game-loading .gl-scroll-rod.bottom{margin-top:-3px}
-    #game-loading .gl-scroll-body{
-      flex:1;min-height:0;overflow-y:auto;position:relative;
-      padding:28px 32px 22px;
-      background:
-        radial-gradient(ellipse at 12% 18%,rgba(55,35,15,.42) 0%,transparent 46%),
-        radial-gradient(ellipse at 88% 22%,rgba(45,28,12,.38) 0%,transparent 40%),
-        radial-gradient(ellipse at 72% 78%,rgba(60,38,18,.45) 0%,transparent 44%),
-        radial-gradient(ellipse at 22% 82%,rgba(50,32,14,.4) 0%,transparent 42%),
-        radial-gradient(ellipse at 48% 55%,rgba(40,25,10,.18) 0%,transparent 58%),
-        repeating-linear-gradient(
-          0deg,
-          transparent,
-          transparent 2px,
-          rgba(70,48,22,.04) 2px,
-          rgba(70,48,22,.04) 3px
-        ),
-        linear-gradient(168deg,#9a7d52 0%,#8a6c48 18%,#7d6240 42%,#6e5536 68%,#5f4a2e 100%);
-      border-left:2px solid #5a4228;border-right:2px solid #5a4228;
-      box-shadow:
-        inset 0 0 48px rgba(30,18,8,.45),
-        inset 0 0 18px rgba(20,12,5,.35),
-        inset 0 3px 0 rgba(255,230,180,.12),
-        inset 12px 0 24px rgba(40,25,10,.22),
-        inset -12px 0 24px rgba(40,25,10,.22);
-      color:#2a1e10;
-    }
-    #game-loading .gl-scroll-body::before{
-      content:"";pointer-events:none;position:absolute;inset:0;opacity:.55;z-index:0;
-      background:
-        radial-gradient(circle at 15% 35%,rgba(35,22,8,.28) 0%,transparent 28%),
-        radial-gradient(circle at 78% 62%,rgba(30,18,6,.32) 0%,transparent 32%),
-        radial-gradient(circle at 42% 88%,rgba(40,25,10,.25) 0%,transparent 26%),
-        radial-gradient(circle at 90% 12%,rgba(25,15,5,.2) 0%,transparent 22%);
-    }
-    #game-loading .gl-scroll-body::after{
-      content:"";pointer-events:none;position:absolute;left:0;right:0;top:0;height:100%;opacity:.35;z-index:0;
-      background:repeating-linear-gradient(
-        93deg,
-        transparent,
-        transparent 18px,
-        rgba(50,32,14,.06) 18px,
-        rgba(50,32,14,.06) 19px
-      );
-    }
-    #game-loading .gl-scroll-body > *{position:relative;z-index:1}
-    #game-loading .gl-scroll-edge{
-      pointer-events:none;position:absolute;left:0;right:0;height:16px;z-index:2;opacity:.5;
-      background:repeating-linear-gradient(90deg,transparent,transparent 3px,rgba(40,25,10,.16) 3px,rgba(40,25,10,.16) 4px);
-    }
-    #game-loading .gl-scroll-edge.top{top:0}
-    #game-loading .gl-scroll-edge.bottom{bottom:0;transform:scaleY(-1)}
-    #game-loading .gl-head{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;margin-bottom:22px}
     #game-loading .gl-portrait{
-      width:100px;height:100px;border-radius:50%;object-fit:cover;
-      border:3px solid #6a4e28;box-shadow:0 5px 16px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,230,180,.12);
-      background:#1a160f;filter:sepia(.35) contrast(1.08) brightness(.92);
+      display:block;width:100%;height:100%;object-fit:cover;object-position:50% 18%;
+      background:#15120c;filter:sepia(.2) contrast(1.05) brightness(.95);
+    }
+    #game-loading .gl-hero-name{
+      position:absolute;left:0;right:0;bottom:0;padding:46px 14px 12px;text-align:center;
+      background:linear-gradient(180deg,transparent 0%,rgba(10,8,5,.6) 42%,rgba(10,8,5,.94) 100%);
     }
     #game-loading .gl-civ{
-      font-family:'Cinzel',Georgia,serif;font-size:clamp(26px,5.5vw,34px);font-weight:700;
-      color:#3d2810;line-height:1.12;text-shadow:0 1px 0 rgba(255,235,200,.2);
+      font-family:'Cinzel',Georgia,serif;font-size:clamp(20px,2.4vw,26px);font-weight:700;
+      color:var(--parchment);line-height:1.15;text-shadow:0 2px 8px rgba(0,0,0,.7);
     }
     #game-loading .gl-leader{
-      font-family:'Cinzel',Georgia,serif;font-size:14px;letter-spacing:.12em;text-transform:uppercase;
-      color:#5a3d1c;
+      font-family:'Cinzel',Georgia,serif;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+      color:var(--accent);margin-top:3px;text-shadow:0 1px 5px rgba(0,0,0,.7);
+    }
+    #game-loading .gl-uniques{
+      grid-area:uniques;flex-shrink:0;
+      display:grid;grid-template-columns:1fr 1fr;gap:14px;
+    }
+    #game-loading .gl-card[hidden]{display:none}
+    #game-loading .gl-card{
+      display:flex;gap:12px;align-items:flex-start;padding:11px 12px;border-radius:10px;text-align:left;
+      border:1px solid var(--edge);
+      background:linear-gradient(180deg,#1f1c14,#15120c);
+      box-shadow:0 10px 24px rgba(0,0,0,.45);
+    }
+    #game-loading .gl-card-imgbox{
+      width:62px;height:78px;flex-shrink:0;border-radius:8px;overflow:hidden;
+      border:1px solid var(--edge);background:rgba(0,0,0,.25);
+    }
+    #game-loading .gl-card-img{width:100%;height:100%;object-fit:cover;object-position:50% 20%}
+    #game-loading .gl-card-body{min-width:0}
+    #game-loading .gl-card-kicker{
+      font-family:'Cinzel',Georgia,serif;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
+      color:var(--accent);
+    }
+    #game-loading .gl-card-name{
+      font-family:'Cinzel',Georgia,serif;font-size:15px;font-weight:700;color:var(--parchment);margin-top:1px;
+    }
+    #game-loading .gl-card-meta{font-size:11px;color:var(--parchment-dim);margin-top:2px}
+    #game-loading .gl-card-desc{
+      font-size:12px;line-height:1.55;color:var(--parchment-dim);margin-top:6px;
+      display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;
+    }
+    /* The speech panel follows the game's house style (see .uud-modal in the
+       lobby): dark card, gold-tinted edge, cream text. */
+    #game-loading .gl-scroll{
+      grid-area:scroll;height:min(400px,52vh);min-height:0;
+      display:flex;flex-direction:column;align-items:stretch;
+      border-radius:14px;overflow:hidden;
+      border:1px solid var(--edge);
+      background:linear-gradient(180deg,#1f1c14,#15120c);
+      box-shadow:0 18px 40px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,230,180,.05);
+    }
+    #game-loading .gl-scroll-body{
+      flex:1;min-height:0;overflow-y:auto;position:relative;
+      padding:26px 30px 22px;color:var(--parchment);
     }
     #game-loading .gl-prologue{
-      font-family:Georgia,'Times New Roman',serif;font-size:clamp(19px,4.2vw,24px);line-height:1.78;
-      color:#2a1e10;text-align:left;text-shadow:0 1px 0 rgba(255,240,210,.12);min-height:2.8em;
+      font-family:Georgia,'Times New Roman',serif;font-size:clamp(18px,4.2vw,22px);line-height:1.75;
+      color:var(--parchment);text-align:left;min-height:2.8em;
     }
     #game-loading .gl-divider{
-      margin:22px 0 20px;opacity:0;max-height:0;overflow:hidden;transition:opacity .35s ease,max-height .35s ease;
+      margin:20px 0 18px;opacity:0;max-height:0;overflow:hidden;transition:opacity .35s ease,max-height .35s ease;
     }
     #game-loading .gl-divider.visible{opacity:1;max-height:48px}
     #game-loading .gl-divider-main{
-      height:4px;border-radius:2px;
-      background:linear-gradient(90deg,transparent,#5a3d18 8%,#3d2810 50%,#5a3d18 92%,transparent);
-      box-shadow:0 3px 8px rgba(40,25,10,.45),0 1px 0 rgba(255,230,180,.25);
-    }
-    #game-loading .gl-divider-sub{
-      height:1px;margin-top:7px;border-radius:1px;
-      background:linear-gradient(90deg,transparent,rgba(80,55,30,.55) 15%,rgba(80,55,30,.55) 85%,transparent);
-      box-shadow:0 1px 3px rgba(40,25,10,.25);
+      height:1px;
+      background:linear-gradient(90deg,transparent,var(--edge) 12%,rgba(201,162,39,.55) 50%,var(--edge) 88%,transparent);
     }
     #game-loading .gl-ability{
-      font-family:Georgia,'Times New Roman',serif;font-size:clamp(18px,3.8vw,22px);line-height:1.72;
-      color:#2f2214;text-align:left;font-weight:600;min-height:0;
+      font-family:Georgia,'Times New Roman',serif;font-size:clamp(17px,3.8vw,20px);line-height:1.7;
+      color:var(--accent-bright);text-align:left;font-weight:600;min-height:0;
     }
     #game-loading .gl-leverage-block{
       margin-top:18px;opacity:0;max-height:0;overflow:hidden;transition:opacity .35s ease,max-height .6s ease;
     }
     #game-loading .gl-leverage-block.visible{opacity:1;max-height:320px}
     #game-loading .gl-leverage-label{
-      font-family:'Cinzel',Georgia,serif;font-size:13px;letter-spacing:.14em;text-transform:uppercase;
-      color:#6b4a22;margin-bottom:10px;text-shadow:0 1px 0 rgba(255,235,200,.3);
+      font-family:'Cinzel',Georgia,serif;font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+      color:var(--accent);margin-bottom:8px;
     }
     #game-loading .gl-leverage{
-      font-family:Georgia,'Times New Roman',serif;font-size:clamp(18px,3.8vw,22px);line-height:1.72;
-      color:#2a1e10;text-align:left;
+      font-family:Georgia,'Times New Roman',serif;font-size:clamp(17px,3.8vw,20px);line-height:1.7;
+      color:var(--parchment);text-align:left;
     }
     #game-loading .gl-prologue,#game-loading .gl-ability,#game-loading .gl-leverage{
       transition:none;
@@ -240,19 +242,73 @@ function ensureStyles(): void {
     #game-loading .gl-prologue .gi,#game-loading .gl-ability .gi,#game-loading .gl-leverage .gi{
       height:1.05em;width:auto;vertical-align:-.15em;
     }
+    /* Matches the lobby's primary button (.menu-btn.primary). */
     #game-loading .gl-skip{
-      align-self:flex-end;flex-shrink:0;margin-top:10px;
-      font-family:'Cinzel',Georgia,serif;font-size:12px;letter-spacing:.08em;text-transform:uppercase;
-      padding:10px 18px;border-radius:5px;border:1px solid #6b5230;
-      background:linear-gradient(180deg,#c4a876,#a88d5c);color:#3a2810;cursor:pointer;
-      min-height:44px;min-width:88px;box-shadow:0 2px 6px rgba(0,0,0,.18),inset 0 1px 0 rgba(255,240,210,.25);
+      font:inherit;font-family:'Cinzel',Georgia,serif;font-size:13px;font-weight:700;
+      letter-spacing:.08em;text-transform:uppercase;
+      padding:10px 22px;border-radius:999px;border:1px solid transparent;
+      background:linear-gradient(135deg,#c9a227,#a6821f);color:#15120c;cursor:pointer;
+      min-height:44px;min-width:96px;box-shadow:0 6px 18px rgba(0,0,0,.4);
+      opacity:0;visibility:hidden;pointer-events:none;
+      transition:opacity .45s ease,visibility 0s linear .45s,background .12s;
     }
-    #game-loading .gl-skip:hover{background:linear-gradient(180deg,#d0b482,#b89968)}
+    #game-loading.game-ready .gl-skip{
+      opacity:1;visibility:visible;pointer-events:auto;transition:opacity .45s ease,background .12s;
+    }
+    #game-loading .gl-skip:hover{background:linear-gradient(135deg,#f0d878,#c9a227);color:#0f0e0b}
+    #game-loading .gl-skip:focus-visible{outline:2px solid #c9a227;outline-offset:2px}
     #game-loading .gl-skip:active{transform:translateY(1px)}
-    @media (max-width:520px){
-      #game-loading .gl-scroll-body{padding:22px 18px 18px}
-      #game-loading .gl-portrait{width:84px;height:84px}
-      #game-loading .gl-prologue{font-size:clamp(18px,5vw,22px)}
+    /* Portrait phones and small tablets: a single column that exactly fills the
+       screen; the parchment flexes, nothing needs page scrolling. */
+    @media (max-width:880px){
+      #game-loading{padding:12px 10px}
+      #game-loading .gl-panel{height:100%;max-height:none;gap:10px}
+      #game-loading .gl-columns{
+        display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;
+      }
+      #game-loading .gl-hero{height:clamp(150px,24vh,280px);flex-shrink:0}
+      #game-loading .gl-hero-name{padding:30px 12px 10px}
+      #game-loading .gl-civ{font-size:clamp(18px,5vw,24px)}
+      #game-loading .gl-scroll{height:auto;flex:1;min-height:140px}
+      #game-loading .gl-scroll-body{padding:20px 18px 16px}
+      #game-loading .gl-prologue{font-size:clamp(16px,4.4vw,20px)}
+      #game-loading .gl-ability,#game-loading .gl-leverage{font-size:clamp(15px,4vw,18px)}
+      #game-loading .gl-uniques{gap:10px}
+      #game-loading .gl-card{gap:10px;padding:9px 10px}
+      #game-loading .gl-card-imgbox{width:46px;height:58px}
+      #game-loading .gl-card-kicker{font-size:9px}
+      #game-loading .gl-card-name{font-size:13px}
+      #game-loading .gl-card-meta{display:none}
+      #game-loading .gl-card-desc{font-size:11px;line-height:1.45;margin-top:4px;-webkit-line-clamp:2}
+    }
+    /* Landscape phones: compact hero on the left, parchment beside it, slim
+       name-only unique cards along the bottom. */
+    @media (orientation:landscape) and (max-height:520px){
+      #game-loading{padding:10px 12px}
+      #game-loading .gl-panel{height:100%;max-height:none;gap:8px}
+      #game-loading .gl-loading-status{font-size:12px}
+      #game-loading .gl-columns{
+        display:grid;grid-template-columns:170px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;
+        grid-template-areas:"hero scroll" "uniques uniques";
+        gap:10px 14px;flex:1;min-height:0;
+      }
+      #game-loading .gl-hero{height:auto}
+      #game-loading .gl-hero-name{padding:22px 8px 7px}
+      #game-loading .gl-civ{font-size:15px}
+      #game-loading .gl-leader{font-size:9px;letter-spacing:.1em;margin-top:1px}
+      #game-loading .gl-scroll{height:auto;flex:none;min-height:0}
+      #game-loading .gl-scroll-body{padding:14px 16px 12px}
+      #game-loading .gl-prologue{font-size:15px;line-height:1.6}
+      #game-loading .gl-ability,#game-loading .gl-leverage{font-size:14px}
+      #game-loading .gl-uniques{gap:10px}
+      #game-loading .gl-card{align-items:center;gap:9px;padding:6px 9px}
+      #game-loading .gl-card-imgbox{width:36px;height:44px}
+      #game-loading .gl-card-kicker{font-size:8px}
+      #game-loading .gl-card-name{font-size:12px;margin-top:0}
+      #game-loading .gl-card-meta{display:none}
+      #game-loading .gl-card-desc{display:none}
+      #game-loading .gl-foot{min-height:38px}
+      #game-loading .gl-skip{min-height:38px;padding:7px 14px}
     }`;
   document.head.appendChild(gs);
 }
@@ -283,23 +339,32 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
 
   const root = document.createElement("div");
   root.id = "game-loading";
+  const cardHtml = (kind: string): string =>
+    `<div class="gl-card gl-card-${kind}" hidden>` +
+    `<div class="gl-card-imgbox"><img class="gl-card-img" alt="" /></div>` +
+    `<div class="gl-card-body">` +
+    `<div class="gl-card-kicker"></div>` +
+    `<div class="gl-card-name"></div>` +
+    `<div class="gl-card-meta"></div>` +
+    `<div class="gl-card-desc"></div>` +
+    `</div>` +
+    `</div>`;
+
   root.innerHTML =
     `<div class="gl-panel">` +
-    `<div class="gl-loading-status">Loading...</div>` +
-    `<div class="gl-scroll">` +
-    `<div class="gl-scroll-rod top"></div>` +
-    `<div class="gl-scroll-body">` +
-    `<div class="gl-scroll-edge top"></div>` +
-    `<div class="gl-scroll-edge bottom"></div>` +
-    `<div class="gl-head">` +
+    `<div class="gl-columns">` +
+    `<div class="gl-hero">` +
     `<img class="gl-portrait" alt="" />` +
+    `<div class="gl-hero-name">` +
     `<div class="gl-civ"></div>` +
     `<div class="gl-leader"></div>` +
     `</div>` +
+    `</div>` +
+    `<div class="gl-scroll">` +
+    `<div class="gl-scroll-body">` +
     `<div class="gl-prologue"></div>` +
     `<div class="gl-divider" hidden>` +
     `<div class="gl-divider-main"></div>` +
-    `<div class="gl-divider-sub"></div>` +
     `</div>` +
     `<div class="gl-ability"></div>` +
     `<div class="gl-leverage-block" hidden>` +
@@ -307,9 +372,16 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     `<div class="gl-leverage"></div>` +
     `</div>` +
     `</div>` +
-    `<div class="gl-scroll-rod bottom"></div>` +
     `</div>` +
+    `<div class="gl-uniques">` +
+    cardHtml("unit") +
+    cardHtml("infra") +
+    `</div>` +
+    `</div>` +
+    `<div class="gl-foot">` +
+    `<div class="gl-loading-status">Loading...</div>` +
     `<button type="button" class="gl-skip">Skip</button>` +
+    `</div>` +
     `</div>`;
   document.body.appendChild(root);
   document.body.classList.add("roc-loading-scroll");
@@ -318,6 +390,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
   }
 
+  const scrollBodyEl = root.querySelector<HTMLDivElement>(".gl-scroll-body")!;
   const portraitEl = root.querySelector<HTMLImageElement>(".gl-portrait")!;
   const civEl = root.querySelector<HTMLDivElement>(".gl-civ")!;
   const leaderEl = root.querySelector<HTMLDivElement>(".gl-leader")!;
@@ -327,7 +400,88 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
   const leverageBlockEl = root.querySelector<HTMLDivElement>(".gl-leverage-block")!;
   const leverageEl = root.querySelector<HTMLDivElement>(".gl-leverage")!;
   const skipBtn = root.querySelector<HTMLButtonElement>(".gl-skip")!;
-  const loadingStatusEl = root.querySelector<HTMLDivElement>(".gl-loading-status")!;
+  const unitCardEl = root.querySelector<HTMLDivElement>(".gl-card-unit")!;
+  const infraCardEl = root.querySelector<HTMLDivElement>(".gl-card-infra")!;
+
+  interface UniqueCardData {
+    kicker: string;
+    name: string;
+    meta: string;
+    desc: string;
+    img: string;
+    /** Second image to try before hiding the art box (e.g. token when big art is missing). */
+    imgFallback?: string;
+  }
+
+  function setCard(card: HTMLDivElement, data: UniqueCardData): void {
+    const img = card.querySelector<HTMLImageElement>(".gl-card-img")!;
+    const box = card.querySelector<HTMLElement>(".gl-card-imgbox")!;
+    card.querySelector<HTMLDivElement>(".gl-card-kicker")!.textContent = data.kicker;
+    card.querySelector<HTMLDivElement>(".gl-card-name")!.textContent = data.name;
+    card.querySelector<HTMLDivElement>(".gl-card-meta")!.textContent = data.meta;
+    card.querySelector<HTMLDivElement>(".gl-card-desc")!.textContent = data.desc;
+    box.style.display = "";
+    let triedFallback = false;
+    img.onerror = () => {
+      if (!triedFallback && data.imgFallback) {
+        triedFallback = true;
+        img.src = data.imgFallback;
+        return;
+      }
+      box.style.display = "none";
+    };
+    img.src = data.img;
+    card.hidden = false;
+  }
+
+  /** Short player-facing blurb: combat edge over the base unit + the abilities it gains. */
+  function uniqueUnitDesc(uu: (typeof UNIQUE_UNITS)[number]): string {
+    const base = UNIT_DEFS[uu.replaces as UnitTypeId];
+    const parts: string[] = [];
+    if (base && uu.bonus) {
+      parts.push(`+${uu.bonus} ${isRanged(base) ? "ranged" : "combat"} strength over the ${base.name} it replaces.`);
+    }
+    const baseActive = base?.activeAbilities ?? [];
+    const gained = unitActiveAbilityIds(uu.replaces as UnitTypeId, uu.id).filter((a) => !baseActive.includes(a));
+    for (const a of gained) {
+      const d = ACTIVE_ABILITY_DEFS[a];
+      parts.push(`${d.name}: ${sanitizeScrollCopy(d.desc)}`);
+    }
+    if (parts.length === 0 && base) parts.push(`Replaces the ${base.name}.`);
+    return parts.join(" ");
+  }
+
+  /** The civ's unique unit and building/improvement cards beside the hero portrait. */
+  function renderUniques(cid: string | undefined): void {
+    const uu = cid ? UNIQUE_UNITS.find((u) => u.civId === cid) : undefined;
+    if (uu) {
+      const base = UNIT_DEFS[uu.replaces as UnitTypeId];
+      setCard(unitCardEl, {
+        kicker: "Unique Unit",
+        name: uu.name,
+        meta: base ? `Replaces ${base.name}` : "",
+        desc: uniqueUnitDesc(uu),
+        img: `${ASSET_BASE_URL}units-big/${uu.id}.png`,
+        imgFallback: `${ASSET_BASE_URL}units/${uu.id}.png`,
+      });
+    } else {
+      unitCardEl.hidden = true;
+    }
+    const inf = uniqueInfraForCiv(cid);
+    if (inf) {
+      const dir = inf.kind === "building" ? "buildings" : "improvements";
+      const tech = TECH_DEFS[inf.reqTech as keyof typeof TECH_DEFS]?.name ?? inf.reqTech;
+      setCard(infraCardEl, {
+        kicker: inf.kind === "building" ? "Unique Building" : "Unique Improvement",
+        name: inf.name,
+        meta: `Unlocks with ${tech}`,
+        desc: sanitizeScrollCopy(inf.desc),
+        img: `${ASSET_BASE_URL}${dir}/${inf.id}.png`,
+      });
+    } else {
+      infraCardEl.hidden = true;
+    }
+  }
 
   function showFullScroll(s: CivLoadingSpeech): void {
     prologueEl.innerHTML = iconify(s.story);
@@ -364,6 +518,10 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     blocks: Pick<CivLoadingSpeech, "story" | "ability" | "leverage">,
     count: number,
   ): void {
+    // Follow the typing when it overflows the parchment, but let the player
+    // scroll up to reread without fighting them.
+    const followTyping =
+      scrollBodyEl.scrollHeight - scrollBodyEl.scrollTop - scrollBodyEl.clientHeight < 64;
     const blockList: { el: HTMLDivElement; text: string }[] = [];
     if (blocks.story) blockList.push({ el: prologueEl, text: blocks.story });
     if (blocks.ability) blockList.push({ el: abilityEl, text: blocks.ability });
@@ -385,6 +543,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
       }
     }
     updateSectionChrome(blocks, count);
+    if (followTyping) scrollBodyEl.scrollTop = scrollBodyEl.scrollHeight;
   }
 
   function revealAllSpeech(scroll: CivLoadingSpeech): void {
@@ -557,6 +716,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     portraitEl.onerror = () => {
       portraitEl.style.visibility = "hidden";
     };
+    renderUniques(speech.civId);
 
     speechDone = false;
     typingDone = false;
@@ -586,6 +746,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
       leaderEl.textContent = "";
       clearSections();
       portraitEl.removeAttribute("src");
+      renderUniques(undefined);
       return;
     }
     startSpeech();
@@ -671,17 +832,24 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     if (!dismissed) dismiss();
   }, FORCE_DISMISS_MS);
 
+  /** Swap "Loading..." for Skip once the game is genuinely ready behind the veil.
+   *  One class drives both, so the footer is never empty mid-swap. */
+  function markGameReadyIfLoaded(): void {
+    if (worldReady && mapRendered) root.classList.add("game-ready");
+  }
+
   return {
     notifyWorldGenerated() {
       if (worldReady) return;
       worldReady = true;
+      markGameReadyIfLoaded();
       tryDismiss();
     },
     notifyMapRendered() {
       if (mapRendered || dismissed) return;
       mapRendered = true;
       document.body.classList.add("roc-map-painted");
-      loadingStatusEl.classList.add("done");
+      markGameReadyIfLoaded();
       if (!root.classList.contains("post-speech-hold")) {
         root.classList.add("map-backdrop");
       }

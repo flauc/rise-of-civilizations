@@ -12,10 +12,11 @@ import {
   sumBuildingEffects,
   getBuildingDef,
   BEACON_DEFENSE_CAP,
+  ACTIVE_ABILITY_DEFS,
   type ActiveAbilityId,
   type PromotionId,
 } from "./content";
-import { isRough, terrainDefense, isWaterTerrain, isForestTerrain } from "./terrain";
+import { isRough, terrainDefense, isWaterTerrain, isForestTerrain, TERRAIN_NAMES } from "./terrain";
 import { structureDefense, towerBombard } from "./fortifications";
 import { civCombatBonus, uniqueUnitForUnit, unitDisplayName } from "./civs";
 import { legendCombatBonus } from "./legends";
@@ -34,33 +35,76 @@ import { grantLegendDeathFaith } from "./works";
 import { tileOwnerId } from "./territory";
 import { playerReligionId, convertCityToPlayerReligion } from "./religion";
 
+/** One labeled term in a strength calculation, recorded as the real math runs. */
+export interface CombatTraceEntry {
+  label: string;
+  /** Rendered effect, e.g. `12`, `+5`, `-3`, `x1.20`. */
+  effect: string;
+}
+
+function roundTrace(n: number): string {
+  return (Math.round(n * 100) / 100).toString();
+}
+
+function traceDelta(n: number): string {
+  return `${n > 0 ? "+" : ""}${roundTrace(n)}`;
+}
+
+const STANCE_LABELS: Record<string, string> = {
+  brace: "Brace",
+  shield_wall: "Shield wall",
+  othismos: "Othismos",
+  stone_bulwark: "Stone bulwark",
+  zareba: "Zareba",
+  iron_wall: "Iron wall",
+  wagenburg: "Wagenburg",
+  schiltron: "Schiltron",
+  elephant_wall: "Elephant wall",
+  turtle_shell: "Turtle shell",
+  last_stand: "Last stand",
+  testudo: "Testudo",
+  pavise: "Pavise",
+  emplace: "Emplaced",
+};
+
 /** Flat combat-strength from civics/governments that depend on *where* the unit
  *  fights and *whom* it fights (docs/CIVICS-AND-GOVERNMENTS.md §4): a home/foreign
  *  territory bonus, an all-units bonus, and a bonus vs civs of another religion.
  *  `opponent` is the other combatant (the defender when attacking, the attacker
  *  when defending). */
-function conditionalCombatBonus(state: GameState, unit: Unit, opponent: Unit): number {
+function conditionalCombatBonus(state: GameState, unit: Unit, opponent: Unit, trace?: CombatTraceEntry[]): number {
   const eff = playerEffects(state, unit.ownerId);
-  let b = eff.allUnitCombat ?? 0;
+  let b = 0;
+  const rec = (label: string, delta: number): void => {
+    if (!delta) return;
+    b += delta;
+    trace?.push({ label, effect: traceDelta(delta) });
+  };
+  rec("Empire-wide combat", eff.allUnitCombat ?? 0);
   const atHome = tileOwnerId(state, unit.col, unit.row) === unit.ownerId;
-  b += atHome ? (eff.homeCombat ?? 0) : (eff.foreignCombat ?? 0);
+  rec(atHome ? "Fighting at home" : "Fighting abroad", atHome ? (eff.homeCombat ?? 0) : (eff.foreignCombat ?? 0));
   if (eff.combatVsOtherReligion) {
     const mine = playerReligionId(state, unit.ownerId);
     // You must hold a faith of your own; the foe counts as "other-religion" if
     // theirs differs (including having none — e.g. barbarians).
-    if (mine && playerReligionId(state, opponent.ownerId) !== mine) b += eff.combatVsOtherReligion;
+    if (mine && playerReligionId(state, opponent.ownerId) !== mine) rec("Vs other faith", eff.combatVsOtherReligion);
   }
-  if (eff.combatVsUniqueUnit && uniqueUnitForUnit(state, opponent)) b += eff.combatVsUniqueUnit;
+  if (eff.combatVsUniqueUnit && uniqueUnitForUnit(state, opponent)) rec("Vs unique unit", eff.combatVsUniqueUnit);
   return b;
 }
 
 /** Combat bonuses from timed modifiers that depend on the unit's own type. */
-function typedCombatBonus(state: GameState, unit: Unit, ranged: boolean): number {
+function typedCombatBonus(state: GameState, unit: Unit, ranged: boolean, trace?: CombatTraceEntry[]): number {
   const eff = playerEffects(state, unit.ownerId);
   let b = 0;
-  if (eff.gunpowderCombatBonus && UNIT_DEFS[unit.type].gunpowder) b += eff.gunpowderCombatBonus;
+  const rec = (label: string, delta: number): void => {
+    if (!delta) return;
+    b += delta;
+    trace?.push({ label, effect: traceDelta(delta) });
+  };
+  if (eff.gunpowderCombatBonus && UNIT_DEFS[unit.type].gunpowder) rec("Gunpowder corps", eff.gunpowderCombatBonus);
   const cls = UNIT_DEFS[unit.type].cls;
-  if (!ranged && eff.navalMeleeCombatBonus && cls === "naval_melee") b += eff.navalMeleeCombatBonus;
+  if (!ranged && eff.navalMeleeCombatBonus && cls === "naval_melee") rec("Naval melee", eff.navalMeleeCombatBonus);
   return b;
 }
 
@@ -163,25 +207,49 @@ function attackStrength(
   targetTerrain: TerrainType,
   ranged: boolean,
   ability?: ActiveAbilityId,
+  trace?: CombatTraceEntry[],
 ): number {
   const def = UNIT_DEFS[unit.type];
   const defenderCls = UNIT_DEFS[defender.type].cls;
-  let s = (ranged ? def.rangedStrength ?? 0 : def.strength) * levelMultiplier(unit);
+  // `levelMultiplier` is factored out of the base and applied once below; every
+  // branch here multiplied by it, so the product is unchanged.
+  let s = ranged ? def.rangedStrength ?? 0 : def.strength;
   // A melee unit's Fire Lance fires off its melee strength (it has no rangedStrength).
-  if (ranged && ability === "fire_lance") s = (def.strength + FIRE_LANCE_BONUS) * levelMultiplier(unit);
+  if (ranged && ability === "fire_lance") s = def.strength + FIRE_LANCE_BONUS;
   // Broadside: gun-armed ships fire their battery using hull strength if they lack a ranged rating.
-  if (ranged && ability === "broadside" && !def.rangedStrength) s = def.strength * levelMultiplier(unit);
+  if (ranged && ability === "broadside" && !def.rangedStrength) s = def.strength;
   // Elephant-back shooters fire a lighter weapon than the beast's bulk suggests.
-  if (ranged && ability === "howdah_volley") s = Math.max(4, def.strength - 4) * levelMultiplier(unit);
-  if (ranged && ability === "double_ballista") s = Math.max(4, def.strength - 2) * levelMultiplier(unit);
-  s += civCombatBonus(state, unit);
-  s += conditionalCombatBonus(state, unit, defender); // civics: home/foreign/all-unit/other-religion
-  s += typedCombatBonus(state, unit, ranged);
-  s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
-  s += religionUnitCombatBonus(state, unit); // faith-tier strength + religious auras
-  if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) s -= unit.cursedPenalty ?? 3;
+  if (ranged && ability === "howdah_volley") s = Math.max(4, def.strength - 4);
+  if (ranged && ability === "double_ballista") s = Math.max(4, def.strength - 2);
 
-  // Active-ability attack bonuses.
+  const add = (label: string, delta: number): void => {
+    if (!delta) return;
+    s += delta;
+    trace?.push({ label, effect: traceDelta(delta) });
+  };
+  const mul = (label: string, factor: number): void => {
+    if (factor === 1) return;
+    s *= factor;
+    trace?.push({ label, effect: `x${factor.toFixed(2)}` });
+  };
+  const measured = (label: string, before: number): void => {
+    if (s === before) return;
+    trace?.push({ label, effect: traceDelta(s - before) });
+  };
+
+  trace?.push({ label: ranged ? "Ranged strength" : "Base strength", effect: roundTrace(s) });
+  mul("Experience", levelMultiplier(unit));
+
+  add("Civilization", civCombatBonus(state, unit));
+  s += conditionalCombatBonus(state, unit, defender, trace); // civics: home/foreign/all-unit/other-religion
+  s += typedCombatBonus(state, unit, ranged, trace);
+  add("Legend nearby", legendCombatBonus(state, unit)); // hero strength + adjacent-hero aura
+  add("Faith & auras", religionUnitCombatBonus(state, unit)); // faith-tier strength + religious auras
+  if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) add("Cursed", -(unit.cursedPenalty ?? 3));
+
+  // Active-ability attack bonuses. Recorded as one measured term below, so the
+  // label always reflects whatever these statements actually did.
+  const beforeAbility = s;
   const defenderBraced = defender.stance === "brace" || defender.stance === "shield_wall" || defender.stance === "othismos" || defender.stance === "last_stand";
   if (!ranged && ability === "charge" && !defenderBraced) s += 4; // braced spears blunt a charge
   if (!ranged && ability === "war_cart_charge" && !defenderBraced) s += 2; // primitive battle-cart
@@ -234,93 +302,132 @@ function attackStrength(
   if (!ranged && ability === "ram") s += 4; // naval ram
   if (!ranged && ability === "boarding_party") s += 5; // grapple and board
   if (ranged && ability === "coastal_bombardment") s += 4; // focused coastal fire
+  if (ability) measured(ACTIVE_ABILITY_DEFS[ability].name, beforeAbility);
+
   // Emplaced siege fires harder.
-  if (ranged && unit.stance === "emplace") s += (def.rangedStrength ?? 0) * 0.5;
+  if (ranged && unit.stance === "emplace") add("Emplaced", (def.rangedStrength ?? 0) * 0.5);
 
   // Terrain-based bonuses.
-  if (!ranged && has(unit, "shock") && isOpen(targetTerrain)) s += 3;
-  if (!ranged && has(unit, "drill") && isRough(targetTerrain)) s += 3;
-  if (ranged && has(unit, "accuracy") && isOpen(targetTerrain)) s += 3;
-  if (ranged && has(unit, "barrage") && isRough(targetTerrain)) s += 3;
-  if (has(unit, "woodland_warrior") && isForestTerrain(targetTerrain)) s += 3;
-  if (has(unit, "guerrilla") && isRough(targetTerrain)) s += 3;
-  if (has(unit, "amphibious") && (targetTerrain === "coast" || targetTerrain === "lake")) s += 3;
+  if (!ranged && has(unit, "shock") && isOpen(targetTerrain)) add("Shock (open ground)", 3);
+  if (!ranged && has(unit, "drill") && isRough(targetTerrain)) add("Drill (rough ground)", 3);
+  if (ranged && has(unit, "accuracy") && isOpen(targetTerrain)) add("Accuracy (open ground)", 3);
+  if (ranged && has(unit, "barrage") && isRough(targetTerrain)) add("Barrage (rough ground)", 3);
+  if (has(unit, "woodland_warrior") && isForestTerrain(targetTerrain)) add("Woodland warrior", 3);
+  if (has(unit, "guerrilla") && isRough(targetTerrain)) add("Guerrilla", 3);
+  if (has(unit, "amphibious") && (targetTerrain === "coast" || targetTerrain === "lake")) add("Amphibious", 3);
 
   // Naval bonuses.
   const defenderIsNaval = defenderCls === "naval_melee" || defenderCls === "naval_ranged";
-  if (has(unit, "boarding") && defenderCls === "naval_melee") s += 4;
-  if (has(unit, "boarding") && defenderCls === "naval_ranged") s += 3;
-  if (has(unit, "chain_shot") && defenderIsNaval) s += 4;
-  if (has(unit, "ramming") && !unit.attackedThisTurn && defenderIsNaval) s += 4;
-  if (has(unit, "fleet_discipline") && adjacentNavalFriendlies(state, unit) > 0) s += 2;
-  if (has(unit, "pursuit_at_sea") && isWounded(defender) && defenderIsNaval) s += 3;
-  if (ranged && has(unit, "coastal_bombardment") && !isWaterTerrain(targetTerrain)) s += 4;
-  if (ranged && has(unit, "broadside")) s += 2;
+  if (has(unit, "boarding") && defenderCls === "naval_melee") add("Boarding", 4);
+  if (has(unit, "boarding") && defenderCls === "naval_ranged") add("Boarding", 3);
+  if (has(unit, "chain_shot") && defenderIsNaval) add("Chain shot", 4);
+  if (has(unit, "ramming") && !unit.attackedThisTurn && defenderIsNaval) add("Ramming", 4);
+  if (has(unit, "fleet_discipline") && adjacentNavalFriendlies(state, unit) > 0) add("Fleet discipline", 2);
+  if (has(unit, "pursuit_at_sea") && isWounded(defender) && defenderIsNaval) add("Pursuit at sea", 3);
+  if (ranged && has(unit, "coastal_bombardment") && !isWaterTerrain(targetTerrain)) add("Coastal bombardment", 4);
+  if (ranged && has(unit, "broadside")) add("Broadside", 2);
 
   // Civ / leader-ability combat bonuses.
   const eff = playerEffects(state, unit.ownerId);
-  if (unit.embarked && eff.embarkedCombatBonus) s += eff.embarkedCombatBonus;
-  if (isForestTile(state, unit.col, unit.row) && eff.forestTileCombatBonus) s += eff.forestTileCombatBonus;
-  if (ranged && ability === "coastal_bombardment" && !isWaterTerrain(targetTerrain)) s += 4;
+  if (unit.embarked && eff.embarkedCombatBonus) add("Embarked", eff.embarkedCombatBonus);
+  if (isForestTile(state, unit.col, unit.row) && eff.forestTileCombatBonus) add("Forest tile bonus", eff.forestTileCombatBonus);
+  if (ranged && ability === "coastal_bombardment" && !isWaterTerrain(targetTerrain)) add("Coastal fire", 4);
 
   // First-attack bonuses.
   if (!unit.attackedThisTurn) {
-    if (has(unit, "charge")) s += 4;
-    if (has(unit, "cavalry_charge")) s += 4;
-    if (has(unit, "ambush")) s += 4;
+    if (has(unit, "charge")) add("Charge (first strike)", 4);
+    if (has(unit, "cavalry_charge")) add("Cavalry charge (first strike)", 4);
+    if (has(unit, "ambush")) add("Ambush (first strike)", 4);
   }
 
   // Defender-state bonuses.
-  if (has(unit, "trample") && isWounded(defender)) s += 4;
-  if (has(unit, "pursuit") && defender.hp < unitMaxHp(defender)) s += 3;
-  if (has(unit, "sniper") && isWounded(defender)) s += 4;
+  if (has(unit, "trample") && isWounded(defender)) add("Trample (wounded foe)", 4);
+  if (has(unit, "pursuit") && defender.hp < unitMaxHp(defender)) add("Pursuit (hurt foe)", 3);
+  if (has(unit, "sniper") && isWounded(defender)) add("Sniper (wounded foe)", 4);
 
   // Defender-class bonuses.
-  if (def.abilities?.includes("bonus_vs_cavalry") && defenderCls === "cavalry") s += 5;
-  if (has(unit, "harrier") && defenderCls === "ranged") s += 3;
-  if (has(unit, "lancer") && defenderCls === "melee") s += 3;
-  if (has(unit, "hunter") && defenderCls === "cavalry") s += 3;
-  if (has(unit, "sharpshooter") && defenderCls === "melee") s += 3;
-  if (has(unit, "counter_battery") && (defenderCls === "ranged" || defenderCls === "siege")) s += 4;
+  if (def.abilities?.includes("bonus_vs_cavalry") && defenderCls === "cavalry") add("Anti-cavalry", 5);
+  if (has(unit, "harrier") && defenderCls === "ranged") add("Harrier", 3);
+  if (has(unit, "lancer") && defenderCls === "melee") add("Lancer", 3);
+  if (has(unit, "hunter") && defenderCls === "cavalry") add("Hunter", 3);
+  if (has(unit, "sharpshooter") && defenderCls === "melee") add("Sharpshooter", 3);
+  if (has(unit, "counter_battery") && (defenderCls === "ranged" || defenderCls === "siege")) add("Counter-battery", 4);
 
   // Position / support bonuses.
-  if (has(unit, "discipline")) s += 2 * Math.min(4, friendliesWithin(state, unit, 2));
-  if (has(unit, "flanking")) s += 2 * Math.min(4, friendliesWithin(state, unit, 2));
+  if (has(unit, "discipline")) add("Discipline", 2 * Math.min(4, friendliesWithin(state, unit, 2)));
+  if (has(unit, "flanking")) add("Flanking support", 2 * Math.min(4, friendliesWithin(state, unit, 2)));
   const tile = getTile(state.map, unit.col, unit.row);
   if (tile) {
-    if (has(unit, "elevation") && tile.terrain === "hills") s += 2;
+    if (has(unit, "elevation") && tile.terrain === "hills") add("Elevation (hills)", 2);
   }
 
   // Static strength bonuses.
-  if (has(unit, "blitz")) s += 2;
-  if (ranged && has(unit, "volley")) s += 2;
-  if (ranged && has(unit, "heavy_caliber")) s += 3;
-  if (ranged && has(unit, "mounted_archer") && def.cls === "cavalry") s += 2;
-  if (has(unit, "ranger")) s += 2;
-  if (has(unit, "intimidation")) s += 2;
+  if (has(unit, "blitz")) add("Blitz", 2);
+  if (ranged && has(unit, "volley")) add("Volley", 2);
+  if (ranged && has(unit, "heavy_caliber")) add("Heavy caliber", 3);
+  if (ranged && has(unit, "mounted_archer") && def.cls === "cavalry") add("Mounted archer", 2);
+  if (has(unit, "ranger")) add("Ranger", 2);
+  if (has(unit, "intimidation")) add("Intimidation", 2);
 
   // Phalanx push: a friendly neighbour holding Othismos lends melee +2 attack.
   if (!ranged) {
     for (const u of state.units.values()) {
       if (u.ownerId === unit.ownerId && u.id !== unit.id && u.stance === "othismos" && dist(unit, u) === 1) {
-        s += 2;
+        add("Othismos push", 2);
         break;
       }
     }
   }
 
   // Assaulting across a river blunts a melee attack (ranged fire flies over it).
-  if (!ranged && riverBetween(state, unit.col, unit.row, defender.col, defender.row)) s *= 0.75;
+  if (!ranged && riverBetween(state, unit.col, unit.row, defender.col, defender.row)) mul("River crossing", 0.75);
 
   // Ambush perk: a unit that broke cover near foes strikes harder until its next turn.
   if (unit.ambushReadyUntilTurn !== undefined && state.turn <= unit.ambushReadyUntilTurn) {
-    s *= 1 + (unit.ambushBonus ?? 0.2);
+    mul("Ambush ready", 1 + (unit.ambushBonus ?? 0.2));
   }
 
   // Maimed (Aimed Shot): a wounded arm strikes weaker.
-  if (unit.maimedUntilTurn !== undefined && state.turn <= unit.maimedUntilTurn) s *= 0.75;
+  if (unit.maimedUntilTurn !== undefined && state.turn <= unit.maimedUntilTurn) mul("Maimed", 0.75);
 
-  return s * woundFactor(unit.hp, unitMaxHp(unit)) * moraleAttackMultiplier(unit);
+  mul("Wounds", woundFactor(unit.hp, unitMaxHp(unit)));
+  mul("Morale", moraleAttackMultiplier(unit));
+  return s;
+}
+
+/** Total damage a melee attacker takes back: the defender's blow, plus whatever
+ *  the defender's stance costs the attacker on the way in. `resolveAttack` and
+ *  `combatPreview` share this so the dialog's "damage taken" matches the exchange. */
+function meleeRetaliation(
+  state: GameState,
+  attacker: Unit,
+  defender: Unit,
+  defEff: number,
+  attEff: number,
+  ability: ActiveAbilityId | undefined,
+  trace?: CombatTraceEntry[],
+): number {
+  let retaliation = damageFrom(defEff, attEff);
+  if (has(attacker, "suppression")) {
+    retaliation = Math.max(0, retaliation - 3);
+    trace?.push({ label: "Suppression", effect: "3 less retaliation" });
+  }
+  // Charging onto braced spears is punished with heavier retaliation.
+  const defenderBraced = defender.stance === "brace" || defender.stance === "shield_wall" || defender.stance === "othismos" || defender.stance === "last_stand";
+  if ((ability === "charge" || ability === "shock_charge" || ability === "war_cart_charge") && defenderBraced) retaliation = Math.round(retaliation * 1.25);
+  // A drilled charge is executed too cleanly to answer.
+  if (ability === "drilled_charge") retaliation = 0;
+  // The three-man chariot's shield-bearer wards off half the reply.
+  if (ability === "kadesh_charge") retaliation = Math.round(retaliation / 2);
+  let extra = 0;
+  // Storming a zareba means wading through the thorns first.
+  if (defender.stance === "zareba") extra += 6;
+  // Cavalry breaking on a schiltron bleed on the spear points.
+  if (defender.stance === "schiltron" && UNIT_DEFS[attacker.type].cls === "cavalry") extra += 5;
+  // Boarders die on the turtle ship's spiked roof.
+  if (defender.stance === "turtle_shell") extra += 8;
+  if (extra) trace?.push({ label: `Stance: ${STANCE_LABELS[defender.stance!] ?? defender.stance}`, effect: `+${extra} to attacker` });
+  return retaliation + extra;
 }
 
 function adjacentEnemies(state: GameState, unit: Unit): number {
@@ -348,48 +455,66 @@ function isCoastalTarget(state: GameState, col: number, row: number): boolean {
   return isCoastalLand(state, col, row);
 }
 
-function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged: boolean): number {
+function defenseStrength(
+  state: GameState,
+  unit: Unit,
+  attacker: Unit,
+  vsRanged: boolean,
+  trace?: CombatTraceEntry[],
+): number {
   const def = UNIT_DEFS[unit.type];
   const attackerCls = UNIT_DEFS[attacker.type].cls;
-  let s = def.strength * levelMultiplier(unit);
+  // `levelMultiplier` is factored out of the base and applied once here.
+  let s = def.strength;
+
+  const add = (label: string, delta: number): void => {
+    if (!delta) return;
+    s += delta;
+    trace?.push({ label, effect: traceDelta(delta) });
+  };
+
+  trace?.push({ label: "Base strength", effect: roundTrace(s) });
+  if (levelMultiplier(unit) !== 1) {
+    s *= levelMultiplier(unit);
+    trace?.push({ label: "Experience", effect: `x${levelMultiplier(unit).toFixed(2)}` });
+  }
   const tile = getTile(state.map, unit.col, unit.row);
   // Ships (and embarked units) on water receive no terrain defense.
-  if (tile && !isWaterTerrain(tile.terrain)) s += terrainDefense(tile.terrain);
+  if (tile && !isWaterTerrain(tile.terrain)) add(`${TERRAIN_NAMES[tile.terrain]} terrain`, terrainDefense(tile.terrain));
 
   // Civ / leader-ability defensive bonuses.
   const eff = playerEffects(state, unit.ownerId);
-  if (unit.embarked && eff.embarkedCombatBonus) s += eff.embarkedCombatBonus;
-  if (isForestTile(state, unit.col, unit.row) && eff.forestTileCombatBonus) s += eff.forestTileCombatBonus;
+  if (unit.embarked && eff.embarkedCombatBonus) add("Embarked", eff.embarkedCombatBonus);
+  if (isForestTile(state, unit.col, unit.row) && eff.forestTileCombatBonus) add("Forest tile bonus", eff.forestTileCombatBonus);
   // A friendly defensive structure on the tile shelters its defender.
   if (tile?.structure && tile.ownerCityId !== undefined) {
     const o = state.cities.get(tile.ownerCityId);
-    if (o && o.ownerId === unit.ownerId) s += structureDefense(tile.structure.tier);
+    if (o && o.ownerId === unit.ownerId) add("Fortification", structureDefense(tile.structure.tier));
   }
-  if (tile?.road) s += 0; // roads don't add defense
-  if (vsRanged && has(unit, "cover")) s += 4;
+  if (vsRanged && has(unit, "cover")) add("Cover vs ranged", 4);
   // Anti-cavalry also helps the defender against mounted attackers.
-  if (def.abilities?.includes("bonus_vs_cavalry") && attackerCls === "cavalry") s += 5;
+  if (def.abilities?.includes("bonus_vs_cavalry") && attackerCls === "cavalry") add("Anti-cavalry", 5);
 
-  if (has(unit, "brawler")) s += 3;
-  if (has(unit, "formation") && attackerCls === "cavalry") s += 4;
-  if (has(unit, "camouflage") && tile && isRough(tile.terrain)) s += 3;
-  if (has(unit, "skirmisher") && adjacentEnemies(state, unit) === 0) s += 3;
+  if (has(unit, "brawler")) add("Brawler", 3);
+  if (has(unit, "formation") && attackerCls === "cavalry") add("Formation", 4);
+  if (has(unit, "camouflage") && tile && isRough(tile.terrain)) add("Camouflage", 3);
+  if (has(unit, "skirmisher") && adjacentEnemies(state, unit) === 0) add("Skirmisher", 3);
   if (has(unit, "besieger")) {
     const city = cityAt(state, unit.col, unit.row);
     // Bonus when standing next to an enemy city (including the city's own tile).
-    if (city && city.ownerId !== unit.ownerId) s += 3;
+    if (city && city.ownerId !== unit.ownerId) add("Besieger", 3);
   }
-  if (has(unit, "entrenchment") && def.cls === "siege") s += 2;
-  if (has(unit, "stalwart")) s += 3;
+  if (has(unit, "entrenchment") && def.cls === "siege") add("Entrenchment", 2);
+  if (has(unit, "stalwart")) add("Stalwart", 3);
   // Furor leaves the fanatic exposed.
-  if (unit.exposedUntilTurn !== undefined && state.turn <= unit.exposedUntilTurn) s -= 4;
+  if (unit.exposedUntilTurn !== undefined && state.turn <= unit.exposedUntilTurn) add("Exposed", -4);
 
-  s += civCombatBonus(state, unit);
-  s += conditionalCombatBonus(state, unit, attacker); // civics: home/foreign/all-unit/other-religion
-  s += typedCombatBonus(state, unit, vsRanged);
-  s += legendCombatBonus(state, unit); // hero strength + adjacent-hero aura
-  s += religionUnitCombatBonus(state, unit); // faith-tier strength + religious auras
-  if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) s -= unit.cursedPenalty ?? 3;
+  add("Civilization", civCombatBonus(state, unit));
+  s += conditionalCombatBonus(state, unit, attacker, trace); // civics: home/foreign/all-unit/other-religion
+  s += typedCombatBonus(state, unit, vsRanged, trace);
+  add("Legend nearby", legendCombatBonus(state, unit)); // hero strength + adjacent-hero aura
+  add("Faith & auras", religionUnitCombatBonus(state, unit)); // faith-tier strength + religious auras
+  if (unit.cursedUntilTurn !== undefined && state.turn <= unit.cursedUntilTurn) add("Cursed", -(unit.cursedPenalty ?? 3));
 
   // Stance defensive multipliers.
   let stanceMult = 1;
@@ -411,14 +536,34 @@ function defenseStrength(state: GameState, unit: Unit, attacker: Unit, vsRanged:
   } else if (unit.stance === "testudo") stanceMult = vsRanged ? 1.5 : 0.9;
   else if (unit.stance === "pavise") stanceMult = vsRanged ? 1.5 : 1.0;
   else if (unit.stance === "emplace") stanceMult = 0.75;
+  if (unit.stance && stanceMult !== 1) {
+    trace?.push({ label: `Stance: ${STANCE_LABELS[unit.stance] ?? unit.stance.replaceAll("_", " ")}`, effect: `x${stanceMult.toFixed(2)}` });
+  }
   // A friendly Stone Bulwark or Elephant Wall on an adjacent tile shelters this unit too.
-  if (unit.stance !== "stone_bulwark" && unit.stance !== "elephant_wall" && adjacentBulwark(state, unit)) stanceMult *= 1.15;
+  if (unit.stance !== "stone_bulwark" && unit.stance !== "elephant_wall" && adjacentBulwark(state, unit)) {
+    stanceMult *= 1.15;
+    trace?.push({ label: "Adjacent bulwark", effect: "x1.15" });
+  }
   // Sundered units defend weaker.
-  if (unit.sunderedUntilTurn !== undefined && state.turn <= unit.sunderedUntilTurn) stanceMult *= 0.75;
-  // Bushidō: a cornered Samurai fights all the harder.
-  if (hasBushido(state, unit)) stanceMult *= 1.3;
+  if (unit.sunderedUntilTurn !== undefined && state.turn <= unit.sunderedUntilTurn) {
+    stanceMult *= 0.75;
+    trace?.push({ label: "Sundered", effect: "x0.75" });
+  }
+  // Bushido: a cornered Samurai fights all the harder.
+  if (hasBushido(state, unit)) {
+    stanceMult *= 1.3;
+    trace?.push({ label: "Bushido (cornered)", effect: "x1.30" });
+  }
 
-  return Math.max(1, s) * stanceMult * woundFactor(unit.hp, unitMaxHp(unit)) * moraleDefenseMultiplier(unit);
+  // Arithmetic below is left exactly as it was so the traced and untraced calls
+  // agree bit for bit; the trace only observes it.
+  const floored = Math.max(1, s);
+  if (floored !== s) trace?.push({ label: "Minimum strength", effect: roundTrace(floored) });
+  const wf = woundFactor(unit.hp, unitMaxHp(unit));
+  const mf = moraleDefenseMultiplier(unit);
+  if (wf !== 1) trace?.push({ label: "Wounds", effect: `x${wf.toFixed(2)}` });
+  if (mf !== 1) trace?.push({ label: "Morale", effect: `x${mf.toFixed(2)}` });
+  return floored * stanceMult * wf * mf;
 }
 
 /** Count the attacker's friendly units adjacent to the defender (Nerge). */
@@ -541,6 +686,65 @@ export function cityDefenseStrength(state: GameState, city: City): number {
     s += UNIT_DEFS[garrison.type].strength * levelMultiplier(garrison) * 0.5 * woundFactor(garrison.hp, unitMaxHp(garrison));
   }
   return Math.max(1, Math.round(s));
+}
+
+/** Attacker's effective strength against a city, plus the city's effective defense.
+ *  `resolveAttack` and `combatPreview` both route through this, so the odds the
+ *  player is shown cannot drift from the attack that actually happens. */
+function cityAttackStrengths(
+  state: GameState,
+  attacker: Unit,
+  city: City,
+  ranged: boolean,
+  ability?: ActiveAbilityId,
+  attackerTrace?: CombatTraceEntry[],
+  defenderTrace?: CombatTraceEntry[],
+): { attEff: number; cityDef: number } {
+  const def = UNIT_DEFS[attacker.type];
+  let cityDef = cityDefenseStrength(state, city);
+  defenderTrace?.push({ label: "City defenses", effect: roundTrace(cityDef) });
+  if (ability === "siege_assault" && cityHasWalls(city)) {
+    const reduced = Math.max(1, cityDef - 6); // tower ignores the wall bonus
+    defenderTrace?.push({ label: "Siege assault (ignores walls)", effect: traceDelta(reduced - cityDef) });
+    cityDef = reduced;
+  }
+  const mult = vsCityMultiplier(attacker);
+  const eff = playerEffects(state, attacker.ownerId);
+
+  const rs = ranged
+    ? ability === "fire_lance" ? def.strength + FIRE_LANCE_BONUS
+      : ability === "broadside" ? (def.rangedStrength ?? def.strength)
+      : ability === "howdah_volley" ? Math.max(4, def.strength - 4)
+      : ability === "double_ballista" ? Math.max(4, def.strength - 2)
+      : def.rangedStrength ?? 0
+    : def.strength;
+  attackerTrace?.push({ label: ranged ? "Ranged strength" : "Base strength", effect: roundTrace(rs) });
+  const lvl = levelMultiplier(attacker);
+  if (lvl !== 1) attackerTrace?.push({ label: "Experience", effect: `x${lvl.toFixed(2)}` });
+  const wf = woundFactor(attacker.hp, unitMaxHp(attacker));
+  if (wf !== 1) attackerTrace?.push({ label: "Wounds", effect: `x${wf.toFixed(2)}` });
+  const base = rs * lvl * wf;
+
+  const cab = cityAttackBonus(attacker);
+  if (cab) attackerTrace?.push({ label: "City assault", effect: traceDelta(cab) });
+  if (mult !== 1) attackerTrace?.push({ label: "Bonus vs city", effect: `x${mult.toFixed(2)}` });
+  let attEff = (base + cab) * mult;
+
+  if (!ranged) {
+    const melee = eff.meleeVsCityBonus ?? 0;
+    if (melee) attackerTrace?.push({ label: "Melee vs city", effect: traceDelta(melee) });
+    attEff += melee;
+    if (ability === "deus_vult") {
+      attEff += 8; // God wills the walls down
+      attackerTrace?.push({ label: ACTIVE_ABILITY_DEFS.deus_vult.name, effect: "+8" });
+    }
+  }
+  if (def.cls === "siege" && eff.siegeVsCityDefenseMultiplier) {
+    const f = 1 + eff.siegeVsCityDefenseMultiplier / 100;
+    attEff *= f;
+    attackerTrace?.push({ label: "Siege vs city", effect: `x${f.toFixed(2)}` });
+  }
+  return { attEff, cityDef };
 }
 
 function vsCityMultiplier(unit: Unit): number {
@@ -757,23 +961,10 @@ export function resolveAttack(
     if (attackerNaval && !isCoastalTarget(state, col, row)) return { ok: false, error: "city is not coastal" };
     const owner = playerById(state, enemyCity.ownerId);
     if (owner && !areEnemies(attackerOwner, owner)) return { ok: false, error: "not at war" };
-    let cityDef = cityDefenseStrength(state, enemyCity);
-    if (ability === "siege_assault" && cityHasWalls(enemyCity)) cityDef = Math.max(1, cityDef - 6); // tower ignores the wall bonus
-    const mult = vsCityMultiplier(attacker);
-    const eff = playerEffects(state, attacker.ownerId);
     enemyCity.lastAttackedTurn = state.turn;
 
     if (ranged) {
-      const rs = ability === "fire_lance" ? def.strength + FIRE_LANCE_BONUS
-        : ability === "broadside" ? (def.rangedStrength ?? def.strength)
-        : ability === "howdah_volley" ? Math.max(4, def.strength - 4)
-        : ability === "double_ballista" ? Math.max(4, def.strength - 2)
-        : def.rangedStrength ?? 0;
-      const base = rs * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker));
-      let attEff = (base + cityAttackBonus(attacker)) * mult;
-      if (def.cls === "siege" && eff.siegeVsCityDefenseMultiplier) {
-        attEff *= 1 + eff.siegeVsCityDefenseMultiplier / 100;
-      }
+      const { attEff, cityDef } = cityAttackStrengths(state, attacker, enemyCity, true, ability);
       enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
       awardXp(state, attacker, 3);
     } else {
@@ -785,12 +976,7 @@ export function resolveAttack(
           captureCity(state, enemyCity, attacker);
         }
       } else {
-        const base = def.strength * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker));
-        let attEff = (base + cityAttackBonus(attacker)) * mult + (eff.meleeVsCityBonus ?? 0);
-        if (ability === "deus_vult") attEff += 8; // God wills the walls down
-        if (def.cls === "siege" && eff.siegeVsCityDefenseMultiplier) {
-          attEff *= 1 + eff.siegeVsCityDefenseMultiplier / 100;
-        }
+        const { attEff, cityDef } = cityAttackStrengths(state, attacker, enemyCity, false, ability);
         enemyCity.hp = Math.max(0, enemyCity.hp - damageFrom(attEff, cityDef));
         attacker.hp -= Math.round(damageFrom(cityDef, attEff) * (ability === "siege_assault" ? 0.5 : 1)); // the tower shelters its crew
         awardXp(state, attacker, 4);
@@ -864,22 +1050,7 @@ export function resolveAttack(
       if (ability === "zweihander" && enemyUnit.hp > 0) enemyUnit.stance = null; // the pike hedge is broken open
       if (ability === "shear_oars" && enemyUnit.hp > 0) enemyUnit.pinnedUntilTurn = state.turn + 1; // crippled in the water
       if (ability === "leiomano" && enemyUnit.hp > 0) enemyUnit.poisonedUntilTurn = state.turn + 2; // torn flesh keeps bleeding
-      let retaliation = damageFrom(defEff, attEff);
-      if (has(attacker, "suppression")) retaliation = Math.max(0, retaliation - 3);
-      // Charging onto braced spears is punished with heavier retaliation.
-      const defenderBraced = enemyUnit.stance === "brace" || enemyUnit.stance === "shield_wall" || enemyUnit.stance === "othismos" || enemyUnit.stance === "last_stand";
-      if ((ability === "charge" || ability === "shock_charge" || ability === "war_cart_charge") && defenderBraced) retaliation = Math.round(retaliation * 1.25);
-      // A drilled charge is executed too cleanly to answer.
-      if (ability === "drilled_charge") retaliation = 0;
-      // The three-man chariot's shield-bearer wards off half the reply.
-      if (ability === "kadesh_charge") retaliation = Math.round(retaliation / 2);
-      // Storming a zareba means wading through the thorns first.
-      if (enemyUnit.stance === "zareba") attacker.hp -= 6;
-      // Cavalry breaking on a schiltron bleed on the spear points.
-      if (enemyUnit.stance === "schiltron" && UNIT_DEFS[attacker.type].cls === "cavalry") attacker.hp -= 5;
-      // Boarders die on the turtle ship's spiked roof.
-      if (enemyUnit.stance === "turtle_shell") attacker.hp -= 8;
-      attacker.hp -= retaliation;
+      attacker.hp -= meleeRetaliation(state, attacker, enemyUnit, defEff, attEff, ability);
       // Striking a serene or nonviolent holy figure shames the attacker.
       const thornKit = religionUnitKit(enemyUnit.type);
       if (thornKit?.passives.thornMorale) {
@@ -1250,10 +1421,26 @@ export interface CombatPreview {
   toDefender: number; // damage the attacker would deal
   toAttacker: number; // damage taken back (0 for ranged or vs an empty-HP city)
   vsCity: boolean;
+  /** A melee strike that walks into an already-empty city: capture, no combat. */
+  capture?: boolean;
 }
 
-/** Predict the outcome of an attack without mutating state (for UI hover odds). */
-export function combatPreview(state: GameState, attacker: Unit, col: number, row: number): CombatPreview | null {
+/** Optional per-side breakdowns filled in as the preview math runs. */
+export interface CombatTraces {
+  attacker: CombatTraceEntry[];
+  defender: CombatTraceEntry[];
+}
+
+/** Predict the outcome of an attack without mutating state (for UI hover odds and
+ *  the attack-preview dialog). Mirrors `resolveAttack` by calling the same math. */
+export function combatPreview(
+  state: GameState,
+  attacker: Unit,
+  col: number,
+  row: number,
+  ability?: ActiveAbilityId,
+  traces?: CombatTraces,
+): CombatPreview | null {
   const def = UNIT_DEFS[attacker.type];
   const ranged = isRanged(def);
   const targetTile = getTile(state.map, col, row);
@@ -1262,10 +1449,19 @@ export function combatPreview(state: GameState, attacker: Unit, col: number, row
   const enemyUnit = unitAt(state, col, row);
 
   if (enemyCity && enemyCity.ownerId !== attacker.ownerId) {
-    const cityDef = cityDefenseStrength(state, enemyCity);
-    const mult = vsCityMultiplier(attacker);
-    const base = (ranged ? def.rangedStrength ?? 0 : def.strength) * levelMultiplier(attacker) * woundFactor(attacker.hp, unitMaxHp(attacker));
-    const attEff = (base + cityAttackBonus(attacker)) * mult;
+    // `resolveAttack` captures an empty city outright rather than fighting it.
+    if (!ranged && enemyCity.hp <= 0) {
+      return { toDefender: 0, toAttacker: 0, vsCity: true, capture: true };
+    }
+    const { attEff, cityDef } = cityAttackStrengths(
+      state,
+      attacker,
+      enemyCity,
+      ranged,
+      ability,
+      traces?.attacker,
+      traces?.defender,
+    );
     return {
       toDefender: damageFrom(attEff, cityDef),
       toAttacker: ranged ? 0 : damageFrom(cityDef, attEff),
@@ -1273,11 +1469,13 @@ export function combatPreview(state: GameState, attacker: Unit, col: number, row
     };
   }
   if (enemyUnit && enemyUnit.ownerId !== attacker.ownerId) {
-    const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, ranged);
-    const defEff = defenseStrength(state, enemyUnit, attacker, ranged);
+    const attEff = attackStrength(state, attacker, enemyUnit, targetTile.terrain, ranged, ability, traces?.attacker);
+    let defEff = defenseStrength(state, enemyUnit, attacker, ranged, traces?.defender);
+    if (ability === "pierce") defEff = Math.max(1, defEff - 6);
+    if (ability === "falx_reap" || ability === "obsidian_reap") defEff = Math.max(1, defEff - 6);
     return {
       toDefender: damageFrom(attEff, defEff),
-      toAttacker: ranged ? 0 : damageFrom(defEff, attEff),
+      toAttacker: ranged ? 0 : meleeRetaliation(state, attacker, enemyUnit, defEff, attEff, ability, traces?.attacker),
       vsCity: false,
     };
   }

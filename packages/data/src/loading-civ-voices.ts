@@ -36,8 +36,18 @@ function assign(map: Record<string, string>, ids: readonly string[], voiceId: st
 function buildCivNarratorVoiceMap(): Record<string, string> {
   const map: Record<string, string> = {};
 
+  // Mesopotamian leaders each get a voice matched to their hand-written script:
+  // Gilgamesh the epic storyteller, Sargon the iron conqueror, Hammurabi the
+  // formal lawgiver, Ashurbanipal the resonant menace, Suppiluliuma the steady
+  // rebuilder king.
+  assign(map, ["sumer"], V.george);
+  assign(map, ["akkad"], V.adam);
+  assign(map, ["babylon"], V.joseph);
+  assign(map, ["assyria"], V.brian);
+  assign(map, ["hittites"], V.daniel);
+
   assign(map, [
-    "sumer", "akkad", "babylon", "assyria", "hittites", "elam", "israelites", "mitanni", "urartu",
+    "elam", "israelites", "mitanni", "urartu",
     "nabataeans", "lydia",
   ], V.brian);
 
