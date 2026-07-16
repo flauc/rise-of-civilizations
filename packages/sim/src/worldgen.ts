@@ -461,6 +461,19 @@ export function majorLandmassMin(cols: number, rows: number): number {
   return Math.max(24, Math.round((cols * rows) / 160));
 }
 
+/** Hex tiles in a radius-r disk (axial distance ≤ r). Matches city territory geometry. */
+function hexDiskTileCount(radius: number): number {
+  return 1 + 3 * radius * (radius + 1);
+}
+
+/** Minimum land tiles on a standalone island for a **player start**. Smaller
+ *  islets may still appear on the map (offshore scenery, island chains) but
+ *  findStarts keeps civs off them — they cannot develop Sailing and a navy.
+ *  Sized for radius-2 city borders plus the Sailing tech chain and Shipyard. */
+export function minViableIslandTiles(): number {
+  return hexDiskTileCount(2); // 19
+}
+
 export function generateMap(opts: WorldGenOptions): GameMap {
   const requested = opts.mapType ?? "continents";
   const mapType = resolveMapType(opts.seed, requested);
