@@ -547,7 +547,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .lobby-subtitle{color:#b8aa8d;font-size:13px;margin-bottom:24px}
     .account-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;margin-bottom:16px;border:1px solid var(--edge);border-radius:12px;background:rgba(201,162,39,.06);font-size:13px;color:#b8aa8d}
     .account-bar b{color:#e8dcc5}
-    .account-bar .menu-btn{width:auto;padding:7px 12px;font-size:12px;margin:0}
+    .account-bar .menu-btn{width:auto;padding:7px 12px;font-size:12px;margin:0;white-space:nowrap}
     .auth-check{display:flex;align-items:flex-start;gap:8px;margin-top:14px;color:#cdbf9f;font-size:13px;cursor:pointer;line-height:1.35}
     .auth-check input{accent-color:#c9a227;margin-top:2px;flex:0 0 auto}
     .auth-legal a{color:#f0d878;font-weight:700;text-decoration:underline;text-underline-offset:2px}
@@ -1278,7 +1278,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           <button class="menu-btn secondary" id="account-logout" type="button">Log out</button>
         </div>`
       : `<div class="account-bar">
-          <span>Playing as <b>Guest</b> — saves stay on this device</span>
+          <span><b>Guest</b></span>
           <button class="menu-btn secondary" id="account-login" type="button">Log in / Register</button>
         </div>`;
     const loadBtn = `<button class="menu-btn" data-screen="load">Load Game</button>`;
@@ -1325,7 +1325,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     left.querySelector<HTMLButtonElement>("#account-logout")?.addEventListener("click", () => {
       clearAccount();
       applyAccount(null);
-      renderStartScreen();
+      showScreen("login");
     });
     left.querySelector<HTMLButtonElement>("#lobby-wiki")?.addEventListener("click", () => wiki.open());
     left.querySelector<HTMLButtonElement>("#lobby-roadmap")?.addEventListener("click", () => roadmap.open());
@@ -2493,12 +2493,20 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
   }
 
   renderShowcase();
-  showScreen("start");
+  // Signed-in players go straight to the menu; everyone else is asked to log in
+  // first and has to opt into guest play from there.
+  const storedAccount = getAccount();
+  showScreen(storedAccount ? "start" : "login");
   void (async () => {
     const account = await tryResumeSession(state.mp.url);
     if (account) {
       applyAccount(account);
       renderStartScreen();
+    } else if (storedAccount && state.screen === "start") {
+      // The stored token was stale, so we opened the menu for a session that no
+      // longer exists. Drop back to the login screen unless they've moved on.
+      applyAccount(null);
+      showScreen("login");
     }
   })();
 }
