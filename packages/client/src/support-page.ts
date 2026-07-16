@@ -7,7 +7,7 @@ import {
   validateSupportInquiry,
 } from "@roc/shared";
 
-import { setLobbyHidden } from "./app-routes";
+import { clearOverlayPathIfNeeded, persistOverlayPath, setLobbyHidden } from "./app-routes";
 export const SUPPORT_URL = "https://game.rise-of-civilizations.com/support";
 
 function resolveSupportEndpoint(): string {
@@ -229,17 +229,15 @@ export function createSupportPage(): SupportPage {
     renderForm();
     root.classList.remove("hidden");
     setLobbyHidden(true);
-    if (location.pathname !== "/support") {
-      history.replaceState({ support: true }, "", "/support");
-    }
+    persistOverlayPath("/support");
     bodyEl.querySelector<HTMLInputElement>("#support-email")?.focus();
   };
 
   const close = (): void => {
     root.classList.add("hidden");
     setLobbyHidden(false);
-    if (supportPageFromLocation(location) && location.pathname !== "/") {
-      history.replaceState(null, "", "/");
+    if (supportPageFromLocation(location)) {
+      clearOverlayPathIfNeeded();
     }
   };
 

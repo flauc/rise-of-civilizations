@@ -85,6 +85,13 @@ function settingsHtml(): string {
     `<button class="seg-btn ${tuMode === "compact" ? "active" : ""}" data-tu-mode="compact" title="Pop up all events on one screen">Compact</button>` +
     `<button class="seg-btn ${tuMode === "off" ? "active" : ""}" data-tu-mode="off" title="Don't pop up; still available from the Updates button">Off</button>` +
     `</div></div>` +
+    `<div class="settings-section">` +
+    `<div class="settings-title">Combat</div>` +
+    `<div class="settings-hint">Before your unit attacks, show a preview of likely damage and bonuses on both sides.</div>` +
+    `<div class="seg">` +
+    `<button class="seg-btn ${!s.autoAttack ? "active" : ""}" data-auto-attack="preview" title="Confirm each attack after seeing the preview">Preview</button>` +
+    `<button class="seg-btn ${s.autoAttack ? "active" : ""}" data-auto-attack="instant" title="Attack immediately without a preview">Auto attack</button>` +
+    `</div></div>` +
     (shouldOfferScreenRotation()
       ? `<div class="settings-section">` +
         `<div class="settings-title">Screen Rotation</div>` +
@@ -116,6 +123,12 @@ function bindSettingsPanel(): void {
         updateSettings({ turnUpdatePopup: true, turnUpdateView: view });
         panelOptions.onTurnUpdateSettingsChange?.(view);
       }
+      renderSettingsPanel();
+    }),
+  );
+  dialog.querySelectorAll<HTMLButtonElement>("[data-auto-attack]").forEach((el) =>
+    el.addEventListener("click", () => {
+      updateSettings({ autoAttack: el.dataset.autoAttack === "instant" });
       renderSettingsPanel();
     }),
   );

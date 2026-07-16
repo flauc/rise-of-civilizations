@@ -8,7 +8,7 @@
 import privacyRaw from "../public/privacy.html?raw";
 import termsRaw from "../public/terms.html?raw";
 import deleteAccountRaw from "../public/delete-account.html?raw";
-import { setLobbyHidden } from "./app-routes";
+import { clearOverlayPathIfNeeded, persistOverlayPath, setLobbyHidden } from "./app-routes";
 import { openSupportPage } from "./support-page";
 
 export type LegalPage = "terms" | "privacy" | "delete-account";
@@ -154,17 +154,14 @@ export function createLegalViewer(): LegalViewer {
     render(page);
     root.classList.remove("hidden");
     setLobbyHidden(true);
-    const path = legalPath(page);
-    if (location.pathname !== path) {
-      history.replaceState({ legal: page }, "", path);
-    }
+    persistOverlayPath(legalPath(page));
   };
 
   const close = (): void => {
     root.classList.add("hidden");
     setLobbyHidden(false);
-    if (legalPageFromLocation(location) && location.pathname !== "/") {
-      history.replaceState(null, "", "/");
+    if (legalPageFromLocation(location)) {
+      clearOverlayPathIfNeeded();
     }
     current = null;
   };

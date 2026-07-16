@@ -90,7 +90,7 @@ export const TUTORIAL_CIV_ID =
   [...CIVILIZATIONS].sort((a, b) => a.name.localeCompare(b.name))[0]!.id;
 
 export function createTutorialSession(): LocalSession {
-  const session = new LocalSession({
+  return new LocalSession({
     civId: TUTORIAL_CIV_ID,
     mapSize: TUTORIAL_MAP_SIZE,
     mapType: TUTORIAL_MAP_TYPE,
@@ -105,9 +105,8 @@ export function createTutorialSession(): LocalSession {
     gameSpeed: "normal",
     enabledVictories: [...TOGGLEABLE_VICTORIES],
     seed: "tutorial-" + Math.random().toString(36).slice(2, 8),
+    deferWorldGen: true,
   });
-  seedTutorialSurroundings(session.getState());
-  return session;
 }
 
 /** The player's anchor for tutorial spawns: their capital once founded, else the
@@ -382,6 +381,7 @@ export function spawnTutorialBarbarian(state: GameState): boolean {
 
 export function createTutorialSetup(): GameSetup {
   return {
+    civId: TUTORIAL_CIV_ID,
     mapType: TUTORIAL_MAP_TYPE,
     mapSize: TUTORIAL_MAP_SIZE,
     startingGold: "balanced",

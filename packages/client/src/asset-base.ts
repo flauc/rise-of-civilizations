@@ -19,10 +19,15 @@ const RAW_BASE =
 /** Asset base, guaranteed to end in exactly one trailing slash. */
 export const ASSET_BASE_URL = RAW_BASE.endsWith("/") ? RAW_BASE : `${RAW_BASE}/`;
 
-/**
- * Resolve a public-relative asset path to a full URL.
+/** Resolve a public-relative asset path to a full URL.
  * e.g. assetUrl("units/warrior.png") -> "<base>units/warrior.png"
  */
 export function assetUrl(path: string): string {
   return `${ASSET_BASE_URL}${path.replace(/^\/+/, "")}`;
+}
+
+/** Same-origin path for assets copied into the native app shell (e.g. loading voice). */
+export function bundledAssetUrl(path: string): string {
+  const base = import.meta.env?.BASE_URL || "/";
+  return `${base}${path.replace(/^\/+/, "")}`;
 }

@@ -52,7 +52,7 @@ import { mountGameChat } from "./mp-chat";
 import { createLobby } from "./lobby-ui";
 import { createLegalViewer, type LegalPage } from "./legal-viewer";
 import { createSupportPage, registerSupportPage, supportPageFromLocation } from "./support-page";
-import { initialOverlayRoute, setLobbyHidden } from "./app-routes";
+import { consumeNativeBootRoute, initialOverlayRoute, setLobbyHidden } from "./app-routes";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadCoastAtlas } from "./coast-assets";
 import { loadRiverAtlas } from "./river-assets";
@@ -67,7 +67,7 @@ import { loadWonderAtlas } from "./wonder-assets";
 import { loadResourceAtlas } from "./resource-assets";
 import { loadAbilityAtlas } from "./ability-assets";
 import { loadReligionIconAtlas } from "./religion-assets";
-import { MAP_DIMENSIONS, type Session } from "./session";
+import { LocalSession, MAP_DIMENSIONS, type Session } from "./session";
 import type { CheatAction } from "./god-mode";
 import { exportSave, listSavesForUser, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
 import { getAccount, getSaveOwnerId } from "./account";
@@ -78,9 +78,11 @@ import {
   spawnTutorialBarbarian,
   spawnTutorialVillage,
   ensureReachableTutorialVillage,
+  seedTutorialSurroundings,
 } from "./tutorial";
 import { installIconifyHook } from "./icons";
 import { initScreenRotation } from "./screen-rotation";
+import { createLoadingScreen } from "./loading-screen";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -96,7 +98,7 @@ const supportPage = createSupportPage();
 registerSupportPage(supportPage);
 supportPage.wireLinks();
 
-const bootRoute = initialOverlayRoute(location);
+const bootRoute = consumeNativeBootRoute(initialOverlayRoute(location));
 
 function openBootRoute(): void {
   if (bootRoute === "support") {
@@ -113,31 +115,30 @@ openBootRoute();
 delete window.__ROC_BOOT_ROUTE__;
 
 function startGame(session: Session, setup: GameSetup = {}): void {
-  // Loading veil: the map paints progressively as sprite atlases stream in (and
-  // larger maps like Real World take a moment), so cover the canvas with a themed
-  // spinner until the world is fully rendered rather than showing a half-built map.
-  if (!document.getElementById("game-loading-style")) {
-    const gs = document.createElement("style");
-    gs.id = "game-loading-style";
-    gs.textContent = `
-      #game-loading{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 38%,#1b1812 0%,#0f0e0b 70%);transition:opacity .45s ease}
-      #game-loading.hide{opacity:0;pointer-events:none}
-      #game-loading .gl-box{display:flex;flex-direction:column;align-items:center;gap:18px}
-      #game-loading .gl-spinner{width:46px;height:46px;border-radius:50%;border:4px solid rgba(201,162,39,.22);border-top-color:#c9a227;animation:gl-spin .8s linear infinite}
-      #game-loading .gl-text{font-family:'Cinzel',Georgia,serif;color:#e8dcc5;font-size:16px;letter-spacing:.6px}
-      @keyframes gl-spin{to{transform:rotate(360deg)}}`;
-    document.head.appendChild(gs);
-  }
-  const loadingEl = document.createElement("div");
-  loadingEl.id = "game-loading";
-  loadingEl.innerHTML = `<div class="gl-box"><div class="gl-spinner"></div><div class="gl-text">Preparing the world…</div></div>`;
-  document.body.appendChild(loadingEl);
-  let loadingHidden = false;
-  function hideLoading(): void {
-    if (loadingHidden) return;
-    loadingHidden = true;
-    loadingEl.classList.add("hide");
-    window.setTimeout(() => loadingEl.remove(), 500);
+  let loadingDismissed = false;
+  let mapRenderNotified = false;
+  let loadingRepaintAt = 0;
+  const loadingScreen = createLoadingScreen({
+    civId: setup.civId,
+    resolveCivId: () => {
+      if (!session.hasState()) return undefined;
+      const me = session.getViewerId();
+      return session.getState().players.find((p) => p.id === me)?.civId;
+    },
+    onDismiss: () => {
+      loadingDismissed = true;
+      document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
+      document.getElementById("game-loading")?.remove();
+      fitted = false;
+      resize();
+      needsRedraw = true;
+    },
+  });
+  let worldGenNotified = false;
+  function maybeNotifyWorldGenerated(): void {
+    if (worldGenNotified || !session.hasState()) return;
+    worldGenNotified = true;
+    loadingScreen.notifyWorldGenerated();
   }
 
   const camera = new Camera();
@@ -236,6 +237,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   }
 
   function update(): void {
+    maybeNotifyWorldGenerated();
     if (!session.hasState()) return;
     // Analytics: record the session start once the game state is ready (for an
     // online game the first state view arrives a moment after startGame).
@@ -324,6 +326,24 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     needsRedraw = true;
   }
   session.onUpdate(update);
+
+  // Show the scroll first, then generate the world while the leader speaks.
+  let worldGenStarted = false;
+  function maybeStartWorldGen(): void {
+    if (worldGenStarted) return;
+    worldGenStarted = true;
+    window.setTimeout(() => {
+      if (session instanceof LocalSession && session.needsWorldGen()) {
+        session.finishWorldGen();
+        if (setup.isTutorial) seedTutorialSurroundings(session.getState());
+      }
+      maybeNotifyWorldGenerated();
+      update();
+    }, 60);
+  }
+  requestAnimationFrame(() => {
+    requestAnimationFrame(maybeStartWorldGen);
+  });
 
   function sessionEndSnapshot(): ReturnType<typeof viewerScoreFromBoard> {
     return viewerScoreFromBoard(buildSessionScoreboard(st(), session.getViewerId()));
@@ -762,7 +782,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
           return { x: camera.worldToScreenX(c.x), y: camera.worldToScreenY(c.y) };
         },
         banner: (text) => ui.banner(text),
-        isWorldReady: () => loadingHidden,
+        isWorldReady: () => loadingDismissed,
         exitToMenu: () => {
           abandonActiveSession(sessionEndSnapshot());
           location.reload();
@@ -1135,6 +1155,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   }, 150);
 
   function frame(): void {
+    if (!loadingDismissed && session.hasState()) {
+      const now = performance.now();
+      if (now >= loadingRepaintAt) {
+        loadingRepaintAt = now + 120;
+        needsRedraw = true;
+      }
+    }
     if (needsRedraw && session.hasState()) {
       needsRedraw = false;
       const me = session.getViewerId();
@@ -1220,8 +1247,11 @@ function startGame(session: Session, setup: GameSetup = {}): void {
           const imgs = [...document.querySelectorAll<HTMLImageElement>("img.gi, #tutorial-coach img")];
           const pending = imgs.some((im) => !!im.getAttribute("src") && !im.complete);
           if (!pending || performance.now() >= imgDeadline) {
-            hideLoading();
-            needsRedraw = true; // repaint the revealed world
+            if (!mapRenderNotified) {
+              mapRenderNotified = true;
+              loadingScreen.notifyMapRendered();
+            }
+            needsRedraw = true;
           } else {
             window.setTimeout(revealWhenImagesReady, 80);
           }

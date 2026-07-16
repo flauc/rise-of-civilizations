@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getTile, offsetToAxial, axialDistance } from "@roc/shared";
+import { getTile, offsetToAxial, axialDistance, landmassSizes } from "@roc/shared";
 import { createGame, PLAYER_COLORS } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { unitsOf, citiesOf, cityAt, makeUnit } from "./state";
 import { isPassableLand } from "./terrain";
+import { majorLandmassMin, minViableIslandTiles } from "../worldgen";
 
 const nonBarb = (s: ReturnType<typeof createGame>) => s.players.filter((p) => !p.isBarbarian);
 
@@ -80,6 +81,48 @@ describe("createGame setup options", () => {
     const colors = players.map((p) => p.color);
     expect(new Set(colors).size).toBe(13);
     expect(colors.every((c) => PLAYER_COLORS.includes(c))).toBe(true);
+  });
+
+  it("never starts players on trap-sized islands (below Sailing viability)", () => {
+    const minIsland = minViableIslandTiles();
+    for (const mapType of ["pangaea", "two_continents", "archipelago"] as const) {
+      for (let i = 0; i < 8; i++) {
+        const s = createGame({
+          seed: `${mapType}-trap-${i}`,
+          cols: 80,
+          rows: 56,
+          mapType,
+          playerCount: 4,
+          barbarians: false,
+        });
+        const sizes = landmassSizes(s.map);
+        const major = majorLandmassMin(80, 56);
+        for (const p of nonBarb(s)) {
+          for (const u of unitsOf(s, p.id)) {
+            const size = sizes[u.row * s.map.cols + u.col]!;
+            const trapIsland = size > 0 && size < minIsland && size < major;
+            expect(trapIsland, `${mapType} seed ${i} on ${size}-tile isle`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it("islands map always places players without the Sailing-viability spawn filter", () => {
+    for (let i = 0; i < 8; i++) {
+      const s = createGame({
+        seed: `islands-spawn-${i}`,
+        cols: 80,
+        rows: 56,
+        mapType: "islands",
+        playerCount: 4,
+        barbarians: false,
+      });
+      expect(nonBarb(s)).toHaveLength(4);
+      for (const p of nonBarb(s)) {
+        expect(unitsOf(s, p.id).length).toBeGreaterThan(0);
+      }
+    }
   });
 });
 

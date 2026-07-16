@@ -27,6 +27,7 @@
     "generate-unique-infra": "bun run tools/art-generator/generate.ts --subset unique-infra",
     "generate-icons": "bun run tools/art-generator/generate.ts --subset emoji-icons",
     "generate-coach-voice": "bun run tools/generate-coach-voice.ts",
+    "generate-loading-voice": "bun run tools/generate-loading-voice.ts",
     "balance": "bun run tools/balance/score.ts"
   },
   "devDependencies": {

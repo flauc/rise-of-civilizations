@@ -1,6 +1,6 @@
 import { axialDistance, getTile, hashSeed, isPolarTile, landmassSizes, makeRng, offsetToAxial, polarCapLand } from "@roc/shared";
 import { CIV_IDS, startingUnitsFor } from "@roc/data";
-import { generateMap, majorLandmassMin, type MapType } from "../worldgen";
+import { generateMap, majorLandmassMin, minViableIslandTiles, type MapType } from "../worldgen";
 import type { GameState, Player, VictoryKind } from "./state";
 import { makeUnit, defaultEnabledVictories, TOGGLEABLE_VICTORIES } from "./state";
 import { isPassableLand, TERRAIN_YIELDS } from "./terrain";
@@ -97,8 +97,10 @@ function findStarts(state: GameState, count: number): { col: number; row: number
   const sizes = landmassSizes(map);
   // Landmasses below the continent threshold are trap starts (even the big
   // "Japan" islands the generator sprinkles stay below it), and so are the
-  // polar ice caps — big, but frozen wastes.
+  // polar ice caps — big, but frozen wastes. Islands smaller than
+  // minViableIslandTiles cannot develop Sailing and a navy to leave.
   const minStartLandmass = majorLandmassMin(map.cols, map.rows);
+  const minIsland = minViableIslandTiles();
   const caps = polarCapLand(map);
   const all: { col: number; row: number; score: number }[] = [];
   for (let row = 0; row < map.rows; row++) {
@@ -110,9 +112,16 @@ function findStarts(state: GameState, count: number): { col: number; row: number
   }
   all.sort((a, b) => b.score - a.score);
 
-  // Keep civs off islands — unless the map (e.g. Islands) offers nothing else.
-  const continental = all.filter((c) => sizes[c.row * map.cols + c.col]! >= minStartLandmass);
-  const candidates = continental.length >= count ? continental : all;
+  // The dedicated Islands layout is meant for tiny islets — only that map type
+  // skips the Sailing-viability floor; every other layout keeps players off
+  // trap starts.
+  const islandsWorld = map.mapType === "islands";
+  const viable = islandsWorld
+    ? all
+    : all.filter((c) => sizes[c.row * map.cols + c.col]! >= minIsland);
+  // Prefer continents; on island-heavy maps use any landmass large enough to develop a navy.
+  const continental = viable.filter((c) => sizes[c.row * map.cols + c.col]! >= minStartLandmass);
+  const candidates = continental.length >= count ? continental : viable;
 
   // Try to keep starts at least `minDist` apart, relaxing if we can't fit them.
   for (let minDist = Math.floor(Math.min(map.cols, map.rows) / 2); minDist >= 2; minDist--) {

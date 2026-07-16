@@ -209,6 +209,7 @@ function persistActive(): void {
  */
 export type GameSetup = Pick<
   SessionStartMeta,
+  | "civId"
   | "mapType"
   | "mapSize"
   | "startingGold"

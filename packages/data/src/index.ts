@@ -1877,6 +1877,32 @@ export function getCiv(id: string | undefined): CivDef | undefined {
   return id ? BY_ID.get(id) : undefined;
 }
 
+export { buildCivLoadingSpeech, civLoadingSpeechText, leaderScrollVoice, presentTense, sanitizeScrollCopy, type CivLoadingSpeech, type CivLoadingSpeechContext } from "./loading-speech";
+export { leaderVoiceKind, FEMALE_LEADER_CIV_IDS, maleLeaderVoiceBucket, maleLeaderVoiceSlotCount, MALE_LEADERS_PER_VOICE, type LeaderVoiceKind } from "./leader-voice";
+export {
+  DEFAULT_FEMALE_NARRATOR_VOICE,
+  DEFAULT_MALE_NARRATOR_VOICES,
+  DEFAULT_MALE_NARRATOR_VOICE_IDS,
+  maleNarratorVoiceIdsEnvValue,
+  narratorVoiceName,
+  type NarratorVoiceDef,
+} from "./loading-narrator-voices";
+export { CIV_NARRATOR_VOICE_BY_ID, narratorVoiceIdForCiv } from "./loading-civ-voices";
+import { buildCivLoadingSpeech, type CivLoadingSpeech } from "./loading-speech";
+
+export function loadingSpeechContextFor(civId: string) {
+  return {
+    startingUnits: startingUnitsFor(civId),
+    capitalPopulation: BASE_CITY_POPULATION + capitalPopulationBonusFor(civId),
+    unitDisplayName: (baseTypeId: string) => uniqueUnitForCiv(civId, baseTypeId)?.name,
+  };
+}
+
+export function civLoadingSpeech(civId: string | undefined): CivLoadingSpeech | null {
+  const civ = getCiv(civId);
+  return civ ? buildCivLoadingSpeech(civ, loadingSpeechContextFor(civ.id)) : null;
+}
+
 export const CIV_IDS: string[] = CIVILIZATIONS.map((c) => c.id);
 
 // ---- Capital population theme -------------------------------------------------

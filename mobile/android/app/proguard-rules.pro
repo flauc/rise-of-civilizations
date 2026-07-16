@@ -24,6 +24,5 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 
-# AndroidX / splash screen used by the shell.
--keep class androidx.core.splashscreen.** { *; }
+# AndroidX used by the shell.
 -keep class androidx.appcompat.** { *; }

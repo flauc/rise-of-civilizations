@@ -22,6 +22,7 @@ import {
   type VictoryKind,
 } from "@roc/sim";
 import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, startingConditionsLine, wireUuImages, wireUuDetail } from "./unique-unit";
+import { unlockLoadingAudio, preloadLoadingVoice } from "./loading-voice";
 import { deleteSave, exportSave, importSave, listSavesForUser, loadSave, reassignSaves, saveGame, type SaveRecord } from "./save-db";
 import {
   authenticate,
@@ -75,7 +76,7 @@ const MAP_TYPE_OPTIONS: { value: MapType; label: string; desc: string }[] = [
   { value: "three_continents", label: "Three Continents", desc: "Three landmasses scattered across the sea." },
   { value: "four_continents", label: "Four Continents", desc: "Four separate continents — wide oceans between every rival." },
   { value: "archipelago", label: "Archipelago", desc: "Many medium islands — exploration and naval play matter more." },
-  { value: "inland_sea", label: "Inland Sea", desc: "A ring of land wrapped around a central sea." },
+  { value: "inland_sea", label: "Inland Sea", desc: "Japan's Seto Inland Sea: Honshu, Shikoku, and Kyushu shores around a sea dotted with islands." },
   { value: "islands", label: "Islands", desc: "Lots of small, scattered islands across a wide ocean." },
   { value: "realworld", label: "Real World (Earth)", desc: "The continents of Earth, baked from real-world geodata." },
 ];
@@ -433,6 +434,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
   };
 
   const launchTutorialGame = (): void => {
+    unlockLoadingAudio();
+    preloadLoadingVoice(createTutorialSetup().civId ?? "rome");
     close();
     onStart(createTutorialSession(), createTutorialSetup());
   };
@@ -526,6 +529,12 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
   style.textContent = `
     #lobby{position:fixed;inset:0;z-index:50;background:#0f0e0b;display:flex;flex-direction:column;min-height:0}
     #lobby.hidden{display:none !important}
+    /* Native WebKit can deliver touches to the fullscreen canvas under the lobby. */
+    body.roc-native.roc-lobby-open #game{pointer-events:none!important}
+    body.roc-native #lobby{
+      padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);
+      box-sizing:border-box;
+    }
     .lobby-layout{display:flex;flex:1;min-height:0;width:100%}
     .lobby-left{width:380px;max-width:92vw;flex-shrink:0;display:flex;flex-direction:column;background:linear-gradient(180deg,#1f1c14 0%,#15120c 100%);border-right:1px solid var(--edge);padding:28px;overflow:auto;box-shadow:4px 0 24px rgba(0,0,0,.55)}
     .lobby-left.sp-panel{padding:0;overflow:hidden}
@@ -546,7 +555,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .auth-email-wrap{margin-top:12px}
     .auth-email-wrap.hidden{display:none}
     /* Account: full-page split login / register */
-    .auth-screen{position:absolute;inset:0;overflow:auto;background:linear-gradient(180deg,#15120c 0%,#0f0e0b 100%)}
+    .auth-screen{position:absolute;inset:0;z-index:20;overflow:auto;background:linear-gradient(180deg,#15120c 0%,#0f0e0b 100%)}
     .auth-screen::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,rgba(15,14,11,0) 55%);pointer-events:none}
     .auth-shell{position:relative;z-index:1;width:100%;max-width:920px;margin:0 auto;padding:28px 28px 56px;box-sizing:border-box}
     .auth-topbar{display:flex;align-items:center;gap:16px;margin-bottom:22px;flex-wrap:wrap}
@@ -798,11 +807,10 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       #lobby{overflow-x:hidden;overflow-y:auto}
       .lobby-layout{flex-direction:column;height:auto;min-height:100%;width:100%;max-width:100%}
       .lobby-left{width:100%;max-width:100%;border-right:none;padding:max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));overflow:visible}
+      body.roc-native #lobby .lobby-left{padding:20px}
       .lobby-right{display:flex;flex-direction:column;position:relative;flex:none;width:100%;max-width:100%;padding:24px max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left));justify-content:flex-start;overflow:visible;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,#0f0e0b 70%)}
       .showcase{grid-column:auto;grid-row:auto;align-self:auto;max-height:none;overflow:visible;padding-right:0;order:0}
-      .showcase-side{display:contents}
-      .showcase-art-wrapper{position:static;grid-column:auto;grid-row:auto;order:-1;width:100%;max-width:260px;max-height:none;aspect-ratio:auto;height:auto;margin:0 auto 16px;border-radius:14px}
-      .showcase-art{height:auto;object-position:top center;border-radius:14px}
+      .showcase-side{display:none !important}
       .showcase-civ{font-size:34px}
       .showcase-leader{font-size:20px}
       .showcase-quote{font-size:16px;margin-top:14px}
@@ -811,12 +819,13 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       #sp-civ-desc{display:none}
       .menu-btn{padding:14px 16px}
       .menu-in{padding:10px 12px}
-      /* Start screen: menu front-and-center, flavour showcase tucked below it */
-      #lobby[data-screen="start"] .lobby-layout{min-height:100dvh;justify-content:center}
+      /* Start screen: pin menu to the top — centered flex was clipping/overlapping the portrait onto the buttons in portrait. */
+      #lobby[data-screen="start"] .lobby-layout{min-height:100dvh;justify-content:flex-start}
+      #lobby[data-screen="start"] .lobby-left{flex:0 0 auto}
       #lobby[data-screen="start"] .lobby-left{align-items:center;text-align:center}
       #lobby[data-screen="start"] .lobby-title,#lobby[data-screen="start"] .lobby-subtitle{width:100%}
       #lobby[data-screen="start"] .menu-actions{width:100%;max-width:360px}
-      #lobby[data-screen="start"] .lobby-right{order:2;padding-top:8px}
+      #lobby[data-screen="start"] .lobby-right{order:2;padding-top:8px;flex:0 0 auto}
       #lobby[data-screen="start"] .rotation-controls{width:100%;max-width:360px}
       #lobby[data-screen="start"] .rotation-controls-label{text-align:center}
       /* Single player: the civ picker covers leader previews, so the featured-civ
@@ -824,20 +833,35 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       #lobby[data-screen="sp"] .lobby-right{display:none}
       #lobby[data-screen="sp"]{overflow:hidden;height:100dvh;height:100vh}
       #lobby[data-screen="sp"] .lobby-layout{flex:1;min-height:0;overflow:hidden}
-      #lobby[data-screen="sp"] .lobby-left.sp-panel{flex:1;min-height:0;padding:0;overflow:hidden}
-      #lobby[data-screen="sp"] .sp-panel-scroll{padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) 12px max(20px,env(safe-area-inset-left))}
-      #lobby[data-screen="sp"] .sp-panel-actions{padding:14px max(20px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
+      #lobby[data-screen="sp"] .lobby-left.sp-panel{flex:1;min-height:0;padding:0;overflow:hidden;display:grid;grid-template-rows:minmax(0,1fr) auto}
+      #lobby[data-screen="sp"] .sp-panel-scroll{grid-row:1;overflow-y:auto;min-height:0;padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) 12px max(20px,env(safe-area-inset-left))}
+      #lobby[data-screen="sp"] .sp-panel-actions{grid-row:2;padding:14px max(20px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
       #lobby[data-screen="load"] .lobby-right{display:none}
+      #lobby[data-screen="login"] #lobby-layout,
+      #lobby[data-screen="signup"] #lobby-layout{display:none !important}
     }
     @media (orientation:landscape) and (max-height:520px){
       .lobby-left{width:min(340px,38vw);padding:16px 18px}
       #lobby[data-screen="sp"] .lobby-left.sp-panel{padding:0}
+      /* Featured civ panel overlaps the menu and login in phone landscape — hide it. */
+      #lobby[data-screen="start"] .lobby-right{display:none !important}
+      #lobby[data-screen="start"] .lobby-left{width:100%;max-width:none;border-right:none}
+      #lobby[data-screen="start"] .lobby-layout{flex-direction:column;justify-content:flex-start}
       .lobby-right{grid-template-columns:minmax(0,1fr) clamp(130px,18vw,200px);gap:12px 18px;padding:16px 20px}
-      .showcase-art-wrapper{max-height:min(220px,calc(100dvh - 48px))}
+      .showcase-side{display:none !important}
       .showcase-reroll{font-size:12px;padding:8px 10px}
       .showcase-civ{font-size:clamp(22px,3.6vw,34px)}
       .showcase-quote{margin-top:10px;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
       .showcase-ability{margin-top:12px;padding:10px 12px}
+      .auth-shell{padding:max(12px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom))}
+      .auth-logo{width:64px;height:64px;border-radius:14px}
+      .auth-header{margin-bottom:14px;gap:8px}
+      .auth-header .auth-brand{font-size:22px}
+    }
+    /* Touch devices in landscape (wider than 860px): same overlap fix on the home screen. */
+    @media (orientation:landscape) and (pointer:coarse){
+      #lobby[data-screen="start"] .lobby-right{display:none !important}
+      #lobby[data-screen="start"] .lobby-left{width:100%;max-width:none;border-right:none}
     }
     /* ---- Multiplayer: a full-screen, multi-stage flow (no sidebar) ---- */
     .mp-screen{position:absolute;inset:0;overflow:auto;background:linear-gradient(180deg,#15120c 0%,#0f0e0b 100%)}
@@ -942,6 +966,16 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     #lobby[data-screen="start"] .rotation-controls-label{text-align:center}`;
   document.head.appendChild(style);
   document.body.appendChild(root);
+  document.body.classList.add("roc-lobby-open");
+
+  const gameCanvas = document.getElementById("game") as HTMLCanvasElement | null;
+  function setLobbyMapInputPassthrough(on: boolean): void {
+    if (!gameCanvas || !document.body.classList.contains("roc-native")) return;
+    gameCanvas.style.pointerEvents = on ? "none" : "";
+  }
+  document.getElementById("game-loading")?.remove();
+  document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
+  setLobbyMapInputPassthrough(true);
 
   const left = root.querySelector<HTMLDivElement>("#lobby-left")!;
   const right = root.querySelector<HTMLDivElement>("#lobby-right")!;
@@ -951,6 +985,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
   const $select = (sel: string) => $<HTMLSelectElement>(sel);
   const $btn = (sel: string) => $<HTMLButtonElement>(sel);
   const close = () => {
+    setLobbyMapInputPassthrough(false);
+    document.body.classList.remove("roc-lobby-open");
     root.remove();
     style.remove();
   };
@@ -959,12 +995,25 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     return CIVILIZATIONS[Math.floor(Math.random() * CIVILIZATIONS.length)]!;
   }
 
+  function isMobileLobby(): boolean {
+    return window.matchMedia("(max-width: 860px), (pointer: coarse), (orientation: landscape) and (max-height: 520px)").matches;
+  }
+
   function renderShowcase(civId?: string, allowReroll = true): void {
     const civ = (civId ? CIVILIZATIONS.find((c) => c.id === civId) : undefined) ?? pickRandomCiv();
     const src = leaderAtlas.images[civ.id]?.src ?? `${ASSET_BASE_URL}leaders/${civ.id}.png`;
     const rerollBtn = allowReroll
       ? `<button class="menu-btn secondary showcase-reroll" id="showcase-reroll">Show another civilization</button>`
       : "";
+    const portraitHtml = isMobileLobby()
+      ? ""
+      : `<div class="showcase-side">
+        <div class="showcase-art-wrapper">
+          <img id="showcase-art" class="showcase-art hidden" src="${src}" alt="" />
+          <div id="showcase-art-placeholder" class="showcase-art-placeholder">Leader art<br/>coming soon</div>
+        </div>
+        ${rerollBtn}
+      </div>`;
     right.innerHTML = `
       <div class="showcase">
         <div class="showcase-label">Featured Civilization</div>
@@ -983,14 +1032,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           <div class="showcase-ability-desc">${escapeHtml(startingConditionsLine(civ.id))}</div>
         </div>
         <button class="menu-btn secondary showcase-wiki" id="showcase-wiki" type="button">📖 Read about ${escapeHtml(civ.name)} in the Encyclopedia</button>
-      </div>
-      <div class="showcase-side">
-        <div class="showcase-art-wrapper">
-          <img id="showcase-art" class="showcase-art hidden" src="${src}" alt="" />
-          <div id="showcase-art-placeholder" class="showcase-art-placeholder">Leader art<br/>coming soon</div>
-        </div>
-        ${rerollBtn}
-      </div>`;
+      </div>${portraitHtml}`;
     const img = right.querySelector<HTMLImageElement>("#showcase-art");
     const placeholder = right.querySelector<HTMLDivElement>("#showcase-art-placeholder");
     if (img && placeholder) {
@@ -1403,8 +1445,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         </div>
       </div>
       <div class="sp-panel-actions">
-        <button class="menu-btn secondary" id="back2">Back</button>
-        <button class="menu-btn primary" id="sp-start">Start Game</button>
+        <button type="button" class="menu-btn secondary" id="back2">Back</button>
+        <button type="button" class="menu-btn primary" id="sp-start">Start Game</button>
       </div>`;
 
     const updateCivDesc = () => {
@@ -1546,6 +1588,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
     $("#back2").addEventListener("click", () => showScreen("start"));
     $("#sp-start").addEventListener("click", () => {
+      unlockLoadingAudio();
+      preloadLoadingVoice(state.sp.civId);
       close();
       const spMapSize = $select("#sp-map").value as MapSize;
       const spBarb = $select("#sp-barb").value as BarbLevel;
@@ -1583,8 +1627,10 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           gameSpeed: spGameSpeed,
           enabledVictories: spVictories,
           seed: "rise-" + Math.random().toString(36).slice(2, 8),
+          deferWorldGen: true,
         }),
         {
+          civId: state.sp.civId,
           mapType: state.sp.mapType,
           mapSize: spMapSize,
           startingGold: state.sp.startingGold,
