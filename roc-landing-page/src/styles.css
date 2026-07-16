@@ -534,7 +534,88 @@ h1, h2, h3 {
 .featured-leader {
   color: var(--parchment-dim);
   font-size: 1.1rem;
+  margin: 0 0 1rem;
+}
+
+.civ-voice {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
   margin: 0 0 1.5rem;
+  padding: 0.5rem 1rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(201, 162, 39, 0.08);
+  color: var(--gold-bright);
+  font-family: 'Cinzel', serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.civ-voice:hover:not(:disabled) {
+  background: rgba(201, 162, 39, 0.18);
+  border-color: var(--gold);
+}
+
+.civ-voice:disabled {
+  color: var(--parchment-dim);
+  cursor: default;
+  opacity: 0.6;
+}
+
+.civ-voice-icon {
+  display: inline-flex;
+}
+
+.civ-voice .icon-pause,
+.civ-voice.is-playing .icon-play {
+  display: none;
+}
+
+.civ-voice.is-playing .icon-pause {
+  display: block;
+}
+
+.civ-voice.is-loading .civ-voice-icon {
+  animation: voice-pulse 1s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.civ-voice-label {
+  min-width: 7.5ch;
+  text-align: left;
+}
+
+.civ-voice-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(201, 162, 39, 0.15);
+}
+
+.civ-voice-bar {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--gold);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .civ-voice.is-loading .civ-voice-icon {
+    animation: none;
+  }
 }
 
 .featured-ability {

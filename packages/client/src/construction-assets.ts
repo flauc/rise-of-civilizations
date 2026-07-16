@@ -5,6 +5,7 @@
 // keyed by category id. Mirrors improvement-assets.ts but with a tiny fixed key set.
 
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { isImageReady } from "./improvement-assets";
 
 export type ConstructionCategory = "econ" | "road" | "defense" | "wonder";
@@ -18,7 +19,9 @@ export interface ConstructionAtlas {
 }
 
 /** Start loading the per-category construction-site sprites. */
-export function loadConstructionAtlas(onLoad?: () => void): ConstructionAtlas {
+export const loadConstructionAtlas = shareAtlas(loadConstructionAtlasUncached);
+
+function loadConstructionAtlasUncached(onLoad?: () => void): ConstructionAtlas {
   const images: Record<string, HTMLImageElement> = {};
   let remaining = 0;
 

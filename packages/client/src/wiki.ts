@@ -41,6 +41,7 @@ import {
   TECH_DEFS,
   RELIGION_UNIT_KITS,
   RELIGION_REQUIRED_TECH,
+  naturalWonderBonusSummary,
   FAITH_TO_FOUND,
   CONVERSION_PRESSURE,
   type ActiveAbilityId,
@@ -66,6 +67,11 @@ import {
   legendHistory,
   legendAbilityHistory,
   civLocation,
+  wonderHistory,
+  naturalWonderHistory,
+  NATURAL_WONDER_DEFS,
+  getNaturalWonder,
+  ALL_NATURAL_WONDERS_BONUS,
   CIV_REGIONS,
   RELIGIONS,
   getReligionDef,
@@ -98,6 +104,8 @@ export type WikiCategory =
   | "morale"
   | "great_people"
   | "legends"
+  | "wonders"
+  | "natural_wonders"
   | "cities"
   | "religion"
   | "governments"
@@ -119,6 +127,8 @@ const CATEGORIES: CategoryDef[] = [
   { id: "morale", name: "Morale" },
   { id: "great_people", name: "Great People" },
   { id: "legends", name: "Legends" },
+  { id: "wonders", name: "Wonders" },
+  { id: "natural_wonders", name: "Natural Wonders" },
   { id: "cities", name: "Cities" },
   { id: "religion", name: "Religion" },
   { id: "governments", name: "Governments" },
@@ -1120,7 +1130,9 @@ export type WikiNav =
   | { kind: "uniqueInfra"; id: string }
   | { kind: "greatPerson"; id: string }
   | { kind: "legend"; id: string }
-  | { kind: "religion"; id: string };
+  | { kind: "religion"; id: string }
+  | { kind: "wonder"; id: string }
+  | { kind: "naturalWonder"; id: string };
 
 /** Plain-English label for a few base-unit passive abilities (matches unique-unit.ts). */
 const PASSIVE_LABEL: Record<string, string> = {
@@ -1494,6 +1506,8 @@ const DETAIL_RENDERERS: Record<WikiNav["kind"], (id: string) => string> = {
   greatPerson: renderGreatPersonDetail,
   legend: renderLegendDetail,
   religion: renderReligionDetail,
+  wonder: renderWonderDetail,
+  naturalWonder: renderNaturalWonderDetail,
 };
 
 // ---- Governments & Civics ------------------------------------------------
@@ -1637,6 +1651,147 @@ function renderCivics(): string {
   return WIKI_GOV_STYLE + section("Civics", body);
 }
 
+// ---- Wonders & Natural Wonders -------------------------------------------
+
+/** Yield → game-icon glyph. Mirrors the HUD resource bar (faith is ☮️, not 🙏). */
+const WIKI_YIELD_GLYPH: Record<string, string> = {
+  food: "🍞", production: "⚒️", gold: "🪙", science: "🔬", culture: "🎭", faith: "☮️",
+};
+const WIKI_YIELD_ORDER = ["food", "production", "gold", "science", "culture", "faith"] as const;
+
+/** "+2 ⚒️ · +1 🪙" chips for a set of flat yields ("" when the set is empty). */
+function yieldChips(y: Partial<Record<string, number>>): string {
+  return WIKI_YIELD_ORDER.filter((k) => y[k])
+    .map((k) => `<span class="wiki-yield">+${y[k]} ${WIKI_YIELD_GLYPH[k]}</span>`)
+    .join("");
+}
+
+const WIKI_SHOWCASE_STYLE = `<style>
+.wiki-show-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin:8px 0 22px}
+.wiki-show-card{margin:0;padding:0;overflow:hidden;display:flex;flex-direction:column;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px}
+.wiki-show-art{width:100%;aspect-ratio:4/3;background:var(--bg-card,rgba(0,0,0,.25));overflow:hidden}
+.wiki-show-art img{width:100%;height:100%;object-fit:cover;object-position:50% 42%;display:block}
+.wiki-show-body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:4px}
+.wiki-show-name{font-weight:700;font-size:14px;color:#e6d2b8}
+.wiki-show-sub{font-size:11px;color:#9fb0c0}
+.wiki-show-desc{font-size:11.5px;color:#b8aa8d;line-height:1.35;margin-top:2px}
+.wiki-yield{display:inline-block;font-size:11px;color:#e6d2b8;background:rgba(201,162,39,.14);border:1px solid rgba(201,162,39,.3);border-radius:6px;padding:1px 6px;margin:2px 4px 0 0}
+@media(max-width:700px){.wiki-show-grid{grid-template-columns:1fr 1fr;gap:10px}}
+</style>`;
+
+/** A showcase card: announcement art on top, name + meta + blurb beneath. */
+function showcaseCard(art: string, artFallback: string, title: string, sub: string, body: string, nav: string): string {
+  // Announcement art may not be generated yet; fall back to the map art.
+  const onerror = `this.onerror=null;this.src='${artFallback}'`;
+  return (
+    `<figure class="wiki-show-card wiki-clickable" data-wiki-nav="${nav}">` +
+    `<div class="wiki-show-art"><img src="${art}" loading="lazy" alt="${escapeHtml(title)}" onerror="${onerror}"></div>` +
+    `<figcaption class="wiki-show-body">` +
+    `<div class="wiki-show-name">${escapeHtml(title)}</div>` +
+    `<div class="wiki-show-sub">${sub}</div>` +
+    `<div class="wiki-show-desc">${escapeHtml(body)}</div>` +
+    `</figcaption></figure>`
+  );
+}
+
+const wonderArt = (id: string): string => `${ASSET_BASE_URL}turn-updates/wonder_${id}.png`;
+const wonderTileArt = (id: string): string => `${ASSET_BASE_URL}wonders/${id}.png`;
+const naturalWonderArt = (id: string): string => `${ASSET_BASE_URL}turn-updates/natural_wonder_${id}.png`;
+const naturalWonderTileArt = (id: string): string => `${ASSET_BASE_URL}natural-wonders/${id}.png`;
+
+/** "11 Masons · 6 Architects" — the crew a wonder contracts to break ground. */
+function wonderCrewText(w: typeof WONDER_DEFS[number]): string {
+  return Object.entries(w.crew)
+    .map(([disc, n]) => `${n} ${specialistNameForDiscipline(disc as Discipline)}${n === 1 ? "" : "s"}`)
+    .join(" · ");
+}
+
+function renderWonders(): string {
+  const cards = WONDER_DEFS.map((w) => {
+    const cost = wonderStartCost(w);
+    const sub = [
+      w.reqTech ? `🔬 ${escapeHtml(TECH_DEFS[w.reqTech as TechId]?.name ?? w.reqTech)}` : "",
+      cost.gold ? `${cost.gold}🪙` : "",
+      cost.faith ? `${cost.faith}☮️` : "",
+      cost.culture ? `${cost.culture}🎭` : "",
+    ].filter(Boolean).join(" · ");
+    return showcaseCard(wonderArt(w.id), wonderTileArt(w.id), w.name, sub, w.desc, `wonder:${w.id}`);
+  }).join("");
+
+  return (
+    WIKI_SHOWCASE_STYLE +
+    section(
+      "Wonders of the World",
+      `<p>A wonder is the grandest thing a civilization can build, and there is only ever <b>one of each in the world</b>: raise it first, or watch a rival raise it instead. Each demands a whole <b>crew of craftsmen</b> standing idle and ready before you can break ground, a one-time outlay of <b>gold, faith, or culture</b>, a specific <b>technology</b>, and a site whose <b>geography</b> suits it.</p>` +
+        `<p>The crew you gather is the wonder's entire workforce, so it cannot be rushed by piling on bodies, and even a full crew labours for many turns. What you get in return is permanent: strong yields for the host city and often for your whole empire, and in several cases an effect that bends the rules of the game outright. Select any wonder below for its full story.</p>`,
+    ) +
+    `<div class="wiki-show-grid">${cards}</div>`
+  );
+}
+
+function renderNaturalWonders(): string {
+  const cards = NATURAL_WONDER_DEFS.map((w) =>
+    showcaseCard(
+      naturalWonderArt(w.id),
+      naturalWonderTileArt(w.id),
+      w.name,
+      yieldChips(w.tileYields),
+      w.desc,
+      `naturalWonder:${w.id}`,
+    ),
+  ).join("");
+
+  return (
+    WIKI_SHOWCASE_STYLE +
+    section(
+      "Wonders of the Natural World",
+      `<p>Natural wonders are single, unique tiles scattered across the map: the highest peak, the deepest lake, the loudest waterfall. Nobody builds them. They are simply out there, waiting, and the only way to claim one is to <b>send someone to look</b>.</p>` +
+        `<p>The <b>first civilization to sight</b> each wonder takes a one-time reward themed to the place: a burst of science from the Galápagos, of faith from Mount Fuji, of gold from the Salar de Uyuni. Sight them all before anyone else and you earn <b>${escapeHtml(naturalWonderBonusSummary(ALL_NATURAL_WONDERS_BONUS))}</b> on top. This is what makes early scouting pay: the rewards go to whoever gets there first, and they are never offered twice.</p>` +
+        `<p>Beyond the discovery bonus, a natural wonder is a genuinely excellent tile to work, so founding a city within reach of one is worth going out of your way for. Select any wonder below for its full story.</p>`,
+    ) +
+    `<div class="wiki-show-grid">${cards}</div>`
+  );
+}
+
+function renderWonderDetail(id: string): string {
+  const w = WONDER_DEFS.find((x) => x.id === id);
+  if (!w) return detailNotFound();
+  const cost = wonderStartCost(w);
+  const stats = [
+    w.reqTech ? detailStat("🔬 Requires", TECH_DEFS[w.reqTech as TechId]?.name ?? w.reqTech) : "",
+    cost.gold ? detailStat("🪙 Gold", String(cost.gold)) : "",
+    cost.faith ? detailStat("☮️ Faith", String(cost.faith)) : "",
+    cost.culture ? detailStat("🎭 Culture", String(cost.culture)) : "",
+  ].filter(Boolean).join("");
+  return (
+    detailHead(wonderArt(w.id), w.name, "World wonder · one per world", stats) +
+    section("Effect", `<p>${escapeHtml(w.desc)}</p>`) +
+    section("Crew", `<p>Contracts <b>${escapeHtml(wonderCrewText(w))}</b>, who must all be free before you can break ground. That crew is the wonder's whole workforce, so more hands cannot hurry it, though veterans finish sooner.</p>`) +
+    (w.placement?.site ? section("Site", `<p>May only be raised on <b>${escapeHtml(w.placement.site)}</b>.</p>`) : "") +
+    historyBlock("History", wonderHistory(id))
+  );
+}
+
+function renderNaturalWonderDetail(id: string): string {
+  const w = getNaturalWonder(id);
+  if (!w) return detailNotFound();
+  const terrain = w.validTerrain.map((t) => TERRAIN_NAMES[t as keyof typeof TERRAIN_NAMES] ?? t).join(", ");
+  const bonus = naturalWonderBonusSummary(w.discoveryBonus);
+  return (
+    detailHead(naturalWonderArt(w.id), w.name, "Natural wonder · one per world", yieldChips(w.tileYields)) +
+    section("Flavour", `<p>${escapeHtml(w.desc)}</p>`) +
+    section(
+      "Discovery",
+      `<p>The first civilization to sight ${escapeHtml(w.name)} claims <b>${escapeHtml(bonus)}</b>. The reward is one-time and goes to whoever gets there first.</p>`,
+    ) +
+    section(
+      "The tile",
+      `<p>Working this tile adds ${yieldChips(w.tileYields) || "no bonus yields"} to its city, on top of what the land already gives. It is found on <b>${escapeHtml(terrain)}</b>.</p>`,
+    ) +
+    historyBlock("History", naturalWonderHistory(id))
+  );
+}
+
 const RENDERERS: Record<WikiCategory, () => string> = {
   civilizations: renderCivilizations,
   units: renderUnits,
@@ -1647,6 +1802,8 @@ const RENDERERS: Record<WikiCategory, () => string> = {
   morale: renderMorale,
   great_people: renderGreatPeople,
   legends: renderLegends,
+  wonders: renderWonders,
+  natural_wonders: renderNaturalWonders,
   cities: renderCities,
   religion: renderReligion,
   governments: renderGovernments,
@@ -1894,6 +2051,8 @@ export function createWiki(): {
         greatPerson: "great_people",
         legend: "legends",
         religion: "religion",
+        wonder: "wonders",
+        naturalWonder: "natural_wonders",
       };
       category = catFor[kind];
       navStack = [{ kind, id } as WikiNav];

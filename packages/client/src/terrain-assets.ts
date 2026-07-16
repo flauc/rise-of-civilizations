@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { TERRAIN_TYPES, type TerrainType } from "@roc/shared";
 
 /** Per-terrain image atlas used by the renderer. */
@@ -69,7 +70,9 @@ export function isImageReady(img: HTMLImageElement): boolean {
  * to flat colors until each sprite loads. `onLoad` is invoked every time an
  * individual sprite loads or errors so the render loop can redraw.
  */
-export function loadTerrainAtlas(onLoad?: () => void): TerrainAtlas {
+export const loadTerrainAtlas = shareAtlas(loadTerrainAtlasUncached);
+
+function loadTerrainAtlasUncached(onLoad?: () => void): TerrainAtlas {
   const images: Record<TerrainType, HTMLImageElement[]> = {
     ocean: [],
     coast: [],

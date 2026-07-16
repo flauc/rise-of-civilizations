@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { WONDER_IDS } from "@roc/data";
 
 export interface WonderAtlas {
@@ -16,7 +17,9 @@ function isReady(img: HTMLImageElement): boolean {
  *  Each is a 256×384 hex-tile-shaped PNG with a transparent background, drawn by
  *  the renderer as a decor overlay ON TOP of the tile's terrain. Missing art is
  *  fine — the tile then just shows its terrain (the wonder still exists in sim). */
-export function loadWonderAtlas(onLoad?: () => void): WonderAtlas {
+export const loadWonderAtlas = shareAtlas(loadWonderAtlasUncached);
+
+function loadWonderAtlasUncached(onLoad?: () => void): WonderAtlas {
   const images: Record<string, HTMLImageElement | undefined> = {};
   let remaining = WONDER_IDS.length;
   const atlas: WonderAtlas = { images, loaded: remaining === 0 };

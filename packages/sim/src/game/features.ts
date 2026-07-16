@@ -576,4 +576,18 @@ export function placeFeatures(
   };
   if (villageCount > 0) claim("village", villageCount);
   claim("barb_camp", campCount);
+  garrisonStartingCamps(state, placedCamps);
+}
+
+/** Every third camp begins guarded, so early camps are a fight and not free gold:
+ *  the first raiders otherwise only appear once a camp's cadence comes due. */
+function garrisonStartingCamps(state: GameState, camps: { col: number; row: number }[]): void {
+  const barbId = barbarianId(state);
+  if (barbId === undefined) return;
+  for (let i = 2; i < camps.length; i += 3) {
+    const camp = camps[i]!;
+    const type: UnitTypeId = hashSeed(`campgarrison:${camp.col},${camp.row}`) % 2 === 0 ? "warrior" : "slinger";
+    const u = spawnUnitNear(state, barbId, type, camp.col, camp.row);
+    if (u) u.campKey = `${camp.col},${camp.row}`;
+  }
 }

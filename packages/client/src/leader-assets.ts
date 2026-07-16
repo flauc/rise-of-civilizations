@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { CIVILIZATIONS } from "@roc/sim";
 
 /** Per-civilization leader portrait atlas used by the Start Screen. */
@@ -25,7 +26,9 @@ export function isImageReady(img: HTMLImageElement): boolean {
  * `undefined` so the UI can fall back to a placeholder. `onLoad` is invoked
  * every time an individual portrait finishes loading or errors.
  */
-export function loadLeaderAtlas(onLoad?: () => void): LeaderAtlas {
+export const loadLeaderAtlas = shareAtlas(loadLeaderAtlasUncached);
+
+function loadLeaderAtlasUncached(onLoad?: () => void): LeaderAtlas {
   const images: Record<string, HTMLImageElement | undefined> = {};
   let remaining = CIVILIZATIONS.length;
 

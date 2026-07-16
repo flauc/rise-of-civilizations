@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 
 const CITY_COUNT = 10;
 const FRAMES_PER_TIER = 5; // base + _1 .. _4
@@ -27,7 +28,9 @@ export function isImageReady(img: HTMLImageElement): boolean {
  * Each population tier has FRAMES_PER_TIER very similar images. The renderer
  * picks a random ready frame each draw to create a subtle animated effect.
  */
-export function loadCityAtlas(onLoad?: () => void): CityAtlas {
+export const loadCityAtlas = shareAtlas(loadCityAtlasUncached);
+
+function loadCityAtlasUncached(onLoad?: () => void): CityAtlas {
   const images: (HTMLImageElement | undefined)[][] = [];
   let remaining = CITY_COUNT * FRAMES_PER_TIER;
 

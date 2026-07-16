@@ -1,5 +1,6 @@
 import './styles.css';
-import { FEATURED_CIVS, PILLARS, ERAS, ALL_LEADERS, HERO_IMAGES } from './data';
+import { FEATURED_CIVS, PILLARS, ERAS, ALL_LEADERS, HERO_IMAGES, civVoiceUrl } from './data';
+import type { FeaturedCiv } from './data';
 
 function $<T extends HTMLElement>(selector: string): T | null {
   return document.querySelector(selector);
@@ -28,9 +29,124 @@ function populatePillars(): void {
   ).join('');
 }
 
+type VoiceState = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
+
+/** Play/pause the civ's in-game leader narration, streamed from the game origin. */
+function createCivVoicePlayer(onActiveChange: (active: boolean) => void) {
+  const button = $<HTMLButtonElement>('#civ-voice');
+  const label = $('#civ-voice-label');
+  const bar = $<HTMLElement>('#civ-voice-bar');
+
+  let audio: HTMLAudioElement | null = null;
+  let civ: FeaturedCiv | null = null;
+
+  const setBar = (fraction: number) => {
+    if (bar) bar.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
+  };
+
+  const render = (state: VoiceState) => {
+    if (!button) return;
+    button.classList.toggle('is-playing', state === 'playing');
+    button.classList.toggle('is-loading', state === 'loading');
+    button.disabled = state === 'error';
+    button.setAttribute('aria-pressed', String(state === 'playing'));
+    if (label) {
+      label.textContent =
+        state === 'playing'
+          ? 'Pause'
+          : state === 'loading'
+            ? 'Loading'
+            : state === 'paused'
+              ? 'Resume'
+              : state === 'error'
+                ? 'Voice unavailable'
+                : `Hear ${civ?.leader ?? 'the leader'}`;
+    }
+    // A paused clip holds the carousel too, so it cannot rotate the civ away
+    // from under someone who stopped halfway through to resume in a moment.
+    onActiveChange(state !== 'idle' && state !== 'error');
+  };
+
+  const release = () => {
+    if (!audio) return;
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+    audio = null;
+  };
+
+  const stop = () => {
+    release();
+    setBar(0);
+    render('idle');
+  };
+
+  const fail = () => {
+    release();
+    setBar(0);
+    render('error');
+  };
+
+  const play = () => {
+    if (!civ) return;
+    const el = new Audio(civVoiceUrl(civ.id));
+    el.preload = 'auto';
+    audio = el;
+
+    // Guard every handler: a civ change swaps `audio` out from under a clip
+    // that may still be buffering, and its late events must not repaint the UI.
+    el.addEventListener('timeupdate', () => {
+      if (audio === el && el.duration) setBar(el.currentTime / el.duration);
+    });
+    el.addEventListener('playing', () => {
+      if (audio === el) render('playing');
+    });
+    el.addEventListener('waiting', () => {
+      if (audio === el) render('loading');
+    });
+    el.addEventListener('ended', () => {
+      if (audio === el) stop();
+    });
+    el.addEventListener('error', () => {
+      if (audio === el) fail();
+    });
+
+    render('loading');
+    void el.play().catch(() => {
+      if (audio === el) fail();
+    });
+  };
+
+  button?.addEventListener('click', () => {
+    if (!audio) {
+      play();
+    } else if (audio.paused) {
+      const el = audio;
+      void el.play().catch(() => {
+        if (audio === el) fail();
+      });
+    } else {
+      audio.pause();
+      render('paused');
+    }
+  });
+
+  return {
+    /** Point the button at a new civ and drop any clip still playing. */
+    show(next: FeaturedCiv): void {
+      civ = next;
+      stop();
+    },
+  };
+}
+
+let civVoice: ReturnType<typeof createCivVoicePlayer> | null = null;
+
 function populateFeaturedCiv(index: number): void {
   const civ = FEATURED_CIVS[index];
   if (!civ) return;
+
+  civVoice?.show(civ);
 
   const img = $<HTMLImageElement>('#featured-img');
   const region = $('#featured-region');
@@ -62,7 +178,8 @@ function populateFeaturedCiv(index: number): void {
 
 function setupFeaturedCarousel(): void {
   let index = 0;
-  populateFeaturedCiv(index);
+  let timer: ReturnType<typeof setInterval> | null = null;
+  let voiceActive = false;
 
   const prev = $('#prev-civ');
   const next = $('#next-civ');
@@ -72,17 +189,31 @@ function setupFeaturedCarousel(): void {
     populateFeaturedCiv(index);
   };
 
-  prev?.addEventListener('click', () => go(-1));
-  next?.addEventListener('click', () => go(1));
-
   // Auto-advance every 6s, pause on hover
   const wrapper = $('#featured-civ');
-  let timer = setInterval(() => go(1), 6000);
+
+  const stopTimer = () => {
+    if (timer) clearInterval(timer);
+    timer = null;
+  };
 
   const restartTimer = () => {
-    clearInterval(timer);
+    stopTimer();
+    // A narration runs far longer than 6s, so hold this civ until it finishes.
+    if (voiceActive) return;
     timer = setInterval(() => go(1), 6000);
   };
+
+  civVoice = createCivVoicePlayer((active) => {
+    voiceActive = active;
+    restartTimer();
+  });
+
+  populateFeaturedCiv(index);
+  restartTimer();
+
+  prev?.addEventListener('click', () => go(-1));
+  next?.addEventListener('click', () => go(1));
 
   const goTo = (target: number) => {
     index = (target + FEATURED_CIVS.length) % FEATURED_CIVS.length;
@@ -90,7 +221,7 @@ function setupFeaturedCarousel(): void {
     restartTimer();
   };
 
-  wrapper?.addEventListener('mouseenter', () => clearInterval(timer));
+  wrapper?.addEventListener('mouseenter', stopTimer);
   wrapper?.addEventListener('mouseleave', restartTimer);
 
   // Clicking a leader portrait in the marquee jumps the carousel to that civ.

@@ -39,40 +39,45 @@ export function tutorialCoachCutoutUrl(): string {
   return assetUrl(`coach/legends/${TUTORIAL_COACH_LEGEND_ID}.png`);
 }
 
-export type TutorialStepId =
-  | "t1_intro"
-  | "t1_select_scout"
-  | "t1_unit_stats"
-  | "t1_unit_kinds"
-  | "t1_move_scout"
-  | "t1_select_warrior"
-  | "t1_move_warrior"
-  | "t1_select_settler"
-  | "t1_found_city"
-  | "t1_yields"
-  | "t1_open_research"
-  | "t1_pick_research"
-  | "t1_select_city"
-  | "t1_open_construction"
-  | "t1_pick_build"
-  | "t1_open_train"
-  | "t1_train_unit"
-  | "t1_next_button"
-  | "t1_end_turn"
-  | "spot_barbarian"
-  | "spot_enemy"
-  | "t2_check_city"
-  | "t2_combat_brief"
-  | "t2_attack_barbarian"
-  | "t2_victory"
-  | "t2_end_turn"
-  | "t3_village"
-  | "t3_end_turn"
-  | "t4_diplomacy"
-  | "t4_end_turn"
-  | "t5_wrap_up"
-  | "t5_choice"
-  | "complete";
+/** Every coach step, in narration order. The list is the runtime source of truth
+ *  for TutorialStepId, so the voice preloader cannot drift out of sync with it. */
+export const TUTORIAL_STEP_IDS = [
+  "t1_intro",
+  "t1_select_scout",
+  "t1_unit_stats",
+  "t1_unit_kinds",
+  "t1_move_scout",
+  "t1_select_warrior",
+  "t1_move_warrior",
+  "t1_select_settler",
+  "t1_found_city",
+  "t1_yields",
+  "t1_open_research",
+  "t1_pick_research",
+  "t1_select_city",
+  "t1_open_construction",
+  "t1_pick_build",
+  "t1_open_train",
+  "t1_train_unit",
+  "t1_next_button",
+  "t1_end_turn",
+  "spot_barbarian",
+  "spot_enemy",
+  "t2_check_city",
+  "t2_combat_brief",
+  "t2_attack_barbarian",
+  "t2_victory",
+  "t2_end_turn",
+  "t3_village",
+  "t3_end_turn",
+  "t4_diplomacy",
+  "t4_end_turn",
+  "t5_wrap_up",
+  "t5_choice",
+  "complete",
+] as const;
+
+export type TutorialStepId = (typeof TUTORIAL_STEP_IDS)[number];
 
 export interface TutorialCoachFlags {
   barbarianExplained: boolean;

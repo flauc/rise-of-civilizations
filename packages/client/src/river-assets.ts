@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { hashSeed } from "@roc/shared";
 
 /**
@@ -35,7 +36,9 @@ export function isImageReady(img: HTMLImageElement): boolean {
 }
 
 /** Starts loading every river overlay; `onLoad` fires as each finishes/errors. */
-export function loadRiverAtlas(onLoad?: () => void): RiverAtlas {
+export const loadRiverAtlas = shareAtlas(loadRiverAtlasUncached);
+
+function loadRiverAtlasUncached(onLoad?: () => void): RiverAtlas {
   const images: Record<string, HTMLImageElement[]> = {};
   let remaining = 0;
 

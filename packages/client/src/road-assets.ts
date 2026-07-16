@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { hashSeed } from "@roc/shared";
 
 /**
@@ -47,7 +48,9 @@ export function isImageReady(img: HTMLImageElement): boolean {
  * Starts loading every road overlay; `onLoad` fires as each finishes/errors so the
  * render loop can redraw. Missing variants simply error out and are skipped.
  */
-export function loadRoadAtlas(onLoad?: () => void): RoadAtlas {
+export const loadRoadAtlas = shareAtlas(loadRoadAtlasUncached);
+
+function loadRoadAtlasUncached(onLoad?: () => void): RoadAtlas {
   const images: Record<string, HTMLImageElement[]> = {};
   let remaining = 0;
 

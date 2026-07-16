@@ -797,10 +797,118 @@ export const TURN_UPDATE_SUBSET: AssetEntry[] = [
   },
 ];
 
+// Announcement art for a COMPLETED world wonder, shown in the turn-update dialog
+// and showcased in the Encyclopedia. These are cinematic painted scenes, not the
+// map decor prop in WONDER_TILE_SUBSET.
+//
+// The visual copy here is deliberately hand-authored rather than reused from
+// `WonderDef.desc`: that field is gameplay text ("+2 production in every city"),
+// and feeding yield numbers to an image model produces junk.
+export const WONDER_ANNOUNCEMENT_ART: Record<string, string> = {
+  great_pyramid:
+    "the finished Great Pyramid of Giza at sunrise, its polished white limestone casing still intact and gleaming, gilded capstone catching the first light, seen across the Nile flood plain with palms and a causeway leading to it",
+  hanging_gardens:
+    "the Hanging Gardens of Babylon in full bloom, tier upon tier of terraced greenery cascading over vaulted stone arches, vines and fruit trees spilling from every level, water channels and screw-pumps glinting as they feed the topmost garden, the Euphrates and blue-glazed city walls beyond",
+  great_library:
+    "the great reading hall of the Library of Alexandria, sunlight slanting through high windows onto ranks of pigeonhole shelves stuffed with papyrus scrolls, robed scholars bent over tables with charts and instruments, a marble bust and a globe in the foreground",
+  colossus:
+    "the Colossus of Rhodes, a colossal bronze statue of the sun-god Helios crowned with a radiate diadem, standing above the harbour mole with one arm raised holding a beacon, dwarfing the merchant galleys passing beneath, warm Mediterranean light on weathered bronze",
+  great_lighthouse:
+    "the Pharos of Alexandria towering over its island at dusk, a tiered stone lighthouse of square, octagonal and cylindrical stages, a great fire and polished bronze mirror blazing at its summit throwing a beam out to sea, ships steering safely into the harbour below",
+  sphinx:
+    "the Great Sphinx of Giza in low golden desert light, the vast recumbent lion body and serene pharaonic face carved from living bedrock, freshly cleared of sand, pyramids rising behind it against a deep sky",
+  stonehenge:
+    "the completed sarsen ring of Stonehenge on open chalk downland at midsummer dawn, massive trilithons with their lintels in place, the rising sun aligned through the stones casting long shadows across the grass, mist low on the plain",
+  // Must match the map decor tile (public/icons aside, see wonders/oracle.png): a
+  // ROUND tholos with a verdigris dome, not a rectangular pedimented temple.
+  oracle:
+    "a round white marble tholos temple crowning a steep conical hill, ringed by a complete circle of slender Doric columns and capped by a domed roof of green verdigris copper with a golden rim and an open oculus at its peak, thin sacred vapour curling up out of the oculus, tall dark cypress trees clustered around the temple, a pale flagstone path winding and switchbacking up the hillside to its steps, soft hazy daylight",
+  tenochtitlan:
+    "the island city of Tenochtitlan seen across Lake Texcoco, twin-shrined stepped pyramid rising at the heart of a white stone capital, straight causeways reaching to the shore, canoes among floating chinampa gardens, volcanoes on the far horizon",
+};
+
 export const TURN_UPDATE_WONDER_SUBSET: AssetEntry[] = WONDER_DEFS.map((w) => ({
   id: `wonder_${w.id}`,
   name: `${w.name} Complete`,
-  description: `a stylized hand-painted portrait of the completed ${w.name}: ${w.desc}. Render a centered scene with a soft painted background such as ancient parchment, a mural, or a neutral textured wall. Evoke awe and monumentality, no text, no UI.`,
+  description: `a stylized hand-painted portrait of the completed ${w.name}: ${WONDER_ANNOUNCEMENT_ART[w.id] ?? w.name}. Cinematic and monumental, painted in the warm illustrated style of the reference, framed as a tall vertical scene with the wonder itself unmistakably the subject. Evoke awe and achievement. No text, no labels, no UI, no modern elements.`,
+  aspectRatio: "3:4",
+  size: { width: 320, height: 400 },
+  category: "turn_update" as const,
+  referenceTile: DEFAULT_REFERENCE_TILE,
+}));
+
+// Announcement art for a DISCOVERED natural wonder. Same 3:4 dialog format as the
+// world-wonder announcements above, and likewise showcased in the Encyclopedia.
+// Distinct from NATURAL_WONDER_SUBSET, which paints the hex map tile.
+export const NATURAL_WONDER_ANNOUNCEMENT_ART: Record<string, string> = {
+  mount_everest:
+    "the summit pyramid of Mount Everest at dawn, a vast wind-scoured wall of rock and ice with a snow plume streaming off the ridge, lesser Himalayan peaks far below breaking through a sea of cloud",
+  mount_kilimanjaro:
+    "Mount Kilimanjaro rising alone above golden savanna, its broad glaciated crown bright with snow, acacia trees and grazing herds on the plain beneath, hazy warm light",
+  mount_fuji:
+    "Mount Fuji's perfectly symmetrical snow-capped cone at first light, seen across still water with cherry blossom in the foreground, a thin band of cloud around its flanks",
+  matterhorn:
+    "the Matterhorn's sharp four-faced horn glowing in alpine dawn light, sheer rock ridges dusted with snow, a glacier and green valley meadows far below",
+  mount_vesuvius:
+    "Mount Vesuvius restless above the bay, a dark ash column boiling from its crater lit red from within, the sea and a scatter of terracotta rooftops at its foot, ominous sky",
+  table_mountain:
+    "Table Mountain's flat sheer summit above the cape, its famous white cloud tablecloth spilling over the rim, blue ocean and rocky headland below",
+  uluru:
+    "Uluru glowing deep red at sunset, a colossal solitary sandstone monolith with weathered flutes and caves along its flanks, flat scrubby red desert stretching to the horizon",
+  mount_roraima:
+    "Mount Roraima's sheer-walled tabletop rising out of jungle, waterfalls pouring off the plateau rim into cloud, mist wreathing the black cliffs, an otherworldly rock garden on top",
+  eye_of_the_sahara:
+    "the Eye of the Sahara seen from high above, enormous concentric rings of pale and ochre rock forming a bullseye in the desert, dunes lapping at its edges",
+  grand_canyon:
+    "the Grand Canyon at golden hour, immense layered red and ochre buttes stepping down mile after mile, the Colorado River a thin green ribbon at the bottom, deep shadow in the side gorges",
+  salar_de_uyuni:
+    "the Salar de Uyuni under a thin film of water, a perfect mirror doubling an enormous sky of clouds, the salt crust cracked into pale hexagons near the foreground, horizon dissolved",
+  zhangye_danxia:
+    "the Zhangye Danxia hills, smooth ridges banded in stripes of crimson, ochre, cream and green running diagonally across the slopes like brushstrokes, low raking sunlight",
+  cappadocia:
+    "the Cappadocia valleys at dawn, a forest of pale tuff fairy chimneys and mushroom-capped spires with hand-carved doorways and cave dwellings cut into them, soft golden light",
+  pamukkale:
+    "the travertine terraces of Pamukkale, blinding white mineral basins stepping down a hillside filled with still turquoise thermal water, steam drifting off the pools",
+  sahara_dunes:
+    "an endless sea of wind-sculpted Saharan dunes at sunset, immense sharp-crested ridges of orange sand in rolling parallel waves, a caravan's tiny silhouette on a distant crest",
+  great_barrier_reef:
+    "the Great Barrier Reef from just above the water, vivid coral gardens in turquoise shallows teeming with bright fish and sea turtles, reef ribbons and sandy cays curving into the deep blue distance",
+  galapagos_islands:
+    "a volcanic Galápagos shoreline, giant tortoises and marine iguanas on black lava rock, blue-footed boobies and finches, arid cactus scrub, the Pacific breaking beyond",
+  cliffs_of_dover:
+    "the White Cliffs of Dover from the sea, a long wall of brilliant chalk topped with green turf, gulls wheeling, grey-green Channel water at their base, bright overcast light",
+  giants_causeway:
+    "the Giant's Causeway, thousands of interlocking dark basalt hexagonal columns stepping down like paving into a cold northern sea, spray and low cloud",
+  dead_sea:
+    "the Dead Sea, still hypersaline water of deep blue-green fringed by bizarre white salt crystal formations and crusted shoreline, barren ochre desert cliffs of the rift beyond, heat haze",
+  lake_baikal:
+    "Lake Baikal in winter, impossibly clear deep ice cracked into turquoise shards and pressure ridges, forested taiga shoreline and snowy hills across the vast open water",
+  niagara_falls:
+    "Niagara Falls, an enormous horseshoe curtain of green water pouring over a wide ledge into a churning basin, a huge cloud of mist rising with a rainbow through it",
+  victoria_falls:
+    "Victoria Falls, the Zambezi dropping in one immense mile-wide sheet into a narrow chasm, a towering column of spray rising far above the lip, rainbow arcing across the gorge, dense green bush all around",
+  iguazu_falls:
+    "Iguazú Falls, a vast jungle horseshoe of hundreds of stepped waterfalls plunging over red rock ledges into mist, lush rainforest crowding the rim, rainbows in the spray",
+  angel_falls:
+    "Angel Falls, a single ribbon of water leaping from the lip of a sheer jungle tepui and falling nearly a kilometre, dissolving into drifting mist long before it lands, cloud around the cliff top",
+  plitvice_lakes:
+    "the Plitvice Lakes, terraced turquoise pools linked by countless small waterfalls spilling over mossy travertine dams, dense green forest and wooden walkways, dappled light through the leaves",
+  moraine_lake:
+    "Moraine Lake's brilliant glacial blue water beneath a wall of ten snow-streaked peaks, dark evergreen forest along the shore, tumbled boulders and driftwood in the foreground",
+  amazon_rainforest:
+    "the Amazon rainforest canopy at dawn, an unbroken green ocean of treetops stretching to the horizon with mist pooling between them, a great brown river winding through, macaws in flight",
+  pantanal:
+    "the flooded Pantanal wetland at golden hour, shallow water and reed islands mirroring the sky, capybara and caiman at the water's edge, wading storks and herons, a jaguar half-hidden in the grass",
+  yosemite:
+    "Yosemite Valley from the overlook, sheer granite walls of El Capitan and Half Dome above a green meadow and winding river, a tall waterfall on the far wall, giant sequoias in the foreground",
+  zhangjiajie:
+    "the Zhangjiajie pillars, hundreds of towering narrow quartzite columns crowned with pines rising out of dense cloud so they appear to float, sheer stone faces vanishing into mist",
+};
+
+export const TURN_UPDATE_NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.map((w) => ({
+  id: `natural_wonder_${w.id}`,
+  name: `${w.name} Discovered`,
+  description: `a stylized hand-painted portrait of the natural wonder ${w.name}: ${NATURAL_WONDER_ANNOUNCEMENT_ART[w.id] ?? w.name}. Cinematic and awe-inspiring, painted in the warm illustrated style of the reference, framed as a tall vertical landscape with the wonder itself unmistakably the subject and clearly grander than ordinary terrain. Evoke the thrill of discovery. No people, no buildings, no roads, no text, no labels, no UI, no modern elements.`,
   aspectRatio: "3:4",
   size: { width: 320, height: 400 },
   category: "turn_update" as const,
@@ -1378,7 +1486,7 @@ export const RELIGION_ICON_SUBSET: AssetEntry[] = RELIGIONS.map((r) => ({
 }));
 
 export function allEntries(): AssetEntry[] {
-  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...UNIQUE_INFRA_SUBSET, ...IMPROVEMENT_SUBSET, ...CONSTRUCTION_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...EMOJI_ICON_SUBSET, ...ABILITY_ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET, ...RELIGION_SUBSET, ...RELIGION_ICON_SUBSET, ...RELIGION_UNIT_SUBSET];
+  return [...TERRAIN_SUBSET, ...UNIT_SUBSET, ...UNIQUE_UNIT_SUBSET, ...CITY_SUBSET, ...BUILDING_SUBSET, ...UNIQUE_INFRA_SUBSET, ...IMPROVEMENT_SUBSET, ...CONSTRUCTION_SUBSET, ...LEADER_SUBSET, ...GREAT_PERSON_SUBSET, ...LEGEND_SUBSET, ...ROAD_SUBSET, ...RIVER_SUBSET, ...RESOURCE_SUBSET, ...UI_SUBSET, ...ICON_SUBSET, ...EMOJI_ICON_SUBSET, ...ABILITY_ICON_SUBSET, ...VILLAGE_REWARD_SUBSET, ...BARBARIAN_REWARD_SUBSET, ...AGE_SUBSET, ...PILLAR_SUBSET, ...HERO_SUBSET, ...TURN_UPDATE_SUBSET, ...TURN_UPDATE_WONDER_SUBSET, ...TURN_UPDATE_NATURAL_WONDER_SUBSET, ...TURN_UPDATE_IMPROVEMENT_SUBSET, ...NATURAL_WONDER_SUBSET, ...WONDER_TILE_SUBSET, ...RELIGION_SUBSET, ...RELIGION_ICON_SUBSET, ...RELIGION_UNIT_SUBSET];
 }
 
 export function findEntry(id: string): AssetEntry | undefined {

@@ -9,6 +9,8 @@
 //   • UNIT_HISTORY — keyed by base unit id (sim UNIT_DEFS).
 //   • GREAT_PERSON_HISTORY — keyed by great-person id (GREAT_PEOPLE).
 //   • LEGEND_HISTORY — keyed by legend id (LEGENDS).
+//   • WONDER_HISTORY — keyed by wonder id (WONDER_DEFS).
+//   • NATURAL_WONDER_HISTORY — keyed by natural wonder id (NATURAL_WONDER_DEFS).
 //
 // Each module also exports an accessor (civHistory, unitHistory, …) that returns
 // undefined when no entry exists, so the UI degrades gracefully.
@@ -18,3 +20,4 @@ export * from "./history-units"; // UNIT_HISTORY, UNIQUE_UNIT_HISTORY + accessor
 export * from "./history-infra"; // UNIQUE_INFRA_HISTORY, uniqueInfraHistoryByCiv
 export * from "./history-people"; // GREAT_PERSON_HISTORY, LEGEND_HISTORY + accessors
 export * from "./history-geo"; // CivLocation, CIV_LOCATION, civLocation
+export * from "./history-wonders"; // WONDER_HISTORY, NATURAL_WONDER_HISTORY + accessors

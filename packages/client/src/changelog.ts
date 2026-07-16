@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.7.4";
+export const CURRENT_VERSION = "0.7.5";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,66 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.7.5",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Every natural wonder has its own discovery art",
+        desc:
+          "Finding a natural wonder now opens a painted scene of that specific place instead of an enlarged map tile. All 31 natural wonders have their own picture, from Everest and the Grand Canyon to Uluru, the Great Barrier Reef, Salar de Uyuni and Zhangye Danxia.",
+      },
+      {
+        tag: "New",
+        title: "Wonders and Natural Wonders in the Encyclopedia",
+        desc:
+          "The Encyclopedia has two new sections. Wonders lists every world wonder as an illustrated card with its required tech and its gold, faith and culture cost, and each detail page covers the effect, the craftsman crew it contracts and any site restriction. Natural Wonders does the same, showing the tile's yields, the one-time reward for sighting it first and the bonus for having seen them all. Every entry also carries a few paragraphs of real history about the place. Wonders can now be linked to from other Encyclopedia pages the way civilizations, units and legends already could.",
+      },
+      {
+        tag: "New",
+        title: "Completion art for the Oracle, the Sphinx, Stonehenge and Tenochtitlan",
+        desc:
+          "These four wonders finished with a generic image before and now have their own. The Great Pyramid, Hanging Gardens, Great Library, Colossus and Great Lighthouse were repainted from historical descriptions of the monuments, so the picture shows the wonder itself rather than an abstract take on its yields.",
+      },
+      {
+        tag: "Balance",
+        title: "Barbarian camps start guarded",
+        desc:
+          "Every third barbarian camp on the map now begins with a warrior or slinger standing on it. Camps used to sit empty until their raiding cadence came due, which made early ones free gold for whoever wandered past.",
+      },
+      {
+        tag: "UI",
+        title: "Faster start after you press Start Game",
+        desc:
+          "Artwork now downloads quietly while you are still in the lobby, so it is usually ready by the time the loading screen appears, and a second game reuses what the first one loaded instead of fetching it again. This is skipped on cellular, slow or data-saver connections.",
+      },
+      {
+        tag: "UI",
+        title: "Turn banner fits on one line on phones",
+        desc:
+          "The turn banner used to wrap onto two lines on narrow screens. It is now smaller, centered and capped in width so it stays on one line.",
+      },
+      {
+        tag: "UI",
+        title: "City growth hint shows once per game",
+        desc:
+          "The prompt to tap a highlighted tile to set where a city grows next appeared every single time the expansion picker opened. It now appears once per game.",
+      },
+      {
+        tag: "Fix",
+        title: "Dialogs no longer flash the previous picture",
+        desc:
+          "When two announcements fired back to back, the new dialog briefly showed the old one's art before its own loaded. The image area now stays blank until the correct picture is ready, and clicking past a dialog while it loads can no longer paint stale art over the one you are reading.",
+      },
+      {
+        tag: "Fix",
+        title: "Tutorial coach voice starts instantly and stops cleanly",
+        desc:
+          "The coach's lines are fetched up front and replayed from memory, so they start without a pause instead of loading each time. Steps with no recording now fall back to the synthesized voice reliably, and skipping a line no longer lets the previous one keep talking.",
+      },
+    ],
+  },
   {
     version: "0.7.4",
     date: "July 2026",

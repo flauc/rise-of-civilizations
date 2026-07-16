@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { UNIT_DEFS, UNIQUE_UNIT_IDS, type UnitTypeId } from "@roc/sim";
 import { LEGEND_IDS } from "@roc/data";
 
@@ -27,7 +28,9 @@ export function isImageReady(img: HTMLImageElement): boolean {
  * to their glyph until each sprite loads. `onLoad` is invoked every time an
  * individual sprite loads or errors so the render loop can redraw.
  */
-export function loadUnitAtlas(onLoad?: () => void): UnitAtlas {
+export const loadUnitAtlas = shareAtlas(loadUnitAtlasUncached);
+
+function loadUnitAtlasUncached(onLoad?: () => void): UnitAtlas {
   const images: Record<string, HTMLImageElement | undefined> = {};
 
   const unitIds: string[] = [...(Object.keys(UNIT_DEFS) as UnitTypeId[]), ...UNIQUE_UNIT_IDS, ...LEGEND_IDS];

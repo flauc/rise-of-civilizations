@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { RELIGIONS } from "@roc/data";
 
 /** Per-religion emblem atlas, keyed by religion def id (e.g. "christianity"). */
@@ -23,7 +24,9 @@ export function isImageReady(img: HTMLImageElement): boolean {
  * overlay immediately; a city's religion badge simply falls back to no icon until
  * its emblem loads. `onLoad` fires each time a sprite loads or errors.
  */
-export function loadReligionIconAtlas(onLoad?: () => void): ReligionIconAtlas {
+export const loadReligionIconAtlas = shareAtlas(loadReligionIconAtlasUncached);
+
+function loadReligionIconAtlasUncached(onLoad?: () => void): ReligionIconAtlas {
   const images: Record<string, HTMLImageElement | undefined> = {};
   let remaining = RELIGIONS.length;
 

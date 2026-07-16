@@ -13,6 +13,7 @@ A standalone, themed marketing landing page for the **Rise of Civilizations** ga
 - **Unit icons** — warrior, archer, settler, scout, swordsman, hoplite, legionary, rider, war elephant, catapult
 - **Resource icons** — wheat, horses, iron, gold ore, stone, wine, silk, spices, salt, ivory
 - **Building art** — city variants, village, farm, barbarian camp
+- **Leader narration** — the in-game loading-scroll clips, played from the civ carousel. These are *not* copied in: at ~850 KB each they would add ~70 MB, so they stream from `game.rise-of-civilizations.com/loading/voice/<civ>.mp3`, which the game client already serves. See `civVoiceUrl()` in `src/data.ts`.
 
 ## Tech stack
 

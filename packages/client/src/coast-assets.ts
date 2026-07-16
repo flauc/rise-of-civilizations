@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { hashSeed } from "@roc/shared";
 
 /**
@@ -37,7 +38,9 @@ export function isImageReady(img: HTMLImageElement): boolean {
  * `onLoad` is invoked every time an individual overlay finishes loading or
  * errors so the render loop can redraw.
  */
-export function loadCoastAtlas(onLoad?: () => void): CoastAtlas {
+export const loadCoastAtlas = shareAtlas(loadCoastAtlasUncached);
+
+function loadCoastAtlasUncached(onLoad?: () => void): CoastAtlas {
   const images: Record<number, HTMLImageElement[]> = {};
   let remaining = 0;
 

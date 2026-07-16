@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { RESOURCE_DEFS, RESOURCE_IDS, type ResourceId } from "@roc/sim";
 
 /** Per-resource image atlas used by the renderer. */
@@ -25,7 +26,9 @@ export function isImageReady(img: HTMLImageElement): boolean {
  * back to their text initials until each sprite loads. `onLoad` is invoked every
  * time an individual sprite loads or errors so the render loop can redraw.
  */
-export function loadResourceAtlas(onLoad?: () => void): ResourceAtlas {
+export const loadResourceAtlas = shareAtlas(loadResourceAtlasUncached);
+
+function loadResourceAtlasUncached(onLoad?: () => void): ResourceAtlas {
   const images: Record<ResourceId, HTMLImageElement | undefined> = {} as Record<
     ResourceId,
     HTMLImageElement | undefined

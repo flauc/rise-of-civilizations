@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { hashSeed } from "@roc/shared";
 import { UNIQUE_IMPROVEMENTS } from "@roc/sim";
 
@@ -43,7 +44,9 @@ function legacyFarmUrl(variant: number): string {
 }
 
 /** Start loading tiered improvement sprites. */
-export function loadImprovementAtlas(onLoad?: () => void): ImprovementAtlas {
+export const loadImprovementAtlas = shareAtlas(loadImprovementAtlasUncached);
+
+function loadImprovementAtlasUncached(onLoad?: () => void): ImprovementAtlas {
   const images: Record<string, HTMLImageElement[]> = {};
   let remaining = 0;
 

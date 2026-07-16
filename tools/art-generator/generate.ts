@@ -59,6 +59,7 @@ import {
   HERO_SUBSET,
   TURN_UPDATE_SUBSET,
   TURN_UPDATE_WONDER_SUBSET,
+  TURN_UPDATE_NATURAL_WONDER_SUBSET,
   TURN_UPDATE_IMPROVEMENT_SUBSET,
   NATURAL_WONDER_SUBSET,
   WONDER_TILE_SUBSET,
@@ -130,7 +131,7 @@ Options:
   --barbarian-reward <id> Generate a specific barbarian reward illustration (e.g. barb_camp_cleared)
   --turn-update <id>     Generate a specific turn-update portrait (e.g. tradeRouteEstablished or improvement_road)
   --natural-wonder <id>  Generate a specific natural wonder illustration (e.g. matterhorn)
-  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-improvements, natural-wonders, all
+  --subset <name>        Generate a subset: terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-natural-wonders, turn-update-improvements, natural-wonders, all
   --list                 List all available asset IDs and exit
   --model <id>           Gemini model (default: ${DEFAULT_MODEL})
   --size <512|1K|2K|4K>  Gemini image size (default: ${DEFAULT_IMAGE_SIZE})
@@ -394,6 +395,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "heroes") entries.push(...HERO_SUBSET);
         else if (name === "turn-updates") entries.push(...TURN_UPDATE_SUBSET);
         else if (name === "turn-update-wonders") entries.push(...TURN_UPDATE_WONDER_SUBSET);
+        else if (name === "turn-update-natural-wonders") entries.push(...TURN_UPDATE_NATURAL_WONDER_SUBSET);
         else if (name === "turn-update-improvements") entries.push(...TURN_UPDATE_IMPROVEMENT_SUBSET);
         else if (name === "natural-wonders") entries.push(...NATURAL_WONDER_SUBSET);
         else if (name === "wonder-tiles") entries.push(...WONDER_TILE_SUBSET);
@@ -401,7 +403,7 @@ function parseArgs(): { entries: AssetEntry[]; options: Options } {
         else if (name === "religion-icons") entries.push(...RELIGION_ICON_SUBSET);
         else if (name === "religion-units") entries.push(...RELIGION_UNIT_SUBSET);
         else if (name === "all") entries.push(...allEntries());
-        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-improvements, natural-wonders, or all.`);
+        else fail(`Unknown subset: ${name}. Choose terrain, units, buildings, improvements, cities, leaders, dirt-roads, stone-roads, advanced-stone-roads, rivers, resources, ui, icons, village-rewards, barbarian-rewards, ages, pillars, heroes, turn-updates, turn-update-wonders, turn-update-natural-wonders, turn-update-improvements, natural-wonders, or all.`);
         break;
       }
       case "--all":

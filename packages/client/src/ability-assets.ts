@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { ACTIVE_ABILITY_DEFS, type ActiveAbilityId } from "@roc/sim";
 
 /**
@@ -21,7 +22,9 @@ function isReady(img: HTMLImageElement): boolean {
   return img.complete && img.naturalWidth > 0;
 }
 
-export function loadAbilityAtlas(onLoad?: () => void): AbilityAtlas {
+export const loadAbilityAtlas = shareAtlas(loadAbilityAtlasUncached);
+
+function loadAbilityAtlasUncached(onLoad?: () => void): AbilityAtlas {
   const images: Partial<Record<ActiveAbilityId, HTMLImageElement>> = {};
   const ids = Object.keys(ACTIVE_ABILITY_DEFS) as ActiveAbilityId[];
   let remaining = ids.length;

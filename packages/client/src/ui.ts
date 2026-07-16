@@ -1,4 +1,6 @@
 import { ASSET_BASE_URL, assetUrl } from "./asset-base";
+import { swapArt, clearArt } from "./art-swap";
+import { rewardArtUrl } from "./reward-art";
 import { renderTechTreeInto } from "./techtree";
 import { createWiki } from "./wiki";
 import { createEmpire, type Tab as EmpireTab } from "./empire";
@@ -198,7 +200,6 @@ import {
   type ImprovementKind,
   type LogEntry,
   type ProductionItem,
-  type FeatureRewardType,
   type ActiveAbilityId,
   uniqueUnitForCiv,
   getLeaderAbilityForCiv,
@@ -1310,7 +1311,7 @@ export function createUI(handlers: UIHandlers): UI {
   let lastLogLength = 0;
   let logInitialized = false;
   /** A queued immediate popup (village reward or natural-wonder discovery). */
-  type PopupItem = { title: string; html: string; art?: string };
+  type PopupItem = { title: string; html: string; art?: string; artFallback?: string };
   let villageQueue: PopupItem[] = [];
   let turnUpdateQueue: TurnUpdateEvent[] = [];
   let turnUpdateIndex = 0;
@@ -1411,22 +1412,14 @@ export function createUI(handlers: UIHandlers): UI {
     wiki.close();
   };
 
-  const rewardImagePath = (reward: FeatureRewardType): string => {
-    if (reward === "camp_cleared") {
-      return assetUrl("barbarian-rewards/barb_camp_cleared.png");
-    }
-    return assetUrl(`village-rewards/village_reward_${reward}.png`);
-  };
-
   const showVillageDialog = (item: PopupItem): void => {
     villageMsg.innerHTML = item.html;
     villageTitle.textContent = item.title;
     if (item.art) {
-      villageArt.onerror = () => villageArt.classList.add("hidden");
-      villageArt.src = item.art;
-      villageArt.classList.remove("hidden");
+      // Fall back once (e.g. announcement art -> map tile art), then give up and hide.
+      swapArt(villageArt, item.artFallback ? [item.art, item.artFallback] : [item.art]);
     } else {
-      villageArt.classList.add("hidden");
+      clearArt(villageArt);
     }
     villageOverlay.classList.add("show");
     villageDialog.classList.add("show");
@@ -1436,7 +1429,7 @@ export function createUI(handlers: UIHandlers): UI {
   const villagePopupItem = (e: LogEntry): PopupItem => ({
     title: e.reward === "camp_cleared" ? "Camp Cleared" : "Village Discovered",
     html: escapeHtml(e.message),
-    art: e.reward ? rewardImagePath(e.reward) : undefined,
+    art: e.reward ? rewardArtUrl(e.reward) : undefined,
   });
 
   // Build a popup item from a natural-wonder discovery log entry.
@@ -1456,7 +1449,8 @@ export function createUI(handlers: UIHandlers): UI {
     return {
       title: "Natural Wonder Discovered",
       html: lines.join("<br><br>"),
-      art: w.wonderId ? assetUrl(`natural-wonders/${w.wonderId}.png`) : undefined,
+      art: w.wonderId ? assetUrl(`turn-updates/natural_wonder_${w.wonderId}.png`) : undefined,
+      artFallback: w.wonderId ? assetUrl(`natural-wonders/${w.wonderId}.png`) : undefined,
     };
   };
 
@@ -1622,16 +1616,8 @@ export function createUI(handlers: UIHandlers): UI {
     }
     const genericPath = assetUrl(`turn-updates/${ev.type}.png`);
     const specificPath = turnUpdateImagePath(ev);
-    turnUpdateArt.src = specificPath;
-    turnUpdateArt.onerror = () => {
-      // Fall back to the generic event image, then to a leader portrait placeholder.
-      if (turnUpdateArt.src.endsWith(specificPath) && specificPath !== genericPath) {
-        turnUpdateArt.src = genericPath;
-      } else {
-        turnUpdateArt.src = assetUrl("leaders/rome.png");
-        turnUpdateArt.onerror = null;
-      }
-    };
+    // Fall back to the generic event image, then to a leader portrait placeholder.
+    swapArt(turnUpdateArt, [specificPath, genericPath, assetUrl("leaders/rome.png")]);
     turnUpdateTitle.textContent = updateTitleFor(ev);
     turnUpdateMsg.textContent = ev.message;
     turnUpdateActions.innerHTML = renderTurnUpdateCtas(ev);

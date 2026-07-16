@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 
 import { ASSET_BASE_URL } from "./asset-base";
+import { shareAtlas } from "./atlas-cache";
 import { hashSeed } from "@roc/shared";
 
 const VILLAGE_FRAMES = 4; // village_thatched.png / village_wood.png (+ _1.._3)
@@ -31,7 +32,9 @@ export function isImageReady(img: HTMLImageElement): boolean {
 }
 
 /** Starts loading village and barbarian-camp feature sprites. */
-export function loadFeatureAtlas(onLoad?: () => void): FeatureAtlas {
+export const loadFeatureAtlas = shareAtlas(loadFeatureAtlasUncached);
+
+function loadFeatureAtlasUncached(onLoad?: () => void): FeatureAtlas {
   const villageThatched: (HTMLImageElement | undefined)[] = [];
   const villageWood: (HTMLImageElement | undefined)[] = [];
   const barbCamp: (HTMLImageElement | undefined)[] = [];

@@ -1585,6 +1585,16 @@
       #banner.show {
         opacity: 1;
       }
+      /* Touch / narrow: shrink so the turn banner keeps to a single line. */
+      @media (max-width: 860px), (pointer: coarse) {
+        #banner {
+          font-size: 14px;
+          padding: 8px 14px;
+          border-radius: 12px;
+          max-width: calc(100vw - 32px);
+          text-align: center;
+        }
+      }
       /* village reward dialog */
       #village-overlay {
         position: fixed;
@@ -3264,6 +3274,11 @@
       }
       .hidden {
         display: none !important;
+      }
+      /* Art whose new source has not decoded yet: keeps its box so the dialog
+         does not resize, but paints nothing rather than the previous picture. */
+      .art-pending {
+        visibility: hidden;
       }
 
       #bottom-bar {

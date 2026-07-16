@@ -53,6 +53,7 @@ import { showCombatPreviewDialog } from "./combat-preview-ui";
 import { getSettings } from "./settings";
 import { mountGameChat } from "./mp-chat";
 import { createLobby } from "./lobby-ui";
+import { preloadGameAssets } from "./asset-preload";
 import { createLegalViewer, type LegalPage } from "./legal-viewer";
 import { createSupportPage, registerSupportPage, supportPageFromLocation } from "./support-page";
 import { consumeNativeBootRoute, initialOverlayRoute, setLobbyHidden } from "./app-routes";
@@ -117,6 +118,12 @@ createLobby(startGame);
 openBootRoute();
 delete window.__ROC_BOOT_ROUTE__;
 
+// Stream the game's assets in behind the lobby, so they are warm by the time a
+// game is created. Called after createLobby so the lobby's own leader portraits
+// claim the connection first, and skipped for a deep link to a legal or support
+// page, which is not a visit on its way to a game.
+if (!bootRoute) preloadGameAssets();
+
 function startGame(session: Session, setup: GameSetup = {}): void {
   let loadingDismissed = false;
   let mapRenderNotified = false;
@@ -168,6 +175,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   // next-to-claim tile, and `expandCandidates` holds the tiles they can pick from.
   let expandPickCityId: number | null = null;
   let expandCandidates = new Set<string>();
+  // The "tap a tile" hint only teaches the picker, so show it once per game.
+  let expandHintShown = false;
   // City bombardment: when set, the player is aiming the selected city's once-a-turn
   // bombardment, and `bombardTargets` holds the enemy tiles it can hit.
   let bombardCityId: number | null = null;
@@ -498,7 +507,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         if (expandCandidates.size === 0) {
           cancelExpandPick();
           ui.banner("This city has no room left to expand.");
-        } else {
+        } else if (!expandHintShown) {
+          expandHintShown = true;
           ui.banner("Tap a highlighted tile to set where this city grows next.");
         }
       }

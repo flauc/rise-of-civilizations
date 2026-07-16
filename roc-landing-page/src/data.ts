@@ -10,6 +10,15 @@ export interface FeaturedCiv {
   era: string;
 }
 
+// The narrator clips are ~850 KB each and already shipped with the game client,
+// so we stream them from that origin rather than duplicating ~70 MB in here.
+const VOICE_BASE = 'https://game.rise-of-civilizations.com/loading/voice/';
+
+/** In-game leader narration for a civ, streamed from the game deployment. */
+export function civVoiceUrl(id: string): string {
+  return `${VOICE_BASE}${id}.mp3`;
+}
+
 export const FEATURED_CIVS: FeaturedCiv[] = [
   {
     id: "sumer",

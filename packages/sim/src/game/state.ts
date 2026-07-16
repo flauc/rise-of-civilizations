@@ -587,21 +587,26 @@ export function normalizeVillageDensity(v: boolean | VillageDensity | undefined)
   return "medium";
 }
 
-/** Possible outcomes when a tribal village or barbarian camp feature is resolved. */
-export type FeatureRewardType =
-  | "tech"
-  | "gold"
-  | "production"
-  | "population"
-  | "unit"
-  | "unit_morale"
-  | "global_morale"
-  | "faith"
-  | "civic"
-  | "promotion"
-  | "ambush"
-  | "cache"
-  | "camp_cleared";
+/** Possible outcomes when a tribal village or barbarian camp feature is resolved.
+ *  The list is the runtime source of truth for FeatureRewardType, so the client
+ *  can enumerate the rewards to warm their announcement art. */
+export const FEATURE_REWARD_TYPES = [
+  "tech",
+  "gold",
+  "production",
+  "population",
+  "unit",
+  "unit_morale",
+  "global_morale",
+  "faith",
+  "civic",
+  "promotion",
+  "ambush",
+  "cache",
+  "camp_cleared",
+] as const;
+
+export type FeatureRewardType = (typeof FEATURE_REWARD_TYPES)[number];
 
 /** Kinds of player-facing updates reported at the start of a turn. */
 export type TurnUpdateType =
