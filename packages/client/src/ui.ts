@@ -639,12 +639,19 @@ function tradeRouteChoicesHtml(state: GameState, trader: Unit, origin: City, des
 /** Sticky title row shared by city sub-dialogs (construction, training, specialists). */
 function dialogHeader(title: string, closeId: string, opts?: { subtitle?: string; extra?: string }): string {
   return (
+    `<button type="button" class="dialog-x" id="${closeId}" title="Close" aria-label="Close">✕</button>` +
     `<div class="panel-dialog-header">` +
-    `<div class="row" style="justify-content:space-between;align-items:flex-start">` +
-    `<b>${title}</b><button type="button" class="btn panel-close" id="${closeId}">✕</button></div>` +
+    `<b>${title}</b>` +
     (opts?.subtitle ? `<div class="sub" style="margin-top:4px">${opts.subtitle}</div>` : "") +
     (opts?.extra ?? "") +
     `</div>`
+  );
+}
+
+function menuDialogHeader(title: string, closeId: string): string {
+  return (
+    `<button type="button" class="dialog-x" id="${closeId}" title="Close" aria-label="Close">✕</button>` +
+    `<div class="panel-dialog-header"><b>${title}</b></div>`
   );
 }
 
@@ -2109,8 +2116,7 @@ export function createUI(handlers: UIHandlers): UI {
         ? `<button class="btn primary" id="menu-save">Save Game</button>`
         : "";
       let html =
-        `<div class="row" style="justify-content:space-between"><b>Game Menu</b>` +
-        `<button type="button" class="btn panel-close" id="save-close">✕</button></div>` +
+        menuDialogHeader("Game Menu", "save-close") +
         `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}` +
         (mapLabel ? `<br/><span style="font-size:11px">Map: ${escapeHtml(mapLabel)}</span>` : "") +
         `</div>` +
@@ -2244,8 +2250,7 @@ export function createUI(handlers: UIHandlers): UI {
       const defaultName = `${civ ? civ.name : player.name} - Turn ${state.turn}`;
       withPreservedScroll(saveModal, () => {
         saveModal.innerHTML =
-          `<div class="row" style="justify-content:space-between"><b>Leave Game</b>` +
-          `<button type="button" class="btn panel-close" id="save-close">✕</button></div>` +
+          menuDialogHeader("Leave Game", "save-close") +
           `<div style="margin:8px 0;color:#9fc0dc">Save your progress before returning to the main menu?</div>` +
           `<input id="leave-save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
           `<button class="btn primary" id="leave-save" style="width:100%" ${isSaving ? "disabled" : ""}>` +
@@ -2287,8 +2292,7 @@ export function createUI(handlers: UIHandlers): UI {
     if (menuView === "bug") {
       withPreservedScroll(saveModal, () => {
         saveModal.innerHTML =
-          `<div class="row" style="justify-content:space-between"><b>🐞 Report a Bug</b>` +
-          `<button type="button" class="btn panel-close" id="bug-close">✕</button></div>` +
+          menuDialogHeader("🐞 Report a Bug", "bug-close") +
           `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
           `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
           `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
@@ -2334,8 +2338,7 @@ export function createUI(handlers: UIHandlers): UI {
     const civ = getCiv(player.civId);
     const defaultName = `${civ ? civ.name : player.name} - Turn ${state.turn}`;
     let html =
-      `<div class="row" style="justify-content:space-between"><b>Save Game</b>` +
-      `<button type="button" class="btn panel-close" id="save-close">✕</button></div>` +
+      menuDialogHeader("Save Game", "save-close") +
       `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
       `<input id="save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
       `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +

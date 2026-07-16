@@ -17,6 +17,7 @@ async function applyScreenRotationAsync(mode?: ScreenRotation): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     try {
       await ScreenOrientation.lock({ orientation: target });
+      window.dispatchEvent(new Event("roc-orientation-locked"));
       return;
     } catch {
       // Fall back to the web Screen Orientation API below.
@@ -41,6 +42,8 @@ async function applyScreenRotationAsync(mode?: ScreenRotation): Promise<void> {
       },
       { once: true },
     );
+  } finally {
+    window.dispatchEvent(new Event("roc-orientation-locked"));
   }
 }
 
@@ -48,4 +51,14 @@ async function applyScreenRotationAsync(mode?: ScreenRotation): Promise<void> {
 export function initScreenRotation(): void {
   applyScreenRotation();
   onSettingsChange(() => applyScreenRotation());
+
+  if (!Capacitor.isNativePlatform()) return;
+
+  // iOS often ignores the first lock before the WebView is ready.
+  window.setTimeout(() => applyScreenRotation(), 250);
+  window.setTimeout(() => applyScreenRotation(), 1000);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") applyScreenRotation();
+  });
 }

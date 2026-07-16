@@ -85,74 +85,102 @@ export interface LocalGameOptions {
   colors?: (string | null)[];
   /** Resume from a previously serialized single-player save. */
   savedState?: SerializedState;
+  /** Build the map on finishWorldGen() so the loading scroll can appear first. */
+  deferWorldGen?: boolean;
 }
 
 export class LocalSession implements Session {
   readonly isOnline = false;
-  private state: GameState;
+  private state: GameState | null = null;
   /** The human's player id — fog/UI always render for them, not whoever's turn it is. */
-  private readonly humanPlayerId: number;
+  private humanPlayerId = 0;
   private cb: () => void = () => {};
+  private pendingOpts: LocalGameOptions | null = null;
 
   constructor(opts: LocalGameOptions = {}) {
     if (opts.savedState) {
       this.state = deserializeState(opts.savedState);
+      this.humanPlayerId =
+        this.state.players.find((p) => p.isHuman && !p.isBarbarian)?.id ?? 0;
+    } else if (opts.deferWorldGen) {
+      this.pendingOpts = opts;
     } else {
-      const dims = MAP_DIMENSIONS[opts.mapSize ?? "medium"];
-      const aiCivIds = opts.aiCivIds ?? [];
-      const aiCount = Math.max(0, opts.aiCount ?? aiCivIds.length);
-      // Civ ids align to slots: the human first, then each AI (undefined = random).
-      const civIds = [opts.civId, ...aiCivIds.map((c) => c ?? undefined)].slice(0, 1 + aiCount);
-      // Single-player = 1 human vs N AI civs (+ optional barbarians).
-      this.state = createGame({
-        seed: opts.seed ?? "rise",
-        cols: dims.cols,
-        rows: dims.rows,
-        mapType: opts.mapType ?? "random",
-        humanSlots: 1,
-        playerCount: 1 + aiCount,
-        barbarians: opts.barbarians ?? true,
-        legends: opts.legends ?? true,
-        naturalWonders: opts.naturalWonders ?? true,
-        villages: opts.villages ?? "medium",
-        startingGold: opts.startingGold ?? "balanced",
-        turnLimit: opts.turnLimit ?? 120,
-        gameSpeed: opts.gameSpeed ?? "normal",
-        enabledVictories: opts.enabledVictories,
-        civIds,
-        colors: opts.colors ?? undefined,
-      });
-      beginTurn(this.state);
+      this.state = this.buildGameState(opts);
+      this.humanPlayerId =
+        this.state.players.find((p) => p.isHuman && !p.isBarbarian)?.id ?? 0;
     }
+  }
+
+  /** True while map generation is still queued (loading scroll is showing). */
+  needsWorldGen(): boolean {
+    return this.pendingOpts != null;
+  }
+
+  /** Run procedural world generation (call once after the loading UI is visible). */
+  finishWorldGen(): void {
+    if (!this.pendingOpts) return;
+    const opts = this.pendingOpts;
+    this.pendingOpts = null;
+    this.state = this.buildGameState(opts);
     this.humanPlayerId =
       this.state.players.find((p) => p.isHuman && !p.isBarbarian)?.id ?? 0;
+    this.cb();
   }
+
+  private buildGameState(opts: LocalGameOptions): GameState {
+    const dims = MAP_DIMENSIONS[opts.mapSize ?? "medium"];
+    const aiCivIds = opts.aiCivIds ?? [];
+    const aiCount = Math.max(0, opts.aiCount ?? aiCivIds.length);
+    const civIds = [opts.civId, ...aiCivIds.map((c) => c ?? undefined)].slice(0, 1 + aiCount);
+    const state = createGame({
+      seed: opts.seed ?? "rise",
+      cols: dims.cols,
+      rows: dims.rows,
+      mapType: opts.mapType ?? "random",
+      humanSlots: 1,
+      playerCount: 1 + aiCount,
+      barbarians: opts.barbarians ?? true,
+      legends: opts.legends ?? true,
+      naturalWonders: opts.naturalWonders ?? true,
+      villages: opts.villages ?? "medium",
+      startingGold: opts.startingGold ?? "balanced",
+      turnLimit: opts.turnLimit ?? 120,
+      gameSpeed: opts.gameSpeed ?? "normal",
+      enabledVictories: opts.enabledVictories,
+      civIds,
+      colors: opts.colors ?? undefined,
+    });
+    beginTurn(state);
+    return state;
+  }
+
   hasState(): boolean {
-    return true;
+    return this.state != null;
   }
   getState(): GameState {
+    if (!this.state) throw new Error("LocalSession: world not generated yet");
     return this.state;
   }
   getViewerId(): number {
     return this.humanPlayerId;
   }
   getVisible(): Set<string> {
-    return visibleForPlayer(this.state, this.getViewerId());
+    return visibleForPlayer(this.getState(), this.getViewerId());
   }
   getExplored(): Set<string> {
-    return exploredForPlayer(this.state, this.getViewerId());
+    return exploredForPlayer(this.getState(), this.getViewerId());
   }
   order(cmd: Command): void {
-    applyCommand(this.state, cmd);
+    applyCommand(this.getState(), cmd);
     this.cb();
   }
   cheat(action: CheatAction): CheatResult {
-    const res = applyCheat(this.state, this.getViewerId(), action);
+    const res = applyCheat(this.getState(), this.getViewerId(), action);
     this.cb();
     return res;
   }
   endTurn(): void {
-    applyCommand(this.state, { type: "endTurn" });
+    applyCommand(this.getState(), { type: "endTurn" });
     this.cb();
   }
   onUpdate(cb: () => void): void {

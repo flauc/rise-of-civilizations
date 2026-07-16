@@ -1,5 +1,12 @@
 [
   {
+    "id": "u_88mq0yf1tf",
+    "handle": "user",
+    "passwordHash": "$argon2id$v=19$m=65536,t=2,p=1$rHvi4ZeKH9WdQ2PnW39jBdUN5zWl9B7MMNaSWMWaCiQ$zXfIrGkG1jq8oFMdioizKH4fU+XODHDoSQM4KMaBWcc",
+    "createdAt": 1784110823540,
+    "newsletterOptIn": false
+  },
+  {
     "id": "u_creq6opv97",
     "handle": "novi",
     "passwordHash": "$argon2id$v=19$m=65536,t=2,p=1$fZ5pVSOvaokJ2x7ukSWMXQY3RDg2sLtdOW/lWlxGRuc$63m4q9Dw/qVkxaMZhWyCjQNxsnfisX0lWF9fPehTpuw",

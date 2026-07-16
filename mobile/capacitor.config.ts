@@ -21,16 +21,10 @@ const config: CapacitorConfig = {
     backgroundColor: "#0f0e0b",
   },
   ios: {
-    contentInset: "always",
+    // Safe areas are handled in CSS (viewport-fit=cover + env(safe-area-inset-*)).
+    // "always" double-insets the WebView and clips lobby footers on iOS.
+    contentInset: "never",
     backgroundColor: "#0f0e0b",
-  },
-  plugins: {
-    SplashScreen: {
-      launchShowDuration: 1200,
-      backgroundColor: "#0f0e0b",
-      showSpinner: false,
-      androidScaleType: "CENTER_CROP",
-    },
   },
 };
 
