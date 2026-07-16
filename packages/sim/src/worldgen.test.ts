@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { isWater, landmassSizes } from "@roc/shared";
 import {
   generateMap,
+  getSetoInlandSeaSpec,
   MAP_TYPES,
   countLandmasses,
   majorLandmassMin,
@@ -147,8 +148,71 @@ describe("worldgen map types", () => {
     expect([...counts].some((c) => c! < 3)).toBe(true);
   });
 
+  it("islands map stamps many visible islands across the ocean", () => {
+    for (let i = 0; i < 8; i++) {
+      const map = generateMap({ cols: 80, rows: 56, seed: `islands-visible-${i}`, mapType: "islands" });
+      const land = map.tiles.filter((t) => !isWater(t.terrain)).length;
+      expect(land / map.tiles.length, `seed ${i} land`).toBeGreaterThan(0.1);
+      const islandCount = countLandmasses(map, 3, map.poleAxis);
+      expect(islandCount, `seed ${i} count`).toBeGreaterThanOrEqual(15);
+    }
+  });
+
+  it("inland sea looks like Japan Seto: three shores, basin water, and islets", () => {
+    const major = majorLandmassMin(80, 56);
+    for (let i = 0; i < 10; i++) {
+      const map = generateMap({ cols: 80, rows: 56, seed: `inland-ring-${i}`, mapType: "inland_sea" });
+      const count = countLandmasses(map, major, null);
+      expect(count, `seed ${i} landmasses`).toBeGreaterThanOrEqual(2);
+      expect(count, `seed ${i} landmasses`).toBeLessThanOrEqual(4);
+
+      let northLand = 0;
+      let northTiles = 0;
+      let southLand = 0;
+      let southTiles = 0;
+      let basinWater = 0;
+      let basinTiles = 0;
+      let basinIslets = 0;
+      const spec = getSetoInlandSeaSpec(`inland-ring-${i}`);
+      const seenBasinLand = new Set<number>();
+      const sizes = landmassSizes(map);
+      for (const t of map.tiles) {
+        const u = map.cols > 1 ? t.col / (map.cols - 1) : 0.5;
+        const v = map.rows > 1 ? t.row / (map.rows - 1) : 0.5;
+        if (spec.isShoreLand(u, v)) {
+          const [, rv] = spec.toLocal(u, v);
+          if (rv < 0.44) {
+            northTiles++;
+            if (!isWater(t.terrain)) northLand++;
+          } else if (rv > 0.56) {
+            southTiles++;
+            if (!isWater(t.terrain)) southLand++;
+          }
+        }
+        if (spec.isBasin(u, v)) {
+          basinTiles++;
+          if (isWater(t.terrain)) basinWater++;
+          else {
+            const size = sizes[t.row * map.cols + t.col]!;
+            if (size > 0 && size < major && !seenBasinLand.has(size)) {
+              seenBasinLand.add(size);
+              basinIslets++;
+            }
+          }
+        }
+      }
+      expect(northLand / northTiles, `seed ${i} north`).toBeGreaterThan(0.45);
+      expect(southLand / southTiles, `seed ${i} south`).toBeGreaterThan(0.45);
+      expect(basinWater / basinTiles, `seed ${i} basin`).toBeGreaterThan(0.5);
+      expect(basinIslets, `seed ${i} islets`).toBeGreaterThanOrEqual(8);
+      const land = map.tiles.filter((t) => !isWater(t.terrain)).length;
+      expect(land / map.tiles.length).toBeGreaterThan(0.28);
+      expect(land / map.tiles.length).toBeLessThan(0.55);
+    }
+  });
+
   it("continent-style maps always include small offshore islands", () => {
-    for (const mapType of ["pangaea", "two_continents", "four_continents", "inland_sea"] as const) {
+    for (const mapType of ["pangaea", "two_continents", "four_continents"] as const) {
       const map = generateMap({ cols: 80, rows: 56, seed: "island-check", mapType });
       const islands =
         countLandmasses(map, 1, map.poleAxis) - countLandmasses(map, majorLandmassMin(80, 56), map.poleAxis);

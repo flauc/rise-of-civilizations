@@ -76,7 +76,7 @@ const MAP_TYPE_OPTIONS: { value: MapType; label: string; desc: string }[] = [
   { value: "three_continents", label: "Three Continents", desc: "Three landmasses scattered across the sea." },
   { value: "four_continents", label: "Four Continents", desc: "Four separate continents — wide oceans between every rival." },
   { value: "archipelago", label: "Archipelago", desc: "Many medium islands — exploration and naval play matter more." },
-  { value: "inland_sea", label: "Inland Sea", desc: "A ring of land wrapped around a central sea." },
+  { value: "inland_sea", label: "Inland Sea", desc: "Japan's Seto Inland Sea: Honshu, Shikoku, and Kyushu shores around a sea dotted with islands." },
   { value: "islands", label: "Islands", desc: "Lots of small, scattered islands across a wide ocean." },
   { value: "realworld", label: "Real World (Earth)", desc: "The continents of Earth, baked from real-world geodata." },
 ];

@@ -85,7 +85,7 @@ describe("createGame setup options", () => {
 
   it("never starts players on trap-sized islands (below Sailing viability)", () => {
     const minIsland = minViableIslandTiles();
-    for (const mapType of ["pangaea", "two_continents", "islands", "archipelago"] as const) {
+    for (const mapType of ["pangaea", "two_continents", "archipelago"] as const) {
       for (let i = 0; i < 8; i++) {
         const s = createGame({
           seed: `${mapType}-trap-${i}`,
@@ -104,6 +104,23 @@ describe("createGame setup options", () => {
             expect(trapIsland, `${mapType} seed ${i} on ${size}-tile isle`).toBe(false);
           }
         }
+      }
+    }
+  });
+
+  it("islands map always places players without the Sailing-viability spawn filter", () => {
+    for (let i = 0; i < 8; i++) {
+      const s = createGame({
+        seed: `islands-spawn-${i}`,
+        cols: 80,
+        rows: 56,
+        mapType: "islands",
+        playerCount: 4,
+        barbarians: false,
+      });
+      expect(nonBarb(s)).toHaveLength(4);
+      for (const p of nonBarb(s)) {
+        expect(unitsOf(s, p.id).length).toBeGreaterThan(0);
       }
     }
   });

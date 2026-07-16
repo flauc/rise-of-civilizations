@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.7.2";
+export const CURRENT_VERSION = "0.7.3";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,60 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.7.3",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "A loading scroll greets you when a game begins",
+        desc:
+          "When you start a match, your leader speaks in first person on a parchment scroll while the world generates behind it. Each civilization has its own short script and voiced narration, with regional accents matched to where that people arose.",
+      },
+      {
+        tag: "New",
+        title: "Combat preview before you attack",
+        desc:
+          "Ordering an attack now opens a preview showing each side's unit icon, hit points now and after the exchange, estimated damage, and every combat modifier in play. In Settings you can switch to Auto attack to skip the confirmation and strike immediately.",
+      },
+      {
+        tag: "Fix",
+        title: "You are not placed on trap-sized islands",
+        desc:
+          "Small offshore islets still appear on the map, but civilizations no longer spawn on islands too tiny to grow a city, research Sailing, and build a navy. Starts land on continents or on islands large enough to develop and sail away.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Trade routes can hub through your port cities",
+        desc:
+          "A caravan can chain through other cities you own, especially coastal ports, to reach a distant partner. Routes pay a flat base gold amount, prefer built roads when pathfinding, and show the via-cities on the route detail.",
+      },
+      {
+        tag: "UI",
+        title: "Game over screen shows standings and lets you explore",
+        desc:
+          "When a game ends you see a stats summary and final standings with civilization portraits. Tap a row to toggle that player's victory progress, and use Explore map to pan the full revealed world before you quit.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Natural wonders on Real World maps sit near their real locations",
+        desc:
+          "On the Real World layout, natural wonders such as the Galápagos Islands and Mount Everest are placed in the latitude and longitude band where they belong on Earth, not at random points on the procedural map.",
+      },
+      {
+        tag: "New",
+        title: "Privacy, terms, and support open inside the app",
+        desc:
+          "The mobile app and web client link to in-app pages for the privacy policy, terms of service, account deletion instructions, and player support, so you can read the legal text without leaving the game.",
+      },
+      {
+        tag: "Fix",
+        title: "Chat blocks phone numbers and obvious spam",
+        desc:
+          "Multiplayer chat now rejects messages that contain phone numbers or match common spam patterns, so public lobbies stay usable.",
+      },
+    ],
+  },
   {
     version: "0.7.2",
     date: "July 2026",

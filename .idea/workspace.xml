@@ -6,9 +6,11 @@
   <component name="ChangeListManager">
     <list default="true" id="7943a09c-1ff6-4fb8-a108-4ab14e9f4657" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.cursor/hooks/state/continual-learning.json" beforeDir="false" afterPath="$PROJECT_DIR$/.cursor/hooks/state/continual-learning.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/packages/sim/src/game/setup.test.ts" beforeDir="false" afterPath="$PROJECT_DIR$/packages/sim/src/game/setup.test.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/packages/sim/src/game/setup.ts" beforeDir="false" afterPath="$PROJECT_DIR$/packages/sim/src/game/setup.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/packages/sim/src/worldgen.ts" beforeDir="false" afterPath="$PROJECT_DIR$/packages/sim/src/worldgen.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docs/CHANGELOG.html" beforeDir="false" afterPath="$PROJECT_DIR$/docs/CHANGELOG.html" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mobile/android/app/build.gradle" beforeDir="false" afterPath="$PROJECT_DIR$/mobile/android/app/build.gradle" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mobile/ios/App/App.xcodeproj/project.pbxproj" beforeDir="false" afterPath="$PROJECT_DIR$/mobile/ios/App/App.xcodeproj/project.pbxproj" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/packages/client/src/changelog.ts" beforeDir="false" afterPath="$PROJECT_DIR$/packages/client/src/changelog.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

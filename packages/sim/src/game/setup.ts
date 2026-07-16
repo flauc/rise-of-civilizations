@@ -112,7 +112,13 @@ function findStarts(state: GameState, count: number): { col: number; row: number
   }
   all.sort((a, b) => b.score - a.score);
 
-  const viable = all.filter((c) => sizes[c.row * map.cols + c.col]! >= minIsland);
+  // The dedicated Islands layout is meant for tiny islets — only that map type
+  // skips the Sailing-viability floor; every other layout keeps players off
+  // trap starts.
+  const islandsWorld = map.mapType === "islands";
+  const viable = islandsWorld
+    ? all
+    : all.filter((c) => sizes[c.row * map.cols + c.col]! >= minIsland);
   // Prefer continents; on island-heavy maps use any landmass large enough to develop a navy.
   const continental = viable.filter((c) => sizes[c.row * map.cols + c.col]! >= minStartLandmass);
   const candidates = continental.length >= count ? continental : viable;

@@ -377,7 +377,7 @@ interface Shaper {
   mask(u: number, v: number, edge: number): number;
 }
 
-function shaperFor(type: MapType, layout: ContinentLayout | null): Shaper {
+function shaperFor(type: MapType, layout: ContinentLayout | null, seed?: number | string): Shaper {
   switch (type) {
     case "pangaea":
       // One dominant central supercontinent (randomized shape via the layout).
@@ -389,18 +389,14 @@ function shaperFor(type: MapType, layout: ContinentLayout | null): Shaper {
     case "four_continents":
       return { seaLevel: 0.46, freq: 1.05, mask: layoutMask(layout!) };
     case "inland_sea":
-      // A ring of land wrapped around a central sea (with open ocean at the rim).
-      return {
-        seaLevel: 0.42,
-        freq: 1,
-        mask: (u, v, e) => (0.4 + 0.6 * smoothstep(0.12, 0.4, Math.hypot(u - 0.5, v - 0.5))) * e,
-      };
+      // Seto-style: Honshu / Shikoku / Kyushu shores around a central basin.
+      return { seaLevel: 0.43, freq: 0.95, mask: getSetoInlandSeaSpec(seed ?? "inland").mask };
     case "archipelago":
       // Many medium islands: lower land bias + higher-frequency fragmentation.
       return { seaLevel: 0.5, freq: 1.8, mask: (_u, _v, e) => (0.55 + 0.4 * e) * (0.6 + 0.4 * e) };
     case "islands":
-      // Lots of small scattered islands.
-      return { seaLevel: 0.58, freq: 2.6, mask: (_u, _v, e) => (0.5 + 0.4 * e) * (0.55 + 0.45 * e) };
+      // Mostly open ocean; populateIslandsWorld stamps visible islets afterward.
+      return { seaLevel: 0.56, freq: 2.4, mask: (_u, _v, e) => (0.46 + 0.38 * e) * (0.5 + 0.5 * e) };
     case "realworld":
     case "continents":
     default:
@@ -454,6 +450,392 @@ function classifyLand(
   return equatorness > 0.55 ? "plains" : "grassland";
 }
 
+/** Layout for Japan's Seto Inland Sea: three enclosing shores and a central basin. */
+interface SetoInlandSeaSpec {
+  mask(u: number, v: number, edge: number): number;
+  /** Water between the three main shores (and east channel). */
+  isBasin(u: number, v: number): boolean;
+  /** Honshu / Shikoku / Kyushu analog land. */
+  isShoreLand(u: number, v: number): boolean;
+  toLocal(u: number, v: number): [number, number];
+}
+
+export function getSetoInlandSeaSpec(seed: number | string): SetoInlandSeaSpec {
+  const rng = makeRng(`${seed}:seto-inland`);
+  const cx = 0.5 + (rng.next() - 0.5) * 0.04;
+  const cy = 0.5 + (rng.next() - 0.5) * 0.04;
+  const rot = (rng.next() - 0.5) * 0.55;
+  const aspect = 1.35 + rng.next() * 0.25;
+  const northBase = 0.32 + rng.next() * 0.04;
+  const southBase = 0.64 + rng.next() * 0.04;
+  const eastOpen = 0.78 + rng.next() * 0.06;
+  const p1 = rng.next() * Math.PI * 2;
+  const p2 = rng.next() * Math.PI * 2;
+  const p3 = rng.next() * Math.PI * 2;
+  const p4 = rng.next() * Math.PI * 2;
+
+  const toLocal = (u: number, v: number): [number, number] => {
+    const du = u - cx;
+    const dv = v - cy;
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    const ru = (du * cos + dv * sin) / aspect;
+    const rv = -du * sin + dv * cos;
+    return [ru + 0.5, rv + 0.5];
+  };
+
+  const northShore = (ru: number): number =>
+    northBase +
+    0.028 * Math.sin(ru * Math.PI * 5 + p1) +
+    0.02 * Math.sin(ru * Math.PI * 9 + p2) +
+    0.014 * Math.sin(ru * Math.PI * 14 + p3);
+
+  const southShore = (ru: number): number =>
+    southBase +
+    0.026 * Math.sin(ru * Math.PI * 6 + p2) +
+    0.018 * Math.sin(ru * Math.PI * 10 + p3) +
+    0.012 * Math.sin(ru * Math.PI * 15 + p4);
+
+  const shores = (u: number, v: number): { onNorth: boolean; onSouth: boolean; onKyushu: boolean; ru: number; rv: number } => {
+    const [ru, rv] = toLocal(u, v);
+    const n = northShore(ru);
+    const s = southShore(ru);
+    const onKyushu =
+      ru < 0.34 + 0.025 * Math.sin(rv * Math.PI * 4 + p4) && rv > 0.57 && rv < 0.87;
+    return {
+      onNorth: rv < n,
+      onSouth: rv > s,
+      onKyushu,
+      ru,
+      rv,
+    };
+  };
+
+  const isShoreLand = (u: number, v: number): boolean => {
+    const { onNorth, onSouth, onKyushu } = shores(u, v);
+    return onNorth || onSouth || onKyushu;
+  };
+
+  const isBasin = (u: number, v: number): boolean => {
+    const { onNorth, onSouth, onKyushu, ru } = shores(u, v);
+    if (onNorth || onSouth || onKyushu) return false;
+    return ru < eastOpen;
+  };
+
+  const mask = (u: number, v: number, edge: number): number => {
+    const { ru } = shores(u, v);
+    const seaFloor = 0.2;
+    const landShelf = 1.08;
+    if (isShoreLand(u, v)) return landShelf * edge;
+    if (isBasin(u, v) || ru < eastOpen + 0.06) return seaFloor * edge;
+    return seaFloor * edge;
+  };
+
+  return { mask, isBasin, isShoreLand, toLocal };
+}
+
+function tileNorm(map: GameMap, col: number, row: number): [number, number] {
+  const u = map.cols > 1 ? col / (map.cols - 1) : 0.5;
+  const v = map.rows > 1 ? row / (map.rows - 1) : 0.5;
+  return [u, v];
+}
+
+/** Noise sometimes dips shore tiles below sea level; pin the three main landmasses. */
+function enforceSetoShores(
+  map: GameMap,
+  heights: Float32Array,
+  spec: SetoInlandSeaSpec,
+  seaLevel: number,
+  moistAt: (col: number, row: number) => number,
+  equatorAt: (col: number, row: number) => number,
+  rng: Rng,
+): void {
+  const { tiles } = map;
+  const minEdge = Math.min(map.cols, map.rows) * 0.1;
+  for (const t of tiles) {
+    const edgeDist = Math.min(t.col, map.cols - 1 - t.col, t.row, map.rows - 1 - t.row);
+    if (edgeDist < minEdge) continue;
+    const [u, v] = tileNorm(map, t.col, t.row);
+    if (!spec.isShoreLand(u, v)) continue;
+    const i = t.row * map.cols + t.col;
+    const m = moistAt(t.col, t.row);
+    const eq = equatorAt(t.col, t.row);
+    const relief = 0.12 + rng.next() * 0.25;
+    t.terrain = classifyLand(relief, m, eq);
+    heights[i] = seaLevel + 0.06 + relief * 0.08;
+  }
+}
+
+/** Kanmon-style gap plus an east channel opening the basin toward the Pacific. */
+function carveSetoStraits(
+  map: GameMap,
+  heights: Float32Array,
+  spec: SetoInlandSeaSpec,
+  seed: number | string,
+  seaLevel: number,
+): void {
+  const { cols, rows, tiles } = map;
+  const rng = makeRng(`${seed}:seto-straits`);
+  const idx = (c: number, r: number) => r * cols + c;
+  const setOcean = (c: number, r: number): void => {
+    if (c < 0 || r < 0 || c >= cols || r >= rows) return;
+    tiles[idx(c, r)]!.terrain = "ocean";
+    heights[idx(c, r)] = seaLevel * 0.5;
+  };
+
+  // Kanmon Strait: narrow passage on the west between the north and west shores.
+  const kanmonU = 0.24 + rng.next() * 0.06;
+  const kanmonV = 0.44 + rng.next() * 0.05;
+  let x = kanmonU * (cols - 1);
+  let y = kanmonV * (rows - 1);
+  const steps = Math.ceil(cols * 0.55);
+  for (let step = 0; step < steps; step++) {
+    x -= 1.1;
+    const c = Math.round(x);
+    const r = Math.round(y);
+    if (c <= 0) break;
+    setOcean(c, r);
+    for (const [dc, dr] of waterNeighbors(map, c, r)) setOcean(dc, dr);
+    if (step % 2 === 0) setOcean(c, r + 1);
+  }
+
+  // Bungo Channel: widen the east mouth between Honshu and Shikoku.
+  const eastU = 0.84 + rng.next() * 0.04;
+  for (let row = 2; row < rows - 2; row++) {
+    const v = row / (rows - 1);
+    const col = Math.round(eastU * (cols - 1));
+    const [u] = tileNorm(map, col, row);
+    if (!spec.isBasin(u, v) && !spec.isShoreLand(u, v)) continue;
+    setOcean(col, row);
+    setOcean(col + 1, row);
+    setOcean(col, row + 1);
+    setOcean(col, row - 1);
+  }
+}
+
+/** Bite small bays into the Honshu / Shikoku coasts and capes into the basin. */
+function roughenSetoCoasts(
+  map: GameMap,
+  heights: Float32Array,
+  spec: SetoInlandSeaSpec,
+  seed: number | string,
+  seaLevel: number,
+): void {
+  const { cols, rows, tiles } = map;
+  const rng = makeRng(`${seed}:seto-coasts`);
+  const idx = (c: number, r: number) => r * cols + c;
+
+  for (let i = 0; i < 8 + Math.floor(rng.next() * 6); i++) {
+    const col = 2 + Math.floor(rng.next() * (cols - 4));
+    const row = 2 + Math.floor(rng.next() * (rows - 4));
+    const [u, v] = tileNorm(map, col, row);
+    if (!spec.isShoreLand(u, v)) continue;
+    const [, rv] = spec.toLocal(u, v);
+    const carveBay = rng.next() < 0.42;
+    if (carveBay) {
+      tiles[idx(col, row)]!.terrain = "ocean";
+      heights[idx(col, row)] = seaLevel * 0.5;
+    } else if (spec.isBasin(u + (rv < 0.5 ? 0.015 : -0.015), v)) {
+      tiles[idx(col, row)]!.terrain = "plains";
+      heights[idx(col, row)] = seaLevel + 0.05;
+    }
+  }
+}
+
+/** Drop noise specks from the basin before island stamping. */
+function scrubSetoBasinNoise(
+  map: GameMap,
+  heights: Float32Array,
+  spec: SetoInlandSeaSpec,
+  seaLevel: number,
+): void {
+  const { cols, rows, tiles } = map;
+  const idx = (c: number, r: number) => r * cols + c;
+  const seen = new Array<boolean>(cols * rows).fill(false);
+  for (const t of tiles) {
+    const start = idx(t.col, t.row);
+    if (seen[start] || isWater(t.terrain)) continue;
+    const [u, v] = tileNorm(map, t.col, t.row);
+    if (!spec.isBasin(u, v)) continue;
+    const stack: [number, number][] = [[t.col, t.row]];
+    const blob: number[] = [];
+    seen[start] = true;
+    while (stack.length) {
+      const [c, r] = stack.pop()!;
+      const i = idx(c, r);
+      blob.push(i);
+      for (const [nc, nr] of waterNeighbors(map, c, r)) {
+        const ni = idx(nc, nr);
+        if (seen[ni] || isWater(tiles[ni]!.terrain)) continue;
+        const [nu, nv] = tileNorm(map, nc, nr);
+        if (!spec.isBasin(nu, nv)) continue;
+        seen[ni] = true;
+        stack.push([nc, nr]);
+      }
+    }
+    if (blob.length > 6) continue;
+    for (const i of blob) {
+      tiles[i]!.terrain = "ocean";
+      heights[i] = seaLevel * 0.5;
+    }
+  }
+}
+
+/** Awaji-sized islets and chains scattered through the Seto basin. */
+function populateSetoInlandIslands(
+  map: GameMap,
+  heights: Float32Array,
+  spec: SetoInlandSeaSpec,
+  rng: Rng,
+  seaLevel: number,
+  moistAt: (col: number, row: number) => number,
+  equatorAt: (col: number, row: number) => number,
+): void {
+  const { cols, rows, tiles } = map;
+  const idx = (c: number, r: number) => r * cols + c;
+  const inBasin = (c: number, r: number): boolean => {
+    const [u, v] = tileNorm(map, c, r);
+    return spec.isBasin(u, v);
+  };
+
+  const dist = new Int32Array(cols * rows);
+  const computeLandDistances = (): void => {
+    dist.fill(-1);
+    let frontier: [number, number][] = [];
+    for (const t of tiles) {
+      if (!isWater(t.terrain)) {
+        dist[idx(t.col, t.row)] = 0;
+        frontier.push([t.col, t.row]);
+      }
+    }
+    let d = 0;
+    while (frontier.length) {
+      d++;
+      const next: [number, number][] = [];
+      for (const [c, r] of frontier) {
+        for (const [nc, nr] of waterNeighbors(map, c, r)) {
+          const ni = idx(nc, nr);
+          if (dist[ni] === -1) {
+            dist[ni] = d;
+            next.push([nc, nr]);
+          }
+        }
+      }
+      frontier = next;
+    }
+  };
+  computeLandDistances();
+  const farFromLand = (i: number, min: number): boolean => dist[i] === -1 || dist[i]! >= min;
+  const ISLAND_GAP = 1;
+  const placed: { col: number; row: number; radius: number }[] = [];
+  const fitsAt = (c: number, r: number, radius: number): boolean =>
+    placed.every((p) => Math.max(Math.abs(p.col - c), Math.abs(p.row - r)) >= p.radius + radius + ISLAND_GAP);
+
+  const stampIsland = (col: number, row: number, radius: number, size: number, reliefMax: number): void => {
+    const margin = 2;
+    const center = idx(col, row);
+    if (tiles[center]!.terrain !== "ocean" || !inBasin(col, row)) return;
+    const isle: number[] = [center];
+    const inIsle = new Set<number>([center]);
+    const growth: number[] = [center];
+    while (isle.length < size && growth.length) {
+      const fi = Math.floor(rng.next() * growth.length);
+      const from = growth[fi]!;
+      const options = waterNeighbors(map, from % cols, (from / cols) | 0).filter(([nc, nr]) => {
+        const ni = idx(nc, nr);
+        return (
+          !inIsle.has(ni) &&
+          tiles[ni]!.terrain === "ocean" &&
+          inBasin(nc, nr) &&
+          farFromLand(ni, ISLAND_GAP + 1) &&
+          Math.abs(nc - col) <= radius &&
+          Math.abs(nr - row) <= radius &&
+          nc >= margin && nr >= margin && nc < cols - margin && nr < rows - margin
+        );
+      });
+      if (!options.length) {
+        growth.splice(fi, 1);
+        continue;
+      }
+      const [nc, nr] = options[Math.floor(rng.next() * options.length)]!;
+      const ni = idx(nc, nr);
+      inIsle.add(ni);
+      isle.push(ni);
+      growth.push(ni);
+    }
+    if (isle.length < 2) return;
+    for (const i of isle) {
+      const c = i % cols;
+      const r = (i / cols) | 0;
+      const eq = equatorAt(c, r);
+      const relief = rng.next() * reliefMax;
+      tiles[i]!.terrain = classifyLand(relief, moistAt(c, r), eq);
+      heights[i] = seaLevel + 0.02 + relief * 0.1;
+    }
+    placed.push({ col, row, radius });
+  };
+
+  const findSpot = (radius: number): { col: number; row: number } | null => {
+    for (let tries = 0; tries < 100; tries++) {
+      const c = 3 + Math.floor(rng.next() * (cols - 6));
+      const r = 3 + Math.floor(rng.next() * (rows - 6));
+      if (!inBasin(c, r) || tiles[idx(c, r)]!.terrain !== "ocean") continue;
+      const i = idx(c, r);
+      if (!farFromLand(i, ISLAND_GAP + 1) || !fitsAt(c, r, radius)) continue;
+      return { col: c, row: r };
+    }
+    return null;
+  };
+
+  // A few larger islands (Awaji, Shodo-shima).
+  const bigCount = 2 + Math.floor(rng.next() * 2);
+  for (let i = 0; i < bigCount; i++) {
+    const size = 12 + Math.floor(rng.next() * 16);
+    const radius = 2 + Math.ceil(size / 7);
+    const at = findSpot(radius);
+    if (!at) continue;
+    stampIsland(at.col, at.row, radius, size, 0.5);
+    computeLandDistances();
+  }
+
+  // Curved chains like the Geiyo archipelago.
+  const chainCount = 2 + Math.floor(rng.next() * 2);
+  for (let i = 0; i < chainCount; i++) {
+    const at = findSpot(2);
+    if (!at) continue;
+    let x = at.col;
+    let y = at.row;
+    let ang = rng.next() * Math.PI * 2;
+    const bend = (rng.next() - 0.5) * 0.6;
+    const links = 4 + Math.floor(rng.next() * 4);
+    for (let k = 0; k < links; k++) {
+      const c = Math.round(x);
+      const r = Math.round(y);
+      if (inBasin(c, r)) {
+        stampIsland(c, r, 2, 3 + Math.floor(rng.next() * 6), 0.42);
+        computeLandDistances();
+      }
+      x += Math.cos(ang) * (4 + rng.next() * 2);
+      y += Math.sin(ang) * (4 + rng.next() * 2);
+      ang += bend;
+    }
+  }
+
+  const isletTarget = Math.max(16, Math.round((cols * rows) / 220));
+  for (let i = 0; i < isletTarget; i++) {
+    const at = findSpot(2);
+    if (!at) continue;
+    stampIsland(at.col, at.row, 2, 2 + Math.floor(rng.next() * 8), 0.4);
+    if (i % 5 === 4) computeLandDistances();
+  }
+}
+
+/** Accept 2–4 major shores (Honshu / Shikoku / Kyushu analogues). */
+function setoLandmassOk(map: GameMap, minSize: number): boolean {
+  const count = countLandmasses(map, minSize, null);
+  return count >= 2 && count <= 4;
+}
+
 /** Smallest landmass that counts as a "major" one (a continent) — everything
  *  below is an island. Islands the generator sprinkles stay under this, so the
  *  continent-count promise of the map type is never disturbed. */
@@ -483,9 +865,20 @@ export function generateMap(opts: WorldGenOptions): GameMap {
     ...map,
     mapType,
     mapTypeRequested: requested,
-    // Continental landmasses only — the polar ice caps don't count.
-    landmassCount: countLandmasses(map, minSize, map.poleAxis),
+    // Polar caps are not continents; inland-sea shores may touch borders.
+    landmassCount:
+      mapType === "inland_sea"
+        ? countLandmasses(map, minSize, null)
+        : countLandmasses(map, minSize, map.poleAxis),
   });
+  if (mapType === "inland_sea") {
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const seed = attempt === 0 ? opts.seed : `${opts.seed}:inland:${attempt}`;
+      const map = generateMapOnce({ ...genOpts, seed });
+      if (setoLandmassOk(map, minSize)) return stamp(map);
+    }
+    return stamp(generateMapOnce({ ...genOpts, seed: `${opts.seed}:inland:force` }));
+  }
   const target = targetContinentCount(mapType);
   const maxAttempts = target !== null ? 16 : 1;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -509,14 +902,17 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
   const mapType = opts.mapType ?? "continents";
   const realWorld = mapType === "realworld";
   const layout = makeContinentLayout(opts.seed, mapType);
-  const shaper = shaperFor(mapType, layout);
+  const shaper = shaperFor(mapType, layout, opts.seed);
   const seaLevel = opts.seaLevel ?? shaper.seaLevel;
   const rng = makeRng(opts.seed);
   const elevation = makeValueNoise(rng, 64, 5);
   const moisture = makeValueNoise(rng, 48, 4);
+  const inlandSea = mapType === "inland_sea";
+  const setoSpec = inlandSea ? getSetoInlandSeaSpec(String(opts.seed)) : null;
   // Domain warp: bend the coordinates the landmass masks see, so continent
   // outlines and Voronoi seams turn ragged instead of geometric.
   const warpNoise = makeValueNoise(rng, 32, 3);
+  const warpAmp = inlandSea ? WARP_AMP * 0.55 : WARP_AMP;
   // Independent hill country: the relief field alone only yields hills as
   // skirts around mountain cores, so a separate noise band rolls open uplands.
   const hillNoise = makeValueNoise(rng, 40, 4);
@@ -524,8 +920,8 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
     realWorld
       ? [u, v]
       : [
-          u + (warpNoise(u * 2.6, v * 2.6) - 0.5) * 2 * WARP_AMP,
-          v + (warpNoise(u * 2.6 + 9.2, v * 2.6 + 4.7) - 0.5) * 2 * WARP_AMP,
+          u + (warpNoise(u * 2.6, v * 2.6) - 0.5) * 2 * warpAmp,
+          v + (warpNoise(u * 2.6 + 9.2, v * 2.6 + 4.7) - 0.5) * 2 * warpAmp,
         ];
 
   const tiles: Tile[] = new Array(cols * rows);
@@ -610,12 +1006,23 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
   if (layout && layout.seeds.length > 1) {
     carveContinentSeams(map, layout, CONTINENT_SEPARATION * separationScale, warp, heights, seaLevel);
   }
+  if (inlandSea && setoSpec) {
+    enforceSetoShores(map, heights, setoSpec, seaLevel, moistAt, equatorAt, rng);
+    carveSetoStraits(map, heights, setoSpec, opts.seed, seaLevel);
+    roughenSetoCoasts(map, heights, setoSpec, opts.seed, seaLevel);
+    scrubSetoBasinNoise(map, heights, setoSpec, seaLevel);
+  }
   // Lakes before bridges: a causeway stamped later simply punches through.
   sprinkleLakes(map, heights, rng, seaLevel);
   if (layout && layout.bridges.length) stampBridges(map, heights, layout, seaLevel, moistAt, equatorAt, rng);
   // Every world gets islands: small scatters, a big one or two, arcs, pack ice
-  // at the poles. Island worlds already are islands.
-  if (mapType !== "islands" && mapType !== "archipelago") {
+  // at the poles. Archipelago and inland-sea maps skip offshore clutter; the
+  // dedicated Islands layout runs its own population pass instead.
+  if (mapType === "islands") {
+    populateIslandsWorld(map, heights, rng, seaLevel, moistAt, equatorAt);
+  } else if (inlandSea && setoSpec) {
+    populateSetoInlandIslands(map, heights, setoSpec, rng, seaLevel, moistAt, equatorAt);
+  } else if (mapType !== "archipelago") {
     sprinkleIslands(map, heights, rng, seaLevel, moistAt, equatorAt, poleAxis);
   }
   // Moist hills grow a forest cover — wooded hills, everywhere on the map
@@ -807,6 +1214,188 @@ interface IslandStamp {
   reliefMax: number;
   /** Frozen pack-ice islet at a pole (snow/tundra regardless of latitude). */
   polar?: boolean;
+}
+
+/** Drop tiny noise specks so the dedicated Islands map reads as open ocean + islets. */
+function pruneOceanSpecks(map: GameMap, heights: Float32Array, seaLevel: number, maxSize: number): void {
+  const { cols, rows, tiles } = map;
+  const idx = (c: number, r: number) => r * cols + c;
+  const seen = new Array<boolean>(cols * rows).fill(false);
+  for (const t of tiles) {
+    const start = idx(t.col, t.row);
+    if (seen[start] || isWater(t.terrain)) continue;
+    const stack: [number, number][] = [[t.col, t.row]];
+    const blob: number[] = [];
+    seen[start] = true;
+    while (stack.length) {
+      const [c, r] = stack.pop()!;
+      const i = idx(c, r);
+      blob.push(i);
+      for (const [nc, nr] of waterNeighbors(map, c, r)) {
+        const ni = idx(nc, nr);
+        if (seen[ni] || isWater(tiles[ni]!.terrain)) continue;
+        seen[ni] = true;
+        stack.push([nc, nr]);
+      }
+    }
+    if (blob.length > maxSize) continue;
+    for (const i of blob) {
+      tiles[i]!.terrain = "ocean";
+      heights[i] = seaLevel * 0.5;
+    }
+  }
+}
+
+/**
+ * Fill an Islands-layout world with deliberate, visible islets across open ocean.
+ * Unlike sprinkleIslands (which keeps every islet below the continent threshold),
+ * this map type is allowed to grow larger islands and many more of them.
+ */
+function populateIslandsWorld(
+  map: GameMap,
+  heights: Float32Array,
+  rng: Rng,
+  seaLevel: number,
+  moistAt: (col: number, row: number) => number,
+  equatorAt: (col: number, row: number) => number,
+): void {
+  const { cols, rows, tiles } = map;
+  const idx = (c: number, r: number) => r * cols + c;
+  pruneOceanSpecks(map, heights, seaLevel, 5);
+
+  const dist = new Int32Array(cols * rows);
+  const computeLandDistances = (): void => {
+    dist.fill(-1);
+    let frontier: [number, number][] = [];
+    for (const t of tiles) {
+      if (!isWater(t.terrain)) {
+        dist[idx(t.col, t.row)] = 0;
+        frontier.push([t.col, t.row]);
+      }
+    }
+    let d = 0;
+    while (frontier.length) {
+      d++;
+      const next: [number, number][] = [];
+      for (const [c, r] of frontier) {
+        for (const [nc, nr] of waterNeighbors(map, c, r)) {
+          const ni = idx(nc, nr);
+          if (dist[ni] === -1) {
+            dist[ni] = d;
+            next.push([nc, nr]);
+          }
+        }
+      }
+      frontier = next;
+    }
+  };
+  computeLandDistances();
+  const farFromLand = (i: number, min: number): boolean => dist[i] === -1 || dist[i]! >= min;
+  const ISLAND_GAP = 2;
+  const placed: { col: number; row: number; radius: number }[] = [];
+  const fitsAt = (c: number, r: number, radius: number): boolean =>
+    placed.every((p) => Math.max(Math.abs(p.col - c), Math.abs(p.row - r)) >= p.radius + radius + ISLAND_GAP);
+
+  const stampIsland = (spec: IslandStamp): void => {
+    const margin = 2;
+    const center = idx(spec.col, spec.row);
+    const isle: number[] = [center];
+    const inIsle = new Set<number>([center]);
+    const growth: number[] = [center];
+    while (isle.length < spec.size && growth.length) {
+      const fi = Math.floor(rng.next() * growth.length);
+      const from = growth[fi]!;
+      const options = waterNeighbors(map, from % cols, (from / cols) | 0).filter(([nc, nr]) => {
+        const ni = idx(nc, nr);
+        return (
+          !inIsle.has(ni) &&
+          tiles[ni]!.terrain === "ocean" &&
+          farFromLand(ni, ISLAND_GAP + 1) &&
+          Math.abs(nc - spec.col) <= spec.radius &&
+          Math.abs(nr - spec.row) <= spec.radius &&
+          nc >= margin && nr >= margin && nc < cols - margin && nr < rows - margin
+        );
+      });
+      if (!options.length) {
+        growth.splice(fi, 1);
+        continue;
+      }
+      const [nc, nr] = options[Math.floor(rng.next() * options.length)]!;
+      const ni = idx(nc, nr);
+      inIsle.add(ni);
+      isle.push(ni);
+      growth.push(ni);
+    }
+    if (isle.length < 2) return;
+    for (const i of isle) {
+      const c = i % cols;
+      const r = (i / cols) | 0;
+      const eq = equatorAt(c, r);
+      const relief = rng.next() * spec.reliefMax;
+      tiles[i]!.terrain = classifyLand(relief, moistAt(c, r), eq);
+      heights[i] = seaLevel + 0.02 + relief * 0.1;
+    }
+    placed.push({ col: spec.col, row: spec.row, radius: spec.radius });
+  };
+
+  const findSpot = (margin: number, radius: number): { col: number; row: number } | null => {
+    for (let tries = 0; tries < 80; tries++) {
+      const c = margin + Math.floor(rng.next() * (cols - margin * 2));
+      const r = margin + Math.floor(rng.next() * (rows - margin * 2));
+      const i = idx(c, r);
+      if (tiles[i]!.terrain !== "ocean" || !farFromLand(i, ISLAND_GAP + 1) || !fitsAt(c, r, radius)) continue;
+      return { col: c, row: r };
+    }
+    return null;
+  };
+
+  // A few large islands (Hawaii / Crete sized).
+  const bigCount = 2 + Math.floor(rng.next() * 3);
+  for (let i = 0; i < bigCount; i++) {
+    const size = 18 + Math.floor(rng.next() * 28);
+    const radius = 3 + Math.ceil(size / 8);
+    const at = findSpot(4, radius);
+    if (!at) continue;
+    stampIsland({ ...at, radius, size, reliefMax: 0.55 });
+    computeLandDistances();
+  }
+
+  // Curved chains (Philippines-style).
+  const arcCount = 2 + Math.floor(rng.next() * 2);
+  for (let i = 0; i < arcCount; i++) {
+    const at = findSpot(3, 2);
+    if (!at) continue;
+    let x = at.col;
+    let y = at.row;
+    let ang = rng.next() * Math.PI * 2;
+    const bend = (rng.next() - 0.5) * 0.55;
+    const links = 5 + Math.floor(rng.next() * 4);
+    for (let k = 0; k < links; k++) {
+      const c = Math.round(x);
+      const r = Math.round(y);
+      if (c >= 2 && r >= 2 && c < cols - 2 && r < rows - 2) {
+        const ci = idx(c, r);
+        if (tiles[ci]!.terrain === "ocean" && farFromLand(ci, ISLAND_GAP + 1) && fitsAt(c, r, 2)) {
+          stampIsland({ col: c, row: r, radius: 2, size: 4 + Math.floor(rng.next() * 8), reliefMax: 0.48 });
+          computeLandDistances();
+        }
+      }
+      const step = 5 + rng.next() * 2;
+      x += Math.cos(ang) * step;
+      y += Math.sin(ang) * step;
+      ang += bend;
+    }
+  }
+
+  // Medium and small scatter across the whole map.
+  const isletTarget = Math.max(18, Math.round((cols * rows) / 180));
+  for (let i = 0; i < isletTarget; i++) {
+    const at = findSpot(2, 2);
+    if (!at) continue;
+    const size = 3 + Math.floor(rng.next() * 14);
+    stampIsland({ ...at, radius: 2 + Math.ceil(size / 6), size, reliefMax: 0.45 });
+    if (i % 4 === 3) computeLandDistances();
+  }
 }
 
 /**

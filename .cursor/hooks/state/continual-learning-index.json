@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "lastUpdatedAtMs": 1784197171159,
+  "lastUpdatedAtMs": 1784205296746,
   "entries": [
     {
       "path": "/Users/jaspero/.cursor/projects/Users-jaspero-rise-of-civilizations/agent-transcripts/127c2c84-e878-4679-bbfc-f2e8cdbb3dfc/127c2c84-e878-4679-bbfc-f2e8cdbb3dfc.jsonl",
@@ -8,7 +8,7 @@
     },
     {
       "path": "/Users/jaspero/.cursor/projects/Users-jaspero-rise-of-civilizations/agent-transcripts/28acb296-cfff-4fd9-a1cb-3211129a5f96/28acb296-cfff-4fd9-a1cb-3211129a5f96.jsonl",
-      "mtimeMs": 1784197096682
+      "mtimeMs": 1784205239935
     },
     {
       "path": "/Users/jaspero/.cursor/projects/Users-jaspero-rise-of-civilizations/agent-transcripts/28acb296-cfff-4fd9-a1cb-3211129a5f96/subagents/02d0e3c0-f467-4304-b491-998215911f59.jsonl",
@@ -25,6 +25,10 @@
     {
       "path": "/Users/jaspero/.cursor/projects/Users-jaspero-rise-of-civilizations/agent-transcripts/28acb296-cfff-4fd9-a1cb-3211129a5f96/subagents/67090576-f5a5-403a-a97a-b736e7ae1f93.jsonl",
       "mtimeMs": 1784096668288
+    },
+    {
+      "path": "/Users/jaspero/.cursor/projects/Users-jaspero-rise-of-civilizations/agent-transcripts/28acb296-cfff-4fd9-a1cb-3211129a5f96/subagents/6c3519ce-3749-4b40-ad2b-7e7f48d6d2d8.jsonl",
+      "mtimeMs": 1784205262207
     },
     {
       "path": "/Users/jaspero/.cursor/projects/Users-jaspero-rise-of-civilizations/agent-transcripts/28acb296-cfff-4fd9-a1cb-3211129a5f96/subagents/72717161-b965-4b49-8818-11a14ca6aa06.jsonl",
@@ -56,7 +60,7 @@
     },
     {
       "path": "/Users/jaspero/.cursor/projects/Users-jaspero-rise-of-civilizations/agent-transcripts/28acb296-cfff-4fd9-a1cb-3211129a5f96/subagents/e35b2baa-999d-433a-bafd-e14bdaea506d.jsonl",
-      "mtimeMs": 1784197105668
+      "mtimeMs": 1784197308839
     },
     {
       "path": "/Users/jaspero/.cursor/projects/Users-jaspero-rise-of-civilizations/agent-transcripts/742319a1-4473-4a1f-b18b-5f26595b732c/742319a1-4473-4a1f-b18b-5f26595b732c.jsonl",
