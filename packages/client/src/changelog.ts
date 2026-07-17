@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.7.5";
+export const CURRENT_VERSION = "0.7.6";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,78 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.7.6",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Pillage enemy improvements and roads",
+        desc:
+          "A military unit standing on an enemy farm, mine, plantation or road can now pillage it from the unit panel: the improvement is destroyed and your unit loots it for gold. The button names exactly what will be destroyed and shows the gold and science it pays before you commit, and the Raider promotion still adds its bonus on top. Barbarians and rival empires could already do this to you, and now you can do it back.",
+      },
+      {
+        tag: "Gameplay",
+        title: "Marching along a river no longer costs a crossing",
+        desc:
+          "Moving between two neighbouring tiles that the same river runs through no longer charges the river crossing penalty. Cutting across a river from the side still costs the extra movement point, so rivers still slow an army approaching them, but following the water no longer costs a ford at every step.",
+      },
+      {
+        tag: "Fix",
+        title: "Empty seats no longer stall a multiplayer turn",
+        desc:
+          "A multiplayer game started with unfilled human seats could never end its turn, because it kept waiting on players who were never there. It now waits only on the players who actually took a seat.",
+      },
+      {
+        tag: "Fix",
+        title: "Your account survives a restart",
+        desc:
+          "Registered accounts are now stored in the database rather than a file alongside the server, so they survive a restart or a new deploy. Accounts could previously be lost when the server was redeployed.",
+      },
+      {
+        tag: "UI",
+        title: "Diplomacy shows each civilization's color",
+        desc:
+          "Every civilization in diplomacy now carries its player color: on the first contact card, on proposal dialogs, and beside each name in your contacts list. You can match a leader to the borders you are looking at on the map without opening anything.",
+      },
+      {
+        tag: "UI",
+        title: "Tile tooltips show what a move will cost",
+        desc:
+          "Hovering a tile your selected unit can reach now shows how many movement points entering it will take, so you can see the cost of rough ground, a river crossing or a road before you commit to the move.",
+      },
+      {
+        tag: "UI",
+        title: "Locate opens the city that changed",
+        desc:
+          "Locate on a city grew or production complete turn update now selects that city and opens its panel with tile yields, instead of only panning the map towards it. Informational updates like a civilization being defeated no longer show a Locate button, which previously led nowhere useful.",
+      },
+      {
+        tag: "Fix",
+        title: "Taps land where you press on phones",
+        desc:
+          "The interface was being scaled down on phones and in landscape, which made taps land slightly away from where you pressed. It is no longer scaled. Dialog close buttons and the diplomacy Back button are now full-size tap targets, dialog headers clear the notch and rounded corners, and the top bar no longer swallows taps meant for a panel open over it. The combat preview keeps its side-by-side matchup on narrow screens instead of collapsing into a single column.",
+      },
+      {
+        tag: "Fix",
+        title: "Leader speeches are no longer cut off",
+        desc:
+          "The loading screen gave up after a fixed time and could cut a longer leader speech off mid-sentence. It now waits for the speech to finish, and it no longer stalls when a phone drops the audio events it was listening for.",
+      },
+      {
+        tag: "Fix",
+        title: "Tutorial fixes",
+        desc:
+          "The tutorial now shows a brief preparing screen while the world is built, rather than a leader speech meant for a full game. The coach no longer blocks clicks on the rest of the interface: steps highlight what they are pointing at instead of locking everything else out. The step that asks you to attack a barbarian no longer counts itself finished when the barbarian wanders off before you reach it.",
+      },
+      {
+        tag: "Fix",
+        title: "Steadier start and smoother panels",
+        desc:
+          "The map is now generated before the camera is placed, so a game can no longer open framed on nothing. The trade route list and the unit panel now only rebuild when something about the unit actually changes, instead of recomputing every route and path on every frame.",
+      },
+    ],
+  },
   {
     version: "0.7.5",
     date: "July 2026",
