@@ -8,7 +8,7 @@ import {
   validateRegistrationPassword,
 } from "@roc/shared";
 
-import type { Storage } from "./storage";
+import type { Storage, User } from "./storage";
 
 export interface AuthOk {
   token: string;
@@ -49,6 +49,33 @@ export async function register(
   });
   const token = await storage.createSession(user.id);
   return { token, userId: user.id, handle: user.handle };
+}
+
+/** Create an account without opening a session (admin tooling). */
+export async function createAccount(
+  storage: Storage,
+  handle: string,
+  password: string,
+  opts: RegisterOptions = {},
+): Promise<{ user: User } | { error: string }> {
+  const handleError = validateHandle(handle);
+  if (handleError) return { error: handleError };
+  const passwordError = validateRegistrationPassword(password);
+  if (passwordError) return { error: passwordError };
+  if (await storage.userByHandle(handle)) return { error: "handle taken" };
+  const newsletter = !!opts.newsletter;
+  const email = opts.email?.trim();
+  if (newsletter) {
+    if (!email) return { error: "email required for newsletter" };
+    const emailError = validateEmail(email);
+    if (emailError) return { error: emailError };
+  }
+  const hash = await Bun.password.hash(password);
+  const user = await storage.createUser(handle, hash, {
+    email: email || undefined,
+    newsletterOptIn: newsletter,
+  });
+  return { user };
 }
 
 export async function login(storage: Storage, handle: string, password: string): Promise<AuthResult> {

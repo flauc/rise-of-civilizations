@@ -26,7 +26,9 @@ import {
 } from "./loading-voice";
 
 const MIN_VISIBLE_MS = 2800;
-const FORCE_DISMISS_MS = 48000;
+/** Safety cap if speech never finishes; scaled per script length in forceDismissMs(). */
+const FORCE_DISMISS_BASE_MS = 48000;
+const FORCE_DISMISS_MS_PER_CHAR = 95;
 /** Pause on the finished scroll before entering the game. */
 const POST_SPEECH_HOLD_MS = 3000;
 /** Browser TTS fallback typing interval (scaled to match LOADING_VOICE_PLAYBACK_RATE). */
@@ -67,6 +69,14 @@ function scrollSpeech(base: CivLoadingSpeech, bakedLine: string | null): CivLoad
     ability: base.spoken.ability,
     leverage: base.spoken.leverage,
   };
+}
+
+function forceDismissMs(text: string | undefined): number {
+  const chars = text ? Array.from(text).length : 0;
+  return Math.max(
+    FORCE_DISMISS_BASE_MS,
+    chars * FORCE_DISMISS_MS_PER_CHAR + POST_SPEECH_HOLD_MS + MIN_VISIBLE_MS,
+  );
 }
 
 export interface LoadingScreenOptions {
@@ -704,6 +714,13 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     });
   }
 
+  function resetForceDismissTimer(): void {
+    if (dismissTimer) window.clearTimeout(dismissTimer);
+    dismissTimer = window.setTimeout(() => {
+      if (!dismissed) skip();
+    }, forceDismissMs(speech?.text ?? activeScroll?.text));
+  }
+
   function startSpeech(): void {
     if (!speech) return;
     const token = ++speakSeq;
@@ -726,6 +743,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     preloadLoadingVoice(speech.civId);
     activeScroll = scrollSpeech(speech, null);
     speakLine(activeScroll, null);
+    resetForceDismissTimer();
 
     // Baked script / cache-bust are optional; never delay the first spoken line.
     void Promise.all([
@@ -828,9 +846,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     tryResolveCiv();
   }, 120);
 
-  dismissTimer = window.setTimeout(() => {
-    if (!dismissed) dismiss();
-  }, FORCE_DISMISS_MS);
+  resetForceDismissTimer();
 
   /** Swap "Loading..." for Skip once the game is genuinely ready behind the veil.
    *  One class drives both, so the footer is never empty mid-swap. */

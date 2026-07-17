@@ -13,11 +13,11 @@ import { MemoryStorage } from "./storage";
 import { loadPersistedBugReports, persistBugReports } from "./bug-reports-persistence";
 import { loadPersistedSessions, persistSessions } from "./analytics-persistence";
 import { parseBugReportQuery } from "./bug-reports";
-import { loadPersistedUsers, persistUsers } from "./user-persistence";
+import { initUserPersistence } from "./user-bootstrap";
 import { loadPersistedSupportInquiries, persistSupportInquiries } from "./support-persistence";
 import { SupportStore, parseSupportInquiryBody } from "./support";
 import { Lobby } from "./lobby";
-import { deleteAccount, login, register, resume } from "./auth";
+import { createAccount, deleteAccount, login, register, resume } from "./auth";
 import { MemoryAnalyticsStore, type AnalyticsStore } from "./analytics";
 import { PostgresAnalyticsStore } from "./analytics-postgres";
 import { parseGameSessionFilters, parseGameSessionQuery } from "./game-sessions";
@@ -34,7 +34,7 @@ interface Conn {
 
 const PORT = Number(process.env.PORT ?? 3001);
 const storage = new MemoryStorage();
-await loadPersistedUsers(storage);
+const userPersistence = await initUserPersistence(storage);
 const lobby = new Lobby();
 const supportStore = new SupportStore();
 await loadPersistedSupportInquiries(supportStore);
@@ -254,7 +254,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       ws.data.userId = res.userId;
       ws.data.handle = res.handle;
       if (msg.t === "register") {
-        persistUsers(storage).catch((err) => console.error("user persistence save failed:", err));
+        userPersistence.save().catch((err) => console.error("user persistence save failed:", err));
       }
       send(ws, { t: "authOk", token: res.token, userId: res.userId, handle: res.handle });
       return;
@@ -262,7 +262,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
     case "deleteAccount": {
       const res = await deleteAccount(storage, msg.token, msg.password);
       if ("error" in res) return send(ws, { t: "error", message: res.error });
-      persistUsers(storage).catch((err) => console.error("user persistence save failed:", err));
+      userPersistence.save().catch((err) => console.error("user persistence save failed:", err));
       send(ws, { t: "accountDeleted" });
       return;
     }
@@ -506,6 +506,37 @@ const server = Bun.serve<Conn>({
     // Admin read API (token-gated).
     if (url.pathname.startsWith("/admin/api/")) {
       if (!adminAuthorized(req)) return jsonResponse({ error: "unauthorized" }, 401);
+
+      if (url.pathname === "/admin/api/users" && req.method === "POST") {
+        try {
+          const body = (await req.json()) as {
+            handle?: string;
+            password?: string;
+            email?: string;
+            newsletter?: boolean;
+          };
+          const handle = body.handle?.trim() ?? "";
+          const password = body.password ?? "";
+          const created = await createAccount(storage, handle, password, {
+            email: body.email,
+            newsletter: body.newsletter,
+          });
+          if ("error" in created) return jsonResponse({ error: created.error }, 400);
+          const u = created.user;
+          await userPersistence.save();
+          const row: AdminRegisteredUser = {
+            id: u.id,
+            handle: u.handle,
+            createdAt: u.createdAt,
+            email: u.email,
+            newsletterOptIn: u.newsletterOptIn,
+          };
+          return jsonResponse(row, 201);
+        } catch {
+          return jsonResponse({ error: "invalid body" }, 400);
+        }
+      }
+
       const name = url.pathname.slice("/admin/api/".length);
       // Single bug report detail (full captured payload): /admin/api/bug-report/<id>.
       if (name.startsWith("bug-report/")) {
