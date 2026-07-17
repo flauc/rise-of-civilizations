@@ -9,6 +9,7 @@ import { mountReportingPage } from "./reporting";
 import { type AdminPage, parsePage } from "./router";
 import { renderShell } from "./shell";
 import { mountUsersTable } from "./users-table";
+import { bindCreateUserButton } from "./users-create";
 import { mountVotesTable } from "./votes-table";
 import { gamesContent } from "./views/games";
 import { overviewContent } from "./views/overview";
@@ -116,6 +117,10 @@ async function renderPage(page: AdminPage, forceRefresh = false): Promise<void> 
     } else if (page === "users" && data) {
       const host = app.querySelector("#users-table-host");
       if (host instanceof HTMLElement) mountUsersTable(host, data.users);
+      bindCreateUserButton(() => {
+        cachedData = null;
+        void renderPage("users", true);
+      });
     } else if (page === "votes" && data) {
       const host = app.querySelector("#votes-table-host");
       if (host instanceof HTMLElement) mountVotesTable(host, data.votes);
