@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
 import { makeUnit, type City } from "./state";
-import { computeReachable, riverBetween } from "./movement";
+import { computeReachable, riverBetween, followingRiverChannel } from "./movement";
 
 /** Register a city owned by `ownerId` in the state and return its id (for tile ownership). */
 function ownedCity(s: ReturnType<typeof flatGame>, col: number, row: number, ownerId = 0): number {
@@ -38,6 +38,7 @@ describe("river crossing movement", () => {
     // Put a river on the edge toward the east neighbour (direction 0 = E).
     getTile(s.map, 10, 10)!.river = 1 << 0;
     expect(riverBetween(s, 10, 10, 11, 10)).toBe(true);
+    expect(followingRiverChannel(s, 10, 10, 11, 10)).toBe(false);
     expect(riverBetween(s, 10, 10, 9, 10)).toBe(false);
 
     const reach = computeReachable(s, u);
@@ -45,6 +46,26 @@ describe("river crossing movement", () => {
     expect(reach.get("9,10")!.cost).toBe(1);
     // …while fording the river to the east costs an extra point.
     expect(reach.get("11,10")!.cost).toBe(2);
+  });
+
+  it("does not charge a ford penalty when stepping along a linked river channel", () => {
+    const s = flatGame();
+    const u = makeUnit(s.nextEntityId++, 0, "scout", 10, 10);
+    u.movementLeft = 4;
+    s.units.set(u.id, u);
+
+    const a = getTile(s.map, 10, 10)!;
+    const b = getTile(s.map, 11, 10)!;
+    const c = getTile(s.map, 12, 10)!;
+    a.river = 1 << 0;
+    b.river = (1 << 0) | (1 << 3); // E out, W in
+    c.river = 1 << 3;
+    expect(followingRiverChannel(s, 10, 10, 11, 10)).toBe(true);
+    expect(followingRiverChannel(s, 11, 10, 12, 10)).toBe(true);
+
+    const reach = computeReachable(s, u);
+    expect(reach.get("11,10")!.cost).toBe(1);
+    expect(reach.get("12,10")!.cost).toBe(2);
   });
 
   it("a bridge waives the ford cost for a road-to-road river crossing", () => {

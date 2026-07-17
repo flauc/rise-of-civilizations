@@ -403,7 +403,10 @@ export class Lobby {
       civIds,
       colors,
     });
-    game.host = new GameHost(state);
+    const connectedHumanIds = humans
+      .filter((s) => s.userId !== undefined && s.playerId !== undefined)
+      .map((s) => s.playerId!);
+    game.host = new GameHost(state, connectedHumanIds);
     game.status = "active";
     return { ok: true };
   }
@@ -455,7 +458,10 @@ export class Lobby {
     const game = this.games.get(gameId);
     if (!game) return { error: "no such game" };
     if (game.status !== "active") return { error: "game not active" };
-    game.host = GameHost.fromState(state);
+    const connectedHumanIds = game.slots
+      .filter((s) => s.kind === "human" && s.userId !== undefined && s.playerId !== undefined)
+      .map((s) => s.playerId!);
+    game.host = GameHost.fromState(state, connectedHumanIds);
     return { ok: true };
   }
 

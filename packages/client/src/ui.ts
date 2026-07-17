@@ -5,7 +5,7 @@ import { renderTechTreeInto } from "./techtree";
 import { createWiki } from "./wiki";
 import { createEmpire, type Tab as EmpireTab } from "./empire";
 import { createDiplomacy } from "./diplomacy";
-import { gameHud, initGameHud } from "./hud-root";
+import { gameHud, initGameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
 import { setPreservedHtml, withPreservedScroll } from "./panel-scroll";
 import type { DealItem } from "@roc/sim";
 import type { SaveRecord } from "./save-db";
@@ -58,18 +58,19 @@ import {
   RELIGION_REQUIRED_TECH,
   FAITH_TO_FOUND,
   cityAt,
-  tradeRouteDestinations,
+  listTradeRouteChoices,
+  type TradeRouteChoicePreview,
   tradeRouteYield,
-  draftTradeRoute,
   tradeRouteViaNames,
-  tradeRouteViaMessage,
   tradeRoutesFrom,
   tradeRoutesOf,
   tradeRoutesAtTile,
   areEnemies,
+  relationBetween,
   playerById,
   isMilitary,
   plunderValue,
+  previewPillage,
   SPECIALIST_DEFS,
   availableSpecialists,
   specialistLabour,
@@ -151,6 +152,7 @@ import {
   isRough,
   isWaterTerrain,
   isPassableLand,
+  isNaval,
   terrainDefense,
   TERRAIN_NAMES,
   barbarianBribeCost,
@@ -214,7 +216,7 @@ import {
   type TurnUpdateEvent,
   mapTypeDisplay,
 } from "@roc/sim";
-import type { Tile } from "@roc/shared";
+import { getTile, type Tile } from "@roc/shared";
 import {
   getNaturalWonder,
   WONDER_DEFS,
@@ -254,6 +256,8 @@ export interface TileTip {
   name: string;
   /** true = rough, false = open, null = unknown/unexplored (chip hidden). */
   rough: boolean | null;
+  /** Path cost from the selected unit, when hovering a reachable tile. */
+  moveCost?: number;
 }
 
 type TileLine = { kind: "good" | "bad" | "neutral"; text: string };
@@ -262,6 +266,12 @@ interface TileReport {
   subtitle: string;
   yields: ReturnType<typeof tileYieldReport>["yields"];
   lines: TileLine[];
+}
+
+function formatMoveCostLabel(cost: number): string {
+  const rounded = Math.round(cost * 4) / 4;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.01) return String(Math.round(rounded));
+  return rounded.toFixed(2).replace(/\.?0+$/, "");
 }
 
 /** Format a trait's per-tile yield delta as "+1 🪙 −1 🍞", icons only for non-zero fields. */
@@ -433,6 +443,8 @@ export interface UIHandlers {
   onAssignTradeEscort(unitId: number, routeId: number): void;
   onLeaveTradeEscort(routeId: number): void;
   onPlunderTradeRoute(unitId: number, routeId: number): void;
+  /** Destroy an enemy improvement or road on this unit's tile and loot it. */
+  onPillage(unitId: number): void;
   /** Spend a stockpiled resource to instantly finish a city's production. */
   onRushProduction(cityId: number, currency: RushCurrency): void;
   /** Spend a stockpiled resource to instantly finish a tile/defensive work. */
@@ -596,14 +608,20 @@ function trainingIconImg(family: TrainingClass, glyph: string, px = 28): string 
 }
 
 /** Trade-route destination buttons for a trader standing in a city. */
-function tradeRouteChoicesHtml(state: GameState, trader: Unit, origin: City, dests: City[], onlyMineId?: string): string {
-  const zeroYield = { gold: 0, food: 0, production: 0, science: 0, culture: 0 };
-  const destBtn = (c: City): string => {
+function tradeRouteChoicesHtml(
+  state: GameState,
+  trader: Unit,
+  origin: City,
+  choices: TradeRouteChoicePreview[],
+  onlyMineId?: string,
+): string {
+  const destBtn = (preview: TradeRouteChoicePreview): string => {
+    const c = preview.city;
+    const y = preview.payout;
     const international = c.ownerId !== trader.ownerId;
-    const draft = draftTradeRoute(state, origin, c);
-    const y = draft ? tradeRouteYield(state, { id: 0, ...draft }) : zeroYield;
-    const via = tradeRouteViaMessage(state, origin, c);
-    const viaTag = via ? `<div class="sub" style="margin-top:2px;color:#9fc0dc">via ${escapeHtml(via)}</div>` : "";
+    const viaTag = preview.via
+      ? `<div class="sub" style="margin-top:2px;color:#9fc0dc">via ${escapeHtml(preview.via)}</div>`
+      : "";
     const extra =
       (y.food ? ` +${y.food}🍞` : "") +
       (y.production ? ` +${y.production}⚒️` : "") +
@@ -618,8 +636,8 @@ function tradeRouteChoicesHtml(state: GameState, trader: Unit, origin: City, des
       `<span class="sub">+${y.gold}🪙${extra}</span></button>`
     );
   };
-  const own = dests.filter((c) => c.ownerId === trader.ownerId);
-  const foreign = dests.filter((c) => c.ownerId !== trader.ownerId);
+  const own = choices.filter((p) => p.city.ownerId === trader.ownerId);
+  const foreign = choices.filter((p) => p.city.ownerId !== trader.ownerId);
   let html = `<div class="csub">🐪 Trade route from ${escapeHtml(origin.name)}</div>`;
   if (foreign.length > 0) {
     html +=
@@ -635,6 +653,53 @@ function tradeRouteChoicesHtml(state: GameState, trader: Unit, origin: City, des
     html += `<div data-foreign-group style="display:flex;flex-direction:column;gap:6px;margin-top:4px">${foreign.map(destBtn).join("")}</div>`;
   }
   return html;
+}
+
+/** Cheap fingerprint of road tiles — refreshed once per turn for panel caching. */
+let cachedTradeRoadSigTurn = -1;
+let cachedTradeRoadSig = 0;
+function tradeRoadLayoutSig(state: GameState): number {
+  if (state.turn === cachedTradeRoadSigTurn) return cachedTradeRoadSig;
+  cachedTradeRoadSigTurn = state.turn;
+  let h = 0;
+  for (const t of state.map.tiles) {
+    if (!t.road) continue;
+    h = (h * 33 + t.col) | 0;
+    h = (h * 33 + t.row) | 0;
+    h = (h * 33 + (t.roadLevel ?? 1)) | 0;
+  }
+  cachedTradeRoadSig = h;
+  return h;
+}
+
+function unitPanelRenderSig(
+  state: GameState,
+  unit: Unit,
+  viewerId: number,
+  odds: CombatOdds | null | undefined,
+  expanded: boolean,
+): string {
+  const def = UNIT_DEFS[unit.type];
+  let sig =
+    `${unit.id}|${unit.col},${unit.row}|${unit.hp}|${unit.movementLeft}|${unit.level}|${unit.xp}|` +
+    `${unit.sleeping}|${unit.hidden}|${unit.stance ?? ""}|${unit.unspentPromotions}|${unit.routedUntilTurn ?? ""}|` +
+    `${unit.promotions.join(",")}|${unit.escortingRouteId ?? ""}|${unit.inTransit?.routeId ?? ""}|` +
+    `${viewerId}|${expanded}|${state.turn}|${state.tradeRoutes.length}`;
+  if (odds) sig += `|${odds.targetName}|${odds.toDefender}|${odds.toAttacker}`;
+  if (def.trader) {
+    const origin = cityAt(state, unit.col, unit.row);
+    sig += `|o:${origin?.id ?? ""}|r:${tradeRoadLayoutSig(state)}`;
+    sig += `|tr:${state.tradeRoutes.map((r) => `${r.fromCityId}>${r.toCityId}`).sort().join(",")}`;
+    sig += `|c:${state.cities.size}`;
+    const diplo: string[] = [];
+    for (const p of state.players) {
+      if (p.id === unit.ownerId || p.isBarbarian) continue;
+      const rel = relationBetween(state, unit.ownerId, p.id);
+      if (rel) diplo.push(`${p.id}:${rel.openBorders ? 1 : 0}:${rel.pact ?? ""}:${rel.status}`);
+    }
+    sig += `|d:${diplo.sort().join(",")}`;
+  }
+  return sig;
 }
 
 /** Sticky title row shared by city sub-dialogs (construction, training, specialists). */
@@ -824,8 +889,8 @@ export function createUI(handlers: UIHandlers): UI {
   const godPanel = div("god-panel", "panel hidden");
   const wiki = createWiki();
   /** Markup for a compact "view in Encyclopedia" button, encoding its target. */
-  const wikiBtn = (nav: string, label = "📖"): string =>
-    `<button class="btn wiki-jump" data-wiki-open="${nav}" title="View in Encyclopedia" ` +
+  const wikiBtn = (nav: string, label = "📖", extraClass = ""): string =>
+    `<button class="btn wiki-jump${extraClass ? ` ${extraClass}` : ""}" data-wiki-open="${nav}" title="View in Encyclopedia" ` +
     `style="padding:3px 7px;font-size:12px;flex:0 0 auto;line-height:1.2">${label}</button>`;
   /** Wire every [data-wiki-open] button inside `root` to deep-link into the wiki. */
   const wireWikiButtons = (root: HTMLElement): void => {
@@ -1026,7 +1091,7 @@ export function createUI(handlers: UIHandlers): UI {
           `<div class="lb-row${r.player.id === viewerId ? " lb-self" : ""}${r.alive ? "" : " lb-dead"}">` +
           `<div class="lb-rank">${i + 1}</div>` +
           `<div class="lb-swatch" style="background:${r.player.color}"></div>` +
-          `<div class="lb-name"><b>${label}${you}${fallen}</b>${civ ? " " + wikiBtn(`civ:${r.player.civId}`) : ""}<span class="lb-sub">${sub}</span></div>` +
+          `<div class="lb-name"><b>${label}${you}${fallen}</b>${civ ? " " + wikiBtn(`civ:${r.player.civId}`, "📖", "lb-wiki") : ""}<span class="lb-sub">${sub}</span></div>` +
           `<div class="lb-detail">${detail}</div>` +
           `<div class="lb-total">${b.total}</div>` +
           `</div>`
@@ -1329,6 +1394,7 @@ export function createUI(handlers: UIHandlers): UI {
   // during the enemy phase, which the sim tags with the previous turn number.
   const lastSeenTurnUpdateByViewer = new Map<number, number>();
   let menuOpen = false;
+  let menuHudOverlay = false;
   let menuView: "menu" | "save" | "leave" | "bug" = "menu";
   let isSaving = false;
   let isReporting = false;
@@ -1345,6 +1411,7 @@ export function createUI(handlers: UIHandlers): UI {
   // selection opens at its default size.
   let unitPanelExpanded = false;
   let unitPanelUnitId: number | null = null;
+  let lastUnitPanelSig = "";
   let cityPanelExpanded = false;
   let cityPanelCityId: number | null = null;
   // The governor picker collapses to a single chip on the stat line; this tracks
@@ -1568,7 +1635,7 @@ export function createUI(handlers: UIHandlers): UI {
 
   const renderTurnUpdateCtas = (ev: TurnUpdateEvent): string => {
     const buttons: string[] = [];
-    if (ev.tile) {
+    if (ev.tile && ev.type !== "civDefeated") {
       buttons.push(`<button class="btn" data-tu-locate="${ev.tile.col},${ev.tile.row}">Locate</button>`);
     }
     if (ev.type === "productionComplete" && ev.cityId != null) {
@@ -1631,6 +1698,14 @@ export function createUI(handlers: UIHandlers): UI {
     turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-tu-locate]").forEach((el) =>
       el.addEventListener("click", () => {
         const [col, row] = el.dataset.tuLocate!.split(",").map(Number) as [number, number];
+        if (
+          (ev.type === "productionComplete" || ev.type === "cityGrew") &&
+          ev.cityId != null
+        ) {
+          handlers.onSelectCity(ev.cityId);
+          cityPanelCityId = ev.cityId;
+          cityPanelExpanded = true;
+        }
         handlers.onTurnUpdateLocate({ col, row });
         hideTurnUpdateDialog();
       }),
@@ -2060,6 +2135,11 @@ export function createUI(handlers: UIHandlers): UI {
 
   const renderMenu = (state: GameState): void => {
     saveModal.classList.toggle("hidden", !menuOpen);
+    if (menuOpen !== menuHudOverlay) {
+      if (menuOpen) pushHudOverlay();
+      else popHudOverlay();
+      menuHudOverlay = menuOpen;
+    }
     if (!menuOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const isHost = state.players[0]?.id === player.id;
@@ -3675,7 +3755,12 @@ export function createUI(handlers: UIHandlers): UI {
     if (unit.id !== unitPanelUnitId) {
       unitPanelUnitId = unit.id;
       unitPanelExpanded = !isMobile();
+      lastUnitPanelSig = "";
     }
+    unitPanel.classList.toggle("collapsed", !unitPanelExpanded);
+    const panelSig = unitPanelRenderSig(state, unit, viewerId, odds, unitPanelExpanded);
+    if (panelSig === lastUnitPanelSig) return;
+    lastUnitPanelSig = panelSig;
     const def = UNIT_DEFS[unit.type];
     const combatant = def.strength > 0 || (def.rangedStrength ?? 0) > 0;
     const own = unit.ownerId === viewerId;
@@ -3880,9 +3965,9 @@ export function createUI(handlers: UIHandlers): UI {
 
       if (def.trader) {
         const origin = cityAt(state, unit.col, unit.row);
-        const dests = tradeRouteDestinations(state, unit);
-        if (origin && origin.ownerId === unit.ownerId && dests.length > 0) {
-          html += tradeRouteChoicesHtml(state, unit, origin, dests);
+        const choices = listTradeRouteChoices(state, unit);
+        if (origin && origin.ownerId === unit.ownerId && choices.length > 0) {
+          html += tradeRouteChoicesHtml(state, unit, origin, choices);
         } else if (!origin || origin.ownerId !== unit.ownerId) {
           html += `<div class="locked-note">🐪 Move this Trader into one of your cities, then it can open a trade route to another city.</div>`;
         } else {
@@ -3909,6 +3994,23 @@ export function createUI(handlers: UIHandlers): UI {
           html += `</div>`;
         }
         if (viewer) {
+          const pillage = previewPillage(state, unit.id, viewerId);
+          if (pillage) {
+            const what = pillage.targets
+              .map((t) =>
+                t === "road"
+                  ? workName("road", getTile(state.map, unit.col, unit.row)?.roadLevel ?? 1)
+                  : IMPROVEMENT_DEFS[t as ImprovementKind]?.name ?? t,
+              )
+              .join(" + ");
+            const loot =
+              `+${pillage.gold}🪙` + (pillage.science > 0 ? ` · +${pillage.science}🔬` : "");
+            html +=
+              `<div class="csub">Pillage</div>` +
+              `<button type="button" class="btn" data-pillage-tile style="width:100%;margin-top:4px;text-align:left;display:flex;justify-content:space-between;gap:8px">` +
+              `<span>Destroy ${escapeHtml(what)}</span>` +
+              `<span class="sub">${loot}</span></button>`;
+          }
           const lootRoutes = tradeRoutesAtTile(state, unit.col, unit.row).filter((r) => {
             if (r.ownerId === viewerId) return false;
             const owner = playerById(state, r.ownerId);
@@ -4048,7 +4150,6 @@ export function createUI(handlers: UIHandlers): UI {
       if (quickBtns.length) quickBar = `<div class="ip-quick">${quickBtns.join("")}</div>`;
     }
 
-    unitPanel.classList.toggle("collapsed", !unitPanelExpanded);
     withPreservedScroll(unitPanel, () => {
       unitPanel.innerHTML =
         summaryBar({
@@ -4108,6 +4209,9 @@ export function createUI(handlers: UIHandlers): UI {
     );
     unitPanel.querySelectorAll<HTMLButtonElement>("[data-plunder-route]").forEach((el) =>
       el.addEventListener("click", () => handlers.onPlunderTradeRoute(unit.id, Number(el.dataset.plunderRoute))),
+    );
+    unitPanel.querySelector<HTMLButtonElement>("[data-pillage-tile]")?.addEventListener("click", () =>
+      handlers.onPillage(unit.id),
     );
     unitPanel.querySelector<HTMLButtonElement>("[data-bribe]")?.addEventListener("click", () => handlers.onBribeBarbarian(unit.id));
     unitPanel.querySelector<HTMLButtonElement>("[data-recruit]")?.addEventListener("click", () => handlers.onRecruitBarbarian(unit.id));
@@ -4462,10 +4566,18 @@ export function createUI(handlers: UIHandlers): UI {
 
   function godModeSignature(view: UIView): string {
     const tile = view.selectedTile;
-    const tileKey =
-      tile && isPassableLand(tile.terrain) ? `${tile.col},${tile.row},${tile.terrain}` : "none";
+    const tileKey = tile ? `${tile.col},${tile.row},${tile.terrain}` : "none";
+    const unitKey = view.selectedUnit ? `${view.selectedUnit.id},${view.selectedUnit.col},${view.selectedUnit.row}` : "none";
     const wonders = [...view.state.completedWonders].sort().join(",");
-    return `${view.liftFog ? 1 : 0}|${tileKey}|${wonders}`;
+    return `${view.liftFog ? 1 : 0}|${tileKey}|${unitKey}|${wonders}`;
+  }
+
+  function godModeUnitOptions(tile: NonNullable<UIView["selectedTile"]> | undefined): string {
+    const waterTile = !!tile && isWaterTerrain(tile.terrain);
+    return Object.entries(UNIT_DEFS)
+      .filter(([, d]) => (waterTile ? isNaval(d) : !isNaval(d)))
+      .map(([id, d]) => `<option value="${id}">${escapeHtml(d.name)}</option>`)
+      .join("");
   }
 
   function renderGodMode(view: UIView): void {
@@ -4479,9 +4591,11 @@ export function createUI(handlers: UIHandlers): UI {
 
     const tile = view.selectedTile;
     const tileOk = !!tile && isPassableLand(tile.terrain);
-    const unitOptions = Object.entries(UNIT_DEFS)
-      .map(([id, d]) => `<option value="${id}">${escapeHtml(d.name)}</option>`)
-      .join("");
+    const waterTile = !!tile && isWaterTerrain(tile.terrain);
+    const spawnTileOk = tileOk || waterTile;
+    const teleportUnit =
+      view.selectedUnit && view.selectedUnit.ownerId === view.viewerId ? view.selectedUnit : null;
+    const unitOptions = godModeUnitOptions(tile ?? undefined);
     const builtWonders = new Set(view.state.completedWonders);
     const wonderOptions = WONDER_DEFS.filter((w) => !builtWonders.has(w.id))
       .map((w) => `<option value="${w.id}">${escapeHtml(w.name)}</option>`)
@@ -4508,10 +4622,6 @@ export function createUI(handlers: UIHandlers): UI {
         `<button class="btn" data-cheat="buildRoad" data-level="2">Build Paved Road</button>` +
         `<button class="btn" data-cheat="buildRoad" data-level="3">Build Imperial Road</button>` +
         `<button class="btn" data-cheat="foundCity">Found City</button>` +
-        `<div style="display:flex;gap:6px;align-items:center;margin-top:4px">` +
-        `<select id="cheat-unit" class="lobby-in" style="flex:1">${unitOptions}</select>` +
-        `<button class="btn" data-cheat="spawnUnit">Spawn Unit</button>` +
-        `</div>` +
         `<div class="csub">Construction Works</div>` +
         `<div class="row" style="flex-wrap:wrap;gap:6px">` +
         CHEAT_WORK_KINDS.map((k) => `<button class="btn" data-cheat="buildWork" data-kind="${k}">${workName(k, 3)}</button>`).join("") +
@@ -4523,10 +4633,38 @@ export function createUI(handlers: UIHandlers): UI {
             `<button class="btn" data-cheat="buildWonder">Build Wonder</button>` +
             `</div>`
           : `<div class="csub">Wonders</div><div class="sub">All wonders built.</div>`);
+    } else if (waterTile) {
+      html +=
+        `<div class="csub">Selected Tile (${escapeHtml(TERRAIN_NAMES[tile.terrain])})</div>` +
+        `<div class="sub">Land tile cheats need passable land. Naval units can spawn here.</div>`;
+    } else if (tile) {
+      html +=
+        `<div class="csub">Selected Tile (${escapeHtml(TERRAIN_NAMES[tile.terrain])})</div>` +
+        `<div class="sub">Select passable land or water for tile cheats.</div>`;
     } else {
       html +=
         `<div class="csub">Selected Tile</div>` +
-        `<div class="sub">Select a passable land tile to use tile cheats.</div>`;
+        `<div class="sub">Select a tile to use tile cheats.</div>`;
+    }
+
+    if (spawnTileOk && unitOptions) {
+      html +=
+        `<div style="display:flex;gap:6px;align-items:center;margin-top:4px">` +
+        `<select id="cheat-unit" class="lobby-in" style="flex:1">${unitOptions}</select>` +
+        `<button class="btn" data-cheat="spawnUnit">Spawn Unit</button>` +
+        `</div>`;
+    } else if (spawnTileOk) {
+      html += `<div class="sub">No units available for this tile type.</div>`;
+    }
+
+    if (teleportUnit && spawnTileOk) {
+      const unitLabel = escapeHtml(UNIT_DEFS[teleportUnit.type].name);
+      html +=
+        `<button class="btn" data-cheat="teleportUnit">Teleport ${unitLabel} here</button>`;
+    } else if (teleportUnit) {
+      html += `<div class="sub">Select a passable land or water tile to teleport ${escapeHtml(UNIT_DEFS[teleportUnit.type].name)}.</div>`;
+    } else if (spawnTileOk) {
+      html += `<div class="sub">Select one of your units to teleport it to this tile.</div>`;
     }
     html += `</div></div>`;
 
@@ -4598,6 +4736,17 @@ export function createUI(handlers: UIHandlers): UI {
             handlers.onCheat({
               type: "spawnUnit",
               unitType: sel.value as UnitTypeId,
+              col: tile.col,
+              row: tile.row,
+            });
+            break;
+          }
+          case "teleportUnit": {
+            const unit = view.selectedUnit;
+            if (!unit || !tile) break;
+            handlers.onCheat({
+              type: "teleportUnit",
+              unitId: unit.id,
               col: tile.col,
               row: tile.row,
             });
@@ -5196,6 +5345,8 @@ export function createUI(handlers: UIHandlers): UI {
     },
     openProductionForCity(cityId) {
       if (!lastState) return;
+      cityPanelCityId = cityId;
+      cityPanelExpanded = true;
       prodCityId = cityId;
       productionOpen = true;
       specialistsOpen = false;
@@ -5206,6 +5357,8 @@ export function createUI(handlers: UIHandlers): UI {
       renderSpecialists(lastState);
       renderTraining(lastState);
       renderProduction(lastState);
+      const city = lastState.cities.get(cityId);
+      if (city) renderCityPanel(lastState, city);
     },
     setAbilityAtlas(atlas) {
       abilityAtlas = atlas;
@@ -5222,7 +5375,11 @@ export function createUI(handlers: UIHandlers): UI {
           : tip.rough
             ? ` · <span class="tt-rough">Rough</span>`
             : ` · <span class="tt-open">Open</span>`;
-      tileTip.innerHTML = `<b>${tip.name}</b>${rough}`;
+      const move =
+        tip.moveCost != null && tip.moveCost > 1
+          ? ` · <span class="tt-move">${formatMoveCostLabel(tip.moveCost)} moves</span>`
+          : "";
+      tileTip.innerHTML = `<b>${tip.name}</b>${rough}${move}`;
     },
     banner(text) {
       showBanner(text);

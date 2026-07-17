@@ -347,9 +347,8 @@ export function tradeRouteViaNames(state: GameState, from: City, to: City): stri
 }
 
 /** Human-readable via line for UI — highlights the player's departure port on sea lanes. */
-export function tradeRouteViaMessage(state: GameState, from: City, to: City): string | null {
-  const chain = findTradeHubChain(state, from, to);
-  if (!chain || chain.length <= 2) return null;
+export function tradeRouteViaMessageFromChain(state: GameState, from: City, chain: City[]): string | null {
+  if (chain.length <= 2) return null;
   const path = computeChainedTradePath(state, chain);
   const hubs = chain.slice(1, -1);
   if (hubs.length === 0) return null;
@@ -362,6 +361,13 @@ export function tradeRouteViaMessage(state: GameState, from: City, to: City): st
     return `your port ${depart.name}, then ${rest.join(", ")}`;
   }
   return hubs.map((c) => c.name).join(", ");
+}
+
+/** Human-readable via line for UI — highlights the player's departure port on sea lanes. */
+export function tradeRouteViaMessage(state: GameState, from: City, to: City): string | null {
+  const chain = findTradeHubChain(state, from, to);
+  if (!chain) return null;
+  return tradeRouteViaMessageFromChain(state, from, chain);
 }
 
 /** Recompute every route's tile path when a faster lane opens (e.g. new roads). */
@@ -397,10 +403,14 @@ function computeChainedTradePath(state: GameState, chain: City[]): string[] {
   return full;
 }
 
-/** Build a draft route (path + hub ids) for previews and establishment. */
-export function draftTradeRoute(state: GameState, from: City, to: City): Omit<TradeRoute, "id"> | null {
-  const chain = findTradeHubChain(state, from, to);
-  if (!chain) return null;
+/** Build a draft route (path + hub ids) from an already-resolved hub chain. */
+export function draftTradeRouteFromChain(
+  state: GameState,
+  from: City,
+  to: City,
+  chain: City[],
+): Omit<TradeRoute, "id"> | null {
+  if (chain.length < 2) return null;
   const path = computeChainedTradePath(state, chain);
   if (path.length < 2) return null;
   const international = to.ownerId !== from.ownerId;
@@ -416,6 +426,46 @@ export function draftTradeRoute(state: GameState, from: City, to: City): Omit<Tr
   };
 }
 
+/** Build a draft route (path + hub ids) for previews and establishment. */
+export function draftTradeRoute(state: GameState, from: City, to: City): Omit<TradeRoute, "id"> | null {
+  const chain = findTradeHubChain(state, from, to);
+  if (!chain) return null;
+  return draftTradeRouteFromChain(state, from, to, chain);
+}
+
+export interface TradeRouteChoicePreview {
+  city: City;
+  draft: Omit<TradeRoute, "id">;
+  payout: TradeYield;
+  via: string | null;
+}
+
+/** All trade-route destinations for a trader with precomputed paths and yields.
+ *  Runs hub/pathfinding once per candidate city (the UI used to repeat it 3×). */
+export function listTradeRouteChoices(state: GameState, unit: Unit): TradeRouteChoicePreview[] {
+  if (!UNIT_DEFS[unit.type].trader) return [];
+  const origin = cityAt(state, unit.col, unit.row);
+  if (!origin || origin.ownerId !== unit.ownerId) return [];
+
+  const choices: TradeRouteChoicePreview[] = [];
+  for (const city of state.cities.values()) {
+    if (city.id === origin.id) continue;
+    if (city.ownerId !== unit.ownerId && !canTradeInternational(state, unit.ownerId, city.ownerId)) continue;
+    if (state.tradeRoutes.some((r) => r.fromCityId === origin.id && r.toCityId === city.id)) continue;
+    const chain = findTradeHubChain(state, origin, city);
+    if (!chain) continue;
+    const draft = draftTradeRouteFromChain(state, origin, city, chain);
+    if (!draft) continue;
+    choices.push({
+      city,
+      draft,
+      payout: tradeRouteYield(state, { id: 0, ...draft }),
+      via: tradeRouteViaMessageFromChain(state, origin, chain),
+    });
+  }
+  return choices;
+}
+
 /** Whether a caravan can link two cities, including multi-hop through owned hubs. */
 export function canConnectCities(state: GameState, from: City, to: City): boolean {
   return findTradeHubChain(state, from, to) !== null;
@@ -423,16 +473,7 @@ export function canConnectCities(state: GameState, from: City, to: City): boolea
 
 /** Cities a trader (standing in one of its owner's cities) can connect to. */
 export function tradeRouteDestinations(state: GameState, unit: Unit): City[] {
-  if (!UNIT_DEFS[unit.type].trader) return [];
-  const origin = cityAt(state, unit.col, unit.row);
-  if (!origin || origin.ownerId !== unit.ownerId) return [];
-  return [...state.cities.values()].filter(
-    (c) =>
-      c.id !== origin.id &&
-      (c.ownerId === unit.ownerId || canTradeInternational(state, unit.ownerId, c.ownerId)) &&
-      !state.tradeRoutes.some((r) => r.fromCityId === origin.id && r.toCityId === c.id) &&
-      canConnectCities(state, origin, c),
-  );
+  return listTradeRouteChoices(state, unit).map((c) => c.city);
 }
 
 export function canEstablishTradeRoute(state: GameState, unit: Unit): boolean {

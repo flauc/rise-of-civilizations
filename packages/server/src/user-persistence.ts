@@ -1,12 +1,25 @@
 // Dev-friendly JSON persistence for registered users when Postgres user storage
 // is not wired yet. Survives server restarts during local development.
 
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { MemoryStorage, User } from "./storage";
 
-const DEFAULT_PATH = join(dirname(fileURLToPath(import.meta.url)), "../../../.roc-users.json");
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+/** Resolved on-disk path for the user registry (logged at startup). */
+export function usersFilePath(): string {
+  if (process.env.ROC_USERS_FILE) return process.env.ROC_USERS_FILE;
+  const dataDir = process.env.ROC_DATA_DIR ?? REPO_ROOT;
+  return join(dataDir, ".roc-users.json");
+}
+
+let loadedUserCount = 0;
+
+export function persistedUserCount(): number {
+  return loadedUserCount;
+}
 
 function isUser(raw: unknown): raw is User {
   if (!raw || typeof raw !== "object") return false;
@@ -21,12 +34,13 @@ function isUser(raw: unknown): raw is User {
 
 export async function loadPersistedUsers(
   storage: MemoryStorage,
-  path = process.env.ROC_USERS_FILE ?? DEFAULT_PATH,
+  path = usersFilePath(),
 ): Promise<number> {
   let text: string;
   try {
     text = await readFile(path, "utf8");
   } catch {
+    loadedUserCount = 0;
     return 0;
   }
   let parsed: unknown;
@@ -34,23 +48,44 @@ export async function loadPersistedUsers(
     parsed = JSON.parse(text);
   } catch {
     console.warn(`user persistence: could not parse ${path}`);
+    loadedUserCount = 0;
     return 0;
   }
-  if (!Array.isArray(parsed)) return 0;
+  if (!Array.isArray(parsed)) {
+    loadedUserCount = 0;
+    return 0;
+  }
   let count = 0;
   for (const raw of parsed) {
     if (!isUser(raw)) continue;
     storage.restoreUser(raw);
     count++;
   }
+  loadedUserCount = count;
   if (count) console.log(`user persistence: loaded ${count} account(s) from ${path}`);
   return count;
 }
 
+/** Writes the registry to disk. Returns false when the empty-list guard declined
+ *  the write, which means the caller must not propagate the emptiness to any
+ *  other store either. Pass `force` only when the emptiness is authorized (an
+ *  account deletion), never to push a save through. */
 export async function persistUsers(
   storage: MemoryStorage,
-  path = process.env.ROC_USERS_FILE ?? DEFAULT_PATH,
-): Promise<void> {
+  path = usersFilePath(),
+  opts?: { force?: boolean },
+): Promise<boolean> {
   const users = await storage.listUsers();
-  await writeFile(path, JSON.stringify(users, null, 2), "utf8");
+  if (!opts?.force && users.length === 0 && loadedUserCount > 0) {
+    console.error(
+      `user persistence: refusing to overwrite ${path} with an empty user list (had ${loadedUserCount} on load)`,
+    );
+    return false;
+  }
+  await mkdir(dirname(path), { recursive: true });
+  const tmp = `${path}.tmp`;
+  await writeFile(tmp, JSON.stringify(users, null, 2), "utf8");
+  await rename(tmp, path);
+  loadedUserCount = users.length;
+  return true;
 }

@@ -8,7 +8,7 @@ import {
   validateRegistrationPassword,
 } from "@roc/shared";
 
-import type { Storage } from "./storage";
+import type { Storage, User } from "./storage";
 
 export interface AuthOk {
   token: string;
@@ -30,6 +30,23 @@ export async function register(
   password: string,
   opts: RegisterOptions = {},
 ): Promise<AuthResult> {
+  // Self-registration only ever stores an address alongside a newsletter opt-in.
+  const created = await createAccount(storage, handle, password, {
+    newsletter: opts.newsletter,
+    email: opts.newsletter ? opts.email : undefined,
+  });
+  if ("error" in created) return { error: created.error };
+  const token = await storage.createSession(created.user.id);
+  return { token, userId: created.user.id, handle: created.user.handle };
+}
+
+/** Create an account without opening a session (admin tooling). */
+export async function createAccount(
+  storage: Storage,
+  handle: string,
+  password: string,
+  opts: RegisterOptions = {},
+): Promise<{ user: User } | { error: string }> {
   const handleError = validateHandle(handle);
   if (handleError) return { error: handleError };
   const passwordError = validateRegistrationPassword(password);
@@ -37,18 +54,18 @@ export async function register(
   if (await storage.userByHandle(handle)) return { error: "handle taken" };
   const newsletter = !!opts.newsletter;
   const email = opts.email?.trim();
-  if (newsletter) {
-    if (!email) return { error: "email required for newsletter" };
+  if (newsletter && !email) return { error: "email required for newsletter" };
+  // Any address we are going to store gets validated, opt-in or not.
+  if (email) {
     const emailError = validateEmail(email);
     if (emailError) return { error: emailError };
   }
   const hash = await Bun.password.hash(password);
   const user = await storage.createUser(handle, hash, {
-    email: newsletter ? email : undefined,
+    email: email || undefined,
     newsletterOptIn: newsletter,
   });
-  const token = await storage.createSession(user.id);
-  return { token, userId: user.id, handle: user.handle };
+  return { user };
 }
 
 export async function login(storage: Storage, handle: string, password: string): Promise<AuthResult> {

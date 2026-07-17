@@ -84,6 +84,32 @@ export function riverBetween(state: GameState, fromCol: number, fromRow: number,
   return false;
 }
 
+/** True when the step follows an existing river channel (both tiles link on this
+ *  edge). Fording still applies when cutting across a river at an angle. */
+export function followingRiverChannel(
+  state: GameState,
+  fromCol: number,
+  fromRow: number,
+  toCol: number,
+  toRow: number,
+): boolean {
+  if (!riverBetween(state, fromCol, fromRow, toCol, toRow)) return false;
+  const from = getTile(state.map, fromCol, fromRow);
+  const to = getTile(state.map, toCol, toRow);
+  if (!from?.river || !to?.river) return false;
+  const ax = offsetToAxial({ col: fromCol, row: fromRow });
+  for (let d = 0; d < 6; d++) {
+    const n = axialToOffset(axialNeighbor(ax, d));
+    if (n.col === toCol && n.row === toRow) {
+      const opp = (d + 3) % 6;
+      const outBit = ((from.river ?? 0) & (1 << d)) !== 0;
+      const inBit = ((to.river ?? 0) & (1 << opp)) !== 0;
+      return outBit && inBit;
+    }
+  }
+  return false;
+}
+
 /** True if a road on this tile is carried over its river by a bridge. A road can
  *  only be laid on a river tile once its builder has Bridge Building, so any road
  *  on a river tile already stands on a bridge, and anyone may use it regardless of
@@ -238,9 +264,16 @@ export function computeReachable(
       if (borderBlocked(n.col, n.row)) continue; // foreign territory needs war / open borders
       let enterCost = unitMoveCost(state, unit, tile.terrain, tile.road ?? false, tile.roadLevel ?? 1);
       // Fording a river costs an extra movement point (like entering rough terrain),
-      // unless a bridge carries the road across it.
-      if (!isWaterDomain(unit) && riverBetween(state, cur.col, cur.row, n.col, n.row) &&
-        !bridgedRiverCrossing(state, cur.col, cur.row, n.col, n.row)) enterCost += 1;
+      // unless a bridge carries the road across it or the unit is stepping along the
+      // channel rather than cutting across it.
+      if (
+        !isWaterDomain(unit) &&
+        riverBetween(state, cur.col, cur.row, n.col, n.row) &&
+        !bridgedRiverCrossing(state, cur.col, cur.row, n.col, n.row) &&
+        !followingRiverChannel(state, cur.col, cur.row, n.col, n.row)
+      ) {
+        enterCost += 1;
+      }
       const step = curCost + enterCost;
       if (step <= budget && step < (best.get(nk) ?? Infinity)) {
         best.set(nk, step);

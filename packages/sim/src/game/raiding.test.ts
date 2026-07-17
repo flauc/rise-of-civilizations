@@ -5,7 +5,15 @@ import { makeUnit, citiesOf, unitsOf, type City, type GameState, type Unit } fro
 import { getTile } from "@roc/shared";
 import { resolveAttack } from "./combat";
 import { establishTradeRoute, tradeRouteYield } from "./trade";
-import { pillageTile, plunderTradeRoute, plunderValue, sackCityCommand, pillageValue, sackValue } from "./raiding";
+import {
+  pillageTile,
+  plunderTradeRoute,
+  plunderValue,
+  previewPillage,
+  sackCityCommand,
+  pillageValue,
+  sackValue,
+} from "./raiding";
 import { offsetNeighbors } from "./movement";
 
 function warAll(state: GameState): void {
@@ -63,6 +71,23 @@ describe("raiding", () => {
     expect(state.players[0]!.gold).toBe(goldBefore + 80);
     expect(tile.improvement).toBeUndefined();
     expect(raider.movementLeft).toBe(0);
+  });
+
+  it("previewPillage matches pillageTile payout before the action", () => {
+    const state = bareGame();
+    const city = placeCity(state, 1, "Target", 10, 8);
+    const tile = getTile(state.map, 11, 8)!;
+    tile.ownerCityId = city.id;
+    tile.improvement = "mine";
+    tile.improvementLevel = 2;
+
+    const raider = place(state, 0, "warrior", 11, 8);
+    const preview = previewPillage(state, raider.id, 0);
+    expect(preview).toEqual({ targets: ["mine"], gold: 80, science: 0 });
+
+    const res = pillageTile(state, raider.id, 0);
+    expect(res.ok).toBe(true);
+    expect(res.gold).toBe(preview!.gold);
   });
 
   it("pillaging a tile with both improvement and road yields gold for both", () => {

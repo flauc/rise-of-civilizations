@@ -95,4 +95,11 @@ export class MemoryStorage implements Storage {
     this.users.set(user.id, user);
     this.byHandle.set(user.handle.toLowerCase(), user.id);
   }
+
+  /** Replace in-memory accounts (used when reloading from Postgres). */
+  clearUsers(): void {
+    this.users.clear();
+    this.byHandle.clear();
+    this.sessions.clear();
+  }
 }

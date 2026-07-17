@@ -26,7 +26,9 @@ import {
 } from "./loading-voice";
 
 const MIN_VISIBLE_MS = 2800;
-const FORCE_DISMISS_MS = 48000;
+/** Safety cap if speech never finishes; scaled per script length in forceDismissMs(). */
+const FORCE_DISMISS_BASE_MS = 48000;
+const FORCE_DISMISS_MS_PER_CHAR = 95;
 /** Pause on the finished scroll before entering the game. */
 const POST_SPEECH_HOLD_MS = 3000;
 /** Browser TTS fallback typing interval (scaled to match LOADING_VOICE_PLAYBACK_RATE). */
@@ -69,6 +71,14 @@ function scrollSpeech(base: CivLoadingSpeech, bakedLine: string | null): CivLoad
   };
 }
 
+function forceDismissMs(text: string | undefined): number {
+  const chars = text ? Array.from(text).length : 0;
+  return Math.max(
+    FORCE_DISMISS_BASE_MS,
+    chars * FORCE_DISMISS_MS_PER_CHAR + POST_SPEECH_HOLD_MS + MIN_VISIBLE_MS,
+  );
+}
+
 export interface LoadingScreenOptions {
   civId?: string;
   /** Resolve civ once game state is available (multiplayer / saved games). */
@@ -80,7 +90,7 @@ export interface LoadingScreenOptions {
 export interface LoadingScreenHandle {
   /** World/sim state exists; dismiss still waits for the map to finish rendering. */
   notifyWorldGenerated(): void;
-  /** Map, atlases, and HUD icons are ready; hide "Loading..." and allow dismiss once speech finishes. */
+  /** Map, atlases, and HUD icons are ready; hide "Loading...", show Skip, allow dismiss. */
   notifyMapRendered(): void;
   destroy(): void;
 }
@@ -127,7 +137,7 @@ function ensureStyles(): void {
       display:flex;flex-direction:column;align-items:stretch;gap:14px;
     }
     /* Bottom slot: "Loading..." while the world builds, cross-fading into Skip
-       the moment it is ready. Both sit in one grid cell so nothing shifts. */
+       once the map and core sprites are painted and ready to play. */
     #game-loading .gl-foot{
       flex-shrink:0;display:grid;justify-items:end;align-items:center;min-height:44px;
     }
@@ -598,7 +608,15 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
 
   function markSpeechDone(): void {
     speechDone = true;
-    scheduleHoldIfNeeded();
+    // Audio can finish without the sync loop marking typing done (e.g. missed
+    // "playing" / "ended" on some mobile WebViews). Never block dismiss on that.
+    if (activeScroll && !typingDone) {
+      stopTyping();
+      revealAllSpeech(activeScroll);
+      markTypingDone();
+    } else {
+      scheduleHoldIfNeeded();
+    }
   }
 
   /** MP3 sync — character reveal locked to audio.currentTime. */
@@ -704,6 +722,13 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     });
   }
 
+  function resetForceDismissTimer(): void {
+    if (dismissTimer) window.clearTimeout(dismissTimer);
+    dismissTimer = window.setTimeout(() => {
+      if (!dismissed) skip();
+    }, forceDismissMs(speech?.text ?? activeScroll?.text));
+  }
+
   function startSpeech(): void {
     if (!speech) return;
     const token = ++speakSeq;
@@ -726,6 +751,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     preloadLoadingVoice(speech.civId);
     activeScroll = scrollSpeech(speech, null);
     speakLine(activeScroll, null);
+    resetForceDismissTimer();
 
     // Baked script / cache-bust are optional; never delay the first spoken line.
     void Promise.all([
@@ -802,7 +828,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     if (dismissed || !worldReady || !mapRendered) return;
     tryResolveCiv();
     const elapsed = performance.now() - mountedAt;
-    if (!skipped && elapsed < MIN_VISIBLE_MS) return;
+    if (elapsed < MIN_VISIBLE_MS) return;
     if (speech) {
       if (!speechDone || !typingDone) return;
       if (!skipped) {
@@ -828,12 +854,10 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     tryResolveCiv();
   }, 120);
 
-  dismissTimer = window.setTimeout(() => {
-    if (!dismissed) dismiss();
-  }, FORCE_DISMISS_MS);
+  resetForceDismissTimer();
 
   /** Swap "Loading..." for Skip once the game is genuinely ready behind the veil.
-   *  One class drives both, so the footer is never empty mid-swap. */
+   *  Requires world sim, a painted frame, and core atlases — not just state existing. */
   function markGameReadyIfLoaded(): void {
     if (worldReady && mapRendered) root.classList.add("game-ready");
   }
@@ -859,6 +883,113 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
       window.clearInterval(civPoll);
       stopTyping();
       stopLoadingVoice();
+      clearLoadingBodyClass();
+      if (!dismissed) root.remove();
+      dismissed = true;
+    },
+  };
+}
+
+const TUTORIAL_PREP_MIN_MS = 500;
+const TUTORIAL_PREP_FORCE_MS = 8000;
+
+function ensureTutorialPrepStyles(): void {
+  ensureStyles();
+  if (document.getElementById("tutorial-prep-style")) return;
+  const style = document.createElement("style");
+  style.id = "tutorial-prep-style";
+  style.textContent = `
+    #game-loading.tutorial-prep .gl-panel{
+      width:min(520px,100%);max-height:none;min-height:0;
+      align-items:center;justify-content:center;padding:28px 20px;
+    }
+    #game-loading.tutorial-prep .tp-status{
+      font-family:'Cinzel',Georgia,serif;
+      font-size:clamp(15px,3.8vw,20px);letter-spacing:.14em;text-transform:uppercase;
+      color:var(--parchment);text-align:center;
+      text-shadow:0 2px 12px rgba(0,0,0,.55);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+export interface TutorialPreparingOptions {
+  /** Fired when the preparing veil is removed and the coach may start. */
+  onDismiss?: () => void;
+}
+
+/** Minimal veil while the tutorial world generates and the first map frame paints. */
+export function createTutorialPreparingScreen(
+  options: TutorialPreparingOptions = {},
+): LoadingScreenHandle {
+  ensureTutorialPrepStyles();
+  const mountedAt = performance.now();
+  let worldReady = false;
+  let mapRendered = false;
+  let dismissed = false;
+  let dismissTimer = 0;
+
+  const root = document.createElement("div");
+  root.id = "game-loading";
+  root.className = "tutorial-prep";
+  root.innerHTML =
+    `<div class="gl-panel">` +
+    `<div class="tp-status">Preparing a tutorial...</div>` +
+    `</div>`;
+  document.body.appendChild(root);
+  document.body.classList.add("roc-loading-scroll");
+
+  function clearLoadingBodyClass(): void {
+    document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
+  }
+
+  function dismiss(): void {
+    if (dismissed) return;
+    dismissed = true;
+    window.clearTimeout(dismissTimer);
+    dismissTimer = 0;
+    clearLoadingBodyClass();
+    options.onDismiss?.();
+    root.remove();
+  }
+
+  function tryDismiss(): void {
+    if (dismissed || !worldReady || !mapRendered) return;
+    const elapsed = performance.now() - mountedAt;
+    if (elapsed < TUTORIAL_PREP_MIN_MS) {
+      if (!dismissTimer) {
+        dismissTimer = window.setTimeout(() => {
+          dismissTimer = 0;
+          tryDismiss();
+        }, TUTORIAL_PREP_MIN_MS - elapsed);
+      }
+      return;
+    }
+    dismiss();
+  }
+
+  const forceTimer = window.setTimeout(() => {
+    if (dismissed) return;
+    worldReady = true;
+    mapRendered = true;
+    dismiss();
+  }, TUTORIAL_PREP_FORCE_MS);
+
+  return {
+    notifyWorldGenerated() {
+      if (worldReady) return;
+      worldReady = true;
+      tryDismiss();
+    },
+    notifyMapRendered() {
+      if (mapRendered || dismissed) return;
+      mapRendered = true;
+      document.body.classList.add("roc-map-painted");
+      tryDismiss();
+    },
+    destroy() {
+      window.clearTimeout(forceTimer);
+      window.clearTimeout(dismissTimer);
       clearLoadingBodyClass();
       if (!dismissed) root.remove();
       dismissed = true;

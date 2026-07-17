@@ -111,3 +111,44 @@ test("builds an economic improvement and a defensive structure", () => {
   expect(wallTile.structure).toMatchObject({ kind: "wall", tier: 3 });
   expect(wallTile.structure!.hp).toBeGreaterThan(0);
 });
+
+test("spawns a naval unit on a water tile", () => {
+  const s = newGame();
+  const p = currentPlayer(s);
+  const tile = s.map.tiles.find((t) => t.terrain === "coast" || t.terrain === "lake")!;
+  const beforeUnits = s.units.size;
+  const res = applyCheat(s, p.id, { type: "spawnUnit", unitType: "galley", col: tile.col, row: tile.row });
+  expect(res.ok).toBe(true);
+  expect(s.units.size).toBe(beforeUnits + 1);
+  const spawned = unitAt(s, tile.col, tile.row);
+  expect(spawned?.type).toBe("galley");
+});
+
+test("teleports a selected unit to a tile", () => {
+  const s = newGame();
+  const p = currentPlayer(s);
+  const unit = [...s.units.values()].find((u) => u.ownerId === p.id)!;
+  const dest = s.map.tiles.find(
+    (t) =>
+      (t.terrain === "grassland" || t.terrain === "plains") &&
+      !unitAt(s, t.col, t.row) &&
+      (t.col !== unit.col || t.row !== unit.row),
+  )!;
+  const res = applyCheat(s, p.id, { type: "teleportUnit", unitId: unit.id, col: dest.col, row: dest.row });
+  expect(res.ok).toBe(true);
+  expect(unit.col).toBe(dest.col);
+  expect(unit.row).toBe(dest.row);
+});
+
+test("places land units on nearby land when a water tile is selected", () => {
+  const s = newGame();
+  const p = currentPlayer(s);
+  const tile = s.map.tiles.find((t) => t.terrain === "ocean")!;
+  const beforeIds = new Set(s.units.keys());
+  const res = applyCheat(s, p.id, { type: "spawnUnit", unitType: "warrior", col: tile.col, row: tile.row });
+  expect(res.ok).toBe(true);
+  const spawned = [...s.units.values()].find((u) => !beforeIds.has(u.id))!;
+  expect(spawned.type).toBe("warrior");
+  const spawnTile = getTile(s.map, spawned.col, spawned.row)!;
+  expect(spawnTile.terrain).not.toBe("ocean");
+});

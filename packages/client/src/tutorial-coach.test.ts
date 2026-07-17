@@ -9,6 +9,8 @@ import {
   gateSelectorsForStep,
   gateAllowsCanvas,
   isTutorialDismissControl,
+  tutorialHudAlwaysAllowed,
+  TUTORIAL_HUD_SELECTOR,
   type TutorialCoachContext,
   type TutorialCoachFlags,
 } from "./tutorial-coach";
@@ -130,7 +132,7 @@ describe("tutorial coach steps", () => {
     expect(pick.targets?.[0]).toContain("cultivation");
   });
 
-  it("gates guided steps to the map or a menu but never during free play", () => {
+  it("gates the map on guided steps but keeps the full HUD clickable", () => {
     const state = createGame({ seed: "coach-gate", cols: 20, rows: 14, humanSlots: 1, playerCount: 2 });
     beginTurn(state);
     const viewerId = state.players[0]!.id;
@@ -138,12 +140,12 @@ describe("tutorial coach steps", () => {
     const byId = (id: string) => steps.find((s) => s.id === id)!;
     expect(gateAllowsCanvas(byId("t1_move_scout"))).toBe(true);
     expect(gateAllowsCanvas(byId("t1_pick_research"))).toBe(false);
-    // Panels are id elements (#research), not classes — the gate must allow the
-    // real element or clicks inside the opened panel get swallowed.
     expect(gateSelectorsForStep(byId("t1_pick_research"))).toContain("#research");
     expect(gateSelectorsForStep(byId("t1_end_turn"))).toContain("#endturn");
-    // Info-only briefings expose no HUD targets — only the coach bubble is live.
-    expect(gateSelectorsForStep(byId("t1_intro"))).toHaveLength(0);
+    const hudBtn = {
+      closest: (sel: string) => (sel === TUTORIAL_HUD_SELECTOR ? hudBtn : null),
+    } as unknown as Element;
+    expect(tutorialHudAlwaysAllowed(hudBtn)).toBe(true);
   });
 
   it("always allows dialog close buttons through the interaction gate", () => {
@@ -335,8 +337,8 @@ describe("tutorial coach steps", () => {
     expect(barb).toBeDefined();
     const raider = [...state.units.values()].find((u) => u.ownerId === barb!.id);
     const step = buildTutorialSteps(2, coachCtx(state, viewerId, 2)).find((s) => s.id === "t2_attack_barbarian")!;
-    // No snapshot yet: nothing to teach with, the step self-skips.
-    expect(step.isDone(coachCtx(state, viewerId, 2, { marks: { barbSnapshots: [] } }))).toBe(true);
+    // No snapshot yet: keep waiting until the barbarian is spawned and snapshotted.
+    expect(step.isDone(coachCtx(state, viewerId, 2, { marks: { barbSnapshots: [] } }))).toBe(false);
     if (raider) {
       // Park the raider beside the player's warrior so it counts as "in reach".
       const fighter = unitsOf(state, viewerId).find((u) => u.type !== "scout" && u.type !== "settler")!;

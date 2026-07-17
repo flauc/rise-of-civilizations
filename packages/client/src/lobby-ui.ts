@@ -49,6 +49,7 @@ import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 import type { GameSetup } from "./analytics";
 import {
   createTutorialSession,
+  TUTORIAL_CIV_ID,
   createTutorialSetup,
   dismissTutorialPrompt,
   markGameStarted,
@@ -435,7 +436,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
   const launchTutorialGame = (): void => {
     unlockLoadingAudio();
-    preloadLoadingVoice(createTutorialSetup().civId ?? "rome");
+    preloadLoadingVoice(TUTORIAL_CIV_ID);
     close();
     onStart(createTutorialSession(), createTutorialSetup());
   };

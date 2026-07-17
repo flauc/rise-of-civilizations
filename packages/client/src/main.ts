@@ -56,7 +56,7 @@ import { createLobby } from "./lobby-ui";
 import { preloadGameAssets } from "./asset-preload";
 import { createLegalViewer, type LegalPage } from "./legal-viewer";
 import { createSupportPage, registerSupportPage, supportPageFromLocation } from "./support-page";
-import { consumeNativeBootRoute, initialOverlayRoute, setLobbyHidden } from "./app-routes";
+import { consumeNativeBootRoute, initialOverlayRoute, isNativeApp, setLobbyHidden } from "./app-routes";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadCoastAtlas } from "./coast-assets";
 import { loadRiverAtlas } from "./river-assets";
@@ -86,7 +86,7 @@ import {
 } from "./tutorial";
 import { installIconifyHook } from "./icons";
 import { initScreenRotation } from "./screen-rotation";
-import { createLoadingScreen } from "./loading-screen";
+import { createLoadingScreen, createTutorialPreparingScreen, type LoadingScreenHandle } from "./loading-screen";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -96,6 +96,7 @@ if (!ctx) throw new Error("2D canvas context unavailable");
 installIconifyHook();
 initAnalytics();
 initScreenRotation();
+if (isNativeApp()) document.body.classList.add("roc-native");
 const legalViewer = createLegalViewer();
 legalViewer.wireLinks();
 const supportPage = createSupportPage();
@@ -128,26 +129,35 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   let loadingDismissed = false;
   let mapRenderNotified = false;
   let loadingRepaintAt = 0;
-  const loadingScreen = createLoadingScreen({
-    civId: setup.civId,
-    resolveCivId: () => {
-      if (!session.hasState()) return undefined;
-      const me = session.getViewerId();
-      return session.getState().players.find((p) => p.id === me)?.civId;
-    },
-    onDismiss: () => {
-      loadingDismissed = true;
-      document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
-      document.getElementById("game-loading")?.remove();
-      fitted = false;
-      resize();
-      needsRedraw = true;
-    },
-  });
+  function onLoadingDismiss(): void {
+    loadingDismissed = true;
+    document.body.classList.remove("roc-loading-scroll");
+    document.body.classList.add("roc-map-painted");
+    document.getElementById("game-loading")?.remove();
+    fitted = false;
+    resize();
+    update();
+    needsRedraw = true;
+    if (setup.isTutorial) ensureTutorialCoach();
+  }
+  const loadingScreen: LoadingScreenHandle = setup.isTutorial
+    ? createTutorialPreparingScreen({ onDismiss: onLoadingDismiss })
+    : createLoadingScreen({
+        civId: setup.civId,
+        resolveCivId: () => {
+          if (!session.hasState()) return undefined;
+          const me = session.getViewerId();
+          return session.getState().players.find((p) => p.id === me)?.civId;
+        },
+        onDismiss: onLoadingDismiss,
+      });
   let worldGenNotified = false;
+  let mapFramePainted = false;
+  let coreAtlasesReady = false;
   function maybeNotifyWorldGenerated(): void {
     if (worldGenNotified || !session.hasState()) return;
     worldGenNotified = true;
+    fitted = false;
     loadingScreen.notifyWorldGenerated();
   }
 
@@ -165,6 +175,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   // new city once it exists (immediately for local play, next view update for online).
   let pendingFoundAt: { col: number; row: number } | null = null;
   let reachable = new Set<string>();
+  let reachableCosts = new Map<string, number>();
   let attackTargets = new Set<string>();
   let pendingAbility: ActiveAbilityId | null = null; // targeted ability awaiting a tile
   let abilityTargetSet = new Set<string>();
@@ -209,12 +220,15 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     const u = selectedUnitId != null ? st().units.get(selectedUnitId) : undefined;
     if (!u || u.ownerId !== session.getViewerId()) {
       reachable = new Set();
+      reachableCosts = new Map();
       attackTargets = new Set();
       peaceAttack = new Set();
       incursion = new Map();
       return;
     }
-    reachable = new Set(computeReachable(st(), u).keys());
+    const reach = computeReachable(st(), u);
+    reachable = new Set(reach.keys());
+    reachableCosts = new Map([...reach.entries()].map(([k, v]) => [k, v.cost]));
     attackTargets = computeAttackTargets(st(), u);
     peaceAttack = peaceWarTargets(st(), u);
     incursion = incursionTargets(st(), u);
@@ -306,7 +320,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       cityWorkable = city ? new Set(workableTiles(st(), city).map((t) => `${t.col},${t.row}`)) : new Set();
     }
     recomputeOverlays();
-    if (!fitted) {
+    if (!fitted && cssWidth > 0 && cssHeight > 0) {
       // Center the camera on the player's starting settler (or first unit).
       const me = session.getViewerId();
       const myUnits = unitsOf(st(), me);
@@ -339,23 +353,21 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   }
   session.onUpdate(update);
 
-  // Show the scroll first, then generate the world while the leader speaks.
-  let worldGenStarted = false;
-  function maybeStartWorldGen(): void {
-    if (worldGenStarted) return;
-    worldGenStarted = true;
-    window.setTimeout(() => {
-      if (session instanceof LocalSession && session.needsWorldGen()) {
-        session.finishWorldGen();
-        if (setup.isTutorial) seedTutorialSurroundings(session.getState());
+  // Boot local world after resize so the camera never fits a 0×0 viewport.
+  function bootstrapWorld(): void {
+    if (session instanceof LocalSession && session.needsWorldGen()) {
+      session.finishWorldGen();
+    }
+    if (!session.hasState()) return;
+    if (setup.isTutorial) {
+      try {
+        seedTutorialSurroundings(session.getState());
+      } catch (err) {
+        console.error("tutorial seed failed:", err);
       }
-      maybeNotifyWorldGenerated();
-      update();
-    }, 60);
+    }
+    maybeNotifyWorldGenerated();
   }
-  requestAnimationFrame(() => {
-    requestAnimationFrame(maybeStartWorldGen);
-  });
 
   function sessionEndSnapshot(): ReturnType<typeof viewerScoreFromBoard> {
     return viewerScoreFromBoard(buildSessionScoreboard(st(), session.getViewerId()));
@@ -400,6 +412,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     selectedUnitId = null;
     selectedTile = null;
     reachable = new Set();
+    reachableCosts = new Map();
     attackTargets = new Set();
     cancelAbility();
     cancelExpandPick();
@@ -414,6 +427,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     selectedUnitId = null;
     selectedCityId = null;
     reachable = new Set();
+    reachableCosts = new Map();
     attackTargets = new Set();
     cancelAbility();
     cancelExpandPick();
@@ -428,6 +442,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     selectedCityId = null;
     selectedTile = null;
     reachable = new Set();
+    reachableCosts = new Map();
     attackTargets = new Set();
     cancelAbility();
     cancelExpandPick();
@@ -624,6 +639,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onAssignTradeEscort: (unitId, routeId) => session.order({ type: "assignTradeEscort", unitId, routeId }),
     onLeaveTradeEscort: (routeId) => session.order({ type: "leaveTradeEscort", routeId }),
     onPlunderTradeRoute: (unitId, routeId) => session.order({ type: "plunderTradeRoute", unitId, routeId }),
+    onPillage: (unitId) => session.order({ type: "pillage", unitId }),
     onBribeBarbarian: (unitId) => session.order({ type: "bribeBarbarian", unitId }),
     onRecruitBarbarian: (unitId) => session.order({ type: "recruitBarbarian", unitId }),
     onCloseCity: () => {
@@ -784,8 +800,10 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     ? mountGameChat(session as import("./session").OnlineSession, getAccount()?.userId)
     : null;
 
-  const tutorialCoach = setup.isTutorial
-    ? createTutorialCoach({
+  let tutorialCoach: ReturnType<typeof createTutorialCoach> | null = null;
+  function ensureTutorialCoach(): void {
+    if (!setup.isTutorial || tutorialCoach || !session.hasState()) return;
+    tutorialCoach = createTutorialCoach({
         getState: st,
         getViewerId: () => session.getViewerId(),
         getSelectedUnitId: () => selectedUnitId,
@@ -813,8 +831,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
           refreshTutorialMovement(st(), session.getViewerId(), stepId);
           update();
         },
-      })
-    : null;
+      });
+  }
 
   type Suggestion = { kind: "units" | "research" | "civic" | "religion" | "production"; label: string } | null;
   function computeSuggestion(): Suggestion {
@@ -1024,7 +1042,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     if (tile.feature === "village") name = "Village";
     else if (tile.feature === "barb_camp") name = "Barbarian Camp";
     else if (tile.feature === "ruin") name = "Ruins";
-    return { name, rough: isRough(tile.terrain) };
+    const key = `${col},${row}`;
+    const moveCost = selectedUnitId != null && reachable.has(key) ? reachableCosts.get(key) : undefined;
+    return { name, rough: isRough(tile.terrain), moveCost };
   }
 
   function onHover(sx: number, sy: number): void {
@@ -1084,6 +1104,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   }
 
   function resize(): void {
+    const prevW = cssWidth;
+    const prevH = cssHeight;
     dpr = Math.min(window.devicePixelRatio || 1, 2);
     // visualViewport is the source of truth for what's actually visible on
     // mobile. The 100dvh CSS box can lag the real viewport as the browser
@@ -1097,6 +1119,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     canvas.style.height = cssHeight + "px";
     canvas.width = Math.round(cssWidth * dpr);
     canvas.height = Math.round(cssHeight * dpr);
+    if (cssWidth !== prevW || cssHeight !== prevH) {
+      fitted = false;
+    }
     needsRedraw = true;
   }
 
@@ -1161,37 +1186,59 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     terrainAtlas, coastAtlas, riverAtlas, roadAtlas, unitAtlas, cityAtlas,
     improvementAtlas, featureAtlas, naturalWonderAtlas, wonderAtlas, resourceAtlas, abilityAtlas,
   ];
-  // Lift the veil once every atlas has streamed in — but never wait longer than
-  // this cap, so a slow connection (or a stalled sprite) can't trap the player on
-  // the loading screen. By the cap the map and starting units are painted; the
-  // rest (improvements, abilities) pop in harmlessly. Driven by a timer rather
-  // than the rAF loop, so it still fires if the tab is briefly backgrounded.
-  //
-  // Crucially we only ARM the reveal here — the veil actually lifts inside frame()
-  // once a full-quality frame has really painted, so the player never sees the
-  // gap between "atlases loaded" and "board + HUD drawn and playable". The
-  // tutorial coach keys off the same moment (isWorldReady), so Herodotus starts
-  // speaking exactly as the finished world appears.
-  let revealWhenPainted = false;
-  const loadDeadline = performance.now() + 6000;
+  function maybeNotifyMapPainted(): void {
+    if (mapRenderNotified || !session.hasState() || !mapFramePainted || !coreAtlasesReady) return;
+    mapRenderNotified = true;
+    document.body.classList.add("roc-map-painted");
+    loadingScreen.notifyMapRendered();
+  }
+  // Skip stays hidden until every core atlas has loaded and a full map frame has painted.
   const readyPoll = window.setInterval(() => {
-    if (coreAtlases.every((a) => a.loaded) || performance.now() >= loadDeadline) {
-      window.clearInterval(readyPoll);
-      needsRedraw = true; // force a full-quality repaint…
-      revealWhenPainted = true; // …then lift the veil once it has painted (see frame())
-    }
+    if (!coreAtlases.every((a) => a.loaded)) return;
+    window.clearInterval(readyPoll);
+    coreAtlasesReady = true;
+    needsRedraw = true;
+    maybeNotifyMapPainted();
   }, 150);
+  // Emergency backstop if atlases stall — still waits for a painted frame before Skip.
+  window.setTimeout(() => {
+    if (mapRenderNotified) return;
+    coreAtlasesReady = true;
+    needsRedraw = true;
+    maybeNotifyMapPainted();
+  }, 20000);
+
+  function fitCameraToStart(): void {
+    if (fitted || !session.hasState() || cssWidth <= 0 || cssHeight <= 0) return;
+    const me = session.getViewerId();
+    const myUnits = unitsOf(st(), me);
+    const startUnit = myUnits.find((u) => u.type === "settler") ?? myUnits[0];
+    if (startUnit) {
+      camera.zoom = 2.2;
+      const c = tileCenterWorld(startUnit.col, startUnit.row);
+      camera.offsetX = cssWidth / 2 - c.x * camera.zoom;
+      camera.offsetY = cssHeight / 2 - c.y * camera.zoom;
+    } else {
+      camera.fitToView(computeWorldBounds(st().map), cssWidth, cssHeight, BASE_SIZE * 2);
+    }
+    fitted = true;
+  }
 
   function frame(): void {
-    if (!loadingDismissed && session.hasState()) {
-      const now = performance.now();
-      if (now >= loadingRepaintAt) {
-        loadingRepaintAt = now + 120;
-        needsRedraw = true;
-      }
+    if (session.hasState() && !mapFramePainted) {
+      needsRedraw = true;
+    } else if (
+      !loadingDismissed &&
+      !mapRenderNotified &&
+      session.hasState() &&
+      performance.now() >= loadingRepaintAt
+    ) {
+      loadingRepaintAt = performance.now() + 250;
+      needsRedraw = true;
     }
     if (needsRedraw && session.hasState()) {
       needsRedraw = false;
+      fitCameraToStart();
       const me = session.getViewerId();
       visible = session.getVisible();
       // God Mode "Lift Fog": reveal the entire map (local single-player only —
@@ -1199,6 +1246,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       const allKeys = liftFog ? allTileKeys(st()) : null;
       const explored = allKeys ?? session.getExplored();
       const drawVisible = allKeys ?? visible;
+      try {
       drawScene(ctx!, st(), camera, {
         dpr,
         cssWidth,
@@ -1213,6 +1261,14 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         naturalWonderAtlas,
         wonderAtlas,
       });
+      if (!mapFramePainted) {
+        mapFramePainted = true;
+        maybeNotifyMapPainted();
+      }
+      } catch (err) {
+        console.error("drawScene failed:", err);
+        fitted = false;
+      }
       const selCity = selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null;
       drawOverlay(ctx!, camera, st(), {
         viewingPlayerId: me,
@@ -1261,31 +1317,6 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       } catch (err) {
         console.error("RENDER-THREW", (err as Error)?.stack || err);
       }
-      // A full-quality frame (board + overlay + HUD) has now been drawn, but the
-      // HUD's icon <img>s (class "gi") and the coach portrait still stream in
-      // asynchronously. Hold the veil until those have loaded too, so nothing
-      // pops in after it lifts — capped so a stalled icon can't trap the player.
-      // Only once the world is genuinely finished do we lift the veil and wake
-      // the coach; its first ready tick (isWorldReady flips with the veil) types
-      // out Herodotus's opening line just as the world is revealed.
-      if (revealWhenPainted) {
-        revealWhenPainted = false;
-        const imgDeadline = performance.now() + 2500;
-        const revealWhenImagesReady = (): void => {
-          const imgs = [...document.querySelectorAll<HTMLImageElement>("img.gi, #tutorial-coach img")];
-          const pending = imgs.some((im) => !!im.getAttribute("src") && !im.complete);
-          if (!pending || performance.now() >= imgDeadline) {
-            if (!mapRenderNotified) {
-              mapRenderNotified = true;
-              loadingScreen.notifyMapRendered();
-            }
-            needsRedraw = true;
-          } else {
-            window.setTimeout(revealWhenImagesReady, 80);
-          }
-        };
-        revealWhenImagesReady();
-      }
     }
     // Tick the coach EVERY frame, not only on redraws: tapping an info-only bubble
     // (the intro, the unit-kinds briefing) sets an acknowledge flag but does not
@@ -1296,6 +1327,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   }
 
   resize();
+  bootstrapWorld();
   update();
   if (session.hasState()) {
     ui.banner(`${st().players[st().currentPlayerIndex]?.name ?? "Player"} — Turn ${st().turn}`);
