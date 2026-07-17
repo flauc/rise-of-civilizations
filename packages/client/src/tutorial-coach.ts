@@ -652,22 +652,14 @@ function turnSteps(turn: number, ctx: TutorialCoachContext): TutorialStepDef[] {
         {
           id: "t2_attack_barbarian",
           message: "Now, your Warrior. Select them, and strike that barbarian down. History smiles on the bold.",
+          unitHighlight: "warrior",
           tileHighlight: ({ state, viewerId }) => nearestVisibleBarbarian(state, viewerId),
-          isDone: ({ state, viewerId, marks }) => {
+          isDone: ({ state, marks }) => {
             const snaps = marks.barbSnapshots;
-            if (!snaps || snaps.length === 0) return true; // no target to teach with
-            const bled = snaps.some((s) => {
+            if (!snaps || snaps.length === 0) return false;
+            return snaps.some((s) => {
               const u = state.units.get(s.id);
               return !u || u.hp < s.hp;
-            });
-            if (bled) return true;
-            // The raiders slipped out of reach (or the army fell): don't hold the
-            // turn hostage waiting for a fight that can no longer happen.
-            const fighters = unitsOf(state, viewerId).filter((u) => isMilitary(u.type));
-            return !snaps.some((s) => {
-              const u = state.units.get(s.id);
-              if (!u) return false;
-              return fighters.some((f) => Math.abs(f.col - u.col) + Math.abs(f.row - u.row) <= 4);
             });
           },
         },
@@ -778,6 +770,21 @@ export function isEndTurnStep(step: TutorialStepDef | undefined): boolean {
 /** The game canvas — clickable only on steps that ask the player to touch the map. */
 const GATE_CANVAS_SELECTOR = "#game";
 
+/** In-game menus, panels, and top/bottom bars — always live during the tutorial. */
+export const TUTORIAL_HUD_SELECTOR = "#game-hud";
+
+/** Overlays mounted outside #game-hud that must stay usable during guided steps. */
+const TUTORIAL_OVERLAY_SELECTORS = ["#combat-preview-overlay"] as const;
+
+/** True when `el` is inside HUD chrome the player may always use while coached. */
+export function tutorialHudAlwaysAllowed(el: Element): boolean {
+  if (el.closest(TUTORIAL_HUD_SELECTOR)) return true;
+  for (const sel of TUTORIAL_OVERLAY_SELECTORS) {
+    if (el.closest(sel)) return true;
+  }
+  return false;
+}
+
 /** Close / dismiss controls stay clickable while the coach gate is active. */
 export function isTutorialDismissControl(el: Element): boolean {
   const btn = el.closest("button");
@@ -790,11 +797,9 @@ export function isTutorialDismissControl(el: Element): boolean {
 }
 
 /**
- * Interaction gate per step: while the tutorial coach is active, ALL clicks are
- * blocked except on the coach itself, the selectors listed here (plus the step's
- * own highlighted `targets`), and — when `canvas` is set — the map. Each entry
- * deliberately re-allows the button that reopens the relevant panel so a player
- * who closes it can never soft-lock the tutorial.
+ * Interaction gate per step: the full HUD stays clickable at all times; only the
+ * map canvas is optionally restricted on steps that don't need it. STEP_GATE
+ * `canvas` flags and `targets` still drive coach highlights, not click jails.
  */
 const STEP_GATE: Partial<Record<TutorialStepId, { extra?: string[]; canvas?: boolean }>> = {
   // Info-only briefings: only the coach bubble (tap to continue) is live.
@@ -808,7 +813,18 @@ const STEP_GATE: Partial<Record<TutorialStepId, { extra?: string[]; canvas?: boo
   spot_barbarian: {},
   spot_enemy: {},
   // The combat lesson: select the Warrior (map or Units list) and strike.
-  t2_attack_barbarian: { extra: ["#units-btn", '[data-bb="units"]', "#empire"], canvas: true },
+  t2_attack_barbarian: {
+    extra: [
+      "#units-btn",
+      '[data-bb="units"]',
+      "#empire",
+      "#combat-preview-overlay",
+      "#combat-preview-dialog",
+      "#combat-preview-attack",
+      "#combat-preview-cancel",
+    ],
+    canvas: true,
+  },
   // Unit selection can happen on the map or through the Units list.
   t1_select_scout: { extra: ["#units-btn", '[data-bb="units"]', "#empire"], canvas: true },
   t1_move_scout: { canvas: true },
@@ -828,12 +844,8 @@ const STEP_GATE: Partial<Record<TutorialStepId, { extra?: string[]; canvas?: boo
   t4_diplomacy: { extra: ["#diplo-pill", '[data-bb="diplo"]', "#diplomacy"] },
 };
 
-/** Selectors a click may land on for `step` (besides the coach and, if allowed, the map). */
+/** Selectors highlighted for a step (coach ring). Not used to block HUD clicks. */
 export function gateSelectorsForStep(step: TutorialStepDef): string[] {
-  // Read-and-continue briefings (and the final choice) confine clicks to the coach
-  // bubble, even when they highlight a HUD element for illustration — otherwise the
-  // player could, e.g., tap the highlighted End Turn button mid-explanation.
-  if (step.infoOnly || step.choice) return [];
   const list = [...(step.targets ?? [])];
   const gate = STEP_GATE[step.id];
   if (gate?.extra) list.push(...gate.extra);
@@ -969,9 +981,8 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
   const portraitEl = root.querySelector<HTMLImageElement>("#tutorial-coach-portrait")!;
 
   // ---- interaction gate --------------------------------------------------
-  // While a step is active, clicks are confined to the coach, the step's allowed
-  // selectors, and (when the step needs it) the map. Everything else is swallowed
-  // in the capture phase so the game's own handlers never fire.
+  // HUD menus stay live for the whole tutorial. Only the map is optionally gated
+  // on steps that don't need map input (info briefings, panel-only steps).
   let gateActive = false;
   let gateSelectors: string[] = [];
   let gateCanvas = false;
@@ -981,6 +992,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     if (!el) return true;
     if (root.contains(el)) return true; // coach bubble / skip
     if (isTutorialDismissControl(el)) return true;
+    if (tutorialHudAlwaysAllowed(el)) return true;
     for (const sel of gateSelectors) {
       if (el.closest(sel)) return true;
     }
@@ -1284,7 +1296,18 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
 
     const step = steps[stepIndex]!;
     if (lastStepId !== step.id) {
+      if (step.id === "t2_attack_barbarian") {
+        deps.ensureTutorialBarbarian?.();
+        deps.refreshTutorialMovement?.(step.id);
+      } else if (TUTORIAL_MOVE_STEP_IDS.has(step.id)) {
+        deps.refreshTutorialMovement?.(step.id);
+        if (step.id === "t3_village") deps.ensureReachableTutorialVillage?.();
+      }
       seedMarks(step, state, ctx.viewerId);
+    } else if (step.id === "t2_attack_barbarian" && !marks.barbSnapshots?.length) {
+      deps.ensureTutorialBarbarian?.();
+      const fresh = nearbyBarbarians(state, ctx.viewerId);
+      if (fresh.length) marks = { ...marks, barbSnapshots: fresh };
     }
 
     // Confine interaction to this step's allowed targets (plus the coach and,
@@ -1312,11 +1335,6 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
       lastStepId = step.id;
       flags.infoAcknowledged = false;
       resetBriefing(step.speakThenHide ? step.id : null);
-      if (TUTORIAL_MOVE_STEP_IDS.has(step.id)) {
-        deps.refreshTutorialMovement?.(step.id);
-        if (step.id === "t3_village") deps.ensureReachableTutorialVillage?.();
-        if (step.id === "t2_attack_barbarian") deps.ensureTutorialBarbarian?.();
-      }
       if (step.id === "spot_barbarian" || step.id === "spot_enemy") {
         encounterInProgress.add(step.id);
         markStepExplained(step.id);

@@ -608,7 +608,15 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
 
   function markSpeechDone(): void {
     speechDone = true;
-    scheduleHoldIfNeeded();
+    // Audio can finish without the sync loop marking typing done (e.g. missed
+    // "playing" / "ended" on some mobile WebViews). Never block dismiss on that.
+    if (activeScroll && !typingDone) {
+      stopTyping();
+      revealAllSpeech(activeScroll);
+      markTypingDone();
+    } else {
+      scheduleHoldIfNeeded();
+    }
   }
 
   /** MP3 sync — character reveal locked to audio.currentTime. */
@@ -817,7 +825,9 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
   }
 
   function tryDismiss(): void {
-    if (dismissed || !worldReady || !mapRendered) return;
+    if (dismissed || !worldReady) return;
+    // Auto-dismiss after speech waits for the map; Skip can leave early once the world exists.
+    if (!skipped && !mapRendered) return;
     tryResolveCiv();
     const elapsed = performance.now() - mountedAt;
     if (!skipped && elapsed < MIN_VISIBLE_MS) return;
@@ -875,6 +885,113 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
       window.clearInterval(civPoll);
       stopTyping();
       stopLoadingVoice();
+      clearLoadingBodyClass();
+      if (!dismissed) root.remove();
+      dismissed = true;
+    },
+  };
+}
+
+const TUTORIAL_PREP_MIN_MS = 500;
+const TUTORIAL_PREP_FORCE_MS = 8000;
+
+function ensureTutorialPrepStyles(): void {
+  ensureStyles();
+  if (document.getElementById("tutorial-prep-style")) return;
+  const style = document.createElement("style");
+  style.id = "tutorial-prep-style";
+  style.textContent = `
+    #game-loading.tutorial-prep .gl-panel{
+      width:min(520px,100%);max-height:none;min-height:0;
+      align-items:center;justify-content:center;padding:28px 20px;
+    }
+    #game-loading.tutorial-prep .tp-status{
+      font-family:'Cinzel',Georgia,serif;
+      font-size:clamp(15px,3.8vw,20px);letter-spacing:.14em;text-transform:uppercase;
+      color:var(--parchment);text-align:center;
+      text-shadow:0 2px 12px rgba(0,0,0,.55);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+export interface TutorialPreparingOptions {
+  /** Fired when the preparing veil is removed and the coach may start. */
+  onDismiss?: () => void;
+}
+
+/** Minimal veil while the tutorial world generates and the first map frame paints. */
+export function createTutorialPreparingScreen(
+  options: TutorialPreparingOptions = {},
+): LoadingScreenHandle {
+  ensureTutorialPrepStyles();
+  const mountedAt = performance.now();
+  let worldReady = false;
+  let mapRendered = false;
+  let dismissed = false;
+  let dismissTimer = 0;
+
+  const root = document.createElement("div");
+  root.id = "game-loading";
+  root.className = "tutorial-prep";
+  root.innerHTML =
+    `<div class="gl-panel">` +
+    `<div class="tp-status">Preparing a tutorial...</div>` +
+    `</div>`;
+  document.body.appendChild(root);
+  document.body.classList.add("roc-loading-scroll");
+
+  function clearLoadingBodyClass(): void {
+    document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
+  }
+
+  function dismiss(): void {
+    if (dismissed) return;
+    dismissed = true;
+    window.clearTimeout(dismissTimer);
+    dismissTimer = 0;
+    clearLoadingBodyClass();
+    options.onDismiss?.();
+    root.remove();
+  }
+
+  function tryDismiss(): void {
+    if (dismissed || !worldReady || !mapRendered) return;
+    const elapsed = performance.now() - mountedAt;
+    if (elapsed < TUTORIAL_PREP_MIN_MS) {
+      if (!dismissTimer) {
+        dismissTimer = window.setTimeout(() => {
+          dismissTimer = 0;
+          tryDismiss();
+        }, TUTORIAL_PREP_MIN_MS - elapsed);
+      }
+      return;
+    }
+    dismiss();
+  }
+
+  const forceTimer = window.setTimeout(() => {
+    if (dismissed) return;
+    worldReady = true;
+    mapRendered = true;
+    dismiss();
+  }, TUTORIAL_PREP_FORCE_MS);
+
+  return {
+    notifyWorldGenerated() {
+      if (worldReady) return;
+      worldReady = true;
+      tryDismiss();
+    },
+    notifyMapRendered() {
+      if (mapRendered || dismissed) return;
+      mapRendered = true;
+      document.body.classList.add("roc-map-painted");
+      tryDismiss();
+    },
+    destroy() {
+      window.clearTimeout(forceTimer);
+      window.clearTimeout(dismissTimer);
       clearLoadingBodyClass();
       if (!dismissed) root.remove();
       dismissed = true;

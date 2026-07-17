@@ -151,6 +151,7 @@ import {
   isRough,
   isWaterTerrain,
   isPassableLand,
+  isNaval,
   terrainDefense,
   TERRAIN_NAMES,
   barbarianBribeCost,
@@ -254,6 +255,8 @@ export interface TileTip {
   name: string;
   /** true = rough, false = open, null = unknown/unexplored (chip hidden). */
   rough: boolean | null;
+  /** Path cost from the selected unit, when hovering a reachable tile. */
+  moveCost?: number;
 }
 
 type TileLine = { kind: "good" | "bad" | "neutral"; text: string };
@@ -262,6 +265,12 @@ interface TileReport {
   subtitle: string;
   yields: ReturnType<typeof tileYieldReport>["yields"];
   lines: TileLine[];
+}
+
+function formatMoveCostLabel(cost: number): string {
+  const rounded = Math.round(cost * 4) / 4;
+  if (Math.abs(rounded - Math.round(rounded)) < 0.01) return String(Math.round(rounded));
+  return rounded.toFixed(2).replace(/\.?0+$/, "");
 }
 
 /** Format a trait's per-tile yield delta as "+1 🪙 −1 🍞", icons only for non-zero fields. */
@@ -4462,10 +4471,17 @@ export function createUI(handlers: UIHandlers): UI {
 
   function godModeSignature(view: UIView): string {
     const tile = view.selectedTile;
-    const tileKey =
-      tile && isPassableLand(tile.terrain) ? `${tile.col},${tile.row},${tile.terrain}` : "none";
+    const tileKey = tile ? `${tile.col},${tile.row},${tile.terrain}` : "none";
     const wonders = [...view.state.completedWonders].sort().join(",");
     return `${view.liftFog ? 1 : 0}|${tileKey}|${wonders}`;
+  }
+
+  function godModeUnitOptions(tile: NonNullable<UIView["selectedTile"]> | undefined): string {
+    const waterTile = !!tile && isWaterTerrain(tile.terrain);
+    return Object.entries(UNIT_DEFS)
+      .filter(([, d]) => (waterTile ? isNaval(d) : !isNaval(d)))
+      .map(([id, d]) => `<option value="${id}">${escapeHtml(d.name)}</option>`)
+      .join("");
   }
 
   function renderGodMode(view: UIView): void {
@@ -4479,9 +4495,9 @@ export function createUI(handlers: UIHandlers): UI {
 
     const tile = view.selectedTile;
     const tileOk = !!tile && isPassableLand(tile.terrain);
-    const unitOptions = Object.entries(UNIT_DEFS)
-      .map(([id, d]) => `<option value="${id}">${escapeHtml(d.name)}</option>`)
-      .join("");
+    const waterTile = !!tile && isWaterTerrain(tile.terrain);
+    const spawnTileOk = tileOk || waterTile;
+    const unitOptions = godModeUnitOptions(tile ?? undefined);
     const builtWonders = new Set(view.state.completedWonders);
     const wonderOptions = WONDER_DEFS.filter((w) => !builtWonders.has(w.id))
       .map((w) => `<option value="${w.id}">${escapeHtml(w.name)}</option>`)
@@ -4508,10 +4524,6 @@ export function createUI(handlers: UIHandlers): UI {
         `<button class="btn" data-cheat="buildRoad" data-level="2">Build Paved Road</button>` +
         `<button class="btn" data-cheat="buildRoad" data-level="3">Build Imperial Road</button>` +
         `<button class="btn" data-cheat="foundCity">Found City</button>` +
-        `<div style="display:flex;gap:6px;align-items:center;margin-top:4px">` +
-        `<select id="cheat-unit" class="lobby-in" style="flex:1">${unitOptions}</select>` +
-        `<button class="btn" data-cheat="spawnUnit">Spawn Unit</button>` +
-        `</div>` +
         `<div class="csub">Construction Works</div>` +
         `<div class="row" style="flex-wrap:wrap;gap:6px">` +
         CHEAT_WORK_KINDS.map((k) => `<button class="btn" data-cheat="buildWork" data-kind="${k}">${workName(k, 3)}</button>`).join("") +
@@ -4523,10 +4535,28 @@ export function createUI(handlers: UIHandlers): UI {
             `<button class="btn" data-cheat="buildWonder">Build Wonder</button>` +
             `</div>`
           : `<div class="csub">Wonders</div><div class="sub">All wonders built.</div>`);
+    } else if (waterTile) {
+      html +=
+        `<div class="csub">Selected Tile (${escapeHtml(TERRAIN_NAMES[tile.terrain])})</div>` +
+        `<div class="sub">Land tile cheats need passable land. Naval units can spawn here.</div>`;
+    } else if (tile) {
+      html +=
+        `<div class="csub">Selected Tile (${escapeHtml(TERRAIN_NAMES[tile.terrain])})</div>` +
+        `<div class="sub">Select passable land or water for tile cheats.</div>`;
     } else {
       html +=
         `<div class="csub">Selected Tile</div>` +
-        `<div class="sub">Select a passable land tile to use tile cheats.</div>`;
+        `<div class="sub">Select a tile to use tile cheats.</div>`;
+    }
+
+    if (spawnTileOk && unitOptions) {
+      html +=
+        `<div style="display:flex;gap:6px;align-items:center;margin-top:4px">` +
+        `<select id="cheat-unit" class="lobby-in" style="flex:1">${unitOptions}</select>` +
+        `<button class="btn" data-cheat="spawnUnit">Spawn Unit</button>` +
+        `</div>`;
+    } else if (spawnTileOk) {
+      html += `<div class="sub">No units available for this tile type.</div>`;
     }
     html += `</div></div>`;
 
@@ -5222,7 +5252,11 @@ export function createUI(handlers: UIHandlers): UI {
           : tip.rough
             ? ` · <span class="tt-rough">Rough</span>`
             : ` · <span class="tt-open">Open</span>`;
-      tileTip.innerHTML = `<b>${tip.name}</b>${rough}`;
+      const move =
+        tip.moveCost != null && tip.moveCost > 1
+          ? ` · <span class="tt-move">${formatMoveCostLabel(tip.moveCost)} moves</span>`
+          : "";
+      tileTip.innerHTML = `<b>${tip.name}</b>${rough}${move}`;
     },
     banner(text) {
       showBanner(text);

@@ -77,6 +77,16 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(viewA.cities.some((c) => c.ownerId === 0)).toBe(true);
   });
 
+  it("does not wait on empty human seats at start", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Open seats", "uA", "Alice", { seed: "seed-open", capacity: 4, aiCount: 3 });
+    expect(lobby.start(g.id)).toEqual({ ok: true });
+    const host = lobby.get(g.id)!.host!;
+    expect(host.awaiting()).toEqual([0]);
+    expect(host.ready_(0).resolved).toBe(true);
+    expect(host.state.turn).toBe(2);
+  });
+
   it("restores an active game from a serialized state blob", () => {
     const lobby = new Lobby();
     const g = lobby.create("Restorable", "uA", "Alice", { seed: "seed-restore" });

@@ -22,17 +22,18 @@ export interface OrderOutcome {
 export class GameHost {
   readonly state: GameState;
   private readonly ready = new Set<number>();
-  private readonly humanIds: number[];
+  /** Connected humans only — empty lobby seats must not block resolution. */
+  private readonly connectedHumanIds: number[];
 
-  constructor(state: GameState, startTurn = true) {
+  constructor(state: GameState, connectedHumanIds: number[], startTurn = true) {
     this.state = state;
-    this.humanIds = state.players.filter((p) => p.isHuman).map((p) => p.id);
+    this.connectedHumanIds = [...connectedHumanIds];
     if (startTurn) startSimultaneousTurn(state);
   }
 
   /** Restore a host from a saved state without refreshing the turn. */
-  static fromState(state: GameState): GameHost {
-    return new GameHost(state, false);
+  static fromState(state: GameState, connectedHumanIds: number[]): GameHost {
+    return new GameHost(state, connectedHumanIds, false);
   }
 
   /** Apply a player's order (move/attack/found/build/promote/production/research). */
@@ -44,9 +45,9 @@ export class GameHost {
 
   /** Mark a player ready (end of turn). Resolves the turn once all are ready. */
   ready_(playerId: number): OrderOutcome {
-    if (!this.humanIds.includes(playerId)) return { ok: false, error: "not a player" };
+    if (!this.connectedHumanIds.includes(playerId)) return { ok: false, error: "not a player" };
     this.ready.add(playerId);
-    if (this.humanIds.every((id) => this.ready.has(id))) {
+    if (this.connectedHumanIds.every((id) => this.ready.has(id))) {
       resolveSimultaneousTurn(this.state);
       this.ready.clear();
       return { ok: true, resolved: true };
@@ -54,9 +55,9 @@ export class GameHost {
     return { ok: true, resolved: false };
   }
 
-  /** Human players we are still waiting on this turn. */
+  /** Connected human players we are still waiting on this turn. */
   awaiting(): number[] {
-    return this.humanIds.filter((id) => !this.ready.has(id));
+    return this.connectedHumanIds.filter((id) => !this.ready.has(id));
   }
 
   view(playerId: number): PlayerView {

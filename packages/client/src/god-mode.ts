@@ -15,6 +15,9 @@ import {
   isDefenseKind,
   isEconKind,
   isPassableLand,
+  isNavalPassable,
+  isNaval,
+  UNIT_DEFS,
   makeUnit,
   STRUCTURE_HP,
   TECH_DEFS,
@@ -64,6 +67,27 @@ function findOpenLandTile(
         const tr = row + dr;
         const tile = getTile(state.map, tc, tr);
         if (!tile || !isPassableLand(tile.terrain)) continue;
+        if (unitAt(state, tc, tr)) continue;
+        return { col: tc, row: tr };
+      }
+    }
+  }
+  return null;
+}
+
+function findOpenNavalTile(
+  state: GameState,
+  col: number,
+  row: number,
+  oceanUnlocked: boolean,
+): { col: number; row: number } | null {
+  for (let r = 0; r <= 3; r++) {
+    for (let dr = -r; dr <= r; dr++) {
+      for (let dc = -r; dc <= r; dc++) {
+        const tc = col + dc;
+        const tr = row + dr;
+        const tile = getTile(state.map, tc, tr);
+        if (!tile || !isNavalPassable(tile.terrain, oceanUnlocked)) continue;
         if (unitAt(state, tc, tr)) continue;
         return { col: tc, row: tr };
       }
@@ -221,11 +245,30 @@ export function applyCheat(
     case "spawnUnit": {
       const tile = getTile(state.map, action.col, action.row);
       if (!tile) return { ok: false, error: "no such tile" };
+      const def = UNIT_DEFS[action.unitType];
+      const naval = isNaval(def);
+      const oceanUnlocked = naval && (def.oceanGoing ?? true);
       let target = { col: action.col, row: action.row };
-      if (unitAt(state, target.col, target.row)) {
-        const open = findOpenLandTile(state, action.col, action.row);
-        if (!open) return { ok: false, error: "no empty tile nearby" };
-        target = open;
+      if (naval) {
+        if (!isNavalPassable(tile.terrain, oceanUnlocked)) {
+          const open = findOpenNavalTile(state, action.col, action.row, oceanUnlocked);
+          if (!open) return { ok: false, error: "not navigable water" };
+          target = open;
+        } else if (unitAt(state, target.col, target.row)) {
+          const open = findOpenNavalTile(state, action.col, action.row, oceanUnlocked);
+          if (!open) return { ok: false, error: "no empty water tile nearby" };
+          target = open;
+        }
+      } else {
+        if (!isPassableLand(tile.terrain)) {
+          const open = findOpenLandTile(state, action.col, action.row);
+          if (!open) return { ok: false, error: "not passable land" };
+          target = open;
+        } else if (unitAt(state, target.col, target.row)) {
+          const open = findOpenLandTile(state, action.col, action.row);
+          if (!open) return { ok: false, error: "no empty tile nearby" };
+          target = open;
+        }
       }
       const id = state.nextEntityId++;
       state.units.set(id, makeUnit(id, playerId, action.unitType, target.col, target.row));

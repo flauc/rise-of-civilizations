@@ -896,6 +896,25 @@
         max-height: min(520px, 80vh);
         z-index: 40;
       }
+      #god-panel select.lobby-in,
+      #god-panel select {
+        flex: 1;
+        min-width: 0;
+        width: 100%;
+        margin: 0;
+        padding: 8px 10px;
+        border-radius: 8px;
+        font: inherit;
+        font-size: 13px;
+        color: var(--parchment);
+        background-color: var(--bg-card);
+        border: 1px solid var(--edge);
+        color-scheme: dark;
+      }
+      #god-panel select option {
+        color: var(--parchment);
+        background-color: var(--bg-card);
+      }
       #save-modal input.lobby-in {
         font: inherit;
         font-size: 13px;
@@ -3231,12 +3250,50 @@
         :root {
           --dialog-title-size: 17px;
         }
+        #combat-preview-dialog {
+          width: calc(100vw - 16px);
+          padding: 14px 10px 12px;
+        }
         #combat-preview-dialog .combat-preview-matchup {
-          grid-template-columns: 1fr;
+          grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+          gap: 6px;
+          align-items: stretch;
         }
         #combat-preview-dialog .combat-preview-vs {
+          align-self: center;
           padding-top: 0;
-          text-align: center;
+          font-size: 10px;
+        }
+        #combat-preview-dialog .combat-preview-col {
+          padding: 8px 6px;
+          gap: 6px;
+        }
+        #combat-preview-dialog .combat-preview-portrait {
+          width: 44px;
+          height: 44px;
+        }
+        #combat-preview-dialog .combat-preview-col-name {
+          font-size: 11px;
+        }
+        #combat-preview-dialog .combat-preview-stat {
+          font-size: 11px;
+        }
+        #combat-preview-dialog .combat-preview-stat-val {
+          font-size: 12px;
+        }
+        #combat-preview-dialog .combat-preview-mod {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 2px;
+        }
+        #combat-preview-dialog .combat-preview-mod-effect {
+          text-align: left;
+        }
+        #combat-preview-dialog .combat-preview-actions {
+          justify-content: stretch;
+        }
+        #combat-preview-dialog .combat-preview-actions .btn {
+          flex: 1;
         }
       }
       .rotation-controls {
