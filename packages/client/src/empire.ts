@@ -3,7 +3,7 @@
 // stays out of the busy ui.ts; ui.ts only toggles it and re-renders it per frame
 // while open.
 
-import { gameHud } from "./hud-root";
+import { gameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
 import { withPreservedScroll } from "./panel-scroll";
 import {
   UNIT_DEFS,
@@ -58,7 +58,8 @@ const STYLE = `
 #empire.hidden{transform:translateX(100%);pointer-events:none}
 .emp-box{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden}
 /* Title and ✕ come from the shared .dialog-title / .dialog-x rules in index.html. */
-.emp-head{position:relative;display:flex;align-items:center;gap:10px;padding:12px 16px;padding-right:calc(var(--dialog-x-gutter) + 8px);border-bottom:1px solid var(--edge);min-height:var(--dialog-x-size)}
+.emp-head{position:relative;display:flex;align-items:center;gap:10px;padding:12px 16px;padding-top:max(12px,env(safe-area-inset-top));padding-right:calc(var(--dialog-x-gutter) + 8px);border-bottom:1px solid var(--edge);min-height:var(--dialog-x-size);z-index:2}
+.emp-head .dialog-x{pointer-events:auto;touch-action:manipulation}
 .emp-tab{padding:7px 14px;border-radius:8px;cursor:pointer;color:#b8d4ec;background:transparent;border:1px solid transparent;font:inherit;font-size:14px}
 .emp-tab.active{background:#213a52;border-color:var(--edge);color:#fff;font-weight:700}
 .emp-title{margin-right:8px}
@@ -112,7 +113,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     `<button class="emp-tab" data-tab="units">Units</button>` +
     `<button class="emp-tab" data-tab="specialists">Specialists</button>` +
     `<button class="emp-tab" data-tab="trade">Trade</button>` +
-    `<button class="dialog-x" id="emp-close" title="Close" aria-label="Close">✕</button></div>` +
+    `<button type="button" class="dialog-x" id="emp-close" title="Close" aria-label="Close">✕</button></div>` +
     `<div class="emp-body" id="emp-body"></div></div>`;
   gameHud().appendChild(root);
 
@@ -125,9 +126,16 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     }),
   );
 
+  function setOpen(next: boolean): void {
+    if (open === next) return;
+    open = next;
+    if (open) pushHudOverlay();
+    else popHudOverlay();
+    root.classList.toggle("hidden", !open);
+  }
+
   function close(): void {
-    open = false;
-    root.classList.add("hidden");
+    setOpen(false);
   }
 
   const yieldsLine = (state: GameState, c: City): string => {
@@ -453,15 +461,11 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     toggle(state, viewerId, requestedTab) {
       if (requestedTab && requestedTab !== tab) {
         tab = requestedTab;
-        if (!open) {
-          open = true;
-          root.classList.remove("hidden");
-        }
+        if (!open) setOpen(true);
         render(state, viewerId);
         return;
       }
-      open = !open;
-      root.classList.toggle("hidden", !open);
+      setOpen(!open);
       if (open) render(state, viewerId);
     },
     close,

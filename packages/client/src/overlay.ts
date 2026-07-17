@@ -22,8 +22,6 @@ export interface OverlayState {
   selectedUnitId: number | null;
   selectedCityId: number | null;
   reachable: Set<string>;
-  /** Path cost from the selected unit to each reachable tile key. */
-  reachableCosts?: Map<string, number>;
   attackTargets: Set<string>;
   /** Tiles a pending targeted ability can be used against (highlighted distinctly). */
   abilityTargets?: Set<string>;
@@ -228,12 +226,6 @@ function isMobileScreen(): boolean {
 }
 
 const MOBILE_UNIT_SCALE = 1.35;
-
-function formatMoveCostLabel(cost: number): string {
-  const rounded = Math.round(cost * 4) / 4;
-  if (Math.abs(rounded - Math.round(rounded)) < 0.01) return String(Math.round(rounded));
-  return rounded.toFixed(2).replace(/\.?0+$/, "");
-}
 
 /** Draws reachable + attack highlights, then cities and units, respecting fog. */
 export function drawOverlay(
@@ -599,23 +591,6 @@ export function drawOverlay(
     }
   };
   if (o.reachable.size > 0) highlight(o.reachable, "rgba(255,255,255,0.12)", "rgba(255,255,255,0.35)");
-  if (o.reachableCosts && o.reachable.size > 0) {
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `bold ${Math.max(10, Math.round(size * 0.22))}px Cinzel, Georgia, serif`;
-    for (const key of o.reachable) {
-      const cost = o.reachableCosts.get(key);
-      if (cost == null || cost <= 1) continue;
-      const [col, row] = key.split(",").map(Number) as [number, number];
-      const s = screen(col, row);
-      const label = formatMoveCostLabel(cost);
-      ctx.lineWidth = Math.max(2, size * 0.06);
-      ctx.strokeStyle = "rgba(8,7,6,0.85)";
-      ctx.strokeText(label, s.x, s.y - size * 0.08);
-      ctx.fillStyle = "#ffd967";
-      ctx.fillText(label, s.x, s.y - size * 0.08);
-    }
-  }
   if (o.attackTargets.size > 0) highlight(o.attackTargets, "rgba(224,83,61,0.28)", "rgba(255,90,70,0.9)");
   if (o.bombardTargets && o.bombardTargets.size > 0) highlight(o.bombardTargets, "rgba(255,140,40,0.30)", "rgba(255,160,60,0.95)");
   if (o.abilityTargets && o.abilityTargets.size > 0) highlight(o.abilityTargets, "rgba(120,200,255,0.30)", "rgba(150,220,255,0.95)");

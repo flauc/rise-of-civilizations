@@ -790,6 +790,7 @@ export function isTutorialDismissControl(el: Element): boolean {
   const btn = el.closest("button");
   if (!btn) return false;
   if (btn.classList.contains("dialog-x") || btn.classList.contains("panel-close")) return true;
+  if (btn.id === "dp-back") return true;
   const id = btn.id;
   if (id && /close$/i.test(id)) return true;
   const label = btn.getAttribute("aria-label")?.toLowerCase();

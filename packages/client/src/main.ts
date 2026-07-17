@@ -56,7 +56,7 @@ import { createLobby } from "./lobby-ui";
 import { preloadGameAssets } from "./asset-preload";
 import { createLegalViewer, type LegalPage } from "./legal-viewer";
 import { createSupportPage, registerSupportPage, supportPageFromLocation } from "./support-page";
-import { consumeNativeBootRoute, initialOverlayRoute, setLobbyHidden } from "./app-routes";
+import { consumeNativeBootRoute, initialOverlayRoute, isNativeApp, setLobbyHidden } from "./app-routes";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadCoastAtlas } from "./coast-assets";
 import { loadRiverAtlas } from "./river-assets";
@@ -96,6 +96,7 @@ if (!ctx) throw new Error("2D canvas context unavailable");
 installIconifyHook();
 initAnalytics();
 initScreenRotation();
+if (isNativeApp()) document.body.classList.add("roc-native");
 const legalViewer = createLegalViewer();
 legalViewer.wireLinks();
 const supportPage = createSupportPage();
@@ -152,12 +153,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       });
   let worldGenNotified = false;
   let mapFramePainted = false;
-  function notifyMapPainted(): void {
-    if (mapRenderNotified || !session.hasState()) return;
-    mapRenderNotified = true;
-    document.body.classList.add("roc-map-painted");
-    loadingScreen.notifyMapRendered();
-  }
+  let coreAtlasesReady = false;
   function maybeNotifyWorldGenerated(): void {
     if (worldGenNotified || !session.hasState()) return;
     worldGenNotified = true;
@@ -643,6 +639,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onAssignTradeEscort: (unitId, routeId) => session.order({ type: "assignTradeEscort", unitId, routeId }),
     onLeaveTradeEscort: (routeId) => session.order({ type: "leaveTradeEscort", routeId }),
     onPlunderTradeRoute: (unitId, routeId) => session.order({ type: "plunderTradeRoute", unitId, routeId }),
+    onPillage: (unitId) => session.order({ type: "pillage", unitId }),
     onBribeBarbarian: (unitId) => session.order({ type: "bribeBarbarian", unitId }),
     onRecruitBarbarian: (unitId) => session.order({ type: "recruitBarbarian", unitId }),
     onCloseCity: () => {
@@ -1189,31 +1186,27 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     terrainAtlas, coastAtlas, riverAtlas, roadAtlas, unitAtlas, cityAtlas,
     improvementAtlas, featureAtlas, naturalWonderAtlas, wonderAtlas, resourceAtlas, abilityAtlas,
   ];
-  // Lift the veil once every atlas has streamed in — but never wait longer than
-  // this cap, so a slow connection (or a stalled sprite) can't trap the player on
-  // the loading screen. By the cap the map and starting units are painted; the
-  // rest (improvements, abilities) pop in harmlessly. Driven by a timer rather
-  // than the rAF loop, so it still fires if the tab is briefly backgrounded.
-  //
-  // Crucially we only ARM the reveal here — the veil actually lifts inside frame()
-  // once a full-quality frame has really painted, so the player never sees the
-  // gap between "atlases loaded" and "board + HUD drawn and playable". The
-  // tutorial coach keys off the same moment (isWorldReady), so Herodotus starts
-  // speaking exactly as the finished world appears.
-  // Lift the veil once atlases are ready (or after a short cap), then mark the map
-  // painted on the first real drawScene — not after HUD icon loads.
-  const loadDeadline = performance.now() + 6000;
+  function maybeNotifyMapPainted(): void {
+    if (mapRenderNotified || !session.hasState() || !mapFramePainted || !coreAtlasesReady) return;
+    mapRenderNotified = true;
+    document.body.classList.add("roc-map-painted");
+    loadingScreen.notifyMapRendered();
+  }
+  // Skip stays hidden until every core atlas has loaded and a full map frame has painted.
   const readyPoll = window.setInterval(() => {
-    if (coreAtlases.every((a) => a.loaded) || performance.now() >= loadDeadline) {
-      window.clearInterval(readyPoll);
-      needsRedraw = true;
-    }
-  }, 150);
-  // Absolute backstop: keep trying to paint; only notify once a frame actually drew.
-  window.setTimeout(() => {
+    if (!coreAtlases.every((a) => a.loaded)) return;
+    window.clearInterval(readyPoll);
+    coreAtlasesReady = true;
     needsRedraw = true;
-    if (mapFramePainted) notifyMapPainted();
-  }, 8000);
+    maybeNotifyMapPainted();
+  }, 150);
+  // Emergency backstop if atlases stall — still waits for a painted frame before Skip.
+  window.setTimeout(() => {
+    if (mapRenderNotified) return;
+    coreAtlasesReady = true;
+    needsRedraw = true;
+    maybeNotifyMapPainted();
+  }, 20000);
 
   function fitCameraToStart(): void {
     if (fitted || !session.hasState() || cssWidth <= 0 || cssHeight <= 0) return;
@@ -1234,8 +1227,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   function frame(): void {
     if (session.hasState() && !mapFramePainted) {
       needsRedraw = true;
-    } else if (!loadingDismissed && session.hasState() && performance.now() >= loadingRepaintAt) {
-      loadingRepaintAt = performance.now() + 120;
+    } else if (
+      !loadingDismissed &&
+      !mapRenderNotified &&
+      session.hasState() &&
+      performance.now() >= loadingRepaintAt
+    ) {
+      loadingRepaintAt = performance.now() + 250;
       needsRedraw = true;
     }
     if (needsRedraw && session.hasState()) {
@@ -1265,7 +1263,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       });
       if (!mapFramePainted) {
         mapFramePainted = true;
-        notifyMapPainted();
+        maybeNotifyMapPainted();
       }
       } catch (err) {
         console.error("drawScene failed:", err);
@@ -1279,7 +1277,6 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         selectedUnitId,
         selectedCityId,
         reachable,
-        reachableCosts,
         attackTargets,
         abilityTargets: abilityTargetSet,
         bombardTargets,

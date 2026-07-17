@@ -124,6 +124,22 @@ test("spawns a naval unit on a water tile", () => {
   expect(spawned?.type).toBe("galley");
 });
 
+test("teleports a selected unit to a tile", () => {
+  const s = newGame();
+  const p = currentPlayer(s);
+  const unit = [...s.units.values()].find((u) => u.ownerId === p.id)!;
+  const dest = s.map.tiles.find(
+    (t) =>
+      (t.terrain === "grassland" || t.terrain === "plains") &&
+      !unitAt(s, t.col, t.row) &&
+      (t.col !== unit.col || t.row !== unit.row),
+  )!;
+  const res = applyCheat(s, p.id, { type: "teleportUnit", unitId: unit.id, col: dest.col, row: dest.row });
+  expect(res.ok).toBe(true);
+  expect(unit.col).toBe(dest.col);
+  expect(unit.row).toBe(dest.row);
+});
+
 test("places land units on nearby land when a water tile is selected", () => {
   const s = newGame();
   const p = currentPlayer(s);

@@ -90,7 +90,7 @@ export interface LoadingScreenOptions {
 export interface LoadingScreenHandle {
   /** World/sim state exists; dismiss still waits for the map to finish rendering. */
   notifyWorldGenerated(): void;
-  /** Map, atlases, and HUD icons are ready; hide "Loading..." and allow dismiss once speech finishes. */
+  /** Map, atlases, and HUD icons are ready; hide "Loading...", show Skip, allow dismiss. */
   notifyMapRendered(): void;
   destroy(): void;
 }
@@ -137,7 +137,7 @@ function ensureStyles(): void {
       display:flex;flex-direction:column;align-items:stretch;gap:14px;
     }
     /* Bottom slot: "Loading..." while the world builds, cross-fading into Skip
-       the moment it is ready. Both sit in one grid cell so nothing shifts. */
+       once the map and core sprites are painted and ready to play. */
     #game-loading .gl-foot{
       flex-shrink:0;display:grid;justify-items:end;align-items:center;min-height:44px;
     }
@@ -825,12 +825,10 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
   }
 
   function tryDismiss(): void {
-    if (dismissed || !worldReady) return;
-    // Auto-dismiss after speech waits for the map; Skip can leave early once the world exists.
-    if (!skipped && !mapRendered) return;
+    if (dismissed || !worldReady || !mapRendered) return;
     tryResolveCiv();
     const elapsed = performance.now() - mountedAt;
-    if (!skipped && elapsed < MIN_VISIBLE_MS) return;
+    if (elapsed < MIN_VISIBLE_MS) return;
     if (speech) {
       if (!speechDone || !typingDone) return;
       if (!skipped) {
@@ -859,7 +857,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
   resetForceDismissTimer();
 
   /** Swap "Loading..." for Skip once the game is genuinely ready behind the veil.
-   *  One class drives both, so the footer is never empty mid-swap. */
+   *  Requires world sim, a painted frame, and core atlases — not just state existing. */
   function markGameReadyIfLoaded(): void {
     if (worldReady && mapRendered) root.classList.add("game-ready");
   }

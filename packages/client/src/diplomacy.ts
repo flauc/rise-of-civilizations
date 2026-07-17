@@ -14,7 +14,7 @@
 // Re-renders are signature-gated so the deal builder's inputs survive frames.
 
 import { ASSET_BASE_URL } from "./asset-base";
-import { gameHud } from "./hud-root";
+import { gameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
 import { withPreservedScroll } from "./panel-scroll";
 import {
   relationBetween,
@@ -81,7 +81,7 @@ const STYLE = `
 .dc-box{width:min(760px,96vw);background:var(--bg-elevated);border:1px solid var(--edge);border-radius:14px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5)}
 .dc-title{text-align:center;padding:14px;border-bottom:1px solid var(--edge)}
 .dc-cards{display:flex;align-items:stretch}
-.dc-card{flex:1;padding:18px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+.dc-card{flex:1;padding:18px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;border-top:3px solid var(--dc-civ-color,#666)}
 .dc-vs{display:flex;align-items:center;justify-content:center;padding:0 6px;color:var(--parchment-dim);font-weight:700}
 .dc-portrait{width:120px;height:138px;object-fit:cover;border-radius:10px;border:1px solid var(--edge);background:var(--bg-card)}
 .dc-civ{font-family:'Cinzel',Georgia,serif;font-weight:700;color:var(--parchment);font-size:17px}
@@ -92,12 +92,15 @@ const STYLE = `
 #diplomacy{position:fixed;top:0;right:0;bottom:0;width:min(480px,100vw);z-index:54;background:var(--panel);backdrop-filter:blur(8px);border-left:1px solid var(--edge);box-shadow:-8px 0 32px rgba(0,0,0,.45);display:flex;flex-direction:column;transform:translateX(0);transition:transform .2s ease}
 #diplomacy.hidden{transform:translateX(100%);pointer-events:none}
 /* Title and ✕ come from the shared .dialog-title / .dialog-x rules in index.html. */
-.dp-head{position:relative;display:flex;align-items:center;gap:8px;padding:14px 16px;padding-right:calc(var(--dialog-x-gutter) + 8px);border-bottom:1px solid var(--edge);min-height:var(--dialog-x-size)}
+.dp-head{position:relative;display:flex;align-items:center;gap:8px;padding:14px 16px;padding-top:max(14px,env(safe-area-inset-top));padding-right:calc(var(--dialog-x-gutter) + 8px);border-bottom:1px solid var(--edge);min-height:var(--dialog-x-size);z-index:2}
+.dp-head .btn#dp-back{min-width:44px;min-height:44px;padding:0 12px;flex-shrink:0;touch-action:manipulation;pointer-events:auto}
+.dp-head .dialog-x{pointer-events:auto;touch-action:manipulation}
 .dp-title{flex:1}
 .dp-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px}
 /* contacts list rows */
 .dp-row{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--edge);border-radius:11px;margin-top:8px;cursor:pointer;background:var(--bg-card)}
 .dp-row:hover{background:rgba(201,162,39,.10);border-color:var(--accent)}
+.dp-swatch{width:14px;height:14px;border-radius:4px;flex-shrink:0;border:1px solid rgba(255,255,255,.25)}
 .dp-pic{width:40px;height:46px;object-fit:cover;border-radius:7px;border:1px solid var(--edge);background:var(--bg-card);flex:none}
 .dp-rname{font-weight:700;color:var(--parchment)}
 .dp-sub{color:var(--parchment-dim);font-size:12px}
@@ -113,7 +116,7 @@ const STYLE = `
 .dp-tab.on{background:linear-gradient(135deg,var(--accent),#a6821f);color:#15120c}
 .dp-tab .dp-badge{margin-left:0}
 /* relationship header card */
-.dp-card{display:flex;gap:12px;padding:13px;border:1px solid var(--edge);border-radius:12px;background:var(--bg-card)}
+.dp-card{display:flex;gap:12px;padding:13px;border:1px solid var(--edge);border-radius:12px;background:var(--bg-card);border-left-width:3px}
 .dp-card .dp-pic{width:56px;height:66px;border-radius:8px}
 .dp-card-info{flex:1;min-width:0}
 .dp-card-name{font-family:'Cinzel',Georgia,serif;font-weight:700;color:var(--parchment);font-size:16px;display:flex;align-items:center;gap:6px}
@@ -304,11 +307,20 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     getCiv(state.players.find((x) => x.id === pid)?.civId)?.leader ?? "";
   const personalityOf = (pid: number, state: GameState) =>
     getPersonality(state.players.find((x) => x.id === pid)?.civId);
+  const playerColor = (pid: number, state: GameState): string =>
+    state.players.find((x) => x.id === pid)?.color ?? "#888888";
+
+  function setPanelOpen(next: boolean): void {
+    if (open === next) return;
+    open = next;
+    if (open) pushHudOverlay();
+    else popHudOverlay();
+    panel.classList.toggle("hidden", !open);
+    if (!open) selected = null;
+  }
 
   function close(): void {
-    open = false;
-    panel.classList.add("hidden");
-    selected = null;
+    setPanelOpen(false);
   }
 
   // ---- first contact ----
@@ -316,19 +328,22 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     showingContact = otherId;
     const youCiv = civOf(youId, state);
     const themCiv = civOf(otherId, state);
+    const youP = state.players.find((p) => p.id === youId);
     const themP = state.players.find((p) => p.id === otherId);
     const att = attitudeLabel(attitudeScore(state, otherId, youId));
-    const card = (civId: string | undefined, name: string, leader: string, ability: string) =>
-      `<div class="dc-card"><img class="dc-portrait" src="${portrait(civId)}" onerror="this.style.visibility='hidden'"/>` +
+    const card = (civId: string | undefined, name: string, leader: string, ability: string, color: string) =>
+      `<div class="dc-card" style="--dc-civ-color:${color}">` +
+      `<span class="dp-swatch" style="background:${color}"></span>` +
+      `<img class="dc-portrait" src="${portrait(civId)}" onerror="this.style.visibility='hidden'"/>` +
       `<div class="dc-civ">${name}</div><div class="dc-leader">${leader}</div>` +
       `<div class="dc-ability">${ability}</div></div>`;
     modal.innerHTML =
       `<div class="dc-box"><div class="dc-title">You have encountered a new civilization</div>` +
       `<div class="dc-cards">` +
-      card(youCiv?.id, youCiv?.name ?? "You", youCiv?.leader ?? "", youCiv?.abilityName ?? "") +
+      card(youCiv?.id, youCiv?.name ?? "You", youCiv?.leader ?? "", youCiv?.abilityName ?? "", playerColor(youId, state)) +
       `<div class="dc-vs">vs</div>` +
       card(themCiv?.id, themCiv?.name ?? themP?.name ?? "Them", themCiv?.leader ?? "",
-        `${themCiv?.abilityName ?? ""} — feeling ${att}`) +
+        `${themCiv?.abilityName ?? ""} — feeling ${att}`, playerColor(otherId, state)) +
       `</div>` +
       (themCiv?.leaderQuote ? `<div class="dc-quote">“${themCiv.leaderQuote}”</div>` : "") +
       `<div class="dc-actions">` +
@@ -371,7 +386,10 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     propModal.innerHTML =
       `<div class="dc-box"><div class="dc-title">${title}</div>` +
       `<div class="dpm-body">` +
+      `<div style="display:flex;flex-direction:column;align-items:center;gap:6px;flex:none">` +
+      `<span class="dp-swatch" style="background:${playerColor(p.fromId, state)};width:18px;height:18px"></span>` +
       `<img class="dpm-portrait" src="${portrait(themCiv?.id)}" onerror="this.style.visibility='hidden'"/>` +
+      `</div>` +
       `<div class="dpm-info">` +
       `<div class="dpm-civ">${themCiv?.name ?? themP?.name ?? "Them"}</div>` +
       `<div class="dpm-leader">${themCiv?.leader ?? ""}</div>` +
@@ -396,8 +414,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     // listed alongside the always-present deal composer.
     propModal.querySelector<HTMLButtonElement>("#dpm-counter")?.addEventListener("click", () => {
       dismiss();
-      open = true;
-      panel.classList.remove("hidden");
+      setPanelOpen(true);
       selected = p.fromId;
       tab = "deal";
       resetComposer();
@@ -468,6 +485,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
         if (rel && rel.pact !== "none") treaties.push(rel.pact.replace("_", " "));
         body +=
           `<div class="dp-row" data-civ="${cid}">` +
+          `<span class="dp-swatch" style="background:${playerColor(cid, state)}"></span>` +
           `<img class="dp-pic" src="${portrait(civOf(cid, state)?.id)}" onerror="this.style.visibility='hidden'"/>` +
           `<div style="flex:1;min-width:0"><div class="dp-rname">${civName(cid, state)}` +
           (pending ? `<span class="dp-badge">${pending}❗</span>` : "") + `</div>` +
@@ -481,9 +499,9 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     withPreservedScroll(panel, () => {
       panel.innerHTML =
         `<div class="dp-head">` +
-        (selected !== null ? `<button class="btn" id="dp-back">←</button>` : "") +
+        (selected !== null ? `<button type="button" class="btn" id="dp-back" aria-label="Back">←</button>` : "") +
         `<span class="dp-title">🕊️ Diplomacy</span>` +
-        `<button class="dialog-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
+        `<button type="button" class="dialog-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
         `<div class="dp-body">${body}${resultMsg ? `<div class="dp-empty" style="color:#ffd967">${resultMsg}</div>` : ""}</div>`;
     });
     wire(state, viewerId);
@@ -609,10 +627,10 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     if (rep > 0) chips.push(`<span class="dp-chip warn">⚠ Warmonger ${rep}</span>`);
 
     return (
-      `<div class="dp-card">` +
+      `<div class="dp-card" style="border-left-color:${playerColor(cid, state)}">` +
       `<img class="dp-pic" src="${portrait(civOf(cid, state)?.id)}" onerror="this.style.visibility='hidden'"/>` +
       `<div class="dp-card-info">` +
-      `<div class="dp-card-name">${civName(cid, state)}</div>` +
+      `<div class="dp-card-name"><span class="dp-swatch" style="background:${playerColor(cid, state)}"></span>${civName(cid, state)}</div>` +
       `<div class="dp-sub">${leaderName(cid, state)} · ${pers}</div>` +
       `<div class="dp-meter"><div class="dp-meter-mark" style="left:${markPct}%"></div></div>` +
       `<div class="dp-meter-val"><span>${attitudeLabel(score)} (${score >= 0 ? "+" : ""}${score})</span><span class="dp-sub">their view of you</span></div>` +
@@ -937,9 +955,9 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       renderContacts(state, viewerId);
     },
     toggleContacts(state, viewerId) {
-      open = !open;
-      panel.classList.toggle("hidden", !open);
-      if (open) { selected = null; tab = "overview"; detailsOpen = false; resetComposer(); resultMsg = ""; forceRender(state, viewerId); }
+      const next = !open;
+      setPanelOpen(next);
+      if (next) { selected = null; tab = "overview"; detailsOpen = false; resetComposer(); resultMsg = ""; forceRender(state, viewerId); }
     },
     close,
     isOpen: () => open,

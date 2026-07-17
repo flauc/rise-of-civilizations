@@ -7,7 +7,7 @@ import {
   screenRotationControlsHtml,
   shouldOfferScreenRotation,
 } from "./screen-rotation-ui";
-import { setLobbyHidden } from "./app-routes";
+import { isNativeApp, setLobbyHidden } from "./app-routes";
 import { getSettings, updateSettings, type TurnUpdateView } from "./settings";
 
 export interface SettingsPanelOptions {
@@ -46,7 +46,7 @@ function ensureElements(): { overlay: HTMLDivElement; dialog: HTMLDivElement } {
 function settingsHtml(): string {
   const s = getSettings();
   const tuMode = !s.turnUpdatePopup ? "off" : s.turnUpdateView;
-  const showDelete = panelOptions.showDeleteAccount && isLoggedIn();
+  const showDelete = panelOptions.showDeleteAccount && isLoggedIn() && !isNativeApp();
   const account = getAccount();
 
   let deleteSection = "";

@@ -24,6 +24,13 @@ export interface RaidResult {
   science?: number;
 }
 
+export interface PillagePreview {
+  /** Improvement kind ids and/or "road". */
+  targets: string[];
+  gold: number;
+  science: number;
+}
+
 /** Multiplier and science conversion for raiding income. */
 function raidModifiers(state: GameState, playerId: number, tile?: Tile): { goldMult: number; sciencePercent: number } {
   const effects = playerEffects(state, playerId);
@@ -66,6 +73,32 @@ export function pillageValue(state: GameState, tile: Tile): number {
     value += 10 * ECON_BASE.road * tier;
   }
   return value;
+}
+
+/** Whether a unit can pillage the tile it stands on, and the expected payout. */
+export function previewPillage(state: GameState, unitId: number, actingPlayerId: number): PillagePreview | null {
+  const unit = state.units.get(unitId);
+  if (!unit || unit.ownerId !== actingPlayerId) return null;
+  if (!isMilitary(unit.type)) return null;
+  if (unit.movementLeft <= 0) return null;
+
+  const tile = getTile(state.map, unit.col, unit.row);
+  if (!tile || (!tile.improvement && !tile.road)) return null;
+
+  const player = playerById(state, actingPlayerId);
+  if (!player || !enemyOwnsTile(state, tile, player)) return null;
+
+  let value = pillageValue(state, tile);
+  if (unit.promotions.includes("raider")) value += 10;
+
+  const { goldMult, sciencePercent } = raidModifiers(state, actingPlayerId, tile);
+  const gold = Math.floor(value * goldMult);
+  const science = Math.floor(gold * (sciencePercent / 100));
+
+  const targets: string[] = [];
+  if (tile.improvement) targets.push(tile.improvement);
+  if (tile.road) targets.push("road");
+  return { targets, gold, science };
 }
 
 /** A military unit destroys an improvement/road on its tile and loots it. */

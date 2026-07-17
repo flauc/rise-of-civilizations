@@ -25,6 +25,7 @@ import {
   citiesOf,
   unitAt,
   unitMaxHp,
+  unitMovement,
   workName,
   type Discipline,
   type GameState,
@@ -41,6 +42,7 @@ export type CheatAction =
   | { type: "addResource"; resource: string; amount: number }
   | { type: "revealMap" }
   | { type: "spawnUnit"; unitType: UnitTypeId; col: number; row: number }
+  | { type: "teleportUnit"; unitId: number; col: number; row: number }
   | { type: "foundCity"; col: number; row: number }
   | { type: "buildRoad"; col: number; row: number; level: 1 | 2 | 3 }
   | { type: "buildWork"; kind: string; col: number; row: number }
@@ -273,6 +275,57 @@ export function applyCheat(
       const id = state.nextEntityId++;
       state.units.set(id, makeUnit(id, playerId, action.unitType, target.col, target.row));
       log(state, `${player.name} spawned a ${action.unitType} (cheat).`, { actorId: playerId, targetIds: [playerId] });
+      return { ok: true };
+    }
+
+    case "teleportUnit": {
+      const unit = state.units.get(action.unitId);
+      if (!unit) return { ok: false, error: "no such unit" };
+      if (unit.ownerId !== playerId) return { ok: false, error: "not your unit" };
+      if (unit.inTransit) return { ok: false, error: "unit in transit" };
+      if (unit.aboardShipId !== undefined) return { ok: false, error: "aboard a ship" };
+      const tile = getTile(state.map, action.col, action.row);
+      if (!tile) return { ok: false, error: "no such tile" };
+      const def = UNIT_DEFS[unit.type];
+      const naval = isNaval(def);
+      const oceanUnlocked = naval && (def.oceanGoing ?? true);
+      let target = { col: action.col, row: action.row };
+      if (naval) {
+        if (!isNavalPassable(tile.terrain, oceanUnlocked)) {
+          const open = findOpenNavalTile(state, action.col, action.row, oceanUnlocked);
+          if (!open) return { ok: false, error: "not navigable water" };
+          target = open;
+        } else {
+          const occupant = unitAt(state, target.col, target.row);
+          if (occupant && occupant.id !== unit.id) {
+            const open = findOpenNavalTile(state, action.col, action.row, oceanUnlocked);
+            if (!open) return { ok: false, error: "no empty water tile nearby" };
+            target = open;
+          }
+        }
+      } else {
+        if (!isPassableLand(tile.terrain)) {
+          const open = findOpenLandTile(state, action.col, action.row);
+          if (!open) return { ok: false, error: "not passable land" };
+          target = open;
+        } else {
+          const occupant = unitAt(state, target.col, target.row);
+          if (occupant && occupant.id !== unit.id) {
+            const open = findOpenLandTile(state, action.col, action.row);
+            if (!open) return { ok: false, error: "no empty tile nearby" };
+            target = open;
+          }
+        }
+        unit.embarked = false;
+      }
+      unit.col = target.col;
+      unit.row = target.row;
+      unit.movementLeft = unitMovement(state, unit);
+      log(state, `${player.name} teleported a ${def.name} (cheat).`, {
+        actorId: playerId,
+        targetIds: [playerId],
+        tile: target,
+      });
       return { ok: true };
     }
 
