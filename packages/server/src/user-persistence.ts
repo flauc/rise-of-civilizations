@@ -66,21 +66,26 @@ export async function loadPersistedUsers(
   return count;
 }
 
+/** Writes the registry to disk. Returns false when the empty-list guard declined
+ *  the write, which means the caller must not propagate the emptiness to any
+ *  other store either. Pass `force` only when the emptiness is authorized (an
+ *  account deletion), never to push a save through. */
 export async function persistUsers(
   storage: MemoryStorage,
   path = usersFilePath(),
   opts?: { force?: boolean },
-): Promise<void> {
+): Promise<boolean> {
   const users = await storage.listUsers();
   if (!opts?.force && users.length === 0 && loadedUserCount > 0) {
     console.error(
       `user persistence: refusing to overwrite ${path} with an empty user list (had ${loadedUserCount} on load)`,
     );
-    return;
+    return false;
   }
   await mkdir(dirname(path), { recursive: true });
   const tmp = `${path}.tmp`;
   await writeFile(tmp, JSON.stringify(users, null, 2), "utf8");
   await rename(tmp, path);
   loadedUserCount = users.length;
+  return true;
 }

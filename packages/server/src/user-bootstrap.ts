@@ -38,13 +38,17 @@ export async function initUserPersistence(storage: MemoryStorage): Promise<UserP
     await persistUsers(storage, jsonPath, { force: true });
   }
 
+  // `force` authorizes writing an empty registry, which only an account deletion
+  // should ever do. Without it an empty in-memory registry means something went
+  // wrong upstream, and must not be allowed to reach either store.
   const save = async (force = false): Promise<void> => {
-    await persistUsers(storage, jsonPath, force ? { force: true } : undefined);
+    const written = await persistUsers(storage, jsonPath, force ? { force: true } : undefined);
+    if (!written) return;
     if (postgres) await postgres.syncAll(await storage.listUsers());
   };
 
   const onShutdown = (): void => {
-    void save(true).finally(() => process.exit(0));
+    void save().finally(() => process.exit(0));
   };
   process.on("SIGTERM", onShutdown);
   process.on("SIGINT", onShutdown);

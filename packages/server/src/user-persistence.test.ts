@@ -37,10 +37,26 @@ describe("user persistence", () => {
     await storage.createUser("Bob", "hash-b");
     await persistUsers(storage, path, { force: true });
 
+    // Load to register the on-disk count, then empty it the way a bug would.
     const empty = new MemoryStorage();
     await loadPersistedUsers(empty, path);
-    await persistUsers(empty, path);
+    empty.clearUsers();
+
+    expect(await persistUsers(empty, path)).toBe(false);
     const text = await readFile(path, "utf8");
     expect(JSON.parse(text)).toHaveLength(1);
+  });
+
+  it("writes an empty registry when the emptying is forced", async () => {
+    const storage = new MemoryStorage();
+    await storage.createUser("Bob", "hash-b");
+    expect(await persistUsers(storage, path, { force: true })).toBe(true);
+
+    const empty = new MemoryStorage();
+    await loadPersistedUsers(empty, path);
+    empty.clearUsers();
+
+    expect(await persistUsers(empty, path, { force: true })).toBe(true);
+    expect(JSON.parse(await readFile(path, "utf8"))).toHaveLength(0);
   });
 });

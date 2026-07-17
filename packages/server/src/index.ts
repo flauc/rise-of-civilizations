@@ -262,7 +262,9 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
     case "deleteAccount": {
       const res = await deleteAccount(storage, msg.token, msg.password);
       if ("error" in res) return send(ws, { t: "error", message: res.error });
-      userPersistence.save().catch((err) => console.error("user persistence save failed:", err));
+      // Forced: deleting the last account legitimately empties the registry, and
+      // the guard would otherwise refuse the write and resurrect the user.
+      userPersistence.save(true).catch((err) => console.error("user persistence save failed:", err));
       send(ws, { t: "accountDeleted" });
       return;
     }

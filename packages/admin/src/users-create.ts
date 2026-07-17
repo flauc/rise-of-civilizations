@@ -12,6 +12,35 @@ function usersModalEl(): HTMLDivElement {
   return el;
 }
 
+export interface CreateUserBody {
+  handle: string;
+  password: string;
+  email?: string;
+  newsletter: boolean;
+}
+
+/** POST a new account. A rejected request resolves to `{ error }`; only a dead
+ *  connection throws, so callers must still catch. */
+export async function createUser(
+  body: CreateUserBody,
+  token: string,
+): Promise<{ handle: string } | { error: string }> {
+  const res = await fetch(`${API_BASE}/admin/api/users`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-admin-token": token },
+    body: JSON.stringify(body),
+  });
+  // A proxy or a server crash answers with HTML, not the JSON envelope.
+  let parsed: { error?: string; handle?: string } | null = null;
+  try {
+    parsed = (await res.json()) as { error?: string; handle?: string };
+  } catch {
+    parsed = null;
+  }
+  if (!res.ok) return { error: parsed?.error ?? `Request failed (${res.status})` };
+  return { handle: parsed?.handle ?? body.handle };
+}
+
 export function openCreateUserModal(onCreated: () => void): void {
   const modal = usersModalEl();
   modal.style.display = "flex";
@@ -52,8 +81,15 @@ export function openCreateUserModal(onCreated: () => void): void {
 
   const form = modal.querySelector<HTMLFormElement>("#users-create-form")!;
   const errEl = modal.querySelector<HTMLDivElement>("#users-create-err")!;
+  const submitBtn = modal.querySelector<HTMLButtonElement>("#users-create-submit")!;
+  const fail = (message: string): void => {
+    errEl.textContent = message;
+    errEl.style.display = "block";
+  };
+
   form.addEventListener("submit", (e) => {
     e.preventDefault();
+    if (submitBtn.disabled) return;
     void (async () => {
       errEl.style.display = "none";
       const handle = modal.querySelector<HTMLInputElement>("#users-create-handle")!.value.trim();
@@ -61,16 +97,15 @@ export function openCreateUserModal(onCreated: () => void): void {
       const email = modal.querySelector<HTMLInputElement>("#users-create-email")!.value.trim();
       const newsletter = modal.querySelector<HTMLInputElement>("#users-create-newsletter")!.checked;
       const token = getToken();
-      const res = await fetch(`${API_BASE}/admin/api/users`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-admin-token": token },
-        body: JSON.stringify({ handle, password, email: email || undefined, newsletter }),
-      });
-      const body = (await res.json()) as { error?: string; handle?: string };
-      if (!res.ok) {
-        errEl.textContent = body.error ?? `Request failed (${res.status})`;
-        errEl.style.display = "block";
-        return;
+      // The endpoint is not idempotent, so a double submit would create two accounts.
+      submitBtn.disabled = true;
+      try {
+        const res = await createUser({ handle, password, email: email || undefined, newsletter }, token);
+        if ("error" in res) return fail(res.error);
+      } catch (err) {
+        return fail(`Could not reach the server (${String(err)}).`);
+      } finally {
+        submitBtn.disabled = false;
       }
       close();
       onCreated();
