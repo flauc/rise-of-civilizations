@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
-import { territorySize, expandTerritory, expandTerritoryRing, expansionCandidates, canExpandTo, cityTerritory } from "./territory";
+import { territorySize, expandTerritory, expandTerritoryRing, expansionCandidates, canExpandTo, cityTerritory, nextExpansionTile } from "./territory";
+import { expansionScorer } from "./economy";
 import { ejectTrespassers, offsetNeighbors } from "./movement";
 import { isPassableLand, isWaterTerrain } from "./terrain";
 import { citiesOf, makeUnit, unitsOf } from "./state";
@@ -53,6 +54,31 @@ describe("territory", () => {
     // The chosen tile is now owned, and the target is consumed (back to auto).
     expect(getTile(state.map, target.col, target.row)!.ownerCityId).toBe(city.id);
     expect(city.expandTarget).toBeUndefined();
+  });
+
+  it("auto-picks a high-value resource tile over a plain one when scored", () => {
+    const state = createGame({ seed: "terr-score", cols: 40, rows: 28, barbarians: false });
+    beginTurn(state);
+    const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    const city = citiesOf(state, 0)[0]!;
+    const cands = expansionCandidates(state, city);
+    expect(cands.length).toBeGreaterThan(1);
+    // Strip any pre-rolled resources so the doctored tile is the only draw.
+    for (const c of cands) getTile(state.map, c.col, c.row)!.resource = undefined;
+    // Drop a fresh luxury (a new empire amenity) on the LAST candidate — never the
+    // nearest, so a distance-only pick would miss it.
+    const prize = cands[cands.length - 1]!;
+    const prizeTile = getTile(state.map, prize.col, prize.row)!;
+    prizeTile.terrain = "grassland"; // a terrain silver can sit on conceptually; yields come from the resource
+    prizeTile.resource = "silver"; // luxury: +2 gold + a brand-new amenity
+
+    const scored = nextExpansionTile(state, city, expansionScorer(state, city));
+    expect(scored).toEqual(prize);
+    // Without the scorer we get the nearest tile, which need not be the prize —
+    // confirming the scorer is what steers growth toward the resource.
+    const nearest = nextExpansionTile(state, city);
+    expect(nearest).not.toBeNull();
   });
 
   it("expandTerritoryRing claims every adjacent frontier tile at once", () => {

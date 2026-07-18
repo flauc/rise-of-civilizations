@@ -22,11 +22,11 @@ import { isMilitary, UNIT_DEFS, TECH_DEFS, type UnitTypeId, type TechId } from "
 import { unitMaxHp } from "./combat";
 import { hasMorale, onBarbCampCleared, onUnitPromoted, onVillageGlobalMorale, onVillageUnitMorale, startingUnitMorale } from "./morale";
 import { onLegendCampCleared } from "./legend-earning";
-import { availableTechs, autoAssignCitizens } from "./economy";
+import { availableTechs, autoAssignCitizens, expansionScorer } from "./economy";
 import { getGovernment, unitDisplayName } from "./civs";
 import { expandTerritory } from "./territory";
-import { offsetNeighbors, isCoastalLand, isCoastalWater } from "./movement";
-import { isPassableLand } from "./terrain";
+import { offsetNeighbors, isCoastalWater } from "./movement";
+import { isPassableLand, isWaterTerrain } from "./terrain";
 import { computeVisible } from "./visibility";
 import { religionUnlocked } from "./religion";
 import { gameSpeedMultiplier } from "./game-speed";
@@ -139,12 +139,22 @@ function cumulativeTechCost(tech: TechId): number {
   return sum;
 }
 
+/** Naval techs sit off the military beeline: a civ racing to Riders or Swordsmen
+ *  does not detour through Weaving -> Sailcloth -> Sailing early, so BARB_TECH_RATE
+ *  (calibrated to a land-military beeline) reaches them far sooner than any real
+ *  player would. This factor stretches every warship's unlock turn to keep coastal
+ *  raiders a mid-game escalation rather than an opening threat. */
+const BARB_NAVAL_UNLOCK_MULT = 1.6;
+
 /** The turn a barbarian unit becomes eligible to spawn, scaled for game speed.
  *  Techless units (clubman, warrior, slinger, ...) are available from turn 0. */
 function barbUnitUnlockTurn(state: GameState, type: UnitTypeId, speedScale: number): number {
-  const tech = UNIT_DEFS[type].reqTech;
+  const def = UNIT_DEFS[type];
+  const tech = def.reqTech;
   if (!tech) return 0;
-  return Math.round((cumulativeTechCost(tech) / BARB_TECH_RATE) * speedScale);
+  const naval = def.cls === "naval_melee" || def.cls === "naval_ranged";
+  const mult = naval ? BARB_NAVAL_UNLOCK_MULT : 1;
+  return Math.round((cumulativeTechCost(tech) / BARB_TECH_RATE) * speedScale * mult);
 }
 
 /** Weight multiplier on warships relative to land raiders of equal strength. Above
@@ -190,10 +200,55 @@ function pickBarbUnit(pool: UnitTypeId[], rng: () => number): UnitTypeId {
   return pool[pool.length - 1]!;
 }
 
-/** Place a barbarian warship on a coastal-water tile beside (col,row). */
+/** Smallest lake (connected water-body tiles) a camp can launch a fleet onto. A
+ *  pond smaller than this can't float a raiding party, so a camp beside it stays
+ *  land-locked. The open sea (ocean/coast) is always far larger, so this floor
+ *  only ever gates cramped inland lakes. */
+const MIN_NAVAL_WATER_TILES = 4;
+
+/** Number of connected water tiles reachable from (col,row), flood-filling across
+ *  every water terrain but stopping once `cap` is reached — we only need to know
+ *  whether a body clears a floor, so counting a whole ocean is wasted work. */
+function waterBodySize(state: GameState, col: number, row: number, cap: number): number {
+  const seen = new Set<string>([`${col},${row}`]);
+  const stack = [{ col, row }];
+  let count = 0;
+  while (stack.length > 0 && count < cap) {
+    const cur = stack.pop()!;
+    count++;
+    for (const n of offsetNeighbors(state.map, cur.col, cur.row)) {
+      const key = `${n.col},${n.row}`;
+      if (seen.has(key)) continue;
+      const nt = getTile(state.map, n.col, n.row);
+      if (!nt || !isWaterTerrain(nt.terrain)) continue;
+      seen.add(key);
+      stack.push({ col: n.col, row: n.row });
+    }
+  }
+  return count;
+}
+
+/** True if a warship may be launched onto this specific water tile: it must sit
+ *  beside land, and be either open sea (ocean/coast) or a lake big enough to sail
+ *  (at least MIN_NAVAL_WATER_TILES connected tiles). */
+function isNavalSpawnWater(state: GameState, col: number, row: number): boolean {
+  const tile = getTile(state.map, col, row);
+  if (!tile || !isCoastalWater(state, col, row)) return false;
+  if (tile.terrain !== "lake") return true; // ocean/coast: the open sea
+  return waterBodySize(state, col, row, MIN_NAVAL_WATER_TILES) >= MIN_NAVAL_WATER_TILES;
+}
+
+/** True if the camp at (col,row) has navigable water beside it to launch a fleet:
+ *  the open sea, or a lake of at least MIN_NAVAL_WATER_TILES tiles. A camp beside
+ *  only a tiny pond never fields warships. */
+function campHasNavalWater(state: GameState, col: number, row: number): boolean {
+  return offsetNeighbors(state.map, col, row).some((n) => isNavalSpawnWater(state, n.col, n.row));
+}
+
+/** Place a barbarian warship on a navigable water tile beside (col,row). */
 function spawnNavalNear(state: GameState, ownerId: number, type: UnitTypeId, col: number, row: number): Unit | null {
   for (const n of offsetNeighbors(state.map, col, row)) {
-    if (isCoastalWater(state, n.col, n.row) && !unitAt(state, n.col, n.row)) {
+    if (isNavalSpawnWater(state, n.col, n.row) && !unitAt(state, n.col, n.row)) {
       const id = state.nextEntityId++;
       const u = makeUnit(id, ownerId, type, n.col, n.row, 0, startingUnitMorale(state, ownerId));
       state.units.set(id, u);
@@ -279,7 +334,7 @@ export function triggerVillage(state: GameState, unit: Unit, player: Player): vo
     });
   } else if (roll < 0.52 && city) {
     city.population += 1;
-    expandTerritory(state, city); // borders grow with the city
+    expandTerritory(state, city, 1, expansionScorer(state, city)); // borders grow toward the best tile
     autoAssignCitizens(state, city, city.autoMode); // gifted citizen works the best free tile
     log(state, `A village added a citizen to ${city.name}.`, {
       actorId: player.id,
@@ -462,7 +517,7 @@ export function spawnFromCamps(state: GameState, barbId: number): void {
     if (tile.feature !== "barb_camp") continue;
     const cadence = barbarianCampCadence(state, tile.col, tile.row);
     if (state.turn % cadence !== 0) continue;
-    const coastal = isCoastalLand(state, tile.col, tile.row);
+    const coastal = campHasNavalWater(state, tile.col, tile.row);
     const pool = barbarianPool(state, speedScale, coastal);
     if (pool.length === 0) continue;
     const rng = makeRng(hashSeed(`camp:${tile.col},${tile.row}:${state.turn}`));

@@ -99,7 +99,7 @@ function dialogHtml(d: CombatPreviewDetail): string {
   const noRetal = d.ranged;
   return (
     `<button type="button" class="dialog-x" id="combat-preview-close" title="Close" aria-label="Close">✕</button>` +
-    `<div class="combat-preview-header"><b>⚔ Attack preview</b></div>` +
+    `<div class="combat-preview-header"><b>Attack Preview</b></div>` +
     `<div class="combat-preview-matchup">` +
     sideColumn(d, "attacker", d.attackerName, d.attackerHp, d.attackerHpAfter, d.attackerMaxHp, d.attackerDamage, d.attackerMods, false) +
     `<div class="combat-preview-vs">vs</div>` +

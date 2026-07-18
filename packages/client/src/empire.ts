@@ -1,9 +1,10 @@
-// The "Empire" overview: a tabbed modal listing all of the player's Units,
-// Cities, and Specialists/Works (with wonder management). Self-contained so it
-// stays out of the busy ui.ts; ui.ts only toggles it and re-renders it per frame
-// while open.
+// The empire overview dialogs: Cities, Units, Specialists/Works (with wonder
+// management) and Trade Routes. Each opens as its own centered dialog in the
+// same style as the treasury / morale dialogs; one is shown at a time.
+// Self-contained so it stays out of the busy ui.ts; ui.ts only toggles it and
+// re-renders it per frame while open.
 
-import { gameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
+import { gameHud } from "./hud-root";
 import { withPreservedScroll } from "./panel-scroll";
 import {
   UNIT_DEFS,
@@ -54,37 +55,45 @@ export interface EmpireHandlers {
 export type Tab = "units" | "cities" | "specialists" | "trade";
 
 const STYLE = `
-#empire{position:fixed;top:0;right:0;bottom:0;left:auto;width:min(460px,92vw);z-index:55;background:#0d1b27;border-left:1px solid var(--edge);box-shadow:-8px 0 24px rgba(0,0,0,.35);display:flex;flex-direction:column;transform:translateX(0);transition:transform .2s ease,pointer-events 0s}
-#empire.hidden{transform:translateX(100%);pointer-events:none}
-.emp-box{width:100%;height:100%;display:flex;flex-direction:column;overflow:hidden}
-/* Title and ✕ come from the shared .dialog-title / .dialog-x rules in index.html. */
-.emp-head{position:relative;display:flex;align-items:center;gap:10px;padding:12px 16px;padding-top:max(12px,env(safe-area-inset-top));padding-right:calc(var(--dialog-x-gutter) + 8px);border-bottom:1px solid var(--edge);min-height:var(--dialog-x-size);z-index:2}
-.emp-head .dialog-x{pointer-events:auto;touch-action:manipulation}
-.emp-tab{padding:7px 14px;border-radius:8px;cursor:pointer;color:#b8d4ec;background:transparent;border:1px solid transparent;font:inherit;font-size:14px}
-.emp-tab.active{background:#213a52;border-color:var(--edge);color:#fff;font-weight:700}
-.emp-title{margin-right:8px}
-@media(max-width:640px){.emp-title{display:none}.emp-tab{padding:7px 11px;font-size:13px}}
-.emp-body{flex:1;overflow:auto;padding:14px 16px}
-.emp-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--edge);border-radius:9px;margin-top:7px;cursor:pointer;background:#11202e}
-.emp-row:hover{background:#17304470;border-color:#3a5d7c}
-.emp-row .grow{flex:1;min-width:0}
+/* Overlay + centered dialog, same treatment as the treasury (#gold-dialog) and
+   morale dialogs. The hidden class (not .show) also keeps the tutorial coach's
+   findVisibleTarget from anchoring to the closed dialog. */
+#empire-overlay{position:fixed;inset:0;background:rgba(15,14,11,.72);opacity:1;pointer-events:auto;transition:opacity .2s;z-index:60}
+#empire-overlay.hidden{opacity:0;pointer-events:none}
+#empire{position:fixed;left:50%;top:var(--dialog-top);transform:var(--dialog-transform);width:min(560px,calc(100vw - 32px));max-height:min(80vh,var(--dialog-max-h));background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;opacity:1;pointer-events:auto;transition:opacity .2s;z-index:61}
+#empire.hidden{opacity:0;pointer-events:none}
+/* Cinzel/accent title styling comes from the shared .emp-title rule in
+   index.html; the band metrics keep the title clear of the pinned ✕. */
+.emp-title{margin-bottom:12px;min-height:var(--dialog-x-size);padding-right:var(--dialog-x-gutter);display:flex;flex-direction:column;justify-content:center}
+.emp-body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;font-size:13px;line-height:1.5}
+.emp-row{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;padding:10px 12px;border:1px solid var(--edge);border-radius:11px;margin-top:8px;cursor:pointer;background:var(--bg-card)}
+.emp-row:hover{background:rgba(201,162,39,.10);border-color:var(--accent)}
+.emp-row .grow{flex:1 1 180px;min-width:0}
 .emp-unit-icon{position:relative;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;flex:0 0 auto;font-size:18px}
 .emp-unit-icon img{position:absolute;inset:0;width:28px;height:28px;object-fit:contain;image-rendering:auto}
-.emp-name{font-weight:700;color:#fff}
-.emp-sub{color:#9fc0dc;font-size:12px}
-.emp-pill{background:#16293c;border-radius:6px;padding:2px 7px;font-size:12px;white-space:nowrap}
-.emp-card{border:1px solid var(--edge);border-radius:10px;margin-top:10px;padding:10px 12px;background:#11202e}
-.emp-stepper{display:flex;gap:4px;align-items:center}
-.emp-bar{height:7px;background:#1a2c40;border-radius:4px;overflow:hidden;margin-top:3px}
-.emp-bar>i{display:block;height:100%;background:#c9a24a}
-.emp-empty{color:#9fc0dc;margin-top:14px}
+.emp-name{font-weight:700;color:var(--parchment)}
+.emp-sub{color:var(--parchment-dim);font-size:12px}
+.emp-pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;border-radius:20px;padding:3px 10px;border:1px solid var(--edge);background:rgba(0,0,0,.22);color:var(--parchment-dim);white-space:nowrap}
+.emp-card{border:1px solid var(--edge);border-radius:12px;margin-top:10px;padding:11px 13px;background:var(--bg-card)}
+.emp-stepper{display:flex;gap:6px;align-items:center}
+.emp-stepper .btn{min-width:38px;min-height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.emp-bar{height:7px;background:rgba(0,0,0,.35);border-radius:4px;overflow:hidden;margin-top:3px}
+.emp-bar>i{display:block;height:100%;background:var(--accent)}
+.emp-empty{color:var(--parchment-dim);margin-top:14px;line-height:1.6}
 .emp-spec-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px}
-.emp-spec-list{margin:3px 0 2px;border-left:2px solid #24384c;padding-left:9px}
+.emp-spec-list{margin:3px 0 2px;border-left:2px solid var(--edge);padding-left:9px}
 .emp-spec{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:2px 0}
-.emp-spec-name{color:#eaf3fb;font-size:13px}
-.emp-spec-meta{color:#9fc0dc;font-size:12px;white-space:nowrap}
-.emp-stars{color:#ffd967;letter-spacing:1px}
-.emp-idle{color:#7e93a6;font-style:italic}
+.emp-spec-name{color:var(--parchment);font-size:13px}
+.emp-spec-meta{color:var(--parchment-dim);font-size:12px;white-space:nowrap}
+.emp-stars{color:var(--accent-bright);letter-spacing:1px}
+.emp-idle{color:var(--parchment-dim);font-style:italic}
+/* mobile */
+@media(max-width:560px){
+  #empire{padding:14px 14px}
+  .emp-row{padding:12px}
+  .emp-body .btn{min-height:44px}
+  .emp-stepper .btn{min-width:44px}
+}
 `;
 
 export interface Empire {
@@ -94,44 +103,45 @@ export interface Empire {
   render(state: GameState, viewerId: number): void;
 }
 
+/** Dialog title per screen. */
+const TITLES: Record<Tab, string> = {
+  cities: "Cities",
+  units: "Units",
+  specialists: "Specialists",
+  trade: "Trade Routes",
+};
+
 export function createEmpire(handlers: EmpireHandlers): Empire {
   let open = false;
   let tab: Tab = "cities";
-  let last: { state: GameState; viewerId: number } | null = null;
 
   const style = document.createElement("style");
   style.textContent = STYLE;
   document.head.appendChild(style);
 
+  const overlay = document.createElement("div");
+  overlay.id = "empire-overlay";
+  overlay.className = "hidden";
+  gameHud().appendChild(overlay);
+
   const root = document.createElement("div");
   root.id = "empire";
   root.className = "hidden";
   root.innerHTML =
-    `<div class="emp-box">` +
-    `<div class="emp-head"><span class="emp-title">🏛️ Empire</span>` +
-    `<button class="emp-tab" data-tab="cities">Cities</button>` +
-    `<button class="emp-tab" data-tab="units">Units</button>` +
-    `<button class="emp-tab" data-tab="specialists">Specialists</button>` +
-    `<button class="emp-tab" data-tab="trade">Trade</button>` +
-    `<button type="button" class="dialog-x" id="emp-close" title="Close" aria-label="Close">✕</button></div>` +
-    `<div class="emp-body" id="emp-body"></div></div>`;
+    `<button type="button" class="dialog-x" id="emp-close" title="Close" aria-label="Close">✕</button>` +
+    `<div class="emp-title" id="emp-title"></div>` +
+    `<div class="emp-body" id="emp-body"></div>`;
   gameHud().appendChild(root);
 
+  const title = root.querySelector<HTMLDivElement>("#emp-title")!;
   const body = root.querySelector<HTMLDivElement>("#emp-body")!;
   root.querySelector<HTMLButtonElement>("#emp-close")!.addEventListener("click", () => close());
-  root.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((el) =>
-    el.addEventListener("click", () => {
-      tab = el.dataset.tab as Tab;
-      if (last) render(last.state, last.viewerId);
-    }),
-  );
 
   function setOpen(next: boolean): void {
     if (open === next) return;
     open = next;
-    if (open) pushHudOverlay();
-    else popHudOverlay();
     root.classList.toggle("hidden", !open);
+    overlay.classList.toggle("hidden", !open);
   }
 
   function close(): void {
@@ -154,7 +164,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
             : c.production.kind === "trainingBuilding"
               ? `${TRAINING_BUILDING_DEFS[c.production.family].name} T${c.production.tier}`
               : c.production.id
-          : "—";
+          : "Idle";
         const training = c.trainingQueue.length;
         const works = worksOfCity(state, c.id).length;
         return (
@@ -182,7 +192,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         const d = UNIT_DEFS[u.type];
         const idle = u.movementLeft > 0 && !u.sleeping;
         const status = u.sleeping ? "💤 Sleeping" : idle ? "Ready" : "Done";
-        const color = u.sleeping ? "#7e93a6" : idle ? "#ffd967" : "#7e93a6";
+        const color = u.sleeping ? "var(--parchment-dim)" : idle ? "var(--accent-bright)" : "var(--parchment-dim)";
         // Match the map overlay's sprite: legend id, else unique-unit id, else base
         // type. On load failure the image is swapped for the glyph — showing the
         // glyph underneath instead would bleed through transparent PNG regions.
@@ -191,7 +201,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         return (
           `<div class="emp-row" data-unit="${u.id}">` +
           `<span class="emp-unit-icon"><img src="${tokenSrc}" alt="" onerror="this.replaceWith(document.createTextNode('${d.glyph}'))"></span>` +
-          `<div class="grow"><div class="emp-name">${d.name}${u.level > 1 ? ` <span style="color:#ffd967">Lv${u.level}</span>` : ""}</div>` +
+          `<div class="grow"><div class="emp-name">${d.name}${u.level > 1 ? ` <span style="color:var(--accent-bright)">Lv${u.level}</span>` : ""}</div>` +
           `<div class="emp-sub">(${u.col}, ${u.row}) · moves ${u.movementLeft}/${d.movement}${d.strength > 0 ? ` · HP ${u.hp}/${unitMaxHp(u)}` : ""}</div></div>` +
           `<span class="emp-pill" style="color:${color}">${status}</span>` +
           `</div>`
@@ -202,10 +212,17 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
 
   function renderSpecialists(state: GameState, viewerId: number): string {
     const cities = citiesOf(state, viewerId);
+    const avail = availableSpecialists(state.players.find((p) => p.id === viewerId)!);
     let html = "";
+    if (cities.length === 0) {
+      html += `<div class="emp-empty">No cities yet.<br>Found a city and its citizens can be trained as specialists.</div>`;
+    } else if (avail.length === 0) {
+      html +=
+        `<div class="emp-empty">No specialist professions unlocked yet.<br>` +
+        `<span style="color:var(--accent-bright);opacity:.85">Research new technologies to unlock professions, then convert free citizens here.</span></div>`;
+    }
     for (const c of cities) {
       const free = workerSlots(c);
-      const avail = availableSpecialists(state.players.find((p) => p.id === viewerId)!);
       const jobOf = (w: ReturnType<typeof currentWorkFor>): string => {
         if (!w) return `<span class="emp-idle">idle</span>`;
         const label = w.kind === "wonder" ? getWonder(w.wonderId)?.name ?? "a wonder" : workName(w.kind, w.tier ?? 1);
@@ -218,8 +235,8 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
           // Group header with train/release steppers …
           const header =
             `<div class="emp-spec-head">` +
-            `<span title="${def.latin} — ${def.desc}"><b style="color:#fff">${def.name}</b>` +
-            (mine.length ? ` <span class="emp-sub">×${mine.length}</span>` : ` <span class="emp-sub">—</span>`) +
+            `<span title="${def.latin}: ${def.desc}"><b style="color:var(--parchment)">${def.name}</b>` +
+            (mine.length ? ` <span class="emp-sub">×${mine.length}</span>` : ` <span class="emp-sub">×0</span>`) +
             `</span>` +
             `<span class="emp-stepper"><button class="btn" data-spec-minus="${id}" data-city="${c.id}"${mine.length ? "" : " disabled"}>−</button>` +
             `<button class="btn" data-spec-plus="${id}" data-city="${c.id}"${free > 0 ? "" : " disabled"}>＋</button></span></div>`;
@@ -243,8 +260,8 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
           const pct = req > 0 ? Math.floor((done / req) * 100) : 0;
           const label = w.kind === "wonder" ? getWonder(w.wonderId)?.name ?? "Wonder" : workName(w.kind, w.tier ?? 1);
           return (
-            `<div style="margin-top:6px"><div class="emp-sub">${label} — ${pct}% ` +
-            `<a href="#" data-cancel="${w.id}" style="color:#e0907d;margin-left:6px">cancel</a></div>` +
+            `<div style="margin-top:6px"><div class="emp-sub">${label}: ${pct}% ` +
+            `<a href="#" data-cancel="${w.id}" style="color:#d98a6a;margin-left:6px">cancel</a></div>` +
             `<div class="emp-bar"><i style="width:${pct}%"></i></div></div>`
           );
         })
@@ -253,7 +270,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         `<div class="emp-card"><div class="emp-name">${c.isCapital ? "★ " : ""}${c.name} ` +
         `<span class="emp-sub">(${free} free citizens)</span></div>` +
         steppers +
-        (works ? `<div class="emp-sub" style="margin-top:8px;color:#c79ad6">Public works</div>${works}` : "") +
+        (works ? `<div class="emp-sub" style="margin-top:8px;color:var(--accent)">Public works</div>${works}` : "") +
         `</div>`;
     }
 
@@ -280,7 +297,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
       const siteStr = w.placement?.site ? `📍 ${w.placement.site}` : "";
       const gateBits = [techStr ? `🔬 ${techStr}` : "", costStr, siteStr].filter(Boolean).join(" · ");
       let action: string;
-      if (built) action = `<span class="emp-pill" style="color:#7ad08a">Built</span>`;
+      if (built) action = `<span class="emp-pill" style="color:#9cbf72">Built</span>`;
       else if (inProg) {
         const req = Object.values(inProg.requirement).reduce((a, b) => a + (b ?? 0), 0);
         const done = Object.values(inProg.progress).reduce((a, b) => a + (b ?? 0), 0);
@@ -289,13 +306,13 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
         // Wonders are raised on a chosen tile (like an improvement): select an
         // empty owned tile near a city with the required craftsmen and pick the
         // wonder from that tile's panel.
-        action = `<span class="emp-pill" style="color:#9fc3e0" title="Select an empty tile in your territory to raise this wonder">🗺️ build on a tile</span>`;
+        action = `<span class="emp-pill" style="color:var(--parchment)" title="Select an empty tile in your territory to raise this wonder">🗺️ build on a tile</span>`;
       }
       html +=
         `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)">` +
         `<div class="grow"><div class="emp-name" style="font-size:14px">${w.name}</div>` +
-        `<div class="emp-sub">${w.desc}</div><div class="emp-sub" style="color:#c9a24a">Crew: ${reqStr}</div>` +
-        (gateBits ? `<div class="emp-sub" style="color:#9fc3e0">Unlock: ${gateBits}</div>` : "") +
+        `<div class="emp-sub">${w.desc}</div><div class="emp-sub" style="color:var(--accent)">Crew: ${reqStr}</div>` +
+        (gateBits ? `<div class="emp-sub" style="color:var(--accent-bright);opacity:.85">Unlock: ${gateBits}</div>` : "") +
         `</div>${action}</div>`;
       }
       html += `</div>`;
@@ -315,7 +332,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
       return (
         `<div class="emp-empty">No trade routes yet.<br>` +
         `Move a Trader into one of your cities and use “Establish trade route” to open one.<br>` +
-        `<span style="color:#9fc3e0">Tip: connect cities with roads — and upgrade them — to grow a route's gold past the base cap.<br>` +
+        `<span style="color:var(--accent-bright);opacity:.85">Tip: connect cities with roads, and upgrade them, to grow a route's gold past the base cap.<br>` +
         `Post a warrior on a route's path and choose <b>🛡 Escort</b> to guard it from barbarian raids.</span></div>`
       );
     }
@@ -343,16 +360,16 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
           // Tag: a domestic route between your own cities, or an international one —
           // in which case we name the partner civilization.
           const tag = b.isInternational
-            ? `<span class="emp-pill" style="color:#c9a24a;border-color:#c9a24a" title="Route to an allied civilization">🤝 ${civNameOf(state, r.toOwnerId ?? to?.ownerId)}</span>`
+            ? `<span class="emp-pill" style="color:var(--accent-bright);border-color:var(--accent)" title="Route to an allied civilization">🤝 ${civNameOf(state, r.toOwnerId ?? to?.ownerId)}</span>`
             : `<span class="emp-pill" title="Route between two of your own cities">🏠 Domestic</span>`;
           // Road-connection line — the ask is to make the infrastructure bonus visible.
           const roadLine =
             b.roadTier > 0
-              ? `<div class="emp-sub" style="color:#8fce8f">🛣️ ${workName("road", b.roadTier)} link · +${b.road}🪙</div>`
-              : `<div class="emp-sub" style="color:#c98f8f">⚠ No road link — pave every tile of the path to boost this route</div>`;
+              ? `<div class="emp-sub" style="color:#9cbf72">🛣️ ${workName("road", b.roadTier)} link · +${b.road}🪙</div>`
+              : `<div class="emp-sub" style="color:#d98a6a">⚠ No road link, pave every tile of the path to boost this route</div>`;
           const escortLine = r.escortUnitId
-            ? `<div class="emp-sub" style="color:#8cb8ff">🛡 Escorted${r.escortType ? ` (${r.escortType.replace(/_/g, " ")})` : ""} — visible to all players</div>`
-            : `<div class="emp-sub" style="color:#c98f8f">⚠ Unguarded — move a soldier onto the route and choose Escort</div>`;
+            ? `<div class="emp-sub" style="color:#9cbf72">🛡 Escorted${r.escortType ? ` (${r.escortType.replace(/_/g, " ")})` : ""}, visible to all players</div>`
+            : `<div class="emp-sub" style="color:#d98a6a">⚠ Unguarded, move a soldier onto the route and choose Escort</div>`;
           const leaveBtn = r.repelledRaidTile
             ? `<button class="btn primary" data-leave-escort="${r.id}" title="Spawn the escort where the raid was stopped">Recall escort</button>`
             : "";
@@ -369,7 +386,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
           const viaNames =
             r.viaCityIds?.map((id) => state.cities.get(id)?.name).filter(Boolean).join(", ") ?? "";
           const viaLine = viaNames
-            ? `<div class="emp-sub" style="color:#9fc0dc">↪ via ${viaNames}</div>`
+            ? `<div class="emp-sub">↪ via ${viaNames}</div>`
             : "";
           return (
             `<div class="emp-card">` +
@@ -380,11 +397,11 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
             `<div class="emp-sub" style="opacity:.75">${goldParts}</div>` +
             roadLine +
             escortLine +
-            (r.repelledRaidTile ? `<div class="emp-sub" style="color:#ffd967">⚔️ Escort repelled a raid — recall it to disembark at the ambush site.</div>` : "") +
+            (r.repelledRaidTile ? `<div class="emp-sub" style="color:var(--accent-bright)">⚔️ Escort repelled a raid, recall it to disembark at the ambush site.</div>` : "") +
             `</div>` +
             `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">` +
             leaveBtn +
-            `<button class="btn" data-cancel-route="${r.id}" title="Disband this route — the trader is lost">Cancel</button>` +
+            `<button class="btn" data-cancel-route="${r.id}" title="Disband this route, the trader is lost">Cancel</button>` +
             `</div></div>`
           );
         })
@@ -393,11 +410,8 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
   }
 
   function render(state: GameState, viewerId: number): void {
-    last = { state, viewerId };
     if (!open) return;
-    root.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((el) =>
-      el.classList.toggle("active", el.dataset.tab === tab),
-    );
+    title.textContent = TITLES[tab];
     withPreservedScroll(body, () => {
       body.innerHTML =
         tab === "cities"
@@ -459,14 +473,15 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
 
   return {
     toggle(state, viewerId, requestedTab) {
-      if (requestedTab && requestedTab !== tab) {
-        tab = requestedTab;
-        if (!open) setOpen(true);
-        render(state, viewerId);
+      // Same-screen toggle closes; a different screen switches the open dialog.
+      const target = requestedTab ?? tab;
+      if (open && target === tab) {
+        close();
         return;
       }
-      setOpen(!open);
-      if (open) render(state, viewerId);
+      tab = target;
+      setOpen(true);
+      render(state, viewerId);
     },
     close,
     isOpen: () => open,

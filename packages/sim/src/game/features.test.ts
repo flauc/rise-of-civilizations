@@ -188,6 +188,49 @@ describe("map features", () => {
     expect(spawnedNaval).toBe(true); // ships raid from the sea
   });
 
+  it("a camp beside a tiny lake stays land-locked", () => {
+    const state = createGame({ seed: "barb-pond", cols: 40, rows: 30, barbarians: true });
+    const barbId = state.players.find((p) => p.isBarbarian)!.id;
+    for (const t of state.map.tiles) t.feature = undefined;
+    for (const u of [...unitsOf(state, barbId)]) state.units.delete(u.id);
+    // Isolate an inland region so no ocean/coast leaks in, then drop a lone pond
+    // beside a camp: one tile, too small to float a fleet.
+    for (let c = 6; c <= 16; c++) for (let r = 6; r <= 14; r++) getTile(state.map, c, r)!.terrain = "grassland";
+    getTile(state.map, 10, 10)!.feature = "barb_camp";
+    getTile(state.map, 11, 10)!.terrain = "lake";
+
+    const seenTypes = new Set<UnitTypeId>();
+    for (let t = 40; t <= 200; t++) {
+      state.turn = t;
+      spawnFromCamps(state, barbId);
+      for (const u of unitsOf(state, barbId)) seenTypes.add(u.type);
+      for (const u of [...unitsOf(state, barbId)]) state.units.delete(u.id);
+    }
+    const spawnedNaval = [...seenTypes].some((ty) => UNIT_DEFS[ty].cls.startsWith("naval"));
+    expect(spawnedNaval).toBe(false); // a pond can't launch warships
+  });
+
+  it("a camp beside a large enough lake launches warships", () => {
+    const state = createGame({ seed: "barb-lake", cols: 40, rows: 30, barbarians: true });
+    const barbId = state.players.find((p) => p.isBarbarian)!.id;
+    for (const t of state.map.tiles) t.feature = undefined;
+    for (const u of [...unitsOf(state, barbId)]) state.units.delete(u.id);
+    for (let c = 6; c <= 18; c++) for (let r = 6; r <= 14; r++) getTile(state.map, c, r)!.terrain = "grassland";
+    getTile(state.map, 10, 10)!.feature = "barb_camp";
+    // A connected strip of four lake tiles beside the camp: big enough to sail.
+    for (const c of [11, 12, 13, 14]) getTile(state.map, c, 10)!.terrain = "lake";
+
+    const seenTypes = new Set<UnitTypeId>();
+    for (let t = 40; t <= 200; t++) {
+      state.turn = t;
+      spawnFromCamps(state, barbId);
+      for (const u of unitsOf(state, barbId)) seenTypes.add(u.type);
+      for (const u of [...unitsOf(state, barbId)]) state.units.delete(u.id);
+    }
+    const spawnedNaval = [...seenTypes].some((ty) => UNIT_DEFS[ty].cls.startsWith("naval"));
+    expect(spawnedNaval).toBe(true); // a real lake floats a raiding party
+  });
+
   it("new camps emerge only in the fog of war, up to the target density", () => {
     const state = createGame({ seed: "feat-fog", cols: 60, rows: 40, barbarians: true });
     const barbId = state.players.find((p) => p.isBarbarian)!.id;

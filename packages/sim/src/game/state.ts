@@ -470,6 +470,9 @@ export interface Relation {
   lastStatusChangeTurn: number;
   /** Earliest turn war may be re-declared after a peace (cooldown); undefined = now. */
   warAllowedTurn?: number;
+  /** Who declared the current war (the aggressor). Set on `war`, cleared on peace.
+   *  An aggressor AI commits to the war it started before it will sue for peace. */
+  aggressorId?: number;
   openBorders: boolean;
   /** Maps exchanged: each civ sees the other's vision. Indefinite until cancelled
    *  by either side, or cleared when they go to war. */

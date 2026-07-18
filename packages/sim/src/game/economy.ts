@@ -4,7 +4,7 @@ import { areEnemies, cityAt, log, makeUnit, playerById, unitAt, unitsOf } from "
 import { isAtWarWithMajor } from "./diplomacy";
 import { addYields, TERRAIN_YIELDS, ZERO_YIELDS, isWaterTerrain, isForestTerrain, type Yields } from "./terrain";
 import { improvementYields } from "./improvements";
-import { resourceYields, resourceStock, cityGrowthMultiplier } from "./resources";
+import { resourceYields, resourceStock, cityGrowthMultiplier, RESOURCE_DEFS, resourceActive, empireLuxuryTypes, type ResourceId } from "./resources";
 import { naturalWonderYields, naturalWonderTerritoryCultureForCity, naturalWonderTerritoryCulture } from "./natural-wonders";
 import { expandTerritory, cityTerritory } from "./territory";
 import { getWonder, uniqueBuildingForCiv, type CivEffects } from "@roc/data";
@@ -229,7 +229,11 @@ export function tileYieldReport(state: GameState, col: number, row: number, view
   if (!tile) return { yields: { ...ZERO_YIELDS, culture: 0 }, sources: [], preview: false };
   const base = tileWorkYields(state, col, row, {});
   const ownerCity = tile.ownerCityId !== undefined ? state.cities.get(tile.ownerCityId) : undefined;
-  const culture = ownerCity ? naturalWonderTerritoryCulture(tile) : 0;
+  // A natural wonder's culture is part of its advertised yield, so surface it in
+  // the tile inspector whether or not the tile is claimed yet (an unowned wonder
+  // previews the culture a citizen would reap once it sits inside your borders).
+  // Non-wonder tiles get 0, so ordinary tiles are unaffected.
+  const culture = naturalWonderTerritoryCulture(tile);
 
   // Whose traits do we attribute? The owning player for a claimed tile (actual
   // output); otherwise the viewer as a foresight preview.
@@ -507,6 +511,53 @@ export function cityFoodGrowth(state: GameState, city: City, surplus = cityFoodS
 
 const keyOf = (t: { col: number; row: number }) => `${t.col},${t.row}`;
 
+/** What a brand-new amenity is worth in tile-score terms. A fresh luxury type lifts
+ *  happiness — and thus growth — across the WHOLE empire, and an amenity-bearing
+ *  bonus resource helps the local city, so both dwarf the raw yields of a single
+ *  worked tile. Borders should reach for these, not just the fattest terrain. */
+const EXPANSION_AMENITY_WEIGHT = 4;
+
+/**
+ * Build a scorer that ranks a candidate expansion tile for `city` by the value
+ * claiming it would add — used by territory.ts to auto-pick where borders grow.
+ * It accounts for:
+ *  - the tile's worked yields under the city's own civ/leader/city perks (so a
+ *    civ that buffs, say, hills or fresh water values those tiles more);
+ *  - latent resources valued at their *improved* potential, since an unimproved
+ *    resource tile yields nothing yet but will once it's claimed and worked;
+ *  - amenities: a new luxury type (empire-wide) or an amenity bonus resource
+ *    (e.g. bananas, local) is weighted heavily above bare yields.
+ * A closer tile wins only as a tie-break (a tiny distance penalty), so borders
+ * still grow compactly when tiles are otherwise equally good.
+ */
+export function expansionScorer(state: GameState, city: City): (col: number, row: number) => number {
+  const eff = mergeCivEffects(civEffectsOf(state, city.ownerId), cityEffects(state, city));
+  const ownedLux = empireLuxuryTypes(state, city.ownerId);
+  const center = offsetToAxial({ col: city.col, row: city.row });
+  return (col: number, row: number): number => {
+    const tile = getTile(state.map, col, row);
+    if (!tile) return -Infinity;
+    let score = citizenScore(tileWorkYields(state, col, row, eff));
+    const def = tile.resource ? RESOURCE_DEFS[tile.resource as ResourceId] : undefined;
+    if (def) {
+      // Latent resource: its yields aren't in tileWorkYields until improved, so
+      // credit the improved potential — the tile will be improved once claimed.
+      if (!resourceActive(tile, state)) {
+        score += citizenScore({ ...ZERO_YIELDS, ...def.yields });
+      }
+      // A luxury the empire doesn't have yet is a new amenity everywhere; an
+      // amenity-bearing bonus resource (bananas) helps this city specifically.
+      if (def.type === "luxury" && !ownedLux.has(tile.resource as ResourceId)) {
+        score += EXPANSION_AMENITY_WEIGHT;
+      }
+      if (def.amenity) score += def.amenity * EXPANSION_AMENITY_WEIGHT;
+    }
+    // Tie-break only: keep growth compact when yields are otherwise equal.
+    score -= axialDistance(center, offsetToAxial({ col, row })) * 0.05;
+    return score;
+  };
+}
+
 /** A per-city scorer ranking a tile by how profitable it is to work — using the
  *  full tile yields (terrain + improvement + resource + leader-ability bonuses),
  *  so a freshly-completed improvement immediately makes its tile more desirable. */
@@ -647,7 +698,7 @@ export function processCity(state: GameState, city: City, owner: Player): void {
       if (carryover > 0) {
         city.foodStored = Math.max(city.foodStored, carryover * foodToGrow(city.population));
       }
-      expandTerritory(state, city); // borders grow with the city
+      expandTerritory(state, city, 1, expansionScorer(state, city)); // borders grow toward the best tile
       autoAssignCitizens(state, city, city.autoMode); // new citizen works the best free tile
       log(state, `${city.name} grew to pop ${city.population}.`, {
         actorId: city.ownerId,

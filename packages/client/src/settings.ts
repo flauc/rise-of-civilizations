@@ -9,6 +9,9 @@ export type TurnUpdateView = "expanded" | "compact";
 /** Player-chosen screen orientation; the game does not follow device rotation. */
 export type ScreenRotation = "portrait" | "landscape";
 
+/** When map name labels (units, cities, barbarians) are drawn on the board. */
+export type MapLabelMode = "selected" | "always";
+
 export interface Settings {
   /** Whether the turn-start updates dialog auto-opens when a new turn begins. */
   turnUpdatePopup: boolean;
@@ -18,6 +21,8 @@ export interface Settings {
   screenRotation: ScreenRotation;
   /** When true, skip the pre-attack preview and attack immediately. */
   autoAttack: boolean;
+  /** When map name labels show: only for the selected unit/city, or always. */
+  mapLabels: MapLabelMode;
 }
 
 const STORAGE_KEY = "roc:settings";
@@ -38,6 +43,7 @@ const DEFAULTS: Settings = {
   turnUpdateView: "expanded",
   screenRotation: "landscape",
   autoAttack: false,
+  mapLabels: "selected",
 };
 
 let cache: Settings | null = null;
@@ -71,6 +77,7 @@ export function getSettings(): Settings {
         next.screenRotation = defaultScreenRotation();
       }
       if (typeof parsed.autoAttack === "boolean") next.autoAttack = parsed.autoAttack;
+      if (parsed.mapLabels === "selected" || parsed.mapLabels === "always") next.mapLabels = parsed.mapLabels;
     }
   } catch {
     // Corrupt JSON or unavailable storage (private mode) → fall back to defaults.

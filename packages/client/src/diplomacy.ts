@@ -14,7 +14,7 @@
 // Re-renders are signature-gated so the deal builder's inputs survive frames.
 
 import { ASSET_BASE_URL } from "./asset-base";
-import { gameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
+import { gameHud } from "./hud-root";
 import { withPreservedScroll } from "./panel-scroll";
 import {
   relationBetween,
@@ -66,7 +66,13 @@ export interface DiploHandlers {
 }
 
 const STYLE = `
-#diplo-contact,#diplo-proposal{position:fixed;inset:0;z-index:65;background:rgba(10,9,6,.78);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:16px;pointer-events:none}
+#diplo-contact,#diplo-proposal{position:fixed;inset:0;z-index:65;background:rgba(10,9,6,.78);backdrop-filter:blur(4px);display:none;align-items:flex-start;justify-content:center;padding:var(--dialog-top) 16px 16px;pointer-events:none}
+#diplo-contact .dc-box,#diplo-proposal .dc-box{max-height:var(--dialog-max-h);overflow-y:auto}
+/* Centered on touch screens, like every dialog (a % --dialog-top can't drive
+   padding: padding percentages resolve against width). */
+@media (max-width:860px),(pointer:coarse){
+  #diplo-contact,#diplo-proposal{align-items:center;padding:16px}
+}
 #diplo-proposal{z-index:66}
 #diplo-contact.show,#diplo-proposal.show{display:flex;pointer-events:auto}
 .dpm-body{display:flex;gap:16px;padding:18px;align-items:flex-start}
@@ -89,14 +95,18 @@ const STYLE = `
 .dc-ability{color:var(--parchment-dim);font-size:12px;line-height:1.4}
 .dc-quote{font-style:italic;color:var(--parchment);font-size:13px;padding:12px 18px;text-align:center;border-top:1px solid var(--edge)}
 .dc-actions{display:flex;gap:10px;justify-content:center;padding:14px;border-top:1px solid var(--edge)}
-#diplomacy{position:fixed;top:0;right:0;bottom:0;width:min(480px,100vw);z-index:54;background:var(--panel);backdrop-filter:blur(8px);border-left:1px solid var(--edge);box-shadow:-8px 0 32px rgba(0,0,0,.45);display:flex;flex-direction:column;transform:translateX(0);transition:transform .2s ease}
-#diplomacy.hidden{transform:translateX(100%);pointer-events:none}
-/* Title and ✕ come from the shared .dialog-title / .dialog-x rules in index.html. */
-.dp-head{position:relative;display:flex;align-items:center;gap:8px;padding:14px 16px;padding-top:max(14px,env(safe-area-inset-top));padding-right:calc(var(--dialog-x-gutter) + 8px);border-bottom:1px solid var(--edge);min-height:var(--dialog-x-size);z-index:2}
-.dp-head .btn#dp-back{min-width:44px;min-height:44px;padding:0 12px;flex-shrink:0;touch-action:manipulation;pointer-events:auto}
-.dp-head .dialog-x{pointer-events:auto;touch-action:manipulation}
+/* Overlay + centered dialog, same treatment as the treasury / empire dialogs. */
+#diplomacy-overlay{position:fixed;inset:0;background:rgba(15,14,11,.72);opacity:1;pointer-events:auto;transition:opacity .2s;z-index:60}
+#diplomacy-overlay.hidden{opacity:0;pointer-events:none}
+#diplomacy{position:fixed;left:50%;top:var(--dialog-top);transform:var(--dialog-transform);width:min(560px,calc(100vw - 32px));max-height:min(80vh,var(--dialog-max-h));background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;opacity:1;pointer-events:auto;transition:opacity .2s;z-index:61}
+#diplomacy.hidden{opacity:0;pointer-events:none}
+/* Title and ✕ come from the shared .dialog-title / .dialog-x rules in index.html.
+   The head is unpositioned so the ✕ pins to the dialog corner itself; the head
+   just reserves the gutter beside it. */
+.dp-head{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-right:var(--dialog-x-gutter);min-height:var(--dialog-x-size)}
+.dp-head .btn#dp-back{min-width:44px;min-height:44px;padding:0 12px;flex-shrink:0;touch-action:manipulation}
 .dp-title{flex:1}
-.dp-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px}
+.dp-body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden}
 /* contacts list rows */
 .dp-row{display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--edge);border-radius:11px;margin-top:8px;cursor:pointer;background:var(--bg-card)}
 .dp-row:hover{background:rgba(201,162,39,.10);border-color:var(--accent)}
@@ -189,8 +199,7 @@ const STYLE = `
 .dp-cta{margin-top:12px;width:100%;min-height:46px}
 /* mobile */
 @media (max-width:560px){
-  #diplomacy{width:100vw}
-  .dp-body{padding:12px}
+  #diplomacy{padding:14px 14px}
   .dp-actbar .btn,.dp-actbtns .btn{padding:11px 14px;min-height:44px}
   .dp-actbtns label{flex:1 1 100%}
   .dp-row{padding:12px}
@@ -272,7 +281,11 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   let showingProposal: number | null = null; // proposal id currently in the modal
   const seenProposals = new Set<number>(); // proposals we've already surfaced
 
-  // --- contacts side panel ---
+  // --- contacts dialog ---
+  const overlay = document.createElement("div");
+  overlay.id = "diplomacy-overlay";
+  overlay.className = "hidden";
+  gameHud().appendChild(overlay);
   const panel = document.createElement("div");
   panel.id = "diplomacy";
   panel.className = "hidden";
@@ -313,9 +326,8 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   function setPanelOpen(next: boolean): void {
     if (open === next) return;
     open = next;
-    if (open) pushHudOverlay();
-    else popHudOverlay();
     panel.classList.toggle("hidden", !open);
+    overlay.classList.toggle("hidden", !open);
     if (!open) selected = null;
   }
 
@@ -500,7 +512,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       panel.innerHTML =
         `<div class="dp-head">` +
         (selected !== null ? `<button type="button" class="btn" id="dp-back" aria-label="Back">←</button>` : "") +
-        `<span class="dp-title">🕊️ Diplomacy</span>` +
+        `<span class="dp-title">Diplomacy</span>` +
         `<button type="button" class="dialog-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
         `<div class="dp-body">${body}${resultMsg ? `<div class="dp-empty" style="color:#ffd967">${resultMsg}</div>` : ""}</div>`;
     });
@@ -788,7 +800,8 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
         : "";
       topSection =
         `<button class="btn primary dp-cta" id="composer-peace" style="margin-top:0">🕊 Make peace</button>${line}` +
-        `<div class="dp-deal-lbl" style="margin-top:16px">Or bargain while the war continues</div>`;
+        `<div class="dp-deal-lbl" style="margin-top:16px">Or bargain: add the peace treaty to a deal and meet their price</div>` +
+        `<div class="dp-chips-row"><button class="dp-chip-toggle${dealTreaties.has("peace") ? " on" : ""}" data-treaty-chip="peace">🕊 Peace treaty</button></div>`;
     } else {
       const keys = availableTreaties(rel);
       const chips = keys

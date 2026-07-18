@@ -76,7 +76,7 @@ function settingsHtml(): string {
 
   return (
     `<button type="button" class="dialog-x" id="settings-close" title="Close" aria-label="Close">✕</button>` +
-    `<div class="settings-header"><b>⚙ Settings</b></div>` +
+    `<div class="settings-header"><b>Settings</b></div>` +
     `<div class="settings-section">` +
     `<div class="settings-title">Turn Updates</div>` +
     `<div class="settings-hint">What happens at the start of each of your turns.</div>` +
@@ -91,6 +91,13 @@ function settingsHtml(): string {
     `<div class="seg">` +
     `<button class="seg-btn ${!s.autoAttack ? "active" : ""}" data-auto-attack="preview" title="Confirm each attack after seeing the preview">Preview</button>` +
     `<button class="seg-btn ${s.autoAttack ? "active" : ""}" data-auto-attack="instant" title="Attack immediately without a preview">Auto attack</button>` +
+    `</div></div>` +
+    `<div class="settings-section">` +
+    `<div class="settings-title">Map Labels</div>` +
+    `<div class="settings-hint">Name tags for units, cities, and barbarians on the map.</div>` +
+    `<div class="seg">` +
+    `<button class="seg-btn ${s.mapLabels === "selected" ? "active" : ""}" data-map-labels="selected" title="Only show the label of the selected unit or city">When selected</button>` +
+    `<button class="seg-btn ${s.mapLabels === "always" ? "active" : ""}" data-map-labels="always" title="Always show every name label">Always</button>` +
     `</div></div>` +
     (shouldOfferScreenRotation()
       ? `<div class="settings-section">` +
@@ -129,6 +136,12 @@ function bindSettingsPanel(): void {
   dialog.querySelectorAll<HTMLButtonElement>("[data-auto-attack]").forEach((el) =>
     el.addEventListener("click", () => {
       updateSettings({ autoAttack: el.dataset.autoAttack === "instant" });
+      renderSettingsPanel();
+    }),
+  );
+  dialog.querySelectorAll<HTMLButtonElement>("[data-map-labels]").forEach((el) =>
+    el.addEventListener("click", () => {
+      updateSettings({ mapLabels: el.dataset.mapLabels === "always" ? "always" : "selected" });
       renderSettingsPanel();
     }),
   );

@@ -22,6 +22,7 @@ import {
   STRUCTURE_HP,
   TECH_DEFS,
   expandTerritory,
+  expansionScorer,
   citiesOf,
   unitAt,
   unitMaxHp,
@@ -151,7 +152,7 @@ export function applyCheat(
       if (cities.length === 0) return { ok: false, error: "you have no cities" };
       for (const city of cities) {
         city.population += 1;
-        expandTerritory(state, city); // same one-tile grow as natural city growth
+        expandTerritory(state, city, 1, expansionScorer(state, city)); // same one-tile grow as natural city growth
       }
       log(state, `${player.name} added population to every city (cheat).`, {
         actorId: playerId,

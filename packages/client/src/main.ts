@@ -20,6 +20,7 @@ import {
   workableTiles,
   expansionCandidates,
   nextExpansionTile,
+  expansionScorer,
   cityBombardTargets,
   cityBombardsUsed,
   cityBombardAllowance,
@@ -192,6 +193,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   // bombardment, and `bombardTargets` holds the enemy tiles it can hit.
   let bombardCityId: number | null = null;
   let bombardTargets = new Set<string>();
+  // The "tap a highlighted enemy" hint only teaches the aimer, so show it once per game.
+  let bombardHintShown = false;
   // Road-route picker: first tile chosen in the tile panel, second tap on the map
   // sets the destination and queues surveyors to pave the path.
   let roadRouteFrom: { col: number; row: number } | null = null;
@@ -205,6 +208,14 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   let mpSaves: SaveRecord[] = [];
 
   const st = () => session.getState();
+
+  // God Mode cheats are only ever offered on a local dev build running on
+  // localhost. Even in single-player, a hosted/production deployment must never
+  // expose them, so we gate on the hostname in addition to the offline check.
+  const isLocalhost = (() => {
+    const h = window.location.hostname;
+    return h === "localhost" || h === "127.0.0.1" || h === "::1" || h === "[::1]";
+  })();
 
   // Every tile key, cached per map — used to reveal the whole board in God Mode.
   let allKeysCache: { tiles: GameState["map"]["tiles"]; keys: Set<string> } | null = null;
@@ -245,17 +256,19 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     if (!modal) {
       modal = document.createElement("div");
       modal.id = "confirm-modal";
+      // Alignment and padding come from the #confirm-modal rules in index.html
+      // (top-anchored on desktop, centered on touch screens).
       modal.style.cssText =
-        "position:fixed;inset:0;z-index:70;background:rgba(6,12,20,.75);display:flex;align-items:center;justify-content:center";
+        "position:fixed;inset:0;z-index:70;background:rgba(15,14,11,.72);display:flex;justify-content:center";
       document.body.appendChild(modal);
     }
     modal.innerHTML =
-      `<div style="width:min(420px,92vw);background:#1a1320;border:1px solid #5a4a66;border-radius:12px;padding:18px;text-align:center">` +
+      `<div style="width:min(420px,92vw);background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:18px 20px;text-align:center">` +
       `<div style="font-size:30px">⚔️</div>` +
-      `<div style="color:#e6d2b8;margin:10px 0 16px;line-height:1.5">${message}</div>` +
+      `<div style="color:var(--parchment);margin:10px 0 16px;line-height:1.5">${message}</div>` +
       `<div style="display:flex;gap:10px;justify-content:center">` +
       `<button class="btn" id="cf-no">Cancel</button>` +
-      `<button class="btn" id="cf-yes" style="background:#7a2f2f;border-color:#a04040">Declare War</button></div></div>`;
+      `<button class="btn" id="cf-yes" style="background:var(--danger);border-color:#a04040;color:#f0dcd2">Declare War</button></div></div>`;
     modal.style.display = "flex";
     const dismiss = () => { modal!.style.display = "none"; };
     modal.querySelector<HTMLButtonElement>("#cf-no")!.onclick = dismiss;
@@ -304,15 +317,22 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     if (selectedUnitId != null && !st().units.has(selectedUnitId)) selectedUnitId = null;
     // A just-founded city: select it so its panel (Construction / Train Units /
     // Specialists) opens automatically once the settler has become the city.
+    // Only honor this while the player still has nothing selected — founding
+    // clears the selection, so any active selection means they moved on (e.g.
+    // picked another unit) and we must not steal focus back to the new city.
     if (pendingFoundAt) {
-      const me = session.getViewerId();
-      const city = [...st().cities.values()].find(
-        (c) => c.col === pendingFoundAt!.col && c.row === pendingFoundAt!.row && c.ownerId === me,
-      );
-      if (city) {
-        selectedCityId = city.id;
-        selectedUnitId = null;
+      if (selectedUnitId != null || selectedCityId != null || selectedTile != null) {
         pendingFoundAt = null;
+      } else {
+        const me = session.getViewerId();
+        const city = [...st().cities.values()].find(
+          (c) => c.col === pendingFoundAt!.col && c.row === pendingFoundAt!.row && c.ownerId === me,
+        );
+        if (city) {
+          selectedCityId = city.id;
+          selectedUnitId = null;
+          pendingFoundAt = null;
+        }
       }
     }
     if (selectedCityId != null) {
@@ -547,7 +567,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
           if (bombardTargets.size === 0) {
             cancelBombard();
             ui.banner("No enemies in range to bombard.");
-          } else {
+          } else if (!bombardHintShown) {
+            bombardHintShown = true;
             ui.banner("Tap a highlighted enemy to bombard it.");
           }
         }
@@ -1276,6 +1297,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         explored,
         selectedUnitId,
         selectedCityId,
+        alwaysShowLabels: getSettings().mapLabels === "always",
         reachable,
         attackTargets,
         abilityTargets: abilityTargetSet,
@@ -1286,7 +1308,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         roadRouteFrom,
         // Flag where the selected city grows next: the player's chosen tile if any,
         // otherwise the default nearest tile — so a target is always shown.
-        expandMarker: selCity ? selCity.expandTarget ?? nextExpansionTile(st(), selCity) : null,
+        expandMarker: selCity ? selCity.expandTarget ?? nextExpansionTile(st(), selCity, expansionScorer(st(), selCity)) : null,
         tradeRoutes: st().tradeRoutes.filter((r) => r.ownerId === me || r.escortUnitId !== undefined),
         works: st()
           .works.filter((w) => w.target && drawVisible.has(`${w.target.col},${w.target.row}`))
@@ -1310,7 +1332,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         odds: hoverOdds,
         suggestion: computeSuggestion(),
         mpSaves,
-        cheatsEnabled: !session.isOnline,
+        cheatsEnabled: !session.isOnline && isLocalhost,
         liftFog,
         gameOverExploreMap,
       });

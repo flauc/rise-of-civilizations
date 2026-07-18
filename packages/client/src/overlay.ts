@@ -21,6 +21,8 @@ export interface OverlayState {
   explored: Set<string>;
   selectedUnitId: number | null;
   selectedCityId: number | null;
+  /** When true, draw every unit/city name label; otherwise only the selected one. */
+  alwaysShowLabels?: boolean;
   reachable: Set<string>;
   attackTargets: Set<string>;
   /** Tiles a pending targeted ability can be used against (highlighted distinctly). */
@@ -620,6 +622,11 @@ export function drawOverlay(
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
 
+  // Name labels (units + cities) are collected here and painted in one pass after
+  // every sprite is on the board, so a neighboring unit's art can never overlap a
+  // label — the selected unit/city label in particular must always stay on top.
+  const labelDraws: Array<() => void> = [];
+
   // Cities.
   for (const city of state.cities.values()) {
     const own = city.ownerId === o.viewingPlayerId;
@@ -651,7 +658,8 @@ export function drawOverlay(
 
     const selected = o.selectedCityId === city.id;
 
-    if (showLabels) {
+    if (showLabels && (selected || o.alwaysShowLabels)) {
+      labelDraws.push(() => {
       // City name + population label (same pill style as unit labels).
       const label = `${city.name} (${city.population})`;
       const fontSize = Math.max(8, Math.round(size * 0.32));
@@ -699,6 +707,7 @@ export function drawOverlay(
           ctx.drawImage(relImg, labelX - pad - rSize, labelY + (labelH - rSize) / 2, rSize, rSize);
         }
       }
+      });
     }
     const maxHp = cityMaxHp(city);
     if (city.hp < maxHp) drawHpBar(ctx, s.x, s.y + imgSize / 2 + size * 0.12, imgSize, city.hp / maxHp);
@@ -788,7 +797,8 @@ export function drawOverlay(
     }
 
     // Player-color label above the unit (colored dot + unit name + level stars).
-    if (size >= 10) {
+    if (size >= 10 && (selected || o.alwaysShowLabels)) {
+      labelDraws.push(() => {
       const legendName = unit.legendId ? getLegend(unit.legendId)?.name : undefined;
       const stars = unit.level > 1 ? " ★".repeat(unit.level - 1) : "";
       const label = (legendName ?? uu?.name ?? UNIT_DEFS[unit.type].name) + stars;
@@ -826,10 +836,14 @@ export function drawOverlay(
       ctx.fillText(label, labelX + pad + dotR * 2 + pad, labelY + labelH / 2);
       ctx.textAlign = "center";
       ctx.globalAlpha = 1;
+      });
     }
     const unitHpMax = unitMaxHp(unit);
     if (unit.hp < unitHpMax) drawHpBar(ctx, s.x, s.y + half + size * 0.1, half * 1.8, unit.hp / unitHpMax);
   }
+
+  // All sprites are down — now paint every collected name label on top of them.
+  for (const draw of labelDraws) draw();
 
   // ---- worked-tile yield labels (citizen-assignment view) ----
   // Drawn last — after the cities AND units — so that while managing a city its tile

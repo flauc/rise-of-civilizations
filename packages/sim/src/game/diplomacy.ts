@@ -38,6 +38,8 @@ const PROPOSAL_PENDING_TTL = 12; // turns a pending proposal survives before lap
 const PROPOSAL_RESOLVED_TTL = 6; // turns a resolved (accepted/declined) proposal lingers
 const AI_OFFER_COOLDOWN = 12; // turns an AI waits before pitching the same civ another deal
 const AI_REBUFF_COOLDOWN = 28; // longer backoff after an offer is explicitly rejected
+const PEACE_REOFFER_COOLDOWN = 10; // a war moves fast; refused peace terms return to the table sooner
+const PEACE_FREE_LIMIT = 25; // a peace "price" this trifling isn't worth haggling over: grant it bare
 
 // ---- personality ---------------------------------------------------------
 
@@ -257,6 +259,14 @@ function setPeace(state: GameState, r: Relation): void {
   r.status = "peace";
   r.lastStatusChangeTurn = state.turn;
   r.warAllowedTurn = state.turn + PEACE_COOLDOWN;
+  r.aggressorId = undefined;
+  // Any war-ending offer still on the table between the two is moot now — drop it
+  // so a stale "peace for tribute" can't be accepted after the war already ended.
+  state.diploProposals = state.diploProposals.filter(
+    (p) =>
+      !(((p.fromId === r.a && p.toId === r.b) || (p.fromId === r.b && p.toId === r.a)) &&
+        [...p.give, ...p.want].some((it) => it.kind === "peace")),
+  );
   const A = playerById(state, r.a);
   const B = playerById(state, r.b);
   if (A) A.atWar = A.atWar.filter((id) => id !== r.b);
@@ -289,6 +299,7 @@ export function declareWar(state: GameState, aId: number, targetId: number): Dip
   const r = relationBetween(state, aId, targetId)!;
   const denounced = hasModifier(state, aId, targetId, "__denounced");
   setWar(state, r);
+  r.aggressorId = aId; // the declarer owns this war and must commit to it (see aiAcceptsPeace)
   addReputation(state, aId, denounced ? WARMONGER_DENOUNCED : WARMONGER_SURPRISE);
   addModifier(state, targetId, aId, "you declared war on us", -45);
   const A = playerById(state, aId)!;
@@ -574,7 +585,10 @@ export function respondProposal(state: GameState, playerId: number, proposalId: 
       addModifier(state, prop.fromId, playerId, "__demandRefused", 0, 8);
     } else if (proposerIsAI) {
       // The AI remembers a rebuffed deal and backs off, rather than re-pitching it.
-      addModifier(state, prop.fromId, playerId, "__offerRebuffed", 0, AI_REBUFF_COOLDOWN);
+      // Refused peace terms return to the table sooner: a war's fortunes move fast,
+      // and the price the AI would set next time moves with them.
+      const warEnding = [...prop.give, ...prop.want].some((it) => it.kind === "peace");
+      addModifier(state, prop.fromId, playerId, "__offerRebuffed", 0, warEnding ? PEACE_REOFFER_COOLDOWN : AI_REBUFF_COOLDOWN);
     }
     // Nothing for an AI proposer to see → drop it outright.
     if (!playerById(state, prop.fromId)?.isHuman) {
@@ -1018,14 +1032,69 @@ function offerOnCooldown(state: GameState, aiId: number, otherId: number): boole
   return hasModifier(state, aiId, otherId, "__offerCd") || hasModifier(state, aiId, otherId, "__offerRebuffed");
 }
 
+/** Turns an aggressor stays committed to a war it started before weighing peace. */
+function commitTurns(p: DiploPersonality): number {
+  return Math.round(6 + p.aggression * 6 + p.boldness * 4); // ~6..16 turns
+}
+
 /**
- * Whether the AI is willing to make peace. A civ that is CRUSHING its rival — or a
- * warmonger holding a clear upper hand — fights on to finish the job. Short of that
- * threshold a mere edge is no longer a life sentence of war: a marginally-ahead civ
- * can still come to terms once the fighting drags on (war-weariness) or attitudes
- * soften. Only truly dominant or bloodthirsty civs press a war to elimination.
+ * The net value `aiId` attaches to ending its war with `otherId` RIGHT NOW,
+ * expressed as the tribute it demands (positive) or would itself pay (negative).
+ * This one number drives all three faces of peace-making, so they stay coherent:
+ *  - the terms a victor proposes (buildPeaceTerms fills a basket to this price);
+ *  - the judgement of any war-ending deal or counter-offer (aiDecideOffer charges
+ *    it against the offer's value — so a player may swap the demanded city for
+ *    gold and the AI weighs the substitution honestly);
+ *  - bare-peace acceptance (free only when the price is trifling).
  */
-function aiAcceptsPeace(state: GameState, aiId: number, otherId: number): boolean {
+export function peacePrice(state: GameState, aiId: number, otherId: number): number {
+  const r = relationBetween(state, aiId, otherId);
+  if (!r || r.status !== "war") return 0;
+  const p = personalityOf(state, aiId);
+  const ratio = powerRatio(state, aiId, otherId);
+  const warDuration = state.turn - r.lastStatusChangeTurn;
+  const edge = ratio - 1;
+  let price: number;
+  if (edge > 0) {
+    // The victor's ask scales with dominance and temperament...
+    price = edge * (70 + p.greed * 60 + p.aggression * 40);
+    // ...soars when the enemy teeters on destruction (a reprieve is bought dearly)...
+    const theirCities = citiesOf(state, otherId);
+    const theirCapital = theirCities.find((c) => c.isCapital) ?? theirCities[0];
+    const brink = theirCities.length > 0 &&
+      ((theirCities.length <= 2 && ratio >= 1.8) ||
+        (theirCapital !== undefined && cityUnderSiege(state, otherId, theirCapital)));
+    if (brink) price += 250 + p.aggression * 250;
+    // ...carries a premium while a fresh aggressor is still committed to its war...
+    if (r.aggressorId === aiId && warDuration < commitTurns(p)) price *= 1.5;
+    // ...erodes as the fighting drags on (an exhausted victor settles cheaper)...
+    price *= Math.max(0.35, 1 - warDuration / 50);
+    // ...and collapses when circumstances turn: a second front, or its own cities
+    // besieged, make this a war to wrap up cheaply rather than milk.
+    if (atWarWithOtherMajor(state, aiId, otherId)) price *= 0.35;
+    if (citiesOf(state, aiId).some((c) => cityUnderSiege(state, aiId, c))) price *= 0.3;
+  } else {
+    // The loser pays: modestly when merely behind, desperately when facing ruin.
+    price = edge * 140 - Math.max(0, warDuration - 10) * 3;
+    const myCities = citiesOf(state, aiId);
+    const myCapital = myCities.find((c) => c.isCapital) ?? myCities[0];
+    const doomed = myCities.length > 0 &&
+      ((myCities.length <= 2 && ratio <= 0.55) ||
+        (myCapital !== undefined && cityUnderSiege(state, aiId, myCapital)));
+    if (doomed) price -= 350 + (1 - p.boldness) * 150;
+  }
+  return Math.round(Math.max(-600, Math.min(1500, price)));
+}
+
+/**
+ * Whether the AI wants this war OVER (on some terms — what terms is peacePrice's
+ * business). A civ that is CRUSHING its rival — or a warmonger holding a clear
+ * upper hand — fights on to finish the job. Short of that threshold a mere edge is
+ * no longer a life sentence of war: a marginally-ahead civ can still come to terms
+ * once the fighting drags on (war-weariness) or attitudes soften. Only truly
+ * dominant or bloodthirsty civs press a war to elimination.
+ */
+function aiWantsWarOver(state: GameState, aiId: number, otherId: number): boolean {
   const r = relationBetween(state, aiId, otherId);
   if (!r) return false;
   const p = personalityOf(state, aiId);
@@ -1040,14 +1109,162 @@ function aiAcceptsPeace(state: GameState, aiId: number, otherId: number): boolea
 
   const warDuration = state.turn - r.lastStatusChangeTurn;
   const losing = ratio < 0.9;
+  // An AI that STARTED this war commits to it: it won't sue for peace within the
+  // opening turns unless the war has actually turned against it. Without this an
+  // aggressor could declare war (e.g. to enforce a refused tribute demand) and then
+  // offer a free peace a turn or two later — pointless flip-flopping — the moment a
+  // drifting power ratio dips below the "fight on" line. The window scales with
+  // temperament: an aggressive, bold civ presses the war it picked far longer.
+  if (r.aggressorId === aiId && !losing && warDuration < commitTurns(p)) return false;
   const weary = warDuration >= Math.round(16 - p.forgiveness * 8 - (losing ? 4 : 0));
   const score = attitudeScore(state, aiId, otherId);
   if (!losing && p.boldness > 0.7 && !weary) return score > 30;
   return losing || weary || score > -40 + p.forgiveness * 40 - p.aggression * 15;
 }
 
+/** Bare (no-strings) peace: granted only when the AI wants out AND asks nothing much.
+ *  A willing-but-winning AI refuses here and instead names its price in a deal. */
+function aiAcceptsPeace(state: GameState, aiId: number, otherId: number): boolean {
+  return aiWantsWarOver(state, aiId, otherId) && peacePrice(state, aiId, otherId) <= PEACE_FREE_LIMIT;
+}
+
 function atWarWithAnyone(state: GameState, aiId: number): boolean {
   return state.relations.some((r) => (r.a === aiId || r.b === aiId) && r.status === "war");
+}
+
+/** At war with a MAJOR civ other than `exceptId` — a second front pulling the AI
+ *  away from the war it might otherwise press for terms (barbarians don't count). */
+function atWarWithOtherMajor(state: GameState, aiId: number, exceptId: number): boolean {
+  for (const rel of state.relations) {
+    if (rel.status !== "war") continue;
+    if (rel.a !== aiId && rel.b !== aiId) continue;
+    const foe = rel.a === aiId ? rel.b : rel.a;
+    if (foe === exceptId) continue;
+    if (!playerById(state, foe)?.isBarbarian) return true;
+  }
+  return false;
+}
+
+/**
+ * Assemble the tribute a victorious AI demands to end a war, worth roughly `price`
+ * in its own valuation (itemValue — the very pricing the deal evaluator applies to
+ * counter-offers, so a player swapping the demanded city for gold is judged by the
+ * same yardstick). Drawn from the loser's ACTUAL assets, most liquid first:
+ *  - gold, up to the debt;
+ *  - a luxury or two;
+ *  - surrendered units, once the victor clearly dominates (disarming the loser);
+ *  - a frontier city, only under utter dominance and a deep remaining debt
+ *    (never the capital, never their last city);
+ *  - any shortfall as reparations paid per turn.
+ */
+function buildPeaceTerms(state: GameState, aiId: number, otherId: number, price: number): DealItem[] {
+  const loser = playerById(state, otherId);
+  if (!loser) return [];
+  const items: DealItem[] = [];
+  let remaining = price;
+  const ratio = powerRatio(state, aiId, otherId);
+
+  const gold = Math.min(Math.floor(loser.gold), Math.ceil(remaining));
+  if (gold >= 10) {
+    items.push({ kind: "gold", amount: gold });
+    remaining -= gold;
+  }
+
+  for (const lux of tradeableLuxuries(state, otherId)) {
+    if (remaining <= 40 || items.filter((i) => i.kind === "resource").length >= 2) break;
+    const it: DealItem = { kind: "resource", id: lux, turns: 20 };
+    items.push(it);
+    remaining -= itemValue(state, aiId, otherId, it);
+  }
+
+  if (ratio >= 1.4) {
+    const troops = unitsOf(state, otherId)
+      .filter((u) => isMilitary(u.type) && u.hp >= 60)
+      .map((u) => ({ id: u.id, v: itemValue(state, aiId, otherId, { kind: "unit", unitId: u.id, turns: 0 }) }))
+      .sort((a, b) => b.v - a.v)
+      .slice(0, 2);
+    for (const t of troops) {
+      if (remaining <= 60) break;
+      items.push({ kind: "unit", unitId: t.id, turns: 0 });
+      remaining -= t.v;
+    }
+  }
+
+  const theirCities = citiesOf(state, otherId);
+  if (ratio >= 1.8 && theirCities.length >= 2 && remaining >= 250) {
+    // The natural concession is the frontier city nearest the victor's own lands.
+    const mine = citiesOf(state, aiId);
+    let best: City | undefined;
+    let bestD = Infinity;
+    for (const c of theirCities) {
+      if (c.isCapital) continue;
+      let d = Infinity;
+      for (const m of mine) {
+        d = Math.min(d, axialDistance(offsetToAxial({ col: c.col, row: c.row }), offsetToAxial({ col: m.col, row: m.row })));
+      }
+      if (best === undefined || d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    if (best) {
+      const v = itemValue(state, aiId, otherId, { kind: "city", cityId: best.id });
+      if (v <= remaining * 1.7) {
+        items.push({ kind: "city", cityId: best.id });
+        remaining -= v;
+      }
+    }
+  }
+
+  if (remaining > 25) {
+    const turns = 15;
+    const amount = Math.max(1, Math.min(12, Math.ceil(remaining / (turns * 0.8))));
+    items.push({ kind: "goldPerTurn", amount, turns });
+  }
+  return items;
+}
+
+/**
+ * The AI has decided it wants this war over (aiWantsWarOver) — now it settles on
+ * terms, shaped by what ending the war is worth to it (peacePrice):
+ *  - price ≤ trifling, or overriding circumstances (a second front, its own cities
+ *    under siege): a plain peace, no strings. When a losing AI's bare offer is
+ *    refused by a winner holding out, it sweetens the offer with gold of its own.
+ *  - price > trifling: the victor makes the loser BUY peace — a tribute basket of
+ *    gold, luxuries, surrendered units, even a frontier city (buildPeaceTerms).
+ */
+export function aiSueForPeace(state: GameState, aiId: number, otherId: number): void {
+  const r = relationBetween(state, aiId, otherId);
+  const me = playerById(state, aiId);
+  if (!r || r.status !== "war" || !me || !playerById(state, otherId)) return;
+  const price = peacePrice(state, aiId, otherId);
+  const distracted = atWarWithOtherMajor(state, aiId, otherId);
+  const beleaguered = citiesOf(state, aiId).some((c) => cityUnderSiege(state, aiId, c));
+  const pending = state.diploProposals.some(
+    (pr) => pr.fromId === aiId && pr.toId === otherId && pr.status === "pending",
+  );
+
+  if (price <= PEACE_FREE_LIMIT || distracted || beleaguered) {
+    const res = makePeace(state, aiId, otherId);
+    // A losing AI whose bare offer was refused puts what the war's end is worth to
+    // it on the table — gold rather than more blood. The winner judges the sum
+    // against its own price for peace, so the two converge (or don't) honestly.
+    if (!res.ok && price < -60 && !pending && !offerOnCooldown(state, aiId, otherId)) {
+      const gold = Math.min(Math.floor(me.gold), Math.round(-price));
+      if (gold >= 10) proposeDeal(state, aiId, otherId, [{ kind: "peace" }, { kind: "gold", amount: gold }], []);
+    }
+    return;
+  }
+
+  // A victor names its price. Don't badger: at most one standing offer, and back
+  // off after a refusal (peace terms return to the table on a short cooldown).
+  if (pending || offerOnCooldown(state, aiId, otherId)) return;
+  const terms = buildPeaceTerms(state, aiId, otherId, price);
+  if (terms.length === 0) {
+    makePeace(state, aiId, otherId); // nothing worth taking: just end it
+    return;
+  }
+  proposeDeal(state, aiId, otherId, [{ kind: "peace" }], terms);
 }
 
 /**
@@ -1062,7 +1279,9 @@ function itemValue(state: GameState, aiId: number, otherId: number, item: DealIt
     case "goldPerTurn": return item.amount * item.turns * 0.8;
     case "resource": return item.turns * 6;
     case "specialist": return item.turns * 4;
-    case "peace": return atWar(state, aiId, otherId) ? 80 : 0;
+    // Ending a war is mutual, not a per-item good: aiDecideOffer charges it once,
+    // via peacePrice (kept at 0 here so summing either ledger stays safe).
+    case "peace": return 0;
     case "openBorders": {
       const att = attitudeScore(state, aiId, otherId);
       // Wanted only when very friendly, or when at war and needing to move armies.
@@ -1137,13 +1356,20 @@ function goldOutlay(items: DealItem[]): number {
  * as the proposer, or null when there's no concrete trade on the table or the two
  * sides are simply too far apart to bridge.
  */
-function buildCounterOffer(give: DealItem[], want: DealItem[], deficit: number): { give: DealItem[]; want: DealItem[] } | null {
-  if (deficit <= 5 || deficit > 400) return null;
-  const tradeable = [...give, ...want].some((it) => it.kind === "resource" || it.kind === "specialist");
+function buildCounterOffer(give: DealItem[], want: DealItem[], deficit: number, warEnds = false): { give: DealItem[]; want: DealItem[] } | null {
+  // Peace is worth bridging a far wider gap for than an ordinary barter.
+  if (deficit <= 5 || deficit > (warEnds ? 900 : 400)) return null;
+  const tradeable = [...give, ...want].some(
+    (it) => it.kind === "resource" || it.kind === "specialist" || it.kind === "peace" || it.kind === "city" || it.kind === "unit",
+  );
   if (!tradeable) return null;
   // As proposer the AI gives what it was asked for (`want`) and seeks `give`.
   const cGive = want.map((it) => ({ ...it }));
   const cWant = give.map((it) => ({ ...it }));
+  // Peace reads as something the counter-proposer extends, whichever tray it
+  // started in (the term is mutual either way).
+  const pi = cWant.findIndex((it) => it.kind === "peace");
+  if (pi >= 0) cGive.push(...cWant.splice(pi, 1));
   let remaining = deficit;
   // 1) Shave the gold the AI itself would pay.
   const myGold = cGive.find((it) => it.kind === "gold") as Extract<DealItem, { kind: "gold" }> | undefined;
@@ -1194,18 +1420,21 @@ function aiDecideOffer(
   if (!canPayItems(state, aiId, want)) {
     return { accept: false, reason: "We cannot provide what you ask." };
   }
+  // Does this deal end a war between the two? Peace is mutual, so it counts the
+  // same whichever ledger it was written on; its worth is charged once, below,
+  // via peacePrice (a dominant victor demands the difference be paid in tribute,
+  // a desperate loser will pay it).
+  const warEnds = atWar(state, aiId, fromId) && [...give, ...want].some((it) => it.kind === "peace");
   // A city — above all the capital — is almost never for sale. The AI hard-refuses
-  // ceding one in trade, regardless of how much gold is piled on, with a single
-  // narrow exception: surrendering a doomed city to end a war it is losing, when
-  // the offer includes peace, the city is besieged, and the enemy is the stronger.
-  const buyingPeace = give.some((it) => it.kind === "peace");
+  // ceding one in trade, regardless of how much gold is piled on, with two war
+  // exceptions: surrendering a besieged city outright to a stronger enemy for
+  // peace, and (softer) letting the value comparison decide a non-capital cession
+  // when buying peace from a far stronger foe.
   for (const it of want) {
     if (it.kind !== "city") continue;
     const c = state.cities.get(it.cityId);
     if (!c || c.ownerId !== aiId) continue;
-    const desperate =
-      buyingPeace && atWar(state, aiId, fromId) &&
-      cityUnderSiege(state, aiId, c) && powerRatio(state, fromId, aiId) >= 1.3;
+    const desperate = warEnds && cityUnderSiege(state, aiId, c) && powerRatio(state, fromId, aiId) >= 1.3;
     if (desperate) {
       return {
         accept: true,
@@ -1216,7 +1445,12 @@ function aiDecideOffer(
     }
     if (c.isCapital) return { accept: false, reason: "Our capital is not for sale — at any price." };
     if (citiesOf(state, aiId).length <= 1) return { accept: false, reason: "We will not trade away our last city." };
-    if (attitudeScore(state, aiId, fromId) < 40) return { accept: false, reason: "We will not hand over one of our cities." };
+    // Facing a far stronger enemy, a non-capital city may be bargained away to buy
+    // peace: fall through to the value comparison instead of refusing outright.
+    const surrender = warEnds && powerRatio(state, fromId, aiId) >= 1.5;
+    if (!surrender && attitudeScore(state, aiId, fromId) < 40) {
+      return { accept: false, reason: "We will not hand over one of our cities." };
+    }
   }
   const ai = playerById(state, aiId)!;
   const p = personalityOf(state, aiId);
@@ -1224,18 +1458,25 @@ function aiDecideOffer(
   // other civ; otherwise it won't spend more than a slice of its gold on soft
   // concessions — and never gold it doesn't have.
   const goldAsked = goldOutlay(want);
-  const buyingSafety = give.some((it) => it.kind === "peace") || powerRatio(state, fromId, aiId) > 1.4;
+  const buyingSafety = warEnds || powerRatio(state, fromId, aiId) > 1.4;
   const spendCap = buyingSafety ? ai.gold : Math.floor(ai.gold * 0.25);
   if (goldAsked > spendCap) {
     return { accept: false, reason: ai.gold < goldAsked ? "We cannot afford that." : "We will not part with so much gold." };
   }
-  const gain = give.reduce((s, it) => s + itemValue(state, aiId, fromId, it), 0);
+  // A war-ending deal is charged the AI's price for peace: negative for a winner
+  // (the offer must pay it off), positive for a loser (who gladly pays to get out).
+  const gain =
+    give.reduce((s, it) => s + itemValue(state, aiId, fromId, it), 0) +
+    (warEnds ? -peacePrice(state, aiId, fromId) : 0);
   // Greedy/proud civs overvalue what they part with → drive a harder bargain.
   const costMult = 1 + (p.greed - 0.5) * 0.4 + Math.max(0, -attitudeScore(state, aiId, fromId)) / 200;
   // Units carry an extra standing-based premium when handed over: the AI won't
-  // arm a civ it distrusts for a fair price (see unitPartingPremium).
+  // arm a civ it distrusts for a fair price (see unitPartingPremium). Surrendering
+  // arms to END a war is different from arming a rival, so the premium is capped.
   const cost = want.reduce(
-    (s, it) => s + itemValue(state, aiId, fromId, it) * (it.kind === "unit" ? unitPartingPremium(state, aiId, fromId) : 1),
+    (s, it) =>
+      s + itemValue(state, aiId, fromId, it) *
+        (it.kind === "unit" ? Math.min(unitPartingPremium(state, aiId, fromId), warEnds ? 2 : Infinity) : 1),
     0,
   ) * costMult;
   if (gain >= cost) {
@@ -1243,7 +1484,7 @@ function aiDecideOffer(
   }
   // Declined on value: if a concrete trade is on the table and the gap is
   // bridgeable, volley back a fair counter rather than a flat refusal.
-  const counter = buildCounterOffer(give, want, cost - gain);
+  const counter = buildCounterOffer(give, want, cost - gain, warEnds);
   if (counter) {
     return { accept: false, reason: "Your offer is not worth what you ask — but we would accept this.", counter };
   }
@@ -1333,8 +1574,19 @@ export function previewPeace(state: GameState, fromId: number, toId: number): { 
   if (!to || to.isHuman || to.isBarbarian) return null;
   const r = relationBetween(state, fromId, toId);
   if (!r || r.status !== "war") return null;
-  const accept = aiAcceptsPeace(state, toId, fromId);
-  return { accept, reason: accept ? "They are willing to end the war." : "They refuse to make peace." };
+  if (!aiWantsWarOver(state, toId, fromId)) {
+    const winning = powerRatio(state, toId, fromId) >= 1.5;
+    return {
+      accept: false,
+      reason: winning
+        ? "They smell victory. Only a staggering tribute could stay their hand."
+        : "They refuse to make peace.",
+    };
+  }
+  if (peacePrice(state, toId, fromId) > PEACE_FREE_LIMIT) {
+    return { accept: false, reason: "They will end this war, but only for a price. Offer them a deal." };
+  }
+  return { accept: true, reason: "They are willing to end the war." };
 }
 
 /** Distinct specialist types currently trained in a player's cities. */
@@ -1480,14 +1732,15 @@ export function aiConsiderDiplomacy(state: GameState, aiId: number): void {
     const score = attitudeScore(state, aiId, otherId);
 
     if (r.status === "war") {
-      // Sue for peace when willing (war-weary, losing, or no longer hostile) — but
-      // don't badger a human with the same peace offer every turn.
-      if (aiAcceptsPeace(state, aiId, otherId)) {
+      // Sue for peace when the AI wants the war over (war-weary, losing, or no
+      // longer hostile) — aiSueForPeace decides the terms (bare, or for tribute).
+      // Don't badger a human with the same peace offer every turn.
+      if (aiWantsWarOver(state, aiId, otherId)) {
         const pendingPeace = state.diploProposals.some(
           (pr) => pr.fromId === aiId && pr.toId === otherId && pr.status === "pending",
         );
         if (!other.isHuman || (!pendingPeace && !offerOnCooldown(state, aiId, otherId))) {
-          makePeace(state, aiId, otherId);
+          aiSueForPeace(state, aiId, otherId);
         }
       }
       continue;

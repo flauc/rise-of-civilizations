@@ -33,7 +33,6 @@ import {
   scaledGovernmentCost,
   scaledTechCost,
   getGovernment,
-  governmentTier,
   BELIEFS,
   getBelief,
   religionById,
@@ -368,7 +367,21 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
       const tt = naturalWonderTerritoryTourism(tile);
       lines.push({ kind: "good", text: `Your borders: +${tc} culture and +${tt} tourism each turn` });
     }
-    lines.push({ kind: "good", text: "Worked by a citizen: bonus food, production, science, and faith" });
+    // Spell out the wonder's own bonus yields (already folded into the totals
+    // above) so it's clear how much of the tile's output the wonder contributes.
+    const wy = wonder.tileYields;
+    const wparts = [
+      wy.food ? `+${wy.food} food` : "",
+      wy.production ? `+${wy.production} production` : "",
+      wy.gold ? `+${wy.gold} gold` : "",
+      wy.science ? `+${wy.science} science` : "",
+      wy.faith ? `+${wy.faith} faith` : "",
+      wy.culture ? `+${wy.culture} culture` : "",
+    ].filter(Boolean);
+    lines.push({
+      kind: "good",
+      text: wparts.length ? `Wonder bonus: ${wparts.join(", ")}` : "An awe-inspiring natural wonder",
+    });
   }
   if (tile.feature === "village") lines.push({ kind: "good", text: "Village — a reward when one of your units enters" });
   if (tile.feature === "ruin") lines.push({ kind: "neutral", text: "Ruins of a fallen city — fades over time, or build a new city here" });
@@ -910,11 +923,23 @@ export function createUI(handlers: UIHandlers): UI {
     `<img class="village-art" id="village-art" src="" alt="" />` +
     `<div class="village-title" id="village-title">Village Discovered</div>` +
     `<div class="village-msg" id="village-msg"></div>` +
-    `<button class="btn primary" id="village-ok">OK</button>`;
+    `<div class="village-actions" style="display:flex;gap:8px;justify-content:center;align-items:center">` +
+    `<button class="btn wiki-jump hidden" id="village-wiki" data-wiki-open="" title="View in Encyclopedia">📖 Encyclopedia</button>` +
+    `<button class="btn primary" id="village-ok">OK</button>` +
+    `</div>`;
   const villageArt = villageDialog.querySelector<HTMLImageElement>("#village-art")!;
   const villageTitle = villageDialog.querySelector<HTMLDivElement>("#village-title")!;
   const villageMsg = villageDialog.querySelector<HTMLDivElement>("#village-msg")!;
   const villageOk = villageDialog.querySelector<HTMLButtonElement>("#village-ok")!;
+  const villageWiki = villageDialog.querySelector<HTMLButtonElement>("#village-wiki")!;
+  villageWiki.addEventListener("click", () => {
+    const raw = villageWiki.dataset.wikiOpen ?? "";
+    const i = raw.indexOf(":");
+    if (i < 0) return;
+    // The popup sits above the wiki sheet, so dismiss it before opening the wiki.
+    closeVillageDialog();
+    wiki.openDetail(raw.slice(0, i) as Parameters<typeof wiki.openDetail>[0], raw.slice(i + 1));
+  });
 
   // Great-person activation confirmation: explains exactly what activating a
   // recruited figure will do before the (one-shot, irreversible) commitment.
@@ -953,7 +978,7 @@ export function createUI(handlers: UIHandlers): UI {
     pendingGreatPersonId = id;
     gpActivateArt.style.display = "";
     gpActivateArt.src = `${ASSET_BASE_URL}great-people/${def.id}.png`;
-    gpActivateTitle.textContent = `${info.glyph} ${def.name}`;
+    gpActivateTitle.textContent = def.name;
     gpActivateSub.textContent = `${info.name} · ${def.era} era`;
     gpActivateMsg.innerHTML =
       `<div class="gp-activate-effect">${escapeHtml(preview.detail)}</div>` +
@@ -1007,7 +1032,7 @@ export function createUI(handlers: UIHandlers): UI {
     const ready = unlocked && cooldown === 0;
     laDialogArt.style.display = "";
     laDialogArt.src = civ ? `${ASSET_BASE_URL}leaders/${civ.id}.png` : "";
-    laDialogTitle.innerHTML = `✦ ${escapeHtml(def.name)}`;
+    laDialogTitle.innerHTML = escapeHtml(def.name);
     laDialogSub.textContent = civ ? `${civ.name} · Leader Ability` : "Leader Ability";
     const status = ready
       ? `<div class="la-dialog-ready">✓ Ready to use.</div>`
@@ -1089,11 +1114,13 @@ export function createUI(handlers: UIHandlers): UI {
           `<span title="Cities conquered">🔥 ${b.conquests}</span>`;
         return (
           `<div class="lb-row${r.player.id === viewerId ? " lb-self" : ""}${r.alive ? "" : " lb-dead"}">` +
+          `<div class="lb-main">` +
           `<div class="lb-rank">${i + 1}</div>` +
           `<div class="lb-swatch" style="background:${r.player.color}"></div>` +
-          `<div class="lb-name"><b>${label}${you}${fallen}</b>${civ ? " " + wikiBtn(`civ:${r.player.civId}`, "📖", "lb-wiki") : ""}<span class="lb-sub">${sub}</span></div>` +
-          `<div class="lb-detail">${detail}</div>` +
+          `<div class="lb-name"><span class="lb-name-line"><b>${label}${you}${fallen}</b>${civ ? wikiBtn(`civ:${r.player.civId}`, "📖", "lb-wiki") : ""}</span><span class="lb-sub">${sub}</span></div>` +
           `<div class="lb-total">${b.total}</div>` +
+          `</div>` +
+          `<div class="lb-detail">${detail}</div>` +
           `</div>`
         );
       })
@@ -1299,6 +1326,14 @@ export function createUI(handlers: UIHandlers): UI {
         hideUnitPromoDialog();
         return;
       }
+      if (empire.isOpen()) {
+        empire.close();
+        return;
+      }
+      if (diplomacy.isOpen()) {
+        diplomacy.close();
+        return;
+      }
       if (isSettingsPanelOpen()) {
         closeSettingsPanel();
         return;
@@ -1341,7 +1376,7 @@ export function createUI(handlers: UIHandlers): UI {
       if (leaderboardDialog.classList.contains("show")) { leaderboardClose.click(); return; }
       // Blocking overlays with no single positive action: swallow Enter rather
       // than ending the turn behind them.
-      if (isSettingsPanelOpen() || menuOpen || godModeOpen) return;
+      if (isSettingsPanelOpen() || menuOpen || godModeOpen || empire.isOpen() || diplomacy.isOpen()) return;
       endturn.click();
     }
   });
@@ -1351,6 +1386,7 @@ export function createUI(handlers: UIHandlers): UI {
   let civicsOpen = false;
   let religionOpen = false;
   let greatPeopleOpen = false;
+  let greatPeopleHelpOpen = false;
   let legendsOpen = false;
   let legendsHelpOpen = false;
   let productionOpen = false;
@@ -1376,7 +1412,7 @@ export function createUI(handlers: UIHandlers): UI {
   let lastLogLength = 0;
   let logInitialized = false;
   /** A queued immediate popup (village reward or natural-wonder discovery). */
-  type PopupItem = { title: string; html: string; art?: string; artFallback?: string };
+  type PopupItem = { title: string; html: string; art?: string; artFallback?: string; wikiNav?: string };
   let villageQueue: PopupItem[] = [];
   let turnUpdateQueue: TurnUpdateEvent[] = [];
   let turnUpdateIndex = 0;
@@ -1488,6 +1524,14 @@ export function createUI(handlers: UIHandlers): UI {
     } else {
       clearArt(villageArt);
     }
+    // Optional "View in Encyclopedia" deep-link (e.g. a discovered natural wonder).
+    if (item.wikiNav) {
+      villageWiki.dataset.wikiOpen = item.wikiNav;
+      villageWiki.classList.remove("hidden");
+    } else {
+      villageWiki.dataset.wikiOpen = "";
+      villageWiki.classList.add("hidden");
+    }
     villageOverlay.classList.add("show");
     villageDialog.classList.add("show");
   };
@@ -1518,6 +1562,7 @@ export function createUI(handlers: UIHandlers): UI {
       html: lines.join("<br><br>"),
       art: w.wonderId ? assetUrl(`turn-updates/natural_wonder_${w.wonderId}.png`) : undefined,
       artFallback: w.wonderId ? assetUrl(`natural-wonders/${w.wonderId}.png`) : undefined,
+      wikiNav: w.wonderId ? `naturalWonder:${w.wonderId}` : undefined,
     };
   };
 
@@ -1662,6 +1707,9 @@ export function createUI(handlers: UIHandlers): UI {
     if (ev.type === "legendRecruited") {
       buttons.push(`<button class="btn primary" data-tu-legends>View Legends</button>`);
     }
+    if (ev.type === "religionFounded" && ev.payload?.religionId) {
+      buttons.push(wikiBtn(`religion:${ev.payload.religionId}`, "📖 Encyclopedia"));
+    }
     if (ev.type === "tradeRouteEstablished") {
       const destCol = ev.payload?.destCol;
       const destRow = ev.payload?.destRow;
@@ -1744,6 +1792,17 @@ export function createUI(handlers: UIHandlers): UI {
       el.addEventListener("click", () => {
         handlers.onTurnUpdateOpenLegends();
         hideTurnUpdateDialog();
+      }),
+    );
+    // 📖 Encyclopedia deep-link (e.g. a founded religion). The dialog sits above
+    // the wiki sheet, so dismiss it first, then open the wiki.
+    turnUpdateActions.querySelectorAll<HTMLButtonElement>("[data-wiki-open]").forEach((el) =>
+      el.addEventListener("click", () => {
+        const raw = el.dataset.wikiOpen!;
+        const i = raw.indexOf(":");
+        if (i < 0) return;
+        hideTurnUpdateDialog();
+        wiki.openDetail(raw.slice(0, i) as Parameters<typeof wiki.openDetail>[0], raw.slice(i + 1));
       }),
     );
   };
@@ -1862,7 +1921,6 @@ export function createUI(handlers: UIHandlers): UI {
     const civ = getCiv(player.civId);
     const rName = researchingDef ? researchingDef.name : "Choose…";
     const cName = govResDef ? govResDef.name : (gov?.name ?? "Choose…");
-    const civTitle = civ ? `${civ.name} — ${civ.abilityName}: ${civ.abilityDesc}` : "";
     const showCivics = civicsUnlocked(player);
     const showReligion = religionUnlocked(state, player.id);
 
@@ -1911,11 +1969,14 @@ export function createUI(handlers: UIHandlers): UI {
 
     const mapLabel = stateMapLabel(state);
     const turnTitle = mapLabel ? `Turn ${state.turn} · Map: ${mapLabel}` : `Turn ${state.turn}`;
+    // The viewer's overall score sits where the map label used to. Clicking it (or
+    // the leader portrait) opens the standings. Map name lives on the turn tooltip.
+    const myScore = viewerId >= 0 ? scoreBreakdown(state, viewerId).total : 0;
 
     topbar.innerHTML = `
       <div class="tb-grp">
-        <span class="tb-turn" title="${escapeHtml(turnTitle)}">⏱ ${state.turn}${mapLabel ? `<span class="tb-map">${escapeHtml(mapLabel)}</span>` : ""}</span>
-        <span class="tb-civ" title="${civTitle}"><span class="dot" style="background:${player.color}"></span>${player.name}${civ ? ` · <b>${civ.name}</b>` : ""}</span>
+        <span class="tb-pill tb-turn" title="${escapeHtml(turnTitle)}"><span class="tb-pl">⏱</span><b>${state.turn}</b></span>
+        <button class="tb-pill score-pill" id="score-btn" title="Overall score — open standings"><span class="tb-pl">🏆</span><b>${myScore}</b></button>
       </div>
       <div class="tb-grp tb-res">
         <button class="tb-pill gold-chip" id="gold-btn" title="Gold"><span class="tb-pl">🪙</span><b>${Math.floor(player.gold)}</b><span class="tb-score" style="${goldClass}">${goldSign}${Math.abs(netGold)}</span></button>
@@ -1946,14 +2007,20 @@ export function createUI(handlers: UIHandlers): UI {
     if (civ) {
       leaderAvatar.classList.remove("empty");
       leaderAvatar.innerHTML =
-        `<img src="${ASSET_BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" title="${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)}" onerror="this.style.visibility='hidden'">` +
+        `<img src="${ASSET_BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" title="${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)} · click for standings" onerror="this.style.visibility='hidden'">` +
         `<div class="leader-avatar-label"><b>${escapeHtml(civ.name)}</b><span>${escapeHtml(civ.leader)}</span></div>` +
         leaderAbilityBadgeHtml;
+      // The portrait opens the standings; the ability badge keeps its own action.
+      leaderAvatar.onclick = () => showLeaderboard(state);
       leaderAvatar
         .querySelector<HTMLButtonElement>("#leader-ability-badge")
-        ?.addEventListener("click", () => showLeaderAbility(state));
+        ?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          showLeaderAbility(state);
+        });
     } else {
       leaderAvatar.classList.add("empty");
+      leaderAvatar.onclick = null;
       leaderAvatar.innerHTML = "";
     }
 
@@ -2040,6 +2107,8 @@ export function createUI(handlers: UIHandlers): UI {
     const openEmpire = (tab: EmpireTab) => {
       const opening = !empire.isOpen();
       if (opening) {
+        hideGoldDialog();
+        hideMoraleDialog();
         closeSideSheets();
         closePickers(state);
         menuOpen = false;
@@ -2054,6 +2123,8 @@ export function createUI(handlers: UIHandlers): UI {
     topbar.querySelector<HTMLButtonElement>("#diplo-pill")!.addEventListener("click", () => {
       const opening = !diplomacy.isOpen();
       if (opening) {
+        hideGoldDialog();
+        hideMoraleDialog();
         closeSideSheets();
         closePickers(state);
         menuOpen = false;
@@ -2072,6 +2143,7 @@ export function createUI(handlers: UIHandlers): UI {
       if (menuOpen) handlers.onMenuOpen();
       renderMenu(state);
     });
+    topbar.querySelector<HTMLButtonElement>("#score-btn")!.addEventListener("click", () => showLeaderboard(state));
     topbar.querySelector<HTMLButtonElement>("#gold-btn")!.addEventListener("click", () => {
       goldDialogOpen = !goldDialogOpen;
       if (goldDialogOpen) {
@@ -2364,7 +2436,7 @@ export function createUI(handlers: UIHandlers): UI {
     if (menuView === "bug") {
       withPreservedScroll(saveModal, () => {
         saveModal.innerHTML =
-          menuDialogHeader("🐞 Report a Bug", "bug-close") +
+          menuDialogHeader("Report a Bug", "bug-close") +
           `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
           `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
           `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
@@ -2613,7 +2685,7 @@ export function createUI(handlers: UIHandlers): UI {
     };
     withPreservedScroll(research, () => {
       research.innerHTML =
-        dialogHeader("Choose research", "rclose", {
+        dialogHeader("Choose Research", "rclose", {
           extra: `<button type="button" class="btn dialog-head-btn" id="open-techtree">🌳 View full</button>`,
         }) +
         `<div class="panel-dialog-body">` +
@@ -2685,6 +2757,15 @@ export function createUI(handlers: UIHandlers): UI {
     });
   };
 
+  // Government/civic lineage colours + labels, for the branch chips.
+  const BRANCH_META: Record<string, { label: string; color: string }> = {
+    authority: { label: "Authority", color: "#e0836a" },
+    assembly: { label: "Assembly", color: "#6ab0e0" },
+    faith: { label: "Faith", color: "#7ad0a0" },
+    neutral: { label: "Neutral", color: "#b9a98a" },
+    exclusive: { label: "Exclusive", color: "#d0a0e0" },
+  };
+
   const renderCivics = (state: GameState): void => {
     civics.classList.toggle("hidden", !civicsOpen);
     if (!civicsOpen) return;
@@ -2708,107 +2789,155 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
 
-    // Split a civic's effects into pro (green) and con (red) blurbs by sign.
-    const effectBadges = (id: string): string => {
-      const d = getCivic(id);
-      return d ? `<div class="sub">${d.desc}</div>` : "";
+    // A small coloured pill naming a government/civic lineage.
+    const branchChip = (b: string): string => {
+      const m = BRANCH_META[b] ?? { label: b, color: "#b9a98a" };
+      return `<span class="gc-chip" style="color:${m.color};border-color:${m.color}55">${m.label}</span>`;
     };
+    // Tier + lineage chips for a government (arrays) or a civic (single branch).
+    const govChips = (g: { tier: number; branch: string[] }): string =>
+      `<span class="gc-chip">Tier ${g.tier}</span>` + (g.branch.length ? g.branch.map(branchChip).join("") : branchChip("neutral"));
+    const civicChips = (d: { tier: number; branch: string }): string =>
+      `<span class="gc-chip">Tier ${d.tier}</span>${branchChip(d.branch)}`;
 
-    // ---- current government + unrest -------------------------------------
-    html += `<div class="csub">Government — <b style="color:#fff">${gov?.name ?? "—"}</b> <span style="color:#9fc0dc">(Tier ${governmentTier(player.government)})</span></div>`;
+    // The shared culture treasury pays for BOTH government research (banked over
+    // turns) and civic adoption (spent at once), so surface it up top.
+    const culBank = Math.floor(player.cultureProgress);
+    const culPerTurn = citiesOf(state, player.id).reduce((n, c) => n + cityDisplayYields(state, c).culture, 0);
+    html += `<div class="gc-bank">🎭 Culture treasury <b>${culBank}</b> <span class="sub">+${culPerTurn}/turn · funds research and adoption</span></div>`;
     if (player.unrestTurns > 0) {
-      html += `<div class="locked-note">⚠ Unrest: ${player.unrestTurns} turn${player.unrestTurns > 1 ? "s" : ""} — all yields −25% and civics are dormant.</div>`;
+      html += `<div class="locked-note">⚠ Unrest: ${player.unrestTurns} turn${player.unrestTurns > 1 ? "s" : ""}. All yields −25% and civics are dormant until it passes.</div>`;
     }
 
-    // ---- research the next government node --------------------------------
-    const researchable = researchableGovernmentsFor(player);
-    html += `<div class="csub">Research a government</div>`;
+    html += `<div class="gc-layout">`;
+
+    // =========================== GOVERNMENTS ==============================
+    html += `<div class="gc-col">`;
+
+    // ---- current government (what you hold now) --------------------------
+    html += `<div class="csub" style="margin-top:0">Your government</div>`;
+    html +=
+      `<div class="gc-current">` +
+      `<div class="gc-current-head"><b>${gov?.name ?? "—"}</b><span class="gc-badge">Active</span></div>` +
+      `<div class="gc-chips">${gov ? govChips(gov) : ""}</div>` +
+      `<div class="sub">${gov?.desc ?? ""}</div></div>`;
+
+    // ---- government being developed (research in progress) ---------------
     if (player.researchingGovernment) {
       const rg = getGovernment(player.researchingGovernment)!;
       const rgCost = scaledGovernmentCost(state, player.researchingGovernment);
       const pct = Math.min(100, Math.round((player.cultureProgress / Math.max(1, rgCost)) * 100));
-      html += `<div class="tech" style="border-color:#ffd967"><div style="flex:1"><b>Researching ${rg.name}</b><div class="sub">${player.cultureProgress}/${rgCost}🎭 (${pct}%)</div></div></div>`;
+      html +=
+        `<div class="csub">Developing</div>` +
+        `<div class="gc-research">` +
+        `<div class="gc-current-head"><b>${rg.name}</b><span class="sub">${culBank}/${rgCost}🎭 (${pct}%)</span></div>` +
+        `<div class="gc-chips">${govChips(rg)}</div>` +
+        `<div class="bar"><i style="width:${pct}%;background:#ffd967"></i></div></div>`;
     }
-    html += researchable.length
-      ? researchable
-          .map((id) => {
-            const g = getGovernment(id)!;
-            return (
-              `<div class="tech" data-research-gov="${id}"><div style="flex:1">` +
-              `<div><b>${g.name}</b> <span class="sub">T${g.tier} · ${g.branch.join("/") || "—"}</span></div>` +
-              `<div class="sub">${g.desc}</div></div><span class="cost">${scaledGovernmentCost(state, id)}🎭</span></div>`
-            );
-          })
-          .join("")
-      : `<div style="color:#9fc0dc;font-size:12px">No new governments to research.</div>`;
 
-    // ---- switch to a researched government --------------------------------
+    // ---- switch to a researched government -------------------------------
     const switchable = switchableGovernments(player).filter((id) => id !== player.government);
     if (switchable.length) {
-      html += `<div class="csub">Switch government <span style="color:#9fc0dc">(costs unrest)</span></div>`;
+      html += `<div class="csub">Switch to (researched)</div>`;
       html += switchable
         .map((id) => {
           const g = getGovernment(id)!;
           const shares = gov ? gov.branch.some((b) => g.branch.includes(b)) : false;
-          const cost = player.government === "chiefdom" ? "free" : shares ? "1 turn unrest" : "revolution: 3 turns";
+          const cost = player.government === "chiefdom" ? "free" : shares ? "1 turn unrest" : "revolt: 3 turns";
           return (
-            `<div class="tech" data-switch-gov="${id}"><div style="flex:1"><b>${g.name}</b>` +
+            `<div class="tech gc-row" data-switch-gov="${id}"><div style="flex:1;min-width:0">` +
+            `<div class="gc-row-head"><b>${g.name}</b></div>` +
+            `<div class="gc-chips">${govChips(g)}</div>` +
             `<div class="sub">${g.desc}</div></div><span class="cost">${cost}</span></div>`
           );
         })
         .join("");
     }
 
-    // ---- slotted civics ---------------------------------------------------
-    html += `<div class="csub">Civics <span style="color:#9fc0dc">(${player.slottedCivics.length}/${capacity} slots)</span></div>`;
+    // ---- research a new government node ----------------------------------
+    const researchable = researchableGovernmentsFor(player).filter((id) => id !== player.researchingGovernment);
+    html += `<div class="csub">Develop a new government</div>`;
+    html += researchable.length
+      ? researchable
+          .map((id) => {
+            const g = getGovernment(id)!;
+            const cost = scaledGovernmentCost(state, id);
+            return (
+              `<div class="tech gc-row" data-research-gov="${id}"><div style="flex:1;min-width:0">` +
+              `<div class="gc-row-head"><b>${g.name}</b></div>` +
+              `<div class="gc-chips">${govChips(g)}</div>` +
+              `<div class="sub">${g.desc}</div></div><span class="cost">${cost}🎭</span></div>`
+            );
+          })
+          .join("")
+      : `<div class="sub">No new governments to develop right now.</div>`;
+
+    html += `</div>`; // .gc-col (governments)
+
+    // ============================== CIVICS ================================
+    html += `<div class="gc-col">`;
+
+    // ---- active (slotted) civics ----------------------------------------
+    html += `<div class="csub" style="margin-top:0">Active civics <span class="sub">(${player.slottedCivics.length}/${capacity} slots filled)</span></div>`;
     html += player.slottedCivics.length
       ? player.slottedCivics
           .map((id) => {
             const d = getCivic(id);
             return (
-              `<div class="tech" style="border-color:#ffd967;background:#27331d"><div style="flex:1">` +
-              `<b>${d?.name ?? id}</b>${effectBadges(id)}</div>` +
-              `<button class="btn" data-unslot="${id}">Unslot</button></div>`
+              `<div class="tech gc-row gc-civic-active"><div style="flex:1;min-width:0">` +
+              `<div class="gc-row-head"><b>${d?.name ?? id}</b><span class="gc-badge">Active</span></div>` +
+              (d ? `<div class="gc-chips">${civicChips(d)}</div><div class="sub">${d.desc}</div>` : "") +
+              `</div><button class="btn" data-unslot="${id}">Unslot</button></div>`
             );
           })
           .join("")
-      : `<div style="color:#9fc0dc;font-size:12px">No civics slotted.</div>`;
+      : `<div class="sub">No civics slotted. Adopt one below to fill a slot.</div>`;
 
-    // ---- adopt a new civic ------------------------------------------------
-    const adoptable = adoptableCivics(player);
-    html += `<div class="csub">Adopt a civic <span style="color:#9fc0dc">(one per turn)</span></div>`;
-    html += adoptable.length
-      ? adoptable
-          .map((id) => {
-            const d = getCivic(id)!;
-            const cost = scaledCivicCost(state, d, player.civicsAdopted.size);
-            return (
-              `<div class="tech" data-adopt="${id}"><div style="flex:1">` +
-              `<div><b>${d.name}</b> <span class="sub">T${d.tier} · ${d.branch}</span></div>${effectBadges(id)}` +
-              `</div><span class="cost">${cost}🎭</span></div>`
-            );
-          })
-          .join("")
-      : `<div style="color:#9fc0dc;font-size:12px">No new civics available under this government.</div>`;
-
-    // ---- re-slot an already-adopted civic --------------------------------
+    // ---- adopted but not slotted ----------------------------------------
     const slottable = slottableCivics(player);
     if (slottable.length) {
-      html += `<div class="csub">Slot an adopted civic</div>`;
+      const full = player.slottedCivics.length >= capacity;
+      html += `<div class="csub">Adopted, on the bench</div>`;
       html += slottable
         .map((id) => {
           const d = getCivic(id)!;
-          const full = player.slottedCivics.length >= capacity;
           return (
-            `<div class="tech" ${full ? "" : `data-slot="${id}"`} style="${full ? "opacity:0.5" : ""}">` +
-            `<div style="flex:1"><b>${d.name}</b>${effectBadges(id)}</div>` +
-            `<span class="cost">${full ? "slots full" : "slot"}</span></div>`
+            `<div class="tech gc-row" ${full ? "" : `data-slot="${id}"`} style="${full ? "opacity:0.55" : ""}">` +
+            `<div style="flex:1;min-width:0"><div class="gc-row-head"><b>${d.name}</b></div>` +
+            `<div class="gc-chips">${civicChips(d)}</div><div class="sub">${d.desc}</div></div>` +
+            `<span class="cost">${full ? "slots full" : "slot it"}</span></div>`
           );
         })
         .join("");
     }
 
-    html += `</div>`;
+    // ---- adopt a new civic ----------------------------------------------
+    const adoptable = adoptableCivics(player);
+    const adoptedThisTurn = (player.lastCivicAdoptedTurn ?? -Infinity) === state.turn;
+    html += `<div class="csub">Adopt a new civic <span class="sub">(one per turn)</span></div>`;
+    if (adoptedThisTurn) {
+      html += `<div class="sub gc-note">Already adopted a civic this turn. Come back next turn.</div>`;
+    }
+    html += adoptable.length
+      ? adoptable
+          .map((id) => {
+            const d = getCivic(id)!;
+            const cost = scaledCivicCost(state, d, player.civicsAdopted.size);
+            const afford = culBank >= cost;
+            const dim = adoptedThisTurn || !afford;
+            return (
+              `<div class="tech gc-row" ${dim ? "" : `data-adopt="${id}"`} style="${dim ? "opacity:0.55" : ""}">` +
+              `<div style="flex:1;min-width:0"><div class="gc-row-head"><b>${d.name}</b></div>` +
+              `<div class="gc-chips">${civicChips(d)}</div><div class="sub">${d.desc}</div></div>` +
+              `<span class="cost" style="${afford ? "" : "color:#ff8a8a"}">${cost}🎭</span></div>`
+            );
+          })
+          .join("")
+      : `<div class="sub">No new civics are legal under this government.</div>`;
+
+    html += `</div>`; // .gc-col (civics)
+    html += `</div>`; // .gc-layout
+    html += `</div>`; // .panel-dialog-body
     withPreservedScroll(civics, () => {
       civics.innerHTML = html;
     });
@@ -2865,7 +2994,7 @@ export function createUI(handlers: UIHandlers): UI {
     }
     const shown = options.filter((o) => o.item.kind === prodTab);
 
-    let html = dialogHeader(`${escapeHtml(city.name)} — Construction`, "pclose", {
+    let html = dialogHeader(`${escapeHtml(city.name)}: Construction`, "pclose", {
       extra:
         `<div class="ptabs">` +
         tabs
@@ -3020,7 +3149,7 @@ export function createUI(handlers: UIHandlers): UI {
 
     withPreservedScroll(specialists, () => {
       specialists.innerHTML =
-        dialogHeader(`${escapeHtml(city.name)} — Specialists`, "spclose", {
+        dialogHeader(`${escapeHtml(city.name)}: Specialists`, "spclose", {
           subtitle: `${city.specialists.length} trained · ${free} free slots`,
         }) +
         `<div class="panel-dialog-body">` +
@@ -3167,7 +3296,7 @@ export function createUI(handlers: UIHandlers): UI {
 
     withPreservedScroll(training, () => {
       training.innerHTML =
-        dialogHeader(`${escapeHtml(city.name)} — Train Units`, "trclose", {
+        dialogHeader(`${escapeHtml(city.name)}: Train Units`, "trclose", {
           subtitle: `👥 ${city.population} pop · ${free} free citizen${free === 1 ? "" : "s"} · each unit costs 1 citizen`,
         }) +
         `<div class="panel-dialog-body">` +
@@ -3502,21 +3631,37 @@ export function createUI(handlers: UIHandlers): UI {
     extinction: { icon: "☠️", name: "Extinction", color: "#9aa0a6" },
   };
 
+  // What a player must build to start drawing each class of Great Person. Shown
+  // in place of a named figure while a class is dormant, so we never dangle (say)
+  // a Great Prophet before religion is even in play.
+  const GP_SOURCE_HINT: Record<GreatPersonClass, string> = {
+    general: "Raise Barracks, Archery Ranges, and Stables, and keep upgrading them.",
+    admiral: "Build Harbors, Lighthouses, and Shipyards on the coast.",
+    scientist: "Build Libraries and Academies.",
+    engineer: "Build Workshops, Forges, and Siege Workshops.",
+    merchant: "Build Markets and Harbors.",
+    prophet: "Unlock religion, then raise Shrines and Temples.",
+    artist: "Build Monuments and Amphitheaters.",
+    statesman: "Unlock the civics tree. Your capital then earns statesman points.",
+  };
+
   const renderGreatPeople = (state: GameState): void => {
     greatPeoplePanel.classList.toggle("hidden", !greatPeopleOpen);
     if (!greatPeopleOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const perTurn = playerGreatPersonPerTurn(state, player.id);
     const ready = (player.greatPeople ?? []).map((id) => getGreatPerson(id)).filter(Boolean);
+    const recruited = new Set(state.recruitedGreatPeople ?? []);
 
-    let html = dialogHeader("🎖️ Great People", "gpclose");
+    let html = dialogHeader("Great People", "gpclose");
     html += `<div class="panel-dialog-body">`;
-    html += `<div class="sub">Build the right buildings to earn class points. When a pool fills you recruit the next great figure, there are only so many to go round.</div>`;
+    html += `<div class="gp-layout">`;
 
-    // Recruited figures awaiting activation.
-    html += `<div class="csub">Recruited (${ready.length})</div>`;
+    // ---- Left rail: figures ready to act on, then the explainer -------------
+    html += `<div class="gp-rail">`;
+    html += `<div class="csub" style="margin-top:0">Ready to activate${ready.length ? ` (${ready.length})` : ""}</div>`;
     if (ready.length === 0) {
-      html += `<div class="sub">No Great People are waiting. Keep earning points below.</div>`;
+      html += `<div class="sub gp-empty">No Great People are waiting. Earn class points to draw the next figure, then activate it here.</div>`;
     } else {
       html += ready
         .map((g) => {
@@ -3536,45 +3681,82 @@ export function createUI(handlers: UIHandlers): UI {
         .join("");
     }
 
-    // Per-class progress toward the next figure.
-    html += `<div class="csub">Progress</div>`;
+    // How Great People work — collapsible reference, mirroring the Legends panel.
+    html += `<button class="btn gp-help-toggle" id="gp-help-toggle">${greatPeopleHelpOpen ? "How Great People work ▴" : "How Great People work ▾"}</button>`;
+    html +=
+      `<div class="gp-help${greatPeopleHelpOpen ? "" : " hidden"}">` +
+      `<p>Each class of Great Person is drawn by its own kind of work. Buildings, training grounds, and your capital's seat of government bank class points every turn.</p>` +
+      `<p><b>Recruiting:</b> when a class pool fills, you recruit the next figure of that class. Each recruit raises the cost of the one after it.</p>` +
+      `<p><b>Finite and shared:</b> every figure is globally unique, so the first to recruit one claims it for good.</p>` +
+      `<p><b>Eras:</b> later figures wait until your civilization reaches their era.</p>` +
+      `<p><b>Activating:</b> a recruited figure is spent once for a powerful, themed effect.</p>`;
+    html += `</div>`;
+    html += `</div>`; // .gp-rail
+
+    // ---- Right column: per-class progress toward the next figure ------------
+    html += `<div class="gp-tracks">`;
+    html += `<div class="csub" style="margin-top:0">Class progress</div>`;
+    html += `<div class="gp-grid">`;
     html += GREAT_PERSON_CLASSES.map((cls) => {
       const info = GREAT_PERSON_CLASS_INFO[cls];
       const pts = Math.floor(player.greatPeoplePoints?.[cls] ?? 0);
       const earned = player.greatPeopleEarned?.[cls] ?? 0;
-      const next = nextAvailableFigure(state, cls as GreatPersonClass, player);
       const per = perTurn[cls] ?? 0;
+      const next = nextAvailableFigure(state, cls as GreatPersonClass, player);
+
+      // No recruitable figure: either the whole class is exhausted, or later ones
+      // are simply era-locked. (Check the pool era-agnostically, otherwise the two
+      // states are indistinguishable and everything reads as "all recruited".)
       if (!next) {
-        const poolLeft = greatPeopleOfClass(cls as GreatPersonClass).some(
-          (g) => !(state.recruitedGreatPeople ?? []).includes(g.id) && eraUnlocked(player, g.era),
+        const anyLeft = greatPeopleOfClass(cls as GreatPersonClass).some((g) => !recruited.has(g.id));
+        const note = anyLeft
+          ? "Advance to a later era to draw the next figure."
+          : "Every figure of this class has been recruited.";
+        return (
+          `<div class="gp-track gp-track-locked">` +
+          `<div class="gp-track-icon">${info.glyph}</div>` +
+          `<div class="gp-track-body"><b>${info.name}</b><div class="sub">${note}</div></div></div>`
         );
-        if (!poolLeft) {
-          return `<div class="sub">${info.glyph} <b>${info.name}</b> — all figures recruited</div>`;
-        }
-        return `<div class="sub">${info.glyph} <b>${info.name}</b> — advance to a later era to unlock the next figure</div>`;
       }
+
+      // Dormant: the player earns nothing toward this class and has none banked or
+      // recruited, so keep the specific figure hidden and show how to unlock it.
+      if (per === 0 && pts === 0 && earned === 0) {
+        return (
+          `<div class="gp-track gp-track-locked">` +
+          `<div class="gp-track-icon">${info.glyph}</div>` +
+          `<div class="gp-track-body"><b>${info.name}</b><div class="sub">${GP_SOURCE_HINT[cls]}</div></div></div>`
+        );
+      }
+
+      // Active: the class is in play, so reveal the next figure and its progress.
       const cost = greatPersonThreshold(earned);
       const pct = Math.min(100, (pts / cost) * 100);
       return (
-        `<div class="gp-progress">` +
+        `<div class="gp-track">` +
         `<img class="gp-portrait gp-portrait-sm" src="${ASSET_BASE_URL}great-people/${next.id}.png" alt="" onerror="this.style.display='none'">` +
-        `<div class="gp-progress-body">` +
-        `<div>${info.glyph} <b>${next.name}</b> ` +
-        `<span class="sub">· ${info.name}${per ? ` · +${per}/turn` : ""}</span> ` +
-        wikiBtn(`greatPerson:${next.id}`) +
-        `</div>` +
+        `<div class="gp-track-body">` +
+        `<div class="gp-track-title">${info.glyph} <b>${next.name}</b> ${wikiBtn(`greatPerson:${next.id}`)}</div>` +
+        `<div class="sub">${info.name}${per ? ` · +${per}/turn` : " · idle"}</div>` +
         `<div class="bar"><i style="width:${pct}%;background:#d9b44a"></i></div>` +
         `<span class="sub">${pts}/${cost}</span></div></div>`
       );
     }).join("");
+    html += `</div>`; // .gp-grid
+    html += `</div>`; // .gp-tracks
 
-    html += `</div>`;
+    html += `</div>`; // .gp-layout
+    html += `</div>`; // .panel-dialog-body
     withPreservedScroll(greatPeoplePanel, () => {
       greatPeoplePanel.innerHTML = html;
     });
     greatPeoplePanel.querySelector<HTMLButtonElement>("#gpclose")!.addEventListener("click", () => {
       greatPeopleOpen = false;
       greatPeoplePanel.classList.add("hidden");
+    });
+    greatPeoplePanel.querySelector<HTMLButtonElement>("#gp-help-toggle")?.addEventListener("click", () => {
+      greatPeopleHelpOpen = !greatPeopleHelpOpen;
+      renderGreatPeople(state);
     });
     greatPeoplePanel.querySelectorAll<HTMLButtonElement>("[data-gp-use]").forEach((el) =>
       el.addEventListener("click", () => {
@@ -3593,7 +3775,7 @@ export function createUI(handlers: UIHandlers): UI {
     const hasCity = citiesOf(state, viewerId).length > 0;
     const typeGlyph: Record<string, string> = { land: "⚔️", naval: "⚓", support: "✨" };
 
-    let html = dialogHeader("⭐ Legends", "lgclose");
+    let html = dialogHeader("Legends", "lgclose");
     html += `<div class="panel-dialog-body">`;
     if (!state.legendsEnabled) {
       html += `<div class="locked-note">🔒 Legends are disabled for this game.</div>`;
@@ -4380,6 +4562,14 @@ export function createUI(handlers: UIHandlers): UI {
       `</div>` +
       `<button class="btn tinfo-toggle" id="tile-toggle">${tileExpanded ? "Hide details ▴" : "Benefits & deficits ▾"}</button>`;
 
+    // A natural-wonder tile links straight to its Encyclopedia entry.
+    if (tile.naturalWonder) {
+      html +=
+        `<div class="row" style="gap:6px;align-items:center;margin-top:6px">` +
+        wikiBtn(`naturalWonder:${tile.naturalWonder}`, "📖 Encyclopedia", "tile-wiki") +
+        `</div>`;
+    }
+
     if (tileExpanded) {
       html +=
         `<ul class="tinfo-list">` +
@@ -4524,6 +4714,7 @@ export function createUI(handlers: UIHandlers): UI {
         }) +
         `<div class="ip-detail">${html}</div>`;
     });
+    wireWikiButtons(tilePanel); // 📖 button on a natural-wonder tile deep-links into the wiki
     wireCollapse(tilePanel, () => {
       tilePanelExpanded = !tilePanelExpanded;
       renderTilePanel(state, tile, viewerId, cheatsEnabled);

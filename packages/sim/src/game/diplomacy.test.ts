@@ -9,6 +9,7 @@ import {
   declareWar, makePeace, gift, proposeDeal, demandTribute, finalizeDeal,
   canDeclareWar,
   respondProposal, militaryPower, aiInitiateTrade, aiConsiderDiplomacy, previewPeace,
+  aiSueForPeace, powerRatio, peacePrice,
   ensureContact, foreignTerritoryOwner, denounce, diplomacyTick, tradeableTechs,
   cancelSharedVision, sharedVisionPartners,
 } from "./diplomacy";
@@ -97,6 +98,154 @@ describe("diplomacy", () => {
     expect(atWar(s, 0, 1)).toBe(true);
     aiConsiderDiplomacy(s, 1);
     expect(atWar(s, 0, 1)).toBe(true); // winning AI does not sue for peace itself
+  });
+
+  it("an aggressor AI commits to the war it started and won't sue for peace at once", () => {
+    const s = twoCivGame();
+    beginTurn(s);
+    for (const pid of [0, 1]) {
+      const settler = unitsOf(s, pid).find((u) => u.type === "settler");
+      if (settler) applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+    }
+    ensureContact(s, 0, 1);
+    // AI (1) starts the war — it is the aggressor and must see it through a while.
+    declareWar(s, 1, 0);
+    expect(relationBetween(s, 0, 1)!.aggressorId).toBe(1);
+    // Give both sides a comparable army so the ratio sits below the "fight on" line
+    // (~1.0) — the old logic would have offered peace immediately; commitment blocks it.
+    for (let i = 0; i < 3; i++) {
+      s.units.set(s.nextEntityId, makeUnit(s.nextEntityId++, 0, "swordsman", 4 + i, 4));
+      s.units.set(s.nextEntityId, makeUnit(s.nextEntityId++, 1, "swordsman", 10 + i, 4));
+    }
+    expect(previewPeace(s, 0, 1)?.accept).toBe(false); // fresh aggressor won't come to terms
+    aiConsiderDiplomacy(s, 1);
+    expect(atWar(s, 0, 1)).toBe(true); // it does not immediately sue for peace
+    // Once the commitment window has passed, normal weariness/attitude logic resumes.
+    relationBetween(s, 0, 1)!.lastStatusChangeTurn = s.turn - 20;
+    expect(previewPeace(s, 0, 1)?.accept).toBe(true);
+  });
+
+  it("a winning aggressor makes the loser buy peace with tribute", () => {
+    const s = twoCivGame();
+    beginTurn(s);
+    for (const pid of [0, 1]) {
+      const settler = unitsOf(s, pid).find((u) => u.type === "settler");
+      if (settler) applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+    }
+    ensureContact(s, 0, 1);
+    declareWar(s, 1, 0); // AI (1) is the aggressor
+    s.players[0]!.gold = 80; // the loser has coin worth squeezing
+    // Give the AI a clear edge over the human.
+    for (let i = 0; i < 3; i++) s.units.set(s.nextEntityId, makeUnit(s.nextEntityId++, 0, "swordsman", 1, 1));
+    for (let i = 0; i < 6; i++) s.units.set(s.nextEntityId, makeUnit(s.nextEntityId++, 1, "swordsman", 38, 26));
+    expect(powerRatio(s, 1, 0)).toBeGreaterThan(1.15);
+    aiSueForPeace(s, 1, 0);
+    const prop = s.diploProposals.find((p) => p.fromId === 1 && p.toId === 0);
+    expect(prop).toBeTruthy();
+    expect(prop!.give.some((it) => it.kind === "peace")).toBe(true); // peace, in exchange for…
+    const gold = prop!.want.find((it) => it.kind === "gold") as { amount: number } | undefined;
+    expect(gold?.amount).toBeGreaterThanOrEqual(10); // …a gold indemnity
+  });
+
+  it("a winning aggressor pulled into a second war settles for a plain peace", () => {
+    const s = createGame({ seed: "dip-front", cols: 40, rows: 28, barbarians: false, humanSlots: 1, playerCount: 3 });
+    beginTurn(s);
+    for (const pid of [0, 1, 2]) {
+      const settler = unitsOf(s, pid).find((u) => u.type === "settler");
+      if (settler) applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+    }
+    ensureContact(s, 0, 1);
+    ensureContact(s, 1, 2);
+    declareWar(s, 1, 0); // AI (1) is the aggressor against the human…
+    declareWar(s, 1, 2); // …but a second front opens against another major civ
+    s.players[0]!.gold = 80;
+    for (let i = 0; i < 3; i++) s.units.set(s.nextEntityId, makeUnit(s.nextEntityId++, 0, "swordsman", 1, 1));
+    for (let i = 0; i < 6; i++) s.units.set(s.nextEntityId, makeUnit(s.nextEntityId++, 1, "swordsman", 38, 26));
+    expect(powerRatio(s, 1, 0)).toBeGreaterThan(1.15);
+    aiSueForPeace(s, 1, 0);
+    const prop = s.diploProposals.find((p) => p.fromId === 1 && p.toId === 0);
+    expect(prop?.give.some((it) => it.kind === "peace")).toBe(true);
+    expect(prop!.want).toHaveLength(0); // distracted by another war → free peace, no tribute
+  });
+
+  it("a crushing AI yields peace only for a heavy tribute, and counters a lowball", () => {
+    const s = twoCivGame();
+    beginTurn(s);
+    for (const pid of [0, 1]) {
+      const settler = unitsOf(s, pid).find((u) => u.type === "settler");
+      if (settler) applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+    }
+    ensureContact(s, 0, 1);
+    declareWar(s, 1, 0);
+    // The AI fields an overwhelming army: the human is on the brink.
+    for (let i = 0; i < 6; i++) s.units.set(s.nextEntityId, makeUnit(s.nextEntityId++, 1, "swordsman", 30 + i, 20));
+    expect(previewPeace(s, 0, 1)?.accept).toBe(false); // no free peace from a crusher
+    const price = peacePrice(s, 1, 0);
+    expect(price).toBeGreaterThan(100); // a heavy toll, not a token
+    s.players[0]!.gold = price + 500;
+    // Lowball at half the price: refused, and the AI volleys back a counter naming its terms.
+    const low = Math.round(price / 2);
+    expect(proposeDeal(s, 0, 1, [{ kind: "peace" }, { kind: "gold", amount: low }], []).ok).toBe(true);
+    expect(s.diploProposals.find((p) => p.fromId === 0 && p.toId === 1)!.status).toBe("declined");
+    const counter = s.diploProposals.find((p) => p.fromId === 1 && p.toId === 0 && p.status === "pending")!;
+    expect(counter.give.some((it) => it.kind === "peace")).toBe(true);
+    const ask = counter.want.find((it) => it.kind === "gold") as { amount: number } | undefined;
+    expect(ask && ask.amount).toBeGreaterThan(low);
+    // Meet the price and the war ends at once.
+    expect(proposeDeal(s, 0, 1, [{ kind: "peace" }, { kind: "gold", amount: Math.ceil(price) + 10 }], []).ok).toBe(true);
+    expect(atWar(s, 0, 1)).toBe(false);
+    // The now-moot counter was swept off the table with the peace.
+    expect(s.diploProposals.some((p) => p.fromId === 1 && p.toId === 0 && p.status === "pending")).toBe(false);
+  });
+
+  it("a dominant victor demands a city, but the loser may buy it off with gold instead", () => {
+    const s = twoCivGame();
+    beginTurn(s);
+    for (const pid of [0, 1]) {
+      const settler = unitsOf(s, pid).find((u) => u.type === "settler");
+      if (settler) applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+    }
+    ensureContact(s, 0, 1);
+    declareWar(s, 1, 0);
+    // The human is broke and disarmed, with a second (frontier) city to covet.
+    s.players[0]!.gold = 0;
+    for (const u of unitsOf(s, 0)) s.units.delete(u.id);
+    const cid = s.nextEntityId++;
+    s.cities.set(cid, { id: cid, ownerId: 0, name: "Borderton", col: 8, row: 8, population: 1, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
+    for (let i = 0; i < 8; i++) s.units.set(s.nextEntityId, makeUnit(s.nextEntityId++, 1, "swordsman", 30 + i, 20));
+    aiSueForPeace(s, 1, 0);
+    const prop = s.diploProposals.find((p) => p.fromId === 1 && p.toId === 0 && p.status === "pending")!;
+    expect(prop.give.some((it) => it.kind === "peace")).toBe(true);
+    expect(prop.want.some((it) => it.kind === "city" && it.cityId === cid)).toBe(true); // frontier city, never the capital
+    // Decline the cession and counter with coin: the same yardstick judges the swap.
+    expect(respondProposal(s, 0, prop.id, false).ok).toBe(true);
+    const price = peacePrice(s, 1, 0);
+    s.players[0]!.gold = price + 100;
+    expect(proposeDeal(s, 0, 1, [{ kind: "peace" }, { kind: "gold", amount: Math.ceil(price) + 10 }], []).ok).toBe(true);
+    expect(atWar(s, 0, 1)).toBe(false);
+    expect(s.cities.get(cid)!.ownerId).toBe(0); // the city stayed theirs
+  });
+
+  it("AI vs AI: a besieged loser cedes a frontier city to end a losing war", () => {
+    const s = createGame({ seed: "dip-aiai", cols: 40, rows: 28, barbarians: false, humanSlots: 1, playerCount: 3 });
+    beginTurn(s);
+    for (const pid of [1, 2]) {
+      const settler = unitsOf(s, pid).find((u) => u.type === "settler");
+      if (settler) applyCommand(s, { type: "foundCity", unitId: settler.id }, pid);
+    }
+    ensureContact(s, 1, 2);
+    declareWar(s, 1, 2);
+    // The loser (2) is bankrupt and disarmed, holding a second city under the victor's guns.
+    s.players[2]!.gold = 0;
+    for (const u of unitsOf(s, 2)) s.units.delete(u.id);
+    const cid = s.nextEntityId++;
+    s.cities.set(cid, { id: cid, ownerId: 2, name: "Lostwick", col: 8, row: 8, population: 1, foodStored: 0, productionStored: 0, production: null, buildings: [], specialists: [], wonders: [], workedTiles: [], isCapital: false, foundedAsCapital: false, hp: 100, lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [] } as never);
+    for (let i = 0; i < 8; i++) s.units.set(s.nextEntityId, makeUnit(s.nextEntityId++, 1, "swordsman", 30 + i, 20));
+    const gates = offsetNeighbors(s.map, 8, 8).slice(0, 2);
+    for (const nb of gates) s.units.set(s.nextEntityId, makeUnit(s.nextEntityId++, 1, "swordsman", nb.col, nb.row));
+    aiSueForPeace(s, 1, 2);
+    expect(atWar(s, 1, 2)).toBe(false); // AI to AI settles at once
+    expect(s.cities.get(cid)!.ownerId).toBe(1); // the city changed hands for peace
   });
 
   it("gifts improve the recipient's attitude; the AI accepts a one-sided deal", () => {

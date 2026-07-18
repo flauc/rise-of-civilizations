@@ -219,10 +219,34 @@ describe("governor mode (city auto-management)", () => {
     const player = playerById(s, 0)!;
     city.population = 4;
     workableFarmTile(s, city);
+    // Strip any luxury the map seeded nearby so the plain-farm path runs here; an
+    // unhappy governor prioritizing luxuries for amenities is covered separately.
+    for (const t of s.map.tiles) if (t.ownerCityId === city.id) t.resource = undefined;
     applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode: "growth" });
     autoManageCities(s, player);
     expect(specialistsByType(city, "carpenter").length).toBe(1);
     expect(s.works.some((w) => w.kind === "farm")).toBe(true);
+  });
+
+  it("an unhappy governor improves a luxury tile for amenities before farming plain land", () => {
+    const { s, city } = foundedGame();
+    const player = playerById(s, 0)!;
+    city.population = 4; // unhappiness 4 > 0 amenities -> amenity shortfall
+    // A plain farmable tile: the amenity-blind loop would have queued a farm here first.
+    workableFarmTile(s, city);
+    // An unimproved wine tile (grassland -> plantation) that grants a brand-new amenity.
+    const wine = getTile(s.map, city.col - 1, city.row)!;
+    wine.terrain = "grassland";
+    wine.improvement = undefined;
+    wine.resource = "wine";
+    wine.ownerCityId = city.id;
+    applyCommand(s, { type: "setCityAutoMode", cityId: city.id, mode: "growth" });
+    autoManageCities(s, player);
+    // The single queued economic work activates the luxury, not the plain farm.
+    expect(
+      s.works.some((w) => w.kind === "plantation" && w.target?.col === wine.col && w.target?.row === wine.row),
+    ).toBe(true);
+    expect(s.works.some((w) => w.kind === "farm")).toBe(false);
   });
 });
 

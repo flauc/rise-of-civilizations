@@ -7,7 +7,7 @@
 // ONNX Runtime Web / TF.js in a Web Worker — could later replace this. For now
 // this rules-based controller is the default and is plenty for a real opponent.)
 
-import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, offsetToAxial, type Tile } from "@roc/shared";
 import { applyCommand } from "./commands";
 import { computeReachable, isNavalUnit } from "./movement";
 import { computeAttackTargets, unitMaxHp, combatPreview, cityBombardTargets, cityBombardStrength, cityBombardAllowance, cityBombardsUsed, defenseStrengthVsBombard, damageFrom, cityMaxHp } from "./combat";
@@ -51,7 +51,7 @@ import {
 } from "./works";
 import { offsetNeighbors } from "./movement";
 import { computeRoadPath, startRoadRoute, tilesNeedingRoad } from "./road-routes";
-import { RESOURCE_DEFS, resourceActive } from "./resources";
+import { cityAmenities, cityUnhappiness, empireLuxuryTypes, RESOURCE_DEFS, resourceActive } from "./resources";
 import { isPassableLand, isWaterTerrain, tileYields } from "./terrain";
 import { BARBARIAN_DIPLOMACY_TECH, UNIT_DEFS, getBuildingDef, isMilitary, isNaval, isRanged, type TechId, type TrainingClass, type UnitTypeId } from "./content";
 import { barbarianBribeCost, barbarianRecruitCost, canParleyWith, isBarbarianPacified } from "./bribery";
@@ -1500,12 +1500,30 @@ function aiManageCity(
     }
   }
 
+  // A city short on amenities grows at up to 0.3x. Luxury resources are the only
+  // amenity source, and they only help when their improvement is built, so when
+  // this city is unhappy we want the economic-works loop below to reach an
+  // inactive luxury tile before it upgrades yet another farm or mine. A luxury
+  // only yields an amenity when its type isn't already active elsewhere in the
+  // empire (one amenity per luxury type), so only brand-new types get priority.
+  const needsAmenities = cityAmenities(state, city) < cityUnhappiness(city);
+  const ownedLuxuries = needsAmenities ? empireLuxuryTypes(state, city.ownerId) : null;
+  const grantsNewAmenity = (tile: Tile): boolean => {
+    if (!ownedLuxuries || !tile.resource || resourceActive(tile, state)) return false;
+    const def = RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS];
+    return def?.type === "luxury" && !ownedLuxuries.has(tile.resource as never);
+  };
+
   // Economic works: walk the city's actual workable tiles, best yields first, and
   // queue the most valuable improvement (resources before plain terrain).
   const tiles = workableTiles(state, city)
     .map((t) => ({ ...t, tile: getTile(state.map, t.col, t.row)! }))
     .filter((t) => t.tile && t.tile.ownerCityId !== undefined && state.cities.get(t.tile.ownerCityId)?.ownerId === pid)
     .sort((a, b) => {
+      // Unhappy city: a new luxury type outranks every other economic work.
+      const la = grantsNewAmenity(a.tile) ? 1 : 0;
+      const lb = grantsNewAmenity(b.tile) ? 1 : 0;
+      if (la !== lb) return lb - la;
       const ra = a.tile.resource ? 1 : 0;
       const rb = b.tile.resource ? 1 : 0;
       if (ra !== rb) return rb - ra; // resources first

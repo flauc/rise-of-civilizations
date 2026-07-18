@@ -66,6 +66,14 @@
         --dialog-x-top: 12px;
         --dialog-x-right: 14px;
         --dialog-x-gutter: 44px;
+        /* Every in-game dialog starts from the same place, whatever its
+           height: hung from one top line on desktop (the research picker's
+           anchor), vertically centered on mobile/tablet where the taller top
+           bar would collide with an anchored dialog. --dialog-max-h keeps the
+           bottom edge on screen in both modes. */
+        --dialog-top: max(68px, calc(52px + env(safe-area-inset-top)));
+        --dialog-transform: translateX(-50%);
+        --dialog-max-h: calc(100vh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
       }
       * {
         box-sizing: border-box;
@@ -136,7 +144,8 @@
       }
       /* Tile-improvement build buttons: name on top, yield preview beneath. */
       .imp-btn {
-        display: inline-flex;
+        display: flex;
+        width: 100%;
         flex-direction: column;
         align-items: flex-start;
         gap: 2px;
@@ -203,6 +212,9 @@
       #leader-avatar.empty {
         display: none;
       }
+      #leader-avatar {
+        cursor: pointer;
+      }
       #leader-avatar > img {
         width: 84px;
         /* Leader art is 1.6:2; derive the height so nothing gets cropped. */
@@ -213,6 +225,10 @@
         border: 1px solid var(--edge);
         background: var(--bg-card);
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+        transition: border-color 0.15s;
+      }
+      #leader-avatar:hover > img {
+        border-color: var(--accent-bright);
       }
       #leader-avatar .leader-avatar-label {
         margin-top: 4px;
@@ -230,32 +246,14 @@
         align-items: center;
         gap: 8px;
       }
+      /* The turn counter is a read-only pill sharing the score pill's chrome. */
       .tb-turn {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        font-weight: 700;
+        cursor: default;
+      }
+      /* Overall-score pill that sits beside the turn counter (opens the standings). */
+      .tb-turn b,
+      .score-pill b {
         color: var(--accent-bright);
-      }
-      .tb-map {
-        font-size: 11px;
-        font-weight: 600;
-        color: var(--parchment-dim);
-        max-width: 30vw;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      @media (max-width: 720px) {
-        .tb-map {
-          display: none;
-        }
-      }
-      .tb-civ {
-        max-width: 38vw;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
       }
       .tb-pill {
         position: relative;
@@ -830,16 +828,18 @@
       #game-hud.game-over-map #log,
       #game-hud.game-over-map #tile-tip:not(.hidden),
       #game-hud.game-over-map #empire:not(.hidden),
-      #game-hud.game-over-map #diplomacy:not(.hidden) {
+      #game-hud.game-over-map #empire-overlay:not(.hidden),
+      #game-hud.game-over-map #diplomacy:not(.hidden),
+      #game-hud.game-over-map #diplomacy-overlay:not(.hidden) {
         display: none !important;
       }
       /* Research / civics / religion / great people / production / save modal */
       #save-modal {
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: 320px;
-        max-height: 80vh;
+        max-height: min(80vh, var(--dialog-max-h));
         overflow: auto;
         z-index: 40;
       }
@@ -848,17 +848,19 @@
       #civics,
       #religion {
         left: 50%;
-        top: max(68px, calc(52px + env(safe-area-inset-top)));
-        transform: translateX(-50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: 320px;
         max-height: min(420px, calc(100vh - 140px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
         overflow: hidden;
         z-index: 40;
       }
       /* Research grows to the standard 80% on desktop so long tech lists don't
-         squeeze into a stubby 420px box. */
+         squeeze into a stubby 420px box. It also gets extra width so the
+         "Choose research" title clears the close + "View full" buttons on one line. */
       #research {
-        max-height: min(80vh, calc(100vh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+        width: min(460px, calc(100vw - 24px));
+        max-height: min(80vh, var(--dialog-max-h));
       }
       /* Clear both the close button and the "View full" button beside it. */
       #research .panel-dialog-header {
@@ -868,10 +870,10 @@
       #great-people,
       #legends {
         left: 50%;
-        top: max(68px, calc(52px + env(safe-area-inset-top)));
-        transform: translateX(-50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(440px, calc(100vw - 24px));
-        max-height: calc(100vh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        max-height: var(--dialog-max-h);
         overflow: hidden;
         z-index: 40;
       }
@@ -880,23 +882,34 @@
       #legends {
         width: min(980px, calc(100vw - 32px));
       }
+      /* Great People likewise: recruited figures on the left, class-progress
+         grid on the right. Mobile narrows it back below. */
+      #great-people {
+        width: min(860px, calc(100vw - 32px));
+      }
+      /* Governments & Civics: governments on the left, civics on the right.
+         Wider and taller than the default picker box. Mobile narrows it below. */
+      #civics {
+        width: min(900px, calc(100vw - 32px));
+        max-height: calc(100vh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+      }
       #production,
       #specialists,
       #training {
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: 320px;
-        max-height: 80vh;
+        max-height: min(80vh, var(--dialog-max-h));
         overflow: auto;
         z-index: 40;
       }
       #god-panel {
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(320px, calc(100vw - 32px));
-        max-height: min(520px, 80vh);
+        max-height: min(520px, var(--dialog-max-h));
         z-index: 40;
       }
       #god-panel select.lobby-in,
@@ -1055,10 +1068,10 @@
       #techtree {
         position: fixed;
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: 94vw;
-        height: 88vh;
+        height: min(88vh, var(--dialog-max-h));
         max-height: none;
         overflow: hidden;
         display: flex;
@@ -1356,6 +1369,112 @@
         margin-right: 8px;
         flex-shrink: 0;
       }
+      /* Governments & Civics panel — two columns, with a clear split between what
+         you hold now and what you can research/adopt. */
+      #civics .gc-bank {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-top: 4px;
+        padding: 8px 12px;
+        border: 1px solid var(--edge);
+        border-radius: 10px;
+        background: rgba(201, 162, 39, 0.1);
+        font-size: 13px;
+        color: var(--parchment);
+      }
+      #civics .gc-bank b {
+        font-size: 15px;
+        color: #ffd967;
+      }
+      #civics .gc-layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+        align-items: start;
+        margin-top: 8px;
+      }
+      #civics .gc-col {
+        min-width: 0;
+      }
+      /* The government/civics you currently hold: a highlighted panel, set apart
+         from the researchable/adoptable rows below. */
+      #civics .gc-current {
+        margin-top: 4px;
+        padding: 11px 12px;
+        border: 1px solid rgba(255, 217, 103, 0.5);
+        border-radius: 12px;
+        background: rgba(39, 51, 29, 0.55);
+      }
+      #civics .gc-research {
+        margin-top: 4px;
+        padding: 11px 12px;
+        border: 1px solid #ffd967;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.15);
+      }
+      #civics .gc-current-head,
+      #civics .gc-row-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      #civics .gc-current-head b {
+        font-size: 15px;
+        color: #fff;
+      }
+      #civics .gc-badge {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #1c1a12;
+        background: #ffd967;
+        border-radius: 999px;
+        padding: 2px 8px;
+        white-space: nowrap;
+      }
+      #civics .gc-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin: 6px 0;
+      }
+      #civics .gc-chip {
+        font-size: 10.5px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--edge);
+        color: var(--parchment-dim);
+        white-space: nowrap;
+      }
+      /* Rows for researchable governments / adoptable civics. */
+      #civics .gc-row {
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 12px;
+        border-radius: 10px;
+      }
+      #civics .gc-row .cost {
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+      #civics .gc-civic-active {
+        border-color: rgba(255, 217, 103, 0.5);
+        background: rgba(39, 51, 29, 0.55);
+        cursor: default;
+      }
+      #civics .gc-civic-active:hover {
+        background: rgba(39, 51, 29, 0.55);
+      }
+      #civics .gc-civic-active .gc-current-head b {
+        font-size: 14px;
+      }
+      #civics .gc-note {
+        margin-top: 6px;
+        color: #ffcf8f;
+      }
       /* Legends panel — larger portraits and readable copy on desktop & mobile. */
       #legends .panel-dialog-body {
         font-size: 13px;
@@ -1533,6 +1652,95 @@
         font-size: 13px;
         margin-top: 12px;
       }
+      /* Two columns on desktop: recruited rail on the left, class-progress grid
+         on the right. Mobile stacks them (see the narrow-screen block below). */
+      #great-people .gp-layout {
+        display: grid;
+        grid-template-columns: minmax(260px, 340px) 1fr;
+        gap: 18px;
+        align-items: start;
+      }
+      #great-people .gp-rail,
+      #great-people .gp-tracks {
+        min-width: 0;
+      }
+      #great-people .gp-empty {
+        margin-top: 6px;
+      }
+      /* Collapsible "How Great People work" explainer, mirroring the Legends panel. */
+      #great-people .gp-help-toggle {
+        margin-top: 10px;
+        width: 100%;
+        text-align: left;
+      }
+      #great-people .gp-help {
+        margin-top: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--edge);
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.15);
+        font-size: 12px;
+        line-height: 1.5;
+        color: var(--parchment-dim);
+      }
+      #great-people .gp-help p {
+        margin: 0 0 7px;
+      }
+      #great-people .gp-help p:last-child {
+        margin-bottom: 0;
+      }
+      #great-people .gp-help b {
+        color: var(--parchment);
+      }
+      /* Class-progress grid: two even columns of track cards on desktop. */
+      #great-people .gp-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 10px;
+        margin-top: 6px;
+      }
+      #great-people .gp-track {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 10px 12px;
+        border: 1px solid var(--edge);
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.12);
+      }
+      #great-people .gp-track-body {
+        flex: 1;
+        min-width: 0;
+      }
+      #great-people .gp-track-body b {
+        font-size: 14px;
+      }
+      #great-people .gp-track-title {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+      }
+      /* Dormant / era-locked classes: no portrait, a muted glyph badge instead. */
+      #great-people .gp-track-locked {
+        background: rgba(0, 0, 0, 0.06);
+      }
+      #great-people .gp-track-locked .gp-track-body b {
+        color: var(--parchment-dim);
+      }
+      #great-people .gp-track-icon {
+        width: 52px;
+        height: 66px;
+        border-radius: 8px;
+        border: 1px solid var(--edge);
+        background: rgba(255, 255, 255, 0.03);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        flex-shrink: 0;
+        opacity: 0.7;
+      }
       #great-people .gp-card {
         align-items: flex-start;
         gap: 12px;
@@ -1568,23 +1776,6 @@
         gap: 6px;
         align-items: flex-end;
         flex-shrink: 0;
-      }
-      #great-people .gp-progress {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        margin-top: 10px;
-        padding: 10px 12px;
-        border: 1px solid var(--edge);
-        border-radius: 12px;
-        background: rgba(0, 0, 0, 0.12);
-      }
-      #great-people .gp-progress-body {
-        flex: 1;
-        min-width: 0;
-      }
-      #great-people .gp-progress-body b {
-        font-size: 15px;
       }
       /* transient banner */
       #banner {
@@ -1631,11 +1822,25 @@
         opacity: 1;
         pointer-events: auto;
       }
+      /* War-confirmation modal (built in main.ts): the overlay is inline-styled,
+         alignment lives here so it follows the shared dialog anchor. A % value
+         of --dialog-top cannot drive padding (padding percentages resolve
+         against width), hence the explicit centered mode on touch screens. */
+      #confirm-modal {
+        align-items: flex-start;
+        padding: var(--dialog-top) 16px 16px;
+      }
+      @media (max-width: 860px), (pointer: coarse) {
+        #confirm-modal {
+          align-items: center;
+          padding: 16px;
+        }
+      }
       #village-dialog {
         position: fixed;
         left: 50%;
-        top: 38%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(380px, calc(100vw - 32px));
         background: var(--panel);
         border: 1px solid var(--edge);
@@ -1688,8 +1893,8 @@
       #gp-activate-dialog {
         position: fixed;
         left: 50%;
-        top: 42%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(400px, calc(100vw - 32px));
         background: var(--panel);
         border: 1px solid var(--edge);
@@ -2055,8 +2260,8 @@
       #leader-ability-dialog {
         position: fixed;
         left: 50%;
-        top: 42%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(400px, calc(100vw - 32px));
         background: var(--panel);
         border: 1px solid var(--edge);
@@ -2140,10 +2345,10 @@
       #log-dialog {
         position: fixed;
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(520px, calc(100vw - 32px));
-        max-height: 80vh;
+        max-height: min(80vh, var(--dialog-max-h));
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
@@ -2210,10 +2415,10 @@
       #leaderboard-dialog {
         position: fixed;
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(560px, calc(100vw - 32px));
-        max-height: 80vh;
+        max-height: min(80vh, var(--dialog-max-h));
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
@@ -2241,12 +2446,18 @@
       }
       .lb-row {
         display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 8px 10px;
+        flex-direction: column;
+        gap: 6px;
+        padding: 9px 11px;
         border: 1px solid var(--edge);
         border-radius: 10px;
         background: rgba(255, 255, 255, 0.02);
+      }
+      /* The primary line: rank, colour swatch, name/civ, and the total score. */
+      .lb-main {
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
       .lb-row.lb-self {
         border-color: #c9a227;
@@ -2277,12 +2488,27 @@
         min-width: 0;
         flex: 1;
       }
+      /* Name + Encyclopedia icon share one line; the sub sits beneath. */
+      .lb-name-line {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        min-width: 0;
+      }
       .lb-name b {
         color: var(--parchment);
         font-size: 14px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        min-width: 0;
+      }
+      .lb-wiki {
+        flex: 0 0 auto;
+        padding: 1px 6px !important;
+        font-size: 11px !important;
+        line-height: 1.1 !important;
+        min-height: 0;
       }
       .lb-sub {
         font-size: 11px;
@@ -2308,15 +2534,22 @@
         margin-left: 4px;
         vertical-align: middle;
       }
+      /* Score breakdown on its own line beneath the main row, wrapping into a
+         tidy strip rather than crammed between the name and the total. */
       .lb-detail {
         display: flex;
-        gap: 8px;
+        flex-wrap: wrap;
+        gap: 5px 8px;
         font-size: 12px;
         color: #c8bda3;
-        flex-shrink: 0;
+        padding: 6px 2px 0 34px;
+        border-top: 1px dashed rgba(255, 255, 255, 0.08);
       }
       .lb-detail span {
         white-space: nowrap;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 6px;
+        padding: 1px 7px;
       }
       .lb-total {
         font-family: 'Cinzel', Georgia, serif;
@@ -2352,7 +2585,8 @@
       }
       @media (max-width: 560px) {
         .lb-detail {
-          display: none;
+          padding-left: 2px;
+          font-size: 11px;
         }
         .lb-wiki {
           padding: 1px 5px !important;
@@ -2379,10 +2613,10 @@
       #gold-dialog {
         position: fixed;
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(520px, calc(100vw - 32px));
-        max-height: 80vh;
+        max-height: min(80vh, var(--dialog-max-h));
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
@@ -2586,10 +2820,10 @@
       #morale-dialog {
         position: fixed;
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(520px, calc(100vw - 32px));
-        max-height: 80vh;
+        max-height: min(80vh, var(--dialog-max-h));
         overflow: hidden;
         background: var(--panel);
         border: 1px solid var(--edge);
@@ -2710,10 +2944,10 @@
       #unit-promo-dialog {
         position: fixed;
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(560px, calc(100vw - 32px));
-        max-height: 80vh;
+        max-height: min(80vh, var(--dialog-max-h));
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
@@ -2851,10 +3085,10 @@
       #turn-update-dialog {
         position: fixed;
         left: 50%;
-        top: 38%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(420px, calc(100vw - 32px));
-        max-height: 80vh;
+        max-height: min(80vh, var(--dialog-max-h));
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
@@ -3004,10 +3238,10 @@
       #settings-dialog {
         position: fixed;
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(420px, calc(100vw - 32px));
-        max-height: 80vh;
+        max-height: min(80vh, var(--dialog-max-h));
         overflow-y: auto;
         background: var(--panel);
         border: 1px solid var(--edge);
@@ -3133,10 +3367,10 @@
       #combat-preview-dialog {
         position: fixed;
         left: 50%;
-        top: 50%;
-        transform: translate(-50%, -50%);
+        top: var(--dialog-top);
+        transform: var(--dialog-transform);
         width: min(520px, calc(100vw - 24px));
-        max-height: min(85vh, 680px);
+        max-height: min(680px, var(--dialog-max-h));
         overflow-y: auto;
         background: var(--panel);
         border: 1px solid var(--edge);
@@ -3383,10 +3617,6 @@
         pointer-events: auto;
       }
       /* Full-screen sheets sit above the top bar; hide it so ✕ / Back aren't blocked. */
-      #game-hud:has(#diplomacy:not(.hidden)) #topbar,
-      #game-hud:has(#diplomacy:not(.hidden)) #leader-avatar,
-      #game-hud:has(#empire:not(.hidden)) #topbar,
-      #game-hud:has(#empire:not(.hidden)) #leader-avatar,
       body.roc-hud-sheet-open #topbar,
       body.roc-hud-sheet-open #leader-avatar {
         visibility: hidden;
@@ -3413,6 +3643,12 @@
           --dialog-x-top: max(10px, env(safe-area-inset-top));
           --dialog-x-right: max(10px, env(safe-area-inset-right));
           --dialog-x-gutter: 52px;
+          /* Centered on touch screens: the top bar is taller here and a
+             top-anchored dialog would overlap it. dvh tracks the visible
+             viewport as the mobile browser toolbar shows/hides. */
+          --dialog-top: 50%;
+          --dialog-transform: translate(-50%, -50%);
+          --dialog-max-h: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
         }
         body.roc-native {
           --dialog-x-top: max(28px, env(safe-area-inset-top));
@@ -3451,17 +3687,13 @@
           right: max(6px, env(safe-area-inset-right));
           font-size: 13px;
         }
-        /* Turn number above civ name; resource pills on the row below. */
+        /* Turn and score share one row; resource pills wrap to the row below. */
         #topbar .tb-grp:first-child {
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 1px;
+          flex-direction: row;
+          align-items: center;
+          gap: 6px;
           flex: 1 1 auto;
           min-width: 0;
-        }
-        #topbar .tb-turn {
-          font-size: 12px;
-          line-height: 1.15;
         }
         /* Empire group (cities/units/etc.) lives in the bottom bar on mobile. */
         #topbar .tb-grp:nth-child(3) {
@@ -3492,11 +3724,6 @@
           margin-left: 2px;
           font-size: 9px;
         }
-        /* The resources wrap onto their own row, so the player/civ label keeps
-           the full width of the first row (only truncating very long names). */
-        .tb-civ {
-          max-width: 64vw;
-        }
         #leader-avatar {
           display: flex;
           flex-direction: column;
@@ -3509,7 +3736,19 @@
           width: auto;
           z-index: 25;
         }
+        /* Civ name sits under the portrait on mobile too (the top bar no longer
+           carries it). Keep it to the civ name only so it stays one tight line. */
         #leader-avatar .leader-avatar-label {
+          display: block;
+          margin-top: 2px;
+          max-width: 72px;
+          font-size: 8.5px;
+          line-height: 1.15;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        #leader-avatar .leader-avatar-label span {
           display: none;
         }
         /* Match the height of the top bar next to it (--topbar-h is measured in
@@ -3674,11 +3913,24 @@
           height: 72px;
         }
         #great-people .gp-card b,
-        #great-people .gp-progress-body b {
+        #great-people .gp-track-body b {
           font-size: 16px;
         }
         #great-people .sub {
           font-size: 13px;
+        }
+        /* Narrow screens stack the recruited rail above a single-column grid. */
+        #great-people .gp-layout {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
+        #great-people .gp-grid {
+          grid-template-columns: 1fr;
+        }
+        /* Governments & Civics stack into one column on narrow screens. */
+        #civics .gc-layout {
+          grid-template-columns: 1fr;
+          gap: 6px;
         }
         #legends .legend-portrait {
           width: 80px;
@@ -3722,9 +3974,8 @@
         }
         #turn-update-dialog {
           width: min(340px, calc(100% - 24px));
-          max-height: min(70dvh, calc(100% - 48px));
+          max-height: min(70dvh, var(--dialog-max-h));
           padding: 14px 16px;
-          top: 42%;
         }
         #turn-update-dialog .turn-update-art {
           width: 130px;

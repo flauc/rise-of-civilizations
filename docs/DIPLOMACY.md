@@ -189,6 +189,20 @@ you demanded tribute (−).
 - **War:** declares war on a met civ when attitude is low **and** it estimates a
   military/opportunity advantage (relative unit strength near the border, target
   already at war, undefended cities). Sues for peace when war-weary or losing.
+  An aggressor stays committed to a war it started for ~6-16 turns (temperament-
+  scaled) before it will consider peace, unless the war turns against it.
+- **Peace terms (`peacePrice`):** one signed number per warring pair drives all
+  peace-making: the tribute the AI demands to end the war (positive: scales with
+  its power edge, greed/aggression, and soars when the enemy is on the brink) or
+  what it would itself pay (negative: losing, desperate when its capital is
+  besieged). War-weariness erodes a victor's ask; a second front or besieged
+  homeland collapses it. `aiSueForPeace` turns the price into terms: a bare
+  peace when trifling, otherwise a tribute basket built from the loser's actual
+  assets (gold, luxuries, surrendered units, a frontier city under utter
+  dominance — never the capital or last city) with shortfall as per-turn
+  reparations. Any war-ending deal or counter-offer is charged the same price in
+  `aiDecideOffer`, so a player may substitute gold for a demanded city and the
+  AI weighs the swap honestly — or volleys back a counter naming the difference.
 - **Proposals:** evaluates incoming `Proposal`s via §5; honours/breaks deals
   based on attitude and desperation (breaking costs reputation + attitude).
 - **Defensive pacts/alliances:** if an ally is attacked, may join the war.

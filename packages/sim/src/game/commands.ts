@@ -5,7 +5,7 @@ import { isPassableLand, isWaterTerrain } from "./terrain";
 import { computeReachable, isCoastalLand, isCoastalWater, isNavalUnit, isWaterDomain, ejectTrespassers } from "./movement";
 import { boardShip, disembarkFromShip, syncShipCargo } from "./naval-cargo";
 import { updateExplored } from "./visibility";
-import { processCity, advanceResearch, advanceGovernment, availableProduction, autoAssignCitizens, toggleCitizen, applyUnitUpkeep } from "./economy";
+import { processCity, advanceResearch, advanceGovernment, availableProduction, autoAssignCitizens, toggleCitizen, applyUnitUpkeep, expansionScorer } from "./economy";
 import {
   cityMaxHp,
   healAndReset,
@@ -457,7 +457,7 @@ export function applyCommand(
       }
       if (eff.newCityExtraPopulation) {
         city.population += eff.newCityExtraPopulation;
-        expandTerritory(state, city, eff.newCityExtraPopulation);
+        expandTerritory(state, city, eff.newCityExtraPopulation, expansionScorer(state, city));
       }
       autoAssignCitizens(state, city); // assign the founding citizens to tiles
       city.hp = cityMaxHp(city);

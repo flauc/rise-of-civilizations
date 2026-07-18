@@ -73,15 +73,29 @@ export function expansionCandidates(state: GameState, city: City): { col: number
   return out;
 }
 
-/** The tile the city would claim next by default: the nearest unowned tile in range. */
-export function nextExpansionTile(state: GameState, city: City): { col: number; row: number } | null {
+/** Scores a candidate tile at (col,row); higher is a better place for borders to
+ *  grow. Supplied by the caller (see economy.ts `expansionScorer`) so territory
+ *  stays free of the yield/amenity machinery. */
+export type ExpansionScore = (col: number, row: number) => number;
+
+/** The tile the city would claim next by default. With a `score` it takes the
+ *  highest-scoring claimable tile (yields + amenities, civ perks included),
+ *  breaking ties toward the nearest; without one it falls back to pure nearest. */
+export function nextExpansionTile(
+  state: GameState,
+  city: City,
+  score?: ExpansionScore,
+): { col: number; row: number } | null {
   const center = offsetToAxial({ col: city.col, row: city.row });
   let best: { col: number; row: number } | null = null;
+  let bestScore = -Infinity;
   let bestD = Infinity;
   forEachInRadius(state, city.col, city.row, MAX_RADIUS, (col, row) => {
     if (!canExpandTo(state, city, col, row)) return;
     const d = axialDistance(center, offsetToAxial({ col, row }));
-    if (d < bestD) {
+    const s = score ? score(col, row) : -d; // no scorer → nearest wins
+    if (s > bestScore || (s === bestScore && d < bestD)) {
+      bestScore = s;
       bestD = d;
       best = { col, row };
     }
@@ -90,8 +104,9 @@ export function nextExpansionTile(state: GameState, city: City): { col: number; 
 }
 
 /** Claim a tile within range when the city grows. Honours the player's chosen
- *  `expandTarget` when it's still claimable, otherwise takes the nearest tile. */
-export function expandTerritory(state: GameState, city: City, count = 1): void {
+ *  `expandTarget` when it's still claimable, otherwise auto-picks the best tile
+ *  via `score` (nearest if no scorer is supplied). */
+export function expandTerritory(state: GameState, city: City, count = 1, score?: ExpansionScore): void {
   for (let n = 0; n < count; n++) {
     const pick = city.expandTarget;
     if (pick && canExpandTo(state, city, pick.col, pick.row)) {
@@ -100,7 +115,7 @@ export function expandTerritory(state: GameState, city: City, count = 1): void {
       continue;
     }
     if (pick) city.expandTarget = undefined; // stale pick (now owned/out of range) — drop it
-    const next = nextExpansionTile(state, city);
+    const next = nextExpansionTile(state, city, score);
     if (!next) return; // nothing left to claim
     claim(state, city, next.col, next.row);
   }

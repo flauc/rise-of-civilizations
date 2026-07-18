@@ -37,6 +37,13 @@ const TYPE_MS = Math.round(28 / LOADING_VOICE_PLAYBACK_RATE);
 const TEXT_SYNC_OFFSET = 0;
 /** Slight stretch so the last words finish with the clip, not before it. */
 const TEXT_SYNC_STRETCH = 1;
+/** Fraction of the narration clip the text reveal is compressed into, so the
+ *  words land ahead of the voice (a human reads faster than the narrator speaks).
+ *  1 = finish exactly with the clip; lower = text leads further. */
+const TEXT_LEAD_FACTOR = 0.6;
+/** Newest revealed characters fade in with a soft leading edge — opacity per
+ *  trailing char, newest last. */
+const TRAIL_OPACITIES = [0.82, 0.62, 0.4, 0.18];
 /** Per-frame easing for browser-TTS fallback only. */
 const TEXT_SMOOTH_RATE = 0.38;
 
@@ -49,6 +56,19 @@ function revealCountAtTime(timeline: WordRevealMark[], elapsedSec: number, total
   if (timeline.length === 0 || total <= 0) return 0;
   const t = Math.max(0, elapsedSec + TEXT_SYNC_OFFSET);
   return Math.min(total, charCountAtTime(timeline, t));
+}
+
+/** Render the first `count` code points, with the newest few fading in so the
+ *  text materializes with a soft edge instead of hard word bumps. */
+function revealHtml(chars: string[], count: number): string {
+  const n = Math.min(chars.length, Math.max(0, count));
+  const trail = n >= chars.length ? 0 : Math.min(TRAIL_OPACITIES.length, n);
+  let html = iconify(chars.slice(0, n - trail).join(""));
+  for (let k = 0; k < trail; k++) {
+    const opacity = TRAIL_OPACITIES[k]!;
+    html += `<span style="opacity:${opacity}">${iconify(chars[n - trail + k]!)}</span>`;
+  }
+  return html;
 }
 /** Scroll always shows the exact narrated script, not the richer encyclopedia copy. */
 function scrollSpeech(base: CivLoadingSpeech, bakedLine: string | null): CivLoadingSpeech {
@@ -190,7 +210,7 @@ function ensureStyles(): void {
       width:62px;height:78px;flex-shrink:0;border-radius:8px;overflow:hidden;
       border:1px solid var(--edge);background:rgba(0,0,0,.25);
     }
-    #game-loading .gl-card-img{width:100%;height:100%;object-fit:cover;object-position:50% 20%}
+    #game-loading .gl-card-img{width:100%;height:100%;object-fit:contain;object-position:50% 20%}
     #game-loading .gl-card-body{min-width:0}
     #game-loading .gl-card-kicker{
       font-family:'Cinzel',Georgia,serif;font-size:10px;letter-spacing:.18em;text-transform:uppercase;
@@ -219,7 +239,7 @@ function ensureStyles(): void {
       padding:26px 30px 22px;color:var(--parchment);
     }
     #game-loading .gl-prologue{
-      font-family:Georgia,'Times New Roman',serif;font-size:clamp(18px,4.2vw,22px);line-height:1.75;
+      font-family:Georgia,'Times New Roman',serif;font-size:clamp(15px,1.4vw,17px);line-height:1.65;
       color:var(--parchment);text-align:left;min-height:2.8em;
     }
     #game-loading .gl-divider{
@@ -231,7 +251,7 @@ function ensureStyles(): void {
       background:linear-gradient(90deg,transparent,var(--edge) 12%,rgba(201,162,39,.55) 50%,var(--edge) 88%,transparent);
     }
     #game-loading .gl-ability{
-      font-family:Georgia,'Times New Roman',serif;font-size:clamp(17px,3.8vw,20px);line-height:1.7;
+      font-family:Georgia,'Times New Roman',serif;font-size:clamp(14px,1.3vw,16px);line-height:1.6;
       color:var(--accent-bright);text-align:left;font-weight:600;min-height:0;
     }
     #game-loading .gl-leverage-block{
@@ -243,7 +263,7 @@ function ensureStyles(): void {
       color:var(--accent);margin-bottom:8px;
     }
     #game-loading .gl-leverage{
-      font-family:Georgia,'Times New Roman',serif;font-size:clamp(17px,3.8vw,20px);line-height:1.7;
+      font-family:Georgia,'Times New Roman',serif;font-size:clamp(14px,1.3vw,16px);line-height:1.6;
       color:var(--parchment);text-align:left;
     }
     #game-loading .gl-prologue,#game-loading .gl-ability,#game-loading .gl-leverage{
@@ -546,7 +566,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
         remaining -= chars.length;
         if (i < blockList.length - 1 && remaining > 0) remaining -= 1;
       } else {
-        block.el.innerHTML = iconify(chars.slice(0, Math.max(0, remaining)).join(""));
+        block.el.innerHTML = revealHtml(chars, remaining);
         remaining = 0;
         for (let j = i + 1; j < blockList.length; j++) blockList[j]!.el.textContent = "";
         break;
@@ -640,7 +660,9 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
             ? syncDur
             : Math.max(4, total * 0.042);
       syncDur = dur;
-      timeline = syncTimeline(scroll.text, dur);
+      // Compress the reveal into a fraction of the clip so the text stays ahead of
+      // the narrator's pace rather than crawling in lockstep with the audio.
+      timeline = syncTimeline(scroll.text, dur * TEXT_LEAD_FACTOR);
     };
 
     const revealAtPlaybackTime = (): void => {
