@@ -93,7 +93,12 @@ export class PostgresUserStore {
       await this.sql`DELETE FROM roc_users`;
       return;
     }
-    await this.sql`DELETE FROM roc_users WHERE NOT (id = ANY(${ids}))`;
+    // Pass the id set as an explicit Postgres text-array literal (`{"a","b"}`)
+    // and cast it, rather than binding a JS array as a bare parameter: Bun's SQL
+    // encodes a `string[]` param as a comma-joined string, which Postgres then
+    // rejects as a malformed array literal ("must start with {").
+    const idArrayLiteral = `{${ids.map((id) => `"${id.replace(/([\\"])/g, "\\$1")}"`).join(",")}}`;
+    await this.sql`DELETE FROM roc_users WHERE id <> ALL(${idArrayLiteral}::text[])`;
   }
 
   async delete(userId: string): Promise<void> {
