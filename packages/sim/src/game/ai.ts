@@ -1157,11 +1157,18 @@ const SETTLE_DANGER_RADIUS = 3;
 const SETTLE_LOCAL_RADIUS = 6;
 /** A safe site is taken over the best one as long as it's within this much quality. */
 const SETTLE_SAFE_MARGIN = 6;
+/** How close a rival city must be for a site to count as contested frontier. */
+const FRONTIER_GRAB_REACH = 6;
+/** Per-rival strength of the contested-frontier pull (see frontierGrabBonus). */
+const FRONTIER_GRAB_SCALE = 4;
+/** Ceiling on the total frontier pull so land quality still leads site choice. */
+const FRONTIER_GRAB_CAP = 10;
 
 function isSettleCandidate(
   state: GameState,
   col: number,
   row: number,
+  pid: number,
   unitId: number,
   reserved?: Set<string>,
 ): boolean {
@@ -1170,6 +1177,14 @@ function isSettleCandidate(
   const tile = getTile(state.map, col, row);
   if (!tile || !isPassableLand(tile.terrain)) return false;
   if (cityAt(state, col, row)) return false;
+  // foundCity refuses these too — filter them here so the settler never treks to a
+  // site it can't build on and then loops. A live barb camp must be cleared first,
+  // and another civ's borders are off limits (our own territory is still fine).
+  if (tile.feature === "barb_camp") return false;
+  if (tile.ownerCityId !== undefined) {
+    const owner = state.cities.get(tile.ownerCityId);
+    if (owner && owner.ownerId !== pid) return false;
+  }
   const here = ax({ col, row });
   for (const c of state.cities.values()) {
     if (axialDistance(here, ax(c)) < SETTLE_MIN_CITY_DISTANCE) return false;
@@ -1187,7 +1202,7 @@ function hasSettleableLand(state: GameState, pid: number, reserved?: Set<string>
   if (!me) return false;
   for (const t of state.map.tiles) {
     if (!me.explored.has(`${t.col},${t.row}`)) continue;
-    if (isSettleCandidate(state, t.col, t.row, -1, reserved)) return true;
+    if (isSettleCandidate(state, t.col, t.row, pid, -1, reserved)) return true;
   }
   return false;
 }
@@ -1223,6 +1238,40 @@ function finalizeSettlePlan(
   return { ...best, safe: !exposed(best.col, best.row) };
 }
 
+/**
+ * A strategic pull toward favourable frontier land beside a rival, so the AI races to
+ * claim contested ground before a neighbour grabs it. The pull scales with:
+ *  - proximity: the nearer a rival city, the more contested (and worth taking) the plot;
+ *  - relative strength: strongly positive when we out-power the neighbour (we can hold the
+ *    border and press it), tapering to a small penalty when they out-power us so a lone
+ *    new city doesn't overextend into a stronger civ's reach.
+ * Summed over every met rival within reach, so a plot ringed by weak civs pulls hardest,
+ * then capped so raw land quality still leads. Barbarians and unmet civs never count, and
+ * this only nudges WHERE we settle, never onto illegal ground (candidates are pre-filtered).
+ */
+export function frontierGrabBonus(state: GameState, pid: number, col: number, row: number): number {
+  const me = playerById(state, pid);
+  if (!me) return 0;
+  const aggression = personalityOf(state, pid).aggression;
+  const here = ax({ col, row });
+  let bonus = 0;
+  for (const c of state.cities.values()) {
+    if (c.ownerId === pid) continue;
+    const owner = playerById(state, c.ownerId);
+    if (!owner || owner.isBarbarian || !me.met.includes(c.ownerId)) continue;
+    const d = axialDistance(here, ax(c));
+    if (d > FRONTIER_GRAB_REACH) continue;
+    const proximity = (FRONTIER_GRAB_REACH - d + 1) / (FRONTIER_GRAB_REACH + 1); // (0,1], nearest = 1
+    // ratio > 1 → we out-power them. Clamp so one lopsided matchup can't dominate.
+    const strengthPull = Math.max(-0.6, Math.min(1.5, powerRatio(state, pid, c.ownerId) - 1));
+    // Aggressive civs grab harder; timid ones still contest, just less. Only the positive
+    // (weaker-neighbour) pull is dialled by temperament; the caution penalty applies to all.
+    const appetite = strengthPull >= 0 ? 0.6 + aggression * 0.8 : 1;
+    bonus += proximity * strengthPull * appetite * FRONTIER_GRAB_SCALE;
+  }
+  return Math.max(-FRONTIER_GRAB_CAP, Math.min(FRONTIER_GRAB_CAP, bonus));
+}
+
 function rankSettleCandidates(
   state: GameState,
   unit: Unit,
@@ -1238,7 +1287,10 @@ function rankSettleCandidates(
   let safeBest: { col: number; row: number } | null = null;
   let safeBestValue = -Infinity;
   for (const { col, row } of candidates) {
-    const value = settleScore(state, col, row) - axialDistance(ax(unit), ax({ col, row })) * trekFactor;
+    const value =
+      settleScore(state, col, row) -
+      axialDistance(ax(unit), ax({ col, row })) * trekFactor +
+      frontierGrabBonus(state, pid, col, row);
     if (value > bestValue) {
       bestValue = value;
       best = { col, row };
@@ -1269,7 +1321,7 @@ export function planSettle(state: GameState, unit: Unit, pid: number, reserved?:
     for (let dc = -SETTLE_LOCAL_RADIUS; dc <= SETTLE_LOCAL_RADIUS; dc++) {
       const col = unit.col + dc;
       const row = unit.row + dr;
-      if (isSettleCandidate(state, col, row, unit.id, reserved)) local.push({ col, row });
+      if (isSettleCandidate(state, col, row, pid, unit.id, reserved)) local.push({ col, row });
     }
   }
   let ranked = rankSettleCandidates(state, unit, pid, local, 1.5);
@@ -1282,7 +1334,7 @@ export function planSettle(state: GameState, unit: Unit, pid: number, reserved?:
   const global: { col: number; row: number }[] = [];
   for (const t of state.map.tiles) {
     if (!me.explored.has(`${t.col},${t.row}`)) continue;
-    if (isSettleCandidate(state, t.col, t.row, unit.id, reserved)) global.push({ col: t.col, row: t.row });
+    if (isSettleCandidate(state, t.col, t.row, pid, unit.id, reserved)) global.push({ col: t.col, row: t.row });
   }
   ranked = rankSettleCandidates(state, unit, pid, global, 0.35);
   if (!ranked.best) return null;
@@ -1298,7 +1350,7 @@ function nearestOverseasLand(state: GameState, unit: Unit, pid: number): { col: 
   let bestValue = -Infinity;
   for (const t of state.map.tiles) {
     if (!me.explored.has(`${t.col},${t.row}`)) continue;
-    if (!isSettleCandidate(state, t.col, t.row, unit.id)) continue;
+    if (!isSettleCandidate(state, t.col, t.row, pid, unit.id)) continue;
     if (sameLandmass(state, from, { col: t.col, row: t.row })) continue;
     const value = settleScore(state, t.col, t.row) - axialDistance(ax(unit), ax({ col: t.col, row: t.row })) * 0.5;
     if (value > bestValue) {

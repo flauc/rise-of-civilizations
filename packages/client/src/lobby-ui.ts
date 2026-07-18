@@ -679,16 +679,16 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     }
     /* Unique-unit block — shared by the showcase and the civ picker. Clickable
        (a button) to open the expanded ability detail; no ability text inline. */
-    .uu-block{display:block;width:100%;margin-top:12px;padding:10px 12px;background:rgba(201,162,39,.06);border:1px solid rgba(201,162,39,.2);border-radius:10px;text-align:left;font:inherit;color:inherit}
-    .uu-clickable{cursor:pointer;transition:background .12s,border-color .12s}
-    .uu-clickable:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
+    .uu-block{display:block;width:100%;margin-top:12px;padding:12px 14px;background:linear-gradient(180deg,rgba(201,162,39,.09),rgba(201,162,39,.03));border:1px solid rgba(201,162,39,.22);border-radius:12px;text-align:left;font:inherit;color:inherit}
+    .uu-clickable{cursor:pointer;transition:background .12s,border-color .12s,box-shadow .12s}
+    .uu-clickable:hover{background:linear-gradient(180deg,rgba(201,162,39,.17),rgba(201,162,39,.06));border-color:#c9a227;box-shadow:0 4px 14px rgba(0,0,0,.28)}
     .uu-clickable:focus-visible{outline:2px solid #c9a227;outline-offset:2px}
-    .uu-top{display:flex;align-items:center;gap:12px}
-    .uu-icon{flex:0 0 auto;width:44px;height:44px;border-radius:8px;background:rgba(0,0,0,.25);border:1px solid var(--edge);display:flex;align-items:center;justify-content:center;overflow:hidden}
-    .uu-icon img{width:100%;height:100%;object-fit:contain}
+    .uu-top{display:flex;align-items:center;gap:14px}
+    .uu-icon{flex:0 0 auto;box-sizing:border-box;width:76px;height:76px;padding:5px;border-radius:10px;background:radial-gradient(120% 120% at 50% 28%,rgba(201,162,39,.20),rgba(0,0,0,.36));border:1px solid rgba(201,162,39,.32);display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.06)}
+    .uu-icon img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 3px 6px rgba(0,0,0,.55))}
     .uu-info{min-width:0;flex:1}
-    .uu-name{font-family:'Cinzel',Georgia,serif;font-size:14px;font-weight:700;color:#f0d878}
-    .uu-meta{font-size:12px;color:#b8aa8d;margin-top:2px}
+    .uu-name{font-family:'Cinzel',Georgia,serif;font-size:15px;font-weight:700;color:#f0d878;line-height:1.2}
+    .uu-meta{font-size:12px;color:#b8aa8d;margin-top:3px}
     /* Inline yield/stat chips: a civ's unique unit combat stats and unique building
        per-turn yields, shown on the selection card so they read without a click. */
     .uu-yields{display:flex;flex-wrap:wrap;align-items:center;gap:5px 8px;margin-top:5px}
@@ -1061,6 +1061,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     currentCivId: string,
     takenByOthers: Set<string>,
     onPick: (civId: string) => void,
+    allowRandom = false,
   ): void {
     let selected = currentCivId;
     const overlay = document.createElement("div");
@@ -1095,15 +1096,38 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     };
     document.addEventListener("keydown", onKey);
 
-    listEl.innerHTML = CIVS_BY_NAME.map((c) => {
-      const taken = takenByOthers.has(c.id) && c.id !== currentCivId;
-      return `<button type="button" class="cp-item${c.id === selected ? " sel" : ""}" data-civ="${c.id}"${taken ? " disabled" : ""}>
+    const randomItem = allowRandom
+      ? `<button type="button" class="cp-item${selected === RANDOM_CIV ? " sel" : ""}" data-civ="${RANDOM_CIV}">
+          <span class="cp-item-name">Random civilization</span>
+          <span class="cp-item-leader">Let fate decide</span>
+        </button>`
+      : "";
+    listEl.innerHTML =
+      randomItem +
+      CIVS_BY_NAME.map((c) => {
+        const taken = takenByOthers.has(c.id) && c.id !== currentCivId;
+        return `<button type="button" class="cp-item${c.id === selected ? " sel" : ""}" data-civ="${c.id}"${taken ? " disabled" : ""}>
         <span class="cp-item-name">${escapeHtml(c.name)}</span>
         <span class="cp-item-leader">${escapeHtml(c.leader)}${taken ? " · taken" : ""}</span>
       </button>`;
-    }).join("");
+      }).join("");
 
     const renderDetail = (): void => {
+      if (selected === RANDOM_CIV) {
+        detailEl.innerHTML = `
+          <div class="cp-detail-top">
+            <div class="cp-headings">
+              <div class="cp-civ">Random civilization</div>
+              <div class="cp-leader">Chosen when the game begins</div>
+            </div>
+          </div>
+          <div class="cp-ability">
+            <div class="cp-ability-name">Fate decides</div>
+            <div class="cp-ability-desc">A civilization is drawn for this seat at game start, from those no one else has claimed. Your leader, unique unit and abilities stay a surprise until the first turn.</div>
+          </div>`;
+        confirmName.textContent = "Random";
+        return;
+      }
       const civ = CIVILIZATIONS.find((c) => c.id === selected)!;
       const src = leaderAtlas.images[civ.id]?.src ?? `${ASSET_BASE_URL}leaders/${civ.id}.png`;
       detailEl.innerHTML = `
@@ -1954,7 +1978,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
                 </span>
                 <span class="cpb-caret">&rsaquo;</span>
               </button>
-              ${civ ? `<button type="button" class="roster-remove" data-random-slot="${s.id}" title="Use a random civ">↺</button>` : ""}
             </div>`;
         } else {
           civLine = `<div class="mp-pcard-civ">${civ ? `<b>${escapeHtml(civ.name)}</b> · ${escapeHtml(civ.leader)}` : "Random civilization"}</div>`;
@@ -1976,8 +1999,9 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
             ? `<div class="mp-pcard-manage">
                  ${kindToggle}
                  ${colorCtl}
-                 ${occupied && s.kind === "human" ? `<button type="button" class="menu-btn secondary mp-mini" data-kick="${s.id}">Kick</button>` : ""}
-                 <button type="button" class="roster-remove" data-remove-slot="${s.id}" title="Remove this slot">✕</button>
+                 ${occupied && s.kind === "human"
+                   ? `<button type="button" class="menu-btn secondary mp-mini" data-kick="${s.id}">Kick</button>`
+                   : `<button type="button" class="roster-remove" data-remove-slot="${s.id}" title="Remove this seat">✕</button>`}
                </div>`
             : meHost && isHostSeat
               ? `<div class="mp-pcard-manage">${colorCtl}</div>`
@@ -2106,21 +2130,17 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           const takenByOthers = new Set(takenCivs);
           if (slot.civId) takenByOthers.delete(slot.civId);
           const initial =
-            slot.civId && CIVILIZATIONS.some((c) => c.id === slot.civId)
-              ? slot.civId
-              : (CIVS_BY_NAME.find((c) => !takenByOthers.has(c.id)) ?? CIVS_BY_NAME[0]!).id;
-          openCivPicker(initial, takenByOthers, (civId) => {
-            if (slot.userId === state.mp.userId) mpSession?.send({ t: "pickCiv", gameId: room.gameId, civId });
-            else mpSession?.send({ t: "updateSlot", gameId: room.gameId, slotId, civId });
-          });
-        }),
-      );
-      body.querySelectorAll<HTMLButtonElement>("[data-random-slot]").forEach((btn) =>
-        btn.addEventListener("click", () => {
-          const slotId = Number(btn.dataset.randomSlot);
-          const slot = room.slots.find((s) => s.id === slotId);
-          if (slot?.userId === state.mp.userId) mpSession?.send({ t: "pickCiv", gameId: room.gameId, civId: null });
-          else mpSession?.send({ t: "updateSlot", gameId: room.gameId, slotId, civId: null });
+            slot.civId && CIVILIZATIONS.some((c) => c.id === slot.civId) ? slot.civId : RANDOM_CIV;
+          openCivPicker(
+            initial,
+            takenByOthers,
+            (civId) => {
+              const chosen = civId === RANDOM_CIV ? null : civId;
+              if (slot.userId === state.mp.userId) mpSession?.send({ t: "pickCiv", gameId: room.gameId, civId: chosen });
+              else mpSession?.send({ t: "updateSlot", gameId: room.gameId, slotId, civId: chosen });
+            },
+            true,
+          );
         }),
       );
 

@@ -94,6 +94,33 @@ describe("territory", () => {
     expect(expansionCandidates(state, city).length).toBeGreaterThan(0); // still room toward max radius
   });
 
+  it("never grows onto, nor lets a player target, a tile owned by another civ", () => {
+    const state = createGame({ seed: "terr-foreign", cols: 40, rows: 28, barbarians: false });
+    beginTurn(state);
+    const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: settler.id });
+    const city = citiesOf(state, 0)[0]!;
+    // Give player 1 a city so it can own tiles, then hand it one of OUR frontier tiles.
+    const enemySettler = unitsOf(state, 1).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: enemySettler.id }, 1);
+    const enemyCity = citiesOf(state, 1)[0]!;
+    const frontier = expansionCandidates(state, city)[0]!; // a tile we could otherwise claim
+    const foreignTile = getTile(state.map, frontier.col, frontier.row)!;
+    foreignTile.ownerCityId = enemyCity.id; // now it belongs to the rival
+
+    // Auto-expansion refuses it, and the picker no longer offers it.
+    expect(canExpandTo(state, city, frontier.col, frontier.row)).toBe(false);
+    expect(expansionCandidates(state, city)).not.toContainEqual(frontier);
+    const auto = nextExpansionTile(state, city);
+    expect(auto).not.toEqual(frontier);
+    // A player cannot select it manually.
+    const pick = applyCommand(state, { type: "setExpandTarget", cityId: city.id, target: frontier }, 0);
+    expect(pick.ok).toBe(false);
+    // And growing many times never seizes it — it stays the rival's.
+    expandTerritory(state, city, 12);
+    expect(getTile(state.map, frontier.col, frontier.row)!.ownerCityId).toBe(enemyCity.id);
+  });
+
   it("rejects an unclaimable expand target and clears one via setExpandTarget", () => {
     const state = createGame({ seed: "terr-pick2", cols: 40, rows: 28, barbarians: false });
     beginTurn(state);

@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { createGame } from "./setup";
-import { beginTurn } from "./commands";
+import { beginTurn, applyCommand } from "./commands";
 import { triggerVillage, spawnFromCamps, maybeSpawnCamps, clearBarbCamp } from "./features";
 import { computeVisible } from "./visibility";
-import { unitsOf, type GameState, type Player, type Unit } from "./state";
+import { citiesOf, unitsOf, type GameState, type Player, type Unit } from "./state";
+import { isPassableLand } from "./terrain";
 import {
   globalMoraleOf,
   onVillageGlobalMorale,
@@ -79,6 +80,46 @@ describe("map features", () => {
     const player = state.players[0]!;
     triggerVillage(state, unit, player);
     expect(state.log.length).toBeGreaterThan(logBefore); // some perk was logged
+  });
+
+  it("a settler cannot found a city on a live barbarian camp", () => {
+    const state = createGame({ seed: "feat-camp-found", cols: 44, rows: 30, barbarians: false });
+    beginTurn(state);
+    const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    const tile = getTile(state.map, settler.col, settler.row)!;
+    tile.feature = "barb_camp"; // a camp the settler passed through without clearing
+    const res = applyCommand(state, { type: "foundCity", unitId: settler.id }, 0);
+    expect(res.ok).toBe(false);
+    expect(state.cities.size).toBe(0);
+    expect(tile.feature).toBe("barb_camp"); // camp is left intact
+    // Clearing the camp (feature gone) lets the same settler found normally.
+    tile.feature = undefined;
+    expect(applyCommand(state, { type: "foundCity", unitId: settler.id }, 0).ok).toBe(true);
+  });
+
+  it("a settler cannot found a city inside another civ's borders", () => {
+    const state = createGame({ seed: "feat-foreign-found", cols: 44, rows: 30, barbarians: false });
+    beginTurn(state);
+    // Give player 1 a city so its territory can own tiles.
+    const theirSettler = unitsOf(state, 1).find((u) => u.type === "settler")!;
+    applyCommand(state, { type: "foundCity", unitId: theirSettler.id }, 1);
+    const theirCity = citiesOf(state, 1)[0]!;
+    // Find a passable-land tile clear of every city (>= MIN_CITY_DISTANCE) so the
+    // only thing that could block founding there is ownership, not spacing.
+    const clearOf = (t: { col: number; row: number }) =>
+      [...state.cities.values()].every(
+        (c) => axialDistance(offsetToAxial(t), offsetToAxial({ col: c.col, row: c.row })) >= 3,
+      );
+    const spot = state.map.tiles.find((t) => isPassableLand(t.terrain) && !t.feature && clearOf(t))!;
+    const settler = unitsOf(state, 0).find((u) => u.type === "settler")!;
+    settler.col = spot.col;
+    settler.row = spot.row;
+    // Claim the far tile for player 1's city: now it is foreign territory.
+    spot.ownerCityId = theirCity.id;
+    expect(applyCommand(state, { type: "foundCity", unitId: settler.id }, 0).ok).toBe(false);
+    // Release it back to neutral wilderness and the same settler founds normally.
+    spot.ownerCityId = undefined;
+    expect(applyCommand(state, { type: "foundCity", unitId: settler.id }, 0).ok).toBe(true);
   });
 
   it("barbarian camps spawn raiders over time", () => {

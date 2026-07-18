@@ -28,4 +28,8 @@ an entry in `EMOJI_ICON` and a generated icon behind it. No exceptions.
 
 ## Related copy rules
 
-- No em dashes (`—`) in game copy or dialog; use commas, periods, or colons.
+- No long dashes anywhere in player-facing text: never use an em dash (`—`) or
+  en dash (`–`) in game copy, tutorial dialog, UI strings, or the in-game wiki
+  (`packages/client/src/wiki.ts`). Rewrite with a comma, period, or colon. In
+  table/placeholder cells use a word like `None` rather than a dash. Regular
+  hyphens (`-`) in compound words are fine.

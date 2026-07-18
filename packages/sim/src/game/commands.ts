@@ -410,6 +410,15 @@ export function applyCommand(
       const tile = getTile(state.map, unit.col, unit.row);
       if (!tile || !isPassableLand(tile.terrain)) return fail("invalid terrain");
       if (cityAt(state, unit.col, unit.row)) return fail("already a city here");
+      // A settler can't build over a live barbarian camp; the camp must be cleared
+      // by a military unit first (settlers pass through without dislodging it).
+      if (tile.feature === "barb_camp") return fail("clear the barbarian camp first");
+      // No settling inside another civ's borders. A city may still be founded on
+      // your own territory; only foreign-owned tiles are off limits.
+      if (tile.ownerCityId !== undefined) {
+        const owner = state.cities.get(tile.ownerCityId);
+        if (owner && owner.ownerId !== player.id) return fail("cannot found a city on foreign territory");
+      }
       const here = offsetToAxial({ col: unit.col, row: unit.row });
       for (const c of state.cities.values()) {
         if (axialDistance(here, offsetToAxial({ col: c.col, row: c.row })) < MIN_CITY_DISTANCE) {

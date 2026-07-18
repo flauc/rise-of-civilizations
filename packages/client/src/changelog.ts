@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.7.7";
+export const CURRENT_VERSION = "0.7.8";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,54 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.7.8",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "Gameplay",
+        title: "You cannot found a city on a camp or foreign land",
+        desc:
+          "Founding a city is now blocked on a tile still held by an active barbarian camp: clear the camp with a military unit first, since a settler passes through without dislodging it. Building inside another civilization's borders is blocked too. You can still found a city anywhere on your own territory.",
+      },
+      {
+        tag: "UI",
+        title: "Larger, sharper unique unit art",
+        desc:
+          "The unique unit panel in the civ picker and the showcase now shows a bigger, higher resolution portrait in a framed icon. If the crisp art is missing, it falls back to the map token instead of leaving a broken frame.",
+      },
+      {
+        tag: "UI",
+        title: "Smaller name labels on the map",
+        desc:
+          "City and unit name tags drawn on the board are now smaller, so they crowd the map less at a glance.",
+      },
+      {
+        tag: "Fix",
+        title: "Wiki images no longer crop",
+        desc:
+          "Related and showcase card images in the wiki now fit the whole picture inside its frame instead of cropping the edges.",
+      },
+      {
+        tag: "Fix",
+        title: "Camps and villages avoid natural wonders",
+        desc:
+          "Barbarian camps and tribal villages no longer spawn on top of a natural wonder tile.",
+      },
+      {
+        tag: "Fix",
+        title: "Server no longer crashes on startup with saved accounts",
+        desc:
+          "Fixed a crash that stopped the game server from starting when saved player accounts were present, which could keep games from loading.",
+      },
+      {
+        tag: "Gameplay",
+        title: "The AI contests frontier land",
+        desc:
+          "AI settlers now lean toward claiming good land along a rival's border, racing to grab contested ground before a neighbour takes it. The pull is stronger against weaker neighbours and for more aggressive leaders, and it eases off near a stronger power so a lone new city does not overextend. Land quality still leads the choice.",
+      },
+    ],
+  },
   {
     version: "0.7.7",
     date: "July 2026",

@@ -17,7 +17,6 @@ import {
   openSettingsPanel,
   refreshSettingsPanel,
 } from "./settings-ui";
-import { isLoggedIn } from "./account";
 import { selectTurnUpdates } from "./turn-update-batch";
 import {
   researchableGovernmentsFor,
@@ -2297,7 +2296,7 @@ export function createUI(handlers: UIHandlers): UI {
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
         openSettingsPanel({
-          showDeleteAccount: isLoggedIn(),
+          showDeleteAccount: false,
           onTurnUpdateSettingsChange: (view) => {
             if (turnUpdateOpen) {
               activeTurnUpdateView = view;

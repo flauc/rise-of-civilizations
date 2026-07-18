@@ -130,14 +130,16 @@ export function uniqueUnitBlockHtml(civId: string): string {
       : "";
   }
   const base = UNIT_DEFS[uu.replaces as UnitTypeId];
-  const src = `${ASSET_BASE_URL}units/${uu.id}.png`;
+  // Crisp ~320px art in the enlarged card icon; the low-res map token is the fallback.
+  const src = `${ASSET_BASE_URL}units-big/${uu.id}.png`;
+  const fallback = `${ASSET_BASE_URL}units/${uu.id}.png`;
   const meta = ["Unique unit", base ? `replaces ${escapeHtml(base.name)}` : ""].filter(Boolean).join(" · ");
   const chips = unitStatChips(uu);
   const abilities = unitAbilityHtml(uu);
   return `
     <button type="button" class="uu-block uu-clickable" data-uu-detail="${uu.id}">
       <div class="uu-top">
-        <div class="uu-icon"><img class="js-uu-img" src="${src}" alt="" /></div>
+        <div class="uu-icon"><img class="js-uu-img" src="${src}" data-fallback="${fallback}" alt="" /></div>
         <div class="uu-info">
           <div class="uu-name">${escapeHtml(uu.name)}</div>
           <div class="uu-meta">${meta}</div>
@@ -324,16 +326,23 @@ export function uniqueUnitDetailHtml(uu: typeof UNIQUE_UNITS[number]): string {
   );
 }
 
-/** Hide any unique-unit icons inside `root` whose sprite failed to load. */
+/** Wire unique-unit icons inside `root`: on load failure, try the `data-fallback`
+ *  sprite once, then hide the icon so a missing image never leaves a broken frame. */
 export function wireUuImages(root: HTMLElement): void {
   root.querySelectorAll<HTMLImageElement>(".js-uu-img").forEach((img) => {
-    const hide = () => {
+    const onFail = (): void => {
+      const fb = img.dataset.fallback;
+      if (fb) {
+        img.dataset.fallback = ""; // consume it: try the fallback once, then give up
+        img.src = fb;
+        return;
+      }
       const box = img.closest<HTMLElement>(".uu-icon, .uud-img");
       if (box) box.style.display = "none";
       else img.style.display = "none";
     };
-    if (img.complete && img.naturalWidth === 0) hide();
-    img.onerror = hide;
+    if (img.complete && img.naturalWidth === 0) onFail();
+    img.onerror = onFail;
   });
 }
 

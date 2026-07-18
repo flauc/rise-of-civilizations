@@ -662,7 +662,7 @@ export function drawOverlay(
       labelDraws.push(() => {
       // City name + population label (same pill style as unit labels).
       const label = `${city.name} (${city.population})`;
-      const fontSize = Math.max(8, Math.round(size * 0.32));
+      const fontSize = Math.max(7, Math.round(size * 0.22));
       ctx.font = `${fontSize}px system-ui, sans-serif`;
       const textW = ctx.measureText(label).width;
       const dotR = Math.max(2, size * 0.08);
@@ -802,7 +802,7 @@ export function drawOverlay(
       const legendName = unit.legendId ? getLegend(unit.legendId)?.name : undefined;
       const stars = unit.level > 1 ? " ★".repeat(unit.level - 1) : "";
       const label = (legendName ?? uu?.name ?? UNIT_DEFS[unit.type].name) + stars;
-      const fontSize = Math.max(8, Math.round(size * 0.32 * unitScale));
+      const fontSize = Math.max(7, Math.round(size * 0.22 * unitScale));
       ctx.font = `${fontSize}px system-ui, sans-serif`;
       const textW = ctx.measureText(label).width;
       const dotR = Math.max(2, size * 0.08);

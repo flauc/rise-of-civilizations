@@ -560,6 +560,7 @@ export function maybeSpawnCamps(state: GameState, _barbId: number): void {
   const eligible: { col: number; row: number; key: number }[] = [];
   for (const tile of state.map.tiles) {
     if (!isPassableLand(tile.terrain) || tile.feature) continue;
+    if (tile.naturalWonder) continue; // never squat a camp on a natural wonder
     if (isPolarTile(state.map, tile.col, tile.row)) continue; // no raiders at the poles
     if (sighted.has(`${tile.col},${tile.row}`)) continue; // must be hidden in fog
     if (unitAt(state, tile.col, tile.row)) continue;
@@ -594,6 +595,7 @@ export function placeFeatures(
   const eligible: { col: number; row: number; key: number }[] = [];
   for (const tile of map.tiles) {
     if (!isPassableLand(tile.terrain) || tile.feature) continue;
+    if (tile.naturalWonder) continue; // camps/villages never spawn on a natural wonder
     if (isPolarTile(map, tile.col, tile.row)) continue; // no villages/camps at the poles
     const here = offsetToAxial({ col: tile.col, row: tile.row });
     if (starts.some((s) => s && axialDistance(here, offsetToAxial(s)) < startClearance)) continue;

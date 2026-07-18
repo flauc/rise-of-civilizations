@@ -163,7 +163,7 @@ function civCardHtml(c: typeof CIVILIZATIONS[number]): string {
     `<div class="wiki-civ-body">` +
     `<div class="wiki-card-title">${escapeHtml(c.name)}</div>` +
     `<div class="wiki-card-sub">Leader: <b>${escapeHtml(c.leader)}</b></div>` +
-    `<div class="wiki-card-body"><b>${escapeHtml(c.abilityName)}</b> — ${escapeHtml(c.abilityDesc)}</div>` +
+    `<div class="wiki-card-body"><b>${escapeHtml(c.abilityName)}</b>: ${escapeHtml(c.abilityDesc)}</div>` +
     `<div class="uu-hint">View details & history &rsaquo;</div>` +
     `</div></div>`
   );
@@ -200,8 +200,8 @@ const CLASS_TITLES: Record<string, string> = {
   ranged: "Ranged",
   cavalry: "Cavalry",
   siege: "Siege",
-  naval_melee: "Naval — Warships",
-  naval_ranged: "Naval — Ranged",
+  naval_melee: "Naval: Warships",
+  naval_ranged: "Naval: Ranged",
   recon: "Recon",
   settler: "Civilian",
   trader: "Trade",
@@ -273,7 +273,7 @@ function renderUnits(): string {
       `<div class="wiki-unit-grid">${cards}</div>`;
   }
 
-  // Unique units — every civilization's signature unit, big image + who fields it.
+  // Unique units: every civilization's signature unit, big image + who fields it.
   const defs = UNIT_DEFS as Record<string, { name: string }>;
   const uuCards = UNIQUE_UNITS.map((u) => {
     const civ = getCiv(u.civId);
@@ -289,7 +289,7 @@ function renderUnits(): string {
     `<div class="wiki-unit-classtitle">Unique Units (${UNIQUE_UNITS.length})</div>` +
     `<div class="wiki-unit-grid">${uuCards}</div>`;
 
-  // Holy Units — every faith's champion (war-priests and peaceful clergy alike),
+  // Holy Units: every faith's champion (war-priests and peaceful clergy alike),
   // trained in a follower city with a Temple. Kept in one segment regardless of
   // their combat class, so the whole set reads together.
   const holyCards = RELIGION_KITS.map((k) => {
@@ -320,20 +320,20 @@ function renderGameplay(): string {
       "Yields",
       `<p>Civilization runs on six yields:</p>` +
         `<ul>` +
-        `<li><b>Food</b> — grows city population, which is also the price of every unit you train.</li>` +
-        `<li><b>Production</b> — constructs buildings, wonders and projects (units are trained, not built).</li>` +
-        `<li><b>Gold</b> — maintains armies, and can rush builds and training.</li>` +
-        `<li><b>Science</b> — researches technologies.</li>` +
-        `<li><b>Culture</b> — develops civics and expands borders.</li>` +
-        `<li><b>Faith</b> — founds and spreads religions.</li>` +
+        `<li><b>Food</b>: grows city population, which is also the price of every unit you train.</li>` +
+        `<li><b>Production</b>: constructs buildings, wonders and projects (units are trained, not built).</li>` +
+        `<li><b>Gold</b>: maintains armies, and can rush builds and training.</li>` +
+        `<li><b>Science</b>: researches technologies.</li>` +
+        `<li><b>Culture</b>: develops civics and expands borders.</li>` +
+        `<li><b>Faith</b>: founds and spreads religions.</li>` +
         `</ul>`,
     ) +
     section(
       "Construction & Training",
-      `<p>Cities do two separate things. <b>Construction</b> spends production to raise <b>buildings, wonders and conversion projects</b> — one item at a time.</p>` +
-        `<p>Units are no longer built; they are <b>trained</b>. To field an army a city must first construct the <b>training building</b> for that unit's class — a <b>Barracks</b> (melee), <b>Archery Range</b> (ranged), <b>Stable</b> (cavalry), <b>Siege Workshop</b> (siege) or <b>Shipyard</b> (naval) — then train units there. Each building has <b>five tiers</b> that train faster, raise a recruit's starting morale and experience, and let more units train at once.</p>` +
-        `<p>Every trained unit <b>costs one population</b> — a citizen leaves the city to take up arms — so the real limit on your army is <b>food and growth</b>, not production. Settlers, Traders and Scouts also cost a citizen but are trained from the city centre with no building required. You can cancel a unit in training to recover the citizen, or spend gold (or faith/culture, with the right perk) to rush it out.</p>` +
-        `<p>Ordinary construction still has plenty to build. Alongside the economy and culture buildings, a set of <b>support and defence</b> buildings back the army: a <b>Drill Yard</b>, <b>Armoury</b> and <b>Arsenal</b> speed training and send recruits off with more experience and morale; a <b>Storehouse</b> keeps a food reserve so growth never restarts from empty; and a fortification chain — <b>Walls → Castle → Bombard Tower</b>, with <b>Ballista Towers</b> and a <b>Beacon Tower</b> network — hardens a city and lets it bombard attackers (twice a turn with a Bombard Tower). An <b>Infirmary</b> heals nearby units and a <b>Triumphal Arch</b> rallies them when the enemy falls. See <b>Cities → Buildings</b> for the full roster.</p>`,
+      `<p>Cities do two separate things. <b>Construction</b> spends production to raise <b>buildings, wonders and conversion projects</b>, one item at a time.</p>` +
+        `<p>Units are no longer built; they are <b>trained</b>. To field an army a city must first construct the <b>training building</b> for that unit's class, a <b>Barracks</b> (melee), <b>Archery Range</b> (ranged), <b>Stable</b> (cavalry), <b>Siege Workshop</b> (siege) or <b>Shipyard</b> (naval), then train units there. Each building has <b>five tiers</b> that train faster, raise a recruit's starting morale and experience, and let more units train at once.</p>` +
+        `<p>Every trained unit <b>costs one population</b>, a citizen leaves the city to take up arms, so the real limit on your army is <b>food and growth</b>, not production. Settlers, Traders and Scouts also cost a citizen but are trained from the city centre with no building required. You can cancel a unit in training to recover the citizen, or spend gold (or faith/culture, with the right perk) to rush it out.</p>` +
+        `<p>Ordinary construction still has plenty to build. Alongside the economy and culture buildings, a set of <b>support and defence</b> buildings back the army: a <b>Drill Yard</b>, <b>Armoury</b> and <b>Arsenal</b> speed training and send recruits off with more experience and morale; a <b>Storehouse</b> keeps a food reserve so growth never restarts from empty; and a fortification chain, <b>Walls → Castle → Bombard Tower</b>, with <b>Ballista Towers</b> and a <b>Beacon Tower</b> network, hardens a city and lets it bombard attackers (twice a turn with a Bombard Tower). An <b>Infirmary</b> heals nearby units and a <b>Triumphal Arch</b> rallies them when the enemy falls. See <b>Cities → Buildings</b> for the full roster.</p>`,
     ) +
     section(
       "Exploration",
@@ -341,28 +341,28 @@ function renderGameplay(): string {
     ) +
     section(
       "Upkeep & Treasury",
-      `<p>Every military unit costs a small amount of <b>gold per turn</b> in upkeep. Civilian units are cheap or free: Settlers cost nothing (they are consumed to found a city), while Traders cost <b>1🪙/turn</b>. Basic warriors and scouts cost <b>1🪙/turn</b>; more advanced bronze, iron, and naval units cost <b>2–4🪙/turn</b>. Some civilization abilities modify these costs.</p>` +
+      `<p>Every military unit costs a small amount of <b>gold per turn</b> in upkeep. Civilian units are cheap or free: Settlers cost nothing (they are consumed to found a city), while Traders cost <b>1🪙/turn</b>. Basic warriors and scouts cost <b>1🪙/turn</b>; more advanced bronze, iron, and naval units cost <b>2-4🪙/turn</b>. Some civilization abilities modify these costs.</p>` +
         `<p>When you create a game, choose a <b>Starting Treasury</b> preset that sets how much gold every major civilization begins with:</p>` +
         `<ul>` +
-        `<li><b>Tight start</b> — <b>25🪙</b>. A smaller buffer; players must be careful about extra units early and will feel gold pressure quickly. Good if you want upkeep to bite.</li>` +
-        `<li><b>Balanced start</b> — <b>75🪙</b>. Enough to cover a modest army for ~15–25 turns while the first economy (trade route / Market / Harbor) comes online. Keeps early expansion viable without removing tension.</li>` +
-        `<li><b>Generous start</b> — <b>150🪙</b>. A comfortable cushion; players can support several units or bribe barbarians early without immediate gold anxiety. Reduces early economic tension.</li>` +
+        `<li><b>Tight start</b>: <b>25🪙</b>. A smaller buffer; players must be careful about extra units early and will feel gold pressure quickly. Good if you want upkeep to bite.</li>` +
+        `<li><b>Balanced start</b>: <b>75🪙</b>. Enough to cover a modest army for ~15-25 turns while the first economy (trade route / Market / Harbor) comes online. Keeps early expansion viable without removing tension.</li>` +
+        `<li><b>Generous start</b>: <b>150🪙</b>. A comfortable cushion; players can support several units or bribe barbarians early without immediate gold anxiety. Reduces early economic tension.</li>` +
         `</ul>` +
         `<p>If your treasury drops below zero after paying upkeep, your army goes <b>bankrupt</b>: your costliest units are disbanded until you are solvent and your troops' morale collapses (see the <b>Morale</b> section). Try to grow your economy through trade routes, coastal/lake tiles, Markets, and Harbors before your starting gold runs out.</p>` +
-        `<p>You can also dial upkeep up or down empire-wide with the <b>Military Pay</b> setting (−100% to +200%), which trades gold against army morale — see the <b>Morale</b> section.</p>`,
+        `<p>You can also dial upkeep up or down empire-wide with the <b>Military Pay</b> setting (−100% to +200%), which trades gold against army morale, see the <b>Morale</b> section.</p>`,
     ) +
     section(
       "Faith & Religion",
-      `<p>Faith is a full victory path. After researching <b>${escapeHtml(TECH_DEFS[RELIGION_REQUIRED_TECH]?.name ?? String(RELIGION_REQUIRED_TECH))}</b>, ${FAITH_TO_FOUND}☮️ faith founds one of ${RELIGIONS.length} real-world religions at one of your cities (its <b>holy city</b>) — each faith is <b>exclusive to one civilization</b> and brings a fixed <b>preset benefit</b>, a <b>capital bonus</b>, picks from a shared <b>perk pool</b>, and a <b>unique unit</b> trained in Temple cities that follow it. Raise the religion through <b>five tiers</b> for more perks and a stronger champion, spread it by pressure, trade routes and missionaries, and convert the world. ${catLink("religion", "Full details in the Religion section")}</p>`,
+      `<p>Faith is a full victory path. After researching <b>${escapeHtml(TECH_DEFS[RELIGION_REQUIRED_TECH]?.name ?? String(RELIGION_REQUIRED_TECH))}</b>, ${FAITH_TO_FOUND}☮️ faith founds one of ${RELIGIONS.length} real-world religions at one of your cities (its <b>holy city</b>). Each faith is <b>exclusive to one civilization</b> and brings a fixed <b>preset benefit</b>, a <b>capital bonus</b>, picks from a shared <b>perk pool</b>, and a <b>unique unit</b> trained in Temple cities that follow it. Raise the religion through <b>five tiers</b> for more perks and a stronger champion, spread it by pressure, trade routes and missionaries, and convert the world. ${catLink("religion", "Full details in the Religion section")}</p>`,
     ) +
     section(
       "Barbarians & Parley",
-      `<p>Barbarian camps spawn raiders that attack everyone. You can fight them — clearing a camp with a military unit pays a gold reward — but once you research <b>Parley</b> (a very early technology, branching off Foraging) you gain two diplomatic options whenever one of your units stands <b>adjacent</b> to a barbarian.</p>` +
+      `<p>Barbarian camps spawn raiders that attack everyone. You can fight them, clearing a camp with a military unit pays a gold reward, but once you research <b>Parley</b> (a very early technology, branching off Foraging) you gain two diplomatic options whenever one of your units stands <b>adjacent</b> to a barbarian.</p>` +
         `<ul>` +
-        `<li><b>Bribe the war-band</b> — buy a <b>${BRIBE_TURNS}-turn truce</b>. Every barbarian from that camp (the whole war-band, including raiders it spawns later) stops attacking <i>you</i> for the duration. Your first bribe costs <b>${BARBARIAN_BRIBE_BASE}🪙</b>, and <b>each subsequent bribe doubles in price</b> (${BARBARIAN_BRIBE_BASE} → ${BARBARIAN_BRIBE_BASE * 2} → ${BARBARIAN_BRIBE_BASE * 4} → …), so peace gets expensive fast.</li>` +
-        `<li><b>Recruit the unit</b> — pay a larger, one-off fee to take the barbarian into your own army. The price scales with the unit's type and level: about <b>5× its build cost</b>, plus 40% per level. For example, a Warrior costs <b>${barbarianRecruitCost({ type: "warrior", level: 1 } as Unit)}🪙</b> and a Slinger <b>${barbarianRecruitCost({ type: "slinger", level: 1 } as Unit)}🪙</b>; a veteran (level 2) Warrior costs <b>${barbarianRecruitCost({ type: "warrior", level: 2 } as Unit)}🪙</b>.</li>` +
+        `<li><b>Bribe the war-band</b>: buy a <b>${BRIBE_TURNS}-turn truce</b>. Every barbarian from that camp (the whole war-band, including raiders it spawns later) stops attacking <i>you</i> for the duration. Your first bribe costs <b>${BARBARIAN_BRIBE_BASE}🪙</b>, and <b>each subsequent bribe doubles in price</b> (${BARBARIAN_BRIBE_BASE} → ${BARBARIAN_BRIBE_BASE * 2} → ${BARBARIAN_BRIBE_BASE * 4} → …), so peace gets expensive fast.</li>` +
+        `<li><b>Recruit the unit</b>: pay a larger, one-off fee to take the barbarian into your own army. The price scales with the unit's type and level: about <b>5× its build cost</b>, plus 40% per level. For example, a Warrior costs <b>${barbarianRecruitCost({ type: "warrior", level: 1 } as Unit)}🪙</b> and a Slinger <b>${barbarianRecruitCost({ type: "slinger", level: 1 } as Unit)}🪙</b>; a veteran (level 2) Warrior costs <b>${barbarianRecruitCost({ type: "warrior", level: 2 } as Unit)}🪙</b>.</li>` +
         `</ul>` +
-        `<p>A bribe is a cheap, temporary shield against a horde you can't yet beat; recruiting is a pricier way to turn a raider into a soldier of your own. Truces are per-player — bribing a war-band does not stop it raiding your rivals.</p>`,
+        `<p>A bribe is a cheap, temporary shield against a horde you can't yet beat; recruiting is a pricier way to turn a raider into a soldier of your own. Truces are per-player: bribing a war-band does not stop it raiding your rivals.</p>`,
     )
   );
 }
@@ -375,7 +375,7 @@ function renderTerrain(): string {
         .filter(Boolean)
         .join(" · ") || "No yields";
       const notes: string[] = [];
-      if (isWaterTerrain(t)) notes.push("Water — naval only");
+      if (isWaterTerrain(t)) notes.push("Water: naval only");
       else if (!isPassableLand(t)) notes.push("Impassable");
       else notes.push(moveCost(t) > 1 ? `Rough · ${moveCost(t)} moves` : "Open · 1 move");
       const def = terrainDefense(t);
@@ -405,12 +405,12 @@ function renderTerrain(): string {
         `<li><b>Defense:</b> a unit attacking across a river fights at <b>-25%</b> strength.</li>` +
         `<li><b>Movement:</b> crossing a river costs <b>+1 movement</b>, just like entering rough terrain.</li>` +
         `<li><b>Farms:</b> a river tile can only be farmed once <b>Irrigation</b> has been researched.</li>` +
-        `<li><b>Trade:</b> after <b>Sailing</b>, your rivers become navigable trade arteries — caravans follow them in preference to roads and a river-connected route earns the same gold bonus as the best grade of road.</li>` +
+        `<li><b>Trade:</b> after <b>Sailing</b>, your rivers become navigable trade arteries, caravans follow them in preference to roads and a river-connected route earns the same gold bonus as the best grade of road.</li>` +
         `</ul>`,
     ) +
     section(
       "Improvements",
-      `<p>Tiles are developed by city <b>specialists</b> rather than by roaming workers — see the <b>Specialists & Works</b> section. Every improvement has three tiers, each a separate project that must be contracted to craftsmen.</p>`,
+      `<p>Tiles are developed by city <b>specialists</b> rather than by roaming workers, see the <b>Specialists & Works</b> section. Every improvement has three tiers, each a separate project that must be contracted to craftsmen.</p>`,
     )
   );
 }
@@ -423,7 +423,7 @@ function renderCombat(): string {
     ) +
     section(
       "Rough & Open Terrain",
-      `<p>Defenders on Hills, Forest, Woods, Jungle, Taiga or Mesa gain a combat bonus, and all rough ground (those plus Wetlands and Bog) costs extra movement to enter. Open terrain — including the soggy marshes, which give no cover — is no help to a defender. Attacking across a river costs the attacker 25% of its strength and an extra movement point to ford.</p>`,
+      `<p>Defenders on Hills, Forest, Woods, Jungle, Taiga or Mesa gain a combat bonus, and all rough ground (those plus Wetlands and Bog) costs extra movement to enter. Open terrain, including the soggy marshes, which give no cover, is no help to a defender. Attacking across a river costs the attacker 25% of its strength and an extra movement point to ford.</p>`,
     ) +
     section(
       "Ranged Units",
@@ -436,7 +436,7 @@ function renderCombat(): string {
     section(
       "Cities",
       `<p>Cities have their own combat strength and HP based on population and buildings. Enemy units must attack from adjacent tiles; cities cannot be entered until captured.</p>` +
-        `<p><b>Fortifications</b> stack up a defence chain: <b>Walls</b> add strength and HP, a <b>Castle</b> hardens the core further (+defence, +HP), <b>Ballista Towers</b> boost the city's bombardment, and a <b>Beacon Tower</b> network lends defence to friendly cities in signalling range. A city bombards an adjacent enemy <b>once per turn</b> for free — or <b>twice</b> once it has a <b>Bombard Tower</b>.</p>`,
+        `<p><b>Fortifications</b> stack up a defence chain: <b>Walls</b> add strength and HP, a <b>Castle</b> hardens the core further (+defence, +HP), <b>Ballista Towers</b> boost the city's bombardment, and a <b>Beacon Tower</b> network lends defence to friendly cities in signalling range. A city bombards an adjacent enemy <b>once per turn</b> for free, or <b>twice</b> once it has a <b>Bombard Tower</b>.</p>`,
     )
   );
 }
@@ -447,8 +447,8 @@ function renderMorale(): string {
       "Two Kinds of Morale",
       `<p>Every army runs on <b>morale</b>, tracked at two levels:</p>` +
         `<ul>` +
-        `<li><b>Global morale</b> — your empire's overall spirit, from <b>0 to 200</b>, starting at a base of <b>50</b>. It sets the floor that new units are mustered at and shifts with the fortunes of war.</li>` +
-        `<li><b>Unit morale</b> — each individual unit's nerve, from <b>0 to 200</b>, where <b>100 is neutral</b> (no effect). It buffs or debuffs that unit's fighting and decides whether it holds the line or breaks and runs.</li>` +
+        `<li><b>Global morale</b>: your empire's overall spirit, from <b>0 to 200</b>, starting at a base of <b>50</b>. It sets the floor that new units are mustered at and shifts with the fortunes of war.</li>` +
+        `<li><b>Unit morale</b>: each individual unit's nerve, from <b>0 to 200</b>, where <b>100 is neutral</b> (no effect). It buffs or debuffs that unit's fighting and decides whether it holds the line or breaks and runs.</li>` +
         `</ul>`,
     ) +
     section(
@@ -469,18 +469,18 @@ function renderMorale(): string {
       "Winning & Losing",
       `<p>Morale is earned and lost on the battlefield:</p>` +
         `<ul>` +
-        `<li><b>Defeat an enemy</b> — the victorious unit's morale jumps, adjacent friendly units gain a smaller boost, and your global morale rises by <b>10%</b> of the victor's gain.</li>` +
-        `<li><b>Lose one of your units</b> — every adjacent friendly unit's morale drops, and global morale falls by 10% of that loss.</li>` +
-        `<li><b>Promote a unit</b> — the promotion heartens that unit and its neighbours, and lifts global morale.</li>` +
-        `<li><b>Beating barbarians counts for less</b> — defeating a barbarian gives only about <b>half</b> the morale of beating a rival civilization's soldier. Glory is won against real foes.</li>` +
+        `<li><b>Defeat an enemy</b>: the victorious unit's morale jumps, adjacent friendly units gain a smaller boost, and your global morale rises by <b>10%</b> of the victor's gain.</li>` +
+        `<li><b>Lose one of your units</b>: every adjacent friendly unit's morale drops, and global morale falls by 10% of that loss.</li>` +
+        `<li><b>Promote a unit</b>: the promotion heartens that unit and its neighbours, and lifts global morale.</li>` +
+        `<li><b>Beating barbarians counts for less</b>: defeating a barbarian gives only about <b>half</b> the morale of beating a rival civilization's soldier. Glory is won against real foes.</li>` +
         `</ul>` +
         `<p>Defeats in battle and <b>bankruptcy</b> (see below) are the only things that can drag global morale <i>below</i> its base of 50.</p>`,
     ) +
     section(
       "Bankruptcy",
-      `<p>An army marches on its pay. If your treasury cannot cover unit <b>upkeep</b> at the end of a turn, your most expensive units are <b>disbanded</b> until you are solvent again — and the unpaid wages <b>gut your army's spirit</b>:</p>` +
+      `<p>An army marches on its pay. If your treasury cannot cover unit <b>upkeep</b> at the end of a turn, your most expensive units are <b>disbanded</b> until you are solvent again, and the unpaid wages <b>gut your army's spirit</b>:</p>` +
         `<ul>` +
-        `<li>Global morale <b>plunges by 30</b> — a drastic blow that can push it well below the base of 50.</li>` +
+        `<li>Global morale <b>plunges by 30</b>, a drastic blow that can push it well below the base of 50.</li>` +
         `<li>Every surviving unit loses <b>25 morale</b> on the spot, leaving a demoralised army that fights weakly and routs easily.</li>` +
         `<li>This happens <b>every turn</b> you remain insolvent, so a prolonged cash crisis can collapse an army's will to fight entirely.</li>` +
         `</ul>` +
@@ -492,36 +492,36 @@ function renderMorale(): string {
         `<ul>` +
         `<li>Decay only begins <b>3 turns after</b> the last time morale was earned (a kill, promotion, or a spirited war declaration).</li>` +
         `<li>It then <b>ramps up</b>: roughly <b>1% per turn</b> at first, accelerating up to <b>10% per turn</b> the longer your armies sit idle.</li>` +
-        `<li>Decay <b>never drops global morale below 50</b> — only losing battles or bankruptcy can do that.</li>` +
+        `<li>Decay <b>never drops global morale below 50</b>: only losing battles or bankruptcy can do that.</li>` +
         `</ul>` +
         `<p>The lesson: a confident empire must keep winning to stay confident.</p>`,
     ) +
     section(
       "Military Pay",
-      `<p>You set how generously your army is paid — its <b>upkeep</b> — anywhere from <b>−100%</b> to <b>+200%</b> of the normal rate. This single lever trades gold against morale:</p>` +
+      `<p>You set how generously your army is paid, its <b>upkeep</b>, anywhere from <b>−100%</b> to <b>+200%</b> of the normal rate. This single lever trades gold against morale:</p>` +
         `<ul>` +
         `<li><b>Gold cost:</b> pay scales every unit's gold upkeep directly. At <b>−100%</b> your army costs nothing to maintain; at <b>0%</b> it costs the normal amount; at <b>+200%</b> it costs <b>three times</b> as much.</li>` +
-        `<li><b>Underpaying (below 0%)</b> — saves gold but makes global morale <b>decay faster</b> (down to double speed at −100%). A starved army loses heart quickly.</li>` +
-        `<li><b>Overpaying (above 0%)</b> — costs gold but <b>slows the decay</b>; at <b>+100%</b> decay stops entirely.</li>` +
-        `<li><b>Lavish pay (above +100%)</b> — flips the balance: instead of fading, global morale actively <b>rises each turn</b>, climbing fastest at the +200% maximum.</li>` +
+        `<li><b>Underpaying (below 0%)</b>: saves gold but makes global morale <b>decay faster</b> (down to double speed at −100%). A starved army loses heart quickly.</li>` +
+        `<li><b>Overpaying (above 0%)</b>: costs gold but <b>slows the decay</b>; at <b>+100%</b> decay stops entirely.</li>` +
+        `<li><b>Lavish pay (above +100%)</b>: flips the balance: instead of fading, global morale actively <b>rises each turn</b>, climbing fastest at the +200% maximum.</li>` +
         `</ul>` +
-        `<p>Adjust it any time from the <b>🎌 morale</b> panel. Crank pay up before a hard campaign to keep your troops eager, then ease off in peacetime to refill the treasury — just remember morale will start to slide once you do.</p>`,
+        `<p>Adjust it any time from the <b>🎌 morale</b> panel. Crank pay up before a hard campaign to keep your troops eager, then ease off in peacetime to refill the treasury, just remember morale will start to slide once you do.</p>`,
     ) +
     section(
       "Declaring War",
-      `<p>The decision to go to war tests an army's nerve — and the effect cuts both ways, applied to <b>both your global morale and each of your units</b>:</p>` +
+      `<p>The decision to go to war tests an army's nerve, and the effect cuts both ways, applied to <b>both your global morale and each of your units</b>:</p>` +
         `<ul>` +
-        `<li>If morale is <b>high</b> (at or above neutral 100) when you declare war, it <b>rises</b> — a confident people welcomes the fight.</li>` +
-        `<li>If morale is <b>low</b> (below 100), it <b>falls further</b> — a weary people dreads another war.</li>` +
+        `<li>If morale is <b>high</b> (at or above neutral 100) when you declare war, it <b>rises</b>, a confident people welcomes the fight.</li>` +
+        `<li>If morale is <b>low</b> (below 100), it <b>falls further</b>, a weary people dreads another war.</li>` +
         `</ul>` +
         `<p>Pick your moment: declaring war from a position of strength compounds your advantage, while doing so when shaken only deepens the malaise.</p>`,
     ) +
     section(
       "Routing",
-      `<p>A unit whose nerve fails may <b>rout</b>: it breaks off, <b>flees 1–2 tiles</b> away from the nearest enemy, and <b>loses its next turn</b> entirely (no movement, no actions).</p>` +
+      `<p>A unit whose nerve fails may <b>rout</b>: it breaks off, <b>flees 1-2 tiles</b> away from the nearest enemy, and <b>loses its next turn</b> entirely (no movement, no actions).</p>` +
         `<ul>` +
         `<li>There is always a small chance to rout, but it climbs sharply as morale falls and is highest near 0.</li>` +
-        `<li>At <b>150+ morale</b> a unit essentially <b>never routs</b> — confident troops stand firm.</li>` +
+        `<li>At <b>150+ morale</b> a unit essentially <b>never routs</b>, confident troops stand firm.</li>` +
         `<li><b>Route resistance:</b> disciplined and heavy units hold their ground far better. Spearmen, Pikemen, Hoplites, Cataphracts, War Elephants and especially Legionaries are much harder to break at any given morale.</li>` +
         `</ul>`,
     )
@@ -556,12 +556,12 @@ function portraitCard(imgBase: string, id: string, title: string, sub: string, b
 
 /** Plain-English description of each great-person class's instant activation. */
 const GP_EFFECT_TEXT: Record<GreatPersonClass, string> = {
-  general: "Drills your land army — every land military unit earns a free promotion — and lifts empire morale.",
+  general: "Drills your land army, every land military unit earns a free promotion, and lifts empire morale.",
   admiral: "Heals your fleet and army to full and lifts empire morale.",
   scientist: "A burst of science (a eureka) that speeds your current research.",
   engineer: "A surge of production in your best city, hurrying its current build.",
   merchant: "A windfall of gold straight to your treasury.",
-  prophet: "A burst of faith (+110) toward founding or spreading a religion — plus a distinct gift unique to each prophet (see the figures below).",
+  prophet: "A burst of faith (+110) toward founding or spreading a religion, plus a distinct gift unique to each prophet (see the figures below).",
   artist: "A burst of culture that inspires your empire.",
   statesman: "A burst of culture that speeds your civic reforms.",
 };
@@ -572,7 +572,7 @@ const GP_EFFECT_TEXT: Record<GreatPersonClass, string> = {
 function prophetGiftText(gift: ProphetGift): string {
   switch (gift.kind) {
     case "zeal":
-      return `for ${gift.turns} turns your units reap +${gift.faithOnKill} faith on every kill, and empire morale lifts by +${gift.morale} — the holy war on the Lie`;
+      return `for ${gift.turns} turns your units reap +${gift.faithOnKill} faith on every kill, and empire morale lifts by +${gift.morale}, the holy war on the Lie`;
     case "temples":
       return `a Temple rises at once in up to ${gift.count} of your best temple-less cities (or +${gift.faithIfNone} more faith if none need one)`;
     case "faithFlow":
@@ -582,7 +582,7 @@ function prophetGiftText(gift: ProphetGift): string {
     case "mission":
       return `${gift.missionaries} free Missionaries are ordained at your holy city, and the faith is pressed (+${gift.pressure}) into it`;
     case "scholastic":
-      return `an instant +${gift.science} science — faith wedded to reason`;
+      return `an instant +${gift.science} science, faith wedded to reason`;
     case "revival":
       return `a +${gift.pressure} religious-pressure surge sweeps every one of your cities, and culture blooms +${gift.culturePercent}% for ${gift.turns} turns`;
   }
@@ -610,7 +610,7 @@ function renderGreatPeople(): string {
       .map((g) => portraitCard("great-people", g.id, g.name, `${g.era} era`, g.desc, `greatPerson:${g.id}`))
       .join("");
     gallery +=
-      `<div class="wiki-portrait-cat">${info.glyph} ${escapeHtml(info.name)}s — earned from ${escapeHtml(GP_SOURCE_TEXT[cls])}</div>` +
+      `<div class="wiki-portrait-cat">${info.glyph} ${escapeHtml(info.name)}s: earned from ${escapeHtml(GP_SOURCE_TEXT[cls])}</div>` +
       `<div class="wiki-portrait-body" style="margin:0 0 6px">${escapeHtml(GP_EFFECT_TEXT[cls])}</div>` +
       `<div class="wiki-portrait-grid">${cards}</div>`;
   }
@@ -618,7 +618,7 @@ function renderGreatPeople(): string {
   return (
     section(
       "What They Are",
-      `<p><b>Great People</b> are finite, named historical figures — scientists, generals, prophets, artists and more — earned by running the right kind of empire. They are not generic units; each is a one-time recruit you <b>activate</b> for a powerful instant effect.</p>`,
+      `<p><b>Great People</b> are finite, named historical figures, scientists, generals, prophets, artists and more, earned by running the right kind of empire. They are not generic units; each is a one-time recruit you <b>activate</b> for a powerful instant effect.</p>`,
     ) +
     section(
       "Earning Class Points",
@@ -626,23 +626,23 @@ function renderGreatPeople(): string {
         `<ul>` +
         GREAT_PERSON_CLASSES.map(
           (cls) =>
-            `<li>${GREAT_PERSON_CLASS_INFO[cls].glyph} <b>${escapeHtml(GREAT_PERSON_CLASS_INFO[cls].name)}</b> — ${escapeHtml(GP_SOURCE_TEXT[cls])}</li>`,
+            `<li>${GREAT_PERSON_CLASS_INFO[cls].glyph} <b>${escapeHtml(GREAT_PERSON_CLASS_INFO[cls].name)}</b>: ${escapeHtml(GP_SOURCE_TEXT[cls])}</li>`,
         ).join("") +
         `</ul>` +
         `<p>Build Archives and Academies to court Scientists, Markets and Harbors for Merchants, Barracks for Generals, Shrines and Temples for Prophets, and so on. Open the <b>🎖️ Great People</b> panel to watch each pool fill.</p>`,
     ) +
     section(
       "Recruiting",
-      `<p>When a pool reaches its threshold you <b>recruit the next available figure</b> of that class, in roughly era order. Each figure is <b>globally unique</b> — once any civilization recruits them, they are gone for the rest of that game, so there is real competition for the best ones.</p>` +
+      `<p>When a pool reaches its threshold you <b>recruit the next available figure</b> of that class, in roughly era order. Each figure is <b>globally unique</b>: once any civilization recruits them, they are gone for the rest of that game, so there is real competition for the best ones.</p>` +
         `<p>Your first figure of a class costs <b>${greatPersonThreshold(0)}</b> points; each later one of that class costs <b>${greatPersonThreshold(1) - greatPersonThreshold(0)}</b> more (${greatPersonThreshold(0)} → ${greatPersonThreshold(1)} → ${greatPersonThreshold(2)} → …).</p>`,
     ) +
     section(
       "Activation",
-      `<p>A recruited figure waits in your <b>🎖️ Great People</b> panel until you <b>activate</b> them — a one-time effect themed to their class:</p>` +
+      `<p>A recruited figure waits in your <b>🎖️ Great People</b> panel until you <b>activate</b> them, a one-time effect themed to their class:</p>` +
         `<ul>` +
         GREAT_PERSON_CLASSES.map(
           (cls) =>
-            `<li>${GREAT_PERSON_CLASS_INFO[cls].glyph} <b>${escapeHtml(GREAT_PERSON_CLASS_INFO[cls].name)}</b> — ${escapeHtml(GP_EFFECT_TEXT[cls])}</li>`,
+            `<li>${GREAT_PERSON_CLASS_INFO[cls].glyph} <b>${escapeHtml(GREAT_PERSON_CLASS_INFO[cls].name)}</b>: ${escapeHtml(GP_EFFECT_TEXT[cls])}</li>`,
         ).join("") +
         `</ul>`,
     ) +
@@ -681,14 +681,14 @@ function renderLegends(): string {
   return (
     section(
       "Heroes of Legend",
-      `<p><b>Legends</b> are the great heroes of history — powerful, one-of-a-kind units who fight at the head of your armies. They are a core feature, on by default, and can be switched off when you create a game.</p>` +
+      `<p><b>Legends</b> are the great heroes of history, powerful, one-of-a-kind units who fight at the head of your armies. They are a core feature, on by default, and can be switched off when you create a game.</p>` +
         `<p>Each legend reskins a strong base unit but stands far above it: a hero carries its own combat bonus, <b>heartens nearby allies</b>, and is marked on the map by a glowing gold ring, a crown, and its own name.</p>`,
     ) +
     section(
       "Recruiting a Hero",
-      `<p>Legends are earned through <b>military deeds</b>, not faith. Each hero belongs to a combat track — <b>Melee</b>, <b>Cavalry</b>, <b>Ranged</b>, <b>Siege</b>, or <b>Naval</b> — based on the unit it leads. Bank <b>track glory</b> by training matching units and winning battles, then recruit from the <b>⭐ Legends</b> panel when you have enough (your first hero of a track costs <b>${legendRecruitThreshold(0)}</b> glory; each later one of that track costs <b>${legendRecruitThreshold(1) - legendRecruitThreshold(0)}</b> more).</p>` +
-        `<p><b>Training</b> military units adds glory to their track. <b>Victories</b> add more — defeating a major civilization's troops grants the most; barbarian units and cleared camps grant less, but still count. The hero appears at one of your cities (naval heroes on adjacent water).</p>` +
-        `<p>Every legend is <b>globally unique</b> while alive — only one civilization can field a given hero at a time.</p>`,
+      `<p>Legends are earned through <b>military deeds</b>, not faith. Each hero belongs to a combat track, <b>Melee</b>, <b>Cavalry</b>, <b>Ranged</b>, <b>Siege</b>, or <b>Naval</b>, based on the unit it leads. Bank <b>track glory</b> by training matching units and winning battles, then recruit from the <b>⭐ Legends</b> panel when you have enough (your first hero of a track costs <b>${legendRecruitThreshold(0)}</b> glory; each later one of that track costs <b>${legendRecruitThreshold(1) - legendRecruitThreshold(0)}</b> more).</p>` +
+        `<p><b>Training</b> military units adds glory to their track. <b>Victories</b> add more: defeating a major civilization's troops grants the most; barbarian units and cleared camps grant less, but still count. The hero appears at one of your cities (naval heroes on adjacent water).</p>` +
+        `<p>Every legend is <b>globally unique</b> while alive: only one civilization can field a given hero at a time.</p>`,
     ) +
     section(
       "Lifespan",
@@ -698,10 +698,10 @@ function renderLegends(): string {
       "In Battle",
       `<p>A legend is a battlefield anchor:</p>` +
         `<ul>` +
-        `<li><b>Hero strength</b> — the legend itself fights with a large combat bonus on top of its base unit.</li>` +
-        `<li><b>Inspiring aura</b> — adjacent friendly <i>military</i> units gain a flat combat bonus while they stand beside the hero (auras from multiple heroes do not stack — the strongest applies).</li>` +
-        `<li><b>Signature power</b> — every hero carries a real, historically-rooted power: combat legends field a bespoke <i>active-ability kit</i> (Leonidas' Last Stand, Hannibal's ambush, Mehmed's great bombard…), while support legends exert <i>passive powers</i> simply by living (Mansa Musa's gold, Qin Shi Huang's wall, Sun Tzu's drilling). Each hero's page details the power and the history behind it.</li>` +
-        `<li><b>Steadfast</b> — heroes muster with very high morale, so they rarely waver or rout.</li>` +
+        `<li><b>Hero strength</b>: the legend itself fights with a large combat bonus on top of its base unit.</li>` +
+        `<li><b>Inspiring aura</b>: adjacent friendly <i>military</i> units gain a flat combat bonus while they stand beside the hero (auras from multiple heroes do not stack, the strongest applies).</li>` +
+        `<li><b>Signature power</b>: every hero carries a real, historically-rooted power: combat legends field a bespoke <i>active-ability kit</i> (Leonidas' Last Stand, Hannibal's ambush, Mehmed's great bombard…), while support legends exert <i>passive powers</i> simply by living (Mansa Musa's gold, Qin Shi Huang's wall, Sun Tzu's drilling). Each hero's page details the power and the history behind it.</li>` +
+        `<li><b>Steadfast</b>: heroes muster with very high morale, so they rarely waver or rout.</li>` +
         `</ul>`,
     ) +
     section(`The Heroes (${LEGENDS.length})`, gallery)
@@ -741,7 +741,7 @@ function buildingTable(ids: BuildingId[]): string {
     .map((id) => {
       const def = BUILDING_DEFS[id];
       if (!def) return "";
-      const tech = def.reqTech ? TECH_DEFS[def.reqTech]?.name ?? String(def.reqTech) : "—";
+      const tech = def.reqTech ? TECH_DEFS[def.reqTech]?.name ?? String(def.reqTech) : "None";
       const glyph = BUILDING_GLYPH[id] ?? "";
       return (
         `<tr>` +
@@ -765,19 +765,19 @@ function trainingFamilyTable(): string {
     const def = TRAINING_BUILDING_DEFS[fam];
     const rows = def.tiers
       .map((t) => {
-        const tech = t.reqTech ? TECH_DEFS[t.reqTech]?.name ?? String(t.reqTech) : "—";
+        const tech = t.reqTech ? TECH_DEFS[t.reqTech]?.name ?? String(t.reqTech) : "None";
         const extra: string[] = [];
         if (t.defense) extra.push(`+${t.defense} city def`);
         if (t.yields?.production) extra.push(`+${t.yields.production}⚒️`);
         return (
           `<tr><td>Tier ${t.tier}</td><td>${t.cost}⚒️</td><td>${escapeHtml(tech)}</td>` +
           `<td>${t.slots}</td><td>×${t.speedPct.toFixed(2)}</td><td>+${t.moraleBonus}</td><td>+${t.xp}</td>` +
-          `<td>${extra.join(", ") || "—"}</td></tr>`
+          `<td>${extra.join(", ") || "None"}</td></tr>`
         );
       })
       .join("");
     return (
-      `<div class="wiki-bld-cat">${def.glyph} ${escapeHtml(def.name)} — trains ${def.classes.join("/")}</div>` +
+      `<div class="wiki-bld-cat">${def.glyph} ${escapeHtml(def.name)}: trains ${def.classes.join("/")}</div>` +
       `<table class="wiki-bld-table"><thead><tr>` +
       `<th>Tier</th><th>Cost</th><th>Requires tech</th><th>Slots</th><th>Train speed</th><th>Morale</th><th>XP</th><th>Extra</th>` +
       `</tr></thead><tbody>${rows}</tbody></table>`
@@ -804,7 +804,7 @@ function renderCities(): string {
     section(
       "Founding",
       `<p>Train or move a Settler to a desirable tile and use the Found City action. Cities claim surrounding territory and can work tiles within three rings.</p>` +
-        `<p><b>Settling on a resource:</b> if you found a city directly on a tile carrying a resource, the city <b>harvests it for free</b> — no improvement needed. A luxury grants its <b>amenity</b> at once, a bonus resource adds its <b>yields</b>, and a strategic resource starts <b>stockpiling</b> — all provided you have already researched the technology that would normally improve that resource (most improvements need none). Without the required research, the resource stays dormant until you unlock it. A <b>river</b> under the city centre always keeps its bonuses (+1 food, and +1 science for a river lake), and the tile counts as fresh water.</p>`,
+        `<p><b>Settling on a resource:</b> if you found a city directly on a tile carrying a resource, the city <b>harvests it for free</b>: no improvement needed. A luxury grants its <b>amenity</b> at once, a bonus resource adds its <b>yields</b>, and a strategic resource starts <b>stockpiling</b>, all provided you have already researched the technology that would normally improve that resource (most improvements need none). Without the required research, the resource stays dormant until you unlock it. A <b>river</b> under the city centre always keeps its bonuses (+1 food, and +1 science for a river lake), and the tile counts as fresh water.</p>`,
     ) +
     section(
       "Growth",
@@ -812,19 +812,19 @@ function renderCities(): string {
     ) +
     section(
       "Production",
-      `<p>Production is spent on <b>buildings, wonders and projects</b> — one item at a time; gold can rush it. Units are no longer built here: they are trained from dedicated military buildings and cost population (see the <b>Gameplay → Construction & Training</b> section).</p>`,
+      `<p>Production is spent on <b>buildings, wonders and projects</b>, one item at a time; gold can rush it. Units are no longer built here: they are trained from dedicated military buildings and cost population (see the <b>Gameplay → Construction & Training</b> section).</p>`,
     ) +
     section(
-      "Governors — City Auto-Management",
+      "Governors: City Auto-Management",
       `<p>Any city can be handed to a <b>Governor</b> that manages it for you every turn, so a large empire doesn't need micro-managing. Open a city and pick a focus from the <b>Governor</b> row:</p>` +
         `<ul>` +
-        `<li><b>🖐️ Manual</b> — the default. You run the city yourself; the Governor does nothing.</li>` +
-        `<li><b>🌾 Growth</b> — steers citizens onto food tiles and builds growth infrastructure (Granary, Aqueduct) to raise the city's population as fast as possible.</li>` +
-        `<li><b>⚔️ Military</b> — the only mode that <b>trains units</b>. It raises training buildings and war works, works production tiles, and musters soldiers up to a standing garrison.</li>` +
-        `<li><b>🔬 Science</b> — favours science tiles and builds the research core (Archive, Academy).</li>` +
-        `<li><b>🪙 Money</b> — favours gold tiles and builds the commerce core (Market, Harbor, Bank).</li>` +
+        `<li><b>🖐️ Manual</b>: the default. You run the city yourself; the Governor does nothing.</li>` +
+        `<li><b>🌾 Growth</b>: steers citizens onto food tiles and builds growth infrastructure (Granary, Aqueduct) to raise the city's population as fast as possible.</li>` +
+        `<li><b>⚔️ Military</b>: the only mode that <b>trains units</b>. It raises training buildings and war works, works production tiles, and musters soldiers up to a standing garrison.</li>` +
+        `<li><b>🔬 Science</b>: favours science tiles and builds the research core (Archive, Academy).</li>` +
+        `<li><b>🪙 Money</b>: favours gold tiles and builds the commerce core (Market, Harbor, Bank).</li>` +
         `</ul>` +
-        `<p>Whatever the focus, a Governor also handles the generic housekeeping: assigning citizens to the best tiles, training and deploying <b>specialists</b>, and queuing <b>public works</b> (farms, mines, roads). If it can't advance its chosen focus — for example a Science city that has already built every research building — it simply falls back to sensible all-round development rather than idling.</p>` +
+        `<p>Whatever the focus, a Governor also handles the generic housekeeping: assigning citizens to the best tiles, training and deploying <b>specialists</b>, and queuing <b>public works</b> (farms, mines, roads). If it can't advance its chosen focus, for example a Science city that has already built every research building, it simply falls back to sensible all-round development rather than idling.</p>` +
         `<p><b>You stay in charge.</b> A Governor only fills <b>empty</b> production slots and never overrides a tile you have <b>locked</b> by hand, so you can always take a decision back. Switch focus or return to Manual at any time. A city that is <b>captured or ceded</b> reverts to Manual for its new owner.</p>`,
     ) +
     section("Buildings", renderBuildingRoster()) +
@@ -839,7 +839,7 @@ const WIKI_REL_STYLE = `<style>
 .wiki-rel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px}
 .wiki-rel-card{display:flex;flex-direction:column;padding:0;overflow:hidden}
 .wiki-rel-art{width:100%;aspect-ratio:4/3;background:var(--bg-card);overflow:hidden}
-.wiki-rel-art img{width:100%;height:100%;object-fit:cover;object-position:50% 25%;display:block}
+.wiki-rel-art img{width:100%;height:100%;object-fit:contain;object-position:50% 25%;display:block}
 .wiki-rel-body{padding:12px 14px}
 .wiki-rel-name{display:flex;align-items:center;gap:8px;font-family:'Cinzel',Georgia,serif;font-size:15px;font-weight:700;color:#e8dcc5}
 .wiki-rel-name img{width:22px;height:22px;object-fit:contain}
@@ -900,7 +900,7 @@ function renderReligion(): string {
     WIKI_UNIT_STYLE +
     section(
       "Faiths of the World",
-      `<p>${RELIGIONS.length} real historical faiths may be founded, each carrying a historically fitting <b>preset benefit</b>, a <b>capital bonus</b> for its holy city, and a <b>unique unit</b> all its own. Every religion is <b>exclusive</b> — once a civilization founds it, no one else may. Click a faith for its lore, benefits and champion.</p>` +
+      `<p>${RELIGIONS.length} real historical faiths may be founded, each carrying a historically fitting <b>preset benefit</b>, a <b>capital bonus</b> for its holy city, and a <b>unique unit</b> all its own. Every religion is <b>exclusive</b>: once a civilization founds it, no one else may. Click a faith for its lore, benefits and champion.</p>` +
         `<div class="wiki-rel-grid">${RELIGIONS.map(religionCardHtml).join("")}</div>`,
     ) +
     section(
@@ -909,10 +909,10 @@ function renderReligion(): string {
     ) +
     section(
       "Founding a Religion",
-      `<p>Once you have researched <b>${escapeHtml(reqTechName)}</b> and gathered <b>${FAITH_TO_FOUND}☮️ faith</b>, you may found a religion at one of your cities — that city becomes the faith's <b>holy city</b>. Choose any real-world religion still unclaimed; <b>only one civilization can ever hold each faith</b>, so the founders' race is first come, first served.</p>` +
+      `<p>Once you have researched <b>${escapeHtml(reqTechName)}</b> and gathered <b>${FAITH_TO_FOUND}☮️ faith</b>, you may found a religion at one of your cities: that city becomes the faith's <b>holy city</b>. Choose any real-world religion still unclaimed; <b>only one civilization can ever hold each faith</b>, so the founders' race is first come, first served.</p>` +
         `<p>Founding immediately grants two things:</p>` +
         `<ul>` +
-        `<li>The religion's fixed <b>preset benefit</b> — applied empire-wide, automatically.</li>` +
+        `<li>The religion's fixed <b>preset benefit</b>: applied empire-wide, automatically.</li>` +
         `<li><b>One perk pick</b> from the tier-1 perk pool (see below).</li>` +
         `</ul>`,
     ) +
@@ -920,19 +920,19 @@ function renderReligion(): string {
       "Preset Benefits & Capital Bonuses",
       `<p>Every religion carries a historically fitting pair of bonuses:</p>` +
         `<ul>` +
-        `<li><b>Preset benefit</b> — granted to the founder's whole empire the moment the faith is founded, for as long as they hold the religion.</li>` +
-        `<li><b>Capital bonus</b> — applies to the <b>holy city</b> while it keeps the faith (and follows the holy capital if you move it).</li>` +
+        `<li><b>Preset benefit</b>: granted to the founder's whole empire the moment the faith is founded, for as long as they hold the religion.</li>` +
+        `<li><b>Capital bonus</b>: applies to the <b>holy city</b> while it keeps the faith (and follows the holy capital if you move it).</li>` +
         `</ul>` +
-        `<p>Each religion's page lists its preset, capital bonus and unique unit — pick the faith whose gifts fit your game plan.</p>`,
+        `<p>Each religion's page lists its preset, capital bonus and unique unit: pick the faith whose gifts fit your game plan.</p>`,
     ) +
     section(
       "The Perk Pool",
-      `<p>Beyond its preset, a religion is customised with <b>perks</b> drawn from a shared pool of ${BELIEFS.length}, arranged in <b>five tiers</b>. Perks are <b>exclusive across religions</b>: once any religion takes a perk, no other religion in that game may. You pick <b>one perk at founding</b> (tier 1) and <b>one more at each tier upgrade</b> — and each pick may come from <b>any tier at or below</b> your religion's current tier, so a saved pick can grab a freshly unlocked, stronger perk.</p>` +
+      `<p>Beyond its preset, a religion is customised with <b>perks</b> drawn from a shared pool of ${BELIEFS.length}, arranged in <b>five tiers</b>. Perks are <b>exclusive across religions</b>: once any religion takes a perk, no other religion in that game may. You pick <b>one perk at founding</b> (tier 1) and <b>one more at each tier upgrade</b>, and each pick may come from <b>any tier at or below</b> your religion's current tier, so a saved pick can grab a freshly unlocked, stronger perk.</p>` +
         `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Tier</th><th>Perk</th><th>Effect</th></tr></thead><tbody>${perkRows}</tbody></table></div>`,
     ) +
     section(
       "Religion Tiers",
-      `<p>A founded religion starts at <b>tier 1</b> and can be raised through <b>tier ${RELIGION_TIERS[RELIGION_TIERS.length - 1]!.tier}</b> by paying faith and gathering <b>follower cities</b> — a follower city is one where your faith holds a <b>strict majority</b> of its religious pressure (it shows your religion's converted badge on the map).</p>` +
+      `<p>A founded religion starts at <b>tier 1</b> and can be raised through <b>tier ${RELIGION_TIERS[RELIGION_TIERS.length - 1]!.tier}</b> by paying faith and gathering <b>follower cities</b>: a follower city is one where your faith holds a <b>strict majority</b> of its religious pressure (it shows your religion's converted badge on the map).</p>` +
         `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Upgrade</th><th>Faith cost</th><th>Requires</th></tr></thead><tbody>${tierRows}</tbody></table></div>` +
         `<p>Every tier gained grants:</p>` +
         `<ul>` +
@@ -944,35 +944,35 @@ function renderReligion(): string {
     ) +
     section(
       "The Holy Capital",
-      `<p>Your religion's <b>holy city</b> radiates the strongest religious pressure of any source and enjoys the faith's <b>capital bonus</b>. If your seat of faith is poorly placed — or threatened — you may <b>move the holy capital</b> to any other follower city for <b>${MOVE_HOLY_CITY_COST}☮️ faith</b>; the pressure heart and the capital bonus move with it.</p>`,
+      `<p>Your religion's <b>holy city</b> radiates the strongest religious pressure of any source and enjoys the faith's <b>capital bonus</b>. If your seat of faith is poorly placed, or threatened, you may <b>move the holy capital</b> to any other follower city for <b>${MOVE_HOLY_CITY_COST}☮️ faith</b>; the pressure heart and the capital bonus move with it.</p>`,
     ) +
     section(
-      "Faith's Champions — Unique Units",
-      `<p>Every religion fields <b>one unique unit</b>, from warrior-monks and holy warriors to oracles, druids and pacifist ascetics. Unlike missionaries they are <b>not bought with faith</b>: a unique unit is trained with <b>production</b> in any city that <b>follows the faith</b> (majority pressure) <i>and</i> has a <b>Temple</b> — only one may train per city at a time.</p>` +
-        `<p>Each carries a genuinely distinct signature kit — healing, morale, XP or dread auras, faith harvested from kills or nearby deaths, pressure radiation, garrison boons, homeland fervor, forest affinity, death rallies, and signature actives such as Benediction, Purifying Flame, Chakkar, Doom Prophecy, Kagura, Takbīr and Deus Vult. The unit grows with its faith: <b>+2 strength and +25% ability power per tier above 1</b>, and at tier 4 several unlock a second active ability. See each religion's page for the full kit.</p>` +
+      "Faith's Champions: Unique Units",
+      `<p>Every religion fields <b>one unique unit</b>, from warrior-monks and holy warriors to oracles, druids and pacifist ascetics. Unlike missionaries they are <b>not bought with faith</b>: a unique unit is trained with <b>production</b> in any city that <b>follows the faith</b> (majority pressure) <i>and</i> has a <b>Temple</b>: only one may train per city at a time.</p>` +
+        `<p>Each carries a genuinely distinct signature kit: healing, morale, XP or dread auras, faith harvested from kills or nearby deaths, pressure radiation, garrison boons, homeland fervor, forest affinity, death rallies, and signature actives such as Benediction, Purifying Flame, Chakkar, Doom Prophecy, Kagura, Takbīr and Deus Vult. The unit grows with its faith: <b>+2 strength and +25% ability power per tier above 1</b>, and at tier 4 several unlock a second active ability. See each religion's page for the full kit.</p>` +
         `<div class="wiki-unit-grid">${relUnitCards}</div>`,
     ) +
     section(
       "Religious Pressure",
-      `<p>Each city accumulates <b>pressure</b> from every religion around it. The faith with the most pressure becomes the city's dominant religion, and a faith holding a <b>strict majority</b> of a city's pressure converts it (the on-map badge). <b>Holy cities</b> radiate the strongest pressure, follower cities a weaker one, and pressure <b>decays</b> a little each turn — so a frontier city must be actively pressed to stay converted. Conversion is gradual and contestable, not instant.</p>`,
+      `<p>Each city accumulates <b>pressure</b> from every religion around it. The faith with the most pressure becomes the city's dominant religion, and a faith holding a <b>strict majority</b> of a city's pressure converts it (the on-map badge). <b>Holy cities</b> radiate the strongest pressure, follower cities a weaker one, and pressure <b>decays</b> a little each turn, so a frontier city must be actively pressed to stay converted. Conversion is gradual and contestable, not instant.</p>`,
     ) +
     section(
       "Faith Travels the Trade Roads",
-      `<p>Religion follows commerce. Every <b>trade route</b> carries faith in <b>both directions</b> between its two cities — the stronger the route's commerce, the more pressure it spreads. An <b>international</b> route is a powerful way to seed your religion inside a trading partner's empire, far beyond where proximity alone could reach.</p>`,
+      `<p>Religion follows commerce. Every <b>trade route</b> carries faith in <b>both directions</b> between its two cities, the stronger the route's commerce, the more pressure it spreads. An <b>international</b> route is a powerful way to seed your religion inside a trading partner's empire, far beyond where proximity alone could reach.</p>`,
     ) +
     section(
-      "Holy Orders — Missionaries, Apostles & Inquisitors",
+      "Holy Orders: Missionaries, Apostles & Inquisitors",
       `<p>Spend faith to ordain religious units from the <b>☮️ Religion</b> panel:</p>` +
         `<ul>` +
-        `<li><b>Missionary</b> (${missionary.faithCost}☮️) — travels to a city and floods it with your religion's pressure, converting it in one decisive act. Carries ${missionary.religiousCharges} charges, then is spent.</li>` +
-        `<li><b>Apostle</b> (${apostle.faithCost}☮️) — a stronger evangelist with ${apostle.religiousCharges} charges that can also defend the faith.</li>` +
-        `<li><b>Inquisitor</b> (${inquisitor.faithCost}☮️) — purges rival religions' pressure from your <b>own</b> cities, locking in your faith at home.</li>` +
+        `<li><b>Missionary</b> (${missionary.faithCost}☮️): travels to a city and floods it with your religion's pressure, converting it in one decisive act. Carries ${missionary.religiousCharges} charges, then is spent.</li>` +
+        `<li><b>Apostle</b> (${apostle.faithCost}☮️): a stronger evangelist with ${apostle.religiousCharges} charges that can also defend the faith.</li>` +
+        `<li><b>Inquisitor</b> (${inquisitor.faithCost}☮️): purges rival religions' pressure from your <b>own</b> cities, locking in your faith at home.</li>` +
         `</ul>` +
-        `<p>A religious unit standing in a city that is one end of a trade route can <b>ride the route</b> like a caravan, emerging at the far end in a fraction of the walking time — the stronger the route, the faster the journey. This lets you ferry a missionary deep into a partner's lands.</p>`,
+        `<p>A religious unit standing in a city that is one end of a trade route can <b>ride the route</b> like a caravan, emerging at the far end in a fraction of the walking time, the stronger the route, the faster the journey. This lets you ferry a missionary deep into a partner's lands.</p>`,
     ) +
     section(
       "Religious Victory",
-      `<p>Win by <b>truly converting every civilization</b> to your religion (when that condition is enabled). The bar is strict: a city only counts as <b>converted</b> when your faith holds a <b>strict majority</b> of its religious pressure <i>and</i> at least <b>${CONVERSION_PRESSURE} absolute pressure</b> — trace seepage that faintly touches a distant city does not count. A civilization is converted when a <b>strict majority of its cities</b> are. See the Victory page.</p>`,
+      `<p>Win by <b>truly converting every civilization</b> to your religion (when that condition is enabled). The bar is strict: a city only counts as <b>converted</b> when your faith holds a <b>strict majority</b> of its religious pressure <i>and</i> at least <b>${CONVERSION_PRESSURE} absolute pressure</b>: trace seepage that faintly touches a distant city does not count. A civilization is converted when a <b>strict majority of its cities</b> are. See the Victory page.</p>`,
     )
   );
 }
@@ -1007,7 +1007,7 @@ function renderSpecialists(): string {
     return (
       `<tr>` +
       `<td><b>${escapeHtml(w.name)}</b></td>` +
-      `<td>${unlock || "—"}</td>` +
+      `<td>${unlock || "None"}</td>` +
       `<td>${needs}</td>` +
       `<td>${escapeHtml(w.desc)}</td>` +
       `</tr>`
@@ -1017,22 +1017,22 @@ function renderSpecialists(): string {
   return (
     section(
       "Craftsmen, not Workers",
-      `<p>There is no Worker unit. Instead each city trains <b>specialists</b> — craftsmen — out of its own population. A citizen is either <b>working a tile</b> for its yields <i>or</i> apprenticed as a craftsman, never both, so every specialist carries a real opportunity cost.</p>` +
+      `<p>There is no Worker unit. Instead each city trains <b>specialists</b>, craftsmen, out of its own population. A citizen is either <b>working a tile</b> for its yields <i>or</i> apprenticed as a craftsman, never both, so every specialist carries a real opportunity cost.</p>` +
         `<p>Specialists <b>learn on the job</b>: each turn they contribute labour to a project they earn experience, and as they level up they build faster (a veteran works up to three times as quickly as a fresh apprentice).</p>` +
         `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Specialist</th><th>Basis</th><th>Discipline</th><th>Unlock</th><th>Role</th></tr></thead><tbody>${specRows}</tbody></table></div>`,
     ) +
     section(
       "Public Works",
-      `<p>Specialists execute <b>Works</b> — projects on any tile inside your territory. Economic improvements (farms, mines, quarries, lumber camps, roads, pastures, plantations and more) each come in <b>three tiers</b>; building tier 1 and upgrading to tiers 2 and 3 are separate projects, each contracting craftsmen again.</p>` +
-        `<p>The labour a Work needs scales with its tier <b>and with distance from the building city</b>: developing your heartland is cheap, while pushing roads and farms out to the frontier is a serious investment. A city's craftsmen work through its project queue in order — finish one, start the next. Open the <b>🏛️ Empire</b> screen to train craftsmen and manage every city's works.</p>`,
+      `<p>Specialists execute <b>Works</b>: projects on any tile inside your territory. Economic improvements (farms, mines, quarries, lumber camps, roads, pastures, plantations and more) each come in <b>three tiers</b>; building tier 1 and upgrading to tiers 2 and 3 are separate projects, each contracting craftsmen again.</p>` +
+        `<p>The labour a Work needs scales with its tier <b>and with distance from the building city</b>: developing your heartland is cheap, while pushing roads and farms out to the frontier is a serious investment. A city's craftsmen work through its project queue in order: finish one, start the next. Open the <b>🏛️ Empire</b> screen to train craftsmen and manage every city's works.</p>`,
     ) +
     section(
       "Walls, Towers & Forts",
-      `<p>A <b>Mason</b> and a <b>Military Engineer</b> together raise defensive structures on a tile. <b>Walls</b> (Palisade → Stone Wall → Great Wall) block enemy movement: an enemy must destroy the wall — attacking it like a unit — before the tile can be crossed. <b>Towers</b> (Watchtower → Fort → Citadel) block movement <i>and</i> bombard an adjacent enemy each turn. Both shelter a friendly defender standing on the tile, and regenerate health while not under attack.</p>`,
+      `<p>A <b>Mason</b> and a <b>Military Engineer</b> together raise defensive structures on a tile. <b>Walls</b> (Palisade → Stone Wall → Great Wall) block enemy movement: an enemy must destroy the wall, attacking it like a unit, before the tile can be crossed. <b>Towers</b> (Watchtower → Fort → Citadel) block movement <i>and</i> bombard an adjacent enemy each turn. Both shelter a friendly defender standing on the tile, and regenerate health while not under attack.</p>`,
     ) +
     section(
       "Wonders",
-      `<p>Wonders are the grandest Works: world-unique projects that demand a whole <b>crew of craftsmen</b> — you must have the <i>entire</i> crew idle and ready (e.g. <b>11 Masons and 6 Architects</b>) before you can even break ground, pooled from as many cities as you like. That crew is the wonder's whole workforce: no more may join, so you can't rush it by piling on bodies. Even with the full crew, raising a wonder is a long undertaking of many turns — though a crew of <b>veterans</b> (who each contribute more) finishes sooner.</p>` +
+      `<p>Wonders are the grandest Works: world-unique projects that demand a whole <b>crew of craftsmen</b>: you must have the <i>entire</i> crew idle and ready (e.g. <b>11 Masons and 6 Architects</b>) before you can even break ground, pooled from as many cities as you like. That crew is the wonder's whole workforce: no more may join, so you can't rush it by piling on bodies. Even with the full crew, raising a wonder is a long undertaking of many turns, though a crew of <b>veterans</b> (who each contribute more) finishes sooner.</p>` +
         `<p>Each wonder is also unlocked by a specific <b>technology</b>, demands a one-time outlay of <b>gold, faith, or culture</b> to begin, and can only be sited where its <b>geography</b> allows (see the Unlock column): the Pyramids and Sphinx rise from the <b>desert</b>, Tenochtitlán crowns a <b>hill</b>, the Colossus guards a <b>coastal</b> tile, the Great Lighthouse stands on <b>coastal water</b>, the Hanging Gardens need <b>fresh water</b>, the Oracle sits <b>beside a mountain</b> and Stonehenge <b>within sight of one</b>, and the Great Library must adjoin one of your <b>cities</b>. Beyond their strong permanent yields, several reshape the game: the <b>Great Lighthouse</b> gives all your ships far-seeing eyes and swifter passage, the <b>Colossus</b> launches a free warship from its harbour every few turns, the <b>Oracle</b> lets you rush production with faith, Tenochtitlán's causeways speed your armies, and the <b>Great Pyramid</b> rewards a great offering of faith whenever one of your Legends falls or passes into legend.</p>` +
         `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Wonder</th><th>Unlock</th><th>Crew</th><th>Effect</th></tr></thead><tbody>${wonderRows}</tbody></table></div>`,
     ) +
@@ -1079,8 +1079,8 @@ function renderVictory(): string {
     ) +
     section(
       "Score",
-      `<p>If no one has won outright by the time the <b>turn limit</b> is reached, the civilization with the highest <b>score</b> is declared the winner. Score is a running tally of everything your civilization has built up, so it rises and falls with your fortunes throughout the game — there is no separate "score victory" to pursue, it is simply the tie-breaker that decides an otherwise undecided game.</p>` +
-        `<p>Your score is recalculated every turn from everything your civilization has achieved, so you <b>gain</b> points by founding or capturing cities, growing their population, advancing your research and culture, fielding units, filling your treasury, winning battles and conquering enemy cities — and you <b>lose</b> the living parts just as quickly if a city is captured, citizens starve, units die or gold is spent. Battles won and cities conquered are permanent achievements and never decay. Each contributor is worth:</p>` +
+      `<p>If no one has won outright by the time the <b>turn limit</b> is reached, the civilization with the highest <b>score</b> is declared the winner. Score is a running tally of everything your civilization has built up, so it rises and falls with your fortunes throughout the game: there is no separate "score victory" to pursue, it is simply the tie-breaker that decides an otherwise undecided game.</p>` +
+        `<p>Your score is recalculated every turn from everything your civilization has achieved, so you <b>gain</b> points by founding or capturing cities, growing their population, advancing your research and culture, fielding units, filling your treasury, winning battles and conquering enemy cities, and you <b>lose</b> the living parts just as quickly if a city is captured, citizens starve, units die or gold is spent. Battles won and cities conquered are permanent achievements and never decay. Each contributor is worth:</p>` +
         `<div class="wiki-table-wrap"><table class="wiki-table"><thead><tr><th>Source</th><th>Points</th></tr></thead><tbody>` +
         `<tr><td>City owned</td><td>${SCORE_WEIGHTS.city} each</td></tr>` +
         `<tr><td>Population (per citizen)</td><td>${SCORE_WEIGHTS.population} each</td></tr>` +
@@ -1094,30 +1094,30 @@ function renderVictory(): string {
         `<p>You can compare your score against every other civilization at any time from the <b>☰ Menu → Leaderboard</b>.</p>`,
     ) +
     section(
-      "🔬 Science — The Great Endeavor",
-      `<p>Win through mastery of knowledge and exploration. You must <b>research the entire technology tree</b> — every tech, up to early gunpowder — <i>and</i> complete the age's great scientific feat: <b>circumnavigate the globe</b>. Sail a ship through every longitude band of the world; once your fleet has spanned all of them, the Endeavor is complete.</p>`,
+      "🔬 Science: The Great Endeavor",
+      `<p>Win through mastery of knowledge and exploration. You must <b>research the entire technology tree</b>, every tech, up to early gunpowder, <i>and</i> complete the age's great scientific feat: <b>circumnavigate the globe</b>. Sail a ship through every longitude band of the world; once your fleet has spanned all of them, the Endeavor is complete.</p>`,
     ) +
     section(
-      "🎭 Culture — Influence",
-      `<p>Win by making your civilization the envy of the world. Your <b>wonders, cultural buildings and Great Works</b> project <b>tourism</b> (renown) onto every rival. When your accumulated influence over a rival exceeds that rival's own lifetime culture you become <b>Influential</b> over them — do it to <b>every</b> living civilization to win. Open borders, shared religion and trade routes all amplify the tourism you exert.</p>`,
+      "🎭 Culture: Influence",
+      `<p>Win by making your civilization the envy of the world. Your <b>wonders, cultural buildings and Great Works</b> project <b>tourism</b> (renown) onto every rival. When your accumulated influence over a rival exceeds that rival's own lifetime culture you become <b>Influential</b> over them: do it to <b>every</b> living civilization to win. Open borders, shared religion and trade routes all amplify the tourism you exert.</p>`,
     ) +
     section(
-      "☮️ Religious — One Faith",
-      `<p>Win by <b>truly converting</b> the world to your religion. A city counts as converted only when your faith holds a <b>strict majority</b> of its religious pressure <i>and</i> at least <b>${CONVERSION_PRESSURE} absolute pressure</b> — trace seepage does not count. A civilization is claimed when a <b>strict majority of its cities</b> are converted; claim <b>every</b> major civilization to win. Faith spreads by pressure from holy cities, along trade routes, and — decisively — through <b>Missionaries and Apostles</b> you buy with faith. <b>Inquisitors</b> purge rival faiths from your own cities (see the Religion page).</p>`,
+      "☮️ Religious: One Faith",
+      `<p>Win by <b>truly converting</b> the world to your religion. A city counts as converted only when your faith holds a <b>strict majority</b> of its religious pressure <i>and</i> at least <b>${CONVERSION_PRESSURE} absolute pressure</b>: trace seepage does not count. A civilization is claimed when a <b>strict majority of its cities</b> are converted; claim <b>every</b> major civilization to win. Faith spreads by pressure from holy cities, along trade routes, and, decisively, through <b>Missionaries and Apostles</b> you buy with faith. <b>Inquisitors</b> purge rival faiths from your own cities (see the Religion page).</p>`,
     ) +
     section(
-      "🪙 Economic — Mercantile Hegemony",
-      `<p>Win by dominating world commerce. Your <b>Economic Power</b> grows with <b>international trade routes</b>, <b>luxury monopolies</b> (resources no rival holds), a deep treasury, and commerce buildings (Markets, Banks, Harbors). When your Economic Power both clears a high bar <i>and</i> at least <b>doubles</b> the next civilization's, your mercantile hegemony is absolute and you win. International and overseas trade routes are the engine — open borders or an alliance let you trade with another civ for far richer returns.</p>`,
+      "🪙 Economic: Mercantile Hegemony",
+      `<p>Win by dominating world commerce. Your <b>Economic Power</b> grows with <b>international trade routes</b>, <b>luxury monopolies</b> (resources no rival holds), a deep treasury, and commerce buildings (Markets, Banks, Harbors). When your Economic Power both clears a high bar <i>and</i> at least <b>doubles</b> the next civilization's, your mercantile hegemony is absolute and you win. International and overseas trade routes are the engine: open borders or an alliance let you trade with another civ for far richer returns.</p>`,
     ) +
     section(
       "Tracking Your Progress",
-      `<p>Open the <b>🏆 Victory</b> panel at any time to see how close you — and the conditions enabled this game — stand on every path. The host chooses which victories are enabled when the game is created.</p>`,
+      `<p>Open the <b>🏆 Victory</b> panel at any time to see how close you, and the conditions enabled this game, stand on every path. The host chooses which victories are enabled when the game is created.</p>`,
     )
   );
 }
 
 // ===========================================================================
-// Detail pages — clickable in-wiki pages for a single civilization, unit,
+// Detail pages: clickable in-wiki pages for a single civilization, unit,
 // unique unit, unique building/improvement, great person or legend. Reached via
 // `data-wiki-nav="<kind>:<id>"` attributes wired by a delegated click handler;
 // a Back bar pops the navigation stack.
@@ -1136,8 +1136,8 @@ export type WikiNav =
 
 /** Plain-English label for a few base-unit passive abilities (matches unique-unit.ts). */
 const PASSIVE_LABEL: Record<string, string> = {
-  bonus_vs_cavalry: "Anti-Cavalry — bonus strength against mounted units.",
-  bonus_vs_city: "City Assault — bonus strength when attacking cities.",
+  bonus_vs_cavalry: "Anti-Cavalry|bonus strength against mounted units.",
+  bonus_vs_city: "City Assault|bonus strength when attacking cities.",
 };
 
 function detailHead(imgSrc: string, title: string, sub: string, statsHtml = ""): string {
@@ -1226,7 +1226,7 @@ function renderCivDetail(id: string): string {
   const inf = uniqueInfraForCiv(c.id);
 
   const abilityHtml =
-    `<p><b>${escapeHtml(c.abilityName)}</b> — ${escapeHtml(c.abilityDesc)}</p>` +
+    `<p><b>${escapeHtml(c.abilityName)}</b>: ${escapeHtml(c.abilityDesc)}</p>` +
     historyBlock("Origin of the ability", h?.ability);
 
   const perksHtml =
@@ -1335,9 +1335,9 @@ function renderUnitDetail(id: string): string {
   const passive = (d.abilities ?? [])
     .map((p) => {
       const text = PASSIVE_LABEL[p] ?? p;
-      const dash = text.indexOf(" — ");
+      const dash = text.indexOf("|");
       const name = dash >= 0 ? text.slice(0, dash) : text;
-      const desc = dash >= 0 ? text.slice(dash + 3) : text;
+      const desc = dash >= 0 ? text.slice(dash + 1) : text;
       return abilityRow("●", name, desc);
     })
     .join("");
@@ -1352,10 +1352,10 @@ function renderUnitDetail(id: string): string {
     let kh = abilityRow("✦", relKit.abilityName, relKit.desc);
     if (relKit.tier4Active) {
       const t4 = ACTIVE_ABILITY_DEFS[relKit.tier4Active];
-      kh += abilityRow(t4.glyph, `${t4.name} — unlocked at tier 4`, t4.desc);
+      kh += abilityRow(t4.glyph, `${t4.name}: unlocked at tier 4`, t4.desc);
     }
     holySection = section(
-      "Holy Order" + (relDef ? " — " + escapeHtml(relDef.name) : ""),
+      "Holy Order" + (relDef ? ": " + escapeHtml(relDef.name) : ""),
       kh +
         `<p>Trained with <b>production</b> in any city that follows the faith and has a <b>Temple</b> (one holy unit at a time per city). Grows with the faith: <b>+2 strength and +25% ability power per tier above 1</b>.</p>` +
         (relDef ? `<p>${navLink(`religion:${relDef.id}`, `Faith: ${relDef.name}`)}</p>` : ""),
@@ -1378,7 +1378,7 @@ function renderGreatPersonDetail(id: string): string {
   const src = `${ASSET_BASE_URL}great-people/${g.id}.png`;
   const activated =
     g.cls === "prophet" && g.prophetGift
-      ? `<p>A burst of <b>+110 faith</b> toward founding or spreading a religion — and then ${escapeHtml(prophetGiftText(g.prophetGift))}.</p>`
+      ? `<p>A burst of <b>+110 faith</b> toward founding or spreading a religion, and then ${escapeHtml(prophetGiftText(g.prophetGift))}.</p>`
       : `<p>${escapeHtml(GP_EFFECT_TEXT[g.cls])}</p>`;
   return (
     detailHead(src, g.name, `${info.glyph} ${escapeHtml(info.name)} · ${escapeHtml(g.era)} era`) +
@@ -1432,8 +1432,8 @@ function renderReligionDetail(id: string): string {
     benefits = section(
       "Founder's Benefits",
       `<ul>` +
-        `<li><b>${escapeHtml(kit.preset.name)}</b> (preset, empire-wide) — ${escapeHtml(kit.preset.desc)}</li>` +
-        `<li><b>${escapeHtml(kit.capital.name)}</b> (capital bonus) — ${escapeHtml(kit.capital.desc)} Applies to the holy city while it keeps the faith.</li>` +
+        `<li><b>${escapeHtml(kit.preset.name)}</b> (preset, empire-wide): ${escapeHtml(kit.preset.desc)}</li>` +
+        `<li><b>${escapeHtml(kit.capital.name)}</b> (capital bonus): ${escapeHtml(kit.capital.desc)} Applies to the holy city while it keeps the faith.</li>` +
         `</ul>`,
     );
   }
@@ -1460,11 +1460,11 @@ function renderReligionDetail(id: string): string {
       kitHtml += abilityRow("✦", mech.abilityName, mech.desc);
       if (mech.tier4Active) {
         const t4 = ACTIVE_ABILITY_DEFS[mech.tier4Active];
-        kitHtml += abilityRow(t4.glyph, `${t4.name} — unlocked at tier 4`, t4.desc);
+        kitHtml += abilityRow(t4.glyph, `${t4.name}: unlocked at tier 4`, t4.desc);
       }
     }
     champion = section(
-      "Faith's Champion — " + kit.unit.name,
+      "Faith's Champion: " + kit.unit.name,
       `<div class="wiki-detail-head">` +
         `<div class="wiki-detail-img wiki-clickable" data-wiki-nav="unit:${unitId}">` +
         `<img src="${big}" loading="lazy" alt="${escapeHtml(kit.unit.name)}" onerror="this.onerror=null;this.src='${token}'"></div>` +
@@ -1586,17 +1586,17 @@ function badgesHtml(e: CivEffects | undefined): string {
 
 function renderGovernments(): string {
   const intro =
-    `<p>Your <b>government</b> is the spine of your culture strategy. Research governments with culture (like techs with science) along three lineages — ` +
-    `<b>Authority</b>, <b>Assembly</b> and <b>Faith</b> — and the one you <i>hold</i> decides which civics you may slot. Every government past Chiefdom carries a con as well as pros. ` +
+    `<p>Your <b>government</b> is the spine of your culture strategy. Research governments with culture (like techs with science) along three lineages: ` +
+    `<b>Authority</b>, <b>Assembly</b> and <b>Faith</b>, and the one you <i>hold</i> decides which civics you may slot. Every government past Chiefdom carries a con as well as pros. ` +
     `Switching lineage triggers a <b>revolution</b>: 3 turns of unrest (−25% yields, civics dormant); a same-lineage step costs 1 turn; your first government is free.</p>` +
-    `<p>Slots by tier — T0: 2, T1: 3, T2: 4, T3: 5, T4: 6.</p>`;
+    `<p>Slots by tier: T0: 2, T1: 3, T2: 4, T3: 5, T4: 6.</p>`;
   let body = `<div class="wiki-lore">${intro}</div>`;
   for (let tier = 0; tier <= 4; tier++) {
     const govs = GOVERNMENTS.filter((g) => g.tier === tier);
     if (!govs.length) continue;
     const cards = govs
       .map((g) => {
-        const branch = g.branch.length ? g.branch.join(" / ") : "—";
+        const branch = g.branch.length ? g.branch.join(" / ") : "None";
         const cost = g.cost > 0 ? `${g.cost}🎭` : "free";
         const excl = g.exclusiveCivics.length ? `<div class="wiki-gc-meta">Unlocks exclusive civic: <b>${g.exclusiveCivics.map((id) => escapeHtml(getCivicName(id))).join(", ")}</b></div>` : "";
         return (
@@ -1609,7 +1609,7 @@ function renderGovernments(): string {
         );
       })
       .join("");
-    body += `<div class="wiki-region-title">Tier ${tier}${tier === 0 ? " — Start" : ""}</div><div class="wiki-gc-grid">${cards}</div>`;
+    body += `<div class="wiki-region-title">Tier ${tier}${tier === 0 ? ": Start" : ""}</div><div class="wiki-gc-grid">${cards}</div>`;
   }
   return WIKI_GOV_STYLE + section("Governments", body);
 }
@@ -1621,10 +1621,10 @@ function getCivicName(id: string): string {
 function renderCivics(): string {
   const intro =
     `<p><b>Civics</b> are slottable cards bought instantly from your culture pool (one adoption per turn; each adoption makes the next cost 15% more). ` +
-    `Only <b>slotted</b> civics do anything — capacity comes from your current government. Each civic is a bargain, not a bonus: the pros outweigh the cons, ` +
-    `but the con is real. A civic is legal only if its branch is neutral, matches your government's lineage, or is that government's exclusive — and its tier ≤ your government's tier.</p>`;
+    `Only <b>slotted</b> civics do anything: capacity comes from your current government. Each civic is a bargain, not a bonus: the pros outweigh the cons, ` +
+    `but the con is real. A civic is legal only if its branch is neutral, matches your government's lineage, or is that government's exclusive, and its tier ≤ your government's tier.</p>`;
   const groups: { key: string; title: string }[] = [
-    { key: "neutral", title: "Neutral — legal under every government" },
+    { key: "neutral", title: "Neutral: legal under every government" },
     { key: "authority", title: "Authority branch" },
     { key: "assembly", title: "Assembly branch" },
     { key: "faith", title: "Faith branch" },
@@ -1670,7 +1670,7 @@ const WIKI_SHOWCASE_STYLE = `<style>
 .wiki-show-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin:8px 0 22px}
 .wiki-show-card{margin:0;padding:0;overflow:hidden;display:flex;flex-direction:column;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:12px}
 .wiki-show-art{width:100%;aspect-ratio:4/3;background:var(--bg-card,rgba(0,0,0,.25));overflow:hidden}
-.wiki-show-art img{width:100%;height:100%;object-fit:cover;object-position:50% 42%;display:block}
+.wiki-show-art img{width:100%;height:100%;object-fit:contain;object-position:50% 42%;display:block}
 .wiki-show-body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:4px}
 .wiki-show-name{font-weight:700;font-size:14px;color:#e6d2b8}
 .wiki-show-sub{font-size:11px;color:#9fb0c0}
@@ -1699,7 +1699,7 @@ const wonderTileArt = (id: string): string => `${ASSET_BASE_URL}wonders/${id}.pn
 const naturalWonderArt = (id: string): string => `${ASSET_BASE_URL}turn-updates/natural_wonder_${id}.png`;
 const naturalWonderTileArt = (id: string): string => `${ASSET_BASE_URL}natural-wonders/${id}.png`;
 
-/** "11 Masons · 6 Architects" — the crew a wonder contracts to break ground. */
+/** "11 Masons · 6 Architects": the crew a wonder contracts to break ground. */
 function wonderCrewText(w: typeof WONDER_DEFS[number]): string {
   return Object.entries(w.crew)
     .map(([disc, n]) => `${n} ${specialistNameForDiscipline(disc as Discipline)}${n === 1 ? "" : "s"}`)

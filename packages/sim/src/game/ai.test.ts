@@ -3,7 +3,7 @@ import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
 import { createGame } from "./setup";
 import { applyCommand, beginTurn } from "./commands";
 import { startSimultaneousTurn, resolveSimultaneousTurn } from "./simturn";
-import { aiTakeTurn, aiBarbarianDiplomacy, aiVictoryFocus, aiSeekOpenBorders, aiSeekConquest, aiPeaceBlocked, planSettle } from "./ai";
+import { aiTakeTurn, aiBarbarianDiplomacy, aiVictoryFocus, aiSeekOpenBorders, aiSeekConquest, aiPeaceBlocked, planSettle, frontierGrabBonus } from "./ai";
 import { isBarbarianPacified } from "./bribery";
 import { worksOf } from "./works";
 import { offsetNeighbors } from "./movement";
@@ -786,6 +786,75 @@ describe("AI opponent", () => {
       expect(after!.safe).toBe(true);
       expect(getTile(s.map, after!.col, after!.row)!.feature).not.toBe("barb_camp");
     }
+  });
+
+  it("never plans a settle onto another civ's territory", () => {
+    const s = aiWithCity("ai-foreign-settle");
+    for (const u of unitsOf(s, 1)) s.units.delete(u.id); // only our settler matters
+    clearFeatures(s);
+    const city = citiesOf(s, 1)[0]!;
+    const spot = landTileAtDepth(s, city, 2)!;
+    const settlerId = s.nextEntityId++;
+    s.units.set(settlerId, makeUnit(settlerId, 1, "settler", spot.col, spot.row));
+    const settler = s.units.get(settlerId)!;
+    for (let row = 0; row < s.map.rows; row++)
+      for (let col = 0; col < s.map.cols; col++) s.players[1]!.explored.add(`${col},${row}`);
+
+    const before = planSettle(s, settler, 1);
+    expect(before).toBeTruthy();
+    // A rival (player 0) claims the very tile the AI would have settled.
+    const rivalCityId = s.nextEntityId++;
+    s.cities.set(rivalCityId, {
+      id: rivalCityId, ownerId: 0, name: "Rival", col: before!.col, row: before!.row, population: 1,
+      foodStored: 0, productionStored: 0, production: null, buildings: [], training: {}, trainingQueue: [],
+      specialists: [], wonders: [], workedTiles: [], isCapital: false, foundedAsCapital: false, hp: 100,
+      lastAttackedTurn: 0, rangedAttackUsed: false, modifiers: [],
+    });
+    getTile(s.map, before!.col, before!.row)!.ownerCityId = rivalCityId;
+
+    const after = planSettle(s, settler, 1);
+    // It must pick somewhere else, and that somewhere is never foreign-owned.
+    expect(after).toBeTruthy();
+    expect(`${after!.col},${after!.row}`).not.toBe(`${before!.col},${before!.row}`);
+    const chosen = getTile(s.map, after!.col, after!.row)!;
+    if (chosen.ownerCityId !== undefined) {
+      expect(s.cities.get(chosen.ownerCityId)!.ownerId).toBe(1); // only ever our own land
+    }
+  });
+
+  it("pulls settle scoring toward contested frontier, hardest beside a weaker civ", () => {
+    const s = createGame({ seed: "ai-frontier", cols: 44, rows: 30, barbarians: false, humanSlots: 1, playerCount: 2 });
+    beginTurn(s);
+    const meId = 1, rivalId = 0;
+    // Full control over power: wipe the default starting units and cities.
+    for (const u of [...s.units.values()]) s.units.delete(u.id);
+    for (const [id] of [...s.cities]) s.cities.delete(id);
+    s.players[meId]!.met = [rivalId];
+    s.players[rivalId]!.met = [meId];
+    // Plant one rival city; the exact fields don't matter beyond owner/pos/pop.
+    const rx = 20, ry = 15;
+    const rivalCityId = s.nextEntityId++;
+    s.cities.set(rivalCityId, {
+      id: rivalCityId, ownerId: rivalId, name: "Rival", col: rx, row: ry, population: 1, foodStored: 0,
+      productionStored: 0, production: null, buildings: [], training: {}, trainingQueue: [], specialists: [],
+      wonders: [], workedTiles: [], isCapital: true, foundedAsCapital: true, hp: 100, lastAttackedTurn: 0,
+      rangedAttackUsed: false, modifiers: [],
+    });
+
+    // We out-power the rival: a small army for us, none for them.
+    for (let i = 0; i < 3; i++) { const id = s.nextEntityId++; s.units.set(id, makeUnit(id, meId, "warrior", 0, 0)); }
+    const near = frontierGrabBonus(s, meId, rx + 1, ry);
+    const far = frontierGrabBonus(s, meId, rx + 5, ry);
+    const outside = frontierGrabBonus(s, meId, rx + 12, ry);
+    expect(near).toBeGreaterThan(0); // grab the contested plot next to the weak neighbour
+    expect(near).toBeGreaterThan(far); // closer to their border = more contested
+    expect(outside).toBe(0); // beyond reach, no strategic pull
+
+    // Flip the balance: strip our army, arm the rival heavily.
+    for (const u of unitsOf(s, meId)) s.units.delete(u.id);
+    for (let i = 0; i < 6; i++) { const id = s.nextEntityId++; s.units.set(id, makeUnit(id, rivalId, "warrior", rx, ry)); }
+    const nearStronger = frontierGrabBonus(s, meId, rx + 1, ry);
+    expect(nearStronger).toBeLessThan(0); // don't overextend a new city beside a stronger civ
   });
 
   it("steers a commerce-rich civ toward an economic victory", () => {
