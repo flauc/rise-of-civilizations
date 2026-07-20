@@ -207,18 +207,18 @@ export function mountGameChat(session: OnlineSession, viewerUserId?: string): ()
   style.textContent =
     CHAT_MODERATION_CSS +
     `
-    #game-chat{position:fixed;left:max(12px,env(safe-area-inset-left));bottom:max(88px,env(safe-area-inset-bottom));z-index:28;display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none}
+    #game-chat{position:fixed;left:max(6px,env(safe-area-inset-left));top:calc(max(6px,env(safe-area-inset-top)) + var(--leader-stack-h, 120px) + 6px);bottom:auto;z-index:19;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none;max-width:min(320px,calc(100vw - max(6px,env(safe-area-inset-left)) - max(6px,env(safe-area-inset-right))))}
     #game-chat.open{pointer-events:auto}
-    #game-chat-toggle{pointer-events:auto;width:44px;height:44px;border-radius:50%;border:1px solid var(--edge);background:rgba(21,18,12,.92);color:#e8dcc5;font-size:20px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+    #game-chat-toggle{pointer-events:auto;width:40px;height:40px;border-radius:10px;border:1px solid var(--edge);background:rgba(21,18,12,.92);color:#e8dcc5;font-size:18px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
     #game-chat-toggle:hover{border-color:#c9a227;color:#f0d878}
-    #game-chat-panel{display:none;width:min(320px,calc(100vw - 24px));max-height:min(360px,42vh);flex-direction:column;border:1px solid var(--edge);border-radius:12px;background:rgba(21,18,12,.94);box-shadow:0 8px 28px rgba(0,0,0,.5);overflow:hidden;pointer-events:auto}
+    #game-chat-panel{display:none;width:100%;max-height:min(320px,calc(100vh - var(--leader-stack-h, 120px) - max(6px,env(safe-area-inset-top)) - max(72px,env(safe-area-inset-bottom)) - 32px));flex-direction:column;border:1px solid var(--edge);border-radius:12px;background:rgba(21,18,12,.94);box-shadow:0 8px 28px rgba(0,0,0,.5);overflow:hidden;pointer-events:auto}
     #game-chat.open #game-chat-panel{display:flex}
     #game-chat.open #game-chat-toggle{display:none}
     #game-chat-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--edge)}
     #game-chat-head span{font-family:'Cinzel',Georgia,serif;font-size:12px;font-weight:700;color:#c9a227;text-transform:uppercase;letter-spacing:.08em}
     #game-chat-close{width:28px;height:28px;border-radius:50%;border:1px solid var(--edge);background:transparent;color:#b8aa8d;font-size:14px;cursor:pointer;line-height:1}
     #game-chat-close:hover{color:#e8dcc5;border-color:#c9a227}
-    #game-chat-log{flex:1;overflow-y:auto;padding:10px 12px;min-height:140px;max-height:240px;font-size:13px;color:#e8dcc5}
+    #game-chat-log{flex:1;overflow-y:auto;padding:10px 12px;min-height:100px;max-height:min(220px,calc(100vh - var(--leader-stack-h, 120px) - max(6px,env(safe-area-inset-top)) - max(72px,env(safe-area-inset-bottom)) - 140px));font-size:13px;color:#e8dcc5}
     .mp-chat-empty{color:#8a7f6a;font-size:13px;text-align:center;padding:24px 8px}
     .mp-chat-msg{margin-bottom:10px}
     .mp-chat-msg:last-child{margin-bottom:0}
@@ -227,11 +227,7 @@ export function mountGameChat(session: OnlineSession, viewerUserId?: string): ()
     .mp-chat-text{font-size:13px;color:#b8aa8d;margin-top:3px;line-height:1.45;word-break:break-word}
     #game-chat-form{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--edge)}
     #game-chat-form .menu-in{flex:1;min-width:0;font-size:13px;padding:8px 10px}
-    #game-chat-form .menu-btn{width:auto;padding:8px 12px;font-size:12px;flex:0 0 auto}
-    @media(max-width:640px){
-      #game-chat{bottom:max(72px,env(safe-area-inset-bottom))}
-      #game-chat-panel{width:min(300px,calc(100vw - 20px))}
-    }`;
+    #game-chat-form .menu-btn{width:auto;padding:8px 12px;font-size:12px;flex:0 0 auto}`;
   document.head.appendChild(style);
 
   const root = document.createElement("div");
@@ -246,6 +242,18 @@ export function mountGameChat(session: OnlineSession, viewerUserId?: string): ()
     `<button type="button" class="menu-btn primary" id="game-chat-send">Send</button>` +
     `</div></div>`;
   gameHud().appendChild(root);
+
+  const leader = document.getElementById("leader-avatar");
+  const syncLeaderStack = (): void => {
+    const h = leader && !leader.classList.contains("empty") ? leader.offsetHeight : 0;
+    gameHud().style.setProperty("--leader-stack-h", `${h}px`);
+  };
+  let leaderRo: ResizeObserver | null = null;
+  if (leader) {
+    leaderRo = new ResizeObserver(syncLeaderStack);
+    leaderRo.observe(leader);
+    syncLeaderStack();
+  }
 
   const log = root.querySelector<HTMLDivElement>("#game-chat-log")!;
   const input = root.querySelector<HTMLInputElement>("#game-chat-input")!;
@@ -293,6 +301,7 @@ export function mountGameChat(session: OnlineSession, viewerUserId?: string): ()
   return () => {
     unsubChat();
     unsubMod();
+    leaderRo?.disconnect();
     root.remove();
     style.remove();
   };

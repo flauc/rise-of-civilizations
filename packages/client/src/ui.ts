@@ -406,6 +406,8 @@ export interface UIView {
   mpSaves?: SaveRecord[];
   /** True when the local session supports God Mode cheats. */
   cheatsEnabled?: boolean;
+  /** Simultaneous multiplayer (online session). */
+  isMultiplayer?: boolean;
   /** True while God Mode's "Lift Fog of War" reveal is active. */
   liftFog?: boolean;
   /** True when the player dismissed the summary to pan the revealed end-game map. */
@@ -5274,6 +5276,7 @@ export function createUI(handlers: UIHandlers): UI {
       // new turn's economy) is shown. Selecting by unseen id rather than turn
       // number matters because the sim tags enemy-phase events (e.g. a unit the
       // AI killed) with the previous turn number.
+      const prevTurn = lastTurnUpdateKey ? Number(lastTurnUpdateKey.split(":")[1]) : 0;
       const updateKey = `${view.viewerId}:${view.state.turn}`;
       const turnChanged = updateKey !== lastTurnUpdateKey;
       lastTurnUpdateKey = updateKey;
@@ -5283,6 +5286,9 @@ export function createUI(handlers: UIHandlers): UI {
         lastSeenTurnUpdateByViewer.get(view.viewerId),
       );
       lastSeenTurnUpdateByViewer.set(view.viewerId, batch.lastSeen);
+      if (view.isMultiplayer && turnChanged && view.state.turn > prevTurn && prevTurn > 0) {
+        showBanner(`Turn ${view.state.turn} started`);
+      }
       // A war declared on the viewer must surface right away, even mid-turn;
       // third-party wars wait for the regular turn-start batch.
       const hasImmediateUpdate = batch.toShow.some(

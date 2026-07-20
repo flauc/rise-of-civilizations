@@ -1311,6 +1311,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         suggestion: computeSuggestion(),
         mpSaves,
         cheatsEnabled: !session.isOnline,
+        isMultiplayer: session.isOnline,
         liftFog,
         gameOverExploreMap,
       });

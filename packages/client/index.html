@@ -3385,10 +3385,13 @@
       /* Full-screen sheets sit above the top bar; hide it so ✕ / Back aren't blocked. */
       #game-hud:has(#diplomacy:not(.hidden)) #topbar,
       #game-hud:has(#diplomacy:not(.hidden)) #leader-avatar,
+      #game-hud:has(#diplomacy:not(.hidden)) #game-chat,
       #game-hud:has(#empire:not(.hidden)) #topbar,
       #game-hud:has(#empire:not(.hidden)) #leader-avatar,
+      #game-hud:has(#empire:not(.hidden)) #game-chat,
       body.roc-hud-sheet-open #topbar,
-      body.roc-hud-sheet-open #leader-avatar {
+      body.roc-hud-sheet-open #leader-avatar,
+      body.roc-hud-sheet-open #game-chat {
         visibility: hidden;
         pointer-events: none;
       }
