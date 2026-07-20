@@ -2,6 +2,7 @@
 
 import { assetUrl, bundledAssetUrl } from "./asset-base";
 import { isNativeApp } from "./app-routes";
+import { configureMobileAudio, unlockGameAudio } from "./game-audio-unlock";
 
 /** Pre-baked clip speed in the browser (1 = normal). Text sync follows currentTime. */
 export const LOADING_VOICE_PLAYBACK_RATE = 1;
@@ -11,7 +12,6 @@ const PLAY_RETRY_MS = 120;
 
 let currentAudio: HTMLAudioElement | null = null;
 let currentUtterance: SpeechSynthesisUtterance | null = null;
-let audioUnlocked = false;
 const preloadCache = new Map<string, HTMLAudioElement>();
 
 export function loadingVoiceClipUrl(civId: string, version?: string | null): string {
@@ -25,12 +25,7 @@ export function loadingVoiceClipUrl(civId: string, version?: string | null): str
 
 /** Call from a user gesture (e.g. Start Game) so mobile WebKit allows MP3 playback. */
 export function unlockLoadingAudio(): void {
-  if (audioUnlocked) return;
-  audioUnlocked = true;
-  const probe = new Audio();
-  probe.src =
-    "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//uQxAAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
-  void probe.play().catch(() => {});
+  unlockGameAudio();
 }
 
 /** Warm the MP3 while the scroll mounts so playback can start during worldgen. */
@@ -39,6 +34,7 @@ export function preloadLoadingVoice(civId: string, version?: string | null): voi
   if (preloadCache.has(url)) return;
   const audio = new Audio(url);
   audio.preload = "auto";
+  configureMobileAudio(audio);
   audio.load();
   preloadCache.set(url, audio);
 }
@@ -127,6 +123,7 @@ function takePreloadedAudio(url: string): HTMLAudioElement {
   }
   const audio = new Audio(url);
   audio.preload = "auto";
+  configureMobileAudio(audio);
   return audio;
 }
 

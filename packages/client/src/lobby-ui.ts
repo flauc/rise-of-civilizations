@@ -23,6 +23,7 @@ import {
 } from "@roc/sim";
 import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, startingConditionsLine, wireUuImages, wireUuDetail } from "./unique-unit";
 import { unlockLoadingAudio, preloadLoadingVoice } from "./loading-voice";
+import { unlockCoachAudio } from "./coach-voice";
 import { deleteSave, exportSave, importSave, listSavesForUser, loadSave, reassignSaves, saveGame, type SaveRecord } from "./save-db";
 import {
   authenticate,
@@ -436,6 +437,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
   const launchTutorialGame = (): void => {
     unlockLoadingAudio();
+    unlockCoachAudio();
     preloadLoadingVoice(TUTORIAL_CIV_ID);
     close();
     onStart(createTutorialSession(), createTutorialSetup());
