@@ -1,10 +1,11 @@
 // Tutorial advisor voice — pre-recorded MP3 per step (ElevenLabs), browser TTS fallback.
 
-import { assetUrl } from "./asset-base";
+import { assetUrl, bundledAssetUrl } from "./asset-base";
+import { isNativeApp } from "./app-routes";
 import {
   configureMobileAudio,
+  ensureGameAudioUnlocked,
   isGameAudioUnlocked,
-  unlockGameAudio,
 } from "./game-audio-unlock";
 import { TUTORIAL_STEP_IDS, type TutorialStepId } from "./tutorial-coach";
 
@@ -24,14 +25,37 @@ let pendingBlocked: {
 } | null = null;
 let gestureRetryBound = false;
 
+let lastSpeakAttempt: {
+  text: string;
+  stepId: TutorialStepId;
+  handlers?: CoachSpeakHandlers;
+} | null = null;
+let lastSpeakVoiceStarted = false;
+
+type PlayResult = "ok" | "blocked" | "error";
+
 /** Call from a user gesture (e.g. Tutorial / Start Game) so mobile WebKit allows MP3 playback. */
 export function unlockCoachAudio(): void {
-  unlockGameAudio();
+  void ensureGameAudioUnlocked().then((ok) => {
+    if (ok) void primeCoachClip("t1_intro");
+  });
+}
+
+/** Retry the current coach line after a fresh tap if voice never started. */
+export function retryCoachVoiceIfNeeded(): void {
+  if (lastSpeakVoiceStarted || !lastSpeakAttempt) return;
+  void ensureGameAudioUnlocked().then((ok) => {
+    if (!ok || !lastSpeakAttempt) return;
+    const line = lastSpeakAttempt;
+    speakCoachLine(line.text, line.stepId, line.handlers);
+  });
 }
 
 /** Where ElevenLabs (or other) clips live: `public/coach/voice/<stepId>.mp3`. */
 export function coachVoiceClipUrl(stepId: TutorialStepId): string {
-  return assetUrl(`coach/voice/${stepId}.mp3`);
+  return isNativeApp()
+    ? bundledAssetUrl(`coach/voice/${stepId}.mp3`)
+    : assetUrl(`coach/voice/${stepId}.mp3`);
 }
 
 function makeClip(stepId: TutorialStepId): HTMLAudioElement {
@@ -39,6 +63,42 @@ function makeClip(stepId: TutorialStepId): HTMLAudioElement {
   audio.preload = "auto";
   configureMobileAudio(audio);
   return audio;
+}
+
+async function primeCoachClip(stepId: TutorialStepId): Promise<void> {
+  try {
+    const audio = clipFor(stepId, true);
+    if (audio.readyState < HTMLMediaElement.HAVE_METADATA) {
+      await new Promise<void>((resolve, reject) => {
+        const timer = window.setTimeout(() => reject(new Error("timeout")), 8000);
+        audio.addEventListener(
+          "canplay",
+          () => {
+            window.clearTimeout(timer);
+            resolve();
+          },
+          { once: true },
+        );
+        audio.addEventListener(
+          "error",
+          () => {
+            window.clearTimeout(timer);
+            reject(new Error("load"));
+          },
+          { once: true },
+        );
+        void audio.load();
+      });
+    }
+    const vol = audio.volume;
+    audio.volume = 0.001;
+    await audio.play();
+    audio.pause();
+    audio.currentTime = 0;
+    audio.volume = vol;
+  } catch {
+    /* gesture window may have closed, or clip missing */
+  }
 }
 
 /**
@@ -72,16 +132,19 @@ function clipFor(stepId: TutorialStepId, fresh = false): HTMLAudioElement {
   return audio;
 }
 
-async function tryPlayAudio(audio: HTMLAudioElement): Promise<boolean> {
+async function tryPlayAudio(audio: HTMLAudioElement): Promise<PlayResult> {
   for (let attempt = 0; attempt < 8; attempt++) {
     try {
       await audio.play();
-      return true;
-    } catch {
+      return "ok";
+    } catch (e) {
+      if (e instanceof DOMException && (e.name === "NotAllowedError" || e.name === "AbortError")) {
+        return "blocked";
+      }
       await new Promise((r) => window.setTimeout(r, PLAY_RETRY_MS * (attempt + 1)));
     }
   }
-  return false;
+  return "error";
 }
 
 function bindGestureRetry(): void {
@@ -89,10 +152,11 @@ function bindGestureRetry(): void {
   gestureRetryBound = true;
   const onGesture = (): void => {
     gestureRetryBound = false;
-    unlockGameAudio();
-    const pending = pendingBlocked;
-    pendingBlocked = null;
-    if (pending) speakCoachLine(pending.text, pending.stepId, pending.handlers);
+    void ensureGameAudioUnlocked().then((ok) => {
+      const pending = pendingBlocked;
+      pendingBlocked = null;
+      if (pending && ok) speakCoachLine(pending.text, pending.stepId, pending.handlers);
+    });
   };
   document.addEventListener("pointerdown", onGesture, { capture: true, once: true });
   document.addEventListener("touchstart", onGesture, { capture: true, once: true });
@@ -162,6 +226,9 @@ export function speakCoachLine(
     return;
   }
 
+  lastSpeakAttempt = { text, stepId, handlers };
+  lastSpeakVoiceStarted = false;
+
   let audio = clipFor(stepId);
   currentAudio = audio;
   const ac = new AbortController();
@@ -197,6 +264,7 @@ export function speakCoachLine(
       () => {
         clearLoadTimer();
         if (currentAudio === clip) {
+          lastSpeakVoiceStarted = true;
           handlers?.onPlay?.(Number.isFinite(clip.duration) ? clip.duration : 0);
         }
       },
@@ -226,8 +294,12 @@ export function speakCoachLine(
   const attemptPlay = async (): Promise<void> => {
     if (settled || currentAudio !== audio) return;
 
-    let ok = await tryPlayAudio(audio);
-    if (ok || settled || currentAudio !== audio) return;
+    let result = await tryPlayAudio(audio);
+    if (result === "ok" || settled || currentAudio !== audio) return;
+    if (result === "blocked") {
+      deferUntilGesture();
+      return;
+    }
 
     // Clips warmed before unlock can stay blocked on iOS — retry with a fresh element.
     if (isGameAudioUnlocked()) {
@@ -240,8 +312,12 @@ export function speakCoachLine(
           void audio.load();
         });
       }
-      ok = await tryPlayAudio(audio);
-      if (ok || settled || currentAudio !== audio) return;
+      result = await tryPlayAudio(audio);
+      if (result === "ok" || settled || currentAudio !== audio) return;
+      if (result === "blocked") {
+        deferUntilGesture();
+        return;
+      }
     }
 
     if (!isGameAudioUnlocked()) deferUntilGesture();
