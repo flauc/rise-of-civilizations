@@ -3645,12 +3645,15 @@
       #game-hud #leader-avatar:not(.empty),
       #game-hud #log,
       #game-hud #tile-tip:not(.hidden),
-      #game-hud #game-chat.open,
       #game-hud #game-chat #game-chat-toggle,
       #game-hud #game-chat.open #game-chat-panel,
+      #game-hud #game-chat.open #game-chat-head,
+      #game-hud #game-chat.open #game-chat-log,
       #game-hud #game-chat.open #game-chat-form,
       #game-hud #game-chat.open #game-chat-input,
+      #game-hud #game-chat.open #game-chat-send,
       #game-hud #game-chat.open #game-chat-close,
+      #game-hud #game-chat.open.fullscreen,
       #game-hud #empire:not(.hidden),
       #game-hud #diplomacy:not(.hidden),
       #game-hud #diplo-contact.show,
@@ -3669,9 +3672,15 @@
       #game-hud:has(#save-modal:not(.hidden)) #topbar,
       #game-hud:has(#save-modal:not(.hidden)) #leader-avatar,
       #game-hud:has(#save-modal:not(.hidden)) #game-chat:not(.open),
-      #game-hud:has(#game-chat.open) #topbar,
-      #game-hud:has(#game-chat.open) #leader-avatar,
-      #game-hud:has(#game-chat.open) #game-chat-toggle {
+      #game-hud:has(#game-chat.open.fullscreen) #topbar,
+      #game-hud:has(#game-chat.open.fullscreen) #leader-avatar,
+      #game-hud:has(#game-chat.open.fullscreen) #game-chat-toggle {
+        visibility: hidden;
+        pointer-events: none;
+      }
+      body.roc-native:has(#game-hud #game-chat.open.fullscreen) #topbar,
+      body.roc-native:has(#game-hud #game-chat.open.fullscreen) #leader-avatar,
+      body.roc-native:has(#game-hud #game-chat.open.fullscreen) #game-chat-toggle {
         visibility: hidden;
         pointer-events: none;
       }
@@ -3683,7 +3692,7 @@
       body.roc-native:has(#game-hud #save-modal:not(.hidden)) #game,
       body.roc-native:has(#game-hud #empire:not(.hidden)) #game,
       body.roc-native:has(#game-hud #diplomacy:not(.hidden)) #game,
-      body.roc-native:has(#game-hud #game-chat.open) #game,
+      body.roc-native:has(#game-hud #game-chat.open.fullscreen) #game,
       body.roc-native:has(#game-hud #diplo-contact.show) #game,
       body.roc-native:has(#game-hud #diplo-proposal.show) #game {
         pointer-events: none !important;
