@@ -20,6 +20,11 @@ export FASTLANE_SKIP_UPDATE_CHECK=1
 export FASTLANE_OPT_OUT_USAGE=1
 export FASTLANE_DISABLE_COLORS=1
 
+export API_KEY_PATH
+export APPSTORE_KEY_ID
+export APPSTORE_ISSUER_ID
+export APPSTORE_PRIVATE_KEY
+
 # App Store Connect API key JSON (deliver reads --api_key_path in CI).
 ruby -rjson -e '
   File.write(
@@ -31,11 +36,7 @@ ruby -rjson -e '
       in_house: false
     }.to_json
   )
-' \
-  API_KEY_PATH="$API_KEY_PATH" \
-  APPSTORE_KEY_ID="$APPSTORE_KEY_ID" \
-  APPSTORE_ISSUER_ID="$APPSTORE_ISSUER_ID" \
-  APPSTORE_PRIVATE_KEY="$APPSTORE_PRIVATE_KEY"
+'
 
 gem install fastlane --no-document
 
