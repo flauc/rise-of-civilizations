@@ -19,8 +19,6 @@ env:
   IOS_APP_ID: com.riseofcivilizations.game
   # After upload + processing, submit for App Store review (true) or upload only (false)
   IOS_SUBMIT_FOR_REVIEW: true
-  # 1000+run*10+attempt: unique per workflow run and re-run (e.g. run 14 attempt 2 → 1142).
-  MOBILE_BUILD_NUMBER: ${{ 1000 + github.run_number * 10 + github.run_attempt }}
 
 jobs:
   android:
