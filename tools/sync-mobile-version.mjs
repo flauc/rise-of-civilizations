@@ -3,7 +3,7 @@
  * Sync native app versions before a store build.
  *
  * - versionName / MARKETING_VERSION ← root package.json "version"
- * - versionCode / CURRENT_PROJECT_VERSION ← GITHUB_RUN_NUMBER (CI) or current+1 (local)
+ * - versionCode / CURRENT_PROJECT_VERSION ← 1000 + GITHUB_RUN_NUMBER + (attempt - 1) in CI
  *
  * Usage:
  *   node tools/sync-mobile-version.mjs
@@ -28,9 +28,13 @@ function readBuildNumber() {
   const fromCi = process.env.GITHUB_RUN_NUMBER
     ? Number(process.env.GITHUB_RUN_NUMBER)
     : NaN;
+  const attempt = process.env.GITHUB_RUN_ATTEMPT
+    ? Number(process.env.GITHUB_RUN_ATTEMPT)
+    : 1;
   if (Number.isFinite(fromCi) && fromCi > 0) {
-    // Keep CI build numbers above any hand-uploaded local builds.
-    return Math.max(current + 1, 1000 + fromCi);
+    // 1000+run_number keeps CI builds above local uploads; +attempt on re-runs avoids duplicate CFBundleVersion.
+    const ciBuild = 1000 + fromCi + Math.max(0, (Number.isFinite(attempt) ? attempt : 1) - 1);
+    return Math.max(current + 1, ciBuild);
   }
   return current + 1;
 }
