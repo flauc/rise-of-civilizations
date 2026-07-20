@@ -43,7 +43,7 @@ const DEFAULTS: Settings = {
   turnUpdateView: "expanded",
   screenRotation: "landscape",
   autoAttack: false,
-  mapLabels: "selected",
+  mapLabels: "always",
 };
 
 let cache: Settings | null = null;

@@ -453,6 +453,27 @@ export class Lobby {
     return { ok: true };
   }
 
+  /**
+   * A non-host player explicitly leaves a lobby, freeing their seat so others
+   * can take it. Only frees the seat while the game is still in the lobby (a
+   * disconnect mid-lobby keeps the seat for reconnection; leaving is a deliberate
+   * exit). The host does not leave this way (they delete the game); `wasHost`
+   * lets the caller skip re-broadcasting when nothing changed.
+   */
+  leave(gameId: string, userId: string): { ok: true; wasHost: boolean } | { error: string } {
+    const game = this.games.get(gameId);
+    if (!game) return { error: "no such game" };
+    if (game.hostUserId === userId) return { ok: true, wasHost: true };
+    if (game.status !== "lobby") return { ok: true, wasHost: false };
+    const slot = game.slots.find((s) => s.userId === userId);
+    if (slot) {
+      slot.userId = undefined;
+      slot.handle = undefined;
+      slot.civId = undefined;
+    }
+    return { ok: true, wasHost: false };
+  }
+
   /** Replace an active game's host with a restored state. */
   restore(gameId: string, state: GameState): Result {
     const game = this.games.get(gameId);

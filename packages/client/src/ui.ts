@@ -3,6 +3,7 @@ import { swapArt, clearArt } from "./art-swap";
 import { rewardArtUrl } from "./reward-art";
 import { renderTechTreeInto } from "./techtree";
 import { createWiki } from "./wiki";
+import { confirmDialog } from "./confirm-dialog";
 import { createEmpire, type Tab as EmpireTab } from "./empire";
 import { createDiplomacy } from "./diplomacy";
 import { gameHud, initGameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
@@ -2362,9 +2363,14 @@ export function createUI(handlers: UIHandlers): UI {
           renderMenu(state);
           return;
         }
-        if (confirm("Leave this game and return to the main menu?")) {
-          handlers.onLeaveGame();
-        }
+        void confirmDialog({
+          title: "Leave game",
+          body: "Leave this game and return to the main menu?",
+          confirmText: "Leave",
+          danger: true,
+        }).then((ok) => {
+          if (ok) handlers.onLeaveGame();
+        });
       });
       saveModal.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
         el.addEventListener("click", async () => {

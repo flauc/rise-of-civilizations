@@ -190,6 +190,27 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(lobby.slotOf(g.id, "uC")).toBeUndefined();
   });
 
+  it("frees a non-host's seat when they leave, but the host leaving is a no-op", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Leavable", "uA", "Alice", { seed: "seed-leave", capacity: 3 });
+    lobby.join(g.id, "uB", "Bob");
+    const bobSlotId = lobby.room(g.id)!.slots.find((s) => s.userId === "uB")!.id;
+
+    // Bob leaves: his seat is freed and reopens for someone else.
+    expect(lobby.leave(g.id, "uB")).toEqual({ ok: true, wasHost: false });
+    expect(lobby.slotOf(g.id, "uB")).toBeUndefined();
+    const bobSlot = lobby.room(g.id)!.slots.find((s) => s.id === bobSlotId);
+    expect(bobSlot?.userId).toBeUndefined();
+    expect(bobSlot?.kind).toBe("human"); // seat still exists, just open
+
+    // The host "leaving" does not free the host seat (they delete the game instead).
+    expect(lobby.leave(g.id, "uA")).toEqual({ ok: true, wasHost: true });
+    expect(lobby.slotOf(g.id, "uA")).toBeDefined();
+
+    // Leaving a game that no longer exists is an error.
+    expect("error" in lobby.leave("nope", "uB")).toBe(true);
+  });
+
   it("enforces a join password and only the host can start", () => {
     const lobby = new Lobby();
     const g = lobby.create("Private", "uA", "Alice", { seed: "seed-pw", capacity: 3, password: "secret" });

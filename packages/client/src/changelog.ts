@@ -3,7 +3,7 @@
 // from the start screen via the version label so players can see what's new.
 
 /** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.7.8";
+export const CURRENT_VERSION = "0.7.9";
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */
@@ -21,6 +21,36 @@ interface Release {
 
 /** Newest release first. */
 const CHANGELOG: Release[] = [
+  {
+    version: "0.7.9",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "Fix",
+        title: "Confirmation prompts now work everywhere",
+        desc:
+          "Deleting a game, leaving a game, cancelling a trade route, reporting a chat message, and deleting a save all ask you to confirm through an in-game dialog now. These used the browser's built-in confirm box before, which is blocked inside the itch.io embed and some mobile browsers, so the button could look like it did nothing. The confirmation now appears in every version of the game.",
+      },
+      {
+        tag: "Fix",
+        title: "Leaving a multiplayer lobby frees your seat",
+        desc:
+          "Choosing Back to games from a multiplayer room now actually leaves the lobby and reopens your seat so another player can take it. Before, it only returned you to the browser while your seat stayed occupied.",
+      },
+      {
+        tag: "UI",
+        title: "Map name labels show by default",
+        desc:
+          "City and unit name labels on the board are now shown all the time by default instead of only for the selected tile. You can still switch this back in Settings.",
+      },
+      {
+        tag: "UI",
+        title: "Faster human and AI slot switching in the lobby",
+        desc:
+          "In a multiplayer room, clicking the human or AI toggle for a slot now flips right away instead of waiting for the server to reply, so the click always registers.",
+      },
+    ],
+  },
   {
     version: "0.7.8",
     date: "July 2026",

@@ -139,6 +139,7 @@ export type ClientMessage =
   | { t: "exportState" } // host requests the full authoritative state for saving
   | { t: "loadGame"; blob: string } // host uploads a full SerializedState blob to restore
   | { t: "deleteGame"; gameId: string } // host removes a game from the lobby
+  | { t: "leaveGame"; gameId: string } // a non-host player leaves the lobby, freeing their seat
   | { t: "lobbyChat"; gameId: string; text: string }
   | { t: "ping" }; // keepalive — server ignores, just prevents idle-timeout
 

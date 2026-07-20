@@ -8,6 +8,7 @@ import { onChatModerationChange } from "./chat-moderation";
 import { createWiki } from "./wiki";
 import { createRoadmap } from "./roadmap";
 import { createCredits } from "./credits";
+import { confirmDialog } from "./confirm-dialog";
 import { createChangelog, CURRENT_VERSION } from "./changelog";
 import {
   CIVILIZATIONS,
@@ -1824,9 +1825,14 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       );
       list.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((el) =>
         el.addEventListener("click", () => {
-          if (confirm("Delete this game? This cannot be undone.")) {
-            mpSession?.send({ t: "deleteGame", gameId: el.dataset.delete! });
-          }
+          void confirmDialog({
+            title: "Delete game",
+            body: "Delete this game? This cannot be undone.",
+            confirmText: "Delete",
+            danger: true,
+          }).then((ok) => {
+            if (ok) mpSession?.send({ t: "deleteGame", gameId: el.dataset.delete! });
+          });
         }),
       );
     };
@@ -2089,8 +2095,15 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         );
         body.querySelectorAll<HTMLButtonElement>(".mp-kind-btn").forEach((btn) =>
           btn.addEventListener("click", () => {
-            const slotId = Number((btn.closest(".mp-kind") as HTMLElement).dataset.slot);
-            mpSession?.send({ t: "updateSlot", gameId: room.gameId, slotId, kind: btn.dataset.kind as "human" | "ai" });
+            const kindEl = btn.closest(".mp-kind") as HTMLElement;
+            const slotId = Number(kindEl.dataset.slot);
+            const kind = btn.dataset.kind as "human" | "ai";
+            if (btn.classList.contains("sel")) return; // already this kind — nothing to do
+            // Optimistic feedback: flip the selected pill immediately so the click
+            // registers even before the server round-trip; the lobby broadcast then
+            // re-renders authoritatively (and corrects it if the change is rejected).
+            kindEl.querySelectorAll(".mp-kind-btn").forEach((b) => b.classList.toggle("sel", b === btn));
+            mpSession?.send({ t: "updateSlot", gameId: room.gameId, slotId, kind });
           }),
         );
         body.querySelectorAll<HTMLButtonElement>("[data-kick]").forEach((btn) =>
@@ -2149,11 +2162,24 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         mpSession?.send({ t: "startGame", gameId: room.gameId }),
       );
       body.querySelector<HTMLButtonElement>("#mp-room-delete")?.addEventListener("click", () => {
-        if (confirm("Delete this game? This cannot be undone.")) {
-          mpSession?.send({ t: "deleteGame", gameId: room.gameId });
-        }
+        void confirmDialog({
+          title: "Delete game",
+          body: "Delete this game? This cannot be undone.",
+          confirmText: "Delete",
+          danger: true,
+        }).then((ok) => {
+          if (ok) mpSession?.send({ t: "deleteGame", gameId: room.gameId });
+        });
       });
-      body.querySelector<HTMLButtonElement>("#mp-room-leave")?.addEventListener("click", () => goStage("browse"));
+      body.querySelector<HTMLButtonElement>("#mp-room-leave")?.addEventListener("click", () => {
+        // Explicitly leave: free our seat server-side (a disconnect keeps it for
+        // reconnection, but "Back to games" is a deliberate exit) and detach locally.
+        mpSession?.send({ t: "leaveGame", gameId: room.gameId });
+        joinedGameId = null;
+        mpRoom = null;
+        if (mpSession) mpSession.gameId = undefined;
+        goStage("browse");
+      });
     };
 
     const renderChatLog = renderMpChatLog;
@@ -2503,7 +2529,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     listEl.querySelectorAll<HTMLButtonElement>("[data-delete]").forEach((el) =>
       el.addEventListener("click", async (e) => {
         e.stopPropagation();
-        if (confirm("Delete this save? This cannot be undone.")) {
+        if (await confirmDialog({ title: "Delete save", body: "Delete this save? This cannot be undone.", confirmText: "Delete", danger: true })) {
           await deleteSave(el.dataset.delete!);
           await renderLoadGame();
         }

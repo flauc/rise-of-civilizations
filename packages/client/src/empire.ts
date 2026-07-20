@@ -6,6 +6,7 @@
 
 import { gameHud } from "./hud-root";
 import { withPreservedScroll } from "./panel-scroll";
+import { confirmDialog } from "./confirm-dialog";
 import {
   UNIT_DEFS,
   TRAINING_BUILDING_DEFS,
@@ -458,9 +459,16 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     );
     body.querySelectorAll<HTMLButtonElement>("[data-cancel-route]").forEach((el) =>
       el.addEventListener("click", () => {
-        if (!confirm("Cancel this trade route? The trader that opened it is lost.")) return;
-        handlers.onCancelTradeRoute(Number(el.dataset.cancelRoute));
-        render(state, viewerId);
+        void confirmDialog({
+          title: "Cancel trade route",
+          body: "Cancel this trade route? The trader that opened it is lost.",
+          confirmText: "Cancel route",
+          danger: true,
+        }).then((ok) => {
+          if (!ok) return;
+          handlers.onCancelTradeRoute(Number(el.dataset.cancelRoute));
+          render(state, viewerId);
+        });
       }),
     );
     body.querySelectorAll<HTMLButtonElement>("[data-leave-escort]").forEach((el) =>

@@ -400,6 +400,18 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       send(ws, { t: "games", games: lobby.list() });
       return;
     }
+    case "leaveGame": {
+      if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      const r = lobby.leave(msg.gameId, ws.data.userId);
+      if ("error" in r) return send(ws, { t: "error", message: r.error });
+      gameConns.get(msg.gameId)?.delete(ws);
+      ws.data.gameId = undefined;
+      ws.data.slot = undefined;
+      ws.data.playerId = undefined;
+      if (!r.wasHost) broadcastLobby(msg.gameId); // let the room see the seat reopen
+      send(ws, { t: "games", games: lobby.list() });
+      return;
+    }
     case "lobbyChat": {
       if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
       if (ws.data.gameId !== msg.gameId) return send(ws, { t: "error", message: "not in this game" });

@@ -10,6 +10,7 @@ import {
   visibleChatMessages,
 } from "./chat-moderation";
 import { gameHud } from "./hud-root";
+import { confirmDialog, notifyDialog } from "./confirm-dialog";
 import type { OnlineSession } from "./session";
 
 /** Phone / tablet / native shell — used for mobile-only lobby chat UX. */
@@ -97,17 +98,24 @@ function wireMessageMenu(
   });
   menu.querySelector<HTMLButtonElement>('[data-mp-chat-act="report"]')?.addEventListener("click", () => {
     closeOpenMenu();
-    const ok = confirm(`Report ${message.handle} for this message?\n\n"${message.text}"`);
-    if (!ok) return;
-    void reportChatMessage({
-      reportedUserId: message.userId,
-      reportedHandle: message.handle,
-      messageText: message.text,
-      gameId: opts.gameId,
-    }).then((sent) => {
-      if (sent) alert("Report sent. Thank you.");
-      else alert("Report queued — it will be sent when you're back online.");
-      opts.onChanged?.();
+    void confirmDialog({
+      title: "Report message",
+      body: `Report ${message.handle} for this message?\n\n"${message.text}"`,
+      confirmText: "Report",
+      danger: true,
+    }).then((ok) => {
+      if (!ok) return;
+      void reportChatMessage({
+        reportedUserId: message.userId,
+        reportedHandle: message.handle,
+        messageText: message.text,
+        gameId: opts.gameId,
+      }).then((sent) => {
+        void notifyDialog(
+          sent ? "Report sent. Thank you." : "Report queued. It will be sent when you're back online.",
+        );
+        opts.onChanged?.();
+      });
     });
   });
 }
