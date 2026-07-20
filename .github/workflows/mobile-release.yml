@@ -44,7 +44,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
@@ -59,6 +59,7 @@ jobs:
         run: node tools/sync-mobile-version.mjs
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
 
       - name: Configure Android signing
         env:
@@ -118,7 +119,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
@@ -133,6 +134,7 @@ jobs:
         run: node tools/sync-mobile-version.mjs
         env:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}
 
       - name: Install iOS signing assets
         env:
@@ -190,12 +192,14 @@ jobs:
           echo "IPA_PATH=$RUNNER_TEMP/export/App.ipa" >> "$GITHUB_ENV"
 
       - name: Upload to App Store Connect
-        uses: apple-actions/upload-testflight-build@v3
+        uses: apple-actions/upload-testflight-build@v4
         with:
           app-path: ${{ env.IPA_PATH }}
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+          uses-non-exempt-encryption: "false"
+          wait-for-processing: "true"
 
       - name: Submit for App Store review
         if: env.IOS_SUBMIT_FOR_REVIEW == 'true'
