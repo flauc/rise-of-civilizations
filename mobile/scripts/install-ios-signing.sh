@@ -102,7 +102,7 @@ if ! CODE_SIGN_IDENTITY="$(find_distribution_identity)"; then
   exit 1
 fi
 
-if [[ "$CODE_SIGN_IDENTITY" == *")"* ]]; then
+if [[ "$CODE_SIGN_IDENTITY" =~ ^[[:space:]]*[0-9]+\) ]]; then
   echo "Failed to parse code sign identity from keychain output." >&2
   echo "Parsed value: ${CODE_SIGN_IDENTITY}" >&2
   exit 1
