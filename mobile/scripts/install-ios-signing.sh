@@ -24,9 +24,24 @@ PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' /dev/stdin <<< "$(secur
 mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
 cp /tmp/roc.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/"${PROFILE_UUID}.mobileprovision"
 
+CODE_SIGN_IDENTITY="$(
+  security find-identity -v -p codesigning "$KEYCHAIN" \
+    | grep -E 'Apple Distribution|iPhone Distribution' \
+    | head -1 \
+    | sed -E 's/^[[:space:]]*[0-9]+)[[:space:]]+"([^"]+)".*/\1/'
+)"
+if [ -z "$CODE_SIGN_IDENTITY" ]; then
+  echo "No Apple Distribution identity found in CI keychain after import" >&2
+  security find-identity -v -p codesigning "$KEYCHAIN" >&2 || true
+  exit 1
+fi
+
 {
+  echo "IOS_KEYCHAIN_PATH=${KEYCHAIN}"
   echo "IOS_PROFILE_UUID=${PROFILE_UUID}"
   echo "IOS_PROFILE_NAME=${PROFILE_NAME}"
+  echo "IOS_CODE_SIGN_IDENTITY=${CODE_SIGN_IDENTITY}"
 } >> "${GITHUB_ENV:-/dev/null}"
 
 echo "Installed provisioning profile: ${PROFILE_NAME} (${PROFILE_UUID})"
+echo "Using code sign identity: ${CODE_SIGN_IDENTITY}"

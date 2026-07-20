@@ -139,8 +139,13 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           IOS_PROFILE_NAME: ${{ env.IOS_PROFILE_NAME }}
+          IOS_PROFILE_UUID: ${{ env.IOS_PROFILE_UUID }}
+          IOS_CODE_SIGN_IDENTITY: ${{ env.IOS_CODE_SIGN_IDENTITY }}
+          IOS_KEYCHAIN_PATH: ${{ env.IOS_KEYCHAIN_PATH }}
         run: |
           test -n "$APPLE_TEAM_ID" || { echo "Missing APPLE_TEAM_ID secret"; exit 1; }
+          test -n "$IOS_CODE_SIGN_IDENTITY" || { echo "Missing IOS_CODE_SIGN_IDENTITY from signing setup"; exit 1; }
+          security unlock-keychain -p "${IOS_KEYCHAIN_PASSWORD:-roc-ci-keychain}" "$IOS_KEYCHAIN_PATH"
           xcodebuild -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
@@ -149,7 +154,9 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_NAME" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE="$IOS_PROFILE_UUID" \
+            CODE_SIGN_IDENTITY="$IOS_CODE_SIGN_IDENTITY" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $IOS_KEYCHAIN_PATH" \
             archive
 
       - name: Export IPA
