@@ -14,6 +14,7 @@ fi
 APP_ID="${IOS_APP_ID:-com.riseofcivilizations.game}"
 MOBILE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 API_KEY_PATH="${RUNNER_TEMP:-/tmp}/asc-api-key.json"
+LOG="${RUNNER_TEMP:-/tmp}/fastlane-deliver.log"
 
 export CI=true
 export FASTLANE_SKIP_UPDATE_CHECK=1
@@ -42,16 +43,41 @@ gem install fastlane --no-document
 
 cd "$MOBILE_DIR"
 
-fastlane deliver \
-  --api_key_path "$API_KEY_PATH" \
-  --app_identifier "$APP_ID" \
-  --platform ios \
-  --skip_binary_upload true \
-  --skip_screenshots true \
-  --skip_metadata true \
-  --submit_for_review true \
-  --automatic_release true \
-  --precheck_include_in_app_purchases false \
+DELIVER_ARGS=(
+  --api_key_path "$API_KEY_PATH"
+  --app_identifier "$APP_ID"
+  --platform ios
+  --skip_binary_upload true
+  --skip_screenshots true
+  --skip_metadata true
+  --skip_app_version_update true
+  --submit_for_review true
+  --automatic_release true
+  --precheck_include_in_app_purchases false
   --force
+)
 
-echo "Submitted ${APP_ID} for App Store review (automatic release after approval)."
+# Optional: cancel an existing Waiting for Review submission and submit this build instead.
+if [[ "${IOS_REJECT_WAITING_REVIEW:-false}" == "true" ]]; then
+  DELIVER_ARGS+=(--reject_if_possible true)
+fi
+
+set +e
+fastlane deliver "${DELIVER_ARGS[@]}" 2>&1 | tee "$LOG"
+status=${PIPESTATUS[0]}
+set -e
+
+if [ "$status" -eq 0 ]; then
+  echo "Submitted ${APP_ID} for App Store review (automatic release after approval)."
+  exit 0
+fi
+
+if grep -qiE 'could not be added|Waiting For Review|waiting for review|not acceptable for the current resource state' "$LOG"; then
+  echo "::warning::App Store submit skipped: a version is already Waiting for Review (Apple will not attach a newer build)."
+  echo "This CI run's upload succeeded — the new build is in TestFlight."
+  echo "Wait for Apple to review the current submission, cancel it in App Store Connect, or set IOS_REJECT_WAITING_REVIEW=true to replace it on the next run."
+  exit 0
+fi
+
+echo "fastlane deliver failed (exit ${status}). See log above." >&2
+exit "$status"
