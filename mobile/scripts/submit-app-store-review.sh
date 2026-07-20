@@ -11,19 +11,40 @@ if [[ "${IOS_SUBMIT_FOR_REVIEW:-true}" != "true" ]]; then
   exit 0
 fi
 
+APP_ID="${IOS_APP_ID:-com.riseofcivilizations.game}"
+MOBILE_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+API_KEY_PATH="${RUNNER_TEMP:-/tmp}/asc-api-key.json"
+
+export CI=true
 export FASTLANE_SKIP_UPDATE_CHECK=1
 export FASTLANE_OPT_OUT_USAGE=1
-export APP_STORE_CONNECT_API_KEY_KEY_ID="$APPSTORE_KEY_ID"
-export APP_STORE_CONNECT_API_KEY_ISSUER_ID="$APPSTORE_ISSUER_ID"
-export APP_STORE_CONNECT_API_KEY_KEY="$APPSTORE_PRIVATE_KEY"
-export APP_STORE_CONNECT_API_KEY_IS_KEY_CONTENT_BASE64=false
+export FASTLANE_DISABLE_COLORS=1
 
-APP_ID="${IOS_APP_ID:-com.riseofcivilizations.game}"
+# App Store Connect API key JSON (deliver reads --api_key_path in CI).
+ruby -rjson -e '
+  File.write(
+    ENV.fetch("API_KEY_PATH"),
+    {
+      key_id: ENV.fetch("APPSTORE_KEY_ID"),
+      issuer_id: ENV.fetch("APPSTORE_ISSUER_ID"),
+      key: ENV.fetch("APPSTORE_PRIVATE_KEY"),
+      in_house: false
+    }.to_json
+  )
+' \
+  API_KEY_PATH="$API_KEY_PATH" \
+  APPSTORE_KEY_ID="$APPSTORE_KEY_ID" \
+  APPSTORE_ISSUER_ID="$APPSTORE_ISSUER_ID" \
+  APPSTORE_PRIVATE_KEY="$APPSTORE_PRIVATE_KEY"
 
 gem install fastlane --no-document
 
+cd "$MOBILE_DIR"
+
 fastlane deliver \
+  --api_key_path "$API_KEY_PATH" \
   --app_identifier "$APP_ID" \
+  --platform ios \
   --skip_binary_upload true \
   --skip_screenshots true \
   --skip_metadata true \
