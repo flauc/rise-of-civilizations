@@ -3435,9 +3435,17 @@
       #game-hud:has(#save-modal:not(.hidden)) #topbar,
       #game-hud:has(#save-modal:not(.hidden)) #leader-avatar,
       #game-hud:has(#save-modal:not(.hidden)) #game-chat:not(.open),
-      #game-hud:has(#game-chat.open) #topbar,
-      #game-hud:has(#game-chat.open) #leader-avatar,
-      #game-hud:has(#game-chat.open) #game-chat-toggle {
+      @media (max-width:900px),(pointer:coarse){
+        #game-hud:has(#game-chat.open) #topbar,
+        #game-hud:has(#game-chat.open) #leader-avatar,
+        #game-hud:has(#game-chat.open) #game-chat-toggle {
+          visibility: hidden;
+          pointer-events: none;
+        }
+      }
+      body.roc-native:has(#game-hud #game-chat.open) #topbar,
+      body.roc-native:has(#game-hud #game-chat.open) #leader-avatar,
+      body.roc-native:has(#game-hud #game-chat.open) #game-chat-toggle {
         visibility: hidden;
         pointer-events: none;
       }
