@@ -304,6 +304,27 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(lobby.get(g2.id)).toBeDefined();
   });
 
+  it("abandons a game without host authorization", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Abandoned", "uA", "Alice", { seed: "seed-abn" });
+    lobby.join(g.id, "uB", "Bob");
+    lobby.start(g.id);
+    expect(lobby.abandon(g.id)).toEqual({ ok: true });
+    expect(lobby.get(g.id)).toBeUndefined();
+  });
+
+  it("lets seated players rejoin an active game", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Rejoin", "uA", "Alice", { seed: "seed-rejoin" });
+    lobby.join(g.id, "uB", "Bob");
+    lobby.start(g.id);
+    expect("error" in lobby.join(g.id, "uB", "Bob")).toBe(false);
+    const r = lobby.join(g.id, "uB", "Bob");
+    if ("error" in r) throw new Error("expected rejoin");
+    expect(r.playerId).toBeDefined();
+    expect("error" in lobby.join(g.id, "uC", "Carol")).toBe(true);
+  });
+
   it("stores lobby chat for seated players only", () => {
     const lobby = new Lobby();
     const g = lobby.create("Chatty", "uA", "Alice", { seed: "seed-chat" });

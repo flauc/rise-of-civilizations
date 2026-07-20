@@ -78,6 +78,7 @@ import { exportSave, listSavesForUser, makeSaveRecord, saveGame, type SaveRecord
 import { getAccount, getSaveOwnerId } from "./account";
 import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, abandonActiveSession, buildSessionScoreboard, viewerScoreFromBoard, registerSessionSnapshotProvider, type GameSetup } from "./analytics";
 import { createTutorialCoach } from "./tutorial-coach";
+import { resetHudOverlays } from "./hud-root";
 import {
   refreshTutorialMovement,
   spawnTutorialBarbarian,
@@ -86,7 +87,7 @@ import {
   seedTutorialSurroundings,
 } from "./tutorial";
 import { installIconifyHook } from "./icons";
-import { initScreenRotation } from "./screen-rotation";
+import { initScreenRotation, getCanvasViewportSize } from "./screen-rotation";
 import { createLoadingScreen, createTutorialPreparingScreen, type LoadingScreenHandle } from "./loading-screen";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -127,6 +128,7 @@ delete window.__ROC_BOOT_ROUTE__;
 if (!bootRoute) preloadGameAssets();
 
 function startGame(session: Session, setup: GameSetup = {}): void {
+  resetHudOverlays();
   let loadingDismissed = false;
   let mapRenderNotified = false;
   let loadingRepaintAt = 0;
@@ -1110,18 +1112,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   });
 
   function viewportSize(): { width: number; height: number } {
-    const vv = window.visualViewport;
-    let width = vv?.width ?? window.innerWidth;
-    let height = vv?.height ?? window.innerHeight;
-    // After a device rotation, visualViewport can briefly keep the old
-    // landscape dimensions while the OS has already switched to portrait.
-    const portrait = window.matchMedia("(orientation: portrait)").matches;
-    const landscape = window.matchMedia("(orientation: landscape)").matches;
-    if ((portrait && width > height) || (landscape && height > width)) {
-      width = window.innerWidth;
-      height = window.innerHeight;
-    }
-    return { width, height };
+    return getCanvasViewportSize();
   }
 
   function resize(): void {
@@ -1333,6 +1324,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         suggestion: computeSuggestion(),
         mpSaves,
         cheatsEnabled: !session.isOnline && isLocalhost,
+        isMultiplayer: session.isOnline,
         liftFog,
         gameOverExploreMap,
       });

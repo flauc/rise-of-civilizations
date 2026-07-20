@@ -24,6 +24,7 @@ import {
 } from "@roc/sim";
 import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, startingConditionsLine, wireUuImages, wireUuDetail } from "./unique-unit";
 import { unlockLoadingAudio, preloadLoadingVoice } from "./loading-voice";
+import { unlockCoachAudio } from "./coach-voice";
 import { deleteSave, exportSave, importSave, listSavesForUser, loadSave, reassignSaves, saveGame, type SaveRecord } from "./save-db";
 import {
   authenticate,
@@ -437,6 +438,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
   const launchTutorialGame = (): void => {
     unlockLoadingAudio();
+    unlockCoachAudio();
     preloadLoadingVoice(TUTORIAL_CIV_ID);
     close();
     onStart(createTutorialSession(), createTutorialSetup());
@@ -541,7 +543,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .lobby-left{width:380px;max-width:92vw;flex-shrink:0;display:flex;flex-direction:column;background:linear-gradient(180deg,#1f1c14 0%,#15120c 100%);border-right:1px solid var(--edge);padding:28px;overflow:auto;box-shadow:4px 0 24px rgba(0,0,0,.55)}
     .lobby-left.sp-panel{padding:0;overflow:hidden}
     .sp-panel-scroll{flex:1;min-height:0;overflow:auto;padding:28px;padding-bottom:12px;-webkit-overflow-scrolling:touch}
-    .sp-panel-actions{flex:none;display:flex;gap:10px;padding:14px 28px max(14px,env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:linear-gradient(180deg,#1a1710 0%,#15120c 100%);box-shadow:0 -8px 24px rgba(0,0,0,.35)}
+    .sp-panel-actions{flex:none;display:flex;gap:10px;padding:14px 28px max(14px,env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:linear-gradient(180deg,#1a1710 0%,#15120c 100%);box-shadow:0 -8px 24px rgba(0,0,0,.35);position:relative;z-index:4;pointer-events:auto}
     .sp-panel-actions .menu-btn{flex:1;width:auto;margin:0}
     .lobby-right{flex:1;position:relative;display:grid;grid-template-columns:minmax(0,1fr) clamp(160px,24vw,240px);grid-template-rows:minmax(0,1fr);gap:20px 24px;align-items:start;min-height:0;height:100%;padding:24px 32px;background:radial-gradient(circle at 70% 30%,rgba(201,162,39,0.14) 0%,#0f0e0b 60%);overflow:hidden}
     .lobby-right::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,14,11,0) 0%,rgba(15,14,11,.78) 100%);pointer-events:none}
@@ -594,7 +596,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .lobby-version{margin-top:auto;color:#b8aa8d;font:inherit;font-size:12px;text-align:center;padding:18px 0 0;background:none;border:none;cursor:pointer;transition:color .12s}
     .lobby-version:hover{color:#f0d878}
     .menu-actions{display:flex;flex-direction:column;gap:10px;margin-top:8px}
-    .menu-btn{width:100%;padding:12px 14px;font:inherit;font-size:15px;font-weight:700;color:#e8dcc5;background:rgba(201,162,39,0.08);border:1px solid var(--edge);border-radius:999px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
+    .menu-btn{width:100%;padding:12px 14px;font:inherit;font-size:15px;font-weight:700;color:#e8dcc5;background:rgba(201,162,39,0.08);border:1px solid var(--edge);border-radius:999px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:10px;transition:background .12s,border-color .12s,color .12s,box-shadow .12s;touch-action:manipulation;position:relative;min-height:44px}
+    .menu-btn::before{content:"";position:absolute;inset:-8px}
     .menu-btn:hover{background:rgba(201,162,39,0.18);border-color:#c9a227;color:#f0d878;box-shadow:0 0 16px rgba(201,162,39,.2)}
     .menu-btn.primary{background:linear-gradient(135deg,#c9a227,#a6821f);border-color:transparent;color:#15120c}
     .menu-btn.primary:hover{background:linear-gradient(135deg,#f0d878,#c9a227);color:#0f0e0b}
@@ -805,7 +808,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       #lobby{overflow-x:hidden;overflow-y:auto}
       .lobby-layout{flex-direction:column;height:auto;min-height:100%;width:100%;max-width:100%}
       .lobby-left{width:100%;max-width:100%;border-right:none;padding:max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));overflow:visible}
-      body.roc-native #lobby .lobby-left{padding:20px}
+      body.roc-native #lobby .lobby-left{padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
       .lobby-right{display:flex;flex-direction:column;position:relative;flex:none;width:100%;max-width:100%;padding:24px max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left));justify-content:flex-start;overflow:visible;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,#0f0e0b 70%)}
       .showcase{grid-column:auto;grid-row:auto;align-self:auto;max-height:none;overflow:visible;padding-right:0;order:0}
       .showcase-side{display:none !important}
@@ -956,7 +959,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     }
     @media(max-width:820px){
       .mp-browse-grid{grid-template-columns:1fr}
-      .mp-shell{padding:max(18px,env(safe-area-inset-top)) 18px 40px}
+      .mp-shell{padding:max(18px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(40px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))}
     }
     @media(max-width:560px){.mp-opt-grid{grid-template-columns:1fr}}
     ${SCREEN_ROTATION_STYLES}

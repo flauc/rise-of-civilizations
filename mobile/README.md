@@ -117,3 +117,67 @@ Then rebuild (`npm run apk` / re-archive in Xcode).
 Any time the web client changes, re-run `npm run build` (rebuilds the shell +
 syncs both platforms), then rebuild the APK / re-archive in Xcode. No native
 code changes are needed unless you add a Capacitor plugin.
+
+## Continuous deployment (GitHub Actions)
+
+Pushes to **`main`** trigger [`.github/workflows/mobile-release.yml`](../.github/workflows/mobile-release.yml):
+
+1. Sync native version numbers from root `package.json` (`tools/sync-mobile-version.mjs`).
+2. **Android:** build a signed `.aab` and upload to Google Play (`production` track).
+3. **iOS:** archive, export an `.ipa`, and upload to **App Store Connect / TestFlight**.
+
+The workflow bundles the latest web client shell from `main`. Game art still streams
+from the live CDN, so deploy the web client to `game.rise-of-civilizations.com`
+before or alongside mobile releases when client code changed.
+
+### One-time GitHub secrets
+
+Add these under **Settings → Secrets and variables → Actions** on the repo:
+
+| Secret | Used for |
+|--------|----------|
+| `ANDROID_KEYSTORE_BASE64` | Release keystore (base64 of `roc-release.keystore`) |
+| `ANDROID_KEYSTORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Key alias (e.g. `roc`) |
+| `ANDROID_KEY_PASSWORD` | Key password |
+| `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` | Play Console API service account JSON |
+| `IOS_CERTIFICATE_BASE64` | Apple Distribution `.p12` (base64) |
+| `IOS_CERTIFICATE_PASSWORD` | `.p12` export password |
+| `IOS_PROVISIONING_PROFILE_BASE64` | App Store distribution `.mobileprovision` (base64) |
+| `APPLE_TEAM_ID` | Apple Developer team id (10 chars) |
+| `APPSTORE_ISSUER_ID` | App Store Connect API issuer id |
+| `APPSTORE_KEY_ID` | App Store Connect API key id |
+| `APPSTORE_PRIVATE_KEY` | App Store Connect `.p8` private key contents |
+
+**Android keystore (once, locally):**
+
+```sh
+keytool -genkey -v -keystore roc-release.keystore -alias roc \
+  -keyalg RSA -keysize 2048 -validity 10000
+base64 -i roc-release.keystore | pbcopy   # paste into ANDROID_KEYSTORE_BASE64
+cp roc-release.keystore mobile/android/app/
+cp mobile/android/key.properties.example mobile/android/key.properties
+# fill key.properties, keep it gitignored
+```
+
+**Google Play:** create a service account in Google Cloud, grant it access in Play
+Console (Release → Setup → API access), download JSON → `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
+
+**iOS:** export an **Apple Distribution** certificate as `.p12`, download the
+**App Store** provisioning profile for `com.riseofcivilizations.game`, create an
+App Store Connect API key (Admin). Base64-encode cert and profile for the secrets above.
+
+**Play track:** edit `PLAY_TRACK` in the workflow (`internal` for staged rollouts,
+`production` for live). **iOS** uploads to TestFlight; submit for App Store review
+in App Store Connect (or enable automatic release from TestFlight there).
+
+**Version numbers:** CI sets `versionName` / `MARKETING_VERSION` from root
+`package.json` and bumps `versionCode` / `CURRENT_PROJECT_VERSION` from the
+GitHub run number. Bump `package.json` when you want a new store-facing version.
+
+Local dry run (no upload):
+
+```sh
+GITHUB_RUN_NUMBER=999 node tools/sync-mobile-version.mjs
+cd mobile && npm run bundle:release
+```

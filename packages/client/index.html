@@ -89,9 +89,34 @@
       body.roc-native {
         min-height: 100%;
         background: #0f0e0b;
-        /* Android edge-to-edge often reports 0 safe-area until inset env is wired;
-           keep dialog chrome below the status bar on native shells. */
-        --dialog-x-top: max(28px, env(safe-area-inset-top));
+        /* Dialog headers pad for safe-area; keep ✕ inset modest so it stays fully tappable. */
+        --dialog-x-top: 10px;
+      }
+      /* iOS Safari and other mobile browsers cannot lock orientation in a tab.
+         When the player picks Horizontal / Vertical, rotate the page in CSS. */
+      @media (orientation: portrait) {
+        html.roc-want-landscape {
+          position: fixed;
+          width: 100vh;
+          height: 100vw;
+          top: 0;
+          left: 100vw;
+          transform: rotate(90deg);
+          transform-origin: top left;
+          overflow: hidden;
+        }
+      }
+      @media (orientation: landscape) {
+        html.roc-want-portrait {
+          position: fixed;
+          width: 100vh;
+          height: 100vw;
+          top: 100vh;
+          left: 0;
+          transform: rotate(-90deg);
+          transform-origin: top left;
+          overflow: hidden;
+        }
       }
       h1, h2, h3, h4 {
         font-family: 'Cinzel', Georgia, serif;
@@ -2720,9 +2745,17 @@
         line-height: 1;
         cursor: pointer;
         touch-action: manipulation;
+        overflow: visible;
         /* Stays above positioned siblings, e.g. the unique-unit card's art. */
-        z-index: 4;
+        z-index: 20;
+        pointer-events: auto;
         transition: background 0.15s ease, color 0.15s ease;
+      }
+      /* Invisible expanded tap target so ✕ / Back aren't half off the hit area on phones. */
+      .dialog-x::before {
+        content: "";
+        position: absolute;
+        inset: -12px;
       }
       .dialog-x:hover {
         background: rgba(201, 162, 39, 0.14);
@@ -2763,8 +2796,11 @@
       .unit-promo-dialog-title,
       #settings-dialog .settings-header,
       #combat-preview-dialog .combat-preview-header {
-        min-height: var(--dialog-x-size);
+        min-height: calc(var(--dialog-x-top) + var(--dialog-x-size));
         padding-right: var(--dialog-x-gutter);
+        overflow: visible;
+        position: relative;
+        z-index: 2;
       }
       /* Bands whose whole content is the title: centre it against the ✕. The
          headers left out here lay their own children out in a row. */
@@ -3604,10 +3640,17 @@
       }
       #game-hud .panel:not(.hidden),
       #game-hud .action-btn,
+      #game-hud #topbar,
+      #game-hud #bottom-bar,
       #game-hud #leader-avatar:not(.empty),
       #game-hud #log,
       #game-hud #tile-tip:not(.hidden),
-      #game-hud #game-chat,
+      #game-hud #game-chat.open,
+      #game-hud #game-chat #game-chat-toggle,
+      #game-hud #game-chat.open #game-chat-panel,
+      #game-hud #game-chat.open #game-chat-form,
+      #game-hud #game-chat.open #game-chat-input,
+      #game-hud #game-chat.open #game-chat-close,
       #game-hud #empire:not(.hidden),
       #game-hud #diplomacy:not(.hidden),
       #game-hud #diplo-contact.show,
@@ -3616,15 +3659,33 @@
       #game-hud #gameover-explore-bar:not(.hidden) {
         pointer-events: auto;
       }
-      /* Full-screen sheets sit above the top bar; hide it so ✕ / Back aren't blocked. */
-      body.roc-hud-sheet-open #topbar,
-      body.roc-hud-sheet-open #leader-avatar {
+      /* Hide chrome only while a full-screen sheet is actually open (not a stale body class). */
+      #game-hud:has(#diplomacy:not(.hidden)) #topbar,
+      #game-hud:has(#diplomacy:not(.hidden)) #leader-avatar,
+      #game-hud:has(#diplomacy:not(.hidden)) #game-chat:not(.open),
+      #game-hud:has(#empire:not(.hidden)) #topbar,
+      #game-hud:has(#empire:not(.hidden)) #leader-avatar,
+      #game-hud:has(#empire:not(.hidden)) #game-chat:not(.open),
+      #game-hud:has(#save-modal:not(.hidden)) #topbar,
+      #game-hud:has(#save-modal:not(.hidden)) #leader-avatar,
+      #game-hud:has(#save-modal:not(.hidden)) #game-chat:not(.open),
+      #game-hud:has(#game-chat.open) #topbar,
+      #game-hud:has(#game-chat.open) #leader-avatar,
+      #game-hud:has(#game-chat.open) #game-chat-toggle {
         visibility: hidden;
         pointer-events: none;
       }
 
-      /* Native WebKit can deliver clicks to the canvas under HUD overlays. */
-      body.roc-native.roc-hud-sheet-open #game {
+      /* Native WebKit: map is tappable unless a real overlay is open. */
+      body.roc-native #game {
+        pointer-events: auto;
+      }
+      body.roc-native:has(#game-hud #save-modal:not(.hidden)) #game,
+      body.roc-native:has(#game-hud #empire:not(.hidden)) #game,
+      body.roc-native:has(#game-hud #diplomacy:not(.hidden)) #game,
+      body.roc-native:has(#game-hud #game-chat.open) #game,
+      body.roc-native:has(#game-hud #diplo-contact.show) #game,
+      body.roc-native:has(#game-hud #diplo-proposal.show) #game {
         pointer-events: none !important;
       }
 
@@ -3651,7 +3712,8 @@
           --dialog-max-h: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
         }
         body.roc-native {
-          --dialog-x-top: max(28px, env(safe-area-inset-top));
+          /* Header bands already pad for safe-area; don't push ✕ down twice. */
+          --dialog-x-top: max(10px, env(safe-area-inset-top));
         }
         .panel-dialog-header,
         #settings-dialog .settings-header {

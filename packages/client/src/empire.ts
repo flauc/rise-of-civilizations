@@ -63,6 +63,7 @@ const STYLE = `
 #empire-overlay.hidden{opacity:0;pointer-events:none}
 #empire{position:fixed;left:50%;top:var(--dialog-top);transform:var(--dialog-transform);width:min(560px,calc(100vw - 32px));max-height:min(80vh,var(--dialog-max-h));background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;opacity:1;pointer-events:auto;transition:opacity .2s;z-index:61}
 #empire.hidden{opacity:0;pointer-events:none}
+#empire .dialog-x{pointer-events:auto;touch-action:manipulation;z-index:3}
 /* Cinzel/accent title styling comes from the shared .emp-title rule in
    index.html; the band metrics keep the title clear of the pinned ✕. */
 .emp-title{margin-bottom:12px;min-height:var(--dialog-x-size);padding-right:var(--dialog-x-gutter);display:flex;flex-direction:column;justify-content:center}

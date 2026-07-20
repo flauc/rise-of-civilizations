@@ -30,7 +30,8 @@
     "generate-natural-wonder-art": "bun run tools/art-generator/generate.ts --subset turn-update-natural-wonders",
     "generate-coach-voice": "bun run tools/generate-coach-voice.ts",
     "generate-loading-voice": "bun run tools/generate-loading-voice.ts",
-    "balance": "bun run tools/balance/score.ts"
+    "balance": "bun run tools/balance/score.ts",
+    "sync-mobile-version": "node tools/sync-mobile-version.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",

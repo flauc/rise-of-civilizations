@@ -24,6 +24,8 @@ import {
   speakLoadingLine,
   stopLoadingVoice,
 } from "./loading-voice";
+import { unlockGameAudio } from "./game-audio-unlock";
+import { unlockCoachAudio } from "./coach-voice";
 
 const MIN_VISIBLE_MS = 2800;
 /** Safety cap if speech never finishes; scaled per script length in forceDismissMs(). */
@@ -814,6 +816,8 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
 
   function skip(): void {
     if (dismissed) return;
+    unlockGameAudio();
+    unlockCoachAudio();
     skipped = true;
     speakSeq++;
     stopTyping();

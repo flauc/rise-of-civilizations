@@ -56,7 +56,7 @@ if (build.status !== 0) {
 function isShell(name) {
   if (!name.includes("/")) return true;
   const top = name.split("/")[0];
-  return top === "assets" || top === "ui" || top === "loading";
+  return top === "assets" || top === "ui" || top === "loading" || top === "coach";
 }
 
 function walk(dir) {

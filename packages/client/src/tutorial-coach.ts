@@ -23,7 +23,7 @@ import {
   tutorialVillageLessonActive,
 } from "./tutorial";
 import { iconify } from "./icons";
-import { speakCoachLine, stopCoachVoice } from "./coach-voice";
+import { speakCoachLine, stopCoachVoice, unlockCoachAudio, retryCoachVoiceIfNeeded } from "./coach-voice";
 import { assetUrl } from "./asset-base";
 import { cutLegendPortraitBackground } from "./coach-portrait";
 
@@ -1076,6 +1076,8 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
   /** Whether the current step advances on a bubble tap (info-only briefings). */
   let bubbleTapAdvances = false;
   bubbleEl.addEventListener("click", () => {
+    unlockCoachAudio();
+    retryCoachVoiceIfNeeded();
     if (bubbleTapAdvances) flags.infoAcknowledged = true;
   });
   choiceEl.querySelector<HTMLButtonElement>("#tutorial-coach-continue")!.addEventListener("click", () => {
