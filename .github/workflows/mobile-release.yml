@@ -15,7 +15,7 @@ concurrency:
 env:
   PLAY_PACKAGE: com.riseofcivilizations.game
   # Google Play track: internal | alpha | beta | production
-  PLAY_TRACK: internal
+  PLAY_TRACK: production
 
 jobs:
   android:
