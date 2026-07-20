@@ -1,0 +1,2 @@
+# Listing metadata lives in App Store Connect; this file exists so CI deliver runs non-interactively.
+app_identifier("com.riseofcivilizations.game")
