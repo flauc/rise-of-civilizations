@@ -16,6 +16,9 @@ env:
   PLAY_PACKAGE: com.riseofcivilizations.game
   # Google Play track: internal | alpha | beta | production
   PLAY_TRACK: production
+  IOS_APP_ID: com.riseofcivilizations.game
+  # After upload + processing, submit for App Store review (true) or upload only (false)
+  IOS_SUBMIT_FOR_REVIEW: true
 
 jobs:
   android:
@@ -87,11 +90,9 @@ jobs:
           status: completed
 
   ios:
-    name: iOS (App Store Connect)
+    name: iOS (App Store)
     runs-on: macos-15
-    timeout-minutes: 60
-    # Flip to true (or set repo variable IOS_MOBILE_RELEASE=true) once iOS secrets exist.
-    if: ${{ vars.IOS_MOBILE_RELEASE == 'true' }}
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -173,3 +174,15 @@ jobs:
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+          wait-for-processing: "true"
+          uses-non-exempt-encryption: "false"
+
+      - name: Submit for App Store review
+        if: env.IOS_SUBMIT_FOR_REVIEW == 'true'
+        env:
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+          APPSTORE_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
+          IOS_APP_ID: ${{ env.IOS_APP_ID }}
+          IOS_SUBMIT_FOR_REVIEW: ${{ env.IOS_SUBMIT_FOR_REVIEW }}
+        run: bash mobile/scripts/submit-app-store-review.sh

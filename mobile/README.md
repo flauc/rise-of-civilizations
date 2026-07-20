@@ -123,8 +123,8 @@ code changes are needed unless you add a Capacitor plugin.
 Pushes to **`main`** trigger [`.github/workflows/mobile-release.yml`](../.github/workflows/mobile-release.yml):
 
 1. Sync native version numbers from root `package.json` (`tools/sync-mobile-version.mjs`).
-2. **Android:** build a signed `.aab` and upload to Google Play (`production` track).
-3. **iOS:** archive, export an `.ipa`, and upload to **App Store Connect / TestFlight**.
+2. **Android:** build a signed `.aab` and upload to Google Play (`PLAY_TRACK`, default `production`).
+3. **iOS:** archive, export an `.ipa`, upload to App Store Connect, wait for processing, then submit for App Store review (`IOS_SUBMIT_FOR_REVIEW`, default `true`).
 
 The workflow bundles the latest web client shell from `main`. Game art still streams
 from the live CDN, so deploy the web client to `game.rise-of-civilizations.com`
@@ -160,16 +160,40 @@ cp mobile/android/key.properties.example mobile/android/key.properties
 # fill key.properties, keep it gitignored
 ```
 
-**Google Play:** create a service account in Google Cloud, grant it access in Play
-Console (Release → Setup → API access), download JSON → `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
+**Google Play:** create a service account in Google Cloud, invite it under Play Console
+**Users and permissions**, download JSON → `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`.
 
-**iOS:** export an **Apple Distribution** certificate as `.p12`, download the
-**App Store** provisioning profile for `com.riseofcivilizations.game`, create an
-App Store Connect API key (Admin). Base64-encode cert and profile for the secrets above.
+**iOS signing + App Store Connect API (once, on a Mac):**
 
-**Play track:** edit `PLAY_TRACK` in the workflow (`internal` for staged rollouts,
-`production` for live). **iOS** uploads to TestFlight; submit for App Store review
-in App Store Connect (or enable automatic release from TestFlight there).
+1. **Distribution certificate** — Keychain Access → export your **Apple Distribution**
+   cert as `.p12` (with private key). Base64 for GitHub:
+   ```sh
+   base64 -i AppleDistribution.p12 | pbcopy   # → IOS_CERTIFICATE_BASE64
+   ```
+   Set `IOS_CERTIFICATE_PASSWORD` to the export password.
+
+2. **Provisioning profile** — [developer.apple.com](https://developer.apple.com/account/resources/profiles) →
+   download the **App Store** profile for `com.riseofcivilizations.game`:
+   ```sh
+   base64 -i "Rise_of_Civilizations_App_Store.mobileprovision" | pbcopy
+   # → IOS_PROVISIONING_PROFILE_BASE64
+   ```
+
+3. **Team id** — Apple Developer → Membership → **Team ID** (10 chars) → `APPLE_TEAM_ID`.
+
+4. **App Store Connect API key** — App Store Connect → Users and Access → Integrations →
+   **App Store Connect API** → generate key (Admin access). Copy:
+   - Key ID → `APPSTORE_KEY_ID`
+   - Issuer ID → `APPSTORE_ISSUER_ID`
+   - Download `.p8` → paste full file contents into `APPSTORE_PRIVATE_KEY`
+
+5. **Push to `main`** — iOS runs on every mobile-release workflow (same as Android). Until
+   the secrets above exist, the iOS job will fail; Android can still succeed.
+
+**Tracks / release mode:** edit `PLAY_TRACK` in the workflow for Android (`internal` vs
+`production`). For iOS, `IOS_SUBMIT_FOR_REVIEW: true` uploads then submits for review with
+automatic release after Apple approval. Set `IOS_SUBMIT_FOR_REVIEW: false` for upload-only
+(build appears in TestFlight / App Store Connect, manual submit in the console).
 
 **Version numbers:** CI sets `versionName` / `MARKETING_VERSION` from root
 `package.json` and bumps `versionCode` / `CURRENT_PROJECT_VERSION` from the
