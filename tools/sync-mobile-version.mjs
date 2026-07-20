@@ -3,7 +3,7 @@
  * Sync native app versions before a store build.
  *
  * - versionName / MARKETING_VERSION ← root package.json "version"
- * - versionCode / CURRENT_PROJECT_VERSION ← 1000 + GITHUB_RUN_NUMBER + (attempt - 1) in CI
+ * - versionCode / CURRENT_PROJECT_VERSION ← MOBILE_BUILD_NUMBER in CI (see mobile-release.yml)
  *
  * Usage:
  *   node tools/sync-mobile-version.mjs
@@ -25,16 +25,11 @@ function readBuildNumber() {
   const gradle = readFileSync(gradlePath, "utf8");
   const m = gradle.match(/versionCode\s+(\d+)/);
   const current = m ? Number(m[1]) : 1;
-  const fromCi = process.env.GITHUB_RUN_NUMBER
-    ? Number(process.env.GITHUB_RUN_NUMBER)
+  const fromWorkflow = process.env.MOBILE_BUILD_NUMBER
+    ? Number(process.env.MOBILE_BUILD_NUMBER)
     : NaN;
-  const attempt = process.env.GITHUB_RUN_ATTEMPT
-    ? Number(process.env.GITHUB_RUN_ATTEMPT)
-    : 1;
-  if (Number.isFinite(fromCi) && fromCi > 0) {
-    // 1000+run_number keeps CI builds above local uploads; +attempt on re-runs avoids duplicate CFBundleVersion.
-    const ciBuild = 1000 + fromCi + Math.max(0, (Number.isFinite(attempt) ? attempt : 1) - 1);
-    return Math.max(current + 1, ciBuild);
+  if (Number.isFinite(fromWorkflow) && fromWorkflow > 0) {
+    return Math.max(current + 1, fromWorkflow);
   }
   return current + 1;
 }
