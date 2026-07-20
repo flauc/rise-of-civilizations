@@ -68,7 +68,8 @@ find_distribution_identity() {
   if [ -z "$line" ]; then
     return 1
   fi
-  sed -E 's/^[[:space:]]*[0-9]+)[[:space:]]+"([^"]+)".*/\1/' <<< "$line"
+  # security find-identity -v prints: "  1) <hash> \"Apple Distribution: …\""
+  sed -n 's/.*"\([^"]*\)".*/\1/p' <<< "$line"
 }
 
 import_wwdr_certs
@@ -98,6 +99,12 @@ if ! CODE_SIGN_IDENTITY="$(find_distribution_identity)"; then
   echo "All identities:" >&2
   security find-identity -p codesigning >&2 || true
   echo "Ensure IOS_CERTIFICATE_BASE64 is an Apple Distribution .p12 exported with its private key." >&2
+  exit 1
+fi
+
+if [[ "$CODE_SIGN_IDENTITY" == *")"* ]]; then
+  echo "Failed to parse code sign identity from keychain output." >&2
+  echo "Parsed value: ${CODE_SIGN_IDENTITY}" >&2
   exit 1
 fi
 
