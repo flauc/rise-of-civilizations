@@ -1097,7 +1097,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   function resize(): void {
     const prevW = cssWidth;
     const prevH = cssHeight;
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const prevDpr = dpr;
+    const nextDpr = Math.min(window.devicePixelRatio || 1, 2);
     // visualViewport is the source of truth for what's actually visible on
     // mobile. The 100dvh CSS box can lag the real viewport as the browser
     // toolbar shows/hides, leaving the canvas shorter than the screen and a
@@ -1106,14 +1107,22 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     const { width, height } = viewportSize();
     cssWidth = width;
     cssHeight = height;
+    dpr = nextDpr;
     canvas.style.width = cssWidth + "px";
     canvas.style.height = cssHeight + "px";
-    canvas.width = Math.round(cssWidth * dpr);
-    canvas.height = Math.round(cssHeight * dpr);
-    if (cssWidth !== prevW || cssHeight !== prevH) {
+    const pxW = Math.round(cssWidth * dpr);
+    const pxH = Math.round(cssHeight * dpr);
+    // Assigning canvas.width/height clears the bitmap even when the value is
+    // unchanged — visualViewport fires on every mobile tap as the URL bar
+    // slides, so skip redundant writes to avoid a ~100ms black flash.
+    if (canvas.width !== pxW || canvas.height !== pxH) {
+      canvas.width = pxW;
+      canvas.height = pxH;
       fitted = false;
+      needsRedraw = true;
+    } else if (cssWidth !== prevW || cssHeight !== prevH || dpr !== prevDpr) {
+      needsRedraw = true;
     }
-    needsRedraw = true;
   }
 
   function scheduleResize(): void {
