@@ -208,18 +208,22 @@ export class Lobby {
     return this.games.get(id);
   }
 
-  /** Join an open human seat (idempotent if already seated). Honors the password. */
+  /** Join an open human seat (idempotent if already seated). Honors the password. Seated players may rejoin active games. */
   join(
     gameId: string,
     userId: string,
     handle: string,
     password?: string,
-  ): { slotId: number } | { error: string } {
+  ): { slotId: number; playerId?: number } | { error: string } {
     const game = this.games.get(gameId);
     if (!game) return { error: "no such game" };
-    if (game.status !== "lobby") return { error: "game already started" };
     const existing = game.slots.find((s) => s.userId === userId);
-    if (existing) return { slotId: existing.id };
+    if (existing) {
+      if (game.password && password !== game.password) return { error: "wrong password" };
+      existing.handle = handle;
+      return { slotId: existing.id, playerId: existing.playerId };
+    }
+    if (game.status !== "lobby") return { error: "game already started" };
     if (game.password && password !== game.password) return { error: "wrong password" };
     const open = game.slots.find((s) => s.kind === "human" && s.userId === undefined);
     if (!open) return { error: "game is full" };
@@ -449,6 +453,13 @@ export class Lobby {
     const game = this.games.get(gameId);
     if (!game) return { error: "no such game" };
     if (game.hostUserId !== hostUserId) return { error: "only the host can delete this game" };
+    this.games.delete(gameId);
+    return { ok: true };
+  }
+
+  /** System cleanup when all players disconnect and the abandon timer expires. */
+  abandon(gameId: string): Result {
+    if (!this.games.has(gameId)) return { error: "no such game" };
     this.games.delete(gameId);
     return { ok: true };
   }

@@ -20,6 +20,12 @@ function syncHudOverlayClass(): void {
   document.body.classList.toggle("roc-hud-sheet-open", hudOverlayDepth > 0);
 }
 
+/** Clear stacked overlay depth (e.g. after a sheet failed to close cleanly). */
+export function resetHudOverlays(): void {
+  hudOverlayDepth = 0;
+  syncHudOverlayClass();
+}
+
 /** Mark a full-screen in-game overlay as open (diplomacy, empire, game menu, …). */
 export function pushHudOverlay(): void {
   hudOverlayDepth += 1;

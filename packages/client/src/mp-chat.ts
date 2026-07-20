@@ -207,38 +207,57 @@ export function mountGameChat(session: OnlineSession, viewerUserId?: string): ()
   style.textContent =
     CHAT_MODERATION_CSS +
     `
-    #game-chat{position:fixed;left:max(6px,env(safe-area-inset-left));top:calc(max(6px,env(safe-area-inset-top)) + var(--leader-stack-h, 120px) + 6px);bottom:auto;z-index:19;display:flex;flex-direction:column;align-items:flex-start;gap:6px;pointer-events:none;max-width:min(320px,calc(100vw - max(6px,env(safe-area-inset-left)) - max(6px,env(safe-area-inset-right))))}
-    #game-chat.open{pointer-events:auto}
-    #game-chat-toggle{pointer-events:auto;width:40px;height:40px;border-radius:10px;border:1px solid var(--edge);background:rgba(21,18,12,.92);color:#e8dcc5;font-size:18px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center}
+    #game-chat{position:fixed;left:max(6px,env(safe-area-inset-left));top:calc(max(6px,env(safe-area-inset-top)) + var(--leader-stack-h, 120px) + 6px);z-index:56;pointer-events:none}
+    #game-chat.open{inset:0;left:0;top:0;right:0;bottom:0;width:100%;height:100%;pointer-events:auto}
+    #game-chat-toggle{pointer-events:auto;position:relative;width:44px;height:44px;border-radius:10px;border:1px solid var(--edge);background:rgba(21,18,12,.92);color:#e8dcc5;font-size:20px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;touch-action:manipulation}
     #game-chat-toggle:hover{border-color:#c9a227;color:#f0d878}
-    #game-chat-panel{display:none;width:100%;max-height:min(320px,calc(100vh - var(--leader-stack-h, 120px) - max(6px,env(safe-area-inset-top)) - max(72px,env(safe-area-inset-bottom)) - 32px));flex-direction:column;border:1px solid var(--edge);border-radius:12px;background:rgba(21,18,12,.94);box-shadow:0 8px 28px rgba(0,0,0,.5);overflow:hidden;pointer-events:auto}
-    #game-chat.open #game-chat-panel{display:flex}
+    #game-chat-badge{position:absolute;top:0;right:0;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#b83a3a;border:1px solid rgba(255,255,255,.25);color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.45);pointer-events:none;transform:translate(25%,-25%)}
+    #game-chat-badge.hidden{display:none}
+    #game-chat-backdrop{display:none}
+    #game-chat-panel{display:none}
+    #game-chat.open #game-chat-panel{
+      display:flex;
+      flex-direction:column;
+      position:fixed;
+      inset:0;
+      width:100%;
+      height:100%;
+      max-height:none;
+      border:none;
+      border-radius:0;
+      background:linear-gradient(180deg,#1f1c14,#15120c);
+      box-shadow:none;
+      overflow:hidden;
+      pointer-events:auto;
+      z-index:1;
+    }
     #game-chat.open #game-chat-toggle{display:none}
-    #game-chat-head{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid var(--edge)}
-    #game-chat-head span{font-family:'Cinzel',Georgia,serif;font-size:12px;font-weight:700;color:#c9a227;text-transform:uppercase;letter-spacing:.08em}
-    #game-chat-close{width:28px;height:28px;border-radius:50%;border:1px solid var(--edge);background:transparent;color:#b8aa8d;font-size:14px;cursor:pointer;line-height:1}
-    #game-chat-close:hover{color:#e8dcc5;border-color:#c9a227}
-    #game-chat-log{flex:1;overflow-y:auto;padding:10px 12px;min-height:100px;max-height:min(220px,calc(100vh - var(--leader-stack-h, 120px) - max(6px,env(safe-area-inset-top)) - max(72px,env(safe-area-inset-bottom)) - 140px));font-size:13px;color:#e8dcc5}
-    .mp-chat-empty{color:#8a7f6a;font-size:13px;text-align:center;padding:24px 8px}
-    .mp-chat-msg{margin-bottom:10px}
+    #game-chat-head{flex:0 0 auto;position:relative;display:flex;align-items:center;justify-content:center;padding:14px 16px;padding-top:max(14px,env(safe-area-inset-top));padding-right:calc(var(--dialog-x-gutter, 52px) + 8px);border-bottom:1px solid var(--edge);min-height:var(--dialog-x-size, 44px)}
+    #game-chat-head span{font-family:'Cinzel',Georgia,serif;font-size:var(--dialog-title-size, 16px);font-weight:700;color:#c9a227;letter-spacing:.04em}
+    #game-chat-close{position:absolute;top:max(10px,env(safe-area-inset-top));right:max(10px,env(safe-area-inset-right));width:var(--dialog-x-size, 44px);height:var(--dialog-x-size, 44px);border-radius:50%;border:1px solid var(--edge);background:var(--bg-card,#1f1c14);color:#b8aa8d;font-size:16px;cursor:pointer;line-height:1;touch-action:manipulation;z-index:2}
+    #game-chat-close:hover{color:#e8dcc5;border-color:#c9a227;background:rgba(201,162,39,.14)}
+    #game-chat-log{flex:1 1 auto;min-height:0;overflow-y:auto;padding:12px 16px;font-size:14px;color:#e8dcc5;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+    .mp-chat-empty{color:#8a7f6a;font-size:14px;text-align:center;padding:32px 12px}
+    .mp-chat-msg{margin-bottom:12px}
     .mp-chat-msg:last-child{margin-bottom:0}
     .mp-chat-meta{font-size:11px;color:#8a7f6a;line-height:1.3}
     .mp-chat-meta b{color:#e8dcc5;font-weight:700}
-    .mp-chat-text{font-size:13px;color:#b8aa8d;margin-top:3px;line-height:1.45;word-break:break-word}
-    #game-chat-form{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--edge)}
-    #game-chat-form .menu-in{flex:1;min-width:0;font-size:13px;padding:8px 10px}
-    #game-chat-form .menu-btn{width:auto;padding:8px 12px;font-size:12px;flex:0 0 auto}`;
+    .mp-chat-text{font-size:14px;color:#cdbfa6;margin-top:4px;line-height:1.5;word-break:break-word}
+    #game-chat-form{flex:0 0 auto;display:flex;gap:10px;padding:12px 16px;padding-bottom:max(12px,env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:rgba(0,0,0,.2);pointer-events:auto}
+    #game-chat-form .menu-in{flex:1;min-width:0;font-size:16px;padding:10px 12px;pointer-events:auto}
+    #game-chat-form .menu-btn{width:auto;padding:10px 16px;font-size:13px;flex:0 0 auto;touch-action:manipulation;pointer-events:auto}`;
   document.head.appendChild(style);
 
   const root = document.createElement("div");
   root.id = "game-chat";
   root.innerHTML =
-    `<button type="button" id="game-chat-toggle" title="Open chat" aria-label="Open chat">💬</button>` +
-    `<div id="game-chat-panel">` +
-    `<div id="game-chat-head"><span>Game chat</span><button type="button" id="game-chat-close" title="Close chat" aria-label="Close chat">✕</button></div>` +
+    `<button type="button" id="game-chat-toggle" title="Open chat" aria-label="Open chat">` +
+    `💬<span id="game-chat-badge" class="hidden" aria-hidden="true"></span></button>` +
+    `<div id="game-chat-panel" role="dialog" aria-modal="true" aria-label="Game chat">` +
+    `<div id="game-chat-head"><span>Game chat</span><button type="button" id="game-chat-close" class="dialog-x" title="Close chat" aria-label="Close chat">✕</button></div>` +
     `<div id="game-chat-log"></div>` +
     `<div id="game-chat-form">` +
-    `<input id="game-chat-input" class="menu-in" type="text" maxlength="500" placeholder="Message…" autocomplete="off" />` +
+    `<input id="game-chat-input" class="menu-in" type="text" maxlength="500" placeholder="Message…" autocomplete="off" enterkeyhint="send" />` +
     `<button type="button" class="menu-btn primary" id="game-chat-send">Send</button>` +
     `</div></div>`;
   gameHud().appendChild(root);
@@ -258,8 +277,39 @@ export function mountGameChat(session: OnlineSession, viewerUserId?: string): ()
   const log = root.querySelector<HTMLDivElement>("#game-chat-log")!;
   const input = root.querySelector<HTMLInputElement>("#game-chat-input")!;
   const toggle = root.querySelector<HTMLButtonElement>("#game-chat-toggle")!;
+  const badge = root.querySelector<HTMLSpanElement>("#game-chat-badge")!;
   const closeBtn = root.querySelector<HTMLButtonElement>("#game-chat-close")!;
   const sendBtn = root.querySelector<HTMLButtonElement>("#game-chat-send")!;
+
+  let chatOpen = false;
+  let readOtherCount = 0;
+
+  const countOtherMessages = (messages: readonly LobbyChatMessage[]): number =>
+    visibleChatMessages(messages, viewerUserId).filter((m) => m.userId && m.userId !== viewerUserId).length;
+
+  const updateUnreadBadge = (messages: readonly LobbyChatMessage[]): void => {
+    const unread = chatOpen ? 0 : Math.max(0, countOtherMessages(messages) - readOtherCount);
+    if (unread <= 0) {
+      badge.classList.add("hidden");
+      badge.setAttribute("aria-hidden", "true");
+      badge.textContent = "";
+      toggle.removeAttribute("aria-label");
+      toggle.title = "Open chat";
+      return;
+    }
+    const label = unread > 99 ? "99+" : String(unread);
+    badge.textContent = label;
+    badge.classList.remove("hidden");
+    badge.setAttribute("aria-hidden", "false");
+    const aria = `${unread} unread chat message${unread === 1 ? "" : "s"}`;
+    toggle.setAttribute("aria-label", aria);
+    toggle.title = aria;
+  };
+
+  const markChatRead = (messages: readonly LobbyChatMessage[]): void => {
+    readOtherCount = countOtherMessages(messages);
+    updateUnreadBadge(messages);
+  };
 
   const renderOpts = (): ChatRenderOptions => ({
     viewerUserId,
@@ -270,16 +320,34 @@ export function mountGameChat(session: OnlineSession, viewerUserId?: string): ()
   const render = (messages: readonly LobbyChatMessage[]): void => {
     renderChatLogEl(log, messages, renderOpts());
     log.scrollTop = log.scrollHeight;
+    updateUnreadBadge(messages);
   };
 
   const open = (): void => {
+    if (chatOpen) return;
+    chatOpen = true;
     root.classList.add("open");
+    markChatRead(session.displayChatMessages());
     window.setTimeout(() => input.focus(), 0);
   };
-  const close = (): void => root.classList.remove("open");
+
+  const close = (): void => {
+    if (!chatOpen) return;
+    chatOpen = false;
+    root.classList.remove("open");
+    markChatRead(session.displayChatMessages());
+  };
 
   toggle.addEventListener("click", open);
   closeBtn.addEventListener("click", close);
+
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === "Escape" && chatOpen) {
+      e.preventDefault();
+      close();
+    }
+  };
+  window.addEventListener("keydown", onKeyDown);
 
   const submit = (): void => {
     const text = input.value.trim();
@@ -295,10 +363,20 @@ export function mountGameChat(session: OnlineSession, viewerUserId?: string): ()
     }
   });
 
-  const unsubChat = session.onChat(render);
-  const unsubMod = onChatModerationChange(() => render(session.displayChatMessages()));
+  const unsubChat = session.onChat((messages) => {
+    render(messages);
+    if (chatOpen) markChatRead(messages);
+  });
+  const unsubMod = onChatModerationChange(() => {
+    const messages = session.displayChatMessages();
+    render(messages);
+    if (chatOpen) markChatRead(messages);
+  });
+
+  markChatRead(session.displayChatMessages());
 
   return () => {
+    window.removeEventListener("keydown", onKeyDown);
     unsubChat();
     unsubMod();
     leaderRo?.disconnect();

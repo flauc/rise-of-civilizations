@@ -13,3 +13,5 @@ tools/geodata-poc/*.hexmap.json
 Hex Samples
 assets/generated/
 assets/purchased/
+roc-play-upload-e3c7cf088b85.json
+*.keystore

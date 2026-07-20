@@ -17,6 +17,7 @@ import { initUserPersistence } from "./user-bootstrap";
 import { loadPersistedSupportInquiries, persistSupportInquiries } from "./support-persistence";
 import { SupportStore, parseSupportInquiryBody } from "./support";
 import { Lobby } from "./lobby";
+import { GameAbandonScheduler, resolveAbandonMs } from "./game-abandon";
 import { createAccount, deleteAccount, login, register, resume } from "./auth";
 import { MemoryAnalyticsStore, type AnalyticsStore } from "./analytics";
 import { PostgresAnalyticsStore } from "./analytics-postgres";
@@ -39,6 +40,18 @@ const lobby = new Lobby();
 const supportStore = new SupportStore();
 await loadPersistedSupportInquiries(supportStore);
 const gameConns = new Map<string, Set<ServerWebSocket<Conn>>>();
+
+function liveConnectionCount(gameId: string): number {
+  return gameConns.get(gameId)?.size ?? 0;
+}
+
+const abandonScheduler = new GameAbandonScheduler(resolveAbandonMs(), (gameId) => {
+  if (!lobby.get(gameId)) return;
+  console.log(`abandoning MP game ${gameId} after all players left`);
+  lobby.abandon(gameId);
+  removeGameConns(gameId);
+  abandonScheduler.gameRemoved(gameId);
+});
 
 // Analytics: durable Postgres when DATABASE_URL is set, else in-memory (dev).
 const isProd = process.env.NODE_ENV === "production";
@@ -181,6 +194,11 @@ function addConn(gameId: string, ws: ServerWebSocket<Conn>): void {
   let set = gameConns.get(gameId);
   if (!set) gameConns.set(gameId, (set = new Set()));
   set.add(ws);
+  abandonScheduler.playerConnected(gameId);
+}
+
+function noteConnClosed(gameId: string): void {
+  abandonScheduler.playerDisconnected(gameId, liveConnectionCount(gameId));
 }
 
 function broadcastState(gameId: string): void {
@@ -222,6 +240,7 @@ function evict(gameId: string, userId: string): void {
     ws.data.slot = undefined;
     gameConns.get(gameId)?.delete(ws);
   }
+  noteConnClosed(gameId);
 }
 
 function removeGameConns(gameId: string): void {
@@ -234,6 +253,7 @@ function removeGameConns(gameId: string): void {
     ws.data.slot = undefined;
   }
   gameConns.delete(gameId);
+  abandonScheduler.gameRemoved(gameId);
 }
 
 async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<void> {
@@ -306,6 +326,19 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       ws.data.slot = r.slotId;
       addConn(msg.gameId, ws);
       send(ws, { t: "joined", gameId: msg.gameId, slotId: r.slotId });
+      const game = lobby.get(msg.gameId);
+      if (game?.status === "active") {
+        ws.data.playerId = r.playerId ?? game.slots.find((s) => s.userId === ws.data.userId)?.playerId;
+        send(ws, { t: "started", gameId: msg.gameId });
+        if (ws.data.playerId !== undefined && game.host) {
+          send(ws, {
+            t: "state",
+            view: game.host.view(ws.data.playerId),
+            awaiting: game.host.awaiting(),
+          });
+        }
+        return;
+      }
       sendLobbyChatHistory(ws, msg.gameId);
       broadcastLobby(msg.gameId);
       return;
@@ -586,7 +619,10 @@ const server = Bun.serve<Conn>({
       }
     },
     close(ws) {
-      if (ws.data.gameId) gameConns.get(ws.data.gameId)?.delete(ws);
+      const gameId = ws.data.gameId;
+      if (!gameId) return;
+      gameConns.get(gameId)?.delete(ws);
+      noteConnClosed(gameId);
     },
   },
 });
