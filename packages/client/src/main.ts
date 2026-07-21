@@ -85,7 +85,9 @@ import { unlockGameAudio } from "./game-audio-unlock";
 import {
   isCombatTargetedAbility,
   markPlayerCombatSound,
+  playBuildingSound,
   resetCombatSoundTracking,
+  setCivilizationBgm,
   syncCombatSounds,
   unlockAppAudioFromGesture,
 } from "./game-sounds";
@@ -151,6 +153,8 @@ if (!bootRoute) preloadGameAssets();
 function startGame(session: Session, setup: GameSetup = {}): void {
   resetHudOverlays();
   resetCombatSoundTracking();
+  if (setup.civId && setup.civId !== "random") setCivilizationBgm(setup.civId);
+  let playerBgmSynced = !!(setup.civId && setup.civId !== "random");
   let loadingDismissed = false;
   let mapRenderNotified = false;
   let loadingRepaintAt = 0;
@@ -310,6 +314,14 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   function update(): void {
     maybeNotifyWorldGenerated();
     if (!session.hasState()) return;
+    if (!playerBgmSynced) {
+      const me = session.getViewerId();
+      const civId = st().players.find((p) => p.id === me)?.civId;
+      if (civId) {
+        setCivilizationBgm(civId);
+        playerBgmSynced = true;
+      }
+    }
     // Analytics: record the session start once the game state is ready (for an
     // online game the first state view arrives a moment after startGame).
     if (!sessionTracked) {
@@ -608,13 +620,19 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       }
       needsRedraw = true;
     },
-    onStartWork: (kind, col, row) => session.order({ type: "startWork", kind, col, row }),
+    onStartWork: (kind, col, row) => {
+      session.order({ type: "startWork", kind, col, row });
+      playBuildingSound();
+    },
     onStartRoadRoute: (col, row) => {
       roadRouteFrom = { col, row };
       ui.banner("Tap the destination tile for your road route.");
       needsRedraw = true;
     },
-    onStartWonder: (wonderId, col, row) => session.order({ type: "startWonder", wonderId, col, row }),
+    onStartWonder: (wonderId, col, row) => {
+      session.order({ type: "startWonder", wonderId, col, row });
+      playBuildingSound();
+    },
     onCancelWork: (workId) => session.order({ type: "cancelWork", workId }),
     onRushProduction: (cityId, currency) => session.order({ type: "rushProduction", cityId, currency }),
     onRushWork: (workId, currency) => session.order({ type: "rushWork", workId, currency }),
@@ -653,7 +671,10 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     onFinalizeDeal: (id, confirm) => session.order({ type: "finalizeDeal", proposalId: id, confirm }),
     onAcknowledgeContact: (o) => session.order({ type: "acknowledgeContact", otherId: o }),
     onSetProduction: (item) => {
-      if (selectedCityId != null) session.order({ type: "setProduction", cityId: selectedCityId, item });
+      if (selectedCityId != null) {
+        session.order({ type: "setProduction", cityId: selectedCityId, item });
+        playBuildingSound();
+      }
     },
     onStartTraining: (cityId, unit) => session.order({ type: "startTraining", cityId, unit }),
     onCancelTraining: (cityId, orderId) => session.order({ type: "cancelTraining", cityId, orderId }),
@@ -958,7 +979,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     // Targeted-ability mode: a tap on a highlighted tile fires the ability.
     if (pendingAbility != null && selectedUnitId != null) {
       if (abilityTargetSet.has(key)) {
-        if (isCombatTargetedAbility(pendingAbility)) markPlayerCombatSound();
+        if (isCombatTargetedAbility(pendingAbility)) {
+          markPlayerCombatSound(st().units.get(selectedUnitId!)?.type);
+        }
         session.order({ type: "useAbility", unitId: selectedUnitId, ability: pendingAbility, col: off.col, row: off.row });
         cancelAbility();
         return;
@@ -984,6 +1007,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
           toRow: off.row,
           specialistIds: specialists,
         });
+        playBuildingSound();
         ui.banner(
           `${specialists.length} surveyor${specialists.length === 1 ? "" : "s"} paving ${tiles.length} tile${tiles.length === 1 ? "" : "s"}…`,
         );
@@ -1011,7 +1035,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       const isTarget = bombardTargets.has(key);
       cancelBombard();
       if (isTarget) {
-        markPlayerCombatSound();
+        markPlayerCombatSound(undefined, { bombard: true });
         session.order({ type: "cityBombard", cityId, col: off.col, row: off.row });
       }
       needsRedraw = true;
@@ -1030,7 +1054,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     const attack = () => {
       const attackerId = selectedUnitId!;
       const doAttack = () => {
-        markPlayerCombatSound();
+        markPlayerCombatSound(st().units.get(attackerId)?.type);
         session.order({ type: "attack", attackerId, col: off.col, row: off.row });
       };
       if (getSettings().autoAttack) {

@@ -21,3 +21,4 @@ export * from "./history-infra"; // UNIQUE_INFRA_HISTORY, uniqueInfraHistoryByCi
 export * from "./history-people"; // GREAT_PERSON_HISTORY, LEGEND_HISTORY + accessors
 export * from "./history-geo"; // CivLocation, CIV_LOCATION, civLocation
 export * from "./history-wonders"; // WONDER_HISTORY, NATURAL_WONDER_HISTORY + accessors
+export * from "./civ-bgm"; // CivBgmRegion, bgmTrackForCiv, civBgmRegion

@@ -7,13 +7,14 @@ import { confirmDialog } from "./confirm-dialog";
 import { createEmpire, type Tab as EmpireTab } from "./empire";
 import { createDiplomacy } from "./diplomacy";
 import { isPhoneShell } from "./viewport-shell";
-import { bindDialogClose } from "./dialog-close";
+import { bindDialogClose, wirePanelClose } from "./dialog-close";
 import { gameHud, initGameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
 import { setPreservedHtml, withPreservedScroll } from "./panel-scroll";
 import type { DealItem } from "@roc/sim";
 import type { SaveRecord } from "./save-db";
 import type { CheatAction } from "./god-mode";
 import { getSettings, updateSettings, type TurnUpdateView } from "./settings";
+import { eventMatchesKeybind, getKeybinds, isKeybindCaptureActive, keybindHint } from "./game-keybinds";
 import {
   closeSettingsPanel,
   isSettingsPanelOpen,
@@ -780,6 +781,11 @@ function menuDialogHeader(title: string, closeId: string): string {
   );
 }
 
+/** Scrollable body beneath a pinned menu-dialog header + ✕. */
+function menuDialogBody(body: string): string {
+  return `<div class="panel-dialog-body save-modal-body">${body}</div>`;
+}
+
 const RUSH_GLYPH: Record<RushCurrency, string> = { gold: "🪙", faith: "☮️", culture: "🎭" };
 
 /** The viewer's stockpile for a rush currency. */
@@ -1141,38 +1147,30 @@ export function createUI(handlers: UIHandlers): UI {
     handlers.onUseLeaderAbility();
   });
 
-  const logOverlay = div("log-overlay", "");
-  const logDialog = div("log-dialog", "");
+  const logDialog = div("log-dialog", "panel hidden");
   logDialog.innerHTML =
-    `<div class="dialog-head-band">` +
-    `<button type="button" class="dialog-x" id="log-close" title="Close" aria-label="Close">✕</button>` +
-    `<div class="log-dialog-title">Game Log</div>` +
-    `</div>` +
-    `<div class="log-dialog-content" id="log-dialog-content"></div>`;
+    dialogHeader("Game Log", "log-close") +
+    `<div class="panel-dialog-body log-dialog-content" id="log-dialog-content"></div>`;
   const logDialogContent = logDialog.querySelector<HTMLDivElement>("#log-dialog-content")!;
-  const logClose = logDialog.querySelector<HTMLButtonElement>("#log-close")!;
   const hideLogDialog = (): void => {
-    logOverlay.classList.remove("show");
-    logDialog.classList.remove("show");
+    logDialog.classList.add("hidden");
   };
-  bindDialogClose(logClose, hideLogDialog);
+  wirePanelClose(logDialog.querySelector<HTMLButtonElement>("#log-close")!, hideLogDialog);
 
-  const leaderboardOverlay = div("leaderboard-overlay", "");
-  const leaderboardDialog = div("leaderboard-dialog", "");
+  const leaderboardDialog = div("leaderboard-dialog", "panel hidden");
   leaderboardDialog.innerHTML =
-    `<div class="dialog-head-band">` +
-    `<button type="button" class="dialog-x" id="leaderboard-close" title="Close" aria-label="Close">✕</button>` +
-    `<div class="log-dialog-title">Civilization Standings</div>` +
-    `</div>` +
-    `<div id="leaderboard-content"></div>`;
+    dialogHeader("Civilization Standings", "leaderboard-close") +
+    `<div class="panel-dialog-body" id="leaderboard-content"></div>`;
   const leaderboardContent = leaderboardDialog.querySelector<HTMLDivElement>("#leaderboard-content")!;
-  const leaderboardClose = leaderboardDialog.querySelector<HTMLButtonElement>("#leaderboard-close")!;
   const hideLeaderboard = (): void => {
-    leaderboardOverlay.classList.remove("show");
-    leaderboardDialog.classList.remove("show");
+    leaderboardDialog.classList.add("hidden");
+    syncOverlayHudShell();
   };
-  bindDialogClose(leaderboardClose, hideLeaderboard);
   const showLeaderboard = (state: GameState): void => {
+    closeSideSheets();
+    closePickers(state);
+    menuOpen = false;
+    renderMenu(state);
     const viewerId = lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? -1);
     const rows = state.players
       .filter((p) => !p.isBarbarian)
@@ -1255,34 +1253,27 @@ export function createUI(handlers: UIHandlers): UI {
       el.addEventListener("click", hideLeaderboard),
     );
     wireWikiButtons(leaderboardContent);
-    leaderboardOverlay.classList.add("show");
-    leaderboardDialog.classList.add("show");
+    leaderboardDialog.classList.remove("hidden");
+    wirePanelClose(leaderboardDialog.querySelector<HTMLButtonElement>("#leaderboard-close")!, hideLeaderboard);
+    syncOverlayHudShell();
   };
 
-  const goldOverlay = div("gold-overlay", "");
-  const goldDialog = div("gold-dialog", "");
+  const goldDialog = div("gold-dialog", "panel hidden");
   goldDialog.innerHTML =
-    `<div class="dialog-head-band">` +
-    `<button type="button" class="dialog-x" id="gold-close" title="Close" aria-label="Close">✕</button>` +
-    `<div class="gold-dialog-title">Treasury</div>` +
-    `</div>` +
-    `<div id="gold-dialog-content"></div>`;
+    dialogHeader("Treasury", "gold-close") +
+    `<div class="panel-dialog-body" id="gold-dialog-content"></div>`;
   const goldDialogContent = goldDialog.querySelector<HTMLDivElement>("#gold-dialog-content")!;
-  const goldClose = goldDialog.querySelector<HTMLButtonElement>("#gold-close")!;
   let goldDialogOpen = false;
   const hideGoldDialog = (): void => {
     goldDialogOpen = false;
-    goldOverlay.classList.remove("show");
-    goldDialog.classList.remove("show");
+    goldDialog.classList.add("hidden");
   };
-  bindDialogClose(goldClose, hideGoldDialog);
+  wirePanelClose(goldDialog.querySelector<HTMLButtonElement>("#gold-close")!, hideGoldDialog);
 
-  const moraleOverlay = div("morale-overlay", "");
-  const moraleDialog = div("morale-dialog", "");
+  const moraleDialog = div("morale-dialog", "panel hidden");
   moraleDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="morale-close" title="Close" aria-label="Close">✕</button>` +
-    `<div class="morale-scroll">` +
-    `<div class="morale-dialog-title">Empire Morale</div>` +
+    dialogHeader("Empire Morale", "morale-close") +
+    `<div class="panel-dialog-body morale-scroll">` +
     `<div id="morale-dialog-content"></div>` +
     `<button class="btn morale-explain-toggle" id="morale-explain-toggle"></button>` +
     `<div id="morale-explain" class="morale-explain hidden">` +
@@ -1307,14 +1298,13 @@ export function createUI(handlers: UIHandlers): UI {
   syncMoraleExplain();
   const hideMoraleDialog = (): void => {
     moraleDialogOpen = false;
-    moraleOverlay.classList.remove("show");
-    moraleDialog.classList.remove("show");
+    moraleDialog.classList.add("hidden");
   };
   moraleExplainToggle.addEventListener("click", () => {
     moraleExplainOpen = !moraleExplainOpen;
     syncMoraleExplain();
   });
-  bindDialogClose(moraleClose, hideMoraleDialog);
+  wirePanelClose(moraleClose, hideMoraleDialog);
 
   const unitPromoOverlay = div("unit-promo-overlay", "");
   const unitPromoDialog = div("unit-promo-dialog", "");
@@ -1397,19 +1387,19 @@ export function createUI(handlers: UIHandlers): UI {
         closeVillageDialog();
         return;
       }
-      if (logDialog.classList.contains("show")) {
+      if (!logDialog.classList.contains("hidden")) {
         hideLogDialog();
         return;
       }
-      if (leaderboardDialog.classList.contains("show")) {
+      if (!leaderboardDialog.classList.contains("hidden")) {
         hideLeaderboard();
         return;
       }
-      if (goldDialog.classList.contains("show")) {
+      if (!goldDialog.classList.contains("hidden")) {
         hideGoldDialog();
         return;
       }
-      if (moraleDialog.classList.contains("show")) {
+      if (!moraleDialog.classList.contains("hidden")) {
         hideMoraleDialog();
         return;
       }
@@ -1461,14 +1451,16 @@ export function createUI(handlers: UIHandlers): UI {
       if (leaderAbilityDialog.classList.contains("show")) { laDialogConfirm.click(); return; }
       if (villageDialog.classList.contains("show")) { villageOk.click(); return; }
       if (turnUpdateDialog.classList.contains("show")) { turnUpdateClose.click(); return; }
-      if (goldDialog.classList.contains("show")) { goldClose.click(); return; }
+      if (!goldDialog.classList.contains("hidden")) { hideGoldDialog(); return; }
       if (unitPromoDialog.classList.contains("show")) { unitPromoClose.click(); return; }
-      if (logDialog.classList.contains("show")) { logClose.click(); return; }
-      if (leaderboardDialog.classList.contains("show")) { leaderboardClose.click(); return; }
+      if (!logDialog.classList.contains("hidden")) { hideLogDialog(); return; }
+      if (!leaderboardDialog.classList.contains("hidden")) { hideLeaderboard(); return; }
       // Blocking overlays with no single positive action: swallow Enter rather
       // than ending the turn behind them.
       if (isSettingsPanelOpen() || menuOpen || godModeOpen || empire.isOpen() || diplomacy.isOpen()) return;
       endturn.click();
+    } else if (!e.repeat) {
+      handleGameKeybind(e);
     }
   });
 
@@ -1701,6 +1693,7 @@ export function createUI(handlers: UIHandlers): UI {
     turnUpdateOpen = false;
     turnUpdateOverlay.classList.remove("show");
     turnUpdateDialog.classList.remove("show");
+    syncOverlayHudShell();
     handlers.onTurnUpdateDismiss();
   };
 
@@ -1715,6 +1708,8 @@ export function createUI(handlers: UIHandlers): UI {
     turnUpdateIndex = Math.min(turnUpdateIndex, turnUpdateQueue.length - 1);
     turnUpdateOverlay.classList.add("show");
     turnUpdateDialog.classList.add("show");
+    wirePanelClose(turnUpdateClose, hideTurnUpdateDialog);
+    syncOverlayHudShell();
     renderTurnUpdateDialog();
   };
 
@@ -1961,7 +1956,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderTurnUpdateDialog();
     }
   });
-  bindDialogClose(turnUpdateClose, hideTurnUpdateDialog);
+  wirePanelClose(turnUpdateClose, hideTurnUpdateDialog);
 
   const renderAction = (view: UIView): void => {
     if (view.state.gameOver) {
@@ -2065,8 +2060,8 @@ export function createUI(handlers: UIHandlers): UI {
 
     topbar.innerHTML = `
       <div class="tb-grp">
-        <span class="tb-pill tb-turn" title="${escapeHtml(turnTitle)}"><span class="tb-pl">⏱</span><b>${state.turn}</b></span>
-        <button class="tb-pill score-pill" id="score-btn" title="Overall score — open standings"><span class="tb-pl">🏆</span><b>${myScore}</b></button>
+        <span class="tb-pill tb-turn" title="${escapeHtml(turnTitle)}"><span class="tb-pl">⏱</span><b>Turn ${state.turn}</b></span>
+        <button class="tb-pill score-pill" id="score-btn" title="Civilization standings ${keybindHint("leaderboard")}"><span class="tb-pl">🏆</span><b>${myScore}</b></button>
       </div>
       <div class="tb-grp tb-res">
         <button class="tb-pill gold-chip" id="gold-btn" title="Gold"><span class="tb-pl">🪙</span><b>${Math.floor(player.gold)}</b><span class="tb-score" style="${goldClass}">${goldSign}${Math.abs(netGold)}</span></button>
@@ -2081,7 +2076,7 @@ export function createUI(handlers: UIHandlers): UI {
       </div>
       <div class="tb-grp">
         <button class="tb-pill empire" id="cities-btn" title="Cities"><span class="tb-pl">🏙️</span><b>${cityCount}</b></button>
-        <button class="tb-pill empire" id="units-btn" title="Units"><span class="tb-pl">⚔️</span><b>${unitCount}</b></button>
+        <button class="tb-pill empire" id="units-btn" title="Units ${keybindHint("units")}"><span class="tb-pl">⚔️</span><b>${unitCount}</b></button>
         <button class="tb-pill empire" id="specialists-btn" title="Specialists"><span class="tb-pl">👷</span><b>${specCount}</b></button>
         <button class="tb-pill empire" id="trade-btn" title="Trade Routes"><span class="tb-pl">🐫</span><b>${routeCount}</b></button>
         <button class="tb-pill empire ${gpReady ? "has-badge" : ""}" id="great-people-btn" title="Great People"><span class="tb-pl">🎖️</span><b>${gpReady}</b>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>
@@ -2097,7 +2092,7 @@ export function createUI(handlers: UIHandlers): UI {
     if (civ) {
       leaderAvatar.classList.remove("empty");
       leaderAvatar.innerHTML =
-        `<img src="${ASSET_BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" title="${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)} · click for standings" onerror="this.style.visibility='hidden'">` +
+        `<img src="${ASSET_BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" title="${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)} · standings ${keybindHint("leaderboard")}" onerror="this.style.visibility='hidden'">` +
         `<div class="leader-avatar-label"><b>${escapeHtml(civ.name)}</b><span>${escapeHtml(civ.leader)}</span></div>` +
         leaderAbilityBadgeHtml;
       // The portrait opens the standings; the ability badge keeps its own action.
@@ -2267,7 +2262,7 @@ export function createUI(handlers: UIHandlers): UI {
     bottomBar.innerHTML =
       `<div class="bb-grp">` +
       `<button class="bb-btn" data-bb="empire" title="Cities"><span>🏙️</span><i>${cityCount}</i></button>` +
-      `<button class="bb-btn" data-bb="units" title="Units"><span>⚔️</span><i>${unitCount}</i></button>` +
+      `<button class="bb-btn" data-bb="units" title="Units ${keybindHint("units")}"><span>⚔️</span><i>${unitCount}</i></button>` +
       `<button class="bb-btn" data-bb="specialists" title="Specialists"><span>👷</span><i>${specCount}</i></button>` +
       `<button class="bb-btn" data-bb="trade" title="Trade Routes"><span>🐫</span><i>${routeCount}</i></button>` +
       `<button class="bb-btn ${gpReady ? "has-badge" : ""}" data-bb="great-people" title="Great People"><span>🎖️</span><i>${gpReady}</i>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>` +
@@ -2356,34 +2351,35 @@ export function createUI(handlers: UIHandlers): UI {
         : "";
       let html =
         menuDialogHeader("Game Menu", "save-close") +
-        `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}` +
-        (mapLabel ? `<br/><span style="font-size:11px">Map: ${escapeHtml(mapLabel)}</span>` : "") +
-        `</div>` +
-        `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
-        saveBtn +
-        `<button class="btn" id="menu-settings">Settings</button>` +
-        `<button class="btn" id="menu-wiki">Open Wiki</button>` +
-        `<button class="btn" id="menu-leaderboard">Leaderboard</button>` +
-        `<button class="btn" id="menu-log">Game Log</button>` +
-        `<button class="btn" id="menu-bug">🐞 Report a Bug</button>` +
-        godMenuBtn +
-        surrenderBtn +
-        `<button class="btn" id="menu-leave">Leave Game</button>` +
-        `</div>`;
-
-      if (isHost && mpSaves.length > 0) {
-        html += `<div style="margin-top:16px;border-top:1px solid var(--edge);padding-top:12px"><b>Host MP Saves</b></div>`;
-        html += mpSaves
-          .map(
-            (s) =>
-              `<div class="gi" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:6px;border:1px solid var(--edge);border-radius:8px">` +
-              `<span>${escapeHtml(s.name)}<br/><span style="color:#9fc0dc;font-size:11px">Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}</span></span>` +
-              `<button class="btn" data-load-mp="${s.id}">Load</button>` +
-              `</div>`,
-          )
-          .join("");
-      }
-      html += `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+        menuDialogBody(
+          `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}` +
+          (mapLabel ? `<br/><span style="font-size:11px">Map: ${escapeHtml(mapLabel)}</span>` : "") +
+          `</div>` +
+          `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
+          saveBtn +
+        `<button class="btn" id="menu-settings">Settings ${keybindHint("settings")}</button>` +
+        `<button class="btn" id="menu-wiki">Open Wiki ${keybindHint("wiki")}</button>` +
+        `<button class="btn" id="menu-leaderboard">Leaderboard ${keybindHint("leaderboard")}</button>` +
+          `<button class="btn" id="menu-log">Game Log</button>` +
+          `<button class="btn" id="menu-bug">🐞 Report a Bug</button>` +
+          godMenuBtn +
+          surrenderBtn +
+          `<button class="btn" id="menu-leave">Leave Game</button>` +
+          `</div>` +
+          (isHost && mpSaves.length > 0
+            ? `<div style="margin-top:16px;border-top:1px solid var(--edge);padding-top:12px"><b>Host MP Saves</b></div>` +
+              mpSaves
+                .map(
+                  (s) =>
+                    `<div class="gi" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:6px;border:1px solid var(--edge);border-radius:8px">` +
+                    `<span>${escapeHtml(s.name)}<br/><span style="color:#9fc0dc;font-size:11px">Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}</span></span>` +
+                    `<button class="btn" data-load-mp="${s.id}">Load</button>` +
+                    `</div>`,
+                )
+                .join("")
+            : "") +
+          `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`,
+        );
       withPreservedScroll(saveModal, () => {
         saveModal.innerHTML = html;
       });
@@ -2392,15 +2388,7 @@ export function createUI(handlers: UIHandlers): UI {
         renderMenu(state);
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
-        openSettingsPanel({
-          showDeleteAccount: false,
-          onTurnUpdateSettingsChange: (view) => {
-            if (turnUpdateOpen) {
-              activeTurnUpdateView = view;
-              renderTurnUpdateDialog();
-            }
-          },
-        });
+        openGameSettings();
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-save")?.addEventListener("click", () => {
         menuView = "save";
@@ -2428,8 +2416,7 @@ export function createUI(handlers: UIHandlers): UI {
             .map((entry) => `<div>${escapeHtml(entry.message)}</div>`)
             .join(""),
         );
-        logOverlay.classList.add("show");
-        logDialog.classList.add("show");
+        logDialog.classList.remove("hidden");
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-bug")!.addEventListener("click", () => {
         menuView = "bug";
@@ -2511,13 +2498,15 @@ export function createUI(handlers: UIHandlers): UI {
       withPreservedScroll(saveModal, () => {
         saveModal.innerHTML =
           menuDialogHeader("Leave Game", "save-close") +
-          `<div style="margin:8px 0;color:#9fc0dc">Save your progress before returning to the main menu?</div>` +
-          `<input id="leave-save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
-          `<button class="btn primary" id="leave-save" style="width:100%" ${isSaving ? "disabled" : ""}>` +
-          (isSaving ? "Saving…" : "Save & Leave") +
-          `</button>` +
-          `<button class="btn" id="leave-discard" style="width:100%;margin-top:8px">Leave without saving</button>` +
-          `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+          menuDialogBody(
+            `<div style="margin:8px 0;color:#9fc0dc">Save your progress before returning to the main menu?</div>` +
+            `<input id="leave-save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
+            `<button class="btn primary" id="leave-save" style="width:100%" ${isSaving ? "disabled" : ""}>` +
+            (isSaving ? "Saving…" : "Save & Leave") +
+            `</button>` +
+            `<button class="btn" id="leave-discard" style="width:100%;margin-top:8px">Leave without saving</button>` +
+            `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`,
+          );
       });
       const input = saveModal.querySelector<HTMLInputElement>("#leave-save-name")!;
       input.focus();
@@ -2553,14 +2542,16 @@ export function createUI(handlers: UIHandlers): UI {
       withPreservedScroll(saveModal, () => {
         saveModal.innerHTML =
           menuDialogHeader("Report a Bug", "bug-close") +
-          `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
-          `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
-          `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
-          `style="width:100%;min-height:120px;resize:vertical;margin-bottom:8px"></textarea>` +
-          `<button class="btn primary" id="bug-confirm" style="width:100%" ${isReporting ? "disabled" : ""}>` +
-          (isReporting ? "Sending…" : "Submit report") +
-          `</button>` +
-          `<div id="bug-status" style="margin-top:8px"></div>`;
+          menuDialogBody(
+            `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
+            `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
+            `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
+            `style="width:100%;min-height:120px;resize:vertical;margin-bottom:8px"></textarea>` +
+            `<button class="btn primary" id="bug-confirm" style="width:100%" ${isReporting ? "disabled" : ""}>` +
+            (isReporting ? "Sending…" : "Submit report") +
+            `</button>` +
+            `<div id="bug-status" style="margin-top:8px"></div>`,
+          );
       });
       const ta = saveModal.querySelector<HTMLTextAreaElement>("#bug-text")!;
       ta.focus();
@@ -2599,13 +2590,15 @@ export function createUI(handlers: UIHandlers): UI {
     const defaultName = `${civ ? civ.name : player.name} - Turn ${state.turn}`;
     let html =
       menuDialogHeader("Save Game", "save-close") +
-      `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
-      `<input id="save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
-      `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
-      (isSaving ? "Saving…" : "Save") +
-      `</button>` +
-      `<button class="btn" id="save-export" style="width:100%;margin-top:8px">💾 Export Current Save</button>` +
-      `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+      menuDialogBody(
+        `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
+        `<input id="save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
+        `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
+        (isSaving ? "Saving…" : "Save") +
+        `</button>` +
+        `<button class="btn" id="save-export" style="width:100%;margin-top:8px">💾 Export Current Save</button>` +
+        `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`,
+      );
     withPreservedScroll(saveModal, () => {
       saveModal.innerHTML = html;
     });
@@ -2650,8 +2643,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
 
   const renderGoldDialog = (state: GameState): void => {
-    goldOverlay.classList.toggle("show", goldDialogOpen);
-    goldDialog.classList.toggle("show", goldDialogOpen);
+    goldDialog.classList.toggle("hidden", !goldDialogOpen);
     if (!goldDialogOpen) return;
 
     const player = state.players[state.currentPlayerIndex]!;
@@ -2714,8 +2706,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
 
   const renderMoraleDialog = (state: GameState): void => {
-    moraleOverlay.classList.toggle("show", moraleDialogOpen);
-    moraleDialog.classList.toggle("show", moraleDialogOpen);
+    moraleDialog.classList.toggle("hidden", !moraleDialogOpen);
     if (!moraleDialogOpen) return;
 
     const player = state.players[state.currentPlayerIndex]!;
@@ -2825,7 +2816,7 @@ export function createUI(handlers: UIHandlers): UI {
       researchOpen = false;
       research.classList.add("hidden");
     };
-    bindDialogClose(research.querySelector<HTMLButtonElement>("#rclose")!, closeResearch);
+    wirePanelClose(research.querySelector<HTMLButtonElement>("#rclose")!, closeResearch);
     research.querySelector<HTMLButtonElement>("#open-techtree")!.addEventListener("click", () => {
       researchOpen = false;
       research.classList.add("hidden");
@@ -3423,11 +3414,11 @@ export function createUI(handlers: UIHandlers): UI {
         `</div>`;
     });
 
-    training.querySelector<HTMLButtonElement>("#trclose")!.addEventListener("click", (e) => {
+    training.querySelector<HTMLButtonElement>("#trclose")!.onclick = (e) => {
       e.stopPropagation();
       trainingOpen = false;
       training.classList.add("hidden");
-    });
+    };
     training.querySelectorAll<HTMLButtonElement>("[data-train-fold]").forEach((el) =>
       el.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -5512,6 +5503,173 @@ export function createUI(handlers: UIHandlers): UI {
     onFinalizeDeal: (id, confirm) => handlers.onFinalizeDeal(id, confirm),
     onAcknowledgeContact: (o) => handlers.onAcknowledgeContact(o),
   });
+
+  function orderedPlayerCities(state: GameState, viewerId: number): City[] {
+    return citiesOf(state, viewerId).sort((a, b) => {
+      if (a.isCapital !== b.isCapital) return a.isCapital ? -1 : 1;
+      const byName = a.name.localeCompare(b.name);
+      return byName !== 0 ? byName : a.id - b.id;
+    });
+  }
+
+  function typingTarget(e: KeyboardEvent): boolean {
+    const t = e.target as HTMLElement | null;
+    if (!t) return false;
+    const tag = t.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    return t.isContentEditable;
+  }
+
+  function shortcutsAllowed(e: KeyboardEvent): boolean {
+    if (isKeybindCaptureActive()) return false;
+    if (typingTarget(e)) return false;
+    if (e.ctrlKey || e.metaKey || e.altKey) return false;
+    if (document.body.classList.contains("roc-lobby-open")) return false;
+    if (document.body.classList.contains("roc-loading-scroll")) return false;
+    if (!lastState || lastState.gameOver) return false;
+    const confirmModal = document.getElementById("confirm-modal");
+    if (confirmModal && confirmModal.style.display !== "none") return false;
+    return true;
+  }
+
+  function modalBlocksShortcuts(): boolean {
+    if (gpActivateDialog.classList.contains("show")) return true;
+    if (leaderAbilityDialog.classList.contains("show")) return true;
+    if (villageDialog.classList.contains("show")) return true;
+    if (turnUpdateDialog.classList.contains("show")) return true;
+    if (unitPromoDialog.classList.contains("show")) return true;
+    if (document.getElementById("combat-preview-dialog")?.classList.contains("show")) return true;
+    return false;
+  }
+
+  function openGameSettings(): void {
+    openSettingsPanel({
+      showDeleteAccount: false,
+      onTurnUpdateSettingsChange: (view) => {
+        if (turnUpdateOpen) {
+          activeTurnUpdateView = view;
+          renderTurnUpdateDialog();
+        }
+      },
+    });
+  }
+
+  function openEmpireTab(tab: EmpireTab): void {
+    if (!lastState) return;
+    const viewerId = lastViewerId >= 0 ? lastViewerId : (lastState.players[lastState.currentPlayerIndex]?.id ?? -1);
+    const opening = !empire.isOpen();
+    if (opening) {
+      hideGoldDialog();
+      hideMoraleDialog();
+      closeSideSheets();
+      closePickers(lastState);
+      menuOpen = false;
+      renderMenu(lastState);
+    }
+    empire.toggle(lastState, viewerId, tab);
+  }
+
+  function cyclePlayerCity(): void {
+    if (!lastState || !lastView) return;
+    const viewerId = lastViewerId >= 0 ? lastViewerId : (lastState.players[lastState.currentPlayerIndex]?.id ?? -1);
+    const cities = orderedPlayerCities(lastState, viewerId);
+    if (cities.length === 0) return;
+    const curId = lastView.selectedCity?.id ?? cityPanelCityId;
+    let nextIdx = 0;
+    if (curId != null) {
+      const curIdx = cities.findIndex((c) => c.id === curId);
+      if (curIdx >= 0) nextIdx = (curIdx + 1) % cities.length;
+    }
+    const city = cities[nextIdx]!;
+    closePickers(lastState);
+    menuOpen = false;
+    renderMenu(lastState);
+    handlers.onSelectCity(city.id);
+    cityPanelCityId = city.id;
+    cityPanelExpanded = true;
+    renderCityPanel(lastState, city);
+  }
+
+  function toggleLeaderboardPanel(): void {
+    if (!leaderboardDialog.classList.contains("hidden")) {
+      hideLeaderboard();
+      return;
+    }
+    if (lastState) showLeaderboard(lastState);
+  }
+
+  function toggleWikiPanel(): void {
+    if (wiki.isOpen()) {
+      wiki.toggle();
+      return;
+    }
+    if (!lastState) return;
+    menuOpen = false;
+    closeSideSheets();
+    closePickers(lastState);
+    renderMenu(lastState);
+    wiki.open();
+  }
+
+  function toggleSettingsPanelShortcut(): void {
+    if (isSettingsPanelOpen()) {
+      closeSettingsPanel();
+      return;
+    }
+    if (lastState) {
+      closePickers(lastState);
+      menuOpen = false;
+      renderMenu(lastState);
+    }
+    openGameSettings();
+  }
+
+  function handleGameKeybind(e: KeyboardEvent): void {
+    if (!shortcutsAllowed(e)) return;
+    const binds = getKeybinds();
+
+    if (eventMatchesKeybind(e, binds.cycleCity)) {
+      if (modalBlocksShortcuts()) return;
+      e.preventDefault();
+      cyclePlayerCity();
+      return;
+    }
+
+    if (modalBlocksShortcuts()) return;
+
+    if (eventMatchesKeybind(e, binds.units)) {
+      e.preventDefault();
+      openEmpireTab("units");
+    } else if (eventMatchesKeybind(e, binds.leaderboard)) {
+      e.preventDefault();
+      toggleLeaderboardPanel();
+    } else if (eventMatchesKeybind(e, binds.wiki)) {
+      e.preventDefault();
+      toggleWikiPanel();
+    } else if (eventMatchesKeybind(e, binds.settings)) {
+      e.preventDefault();
+      toggleSettingsPanelShortcut();
+    }
+  }
+
+  const syncOverlayHudShell = (): void => {
+    const open =
+      empire.isOpen() ||
+      diplomacy.isOpen() ||
+      goldDialog.classList.contains("hidden") === false ||
+      moraleDialog.classList.contains("hidden") === false ||
+      logDialog.classList.contains("hidden") === false ||
+      leaderboardDialog.classList.contains("hidden") === false ||
+      unitPromoDialog.classList.contains("show") ||
+      turnUpdateDialog.classList.contains("show") ||
+      villageDialog.classList.contains("show") ||
+      gpActivateDialog.classList.contains("show") ||
+      leaderAbilityDialog.classList.contains("show") ||
+      document.getElementById("combat-preview-dialog")?.classList.contains("show") ||
+      !saveModal.classList.contains("hidden");
+    gameHud().classList.toggle("roc-overlay-dialog-open", open);
+  };
+
   return {
     render(view) {
       lastState = view.state;
@@ -5538,6 +5696,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderMenu(view.state);
       renderGoldDialog(view.state);
       renderMoraleDialog(view.state);
+      syncOverlayHudShell();
       renderAction(view);
 
       // Hide the docked city/unit/tile panels whenever a full-screen sheet or modal

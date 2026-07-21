@@ -98,7 +98,7 @@ html.roc-phone-shell #diplo-proposal{align-items:center;padding:16px}
 /* Overlay + centered dialog, same treatment as the treasury / empire dialogs. */
 #diplomacy-overlay{position:fixed;inset:0;background:rgba(15,14,11,.72);opacity:1;pointer-events:auto;transition:opacity .2s;z-index:60}
 #diplomacy-overlay.hidden{opacity:0;pointer-events:none}
-#diplomacy{position:fixed;left:50%;top:var(--dialog-top);transform:var(--dialog-transform);width:min(560px,calc(100vw - 32px));max-height:min(80vh,var(--dialog-max-h));background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;opacity:1;pointer-events:auto;transition:opacity .2s;z-index:61}
+#diplomacy{position:fixed;left:50%;top:var(--dialog-top);transform:var(--dialog-transform);width:min(560px,calc(100vw - 32px));max-height:min(80vh,var(--dialog-max-h));background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;overflow:hidden;opacity:1;pointer-events:auto;transition:opacity .2s;z-index:61}
 #diplomacy.hidden{opacity:0;pointer-events:none}
 /* Title and ✕ come from the shared .dialog-title / .dialog-x rules in index.html.
    The head is unpositioned so the ✕ pins to the dialog corner itself; the head

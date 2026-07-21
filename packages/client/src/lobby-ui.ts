@@ -24,7 +24,7 @@ import {
 } from "@roc/sim";
 import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, startingConditionsLine, wireUuImages, wireUuDetail } from "./unique-unit";
 import { unlockLoadingAudio, preloadLoadingVoice } from "./loading-voice";
-import { unlockAppAudioFromGesture } from "./game-sounds";
+import { setCivilizationBgm, unlockAppAudioFromGesture } from "./game-sounds";
 import { unlockCoachAudio } from "./coach-voice";
 import { deleteSave, exportSave, importSave, listSavesForUser, loadSave, reassignSaves, saveGame, type SaveRecord } from "./save-db";
 import {
@@ -725,7 +725,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .la-foot b{color:#cbbcf2}
     /* Expanded unique-unit detail dialog */
     .uud-overlay{position:fixed;inset:0;z-index:80;background:rgba(8,7,5,.8);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
-    .uud-modal{position:relative;width:min(560px,100%);max-height:88%;overflow:auto;background:linear-gradient(180deg,#1f1c14,#15120c);border:1px solid var(--edge);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:22px}
+    .uud-modal{position:relative;width:min(560px,100%);max-height:88%;overflow:hidden;display:flex;flex-direction:column;background:linear-gradient(180deg,#1f1c14,#15120c);border:1px solid var(--edge);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);padding:22px}
+    .uud-content{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
     .uud-head{display:flex;gap:16px;align-items:flex-start}
     .uud-img{flex:0 0 auto;width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.25);border:1px solid var(--edge);border-radius:12px;overflow:hidden}
     .uud-img img{max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}
@@ -1064,6 +1065,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     wireUuDetail(right);
     right.querySelector<HTMLButtonElement>("#showcase-reroll")?.addEventListener("click", () => renderShowcase());
     right.querySelector<HTMLButtonElement>("#showcase-wiki")?.addEventListener("click", () => wiki.openDetail("civ", civ.id));
+    setCivilizationBgm(civ.id);
   }
 
   /**
@@ -1198,6 +1200,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     bindDialogClose(overlay.querySelector<HTMLButtonElement>("#cp-cancel")!, close);
     overlay.querySelector<HTMLButtonElement>("#cp-confirm")!.addEventListener("click", () => {
       onPick(selected);
+      if (selected !== RANDOM_CIV) setCivilizationBgm(selected);
       close();
     });
 
@@ -1629,6 +1632,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       unlockAppAudioFromGesture();
       unlockLoadingAudio();
       preloadLoadingVoice(state.sp.civId);
+      if (state.sp.civId !== RANDOM_CIV) setCivilizationBgm(state.sp.civId);
       close();
       const spMapSize = $select("#sp-map").value as MapSize;
       const spBarb = $select("#sp-barb").value as BarbLevel;

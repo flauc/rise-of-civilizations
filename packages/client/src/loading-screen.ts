@@ -112,7 +112,7 @@ export interface LoadingScreenOptions {
 export interface LoadingScreenHandle {
   /** World/sim state exists; dismiss still waits for the map to finish rendering. */
   notifyWorldGenerated(): void;
-  /** Map, atlases, and HUD icons are ready; hide "Loading...", show Skip, allow dismiss. */
+  /** Map, atlases, and HUD icons are ready; hide "Loading...", show Skip when it works. */
   notifyMapRendered(): void;
   destroy(): void;
 }
@@ -284,8 +284,11 @@ function ensureStyles(): void {
       opacity:0;visibility:hidden;pointer-events:none;
       transition:opacity .45s ease,visibility 0s linear .45s,background .12s;
     }
-    #game-loading.game-ready .gl-skip{
+    #game-loading.game-ready .gl-skip:not([hidden]){
       opacity:1;visibility:visible;pointer-events:auto;transition:opacity .45s ease,background .12s;
+    }
+    #game-loading .gl-skip[hidden]{
+      display:none !important;opacity:0;visibility:hidden;pointer-events:none;
     }
     #game-loading .gl-skip:hover{background:linear-gradient(135deg,#f0d878,#c9a227);color:#0f0e0b}
     #game-loading .gl-skip:focus-visible{outline:2px solid #c9a227;outline-offset:2px}
@@ -410,7 +413,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     `</div>` +
     `<div class="gl-foot">` +
     `<div class="gl-loading-status">Loading...</div>` +
-    `<button type="button" class="gl-skip">Skip</button>` +
+    `<button type="button" class="gl-skip" hidden>Skip</button>` +
     `</div>` +
     `</div>`;
   document.body.appendChild(root);
@@ -856,11 +859,22 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     root.remove();
   }
 
+  function canSkipNow(): boolean {
+    return !dismissed && worldReady && mapRendered;
+  }
+
+  /** Skip stays hidden until the world is painted and tapping it enters the game. */
+  function refreshSkipButton(): void {
+    const ready = canSkipNow();
+    root.classList.toggle("game-ready", ready);
+    skipBtn.hidden = !ready;
+  }
+
   function tryDismiss(): void {
     if (dismissed || !worldReady || !mapRendered) return;
     tryResolveCiv();
     const elapsed = performance.now() - mountedAt;
-    if (elapsed < MIN_VISIBLE_MS) return;
+    if (!skipped && elapsed < MIN_VISIBLE_MS) return;
     if (speech) {
       if (!speechDone || !typingDone) return;
       if (!skipped) {
@@ -875,7 +889,10 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     dismiss();
   }
 
-  skipBtn.addEventListener("click", skip);
+  skipBtn.addEventListener("click", () => {
+    if (!canSkipNow()) return;
+    skip();
+  });
 
   renderSpeech();
   const civPoll = window.setInterval(() => {
@@ -888,10 +905,9 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
 
   resetForceDismissTimer();
 
-  /** Swap "Loading..." for Skip once the game is genuinely ready behind the veil.
-   *  Requires world sim, a painted frame, and core atlases — not just state existing. */
+  /** Swap "Loading..." for Skip once Skip will dismiss into the live game. */
   function markGameReadyIfLoaded(): void {
-    if (worldReady && mapRendered) root.classList.add("game-ready");
+    refreshSkipButton();
   }
 
   return {

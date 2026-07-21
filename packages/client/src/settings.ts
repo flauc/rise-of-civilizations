@@ -3,6 +3,7 @@
 // concern — they never travel to the server or into a save file.
 
 import { isPhoneShell } from "./viewport-shell";
+import type { GameKeybindAction, KeybindCode } from "./game-keybinds";
 
 export type TurnUpdateView = "expanded" | "compact";
 
@@ -27,6 +28,10 @@ export interface Settings {
   musicEnabled: boolean;
   /** Sword clash and other combat sound effects. */
   sfxEnabled: boolean;
+  /** Master scale for music and combat SFX (0 = mute, 1 = full). */
+  audioVolume: number;
+  /** Per-action keyboard overrides (KeyboardEvent.code). Empty object = all defaults. */
+  keybinds?: Partial<Record<GameKeybindAction, KeybindCode>>;
 }
 
 const STORAGE_KEY = "roc:settings";
@@ -48,6 +53,7 @@ const DEFAULTS: Settings = {
   mapLabels: "always",
   musicEnabled: true,
   sfxEnabled: true,
+  audioVolume: 1,
 };
 
 let cache: Settings | null = null;
@@ -84,6 +90,18 @@ export function getSettings(): Settings {
       if (parsed.mapLabels === "selected" || parsed.mapLabels === "always") next.mapLabels = parsed.mapLabels;
       if (typeof parsed.musicEnabled === "boolean") next.musicEnabled = parsed.musicEnabled;
       if (typeof parsed.sfxEnabled === "boolean") next.sfxEnabled = parsed.sfxEnabled;
+      if (typeof parsed.audioVolume === "number" && Number.isFinite(parsed.audioVolume)) {
+        next.audioVolume = Math.min(1, Math.max(0, parsed.audioVolume));
+      }
+      if (parsed.keybinds && typeof parsed.keybinds === "object") {
+        const kb: Partial<Record<GameKeybindAction, KeybindCode>> = {};
+        for (const [action, code] of Object.entries(parsed.keybinds)) {
+          if (typeof code === "string" && code.length > 0) {
+            kb[action as GameKeybindAction] = code;
+          }
+        }
+        next.keybinds = kb;
+      }
     }
   } catch {
     // Corrupt JSON or unavailable storage (private mode) → fall back to defaults.

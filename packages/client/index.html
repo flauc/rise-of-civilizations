@@ -584,12 +584,12 @@
       /* City panel */
       #city-panel {
         right: max(12px, env(safe-area-inset-right));
-        top: calc(150px + env(safe-area-inset-top));
+        top: calc(var(--topbar-h, 68px) + var(--roc-safe-top, env(safe-area-inset-top, 0px)) + 8px);
         width: 320px;
-        /* Fill the space below the panel's 150px top offset (with a small bottom
-           gap), capped so it never gets absurdly tall — removes the desktop
-           scroll while staying on-screen on short displays. */
-        max-height: min(calc(100vh - 172px), 820px);
+        max-height: min(
+          calc(100dvh - var(--topbar-h, 68px) - var(--roc-safe-top, env(safe-area-inset-top, 0px)) - 16px),
+          820px
+        );
         overflow: auto;
         z-index: 10;
       }
@@ -932,7 +932,9 @@
         transform: var(--dialog-transform);
         width: 320px;
         max-height: min(80vh, var(--dialog-max-h));
-        overflow: auto;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
         z-index: 40;
       }
       /* Top-bar pickers: below the status bar so the map and end-turn stay reachable */
@@ -987,14 +989,26 @@
       }
       #production,
       #specialists,
-      #training {
+      #training,
+      #gold-dialog,
+      #morale-dialog,
+      #log-dialog,
+      #leaderboard-dialog {
         left: 50%;
         top: var(--dialog-top);
         transform: var(--dialog-transform);
-        width: 320px;
+        width: min(520px, calc(100vw - 32px));
         max-height: min(80vh, var(--dialog-max-h));
-        overflow: auto;
-        z-index: 40;
+        overflow: hidden;
+        z-index: 62;
+      }
+      #leaderboard-dialog {
+        width: min(560px, calc(100vw - 32px));
+      }
+      #production,
+      #specialists,
+      #training {
+        width: 320px;
       }
       #god-panel {
         left: 50%;
@@ -1053,6 +1067,10 @@
       #production,
       #specialists,
       #training,
+      #gold-dialog,
+      #morale-dialog,
+      #log-dialog,
+      #leaderboard-dialog,
       #god-panel,
       #research,
       #civics,
@@ -2418,53 +2436,7 @@
         display: none;
       }
       #log-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 14, 11, 0.72);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.2s;
-        z-index: 68;
-      }
-      #log-overlay.show {
-        opacity: 1;
-        pointer-events: auto;
-      }
-      #log-dialog {
-        position: fixed;
-        left: 50%;
-        top: var(--dialog-top);
-        transform: var(--dialog-transform);
-        width: min(520px, calc(100vw - 32px));
-        max-height: min(80vh, var(--dialog-max-h));
-        background: var(--panel);
-        border: 1px solid var(--edge);
-        border-radius: 16px;
-        padding: 18px 20px;
-        display: flex;
-        flex-direction: column;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.2s;
-        z-index: 69;
-      }
-      #log-dialog.show {
-        opacity: 1;
-        pointer-events: auto;
-      }
-      .log-dialog-title {
-        margin-bottom: 0;
-      }
-      #log-dialog,
-      #leaderboard-dialog,
-      #turn-update-dialog,
-      #settings-dialog {
-        position: fixed;
-      }
-      #log-dialog,
-      #leaderboard-dialog {
-        display: flex;
-        flex-direction: column;
+        display: none;
       }
       #log-dialog-content {
         flex: 1;
@@ -2488,39 +2460,7 @@
       }
       /* leaderboard / civilization standings dialog */
       #leaderboard-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 14, 11, 0.72);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.2s;
-        z-index: 60;
-      }
-      #leaderboard-overlay.show {
-        opacity: 1;
-        pointer-events: auto;
-      }
-      #leaderboard-dialog {
-        position: fixed;
-        left: 50%;
-        top: var(--dialog-top);
-        transform: var(--dialog-transform);
-        width: min(560px, calc(100vw - 32px));
-        max-height: min(80vh, var(--dialog-max-h));
-        background: var(--panel);
-        border: 1px solid var(--edge);
-        border-radius: 16px;
-        padding: 18px 20px;
-        display: flex;
-        flex-direction: column;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.2s;
-        z-index: 61;
-      }
-      #leaderboard-dialog.show {
-        opacity: 1;
-        pointer-events: auto;
+        display: none;
       }
       .lb-caption {
         font-size: 12px;
@@ -2682,47 +2622,10 @@
         min-height: 0;
         margin-left: 2px;
       }
-      /* gold ledger dialog */
-      #gold-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 14, 11, 0.72);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.2s;
-        z-index: 60;
-      }
-      #gold-overlay.show {
-        opacity: 1;
-        pointer-events: auto;
-      }
-      #gold-dialog {
-        position: fixed;
-        left: 50%;
-        top: var(--dialog-top);
-        transform: var(--dialog-transform);
-        width: min(520px, calc(100vw - 32px));
-        max-height: min(80vh, var(--dialog-max-h));
-        background: var(--panel);
-        border: 1px solid var(--edge);
-        border-radius: 16px;
-        padding: 18px 20px;
-        display: flex;
-        flex-direction: column;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.2s;
-        z-index: 61;
-      }
-      #gold-dialog.show {
-        opacity: 1;
-        pointer-events: auto;
-      }
-      .gold-dialog-title {
-        margin-bottom: 0;
-      }
+      /* gold ledger dialog (panel + .hidden; no separate overlay) */
       #gold-dialog-content {
         flex: 1;
+        min-height: 0;
         overflow: auto;
         font-size: 13px;
         line-height: 1.5;
@@ -2812,6 +2715,22 @@
         pointer-events: auto;
         transition: background 0.15s ease, color 0.15s ease;
       }
+      #gold-dialog .dialog-x,
+      #log-dialog .dialog-x,
+      #leaderboard-dialog .dialog-x,
+      #morale-dialog .dialog-x,
+      #settings-dialog .dialog-x,
+      #save-modal .dialog-x,
+      #combat-preview-dialog .dialog-x,
+      #turn-update-dialog .dialog-x,
+      #village-dialog .dialog-x,
+      #gp-activate-dialog .dialog-x,
+      #leader-ability-dialog .dialog-x,
+      #unit-promo-dialog .dialog-x {
+        z-index: 100;
+        pointer-events: auto;
+        touch-action: manipulation;
+      }
       #gold-dialog,
       #morale-dialog,
       #log-dialog,
@@ -2859,7 +2778,7 @@
       .gold-dialog-title,
       .morale-dialog-title,
       .unit-promo-dialog-title,
-      #settings-dialog .settings-header b,
+      #settings-dialog .settings-head-title,
       #combat-preview-dialog .combat-preview-header b,
       #village-dialog .village-title,
       #gp-activate-dialog .gp-activate-title,
@@ -2884,7 +2803,6 @@
       .gold-dialog-title,
       .morale-dialog-title,
       .unit-promo-dialog-title,
-      #settings-dialog .settings-header,
       #combat-preview-dialog .combat-preview-header {
         min-height: calc(var(--dialog-x-top) + var(--dialog-x-size));
         padding-right: var(--dialog-x-gutter);
@@ -2929,46 +2847,12 @@
         line-height: 1;
         white-space: nowrap;
       }
-      /* Morale dialog — mirrors the treasury dialog, plus an expandable explainer. */
+      /* Morale dialog — panel + .hidden, same close wiring as Train Units. */
       #morale-overlay {
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 14, 11, 0.72);
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.2s;
-        z-index: 60;
-      }
-      #morale-overlay.show {
-        opacity: 1;
-        pointer-events: auto;
-      }
-      #morale-dialog {
-        position: fixed;
-        left: 50%;
-        top: var(--dialog-top);
-        transform: var(--dialog-transform);
-        width: min(520px, calc(100vw - 32px));
-        max-height: min(80vh, var(--dialog-max-h));
-        overflow: hidden;
-        background: var(--panel);
-        border: 1px solid var(--edge);
-        border-radius: 16px;
-        padding: 18px 20px;
-        display: flex;
-        flex-direction: column;
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.2s;
-        z-index: 61;
-      }
-      #morale-dialog.show {
-        opacity: 1;
-        pointer-events: auto;
+        display: none;
       }
       /* Single scroll region for the whole dialog body, so the content and the
-         "how morale works" explainer never each get their own scrollbar. The ✕
-         sits outside this wrapper and stays pinned to the dialog corner. */
+         "how morale works" explainer never each get their own scrollbar. */
       .morale-scroll {
         flex: 1;
         min-height: 0;
@@ -3215,6 +3099,7 @@
         transform: var(--dialog-transform);
         width: min(420px, calc(100vw - 32px));
         max-height: min(80vh, var(--dialog-max-h));
+        overflow: hidden;
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
@@ -3272,8 +3157,16 @@
         align-items: center;
         justify-content: space-between;
         gap: 10px;
+        flex: none;
         min-height: var(--dialog-x-size);
         padding-right: var(--dialog-x-gutter);
+        position: relative;
+        z-index: 2;
+        /* Let taps reach the pinned ✕ in the top-right corner. */
+        pointer-events: none;
+      }
+      #turn-update-dialog .turn-update-header .tu-view-toggle {
+        pointer-events: auto;
       }
       #turn-update-dialog .turn-update-heading {
         font-family: 'Cinzel', Georgia, serif;
@@ -3289,12 +3182,19 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
       #turn-update-dialog .turn-update-compact {
         display: flex;
         flex-direction: column;
         gap: 6px;
+        flex: 1;
+        min-height: 0;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
         text-align: left;
       }
       #turn-update-dialog .tu-row {
@@ -3368,33 +3268,56 @@
         transform: var(--dialog-transform);
         width: min(420px, calc(100vw - 32px));
         max-height: min(80vh, var(--dialog-max-h));
-        overflow-y: auto;
+        overflow: hidden;
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
-        padding: 18px 20px;
-        padding-top: max(18px, calc(12px + env(safe-area-inset-top)));
+        padding: 16px 18px;
+        padding-top: 16px;
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.2s;
         z-index: 63;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 0;
       }
       #settings-dialog.show {
         opacity: 1;
         pointer-events: auto;
       }
       #settings-dialog .dialog-x {
+        top: 0;
+        right: 0;
         pointer-events: auto;
         touch-action: manipulation;
-        z-index: 3;
+        z-index: 100;
       }
-      #settings-dialog .settings-header {
+      #settings-dialog .settings-head-band {
+        flex: none;
+        position: relative;
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        min-height: var(--dialog-x-size);
+        padding-right: var(--dialog-x-gutter);
+        margin-bottom: 8px;
+        z-index: 2;
+      }
+      #settings-dialog .settings-head-title {
+        margin: 0;
+        line-height: 1.1;
+        letter-spacing: 0.06em;
+      }
+      #settings-dialog .settings-body {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 0;
+        padding-right: 2px;
       }
       #settings-dialog .settings-section {
         border-top: 1px solid var(--edge);
@@ -3425,6 +3348,151 @@
         width: 16px;
         height: 16px;
         accent-color: var(--gold);
+      }
+      #settings-dialog .settings-volume {
+        margin-bottom: 10px;
+      }
+      #settings-dialog .settings-volume-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 6px;
+        font-size: 13px;
+      }
+      #settings-dialog .settings-volume-label {
+        color: var(--parchment);
+      }
+      #settings-dialog .settings-volume-value {
+        font-variant-numeric: tabular-nums;
+        color: #9fc0dc;
+        font-size: 12px;
+        min-width: 3ch;
+        text-align: right;
+      }
+      #settings-dialog .settings-volume input[type="range"] {
+        width: 100%;
+        margin: 0;
+        height: 28px;
+        accent-color: var(--gold);
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      #settings-dialog .settings-keybinds-section {
+        padding-top: 12px;
+      }
+      #settings-dialog .settings-fold-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        border: none;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      #settings-dialog .settings-fold-title {
+        font-weight: 700;
+        font-size: inherit;
+        color: var(--parchment);
+      }
+      #settings-dialog .settings-fold-chevron {
+        flex: 0 0 auto;
+        color: #9fc0dc;
+        font-size: 14px;
+        line-height: 1;
+        transition: transform 0.15s ease;
+      }
+      #settings-dialog .settings-fold-header.open .settings-fold-chevron {
+        transform: rotate(90deg);
+      }
+      #settings-dialog .settings-keybinds-panel {
+        margin-top: 8px;
+      }
+      #settings-dialog .settings-keybinds-panel.hidden {
+        display: none;
+      }
+      #settings-dialog .settings-keybinds-panel .settings-hint {
+        margin-top: 0;
+      }
+      #settings-dialog .settings-keybinds {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 4px;
+      }
+      #settings-dialog .settings-keybind-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        border: 1px solid var(--edge);
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.12);
+      }
+      #settings-dialog .settings-keybind-meta {
+        flex: 1;
+        min-width: 0;
+      }
+      #settings-dialog .settings-keybind-label {
+        font-weight: 700;
+        font-size: 13px;
+        color: var(--parchment);
+      }
+      #settings-dialog .settings-keybind-hint {
+        font-size: 11px;
+        color: #9fc0dc;
+        margin-top: 2px;
+        line-height: 1.35;
+      }
+      #settings-dialog .settings-keybind-key {
+        flex: 0 0 auto;
+        min-width: 72px;
+        min-height: 40px;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--edge);
+        background: var(--bg-card);
+        color: var(--accent-bright);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      #settings-dialog .settings-keybind-key.capturing {
+        border-color: var(--accent);
+        color: var(--parchment);
+        animation: settings-keybind-pulse 1.2s ease-in-out infinite;
+      }
+      @keyframes settings-keybind-pulse {
+        0%,
+        100% {
+          box-shadow: 0 0 0 0 rgba(201, 162, 39, 0.35);
+        }
+        50% {
+          box-shadow: 0 0 0 4px rgba(201, 162, 39, 0.12);
+        }
+      }
+      #settings-dialog .settings-keybind-error {
+        margin-top: 8px;
+        font-size: 12px;
+        color: #ffb0b0;
+        line-height: 1.4;
+      }
+      #settings-dialog .settings-keybind-reset {
+        width: 100%;
+        margin-top: 10px;
+      }
+      html.roc-phone-shell #settings-dialog .settings-keybind-key {
+        min-width: 84px;
+        min-height: 44px;
       }
       #settings-dialog .settings-danger .settings-title {
         color: #ff8a8a;
@@ -3520,7 +3588,9 @@
         transform: var(--dialog-transform);
         width: min(520px, calc(100vw - 24px));
         max-height: min(680px, var(--dialog-max-h));
-        overflow-y: auto;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
@@ -3533,6 +3603,20 @@
       #combat-preview-dialog.show {
         opacity: 1;
         pointer-events: auto;
+      }
+      #combat-preview-dialog .combat-preview-header {
+        flex: none;
+      }
+      #combat-preview-dialog .combat-preview-scroll {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        margin-top: 0;
+      }
+      #combat-preview-dialog .combat-preview-actions {
+        flex: none;
+        margin-top: 12px;
       }
       #combat-preview-dialog .combat-preview-matchup {
         display: grid;
@@ -3742,17 +3826,20 @@
       /* WebKit: when the HUD root is pointer-events:none, taps may never reach
          overlay dialogs even if children set pointer-events:auto — enable the
          shell while treasury / log / leaderboard (etc.) are open. */
-      #game-hud:has(#gold-dialog.show),
-      #game-hud:has(#log-dialog.show),
-      #game-hud:has(#leaderboard-dialog.show),
-      #game-hud:has(#morale-dialog.show),
+      #game-hud:has(#gold-dialog:not(.hidden)),
+      #game-hud:has(#log-dialog:not(.hidden)),
+      #game-hud:has(#leaderboard-dialog:not(.hidden)),
+      #game-hud:has(#morale-dialog:not(.hidden)),
+      #game-hud:has(#empire:not(.hidden)),
+      #game-hud:has(#diplomacy:not(.hidden)),
       #game-hud:has(#unit-promo-dialog.show),
       #game-hud:has(#turn-update-dialog.show),
       #game-hud:has(#village-dialog.show),
       #game-hud:has(#gp-activate-dialog.show),
       #game-hud:has(#leader-ability-dialog.show),
       #game-hud:has(#combat-preview-dialog.show),
-      #game-hud:has(#save-modal:not(.hidden)) {
+      #game-hud:has(#save-modal:not(.hidden)),
+      #game-hud.roc-overlay-dialog-open {
         pointer-events: auto;
       }
       /* Loading veil hides the HUD; never leave it stuck after dismiss. */
@@ -3762,16 +3849,12 @@
       }
       #game-hud .panel:not(.hidden),
       #game-hud #techtree:not(.hidden),
-      #game-hud #gold-overlay.show,
-      #game-hud #gold-dialog.show,
-      #game-hud #morale-overlay.show,
-      #game-hud #morale-dialog.show,
-      #game-hud #leaderboard-overlay.show,
-      #game-hud #leaderboard-dialog.show,
+      #game-hud #gold-dialog:not(.hidden),
+      #game-hud #morale-dialog:not(.hidden),
+      #game-hud #leaderboard-dialog:not(.hidden),
+      #game-hud #log-dialog:not(.hidden),
       #game-hud #unit-promo-overlay.show,
       #game-hud #unit-promo-dialog.show,
-      #game-hud #log-overlay.show,
-      #game-hud #log-dialog.show,
       #game-hud #turn-update-overlay.show,
       #game-hud #turn-update-dialog.show,
       #game-hud #village-overlay.show,
@@ -3842,6 +3925,10 @@
       body.roc-native:has(#game-hud #game-chat.open.fullscreen) #game,
       body.roc-native:has(#game-hud #diplo-contact.show) #game,
       body.roc-native:has(#game-hud #diplo-proposal.show) #game,
+      body.roc-native:has(#game-hud #gold-dialog:not(.hidden)) #game,
+      body.roc-native:has(#game-hud #morale-dialog:not(.hidden)) #game,
+      body.roc-native:has(#game-hud #log-dialog:not(.hidden)) #game,
+      body.roc-native:has(#game-hud #leaderboard-dialog:not(.hidden)) #game,
       body.roc-native:has(#settings-overlay.show) #game,
       body.roc-standalone:has(#game-hud #save-modal:not(.hidden)) #game,
       body.roc-standalone:has(#game-hud #empire:not(.hidden)) #game,
@@ -3849,6 +3936,10 @@
       body.roc-standalone:has(#game-hud #game-chat.open.fullscreen) #game,
       body.roc-standalone:has(#game-hud #diplo-contact.show) #game,
       body.roc-standalone:has(#game-hud #diplo-proposal.show) #game,
+      body.roc-standalone:has(#game-hud #gold-dialog:not(.hidden)) #game,
+      body.roc-standalone:has(#game-hud #morale-dialog:not(.hidden)) #game,
+      body.roc-standalone:has(#game-hud #log-dialog:not(.hidden)) #game,
+      body.roc-standalone:has(#game-hud #leaderboard-dialog:not(.hidden)) #game,
       body.roc-standalone:has(#settings-overlay.show) #game {
         pointer-events: none !important;
       }
@@ -3888,13 +3979,19 @@
         /* Centered treasury / log / standings: ✕ sits in the card corner, not the notch. */
         html.roc-phone-shell #gold-dialog,
         html.roc-phone-shell #log-dialog,
-        html.roc-phone-shell #leaderboard-dialog {
+        html.roc-phone-shell #leaderboard-dialog,
+        html.roc-phone-shell #settings-dialog,
+        html.roc-phone-shell #save-modal {
           --dialog-x-top: 10px;
           --dialog-x-right: 10px;
         }
-        html.roc-phone-shell .panel-dialog-header,
-        html.roc-phone-shell #settings-dialog .settings-header {
+        html.roc-phone-shell .panel-dialog-header {
           padding-top: max(4px, var(--roc-safe-top, env(safe-area-inset-top, 0px)));
+        }
+        html.roc-phone-shell #settings-dialog {
+          padding: 12px 14px;
+          --dialog-x-top: 0px;
+          --dialog-x-right: 0px;
         }
         html.roc-phone-shell #game-hud {
           --hud-scale: 1;
@@ -4066,8 +4163,7 @@
            full-width, and collapse to just their summary bar (the .panel.collapsed
            rule above) so a selection no longer eats half the screen. */
         html.roc-phone-shell #unit-panel,
-        html.roc-phone-shell #tile-panel,
-        html.roc-phone-shell #city-panel {
+        html.roc-phone-shell #tile-panel {
           left: max(6px, env(safe-area-inset-left));
           right: max(6px, env(safe-area-inset-right));
           width: auto;
@@ -4075,6 +4171,18 @@
           top: auto;
           bottom: calc(54px + env(safe-area-inset-bottom));
           max-height: min(46vh, 320px);
+          overflow: auto;
+          z-index: 10;
+        }
+        /* City sheet: top-right under the menu bar, not the bottom slot. */
+        html.roc-phone-shell #city-panel {
+          left: auto;
+          right: max(6px, var(--roc-safe-right, env(safe-area-inset-right, 0px)));
+          width: min(320px, calc(100vw - 12px - var(--roc-safe-left, 0px) - var(--roc-safe-right, 0px)));
+          min-width: 0;
+          top: calc(var(--topbar-h, 60px) + var(--roc-safe-top, env(safe-area-inset-top, 0px)) + 6px);
+          bottom: auto;
+          max-height: min(42vh, 300px);
           overflow: auto;
           z-index: 10;
         }

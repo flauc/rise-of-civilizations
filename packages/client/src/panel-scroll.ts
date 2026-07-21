@@ -8,9 +8,11 @@ const SCROLL_SELECTORS = [
   "#morale-dialog-content",
   ".ip-detail",
   "#turn-update-compact",
-  "#settings-dialog",
+  "#settings-dialog .settings-body",
   "#game-chat-log",
-  "#save-modal",
+  "#save-modal .save-modal-body",
+  ".combat-preview-scroll",
+  ".uud-content",
 ] as const;
 
 /** Capture scroll offsets under `root` (and on `root` itself) before DOM rebuilds. */

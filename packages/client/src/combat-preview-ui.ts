@@ -101,6 +101,7 @@ function dialogHtml(d: CombatPreviewDetail): string {
   return (
     `<button type="button" class="dialog-x" id="combat-preview-close" title="Close" aria-label="Close">✕</button>` +
     `<div class="combat-preview-header"><b>Attack Preview</b></div>` +
+    `<div class="combat-preview-scroll panel-dialog-body">` +
     `<div class="combat-preview-matchup">` +
     sideColumn(d, "attacker", d.attackerName, d.attackerHp, d.attackerHpAfter, d.attackerMaxHp, d.attackerDamage, d.attackerMods, false) +
     `<div class="combat-preview-vs">vs</div>` +
@@ -115,6 +116,7 @@ function dialogHtml(d: CombatPreviewDetail): string {
       d.defenderMods,
       noRetal,
     ) +
+    `</div>` +
     `</div>` +
     `<div class="combat-preview-actions">` +
     `<button type="button" class="btn secondary" id="combat-preview-cancel">Cancel</button>` +

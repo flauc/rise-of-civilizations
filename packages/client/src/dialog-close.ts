@@ -1,14 +1,15 @@
-/** Reliable close on desktop and mobile WebKit (click alone can miss the ✕). */
+/** Same close wiring as Train Units (#trclose): direct click on the ✕ button. */
 export function bindDialogClose(btn: HTMLButtonElement, close: () => void): void {
-  let lastCloseAt = 0;
-  const run = (e: Event): void => {
-    e.preventDefault();
+  btn.addEventListener("click", (e) => {
     e.stopPropagation();
-    const now = performance.now();
-    if (now - lastCloseAt < 400) return;
-    lastCloseAt = now;
+    close();
+  });
+}
+
+/** Re-bind after innerHTML rebuild (city sub-dialogs re-render each open). */
+export function wirePanelClose(btn: HTMLButtonElement, close: () => void): void {
+  btn.onclick = (e) => {
+    e.stopPropagation();
     close();
   };
-  btn.addEventListener("pointerdown", run, { capture: true });
-  btn.addEventListener("click", run);
 }
