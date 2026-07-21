@@ -83,6 +83,13 @@ import { resetHudOverlays } from "./hud-root";
 import { unlockCoachAudio, retryCoachVoiceIfNeeded } from "./coach-voice";
 import { unlockGameAudio } from "./game-audio-unlock";
 import {
+  isCombatTargetedAbility,
+  markPlayerCombatSound,
+  resetCombatSoundTracking,
+  syncCombatSounds,
+  unlockAppAudioFromGesture,
+} from "./game-sounds";
+import {
   refreshTutorialMovement,
   spawnTutorialBarbarian,
   spawnTutorialVillage,
@@ -126,6 +133,15 @@ createLobby(startGame);
 openBootRoute();
 delete window.__ROC_BOOT_ROUTE__;
 
+function onAppAudioGesture(): void {
+  unlockAppAudioFromGesture();
+}
+document.addEventListener("pointerdown", onAppAudioGesture, { capture: true });
+document.addEventListener("touchstart", onAppAudioGesture, { capture: true });
+document.addEventListener("touchend", onAppAudioGesture, { capture: true });
+document.addEventListener("click", onAppAudioGesture, { capture: true });
+document.addEventListener("keydown", onAppAudioGesture, { capture: true });
+
 // Stream the game's assets in behind the lobby, so they are warm by the time a
 // game is created. Called after createLobby so the lobby's own leader portraits
 // claim the connection first, and skipped for a deep link to a legal or support
@@ -134,6 +150,7 @@ if (!bootRoute) preloadGameAssets();
 
 function startGame(session: Session, setup: GameSetup = {}): void {
   resetHudOverlays();
+  resetCombatSoundTracking();
   let loadingDismissed = false;
   let mapRenderNotified = false;
   let loadingRepaintAt = 0;
@@ -152,9 +169,10 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     unlockGameAudio();
     unlockCoachAudio();
     retryCoachVoiceIfNeeded();
+    unlockAppAudioFromGesture();
   };
-  document.addEventListener("pointerdown", unlockGameAudioFromGesture, { capture: true, once: true });
-  document.addEventListener("touchstart", unlockGameAudioFromGesture, { capture: true, once: true });
+  document.addEventListener("pointerdown", unlockGameAudioFromGesture, { capture: true });
+  document.addEventListener("touchstart", unlockGameAudioFromGesture, { capture: true });
   const loadingScreen: LoadingScreenHandle = setup.isTutorial
     ? createTutorialPreparingScreen({ onDismiss: onLoadingDismiss })
     : createLoadingScreen({
@@ -326,6 +344,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       });
     }
     noteTurns(st().turn);
+    syncCombatSounds(st());
     visible = session.getVisible();
     // Drop selection if the unit no longer exists (died/consumed/captured).
     if (selectedUnitId != null && !st().units.has(selectedUnitId)) selectedUnitId = null;
@@ -939,6 +958,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     // Targeted-ability mode: a tap on a highlighted tile fires the ability.
     if (pendingAbility != null && selectedUnitId != null) {
       if (abilityTargetSet.has(key)) {
+        if (isCombatTargetedAbility(pendingAbility)) markPlayerCombatSound();
         session.order({ type: "useAbility", unitId: selectedUnitId, ability: pendingAbility, col: off.col, row: off.row });
         cancelAbility();
         return;
@@ -991,6 +1011,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       const isTarget = bombardTargets.has(key);
       cancelBombard();
       if (isTarget) {
+        markPlayerCombatSound();
         session.order({ type: "cityBombard", cityId, col: off.col, row: off.row });
       }
       needsRedraw = true;
@@ -1008,7 +1029,10 @@ function startGame(session: Session, setup: GameSetup = {}): void {
 
     const attack = () => {
       const attackerId = selectedUnitId!;
-      const doAttack = () => session.order({ type: "attack", attackerId, col: off.col, row: off.row });
+      const doAttack = () => {
+        markPlayerCombatSound();
+        session.order({ type: "attack", attackerId, col: off.col, row: off.row });
+      };
       if (getSettings().autoAttack) {
         doAttack();
         return;

@@ -7,6 +7,7 @@ import {
   ensureGameAudioUnlocked,
   isGameAudioUnlocked,
 } from "./game-audio-unlock";
+import { duckBackgroundMusic, unduckBackgroundMusic } from "./game-sounds";
 import { TUTORIAL_STEP_IDS, type TutorialStepId } from "./tutorial-coach";
 
 const MP3_LOAD_TIMEOUT_MS = 15000;
@@ -31,6 +32,19 @@ let lastSpeakAttempt: {
   handlers?: CoachSpeakHandlers;
 } | null = null;
 let lastSpeakVoiceStarted = false;
+let voiceBedDucked = false;
+
+function duckVoiceBed(): void {
+  if (voiceBedDucked) return;
+  voiceBedDucked = true;
+  duckBackgroundMusic();
+}
+
+function unduckVoiceBed(): void {
+  if (!voiceBedDucked) return;
+  voiceBedDucked = false;
+  unduckBackgroundMusic();
+}
 
 type PlayResult = "ok" | "blocked" | "error";
 
@@ -174,6 +188,7 @@ export function stopCoachVoice(): void {
   }
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
   currentUtterance = null;
+  unduckVoiceBed();
 }
 
 function speakWithBrowserTts(text: string, onEnd?: () => void): void {
@@ -187,12 +202,15 @@ function speakWithBrowserTts(text: string, onEnd?: () => void): void {
   u.pitch = 0.95;
   u.onend = () => {
     if (currentUtterance === u) currentUtterance = null;
+    unduckVoiceBed();
     onEnd?.();
   };
   u.onerror = () => {
     if (currentUtterance === u) currentUtterance = null;
+    unduckVoiceBed();
     onEnd?.();
   };
+  duckVoiceBed();
   currentUtterance = u;
   window.speechSynthesis.speak(u);
 }
@@ -263,6 +281,7 @@ export function speakCoachLine(
       "playing",
       () => {
         clearLoadTimer();
+        duckVoiceBed();
         if (currentAudio === clip) {
           lastSpeakVoiceStarted = true;
           handlers?.onPlay?.(Number.isFinite(clip.duration) ? clip.duration : 0);
@@ -277,6 +296,7 @@ export function speakCoachLine(
         if (currentAudio !== clip) return;
         currentAudio = null;
         currentListeners = null;
+        unduckVoiceBed();
         handlers?.onEnd?.();
       },
       { once: true, signal },

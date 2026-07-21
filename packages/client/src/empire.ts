@@ -4,6 +4,7 @@
 // Self-contained so it stays out of the busy ui.ts; ui.ts only toggles it and
 // re-renders it per frame while open.
 
+import { bindDialogClose } from "./dialog-close";
 import { gameHud } from "./hud-root";
 import { withPreservedScroll } from "./panel-scroll";
 import { confirmDialog } from "./confirm-dialog";
@@ -137,7 +138,7 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
 
   const title = root.querySelector<HTMLDivElement>("#emp-title")!;
   const body = root.querySelector<HTMLDivElement>("#emp-body")!;
-  root.querySelector<HTMLButtonElement>("#emp-close")!.addEventListener("click", () => close());
+  bindDialogClose(root.querySelector<HTMLButtonElement>("#emp-close")!, () => close());
 
   function setOpen(next: boolean): void {
     if (open === next) return;

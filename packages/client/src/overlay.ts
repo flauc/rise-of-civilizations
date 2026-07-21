@@ -14,6 +14,7 @@ import {
 import { getNaturalWonder, getLegend, getReligionByName, getWonder } from "@roc/data";
 import type { ReligionIconAtlas } from "./religion-assets";
 import { drawGlyph } from "./icons";
+import { isPhoneShell } from "./viewport-shell";
 
 export interface OverlayState {
   viewingPlayerId: number;
@@ -220,11 +221,6 @@ function drawHpBar(
   ctx.fillRect(x, sy, width, h);
   ctx.fillStyle = hpColor(frac);
   ctx.fillRect(x, sy, width * Math.max(0, Math.min(1, frac)), h);
-}
-
-function isMobileScreen(): boolean {
-  // Always scale units up for visibility testing.
-  return true;
 }
 
 const MOBILE_UNIT_SCALE = 1.35;
@@ -714,7 +710,7 @@ export function drawOverlay(
   }
 
   // Units.
-  const unitScale = isMobileScreen() ? MOBILE_UNIT_SCALE : 1;
+  const unitScale = isPhoneShell() ? MOBILE_UNIT_SCALE : 1;
   const civByPlayer = new Map(state.players.map((p) => [p.id, p.civId]));
   for (const unit of state.units.values()) {
     if (unit.aboardShipId !== undefined) continue;

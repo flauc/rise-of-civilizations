@@ -5,6 +5,7 @@
 // injected globally by the lobby (createLobby runs at startup).
 
 import { ASSET_BASE_URL } from "./asset-base";
+import { bindDialogClose } from "./dialog-close";
 import {
   CIVILIZATIONS,
   UNIQUE_UNITS,
@@ -370,7 +371,7 @@ export function openUnitDetail(uuId: string): void {
     if (e.key === "Escape") close();
   };
   document.addEventListener("keydown", onKey);
-  overlay.querySelector<HTMLButtonElement>(".dialog-x")!.addEventListener("click", close);
+  bindDialogClose(overlay.querySelector<HTMLButtonElement>(".dialog-x")!, close);
 }
 
 /**
@@ -397,7 +398,7 @@ export function openInfraDetail(civId: string): void {
     if (e.key === "Escape") close();
   };
   document.addEventListener("keydown", onKey);
-  overlay.querySelector<HTMLButtonElement>(".dialog-x")!.addEventListener("click", close);
+  bindDialogClose(overlay.querySelector<HTMLButtonElement>(".dialog-x")!, close);
 }
 
 /** Wire clickable unique-unit and unique-infra blocks within `root` to open their

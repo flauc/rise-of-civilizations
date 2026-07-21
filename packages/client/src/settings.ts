@@ -23,6 +23,10 @@ export interface Settings {
   autoAttack: boolean;
   /** When map name labels show: only for the selected unit/city, or always. */
   mapLabels: MapLabelMode;
+  /** Looping ambient background music in the lobby and during games. */
+  musicEnabled: boolean;
+  /** Sword clash and other combat sound effects. */
+  sfxEnabled: boolean;
 }
 
 const STORAGE_KEY = "roc:settings";
@@ -42,6 +46,8 @@ const DEFAULTS: Settings = {
   screenRotation: "landscape",
   autoAttack: false,
   mapLabels: "always",
+  musicEnabled: true,
+  sfxEnabled: true,
 };
 
 let cache: Settings | null = null;
@@ -76,6 +82,8 @@ export function getSettings(): Settings {
       }
       if (typeof parsed.autoAttack === "boolean") next.autoAttack = parsed.autoAttack;
       if (parsed.mapLabels === "selected" || parsed.mapLabels === "always") next.mapLabels = parsed.mapLabels;
+      if (typeof parsed.musicEnabled === "boolean") next.musicEnabled = parsed.musicEnabled;
+      if (typeof parsed.sfxEnabled === "boolean") next.sfxEnabled = parsed.sfxEnabled;
     }
   } catch {
     // Corrupt JSON or unavailable storage (private mode) → fall back to defaults.

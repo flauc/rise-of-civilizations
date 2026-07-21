@@ -3,6 +3,7 @@
 // units, terrain, systems and victory conditions.
 
 import { ASSET_BASE_URL } from "./asset-base";
+import { bindDialogClose } from "./dialog-close";
 import {
   CIVILIZATIONS,
   UNIT_DEFS,
@@ -2019,8 +2020,8 @@ export function createWiki(): {
     open = false;
     root.classList.add("hidden");
   };
-  root.querySelector<HTMLButtonElement>("#wiki-close")!.addEventListener("click", doClose);
-  root.querySelector<HTMLButtonElement>("#wiki-close-mobile")!.addEventListener("click", doClose);
+  bindDialogClose(root.querySelector<HTMLButtonElement>("#wiki-close")!, doClose);
+  bindDialogClose(root.querySelector<HTMLButtonElement>("#wiki-close-mobile")!, doClose);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && open) doClose();
   });

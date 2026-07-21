@@ -1,6 +1,8 @@
 /// <reference types="vite/client" />
 // Credits: a simple overlay acknowledging the people and tools behind the game.
 
+import { bindDialogClose } from "./dialog-close";
+
 interface CreditEntry {
   /** Role / contribution line. */
   role: string;
@@ -104,7 +106,7 @@ export function createCredits(): { open(): void; close(): void } {
   const doClose = (): void => {
     root.classList.add("hidden");
   };
-  root.querySelector<HTMLButtonElement>("#credits-close")!.addEventListener("click", doClose);
+  bindDialogClose(root.querySelector<HTMLButtonElement>("#credits-close")!, doClose);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !root.classList.contains("hidden")) doClose();
   });

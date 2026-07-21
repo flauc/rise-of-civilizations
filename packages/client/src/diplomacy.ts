@@ -14,6 +14,7 @@
 // Re-renders are signature-gated so the deal builder's inputs survive frames.
 
 import { ASSET_BASE_URL } from "./asset-base";
+import { bindDialogClose } from "./dialog-close";
 import { gameHud } from "./hud-root";
 import { withPreservedScroll } from "./panel-scroll";
 import {
@@ -865,7 +866,8 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   }
 
   function wire(state: GameState, viewerId: number): void {
-    panel.querySelector<HTMLButtonElement>("#dp-close")?.addEventListener("click", close);
+    const dpClose = panel.querySelector<HTMLButtonElement>("#dp-close");
+    if (dpClose) bindDialogClose(dpClose, close);
     panel.querySelector<HTMLButtonElement>("#dp-back")?.addEventListener("click", () => { selected = null; resetComposer(); resultMsg = ""; forceRender(state, viewerId); });
     panel.querySelectorAll<HTMLDivElement>("[data-civ]").forEach((el) =>
       el.addEventListener("click", () => { selected = Number(el.dataset.civ); tab = "overview"; detailsOpen = false; resetComposer(); resultMsg = ""; forceRender(state, viewerId); }),

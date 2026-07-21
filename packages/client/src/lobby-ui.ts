@@ -24,6 +24,7 @@ import {
 } from "@roc/sim";
 import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, startingConditionsLine, wireUuImages, wireUuDetail } from "./unique-unit";
 import { unlockLoadingAudio, preloadLoadingVoice } from "./loading-voice";
+import { unlockAppAudioFromGesture } from "./game-sounds";
 import { unlockCoachAudio } from "./coach-voice";
 import { deleteSave, exportSave, importSave, listSavesForUser, loadSave, reassignSaves, saveGame, type SaveRecord } from "./save-db";
 import {
@@ -47,6 +48,7 @@ import {
 import { isPhoneShell } from "./viewport-shell";
 import { SCREEN_ROTATION_STYLES } from "./screen-rotation-ui";
 import { openSettingsPanel } from "./settings-ui";
+import { bindDialogClose } from "./dialog-close";
 import { openSupportPage } from "./support-page";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 import type { GameSetup } from "./analytics";
@@ -438,6 +440,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
   };
 
   const launchTutorialGame = (): void => {
+    unlockAppAudioFromGesture();
     unlockLoadingAudio();
     unlockCoachAudio();
     preloadLoadingVoice(TUTORIAL_CIV_ID);
@@ -475,11 +478,12 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       }
     };
     document.addEventListener("keydown", onKey);
-    overlay.querySelector<HTMLButtonElement>("#tp-close")!.addEventListener("click", () => {
+    const dismissTutorial = (): void => {
       dismissTutorialPrompt();
       close();
       onSkip();
-    });
+    };
+    bindDialogClose(overlay.querySelector<HTMLButtonElement>("#tp-close")!, dismissTutorial);
     overlay.querySelector<HTMLButtonElement>("#tp-skip")!.addEventListener("click", () => {
       dismissTutorialPrompt();
       close();
@@ -1190,8 +1194,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       }),
     );
 
-    overlay.querySelector<HTMLButtonElement>("#cp-close")!.addEventListener("click", close);
-    overlay.querySelector<HTMLButtonElement>("#cp-cancel")!.addEventListener("click", close);
+    bindDialogClose(overlay.querySelector<HTMLButtonElement>("#cp-close")!, close);
+    bindDialogClose(overlay.querySelector<HTMLButtonElement>("#cp-cancel")!, close);
     overlay.querySelector<HTMLButtonElement>("#cp-confirm")!.addEventListener("click", () => {
       onPick(selected);
       close();
@@ -1340,9 +1344,11 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       el.addEventListener("click", () => showScreen(el.dataset.screen as Screen)),
     );
     left.querySelector<HTMLButtonElement>("#lobby-sp")!.addEventListener("click", () => {
+      unlockAppAudioFromGesture();
       maybeOfferTutorial(() => showScreen("sp"));
     });
     left.querySelector<HTMLButtonElement>("#lobby-tutorial")!.addEventListener("click", () => {
+      unlockAppAudioFromGesture();
       launchTutorialGame();
     });
     left.querySelector<HTMLButtonElement>("#lobby-settings")!.addEventListener("click", () => {
@@ -1620,6 +1626,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
     $("#back2").addEventListener("click", () => showScreen("start"));
     $("#sp-start").addEventListener("click", () => {
+      unlockAppAudioFromGesture();
       unlockLoadingAudio();
       preloadLoadingVoice(state.sp.civId);
       close();

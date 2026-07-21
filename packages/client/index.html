@@ -437,6 +437,34 @@
         font-size: 12px;
         color: #9fc0dc;
       }
+      .ip-stat {
+        cursor: default;
+        border-bottom: 1px dotted transparent;
+      }
+      .ip-stat:hover {
+        color: var(--parchment);
+        border-bottom-color: var(--parchment-dim);
+      }
+      /* Panel yield / action hover labels (native title= is unreliable over the HUD). */
+      #stat-tip {
+        position: fixed;
+        z-index: 40;
+        pointer-events: none;
+        background: rgba(8, 16, 26, 0.96);
+        border: 1px solid var(--edge);
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-size: 13px;
+        line-height: 1.45;
+        max-width: min(280px, calc(100vw - 24px));
+        white-space: normal;
+        color: var(--parchment);
+        text-shadow: 0 1px 2px #000;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+      }
+      #stat-tip.hidden {
+        display: none !important;
+      }
       .ip-close {
         flex: 0 0 auto;
         padding: 2px 7px;
@@ -2643,18 +2671,16 @@
         display: flex;
         justify-content: space-between;
       }
-      @media (max-width: 560px) {
-        .lb-detail {
-          padding-left: 2px;
-          font-size: 11px;
-        }
-        .lb-wiki {
-          padding: 1px 5px !important;
-          font-size: 10px !important;
-          line-height: 1 !important;
-          min-height: 0;
-          margin-left: 2px;
-        }
+      html.roc-phone-shell .lb-detail {
+        padding-left: 2px;
+        font-size: 11px;
+      }
+      html.roc-phone-shell .lb-wiki {
+        padding: 1px 5px !important;
+        font-size: 10px !important;
+        line-height: 1 !important;
+        min-height: 0;
+        margin-left: 2px;
       }
       /* gold ledger dialog */
       #gold-overlay {
@@ -2796,6 +2822,9 @@
       #gp-activate-dialog,
       #leader-ability-dialog,
       #combat-preview-dialog {
+        isolation: isolate;
+      }
+      #settings-dialog {
         isolation: isolate;
       }
       /* Invisible expanded tap target; clicks stay on the button (not a blocking layer). */
@@ -3357,6 +3386,11 @@
         opacity: 1;
         pointer-events: auto;
       }
+      #settings-dialog .dialog-x {
+        pointer-events: auto;
+        touch-action: manipulation;
+        z-index: 3;
+      }
       #settings-dialog .settings-header {
         display: flex;
         align-items: center;
@@ -3373,6 +3407,24 @@
         font-size: 11px;
         color: #9fc0dc;
         margin: 2px 0 8px;
+      }
+      #settings-dialog .settings-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px 24px;
+      }
+      #settings-dialog .settings-check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 13px;
+        cursor: pointer;
+        user-select: none;
+      }
+      #settings-dialog .settings-check input {
+        width: 16px;
+        height: 16px;
+        accent-color: var(--gold);
       }
       #settings-dialog .settings-danger .settings-title {
         color: #ff8a8a;
@@ -3790,12 +3842,14 @@
       body.roc-native:has(#game-hud #game-chat.open.fullscreen) #game,
       body.roc-native:has(#game-hud #diplo-contact.show) #game,
       body.roc-native:has(#game-hud #diplo-proposal.show) #game,
+      body.roc-native:has(#settings-overlay.show) #game,
       body.roc-standalone:has(#game-hud #save-modal:not(.hidden)) #game,
       body.roc-standalone:has(#game-hud #empire:not(.hidden)) #game,
       body.roc-standalone:has(#game-hud #diplomacy:not(.hidden)) #game,
       body.roc-standalone:has(#game-hud #game-chat.open.fullscreen) #game,
       body.roc-standalone:has(#game-hud #diplo-contact.show) #game,
-      body.roc-standalone:has(#game-hud #diplo-proposal.show) #game {
+      body.roc-standalone:has(#game-hud #diplo-proposal.show) #game,
+      body.roc-standalone:has(#settings-overlay.show) #game {
         pointer-events: none !important;
       }
 

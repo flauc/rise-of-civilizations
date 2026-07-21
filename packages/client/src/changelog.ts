@@ -2,6 +2,8 @@
 // Changelog: a simple overlay listing what changed in each release. Surfaced
 // from the start screen via the version label so players can see what's new.
 
+import { bindDialogClose } from "./dialog-close";
+
 /** The current game version — shown on the start screen and atop the changelog. */
 export const CURRENT_VERSION = "0.7.9";
 
@@ -1486,7 +1488,7 @@ export function createChangelog(): { open(): void; close(): void } {
   const doClose = (): void => {
     root.classList.add("hidden");
   };
-  root.querySelector<HTMLButtonElement>("#changelog-close")!.addEventListener("click", doClose);
+  bindDialogClose(root.querySelector<HTMLButtonElement>("#changelog-close")!, doClose);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !root.classList.contains("hidden")) doClose();
   });

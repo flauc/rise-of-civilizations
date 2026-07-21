@@ -53,6 +53,7 @@ Other targets:
 npm run build          # rebuild web shell + cap sync (no APK)
 npm run open:android   # open the project in Android Studio
 npm run run:android    # build + install + launch on a connected device/emulator
+npm run run:android:dev # live-load from Vite on your machine (see below)
 npm run apk:release    # release APK (needs signing config, see below)
 npm run bundle:release # release .aab for the Play Store
 ```
@@ -62,6 +63,60 @@ Install the debug APK on a phone (USB debugging on):
 ```sh
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
+
+### Local dev on the Android emulator
+
+`npm run run:android` launches the **bundled** app shell in `www/` (from your last
+`npm run build`). That build defaults to the **production CDN**
+(`game.rise-of-civilizations.com`) for art, audio, and baked-in URLs. It does
+**not** hot-reload your local TypeScript changes.
+
+To load the game from your **local Vite dev server** instead:
+
+**Terminal 1** (repo root): start the client (default port **5176**, not 5173):
+
+```sh
+bun run dev
+```
+
+**Terminal 2** (optional, repo root): local multiplayer server for MP/login:
+
+```sh
+bun run server
+cd mobile && npm run emu:reverse   # maps emulator :3001 → your machine :3001
+```
+
+`emu:reverse` uses `mobile/scripts/adb.mjs`, which finds `adb` under your Android SDK
+(e.g. `~/Library/Android/sdk/platform-tools/adb`) even when it is not on PATH. To add
+it permanently in zsh:
+
+```sh
+export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
+```
+
+When using `run:android:dev`, multiplayer can also use `ws://10.0.2.2:3001/ws`
+directly (no reverse needed) as long as `bun run server` is listening on your machine.
+
+**Terminal 3** (`mobile/`): sync Capacitor to point the WebView at Vite and run:
+
+```sh
+npm run run:android:dev
+```
+
+That sets `CAP_DEV_SERVER=http://10.0.2.2:5176`. `10.0.2.2` is how the Android
+emulator reaches your computer's `localhost`. The WebView loads the full app
+from Vite, including `public/audio/` and other local assets.
+
+To go back to the production-style bundled shell:
+
+```sh
+npm run build && npm run run:android
+```
+
+(Do not set `CAP_DEV_SERVER`.)
+
+Custom port or physical device on the same Wi‑Fi: use your LAN IP instead, e.g.
+`CAP_DEV_SERVER=http://192.168.1.42:5176 cap sync android && cap run android`.
 
 ### Signing for the Play Store
 

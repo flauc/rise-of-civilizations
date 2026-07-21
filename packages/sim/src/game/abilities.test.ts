@@ -3,6 +3,8 @@ import { getTile } from "@roc/shared";
 import { createGame } from "./setup";
 import { resolveAttack, unitMaxHp } from "./combat";
 import { useAbility, canUseAbility, tickAbilities, abilityTargets } from "./abilities";
+import { exploredForPlayer, visibleForPlayer } from "./visibility";
+import { viewForPlayer } from "./serialize";
 import { makeUnit, playerById, type GameState, type Unit } from "./state";
 
 function warAll(state: GameState): void {
@@ -128,6 +130,19 @@ describe("active abilities", () => {
     cata.movementLeft = 4;
     cata.attackedThisTurn = false;
     expect(canUseAbility(state, cata, "shock_charge").ok).toBe(false);
+  });
+
+  it("Reconnoiter reveals tiles and enemies in the extended sight radius", () => {
+    const state = bareGame();
+    const scout = place(state, 0, "scout", 10, 10);
+    // Park an enemy 5 tiles away (outside base sight 3, inside pulse sight 5).
+    const barb = place(state, 1, "warrior", 7, 5);
+    const key = "7,5";
+    expect(useAbility(state, scout, "reconnoiter").ok).toBe(true);
+    expect(exploredForPlayer(state, 0).has(key)).toBe(true);
+    expect(visibleForPlayer(state, 0).has(key)).toBe(true);
+    expect(viewForPlayer(state, 0).units.some((u) => u.id === barb.id)).toBe(true);
+    expect(viewForPlayer(state, 0).tiles.some((t) => t.col === 7 && t.row === 5)).toBe(true);
   });
 
   it("Reconnoiter spends the turn for a vision pulse", () => {

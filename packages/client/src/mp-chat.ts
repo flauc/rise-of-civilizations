@@ -11,6 +11,7 @@ import {
 } from "./chat-moderation";
 import { gameHud } from "./hud-root";
 import { confirmDialog, notifyDialog } from "./confirm-dialog";
+import { bindDialogClose } from "./dialog-close";
 import type { OnlineSession } from "./session";
 
 /** Phone / native shell — used for mobile-only lobby chat UX. */
@@ -419,7 +420,7 @@ export function mountGameChat(session: OnlineSession, viewerUserId?: string): ()
   };
 
   toggle.addEventListener("click", open);
-  closeBtn.addEventListener("click", close);
+  bindDialogClose(closeBtn, close);
 
   const onKeyDown = (e: KeyboardEvent): void => {
     if (e.key === "Escape" && chatOpen) {

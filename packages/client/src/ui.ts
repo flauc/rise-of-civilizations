@@ -7,6 +7,7 @@ import { confirmDialog } from "./confirm-dialog";
 import { createEmpire, type Tab as EmpireTab } from "./empire";
 import { createDiplomacy } from "./diplomacy";
 import { isPhoneShell } from "./viewport-shell";
+import { bindDialogClose } from "./dialog-close";
 import { gameHud, initGameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
 import { setPreservedHtml, withPreservedScroll } from "./panel-scroll";
 import type { DealItem } from "@roc/sim";
@@ -272,6 +273,45 @@ function formatMoveCostLabel(cost: number): string {
   const rounded = Math.round(cost * 4) / 4;
   if (Math.abs(rounded - Math.round(rounded)) < 0.01) return String(Math.round(rounded));
   return rounded.toFixed(2).replace(/\.?0+$/, "");
+}
+
+/** Hover labels for yield icons in city/tile panels. */
+const YIELD_TIPS = {
+  pop: "Population: citizens in this city. Each works a tile or specialist slot.",
+  food: "Food: per turn from worked tiles and buildings. Surplus fills the growth bar.",
+  production: "Production: hammers per turn. Builds buildings and city projects.",
+  gold: "Gold: per turn from tiles, buildings, and trade through this city.",
+  science: "Science: per turn. Pooled into your empire's research.",
+  faith: "Faith: per turn. Used for religious units and beliefs.",
+  culture: "Culture: per turn. Advances your government and civics.",
+} as const;
+
+function yieldStatSpan(icon: string, value: number | string, tip: string): string {
+  return `<span class="ip-stat" data-tip="${escapeHtml(tip)}">${icon} ${value}</span>`;
+}
+
+function cityPanelStatsHtml(
+  state: GameState,
+  city: City,
+  yd: ReturnType<typeof cityDisplayYields>,
+  opts: { perTurn: number; buildingSettler: boolean },
+): string {
+  const foodTip =
+    opts.buildingSettler
+      ? "Food per turn. Growth is paused while this city trains a settler."
+      : opts.perTurn > 0
+        ? `${YIELD_TIPS.food} +${opts.perTurn}/turn toward the next citizen.`
+        : `${YIELD_TIPS.food} No surplus right now, so the city is not growing.`;
+  const parts = [
+    yieldStatSpan("👥", city.population, YIELD_TIPS.pop),
+    yieldStatSpan("🍞", yd.food, foodTip),
+    yieldStatSpan("⚒️", yd.production, YIELD_TIPS.production),
+    yieldStatSpan("🪙", yd.gold, YIELD_TIPS.gold),
+    yieldStatSpan("🔬", yd.science, YIELD_TIPS.science),
+  ];
+  if (yd.faith) parts.push(yieldStatSpan("🙏", yd.faith, YIELD_TIPS.faith));
+  if (yd.culture) parts.push(yieldStatSpan("🎭", yd.culture, YIELD_TIPS.culture));
+  return parts.join("");
 }
 
 /** Format a trait's per-tile yield delta as "+1 🪙 −1 🍞", icons only for non-zero fields. */
@@ -576,20 +616,6 @@ function div(id: string, cls: string): HTMLDivElement {
   return el;
 }
 
-/** Reliable close on desktop and mobile WebKit (click alone can miss the ✕). */
-function bindDialogClose(btn: HTMLButtonElement, close: () => void): void {
-  let lastCloseAt = 0;
-  const run = (e: Event): void => {
-    e.preventDefault();
-    e.stopPropagation();
-    const now = performance.now();
-    if (now - lastCloseAt < 400) return;
-    lastCloseAt = now;
-    close();
-  };
-  btn.addEventListener("pointerdown", run, { capture: true });
-  btn.addEventListener("click", run);
-}
 
 function escapeHtml(text: string): string {
   const div = document.createElement("div");
@@ -895,6 +921,45 @@ export function createUI(handlers: UIHandlers): UI {
   const unitPanel = div("unit-panel", "panel hidden");
   const tilePanel = div("tile-panel", "panel hidden");
   const tileTip = div("tile-tip", "hidden");
+  const statTip = div("stat-tip", "hidden");
+  // Custom stat tooltips — native title= often never appears over the canvas HUD.
+  const positionStatTip = (anchor: HTMLElement): void => {
+    const pad = 8;
+    statTip.classList.remove("hidden");
+    statTip.style.visibility = "hidden";
+    statTip.style.left = "0";
+    statTip.style.top = "0";
+    const rect = anchor.getBoundingClientRect();
+    const tipW = statTip.offsetWidth;
+    const tipH = statTip.offsetHeight;
+    let left = rect.left + rect.width / 2 - tipW / 2;
+    left = Math.max(pad, Math.min(left, window.innerWidth - tipW - pad));
+    let top = rect.top - tipH - pad;
+    if (top < pad) top = rect.bottom + pad;
+    statTip.style.left = `${left}px`;
+    statTip.style.top = `${top}px`;
+    statTip.style.visibility = "";
+  };
+  const showStatTip = (el: HTMLElement): void => {
+    const text = el.dataset.tip?.trim();
+    if (!text) return;
+    statTip.textContent = text;
+    positionStatTip(el);
+  };
+  gameHud().addEventListener("mouseover", (e) => {
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    const el = (e.target as HTMLElement).closest<HTMLElement>("[data-tip]");
+    if (el?.dataset.tip) showStatTip(el);
+  });
+  gameHud().addEventListener("mouseout", (e) => {
+    if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    const from = (e.target as HTMLElement).closest<HTMLElement>("[data-tip]");
+    if (!from) return;
+    const to = (e as MouseEvent).relatedTarget as HTMLElement | null;
+    if (to?.closest?.("[data-tip]")) return;
+    statTip.classList.add("hidden");
+  });
+
   const cityPanel = div("city-panel", "panel hidden");
   const research = div("research", "panel hidden");
   const techtree = div("techtree", "panel hidden");
@@ -1007,7 +1072,7 @@ export function createUI(handlers: UIHandlers): UI {
     gpActivateOverlay.classList.add("show");
     gpActivateDialog.classList.add("show");
   };
-  gpActivateDialog.querySelector<HTMLButtonElement>("#gp-activate-x")!.addEventListener("click", hideGreatPersonActivate);
+  bindDialogClose(gpActivateDialog.querySelector<HTMLButtonElement>("#gp-activate-x")!, hideGreatPersonActivate);
   gpActivateCancel.addEventListener("click", hideGreatPersonActivate);
   gpActivateConfirm.addEventListener("click", () => {
     const id = pendingGreatPersonId;
@@ -1068,7 +1133,7 @@ export function createUI(handlers: UIHandlers): UI {
     leaderAbilityOverlay.classList.add("show");
     leaderAbilityDialog.classList.add("show");
   };
-  leaderAbilityDialog.querySelector<HTMLButtonElement>("#la-dialog-x")!.addEventListener("click", hideLeaderAbility);
+  bindDialogClose(leaderAbilityDialog.querySelector<HTMLButtonElement>("#la-dialog-x")!, hideLeaderAbility);
   laDialogCancel.addEventListener("click", hideLeaderAbility);
   laDialogConfirm.addEventListener("click", () => {
     if (laDialogConfirm.disabled) return;
@@ -1271,7 +1336,7 @@ export function createUI(handlers: UIHandlers): UI {
     unitPromoOverlay.classList.add("show");
     unitPromoDialog.classList.add("show");
   };
-  unitPromoClose.addEventListener("click", hideUnitPromoDialog);
+  bindDialogClose(unitPromoClose, hideUnitPromoDialog);
 
   const turnUpdateOverlay = div("turn-update-overlay", "");
   const turnUpdateDialog = div("turn-update-dialog", "");
@@ -1509,7 +1574,7 @@ export function createUI(handlers: UIHandlers): UI {
     panel.querySelector<HTMLElement>(".ip-summary")?.addEventListener("click", (e) => {
       // The ✕ and any inline quick-action buttons (e.g. quick-cast abilities) live
       // inside the bar but must act on their own, not collapse the panel.
-      if ((e.target as HTMLElement).closest(".ip-close, [data-ability], [data-found]")) return;
+      if ((e.target as HTMLElement).closest(".ip-close, .ip-stat, [data-ability], [data-found]")) return;
       onToggle();
     });
   };
@@ -1608,7 +1673,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
 
   villageOk.addEventListener("click", closeVillageDialog);
-  villageDialog.querySelector<HTMLButtonElement>("#village-close")!.addEventListener("click", closeVillageDialog);
+  bindDialogClose(villageDialog.querySelector<HTMLButtonElement>("#village-close")!, closeVillageDialog);
 
   const turnUpdateImagePath = (ev: TurnUpdateEvent): string => {
     if (ev.type === "wonderComplete" && ev.payload?.wonderId) {
@@ -1896,7 +1961,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderTurnUpdateDialog();
     }
   });
-  turnUpdateClose.addEventListener("click", hideTurnUpdateDialog);
+  bindDialogClose(turnUpdateClose, hideTurnUpdateDialog);
 
   const renderAction = (view: UIView): void => {
     if (view.state.gameOver) {
@@ -2322,7 +2387,7 @@ export function createUI(handlers: UIHandlers): UI {
       withPreservedScroll(saveModal, () => {
         saveModal.innerHTML = html;
       });
-      saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
+      bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
         menuOpen = false;
         renderMenu(state);
       });
@@ -2456,7 +2521,7 @@ export function createUI(handlers: UIHandlers): UI {
       });
       const input = saveModal.querySelector<HTMLInputElement>("#leave-save-name")!;
       input.focus();
-      saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
+      bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
         menuView = "menu";
         renderMenu(state);
       });
@@ -2500,7 +2565,7 @@ export function createUI(handlers: UIHandlers): UI {
       const ta = saveModal.querySelector<HTMLTextAreaElement>("#bug-text")!;
       ta.focus();
       const statusEl = saveModal.querySelector<HTMLDivElement>("#bug-status")!;
-      saveModal.querySelector<HTMLButtonElement>("#bug-close")!.addEventListener("click", () => {
+      bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#bug-close")!, () => {
         menuView = "menu";
         renderMenu(state);
       });
@@ -2546,7 +2611,7 @@ export function createUI(handlers: UIHandlers): UI {
     });
     const input = saveModal.querySelector<HTMLInputElement>("#save-name")!;
     input.focus();
-    saveModal.querySelector<HTMLButtonElement>("#save-close")!.addEventListener("click", () => {
+    bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
       menuView = "menu";
       renderMenu(state);
     });
@@ -2834,7 +2899,7 @@ export function createUI(handlers: UIHandlers): UI {
       withPreservedScroll(civics, () => {
         civics.innerHTML = html;
       });
-      civics.querySelector<HTMLButtonElement>("#vclose")!.addEventListener("click", () => {
+      bindDialogClose(civics.querySelector<HTMLButtonElement>("#vclose")!, () => {
         civicsOpen = false;
         civics.classList.add("hidden");
       });
@@ -2993,7 +3058,7 @@ export function createUI(handlers: UIHandlers): UI {
     withPreservedScroll(civics, () => {
       civics.innerHTML = html;
     });
-    civics.querySelector<HTMLButtonElement>("#vclose")!.addEventListener("click", () => {
+    bindDialogClose(civics.querySelector<HTMLButtonElement>("#vclose")!, () => {
       civicsOpen = false;
       civics.classList.add("hidden");
     });
@@ -4592,8 +4657,19 @@ export function createUI(handlers: UIHandlers): UI {
     }
     const r = tileReport(state, tile, viewerId);
     const y = r.yields;
+    const yieldTip = (icon: string): string => {
+      switch (icon) {
+        case "🍞": return YIELD_TIPS.food;
+        case "⚒️": return YIELD_TIPS.production;
+        case "🪙": return YIELD_TIPS.gold;
+        case "🔬": return YIELD_TIPS.science;
+        case "🙏": return YIELD_TIPS.faith;
+        case "🎭": return YIELD_TIPS.culture;
+        default: return "";
+      }
+    };
     const chip = (icon: string, n: number) =>
-      `<span style="${n ? "" : "opacity:.35"}" title="${icon}">${icon} <b>${n}</b></span>`;
+      `<span class="ip-stat" style="${n ? "" : "opacity:.35"}" data-tip="${escapeHtml(yieldTip(icon))}">${icon} <b>${n}</b></span>`;
     // Every non-zero yield, so tiles like Wooded Hills (+science) aren't misread as
     // food/production-only; a barren tile falls back to the faded food/production pair.
     const allYields: Array<[string, number]> = [
@@ -4915,11 +4991,11 @@ export function createUI(handlers: UIHandlers): UI {
       godPanel.innerHTML = html;
     });
     godModeRenderSig = sig;
-    godPanel.querySelector<HTMLButtonElement>("#god-close")!.addEventListener("click", (e) => {
-      e.stopPropagation();
+    const closeGod = (): void => {
       godModeOpen = false;
       renderGodMode(view);
-    });
+    };
+    bindDialogClose(godPanel.querySelector<HTMLButtonElement>("#god-close")!, closeGod);
     godPanel.querySelector<HTMLButtonElement>("#god-liftfog")?.addEventListener("click", () => {
       handlers.onToggleLiftFog(!view.liftFog);
     });
@@ -5129,9 +5205,9 @@ export function createUI(handlers: UIHandlers): UI {
               `<div class="bar"><i style="width:${prodPct}%"></i></div></div>`
             );
           })()) +
-      `<button class="btn csheet-btn" id="open-prod"><span class="cs-l"><span class="ci">🔨</span>Construction</span><span class="sub">${options.length} ▸</span></button>` +
-      `<button class="btn csheet-btn" id="open-train"><span class="cs-l"><span class="ci">⚔️</span>Train Units</span><span class="sub">${freeCitizens(city)} free${city.trainingQueue.length ? ` · ${city.trainingQueue.length} training` : ""} ▸</span></button>` +
-      `<button class="btn csheet-btn" id="open-spec"><span class="cs-l"><span class="ci">🛠️</span>Specialists</span><span class="sub">${specCount} trained · ${free} free${worksCount ? ` · ${worksCount} works` : ""} ▸</span></button>` +
+      `<button class="btn csheet-btn" id="open-prod" data-tip="Construction: choose buildings and city projects to build"><span class="cs-l"><span class="ci">🔨</span>Construction</span><span class="sub">${options.length} ▸</span></button>` +
+      `<button class="btn csheet-btn" id="open-train" data-tip="Train Units: queue military, civilian, and support units"><span class="cs-l"><span class="ci">⚔️</span>Train Units</span><span class="sub">${freeCitizens(city)} free${city.trainingQueue.length ? ` · ${city.trainingQueue.length} training` : ""} ▸</span></button>` +
+      `<button class="btn csheet-btn" id="open-spec" data-tip="Specialists: assign workers to public works and wonders"><span class="cs-l"><span class="ci">🛠️</span>Specialists</span><span class="sub">${specCount} trained · ${free} free${worksCount ? ` · ${worksCount} works` : ""} ▸</span></button>` +
       (() => {
         const routes = tradeRoutesFrom(state, city.id);
         if (!routes.length) return "";
@@ -5149,7 +5225,7 @@ export function createUI(handlers: UIHandlers): UI {
         summaryBar({
           icon: city.isCapital ? "★" : "🏙️",
           name: "",
-          stats: `👥 ${city.population} · 🍞 ${yd.food} · ⚒️ ${yd.production} · 🪙 ${yd.gold} · 🔬 ${yd.science}`,
+          stats: cityPanelStatsHtml(state, city, yd, { perTurn, buildingSettler }),
           closeId: "cclose",
         }) +
         `<div class="ip-detail">${detail}</div>`;

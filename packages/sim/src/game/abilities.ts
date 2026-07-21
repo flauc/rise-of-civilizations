@@ -353,7 +353,7 @@ export function useAbility(
     unit.scouting = true;
     unit.movementLeft = 0;
     unit.attackedThisTurn = true;
-    revealHiddenInSight(state, unit, unitSight(state, unit) + 2); // the pulse flushes out hidden units
+    revealHiddenInSight(state, unit, unitSight(state, unit)); // pulse flushes hidden units in scouting sight
     updateExplored(state, unit.ownerId); // reveal the wider radius now
     return ok;
   }

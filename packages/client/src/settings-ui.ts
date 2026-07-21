@@ -8,7 +8,9 @@ import {
   shouldOfferScreenRotation,
 } from "./screen-rotation-ui";
 import { isNativeApp, setLobbyHidden } from "./app-routes";
+import { unlockAppAudioFromGesture } from "./game-sounds";
 import { getSettings, updateSettings, type TurnUpdateView } from "./settings";
+import { bindDialogClose } from "./dialog-close";
 
 export interface SettingsPanelOptions {
   /** Show the destructive delete-account section (registered users only). */
@@ -36,8 +38,11 @@ function ensureElements(): { overlay: HTMLDivElement; dialog: HTMLDivElement } {
     dialogEl.className = "settings-dialog";
     document.body.appendChild(overlayEl);
     document.body.appendChild(dialogEl);
-    overlayEl.addEventListener("click", (e) => {
-      if (e.target === overlayEl) closeSettingsPanel();
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && open) {
+        e.stopPropagation();
+        closeSettingsPanel();
+      }
     });
   }
   return { overlay: overlayEl, dialog: dialogEl! };
@@ -99,6 +104,13 @@ function settingsHtml(): string {
     `<button class="seg-btn ${s.mapLabels === "selected" ? "active" : ""}" data-map-labels="selected" title="Only show the label of the selected unit or city">When selected</button>` +
     `<button class="seg-btn ${s.mapLabels === "always" ? "active" : ""}" data-map-labels="always" title="Always show every name label">Always</button>` +
     `</div></div>` +
+    `<div class="settings-section">` +
+    `<div class="settings-title">Audio</div>` +
+    `<div class="settings-hint">Background music and combat sound effects play in the lobby and during games.</div>` +
+    `<div class="settings-row">` +
+    `<label class="settings-check"><input type="checkbox" id="settings-music" ${s.musicEnabled ? "checked" : ""} /> Music</label>` +
+    `<label class="settings-check"><input type="checkbox" id="settings-sfx" ${s.sfxEnabled ? "checked" : ""} /> Sound effects</label>` +
+    `</div></div>` +
     (shouldOfferScreenRotation()
       ? `<div class="settings-section">` +
         `<div class="settings-title">Screen Rotation</div>` +
@@ -119,7 +131,7 @@ function escapeHtml(text: string): string {
 function bindSettingsPanel(): void {
   const { dialog } = ensureElements();
 
-  dialog.querySelector<HTMLButtonElement>("#settings-close")!.addEventListener("click", closeSettingsPanel);
+  bindDialogClose(dialog.querySelector<HTMLButtonElement>("#settings-close")!, closeSettingsPanel);
   dialog.querySelectorAll<HTMLButtonElement>("[data-tu-mode]").forEach((el) =>
     el.addEventListener("click", () => {
       const mode = el.dataset.tuMode;
@@ -145,6 +157,14 @@ function bindSettingsPanel(): void {
       renderSettingsPanel();
     }),
   );
+  dialog.querySelector<HTMLInputElement>("#settings-music")?.addEventListener("change", (e) => {
+    updateSettings({ musicEnabled: (e.target as HTMLInputElement).checked });
+    unlockAppAudioFromGesture();
+  });
+  dialog.querySelector<HTMLInputElement>("#settings-sfx")?.addEventListener("change", (e) => {
+    updateSettings({ sfxEnabled: (e.target as HTMLInputElement).checked });
+    unlockAppAudioFromGesture();
+  });
   if (shouldOfferScreenRotation()) bindScreenRotationControls(dialog, () => renderSettingsPanel());
 
   dialog.querySelector<HTMLButtonElement>("#settings-delete-account")?.addEventListener("click", () => {

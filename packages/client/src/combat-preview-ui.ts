@@ -1,6 +1,7 @@
 // Pre-attack confirmation dialog: estimated damage and combat modifiers.
 
 import type { CombatModifier, CombatPreviewDetail } from "@roc/sim";
+import { bindDialogClose } from "./dialog-close";
 import { assetUrl } from "./asset-base";
 
 let overlayEl: HTMLDivElement | null = null;
@@ -139,7 +140,7 @@ export function showCombatPreviewDialog(detail: CombatPreviewDetail, onAttack: (
   dialog.classList.add("show");
 
   const dismiss = () => closeDialog();
-  dialog.querySelector<HTMLButtonElement>("#combat-preview-close")!.addEventListener("click", dismiss);
+  bindDialogClose(dialog.querySelector<HTMLButtonElement>("#combat-preview-close")!, dismiss);
   dialog.querySelector<HTMLButtonElement>("#combat-preview-cancel")!.addEventListener("click", dismiss);
   dialog.querySelector<HTMLButtonElement>("#combat-preview-attack")!.addEventListener("click", () => {
     dismiss();

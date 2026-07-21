@@ -8,6 +8,7 @@ import {
 } from "@roc/shared";
 
 import { clearOverlayPathIfNeeded, persistOverlayPath, setLobbyHidden } from "./app-routes";
+import { bindDialogClose } from "./dialog-close";
 export const SUPPORT_URL = "https://game.rise-of-civilizations.com/support";
 
 function resolveSupportEndpoint(): string {
@@ -241,7 +242,7 @@ export function createSupportPage(): SupportPage {
     }
   };
 
-  root.querySelector<HTMLButtonElement>("#support-close")!.addEventListener("click", close);
+  bindDialogClose(root.querySelector<HTMLButtonElement>("#support-close")!, close);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !root.classList.contains("hidden")) close();
   });

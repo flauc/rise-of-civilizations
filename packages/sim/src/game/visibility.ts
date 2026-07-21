@@ -43,6 +43,9 @@ export function exploredForPlayer(state: GameState, playerId: number): Set<strin
     const partner = state.players.find((p) => p.id === partnerId);
     if (partner) for (const k of partner.explored) explored.add(k);
   }
+  // Currently visible tiles always count as explored for rendering and the
+  // server view — e.g. a Reconnoiter pulse may show units before explored folds in.
+  for (const k of visibleForPlayer(state, playerId)) explored.add(k);
   return explored;
 }
 

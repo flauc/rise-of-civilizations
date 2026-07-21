@@ -5,6 +5,7 @@
 // picks) persist in localStorage so the board feels alive across sessions.
 
 import { trackFeatureVote } from "./analytics";
+import { bindDialogClose } from "./dialog-close";
 
 interface Milestone {
   id: string;
@@ -268,7 +269,7 @@ export function createRoadmap(): { open(): void; close(): void } {
   const doClose = (): void => {
     root.classList.add("hidden");
   };
-  root.querySelector<HTMLButtonElement>("#roadmap-close")!.addEventListener("click", doClose);
+  bindDialogClose(root.querySelector<HTMLButtonElement>("#roadmap-close")!, doClose);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !root.classList.contains("hidden")) doClose();
   });

@@ -3,6 +3,7 @@
 import { assetUrl, bundledAssetUrl } from "./asset-base";
 import { isNativeApp } from "./app-routes";
 import { configureMobileAudio, unlockGameAudio } from "./game-audio-unlock";
+import { duckBackgroundMusic, unduckBackgroundMusic } from "./game-sounds";
 
 /** Pre-baked clip speed in the browser (1 = normal). Text sync follows currentTime. */
 export const LOADING_VOICE_PLAYBACK_RATE = 1;
@@ -12,6 +13,19 @@ const PLAY_RETRY_MS = 120;
 
 let currentAudio: HTMLAudioElement | null = null;
 let currentUtterance: SpeechSynthesisUtterance | null = null;
+let voiceBedDucked = false;
+
+function duckVoiceBed(): void {
+  if (voiceBedDucked) return;
+  voiceBedDucked = true;
+  duckBackgroundMusic();
+}
+
+function unduckVoiceBed(): void {
+  if (!voiceBedDucked) return;
+  voiceBedDucked = false;
+  unduckBackgroundMusic();
+}
 const preloadCache = new Map<string, HTMLAudioElement>();
 
 export function loadingVoiceClipUrl(civId: string, version?: string | null): string {
@@ -83,6 +97,7 @@ export function stopLoadingVoice(): void {
   }
   if ("speechSynthesis" in window) window.speechSynthesis.cancel();
   currentUtterance = null;
+  unduckVoiceBed();
 }
 
 function speakWithBrowserTts(text: string, onEnd?: () => void): void {
@@ -96,12 +111,15 @@ function speakWithBrowserTts(text: string, onEnd?: () => void): void {
   u.pitch = 0.92;
   u.onend = () => {
     if (currentUtterance === u) currentUtterance = null;
+    unduckVoiceBed();
     onEnd?.();
   };
   u.onerror = () => {
     if (currentUtterance === u) currentUtterance = null;
+    unduckVoiceBed();
     onEnd?.();
   };
+  duckVoiceBed();
   currentUtterance = u;
   window.speechSynthesis.speak(u);
 }
@@ -180,6 +198,7 @@ export function speakLoadingLine(text: string, civId: string, handlers?: Loading
     "playing",
     () => {
       clearLoadTimer();
+      duckVoiceBed();
       if (currentAudio === audio) handlers?.onSyncStart?.(audio);
     },
     { once: true },
@@ -190,6 +209,7 @@ export function speakLoadingLine(text: string, civId: string, handlers?: Loading
       clearLoadTimer();
       if (currentAudio !== audio) return;
       currentAudio = null;
+      unduckVoiceBed();
       handlers?.onEnd?.();
     },
     { once: true },

@@ -9,15 +9,23 @@ import privacyRaw from "../public/privacy.html?raw";
 import termsRaw from "../public/terms.html?raw";
 import deleteAccountRaw from "../public/delete-account.html?raw";
 import { clearOverlayPathIfNeeded, persistOverlayPath, setLobbyHidden } from "./app-routes";
+import { bindDialogClose } from "./dialog-close";
 import { openSupportPage } from "./support-page";
 
 export type LegalPage = "terms" | "privacy" | "delete-account";
 
-const PAGES: Record<LegalPage, { title: string; html: string }> = {
-  privacy: { title: "Privacy Policy", html: extractLegalBody(privacyRaw) },
-  terms: { title: "Terms of Service", html: extractLegalBody(termsRaw) },
-  "delete-account": { title: "Delete Account", html: extractLegalBody(deleteAccountRaw) },
-};
+let pagesCache: Record<LegalPage, { title: string; html: string }> | null = null;
+
+function legalPages(): Record<LegalPage, { title: string; html: string }> {
+  if (!pagesCache) {
+    pagesCache = {
+      privacy: { title: "Privacy Policy", html: extractLegalBody(privacyRaw) },
+      terms: { title: "Terms of Service", html: extractLegalBody(termsRaw) },
+      "delete-account": { title: "Delete Account", html: extractLegalBody(deleteAccountRaw) },
+    };
+  }
+  return pagesCache;
+}
 
 /** Public URL for store listings (Play Console privacy policy field). */
 export const PRIVACY_POLICY_URL = "https://game.rise-of-civilizations.com/privacy";
@@ -121,7 +129,7 @@ export function createLegalViewer(): LegalViewer {
 
   const render = (page: LegalPage): void => {
     current = page;
-    const doc = PAGES[page];
+    const doc = legalPages()[page];
     titleEl.textContent = doc.title;
     bodyEl.innerHTML = doc.html;
     // Cross-links inside the legal text (e.g. privacy ↔ terms).
@@ -166,7 +174,7 @@ export function createLegalViewer(): LegalViewer {
     current = null;
   };
 
-  root.querySelector<HTMLButtonElement>("#legal-close")!.addEventListener("click", close);
+  bindDialogClose(root.querySelector<HTMLButtonElement>("#legal-close")!, close);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !root.classList.contains("hidden")) close();
   });
