@@ -14,6 +14,19 @@
         if (leaf === "support" || leaf === "support.html") return "support";
         return null;
       })();
+      window.__ROC_PHONE_SHELL__ = (function () {
+        var w = window.innerWidth;
+        var h = window.innerHeight;
+        var short = Math.min(w, h);
+        var long = Math.max(w, h);
+        var coarse = window.matchMedia("(pointer: coarse)").matches;
+        if (short <= 540 && coarse) return true;
+        if (short <= 540 && long <= 960) return true;
+        return false;
+      })();
+      if (window.__ROC_PHONE_SHELL__) {
+        document.documentElement.classList.add("roc-phone-shell");
+      }
     </script>
     <meta charset="UTF-8" />
     <meta
@@ -74,6 +87,11 @@
         --dialog-top: max(68px, calc(52px + env(safe-area-inset-top)));
         --dialog-transform: translateX(-50%);
         --dialog-max-h: calc(100vh - 84px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+        /* Remapped when CSS orientation fallback rotates the page (see html.roc-want-*). */
+        --roc-safe-top: env(safe-area-inset-top, 0px);
+        --roc-safe-right: env(safe-area-inset-right, 0px);
+        --roc-safe-bottom: env(safe-area-inset-bottom, 0px);
+        --roc-safe-left: env(safe-area-inset-left, 0px);
       }
       * {
         box-sizing: border-box;
@@ -88,9 +106,21 @@
       }
       body.roc-native {
         min-height: 100%;
+        min-height: 100dvh;
         background: #0f0e0b;
         /* Dialog headers pad for safe-area; keep ✕ inset modest so it stays fully tappable. */
         --dialog-x-top: 10px;
+      }
+      /* Home-screen PWA (Add to Home Screen) — same inset treatment as native. */
+      body.roc-standalone {
+        min-height: 100%;
+        min-height: 100dvh;
+        background: #0f0e0b;
+        --dialog-x-top: 10px;
+      }
+      /* Native / PWA lobby: #lobby is the scroll container (body stays overflow:hidden). */
+      body.roc-lobby-open #lobby {
+        touch-action: pan-y;
       }
       /* iOS Safari and other mobile browsers cannot lock orientation in a tab.
          When the player picks Horizontal / Vertical, rotate the page in CSS. */
@@ -104,6 +134,10 @@
           transform: rotate(90deg);
           transform-origin: top left;
           overflow: hidden;
+          --roc-safe-top: env(safe-area-inset-left, 0px);
+          --roc-safe-right: env(safe-area-inset-top, 0px);
+          --roc-safe-bottom: env(safe-area-inset-right, 0px);
+          --roc-safe-left: env(safe-area-inset-bottom, 0px);
         }
       }
       @media (orientation: landscape) {
@@ -116,6 +150,10 @@
           transform: rotate(-90deg);
           transform-origin: top left;
           overflow: hidden;
+          --roc-safe-top: env(safe-area-inset-right, 0px);
+          --roc-safe-right: env(safe-area-inset-bottom, 0px);
+          --roc-safe-bottom: env(safe-area-inset-left, 0px);
+          --roc-safe-left: env(safe-area-inset-top, 0px);
         }
       }
       h1, h2, h3, h4 {
@@ -189,6 +227,7 @@
       }
       .panel {
         position: fixed;
+        isolation: isolate;
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
@@ -1823,15 +1862,13 @@
       #banner.show {
         opacity: 1;
       }
-      /* Touch / narrow: shrink so the turn banner keeps to a single line. */
-      @media (max-width: 860px), (pointer: coarse) {
-        #banner {
-          font-size: 14px;
-          padding: 8px 14px;
-          border-radius: 12px;
-          max-width: calc(100vw - 32px);
-          text-align: center;
-        }
+      /* Touch / phone shell: shrink so the turn banner keeps to a single line. */
+      html.roc-phone-shell #banner {
+        font-size: 14px;
+        padding: 8px 14px;
+        border-radius: 12px;
+        max-width: calc(100vw - 32px);
+        text-align: center;
       }
       /* village reward dialog */
       #village-overlay {
@@ -1855,11 +1892,9 @@
         align-items: flex-start;
         padding: var(--dialog-top) 16px 16px;
       }
-      @media (max-width: 860px), (pointer: coarse) {
-        #confirm-modal {
-          align-items: center;
-          padding: 16px;
-        }
+      html.roc-phone-shell #confirm-modal {
+        align-items: center;
+        padding: 16px;
       }
       #village-dialog {
         position: fixed;
@@ -2361,7 +2396,7 @@
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.2s;
-        z-index: 60;
+        z-index: 68;
       }
       #log-overlay.show {
         opacity: 1;
@@ -2383,14 +2418,14 @@
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.2s;
-        z-index: 61;
+        z-index: 69;
       }
       #log-dialog.show {
         opacity: 1;
         pointer-events: auto;
       }
       .log-dialog-title {
-        margin-bottom: 12px;
+        margin-bottom: 0;
       }
       #log-dialog,
       #leaderboard-dialog,
@@ -2658,7 +2693,7 @@
         pointer-events: auto;
       }
       .gold-dialog-title {
-        margin-bottom: 12px;
+        margin-bottom: 0;
       }
       #gold-dialog-content {
         flex: 1;
@@ -2747,19 +2782,45 @@
         touch-action: manipulation;
         overflow: visible;
         /* Stays above positioned siblings, e.g. the unique-unit card's art. */
-        z-index: 20;
+        z-index: 50;
         pointer-events: auto;
         transition: background 0.15s ease, color 0.15s ease;
       }
-      /* Invisible expanded tap target so ✕ / Back aren't half off the hit area on phones. */
+      #gold-dialog,
+      #morale-dialog,
+      #log-dialog,
+      #leaderboard-dialog,
+      #unit-promo-dialog,
+      #turn-update-dialog,
+      #village-dialog,
+      #gp-activate-dialog,
+      #leader-ability-dialog,
+      #combat-preview-dialog {
+        isolation: isolate;
+      }
+      /* Invisible expanded tap target; clicks stay on the button (not a blocking layer). */
       .dialog-x::before {
         content: "";
         position: absolute;
         inset: -12px;
+        pointer-events: none;
       }
       .dialog-x:hover {
         background: rgba(201, 162, 39, 0.14);
         color: var(--accent-bright);
+      }
+      /* Pinned ✕ + title row; scrolling body stays beneath it. */
+      .dialog-head-band {
+        flex: none;
+        position: relative;
+        flex-shrink: 0;
+        min-height: calc(var(--dialog-x-top) + var(--dialog-x-size));
+        padding-right: var(--dialog-x-gutter);
+        margin-bottom: 12px;
+        z-index: 2;
+      }
+      .dialog-x .gi {
+        pointer-events: none;
       }
       /* Every in-game dialog title, one scale. Keep this list and the header-band
          list below in sync when a dialog is added. */
@@ -3526,57 +3587,50 @@
       #combat-preview-dialog .combat-preview-actions .btn.primary {
         min-width: 100px;
       }
-      @media (max-width: 520px) {
-        /* Every dialog title steps down together on phones, rather than each
-           dialog picking its own mobile size. */
-        :root {
-          --dialog-title-size: 17px;
-        }
-        #combat-preview-dialog {
-          width: calc(100vw - 16px);
-          padding: 14px 10px 12px;
-        }
-        #combat-preview-dialog .combat-preview-matchup {
-          grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-          gap: 6px;
-          align-items: stretch;
-        }
-        #combat-preview-dialog .combat-preview-vs {
-          align-self: center;
-          padding-top: 0;
-          font-size: 10px;
-        }
-        #combat-preview-dialog .combat-preview-col {
-          padding: 8px 6px;
-          gap: 6px;
-        }
-        #combat-preview-dialog .combat-preview-portrait {
-          width: 44px;
-          height: 44px;
-        }
-        #combat-preview-dialog .combat-preview-col-name {
-          font-size: 11px;
-        }
-        #combat-preview-dialog .combat-preview-stat {
-          font-size: 11px;
-        }
-        #combat-preview-dialog .combat-preview-stat-val {
-          font-size: 12px;
-        }
-        #combat-preview-dialog .combat-preview-mod {
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 2px;
-        }
-        #combat-preview-dialog .combat-preview-mod-effect {
-          text-align: left;
-        }
-        #combat-preview-dialog .combat-preview-actions {
-          justify-content: stretch;
-        }
-        #combat-preview-dialog .combat-preview-actions .btn {
-          flex: 1;
-        }
+      html.roc-phone-shell #combat-preview-dialog {
+        width: calc(100vw - 16px);
+        padding: 14px 10px 12px;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-matchup {
+        grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+        gap: 6px;
+        align-items: stretch;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-vs {
+        align-self: center;
+        padding-top: 0;
+        font-size: 10px;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-col {
+        padding: 8px 6px;
+        gap: 6px;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-portrait {
+        width: 44px;
+        height: 44px;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-col-name {
+        font-size: 11px;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-stat {
+        font-size: 11px;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-stat-val {
+        font-size: 12px;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-mod {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-mod-effect {
+        text-align: left;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-actions {
+        justify-content: stretch;
+      }
+      html.roc-phone-shell #combat-preview-dialog .combat-preview-actions .btn {
+        flex: 1;
       }
       .rotation-controls {
         margin-top: 14px;
@@ -3633,12 +3687,49 @@
         z-index: 5;
         pointer-events: none;
       }
+      /* WebKit: when the HUD root is pointer-events:none, taps may never reach
+         overlay dialogs even if children set pointer-events:auto — enable the
+         shell while treasury / log / leaderboard (etc.) are open. */
+      #game-hud:has(#gold-dialog.show),
+      #game-hud:has(#log-dialog.show),
+      #game-hud:has(#leaderboard-dialog.show),
+      #game-hud:has(#morale-dialog.show),
+      #game-hud:has(#unit-promo-dialog.show),
+      #game-hud:has(#turn-update-dialog.show),
+      #game-hud:has(#village-dialog.show),
+      #game-hud:has(#gp-activate-dialog.show),
+      #game-hud:has(#leader-ability-dialog.show),
+      #game-hud:has(#combat-preview-dialog.show),
+      #game-hud:has(#save-modal:not(.hidden)) {
+        pointer-events: auto;
+      }
       /* Loading veil hides the HUD; never leave it stuck after dismiss. */
       body.roc-loading-scroll #game-hud {
         opacity: 0;
         pointer-events: none;
       }
       #game-hud .panel:not(.hidden),
+      #game-hud #techtree:not(.hidden),
+      #game-hud #gold-overlay.show,
+      #game-hud #gold-dialog.show,
+      #game-hud #morale-overlay.show,
+      #game-hud #morale-dialog.show,
+      #game-hud #leaderboard-overlay.show,
+      #game-hud #leaderboard-dialog.show,
+      #game-hud #unit-promo-overlay.show,
+      #game-hud #unit-promo-dialog.show,
+      #game-hud #log-overlay.show,
+      #game-hud #log-dialog.show,
+      #game-hud #turn-update-overlay.show,
+      #game-hud #turn-update-dialog.show,
+      #game-hud #village-overlay.show,
+      #game-hud #village-dialog.show,
+      #game-hud #gp-activate-overlay.show,
+      #game-hud #gp-activate-dialog.show,
+      #game-hud #leader-ability-overlay.show,
+      #game-hud #leader-ability-dialog.show,
+      #game-hud #combat-preview-overlay.show,
+      #game-hud #combat-preview-dialog.show,
       #game-hud .action-btn,
       #game-hud #topbar,
       #game-hud #bottom-bar,
@@ -3680,13 +3771,17 @@
       }
       body.roc-native:has(#game-hud #game-chat.open.fullscreen) #topbar,
       body.roc-native:has(#game-hud #game-chat.open.fullscreen) #leader-avatar,
-      body.roc-native:has(#game-hud #game-chat.open.fullscreen) #game-chat-toggle {
+      body.roc-native:has(#game-hud #game-chat.open.fullscreen) #game-chat-toggle,
+      body.roc-standalone:has(#game-hud #game-chat.open.fullscreen) #topbar,
+      body.roc-standalone:has(#game-hud #game-chat.open.fullscreen) #leader-avatar,
+      body.roc-standalone:has(#game-hud #game-chat.open.fullscreen) #game-chat-toggle {
         visibility: hidden;
         pointer-events: none;
       }
 
-      /* Native WebKit: map is tappable unless a real overlay is open. */
-      body.roc-native #game {
+      /* Native / home-screen PWA WebKit: map is tappable unless a real overlay is open. */
+      body.roc-native #game,
+      body.roc-standalone #game {
         pointer-events: auto;
       }
       body.roc-native:has(#game-hud #save-modal:not(.hidden)) #game,
@@ -3694,12 +3789,19 @@
       body.roc-native:has(#game-hud #diplomacy:not(.hidden)) #game,
       body.roc-native:has(#game-hud #game-chat.open.fullscreen) #game,
       body.roc-native:has(#game-hud #diplo-contact.show) #game,
-      body.roc-native:has(#game-hud #diplo-proposal.show) #game {
+      body.roc-native:has(#game-hud #diplo-proposal.show) #game,
+      body.roc-standalone:has(#game-hud #save-modal:not(.hidden)) #game,
+      body.roc-standalone:has(#game-hud #empire:not(.hidden)) #game,
+      body.roc-standalone:has(#game-hud #diplomacy:not(.hidden)) #game,
+      body.roc-standalone:has(#game-hud #game-chat.open.fullscreen) #game,
+      body.roc-standalone:has(#game-hud #diplo-contact.show) #game,
+      body.roc-standalone:has(#game-hud #diplo-proposal.show) #game {
         pointer-events: none !important;
       }
 
-      /* Native / touch: no HUD scale (misaligns taps on emulators and landscape phones). */
-      body.roc-native #game-hud {
+      /* Native / home-screen PWA: no HUD scale (misaligns taps on emulators and landscape phones). */
+      html.roc-phone-shell body.roc-native #game-hud,
+      html.roc-phone-shell body.roc-standalone #game-hud {
         --hud-scale: 1;
         width: 100%;
         height: 100%;
@@ -3707,59 +3809,68 @@
       }
 
       /* ---- mobile / narrow screens: panels become bottom sheets ---- */
-      @media (max-width: 860px), (pointer: coarse) {
-        :root {
-          --dialog-x-size: 44px;
-          --dialog-x-top: max(10px, env(safe-area-inset-top));
-          --dialog-x-right: max(10px, env(safe-area-inset-right));
-          --dialog-x-gutter: 52px;
-          /* Centered on touch screens: the top bar is taller here and a
-             top-anchored dialog would overlap it. dvh tracks the visible
-             viewport as the mobile browser toolbar shows/hides. */
-          --dialog-top: 50%;
-          --dialog-transform: translate(-50%, -50%);
-          --dialog-max-h: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
-        }
-        body.roc-native {
+      html.roc-phone-shell {
+        --roc-ui-pad: clamp(10px, 2.8vmin, 18px);
+        --roc-ui-gap: clamp(4px, 1.2vmin, 10px);
+        --roc-touch-target: max(44px, clamp(40px, 10vmin, 48px));
+        --roc-phone-menu-w: min(360px, calc(100vw - 2 * var(--roc-ui-pad) - var(--roc-safe-left, 0px) - var(--roc-safe-right, 0px)));
+        --dialog-x-size: 44px;
+        --dialog-x-top: max(10px, var(--roc-safe-top, env(safe-area-inset-top, 0px)));
+        --dialog-x-right: max(10px, var(--roc-safe-right, env(safe-area-inset-right, 0px)));
+        --dialog-x-gutter: 52px;
+        /* Centered on phones: the top bar is taller and a top-anchored dialog
+           would overlap it. dvh tracks the visible viewport on mobile browsers. */
+        --dialog-top: 50%;
+        --dialog-transform: translate(-50%, -50%);
+        --dialog-max-h: calc(100dvh - 2 * var(--roc-ui-pad) - var(--roc-safe-top, 0px) - var(--roc-safe-bottom, 0px));
+        --dialog-title-size: 17px;
+      }
+        html.roc-phone-shell body.roc-native,
+        html.roc-phone-shell body.roc-standalone {
           /* Header bands already pad for safe-area; don't push ✕ down twice. */
-          --dialog-x-top: max(10px, env(safe-area-inset-top));
+          --dialog-x-top: 10px;
+          --dialog-x-right: 10px;
         }
-        .panel-dialog-header,
-        #settings-dialog .settings-header {
-          padding-top: max(4px, env(safe-area-inset-top));
+        /* Centered treasury / log / standings: ✕ sits in the card corner, not the notch. */
+        html.roc-phone-shell #gold-dialog,
+        html.roc-phone-shell #log-dialog,
+        html.roc-phone-shell #leaderboard-dialog {
+          --dialog-x-top: 10px;
+          --dialog-x-right: 10px;
         }
-        #game-hud {
+        html.roc-phone-shell .panel-dialog-header,
+        html.roc-phone-shell #settings-dialog .settings-header {
+          padding-top: max(4px, var(--roc-safe-top, env(safe-area-inset-top, 0px)));
+        }
+        html.roc-phone-shell #game-hud {
           --hud-scale: 1;
           width: 100%;
           height: 100%;
           transform: none;
         }
-        /* Keep the map inside notch / home-indicator insets on touch devices. */
-        #game {
-          top: env(safe-area-inset-top, 0px);
-          left: env(safe-area-inset-left, 0px);
-          right: env(safe-area-inset-right, 0px);
-          bottom: env(safe-area-inset-bottom, 0px);
+        /* Keep the map inside notch / nav-bar insets on touch devices (iOS + Android). */
+        html.roc-phone-shell #game {
+          top: var(--roc-safe-top, env(safe-area-inset-top, 0px));
+          left: var(--roc-safe-left, env(safe-area-inset-left, 0px));
+          right: var(--roc-safe-right, env(safe-area-inset-right, 0px));
+          bottom: var(--roc-safe-bottom, env(safe-area-inset-bottom, 0px));
           width: auto;
           height: auto;
         }
-        #topbar {
+        html.roc-phone-shell #topbar {
           display: flex;
           flex-wrap: wrap;
           align-items: flex-start;
           justify-content: flex-start;
           gap: 6px 8px;
           padding: 6px 10px;
-          top: max(6px, env(safe-area-inset-top));
-          /* Gutter for the leader portrait: 6px inset + its 60px max width + gap.
-             Static on purpose, so the portrait sizing off #topbar's height can't
-             feed back into the bar's width and change how its pills wrap. */
-          left: calc(72px + env(safe-area-inset-left));
-          right: max(6px, env(safe-area-inset-right));
-          font-size: 13px;
+          top: max(6px, var(--roc-safe-top, env(safe-area-inset-top, 0px)));
+          left: calc(clamp(64px, 18vmin, 80px) + var(--roc-safe-left, env(safe-area-inset-left, 0px)));
+          right: max(6px, var(--roc-safe-right, env(safe-area-inset-right, 0px)));
+          font-size: clamp(12px, 3.2vw, 13px);
         }
         /* Turn and score share one row; resource pills wrap to the row below. */
-        #topbar .tb-grp:first-child {
+        html.roc-phone-shell #topbar .tb-grp:first-child {
           flex-direction: row;
           align-items: center;
           gap: 6px;
@@ -3767,35 +3878,35 @@
           min-width: 0;
         }
         /* Empire group (cities/units/etc.) lives in the bottom bar on mobile. */
-        #topbar .tb-grp:nth-child(3) {
+        html.roc-phone-shell #topbar .tb-grp:nth-child(3) {
           display: none;
         }
         /* Resource group (gold/research/civics/religion/morale) stays in the
            top bar but compacted: drop the long tech/civic names, keep icons
            and per-turn scores. */
-        #topbar .tb-res {
+        html.roc-phone-shell #topbar .tb-res {
           flex: 1 1 100%;
           gap: 4px;
         }
-        #topbar .tb-res .tb-pill {
+        html.roc-phone-shell #topbar .tb-res .tb-pill {
           max-width: none;
           padding: 4px 8px 5px;
           gap: 3px;
         }
-        #topbar #research-btn b,
-        #topbar #civics-btn b {
+        html.roc-phone-shell #topbar #research-btn b,
+        html.roc-phone-shell #topbar #civics-btn b {
           display: none;
         }
         /* Shrink the resource numbers so a big gold/faith balance doesn't push
            the resource pills past the top bar's width. */
-        #topbar .tb-res .tb-pill b {
+        html.roc-phone-shell #topbar .tb-res .tb-pill b {
           font-size: 11px;
         }
-        #topbar .tb-score {
+        html.roc-phone-shell #topbar .tb-score {
           margin-left: 2px;
           font-size: 9px;
         }
-        #leader-avatar {
+        html.roc-phone-shell #leader-avatar {
           display: flex;
           flex-direction: column;
           align-items: center;
@@ -3809,7 +3920,7 @@
         }
         /* Civ name sits under the portrait on mobile too (the top bar no longer
            carries it). Keep it to the civ name only so it stays one tight line. */
-        #leader-avatar .leader-avatar-label {
+        html.roc-phone-shell #leader-avatar .leader-avatar-label {
           display: block;
           margin-top: 2px;
           max-width: 72px;
@@ -3819,14 +3930,14 @@
           text-overflow: ellipsis;
           white-space: nowrap;
         }
-        #leader-avatar .leader-avatar-label span {
+        html.roc-phone-shell #leader-avatar .leader-avatar-label span {
           display: none;
         }
         /* Match the height of the top bar next to it (--topbar-h is measured in
            ui.ts, since the bar's height depends on how its pills wrap), and let
            the leaders' native 1.6:2 ratio set the width. The 75px ceiling keeps
            the portrait inside the 72px gutter the top bar's `left` reserves. */
-        #leader-avatar > img {
+        html.roc-phone-shell #leader-avatar > img {
           display: block;
           height: clamp(52px, var(--topbar-h, 60px), 75px);
           width: auto;
@@ -3837,7 +3948,7 @@
           flex-shrink: 0;
           border-radius: 8px;
         }
-        #bottom-bar {
+        html.roc-phone-shell #bottom-bar {
           position: fixed;
           display: flex;
           align-items: center;
@@ -3851,12 +3962,12 @@
           z-index: 25;
           transform: none;
         }
-        .bb-grp {
+        html.roc-phone-shell .bb-grp {
           display: flex;
           gap: 4px;
         }
-        .bb-chip,
-        .bb-btn {
+        html.roc-phone-shell .bb-chip,
+        html.roc-phone-shell .bb-btn {
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -3876,11 +3987,11 @@
           position: relative;
           overflow: hidden;
         }
-        .bb-chip {
+        html.roc-phone-shell .bb-chip {
           cursor: default;
           background: rgba(201, 162, 39, 0.05);
         }
-        .bb-btn::after {
+        html.roc-phone-shell .bb-btn::after {
           content: "";
           position: absolute;
           left: 0;
@@ -3889,10 +4000,10 @@
           width: var(--p, 0%);
           background: var(--accent);
         }
-        .bb-btn[data-bb="civics"]::after {
+        html.roc-phone-shell .bb-btn[data-bb="civics"]::after {
           background: #c07ad0;
         }
-        .bb-btn i {
+        html.roc-phone-shell .bb-btn i {
           font-style: normal;
           color: var(--parchment-dim);
           font-size: 10px;
@@ -3900,9 +4011,9 @@
         /* Mobile: all three docked info panels share the bottom slot, stretch
            full-width, and collapse to just their summary bar (the .panel.collapsed
            rule above) so a selection no longer eats half the screen. */
-        #unit-panel,
-        #tile-panel,
-        #city-panel {
+        html.roc-phone-shell #unit-panel,
+        html.roc-phone-shell #tile-panel,
+        html.roc-phone-shell #city-panel {
           left: max(6px, env(safe-area-inset-left));
           right: max(6px, env(safe-area-inset-right));
           width: auto;
@@ -3913,7 +4024,7 @@
           overflow: auto;
           z-index: 10;
         }
-        #endturn {
+        html.roc-phone-shell #endturn {
           right: max(6px, env(safe-area-inset-right));
           left: auto;
           bottom: max(6px, env(safe-area-inset-bottom));
@@ -3921,7 +4032,7 @@
           width: 40px;
           height: 40px;
         }
-        #endturn2 {
+        html.roc-phone-shell #endturn2 {
           right: calc(52px + env(safe-area-inset-right));
           left: auto;
           bottom: max(6px, env(safe-area-inset-bottom));
@@ -3929,7 +4040,7 @@
           width: 28px;
           height: 28px;
         }
-        #tutorial-coach-panel {
+        html.roc-phone-shell #tutorial-coach-panel {
           right: max(6px, env(safe-area-inset-right));
           /* Sit above the docked unit / tile / city panel (bottom 54px, collapsed
              to a ~50px summary bar on mobile) so the coach never overlaps it. */
@@ -3937,129 +4048,128 @@
           max-width: min(380px, calc(100vw - 20px));
           gap: 10px;
         }
-        #tutorial-coach-dialog {
+        html.roc-phone-shell #tutorial-coach-dialog {
           padding: 10px 12px 8px;
         }
-        #tutorial-coach-tail {
+        html.roc-phone-shell #tutorial-coach-tail {
           right: -12px;
           bottom: 28px;
           width: 14px;
           height: 18px;
         }
-        #tutorial-coach-portrait {
+        html.roc-phone-shell #tutorial-coach-portrait {
           width: 112px;
           max-height: min(190px, 38vh);
         }
-        #tutorial-coach-text {
+        html.roc-phone-shell #tutorial-coach-text {
           font-size: 13px;
           line-height: 1.4;
           min-height: 2.6em;
         }
         /* speakThenHide steps: bubble clears after the line is spoken so city UI is free. */
-        #tutorial-coach.coach-action-ready #tutorial-coach-panel {
+        html.roc-phone-shell #tutorial-coach.coach-action-ready #tutorial-coach-panel {
           display: none;
         }
-        #research,
-        #civics,
-        #religion,
-        #production,
-        #specialists,
-        #training,
-        #save-modal {
+        html.roc-phone-shell #research,
+        html.roc-phone-shell #civics,
+        html.roc-phone-shell #religion,
+        html.roc-phone-shell #production,
+        html.roc-phone-shell #specialists,
+        html.roc-phone-shell #training,
+        html.roc-phone-shell #save-modal {
           width: calc(100% - 20px);
           max-width: calc(100% - 20px);
         }
-        #great-people,
-        #legends {
+        html.roc-phone-shell #great-people,
+        html.roc-phone-shell #legends {
           width: calc(100% - 16px);
           max-width: calc(100% - 16px);
           max-height: calc(100% - 76px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
         }
-        #great-people .gp-portrait {
+        html.roc-phone-shell #great-people .gp-portrait {
           width: 80px;
           height: 100px;
         }
-        #great-people .gp-portrait-sm {
+        html.roc-phone-shell #great-people .gp-portrait-sm {
           width: 58px;
           height: 72px;
         }
-        #great-people .gp-card b,
-        #great-people .gp-track-body b {
+        html.roc-phone-shell #great-people .gp-card b,
+        html.roc-phone-shell #great-people .gp-track-body b {
           font-size: 16px;
         }
-        #great-people .sub {
+        html.roc-phone-shell #great-people .sub {
           font-size: 13px;
         }
         /* Narrow screens stack the recruited rail above a single-column grid. */
-        #great-people .gp-layout {
+        html.roc-phone-shell #great-people .gp-layout {
           grid-template-columns: 1fr;
           gap: 4px;
         }
-        #great-people .gp-grid {
+        html.roc-phone-shell #great-people .gp-grid {
           grid-template-columns: 1fr;
         }
         /* Governments & Civics stack into one column on narrow screens. */
-        #civics .gc-layout {
+        html.roc-phone-shell #civics .gc-layout {
           grid-template-columns: 1fr;
           gap: 6px;
         }
-        #legends .legend-portrait {
+        html.roc-phone-shell #legends .legend-portrait {
           width: 80px;
           height: 100px;
         }
-        #legends .legend-portrait-sm {
+        html.roc-phone-shell #legends .legend-portrait-sm {
           width: 58px;
           height: 72px;
         }
-        #legends .legend-card b {
+        html.roc-phone-shell #legends .legend-card b {
           font-size: 16px;
         }
-        #legends .sub {
+        html.roc-phone-shell #legends .sub {
           font-size: 13px;
         }
         /* Narrow screens stack the progress rail above a single-column hero list. */
-        #legends .legends-layout {
+        html.roc-phone-shell #legends .legends-layout {
           grid-template-columns: 1fr;
           gap: 4px;
         }
-        #legends .legend-grid {
+        html.roc-phone-shell #legends .legend-grid {
           grid-template-columns: 1fr;
         }
-        #save-modal {
+        html.roc-phone-shell #save-modal {
           padding: 12px;
         }
-        #save-modal .btn:not(.dialog-x) {
+        html.roc-phone-shell #save-modal .btn:not(.dialog-x) {
           width: 100%;
         }
-        #log {
+        html.roc-phone-shell #log {
           top: calc(56px + env(safe-area-inset-top));
           left: max(6px, env(safe-area-inset-left));
           max-width: 60vw;
           font-size: 11px;
         }
-        #tile-tip {
+        html.roc-phone-shell #tile-tip {
           display: none;
         }
-        .btn {
+        html.roc-phone-shell .btn {
           padding: 9px 13px;
         }
-        #turn-update-dialog {
+        html.roc-phone-shell #turn-update-dialog {
           width: min(340px, calc(100% - 24px));
           max-height: min(70dvh, var(--dialog-max-h));
           padding: 14px 16px;
         }
-        #turn-update-dialog .turn-update-art {
+        html.roc-phone-shell #turn-update-dialog .turn-update-art {
           width: 130px;
           height: 162px;
         }
-        #turn-update-dialog .turn-update-msg {
+        html.roc-phone-shell #turn-update-dialog .turn-update-msg {
           font-size: 13px;
         }
-        #turn-update-dialog .tu-row-art {
+        html.roc-phone-shell #turn-update-dialog .tu-row-art {
           width: 40px;
           height: 50px;
         }
-      }
     </style>
   </head>
   <body>

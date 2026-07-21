@@ -315,6 +315,32 @@ function civDefeatDisplayName(state: GameState, player: Player): string {
   return getCiv(player.civId)?.leader ?? player.name.replace(/ \(AI\)$/, "");
 }
 
+/** When a human or AI voluntarily leaves the match. */
+export function emitPlayerSurrendered(state: GameState, playerId: number): void {
+  const player = playerById(state, playerId);
+  if (!player || player.isBarbarian) return;
+  const label = civDefeatDisplayName(state, player);
+  const message = `${label} has surrendered.`;
+
+  for (const p of state.players) {
+    if (p.isBarbarian || p.id === playerId) continue;
+    const id = state.nextTurnUpdateId++;
+    state.turnUpdates.push({
+      id,
+      turn: state.turn,
+      type: "civDefeated",
+      playerId: p.id,
+      message,
+      payload: { surrendered: true, playerId, label },
+    });
+  }
+  log(state, message, {
+    actorId: playerId,
+    targetIds: [playerId],
+    world: true,
+  });
+}
+
 /** When a major civ is wiped out, alert every other player at turn start. */
 export function emitCivDefeated(
   state: GameState,

@@ -2,7 +2,7 @@
 // across games (and page reloads) on this device. Settings are purely a client
 // concern — they never travel to the server or into a save file.
 
-import { Capacitor } from "@capacitor/core";
+import { isPhoneShell } from "./viewport-shell";
 
 export type TurnUpdateView = "expanded" | "compact";
 
@@ -29,9 +29,7 @@ const STORAGE_KEY = "roc:settings";
 const PORTRAIT_DEFAULT_MIGRATION = "roc:migrated-portrait-default-v1";
 
 function prefersMobileShell(): boolean {
-  if (typeof window === "undefined") return false;
-  if (Capacitor.isNativePlatform()) return true;
-  return window.matchMedia("(max-width: 860px), (pointer: coarse)").matches;
+  return isPhoneShell();
 }
 
 function defaultScreenRotation(): ScreenRotation {

@@ -97,6 +97,7 @@ import {
   scaledCivicSwapFee,
 } from "./game-speed";
 import { startTraining, cancelTraining } from "./training";
+import { applySurrender } from "./surrender";
 
 /** Turns before a player may switch government again (docs/CIVICS §2.4). */
 const GOVERNMENT_SWITCH_COOLDOWN = 10;
@@ -218,6 +219,7 @@ export type Command =
   | { type: "recruitLegend"; legendId: string; cityId?: number }
   | { type: "upgradeUnit"; unitId: number }
   | { type: "setUpkeepModifier"; pct: number }
+  | { type: "surrender" }
   | { type: "endTurn" };
 
 export interface CommandResult {
@@ -949,5 +951,8 @@ export function applyCommand(
       );
       return ok;
     }
+
+    case "surrender":
+      return applySurrender(state, player.id);
   }
 }

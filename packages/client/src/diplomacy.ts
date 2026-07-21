@@ -70,9 +70,8 @@ const STYLE = `
 #diplo-contact .dc-box,#diplo-proposal .dc-box{max-height:var(--dialog-max-h);overflow-y:auto}
 /* Centered on touch screens, like every dialog (a % --dialog-top can't drive
    padding: padding percentages resolve against width). */
-@media (max-width:860px),(pointer:coarse){
-  #diplo-contact,#diplo-proposal{align-items:center;padding:16px}
-}
+html.roc-phone-shell #diplo-contact,
+html.roc-phone-shell #diplo-proposal{align-items:center;padding:16px}
 #diplo-proposal{z-index:66}
 #diplo-contact.show,#diplo-proposal.show{display:flex;pointer-events:auto}
 .dpm-body{display:flex;gap:16px;padding:18px;align-items:flex-start}

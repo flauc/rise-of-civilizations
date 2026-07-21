@@ -44,6 +44,7 @@ import {
   bindAuthLoginPanel,
   bindAuthRegisterPanel,
 } from "./auth-form";
+import { isPhoneShell } from "./viewport-shell";
 import { SCREEN_ROTATION_STYLES } from "./screen-rotation-ui";
 import { openSettingsPanel } from "./settings-ui";
 import { openSupportPage } from "./support-page";
@@ -531,19 +532,20 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
   const style = document.createElement("style");
   style.textContent = `
-    #lobby{position:fixed;inset:0;z-index:50;background:#0f0e0b;display:flex;flex-direction:column;min-height:0}
+    #lobby{position:fixed;inset:0;z-index:50;background:#0f0e0b;display:flex;flex-direction:column;min-height:0;
+      padding:var(--roc-safe-top, env(safe-area-inset-top, 0px)) var(--roc-safe-right, env(safe-area-inset-right, 0px)) var(--roc-safe-bottom, env(safe-area-inset-bottom, 0px)) var(--roc-safe-left, env(safe-area-inset-left, 0px));
+      box-sizing:border-box}
     #lobby.hidden{display:none !important}
-    /* Native WebKit can deliver touches to the fullscreen canvas under the lobby. */
-    body.roc-native.roc-lobby-open #game{pointer-events:none!important}
-    body.roc-native #lobby{
-      padding:env(safe-area-inset-top,0) env(safe-area-inset-right,0) env(safe-area-inset-bottom,0) env(safe-area-inset-left,0);
-      box-sizing:border-box;
-    }
+    /* Phone shell: one scroll container for the home menu (body stays locked). */
+    html.roc-phone-shell #lobby{overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
+    /* WebKit can deliver touches to the fullscreen canvas under the lobby. */
+    body.roc-native.roc-lobby-open #game,
+    body.roc-standalone.roc-lobby-open #game{pointer-events:none!important}
     .lobby-layout{display:flex;flex:1;min-height:0;width:100%}
-    .lobby-left{width:380px;max-width:92vw;flex-shrink:0;display:flex;flex-direction:column;background:linear-gradient(180deg,#1f1c14 0%,#15120c 100%);border-right:1px solid var(--edge);padding:28px;overflow:auto;box-shadow:4px 0 24px rgba(0,0,0,.55)}
+    .lobby-left{width:380px;max-width:92vw;flex-shrink:0;display:flex;flex-direction:column;background:linear-gradient(180deg,#1f1c14 0%,#15120c 100%);border-right:1px solid var(--edge);padding:28px;overflow:auto;box-shadow:4px 0 24px rgba(0,0,0,.55);-webkit-overflow-scrolling:touch}
     .lobby-left.sp-panel{padding:0;overflow:hidden}
     .sp-panel-scroll{flex:1;min-height:0;overflow:auto;padding:28px;padding-bottom:12px;-webkit-overflow-scrolling:touch}
-    .sp-panel-actions{flex:none;display:flex;gap:10px;padding:14px 28px max(14px,env(safe-area-inset-bottom));border-top:1px solid var(--edge);background:linear-gradient(180deg,#1a1710 0%,#15120c 100%);box-shadow:0 -8px 24px rgba(0,0,0,.35);position:relative;z-index:4;pointer-events:auto}
+    .sp-panel-actions{flex:none;display:flex;gap:10px;padding:14px 28px max(14px,var(--roc-safe-bottom, env(safe-area-inset-bottom, 0px)));border-top:1px solid var(--edge);background:linear-gradient(180deg,#1a1710 0%,#15120c 100%);box-shadow:0 -8px 24px rgba(0,0,0,.35);position:relative;z-index:4;pointer-events:auto}
     .sp-panel-actions .menu-btn{flex:1;width:auto;margin:0}
     .lobby-right{flex:1;position:relative;display:grid;grid-template-columns:minmax(0,1fr) clamp(160px,24vw,240px);grid-template-rows:minmax(0,1fr);gap:20px 24px;align-items:start;min-height:0;height:100%;padding:24px 32px;background:radial-gradient(circle at 70% 30%,rgba(201,162,39,0.14) 0%,#0f0e0b 60%);overflow:hidden}
     .lobby-right::before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(15,14,11,0) 0%,rgba(15,14,11,.78) 100%);pointer-events:none}
@@ -559,9 +561,9 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .auth-email-wrap{margin-top:12px}
     .auth-email-wrap.hidden{display:none}
     /* Account: full-page split login / register */
-    .auth-screen{position:absolute;inset:0;z-index:20;overflow:auto;background:linear-gradient(180deg,#15120c 0%,#0f0e0b 100%)}
+    .auth-screen{position:absolute;inset:0;z-index:20;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;background:linear-gradient(180deg,#15120c 0%,#0f0e0b 100%)}
     .auth-screen::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,rgba(15,14,11,0) 55%);pointer-events:none}
-    .auth-shell{position:relative;z-index:1;width:100%;max-width:920px;margin:0 auto;padding:28px 28px 56px;box-sizing:border-box}
+    .auth-shell{position:relative;z-index:1;width:100%;max-width:920px;margin:0 auto;padding:28px 28px max(56px,var(--roc-safe-bottom, env(safe-area-inset-bottom, 0px)));box-sizing:border-box}
     .auth-topbar{display:flex;align-items:center;gap:16px;margin-bottom:22px;flex-wrap:wrap}
     .auth-brand{font-family:'Cinzel',Georgia,serif;font-size:24px;font-weight:800;color:#e8dcc5;letter-spacing:.5px}
     .auth-brand small{display:block;font-family:'Inter',system-ui,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#b8aa8d;margin-top:3px}
@@ -790,84 +792,89 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .cp-ability-desc{font-size:13px;color:#e8dcc5;line-height:1.45}
     .cp-infra{margin-top:12px;font-size:13px;color:#b8aa8d}.cp-infra b{color:#e8dcc5}
     .cp-footer{flex:none;display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid var(--edge)}
-    @media(max-width:860px){
-      .civ-picker-overlay{padding:0}
-      .civ-picker{width:100%;height:100%;max-width:none;border-radius:0;border:none}
-      .cp-body{flex-direction:column}
-      .cp-detail{flex:none;order:-1;max-height:48vh;border-bottom:1px solid var(--edge)}
-      .cp-list{width:100%;flex:1;border-right:none}
-      .cp-portrait{width:110px;height:138px}
-      .cp-civ{font-size:24px}
-      .cp-quote{display:none}
-      .uud-overlay{padding:0}
-      .uud-modal{width:100%;height:100%;max-height:100%;border-radius:0;border:none;
-        padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
-      .uud-img{width:96px;height:96px}
-    }
-    @media(max-width:860px){
-      #lobby{overflow-x:hidden;overflow-y:auto}
-      .lobby-layout{flex-direction:column;height:auto;min-height:100%;width:100%;max-width:100%}
-      .lobby-left{width:100%;max-width:100%;border-right:none;padding:max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));overflow:visible}
-      body.roc-native #lobby .lobby-left{padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
-      .lobby-right{display:flex;flex-direction:column;position:relative;flex:none;width:100%;max-width:100%;padding:24px max(20px, env(safe-area-inset-right)) 24px max(20px, env(safe-area-inset-left));justify-content:flex-start;overflow:visible;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,#0f0e0b 70%)}
-      .showcase{grid-column:auto;grid-row:auto;align-self:auto;max-height:none;overflow:visible;padding-right:0;order:0}
-      .showcase-side{display:none !important}
-      .showcase-civ{font-size:34px}
-      .showcase-leader{font-size:20px}
-      .showcase-quote{font-size:16px;margin-top:14px}
-      .showcase-ability{margin-top:18px;padding:14px}
-      .showcase-reroll{display:none;grid-column:auto;grid-row:auto;width:100%;max-width:none}
-      #sp-civ-desc{display:none}
-      .menu-btn{padding:14px 16px}
-      .menu-in{padding:10px 12px}
-      /* Start screen: pin menu to the top — centered flex was clipping/overlapping the portrait onto the buttons in portrait. */
-      #lobby[data-screen="start"] .lobby-layout{min-height:100dvh;justify-content:flex-start}
-      #lobby[data-screen="start"] .lobby-left{flex:0 0 auto}
-      #lobby[data-screen="start"] .lobby-left{align-items:center;text-align:center}
-      #lobby[data-screen="start"] .lobby-title,#lobby[data-screen="start"] .lobby-subtitle{width:100%}
-      #lobby[data-screen="start"] .menu-actions{width:100%;max-width:360px}
-      #lobby[data-screen="start"] .lobby-right{order:2;padding-top:8px;flex:0 0 auto}
-      #lobby[data-screen="start"] .rotation-controls{width:100%;max-width:360px}
-      #lobby[data-screen="start"] .rotation-controls-label{text-align:center}
-      /* Single player: the civ picker covers leader previews, so the featured-civ
-         panel is dead weight on a phone — hide it and let the form fill the view. */
-      #lobby[data-screen="sp"] .lobby-right{display:none}
-      #lobby[data-screen="sp"]{overflow:hidden;height:100dvh;height:100vh}
-      #lobby[data-screen="sp"] .lobby-layout{flex:1;min-height:0;overflow:hidden}
-      #lobby[data-screen="sp"] .lobby-left.sp-panel{flex:1;min-height:0;padding:0;overflow:hidden;display:grid;grid-template-rows:minmax(0,1fr) auto}
-      #lobby[data-screen="sp"] .sp-panel-scroll{grid-row:1;overflow-y:auto;min-height:0;padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) 12px max(20px,env(safe-area-inset-left))}
-      #lobby[data-screen="sp"] .sp-panel-actions{grid-row:2;padding:14px max(20px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}
-      #lobby[data-screen="load"] .lobby-right{display:none}
-      #lobby[data-screen="login"] #lobby-layout,
-      #lobby[data-screen="signup"] #lobby-layout{display:none !important}
+    html.roc-phone-shell .civ-picker-overlay{padding:0}
+    html.roc-phone-shell .civ-picker{width:100%;height:100%;max-width:none;border-radius:0;border:none}
+    html.roc-phone-shell .cp-body{flex-direction:column}
+    html.roc-phone-shell .cp-detail{flex:none;order:-1;max-height:48vh;border-bottom:1px solid var(--edge)}
+    html.roc-phone-shell .cp-list{width:100%;flex:1;border-right:none}
+    html.roc-phone-shell .cp-portrait{width:110px;height:138px}
+    html.roc-phone-shell .cp-civ{font-size:24px}
+    html.roc-phone-shell .cp-quote{display:none}
+    html.roc-phone-shell .uud-overlay{padding:0}
+    html.roc-phone-shell .uud-modal{width:100%;height:100%;max-height:100%;border-radius:0;border:none;
+      padding:max(16px,var(--roc-safe-top, env(safe-area-inset-top, 0px))) max(16px,var(--roc-safe-right, env(safe-area-inset-right, 0px))) max(24px,var(--roc-safe-bottom, env(safe-area-inset-bottom, 0px))) max(16px,var(--roc-safe-left, env(safe-area-inset-left, 0px)))}
+    html.roc-phone-shell .uud-img{width:96px;height:96px}
+    html.roc-phone-shell #lobby{overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
+    html.roc-phone-shell .lobby-layout{flex-direction:column;height:auto;min-height:0;width:100%;max-width:100%;flex:none}
+    html.roc-phone-shell .lobby-left{width:100%;max-width:100%;border-right:none;padding:var(--roc-ui-pad,20px);overflow:visible;box-shadow:none}
+    html.roc-phone-shell .lobby-right{display:flex;flex-direction:column;position:relative;flex:none;width:100%;max-width:100%;padding:24px var(--roc-ui-pad,20px);justify-content:flex-start;overflow:visible;background:radial-gradient(circle at 50% 0%,rgba(201,162,39,0.12) 0%,#0f0e0b 70%)}
+    html.roc-phone-shell .showcase{grid-column:auto;grid-row:auto;align-self:auto;max-height:none;overflow:visible;padding-right:0;order:0}
+    html.roc-phone-shell .showcase-side{display:none !important}
+    html.roc-phone-shell .showcase-civ{font-size:clamp(26px,7vw,34px)}
+    html.roc-phone-shell .showcase-leader{font-size:clamp(17px,4.5vw,20px)}
+    html.roc-phone-shell .showcase-quote{font-size:clamp(14px,3.8vw,16px);margin-top:14px}
+    html.roc-phone-shell .showcase-ability{margin-top:18px;padding:14px}
+    html.roc-phone-shell .showcase-reroll{display:none;grid-column:auto;grid-row:auto;width:100%;max-width:none}
+    html.roc-phone-shell #sp-civ-desc{display:none}
+    html.roc-phone-shell .menu-btn{padding:clamp(11px,3vw,14px) clamp(12px,3.5vw,16px);min-height:var(--roc-touch-target,44px)}
+    html.roc-phone-shell .menu-in{padding:10px 12px}
+    html.roc-phone-shell #lobby[data-screen="start"] .lobby-layout{min-height:0;justify-content:flex-start}
+    html.roc-phone-shell #lobby[data-screen="start"] .lobby-left{flex:0 0 auto;align-items:center;text-align:center}
+    html.roc-phone-shell #lobby[data-screen="start"] .lobby-title,
+    html.roc-phone-shell #lobby[data-screen="start"] .lobby-subtitle{width:100%}
+    html.roc-phone-shell #lobby[data-screen="start"] .menu-actions{width:100%;max-width:var(--roc-phone-menu-w,min(360px,100%))}
+    html.roc-phone-shell #lobby[data-screen="start"] .lobby-right{order:2;padding-top:8px;flex:0 0 auto}
+    html.roc-phone-shell #lobby[data-screen="start"] .rotation-controls{width:100%;max-width:var(--roc-phone-menu-w,min(360px,100%))}
+    html.roc-phone-shell #lobby[data-screen="start"] .rotation-controls-label{text-align:center}
+    html.roc-phone-shell #lobby[data-screen="sp"] .lobby-right{display:none}
+    html.roc-phone-shell #lobby[data-screen="sp"]{overflow:hidden;height:100dvh;height:100vh}
+    html.roc-phone-shell #lobby[data-screen="sp"] .lobby-layout{flex:1;min-height:0;overflow:hidden}
+    html.roc-phone-shell #lobby[data-screen="sp"] .lobby-left.sp-panel{flex:1;min-height:0;padding:0;overflow:hidden;display:grid;grid-template-rows:minmax(0,1fr) auto}
+    html.roc-phone-shell #lobby[data-screen="sp"] .sp-panel-scroll{grid-row:1;overflow-y:auto;min-height:0;padding:var(--roc-ui-pad,20px) var(--roc-ui-pad,20px) 12px;-webkit-overflow-scrolling:touch}
+    html.roc-phone-shell #lobby[data-screen="sp"] .sp-panel-actions{grid-row:2;padding:14px var(--roc-ui-pad,20px) max(14px,var(--roc-safe-bottom, env(safe-area-inset-bottom, 0px)))}
+    html.roc-phone-shell #lobby[data-screen="load"] .lobby-right{display:none}
+    html.roc-phone-shell #lobby[data-screen="login"] #lobby-layout,
+    html.roc-phone-shell #lobby[data-screen="signup"] #lobby-layout{display:none !important}
+    @media (orientation:landscape){
+      html.roc-phone-shell #lobby{overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
+      html.roc-phone-shell .lobby-layout{flex:none;height:auto;min-height:0;flex-direction:column;width:100%}
+      html.roc-phone-shell .lobby-left{width:100%;max-width:none;border-right:none;padding:14px var(--roc-ui-pad,18px);overflow:visible;flex:none;box-shadow:none}
+      html.roc-phone-shell #lobby[data-screen="start"] .lobby-right,
+      html.roc-phone-shell #lobby[data-screen="load"] .lobby-right{display:none !important}
+      html.roc-phone-shell #lobby[data-screen="start"] .lobby-left,
+      html.roc-phone-shell #lobby[data-screen="load"] .lobby-left{width:100%;max-width:none}
+      html.roc-phone-shell #lobby[data-screen="start"] .lobby-layout,
+      html.roc-phone-shell #lobby[data-screen="load"] .lobby-layout{flex:none;min-height:0;justify-content:flex-start}
+      html.roc-phone-shell #lobby[data-screen="start"] .lobby-title{font-size:clamp(22px,4.5vw,28px)}
+      html.roc-phone-shell #lobby[data-screen="start"] .lobby-subtitle{margin-bottom:14px}
+      html.roc-phone-shell #lobby[data-screen="start"] .menu-actions{gap:8px}
+      html.roc-phone-shell #lobby[data-screen="start"] .menu-btn{padding:11px 14px;min-height:var(--roc-touch-target,42px)}
+      html.roc-phone-shell #lobby[data-screen="start"] .rotation-controls{margin-top:10px}
+      html.roc-phone-shell #lobby[data-screen="start"] .lobby-version{padding-top:12px}
     }
     @media (orientation:landscape) and (max-height:520px){
-      .lobby-left{width:min(340px,38vw);padding:16px 18px}
       #lobby[data-screen="sp"] .lobby-left.sp-panel{padding:0}
       /* Featured civ panel overlaps the menu and login in phone landscape — hide it. */
       #lobby[data-screen="start"] .lobby-right{display:none !important}
       #lobby[data-screen="start"] .lobby-left{width:100%;max-width:none;border-right:none}
+      #lobby[data-screen="load"] .lobby-left{width:100%;max-width:none;border-right:none}
       #lobby[data-screen="start"] .lobby-layout{flex-direction:column;justify-content:flex-start}
+      #lobby:not([data-screen="start"]):not([data-screen="load"]) .lobby-left{width:min(340px,38vw);padding:16px 18px}
       .lobby-right{grid-template-columns:minmax(0,1fr) clamp(130px,18vw,200px);gap:12px 18px;padding:16px 20px}
       .showcase-side{display:none !important}
       .showcase-reroll{font-size:12px;padding:8px 10px}
       .showcase-civ{font-size:clamp(22px,3.6vw,34px)}
       .showcase-quote{margin-top:10px;-webkit-line-clamp:3;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden}
       .showcase-ability{margin-top:12px;padding:10px 12px}
-      .auth-shell{padding:max(12px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom))}
+      .auth-shell{padding:12px 18px max(20px,var(--roc-safe-bottom, env(safe-area-inset-bottom, 0px)))}
       .auth-logo{width:64px;height:64px;border-radius:14px}
       .auth-header{margin-bottom:14px;gap:8px}
       .auth-header .auth-brand{font-size:22px}
     }
-    /* Touch devices in landscape (wider than 860px): same overlap fix on the home screen. */
-    @media (orientation:landscape) and (pointer:coarse){
-      #lobby[data-screen="start"] .lobby-right{display:none !important}
-      #lobby[data-screen="start"] .lobby-left{width:100%;max-width:none;border-right:none}
-    }
     /* ---- Multiplayer: a full-screen, multi-stage flow (no sidebar) ---- */
-    .mp-screen{position:absolute;inset:0;overflow:auto;background:linear-gradient(180deg,#15120c 0%,#0f0e0b 100%)}
+    .mp-screen{position:absolute;inset:0;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;background:linear-gradient(180deg,#15120c 0%,#0f0e0b 100%)}
     .mp-screen::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 75% 12%,rgba(201,162,39,0.14) 0%,rgba(15,14,11,0) 55%);pointer-events:none}
-    .mp-shell{position:relative;z-index:1;width:100%;max-width:1100px;margin:0 auto;padding:28px 28px 56px;box-sizing:border-box}
+    .mp-shell{position:relative;z-index:1;width:100%;max-width:1100px;margin:0 auto;padding:28px 28px max(56px,var(--roc-safe-bottom, env(safe-area-inset-bottom, 0px)));box-sizing:border-box}
     .mp-topbar{display:flex;align-items:center;gap:16px;margin-bottom:26px;flex-wrap:wrap}
     .mp-brand{font-family:'Cinzel',Georgia,serif;font-size:24px;font-weight:800;color:#e8dcc5;letter-spacing:.5px}
     .mp-brand small{display:block;font-family:'Inter',system-ui,sans-serif;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#b8aa8d;margin-top:3px}
@@ -950,16 +957,14 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .mp-chat-form .menu-in{flex:1;min-width:0}
     .mp-chat-form .menu-btn{width:auto;padding:8px 14px;font-size:13px;flex:0 0 auto}
     ${CHAT_MODERATION_CSS}
-    @media(max-width:900px){
-      .mp-room-layout{grid-template-columns:1fr}
-      .mp-chat{order:-1;max-height:none;min-height:0;display:flex;flex-direction:column}
-      .mp-chat-log{flex:0 0 auto;display:block;height:200px;min-height:200px;max-height:200px;overflow-y:scroll;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;color:#e8dcc5}
-      .mp-chat-text{color:#e8dcc5}
-      .mp-chat-form .menu-btn{touch-action:manipulation}
-    }
+    html.roc-phone-shell .mp-room-layout{grid-template-columns:1fr}
+    html.roc-phone-shell .mp-chat{order:-1;max-height:none;min-height:0;display:flex;flex-direction:column}
+    html.roc-phone-shell .mp-chat-log{flex:0 0 auto;display:block;height:200px;min-height:200px;max-height:200px;overflow-y:scroll;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;color:#e8dcc5}
+    html.roc-phone-shell .mp-chat-text{color:#e8dcc5}
+    html.roc-phone-shell .mp-chat-form .menu-btn{touch-action:manipulation}
     @media(max-width:820px){
       .mp-browse-grid{grid-template-columns:1fr}
-      .mp-shell{padding:max(18px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(40px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))}
+      .mp-shell{padding:max(18px,var(--roc-safe-top, env(safe-area-inset-top, 0px))) max(18px,var(--roc-safe-right, env(safe-area-inset-right, 0px))) max(40px,var(--roc-safe-bottom, env(safe-area-inset-bottom, 0px))) max(18px,var(--roc-safe-left, env(safe-area-inset-left, 0px)))}
     }
     @media(max-width:560px){.mp-opt-grid{grid-template-columns:1fr}}
     ${SCREEN_ROTATION_STYLES}
@@ -971,7 +976,9 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
   const gameCanvas = document.getElementById("game") as HTMLCanvasElement | null;
   function setLobbyMapInputPassthrough(on: boolean): void {
-    if (!gameCanvas || !document.body.classList.contains("roc-native")) return;
+    if (!gameCanvas) return;
+    const shell = document.body.classList.contains("roc-native") || document.body.classList.contains("roc-standalone");
+    if (!shell) return;
     gameCanvas.style.pointerEvents = on ? "none" : "";
   }
   document.getElementById("game-loading")?.remove();
@@ -997,7 +1004,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
   }
 
   function isMobileLobby(): boolean {
-    return window.matchMedia("(max-width: 860px), (pointer: coarse), (orientation: landscape) and (max-height: 520px)").matches;
+    return isPhoneShell();
   }
 
   function renderShowcase(civId?: string, allowReroll = true): void {

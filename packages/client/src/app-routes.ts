@@ -19,6 +19,15 @@ export function isNativeApp(): boolean {
   return Capacitor.isNativePlatform();
 }
 
+/** Home-screen PWA (Add to Home Screen) — needs safe-area like the native shell. */
+export function isStandaloneDisplay(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+}
+
 /** Resolve which overlay to open on first load (direct URL or ?page=). */
 export function initialOverlayRoute(loc: Pick<Location, "pathname" | "search"> = location): AppOverlayRoute | null {
   const boot = window.__ROC_BOOT_ROUTE__;

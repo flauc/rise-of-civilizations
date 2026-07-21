@@ -292,27 +292,25 @@ function ensureStyles(): void {
     #game-loading .gl-skip:active{transform:translateY(1px)}
     /* Portrait phones and small tablets: a single column that exactly fills the
        screen; the parchment flexes, nothing needs page scrolling. */
-    @media (max-width:880px){
-      #game-loading{padding:12px 10px}
-      #game-loading .gl-panel{height:100%;max-height:none;gap:10px}
-      #game-loading .gl-columns{
-        display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;
-      }
-      #game-loading .gl-hero{height:clamp(150px,24vh,280px);flex-shrink:0}
-      #game-loading .gl-hero-name{padding:30px 12px 10px}
-      #game-loading .gl-civ{font-size:clamp(18px,5vw,24px)}
-      #game-loading .gl-scroll{height:auto;flex:1;min-height:140px}
-      #game-loading .gl-scroll-body{padding:20px 18px 16px}
-      #game-loading .gl-prologue{font-size:clamp(16px,4.4vw,20px)}
-      #game-loading .gl-ability,#game-loading .gl-leverage{font-size:clamp(15px,4vw,18px)}
-      #game-loading .gl-uniques{gap:10px}
-      #game-loading .gl-card{gap:10px;padding:9px 10px}
-      #game-loading .gl-card-imgbox{width:46px;height:58px}
-      #game-loading .gl-card-kicker{font-size:9px}
-      #game-loading .gl-card-name{font-size:13px}
-      #game-loading .gl-card-meta{display:none}
-      #game-loading .gl-card-desc{font-size:11px;line-height:1.45;margin-top:4px;-webkit-line-clamp:2}
+    html.roc-phone-shell #game-loading{padding:12px 10px}
+    html.roc-phone-shell #game-loading .gl-panel{height:100%;max-height:none;gap:10px}
+    html.roc-phone-shell #game-loading .gl-columns{
+      display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;
     }
+    html.roc-phone-shell #game-loading .gl-hero{height:clamp(150px,24vh,280px);flex-shrink:0}
+    html.roc-phone-shell #game-loading .gl-hero-name{padding:30px 12px 10px}
+    html.roc-phone-shell #game-loading .gl-civ{font-size:clamp(18px,5vw,24px)}
+    html.roc-phone-shell #game-loading .gl-scroll{height:auto;flex:1;min-height:140px}
+    html.roc-phone-shell #game-loading .gl-scroll-body{padding:20px 18px 16px}
+    html.roc-phone-shell #game-loading .gl-prologue{font-size:clamp(16px,4.4vw,20px)}
+    html.roc-phone-shell #game-loading .gl-ability,html.roc-phone-shell #game-loading .gl-leverage{font-size:clamp(15px,4vw,18px)}
+    html.roc-phone-shell #game-loading .gl-uniques{gap:10px}
+    html.roc-phone-shell #game-loading .gl-card{gap:10px;padding:9px 10px}
+    html.roc-phone-shell #game-loading .gl-card-imgbox{width:46px;height:58px}
+    html.roc-phone-shell #game-loading .gl-card-kicker{font-size:9px}
+    html.roc-phone-shell #game-loading .gl-card-name{font-size:13px}
+    html.roc-phone-shell #game-loading .gl-card-meta{display:none}
+    html.roc-phone-shell #game-loading .gl-card-desc{font-size:11px;line-height:1.45;margin-top:4px;-webkit-line-clamp:2}
     /* Landscape phones: compact hero on the left, parchment beside it, slim
        name-only unique cards along the bottom. */
     @media (orientation:landscape) and (max-height:520px){
@@ -417,6 +415,14 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     `</div>`;
   document.body.appendChild(root);
   document.body.classList.add("roc-loading-scroll");
+  root.addEventListener(
+    "pointerdown",
+    () => {
+      unlockGameAudio();
+      unlockCoachAudio();
+    },
+    { capture: true, once: true },
+  );
 
   function clearLoadingBodyClass(): void {
     document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
@@ -964,6 +970,14 @@ export function createTutorialPreparingScreen(
     `</div>`;
   document.body.appendChild(root);
   document.body.classList.add("roc-loading-scroll");
+  root.addEventListener(
+    "pointerdown",
+    () => {
+      unlockGameAudio();
+      unlockCoachAudio();
+    },
+    { capture: true, once: true },
+  );
 
   function clearLoadingBodyClass(): void {
     document.body.classList.remove("roc-loading-scroll", "roc-map-painted");

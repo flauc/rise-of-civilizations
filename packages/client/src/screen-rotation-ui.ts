@@ -1,10 +1,9 @@
-import { Capacitor } from "@capacitor/core";
 import { getSettings, updateSettings, type ScreenRotation } from "./settings";
+import { isPhoneShell } from "./viewport-shell";
 
 /** Show orientation controls on phones, tablets, and the native app shell. */
 export function shouldOfferScreenRotation(): boolean {
-  if (Capacitor.isNativePlatform()) return true;
-  return window.matchMedia("(max-width: 860px), (pointer: coarse)").matches;
+  return isPhoneShell();
 }
 
 /** Segmented Vertical / Horizontal control markup. */

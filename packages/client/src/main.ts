@@ -57,7 +57,8 @@ import { createLobby } from "./lobby-ui";
 import { preloadGameAssets } from "./asset-preload";
 import { createLegalViewer, type LegalPage } from "./legal-viewer";
 import { createSupportPage, registerSupportPage, supportPageFromLocation } from "./support-page";
-import { consumeNativeBootRoute, initialOverlayRoute, isNativeApp, setLobbyHidden } from "./app-routes";
+import { initPhoneShellSync } from "./viewport-shell";
+import { consumeNativeBootRoute, initialOverlayRoute, isNativeApp, isStandaloneDisplay, setLobbyHidden } from "./app-routes";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadCoastAtlas } from "./coast-assets";
 import { loadRiverAtlas } from "./river-assets";
@@ -79,6 +80,8 @@ import { getAccount, getSaveOwnerId } from "./account";
 import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, abandonActiveSession, buildSessionScoreboard, viewerScoreFromBoard, registerSessionSnapshotProvider, type GameSetup } from "./analytics";
 import { createTutorialCoach } from "./tutorial-coach";
 import { resetHudOverlays } from "./hud-root";
+import { unlockCoachAudio, retryCoachVoiceIfNeeded } from "./coach-voice";
+import { unlockGameAudio } from "./game-audio-unlock";
 import {
   refreshTutorialMovement,
   spawnTutorialBarbarian,
@@ -98,7 +101,9 @@ if (!ctx) throw new Error("2D canvas context unavailable");
 installIconifyHook();
 initAnalytics();
 initScreenRotation();
+initPhoneShellSync();
 if (isNativeApp()) document.body.classList.add("roc-native");
+if (isStandaloneDisplay()) document.body.classList.add("roc-standalone");
 const legalViewer = createLegalViewer();
 legalViewer.wireLinks();
 const supportPage = createSupportPage();
@@ -143,6 +148,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     needsRedraw = true;
     if (setup.isTutorial) ensureTutorialCoach();
   }
+  const unlockGameAudioFromGesture = (): void => {
+    unlockGameAudio();
+    unlockCoachAudio();
+    retryCoachVoiceIfNeeded();
+  };
+  document.addEventListener("pointerdown", unlockGameAudioFromGesture, { capture: true, once: true });
+  document.addEventListener("touchstart", unlockGameAudioFromGesture, { capture: true, once: true });
   const loadingScreen: LoadingScreenHandle = setup.isTutorial
     ? createTutorialPreparingScreen({ onDismiss: onLoadingDismiss })
     : createLoadingScreen({
@@ -678,6 +690,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       abandonActiveSession(sessionEndSnapshot());
       location.reload();
     },
+    onSurrender: session.isOnline
+      ? () => {
+          session.order({ type: "surrender" });
+          abandonActiveSession(sessionEndSnapshot());
+          location.reload();
+        }
+      : undefined,
     onSave: async (name) => {
       const userId = getSaveOwnerId();
       const state = session.getState();

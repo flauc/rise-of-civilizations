@@ -1,7 +1,7 @@
 // Multiplayer chat UI helpers — shared by the lobby room and the in-game panel.
 
-import { Capacitor } from "@capacitor/core";
 import type { LobbyChatMessage } from "@roc/sim";
+import { isPhoneShell } from "./viewport-shell";
 import {
   blockUser,
   muteUser,
@@ -13,10 +13,9 @@ import { gameHud } from "./hud-root";
 import { confirmDialog, notifyDialog } from "./confirm-dialog";
 import type { OnlineSession } from "./session";
 
-/** Phone / tablet / native shell — used for mobile-only lobby chat UX. */
+/** Phone / native shell — used for mobile-only lobby chat UX. */
 export function isMobileMpUi(): boolean {
-  if (Capacitor.isNativePlatform()) return true;
-  return window.matchMedia("(max-width:900px), (pointer: coarse)").matches;
+  return isPhoneShell();
 }
 
 export function formatChatTime(at: number): string {

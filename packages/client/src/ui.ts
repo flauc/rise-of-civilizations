@@ -6,6 +6,7 @@ import { createWiki } from "./wiki";
 import { confirmDialog } from "./confirm-dialog";
 import { createEmpire, type Tab as EmpireTab } from "./empire";
 import { createDiplomacy } from "./diplomacy";
+import { isPhoneShell } from "./viewport-shell";
 import { gameHud, initGameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
 import { setPreservedHtml, withPreservedScroll } from "./panel-scroll";
 import type { DealItem } from "@roc/sim";
@@ -518,6 +519,8 @@ export interface UIHandlers {
   promptSaveOnLeave: boolean;
   /** Called after the player confirms leaving (optionally after saving). */
   onLeaveGame(): void;
+  /** Concede defeat in a multiplayer match (eliminates the local player). */
+  onSurrender?(): void;
   /**
    * Submit a bug report with the player's description. The handler captures the
    * game state/context. Resolves `true` if sent now, `false` if queued offline.
@@ -571,6 +574,21 @@ function div(id: string, cls: string): HTMLDivElement {
   el.className = cls;
   gameHud().appendChild(el);
   return el;
+}
+
+/** Reliable close on desktop and mobile WebKit (click alone can miss the ✕). */
+function bindDialogClose(btn: HTMLButtonElement, close: () => void): void {
+  let lastCloseAt = 0;
+  const run = (e: Event): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    const now = performance.now();
+    if (now - lastCloseAt < 400) return;
+    lastCloseAt = now;
+    close();
+  };
+  btn.addEventListener("pointerdown", run, { capture: true });
+  btn.addEventListener("click", run);
 }
 
 function escapeHtml(text: string): string {
@@ -1061,8 +1079,10 @@ export function createUI(handlers: UIHandlers): UI {
   const logOverlay = div("log-overlay", "");
   const logDialog = div("log-dialog", "");
   logDialog.innerHTML =
+    `<div class="dialog-head-band">` +
     `<button type="button" class="dialog-x" id="log-close" title="Close" aria-label="Close">✕</button>` +
     `<div class="log-dialog-title">Game Log</div>` +
+    `</div>` +
     `<div class="log-dialog-content" id="log-dialog-content"></div>`;
   const logDialogContent = logDialog.querySelector<HTMLDivElement>("#log-dialog-content")!;
   const logClose = logDialog.querySelector<HTMLButtonElement>("#log-close")!;
@@ -1070,13 +1090,15 @@ export function createUI(handlers: UIHandlers): UI {
     logOverlay.classList.remove("show");
     logDialog.classList.remove("show");
   };
-  logClose.addEventListener("click", hideLogDialog);
+  bindDialogClose(logClose, hideLogDialog);
 
   const leaderboardOverlay = div("leaderboard-overlay", "");
   const leaderboardDialog = div("leaderboard-dialog", "");
   leaderboardDialog.innerHTML =
+    `<div class="dialog-head-band">` +
     `<button type="button" class="dialog-x" id="leaderboard-close" title="Close" aria-label="Close">✕</button>` +
     `<div class="log-dialog-title">Civilization Standings</div>` +
+    `</div>` +
     `<div id="leaderboard-content"></div>`;
   const leaderboardContent = leaderboardDialog.querySelector<HTMLDivElement>("#leaderboard-content")!;
   const leaderboardClose = leaderboardDialog.querySelector<HTMLButtonElement>("#leaderboard-close")!;
@@ -1084,6 +1106,7 @@ export function createUI(handlers: UIHandlers): UI {
     leaderboardOverlay.classList.remove("show");
     leaderboardDialog.classList.remove("show");
   };
+  bindDialogClose(leaderboardClose, hideLeaderboard);
   const showLeaderboard = (state: GameState): void => {
     const viewerId = lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? -1);
     const rows = state.players
@@ -1170,13 +1193,14 @@ export function createUI(handlers: UIHandlers): UI {
     leaderboardOverlay.classList.add("show");
     leaderboardDialog.classList.add("show");
   };
-  leaderboardClose.addEventListener("click", hideLeaderboard);
 
   const goldOverlay = div("gold-overlay", "");
   const goldDialog = div("gold-dialog", "");
   goldDialog.innerHTML =
+    `<div class="dialog-head-band">` +
     `<button type="button" class="dialog-x" id="gold-close" title="Close" aria-label="Close">✕</button>` +
     `<div class="gold-dialog-title">Treasury</div>` +
+    `</div>` +
     `<div id="gold-dialog-content"></div>`;
   const goldDialogContent = goldDialog.querySelector<HTMLDivElement>("#gold-dialog-content")!;
   const goldClose = goldDialog.querySelector<HTMLButtonElement>("#gold-close")!;
@@ -1186,7 +1210,7 @@ export function createUI(handlers: UIHandlers): UI {
     goldOverlay.classList.remove("show");
     goldDialog.classList.remove("show");
   };
-  goldClose.addEventListener("click", hideGoldDialog);
+  bindDialogClose(goldClose, hideGoldDialog);
 
   const moraleOverlay = div("morale-overlay", "");
   const moraleDialog = div("morale-dialog", "");
@@ -1225,7 +1249,7 @@ export function createUI(handlers: UIHandlers): UI {
     moraleExplainOpen = !moraleExplainOpen;
     syncMoraleExplain();
   });
-  moraleClose.addEventListener("click", hideMoraleDialog);
+  bindDialogClose(moraleClose, hideMoraleDialog);
 
   const unitPromoOverlay = div("unit-promo-overlay", "");
   const unitPromoDialog = div("unit-promo-dialog", "");
@@ -1457,8 +1481,7 @@ export function createUI(handlers: UIHandlers): UI {
   let governorPickerOpen = false;
   let tilePanelExpanded = false;
   let tilePanelKey: string | null = null;
-  const isMobile = (): boolean =>
-    window.matchMedia("(max-width: 860px), (pointer: coarse)").matches;
+  const isMobile = (): boolean => isPhoneShell();
 
   // Shared summary bar for the collapsible docked panels (unit / tile / city).
   // The whole bar toggles the panel's `.collapsed` class; an optional ✕ closes it.
@@ -2252,6 +2275,11 @@ export function createUI(handlers: UIHandlers): UI {
 
     if (menuView === "menu") {
       const mapLabel = stateMapLabel(state);
+      const viewer = state.players.find((p) => p.id === player.id);
+      const surrenderBtn =
+        lastView?.isMultiplayer && handlers.onSurrender && viewer && !viewer.eliminated
+          ? `<button class="btn" id="menu-surrender">Surrender</button>`
+          : "";
       const godMenuBtn =
         !lastView?.cheatsEnabled
           ? ""
@@ -2274,6 +2302,7 @@ export function createUI(handlers: UIHandlers): UI {
         `<button class="btn" id="menu-log">Game Log</button>` +
         `<button class="btn" id="menu-bug">🐞 Report a Bug</button>` +
         godMenuBtn +
+        surrenderBtn +
         `<button class="btn" id="menu-leave">Leave Game</button>` +
         `</div>`;
 
@@ -2325,6 +2354,8 @@ export function createUI(handlers: UIHandlers): UI {
         showLeaderboard(state);
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-log")!.addEventListener("click", () => {
+        menuOpen = false;
+        renderMenu(state);
         setPreservedHtml(
           logDialogContent,
           visibleLog(state, lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? 0))
@@ -2372,6 +2403,19 @@ export function createUI(handlers: UIHandlers): UI {
           danger: true,
         }).then((ok) => {
           if (ok) handlers.onLeaveGame();
+        });
+      });
+      saveModal.querySelector<HTMLButtonElement>("#menu-surrender")?.addEventListener("click", () => {
+        void confirmDialog({
+          title: "Surrender",
+          body: "Concede defeat and leave this match? Other players will be notified.",
+          confirmText: "Surrender",
+          danger: true,
+        }).then((ok) => {
+          if (!ok) return;
+          menuOpen = false;
+          renderMenu(state);
+          handlers.onSurrender?.();
         });
       });
       saveModal.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
@@ -2712,10 +2756,11 @@ export function createUI(handlers: UIHandlers): UI {
               .join("")) +
         `</div>`;
     });
-    research.querySelector<HTMLButtonElement>("#rclose")!.addEventListener("click", () => {
+    const closeResearch = (): void => {
       researchOpen = false;
       research.classList.add("hidden");
-    });
+    };
+    bindDialogClose(research.querySelector<HTMLButtonElement>("#rclose")!, closeResearch);
     research.querySelector<HTMLButtonElement>("#open-techtree")!.addEventListener("click", () => {
       researchOpen = false;
       research.classList.add("hidden");
@@ -2758,7 +2803,7 @@ export function createUI(handlers: UIHandlers): UI {
       techtree.innerHTML = dialogHeader("Technology Tree", "ttclose") + `<div class="panel-dialog-body"></div>`;
       techtree.querySelector<HTMLDivElement>(".panel-dialog-body")!.appendChild(inner);
     });
-    techtree.querySelector<HTMLButtonElement>("#ttclose")!.addEventListener("click", () => {
+    bindDialogClose(techtree.querySelector<HTMLButtonElement>("#ttclose")!, () => {
       techtreeOpen = false;
       techtree.classList.add("hidden");
     });
