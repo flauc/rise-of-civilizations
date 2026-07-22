@@ -1444,6 +1444,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         selectedUnitId,
         selectedCityId,
         alwaysShowLabels: getSettings().mapLabels === "always",
+        unitOutlines: getSettings().unitOutlines,
         reachable,
         attackTargets,
         abilityTargets: abilityTargetSet,

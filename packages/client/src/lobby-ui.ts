@@ -3,6 +3,7 @@
 
 import { ASSET_BASE_URL } from "./asset-base";
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
+import { claimWorldPregen, disposeWorldPregen, updateWorldPregen, type PregenOptions } from "./world-pregen";
 import { isMobileMpUi, renderChatLogEl, CHAT_MODERATION_CSS } from "./mp-chat";
 import { onChatModerationChange } from "./chat-moderation";
 import { createLazyWiki } from "./wiki-lazy";
@@ -21,7 +22,7 @@ import {
   type ServerMessage,
   type VictoryKind,
 } from "@roc/sim";
-import { uniqueUnitFor, uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, startingConditionsLine, wireUuImages, wireUuDetail } from "./unique-unit";
+import { uniqueUnitBlockHtml, leaderAbilityBlockHtml, uniqueInfraBlockHtml, startingConditionsLine, wireUuImages, wireUuDetail } from "./unique-unit";
 import { unlockLoadingAudio, preloadLoadingVoice } from "./loading-voice";
 import { setCivilizationBgm, unlockAppAudioFromGesture } from "./game-sounds";
 import { unlockCoachAudio } from "./coach-voice";
@@ -185,7 +186,7 @@ function firstFreeColor(used: Set<string>): string {
  */
 function civOptions(selected: string, includeRandom: boolean, taken: Set<string>): string {
   const opts = includeRandom
-    ? [`<option value="${RANDOM_CIV}"${selected === RANDOM_CIV ? " selected" : ""}>🎲 Random civilization</option>`]
+    ? [`<option value="${RANDOM_CIV}"${selected === RANDOM_CIV ? " selected" : ""}>🎲 Random</option>`]
     : [];
   for (const c of CIVS_BY_NAME) {
     const isTaken = taken.has(c.id) && c.id !== selected;
@@ -353,6 +354,34 @@ function goldChips(id: string, value: StartingGold): string {
   ).join("")}</div>`;
 }
 
+/** Starting-treasury as a plain dropdown, so it aligns with the other rows. */
+function goldSelect(id: string, value: StartingGold): string {
+  return `<select id="${id}" class="menu-in">${GOLD_OPTIONS.map(
+    (o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`,
+  ).join("")}</select>`;
+}
+
+/** One On/Off dropdown row per toggleable victory, aligned like the other options. */
+function victoryOnOffRows(idPrefix: string, enabled: VictoryKind[]): string {
+  return TOGGLEABLE_VICTORIES.map(
+    (v) =>
+      `<div class="menu-row"><span>${escapeHtml(VICTORY_LABELS[v])}</span>${onOffSelect(
+        `${idPrefix}-${v}`,
+        enabled.includes(v),
+      )}</div>`,
+  ).join("");
+}
+
+/** Read the enabled victories from the per-victory On/Off dropdowns. */
+function readVictoryOnOff(idPrefix: string): VictoryKind[] {
+  const out: VictoryKind[] = [];
+  for (const v of TOGGLEABLE_VICTORIES) {
+    const sel = document.getElementById(`${idPrefix}-${v}`) as HTMLSelectElement | null;
+    if (!sel || sel.value === "on") out.push(v);
+  }
+  return out;
+}
+
 function capacitySelect(id: string, value: number): string {
   return `<select id="${id}" class="menu-in">${Array.from({ length: 12 }, (_, n) => n + 1)
     .map((n) => `<option value="${n}"${n === value ? " selected" : ""}>${n}</option>`)
@@ -466,6 +495,9 @@ function loadSpSetup(defaults: SpSetup): SpSetup {
 
 export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) => void): void {
   const onStart = (session: Session, setup?: GameSetup): void => {
+    // SP starts claim their pregen before reaching here (making this a no-op);
+    // for MP, saves, and the tutorial it frees the speculative worldgen worker.
+    disposeWorldPregen();
     markGameStarted();
     onStartRaw(session, setup);
   };
@@ -643,9 +675,9 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .menu-btn .icon{width:22px;text-align:center;opacity:.9}
     .menu-section{margin-top:18px}
     .menu-section-title{font-family:'Cinzel',Georgia,serif;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#c9a227;margin-bottom:8px}
-    .menu-row{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px}
+    .menu-row{display:grid;grid-template-columns:minmax(0,1fr) min(200px,52%);align-items:center;gap:12px;margin-top:10px}
     .menu-row>span{white-space:nowrap;color:#e8dcc5}
-    .menu-row>.menu-in{flex:1;max-width:200px}
+    .menu-row>.menu-in{width:100%;max-width:none}
     .menu-in{font:inherit;font-size:13px;color:#e8dcc5;background:#1f1c14;border:1px solid var(--edge);border-radius:8px;padding:8px 10px;width:100%}
     .menu-in:focus{outline:none;border-color:#c9a227}
     .menu-hint{color:#b8aa8d;font-size:12px;margin-top:6px;line-height:1.4}
@@ -795,8 +827,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .civ-pick-btn .cpb-name{font-weight:700;color:#e8dcc5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .civ-pick-btn .cpb-leader{font-size:11.5px;color:#b8aa8d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .civ-pick-btn .cpb-caret{flex:0 0 auto;color:#c9a227;font-size:18px;line-height:1}
-    .roster-uu{font-size:12px;color:#b8aa8d;margin-top:2px}
-    .roster-uu b{color:#e8dcc5}
     /* Civilization picker dialog */
     .civ-picker-overlay{position:fixed;inset:0;z-index:70;background:rgba(8,7,5,.78);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;padding:24px}
     .civ-picker{display:flex;flex-direction:column;width:min(920px,100%);height:min(660px,100%);background:linear-gradient(180deg,#1f1c14,#15120c);border:1px solid var(--edge);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.6);overflow:hidden}
@@ -867,7 +897,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     html.roc-phone-shell .showcase-quote{font-size:clamp(14px,3.8vw,16px);margin-top:14px}
     html.roc-phone-shell .showcase-ability{margin-top:18px;padding:14px}
     html.roc-phone-shell .showcase-reroll{display:none;grid-column:auto;grid-row:auto;width:100%;max-width:none}
-    html.roc-phone-shell #sp-civ-desc{display:none}
     html.roc-phone-shell .menu-btn{padding:clamp(11px,3vw,14px) clamp(12px,3.5vw,16px);min-height:var(--roc-touch-target,44px)}
     html.roc-phone-shell .menu-in{padding:10px 12px}
     html.roc-phone-shell #lobby[data-screen="start"] .lobby-layout{min-height:0;justify-content:flex-start}
@@ -1065,7 +1094,48 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     document.body.classList.remove("roc-lobby-open");
     root.remove();
     style.remove();
+    document.removeEventListener("change", schedulePregen, true);
+    document.removeEventListener("click", schedulePregen, true);
   };
+
+  /** The full single-player generation setup as currently configured on the SP
+   *  screen (state.sp plus the live DOM controls). Null off the SP screen. */
+  function collectSpOptions(): PregenOptions | null {
+    if (state.screen !== "sp" || !left.querySelector("#sp-map")) return null;
+    return {
+      civId: state.sp.civId,
+      mapSize: $select("#sp-map").value as MapSize,
+      mapType: state.sp.mapType,
+      aiCivIds: state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId)),
+      colors: [state.sp.color, ...state.sp.ais.map((a) => a.color)],
+      barbarians: $select("#sp-barb").value as BarbLevel,
+      aiDifficulty: $select("#sp-ai").value as AiLevel,
+      villages: normalizeVillageLevel($select("#sp-villages").value),
+      naturalWonders: $select("#sp-wonders").value === "on",
+      legends: $select("#sp-legends").value === "on",
+      startingGold: state.sp.startingGold,
+      turnLimit: Number($select("#sp-turnlimit").value),
+      gameSpeed: $select("#sp-speed").value as GameSpeed,
+      enabledVictories: readVictoryOnOff("sp-victories"),
+    };
+  }
+
+  // Pre-generate the world in the background while the player tweaks setup, so
+  // Start drops into the game without a worldgen wait. Any interaction on the
+  // SP screen (selects, chips, the civ-picker overlay) reschedules; the pregen
+  // module ignores calls whose settings haven't actually changed.
+  let pregenTimer = 0;
+  const schedulePregen = (): void => {
+    if (state.screen !== "sp") return;
+    window.clearTimeout(pregenTimer);
+    pregenTimer = window.setTimeout(() => {
+      pregenTimer = 0;
+      const opts = collectSpOptions();
+      if (opts) updateWorldPregen(opts);
+    }, 500);
+  };
+  document.addEventListener("change", schedulePregen, true);
+  document.addEventListener("click", schedulePregen, true);
 
   function pickRandomCiv(): typeof CIVILIZATIONS[number] {
     return CIVILIZATIONS[Math.floor(Math.random() * CIVILIZATIONS.length)]!;
@@ -1320,6 +1390,9 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
   }
 
   function showScreen(screen: Screen): void {
+    // Leaving the SP setup screen drops any speculative world (returning to it
+    // simply pregenerates again).
+    if (screen !== "sp") disposeWorldPregen();
     state.screen = screen;
     root.dataset.screen = screen;
     const layoutEl = root.querySelector<HTMLDivElement>("#lobby-layout")!;
@@ -1564,45 +1637,29 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         <div class="menu-section">
           <div class="menu-section-title">Players & Opponents</div>
           <div id="sp-roster"></div>
-          <div id="sp-civ-desc" class="menu-hint"></div>
         </div>
         <div class="menu-section">
           <div class="menu-section-title">Game Options</div>
           <div class="menu-row"><span>Map type</span>${mapTypeSelect("sp-maptype", state.sp.mapType)}</div>
-          <div class="menu-hint" id="sp-maptype-desc"></div>
           <div class="menu-row"><span>Map size</span>${mapSelect("sp-map", state.sp.mapSize)}</div>
           <div class="menu-row"><span>Turn limit</span>${turnLimitSelect("sp-turnlimit", state.sp.turnLimit)}</div>
-          <div class="menu-hint">Highest score wins when the turn limit is reached. "Unlimited" plays until a decisive victory.</div>
           <div class="menu-row"><span>Game speed</span>${gameSpeedSelect("sp-speed", state.sp.gameSpeed)}</div>
-          <div class="menu-hint" id="sp-speed-desc"></div>
           <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
           <div class="menu-row"><span>AI difficulty</span>${aiDifficultySelect("sp-ai", state.sp.aiDifficulty)}</div>
           <div class="menu-row"><span>Tribal villages</span>${villageSelect("sp-villages", state.sp.villages)}</div>
           <div class="menu-row"><span>Natural wonders</span>${onOffSelect("sp-wonders", state.sp.naturalWonders)}</div>
           <div class="menu-row"><span>Legends (heroes)</span>${onOffSelect("sp-legends", state.sp.legends)}</div>
-          <div class="menu-field">
-            <span>Starting treasury</span>
-            ${goldChips("sp-gold", state.sp.startingGold)}
-          </div>
-          <div class="menu-hint" id="sp-gold-desc"></div>
-          <div class="menu-field">
-            <span>Victory conditions</span>
-            ${victoryChecklist("sp-victories", state.sp.enabledVictories)}
-          </div>
-          <div class="menu-hint">Score (at the turn limit) and elimination always apply. Disabled paths can't be won.</div>
+          <div class="menu-row"><span>Starting treasury</span>${goldSelect("sp-gold", state.sp.startingGold)}</div>
+        </div>
+        <div class="menu-section">
+          <div class="menu-section-title">Victory Conditions</div>
+          ${victoryOnOffRows("sp-victories", state.sp.enabledVictories)}
         </div>
       </div>
       <div class="sp-panel-actions">
         <button type="button" class="menu-btn secondary" id="back2">Back</button>
         <button type="button" class="menu-btn primary" id="sp-start">Start Game</button>
       </div>`;
-
-    const updateCivDesc = () => {
-      const c = CIVILIZATIONS.find((x) => x.id === state.sp.civId);
-      $("#sp-civ-desc").innerHTML = c
-        ? `<b>${c.abilityName}:</b> ${c.abilityDesc}<br/>UU: ${c.uniqueUnit} · ${c.uniqueInfra}<br/>${escapeHtml(startingConditionsLine(c.id))}`
-        : "";
-    };
 
     const renderRoster = (): void => {
       const used = new Set<string>([state.sp.color, ...state.sp.ais.map((a) => a.color)]);
@@ -1612,7 +1669,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         ...state.sp.ais.map((a) => a.civId).filter((c) => c !== RANDOM_CIV),
       ]);
       const humanCiv = CIVILIZATIONS.find((c) => c.id === state.sp.civId);
-      const humanUu = humanCiv ? uniqueUnitFor(humanCiv.id)?.name ?? humanCiv.uniqueUnit : "";
       const human = `
         <div class="roster-row" data-row="human">
           <div class="roster-head">
@@ -1626,7 +1682,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
             </button>
             ${colorSelect(state.sp.color, used)}
           </div>
-          ${humanUu ? `<div class="roster-uu">⚔ Unique unit: <b>${escapeHtml(humanUu)}</b></div>` : ""}
         </div>`;
       const ais = state.sp.ais
         .map(
@@ -1657,7 +1712,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         );
         openCivPicker(state.sp.civId, takenByOthers, (civId) => {
           state.sp.civId = civId;
-          updateCivDesc();
           renderShowcase(state.sp.civId, false);
           renderRoster(); // refresh "taken" civ states across AI dropdowns
         });
@@ -1689,50 +1743,25 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       });
     };
 
-    updateCivDesc();
     renderRoster();
     renderShowcase(state.sp.civId, false);
 
-    // Map type: keep a live description below the dropdown.
+    // Map type and game speed feed into state on change (descriptions removed).
     const mapTypeSel = $select("#sp-maptype");
-    const updateMapTypeDesc = () => {
-      $("#sp-maptype-desc").textContent =
-        MAP_TYPE_OPTIONS.find((o) => o.value === state.sp.mapType)?.desc ?? "";
-    };
     mapTypeSel.addEventListener("change", () => {
       state.sp.mapType = mapTypeSel.value as MapType;
-      updateMapTypeDesc();
     });
-    updateMapTypeDesc();
 
     const speedSel = $select("#sp-speed");
-    const updateSpeedDesc = () => {
-      $("#sp-speed-desc").textContent =
-        GAME_SPEED_OPTIONS.find((o) => o.value === state.sp.gameSpeed)?.desc ?? "";
-    };
     speedSel.addEventListener("change", () => {
       state.sp.gameSpeed = speedSel.value as GameSpeed;
-      updateSpeedDesc();
     });
-    updateSpeedDesc();
 
-    // Starting treasury: chips with tooltips, mirrored into a description line.
-    const updateGoldDesc = () => {
-      $("#sp-gold-desc").textContent =
-        GOLD_OPTIONS.find((o) => o.value === state.sp.startingGold)?.desc ?? "";
-    };
-    $("#sp-gold")
-      .querySelectorAll<HTMLButtonElement>(".chip")
-      .forEach((chip) =>
-        chip.addEventListener("click", () => {
-          state.sp.startingGold = chip.dataset.gold as StartingGold;
-          $("#sp-gold")
-            .querySelectorAll(".chip")
-            .forEach((c) => c.classList.toggle("sel", c === chip));
-          updateGoldDesc();
-        }),
-      );
-    updateGoldDesc();
+    // Starting treasury: a plain dropdown mirrored into state.
+    const goldSel = $select("#sp-gold");
+    goldSel.addEventListener("change", () => {
+      state.sp.startingGold = goldSel.value as StartingGold;
+    });
 
     $("#back2").addEventListener("click", () => showScreen("start"));
     $("#sp-start").addEventListener("click", () => {
@@ -1740,65 +1769,53 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       unlockLoadingAudio();
       preloadLoadingVoice(state.sp.civId);
       if (state.sp.civId !== RANDOM_CIV) setCivilizationBgm(state.sp.civId);
+      // Read the final setup while the screen is still in the document
+      // (readVictoryChecklist needs getElementById), then close the menu.
+      const opts = collectSpOptions()!;
       close();
-      const spMapSize = $select("#sp-map").value as MapSize;
-      const spBarb = $select("#sp-barb").value as BarbLevel;
-      const spAi = $select("#sp-ai").value as AiLevel;
-      const spVillages = normalizeVillageLevel($select("#sp-villages").value);
-      const spWonders = $select("#sp-wonders").value === "on";
-      const spLegends = $select("#sp-legends").value === "on";
-      const spTurnLimit = Number($select("#sp-turnlimit").value);
-      const spGameSpeed = $select("#sp-speed").value as GameSpeed;
-      const spVictories = readVictoryChecklist("sp-victories");
       // Sync the DOM-read options back into state.sp (civ/color/mapType/ais/gold
       // already live there), then persist so the next new game defaults to it.
-      state.sp.mapSize = spMapSize;
-      state.sp.barbarians = spBarb;
-      state.sp.aiDifficulty = spAi;
-      state.sp.villages = spVillages;
-      state.sp.naturalWonders = spWonders;
-      state.sp.legends = spLegends;
-      state.sp.turnLimit = spTurnLimit;
-      state.sp.gameSpeed = spGameSpeed;
-      state.sp.enabledVictories = spVictories;
+      state.sp.mapSize = opts.mapSize!;
+      state.sp.barbarians = opts.barbarians as BarbLevel;
+      state.sp.aiDifficulty = opts.aiDifficulty as AiLevel;
+      state.sp.villages = opts.villages as VillageLevel;
+      state.sp.naturalWonders = opts.naturalWonders!;
+      state.sp.legends = opts.legends!;
+      state.sp.turnLimit = opts.turnLimit!;
+      state.sp.gameSpeed = opts.gameSpeed!;
+      state.sp.enabledVictories = opts.enabledVictories!;
       saveSpSetup(state.sp);
-      const spAiCivIds = state.sp.ais.map((a) => (a.civId === RANDOM_CIV ? null : a.civId));
+      // Adopt the world pre-generated in the background if the final settings
+      // still match; otherwise generate as usual behind the loading scroll.
+      const pregen = claimWorldPregen(opts);
       onStart(
         new LocalSession({
-          civId: state.sp.civId,
-          mapSize: spMapSize,
-          mapType: state.sp.mapType,
-          aiCivIds: spAiCivIds,
-          colors: [state.sp.color, ...state.sp.ais.map((a) => a.color)],
-          barbarians: spBarb,
-          aiDifficulty: spAi,
-          villages: spVillages,
-          naturalWonders: spWonders,
-          legends: spLegends,
-          startingGold: state.sp.startingGold,
-          turnLimit: spTurnLimit,
-          gameSpeed: spGameSpeed,
-          enabledVictories: spVictories,
-          seed: "rise-" + Math.random().toString(36).slice(2, 8),
+          ...opts,
+          seed: pregen?.seed ?? "rise-" + Math.random().toString(36).slice(2, 8),
+          pregenerated: pregen?.state,
           deferWorldGen: true,
         }),
         {
-          civId: state.sp.civId,
-          mapType: state.sp.mapType,
-          mapSize: spMapSize,
-          startingGold: state.sp.startingGold,
-          villages: spVillages,
-          naturalWonders: spWonders,
-          barbarianLevel: spBarb,
-          aiDifficulty: spAi,
-          aiCivIds: spAiCivIds,
-          legends: spLegends,
-          turnLimit: spTurnLimit,
-          gameSpeed: spGameSpeed,
-          enabledVictories: spVictories,
+          civId: opts.civId,
+          mapType: opts.mapType,
+          mapSize: opts.mapSize,
+          startingGold: opts.startingGold,
+          villages: opts.villages as VillageLevel,
+          naturalWonders: opts.naturalWonders,
+          barbarianLevel: opts.barbarians as BarbLevel,
+          aiDifficulty: opts.aiDifficulty as AiLevel,
+          aiCivIds: opts.aiCivIds,
+          legends: opts.legends,
+          turnLimit: opts.turnLimit,
+          gameSpeed: opts.gameSpeed,
+          enabledVictories: opts.enabledVictories,
         },
       );
     });
+
+    // Start generating a world for the current defaults right away; any
+    // settings change reschedules through the document-level listeners.
+    schedulePregen();
   }
 
   // The full-screen multiplayer flow: sign in → find/create a game → lobby room.

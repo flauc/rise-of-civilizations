@@ -24,6 +24,8 @@ export interface Settings {
   autoAttack: boolean;
   /** When map name labels show: only for the selected unit/city, or always. */
   mapLabels: MapLabelMode;
+  /** Player-color contour behind unit sprites so units pop against terrain. */
+  unitOutlines: boolean;
   /** Looping ambient background music in the lobby and during games. */
   musicEnabled: boolean;
   /** Sword clash and other combat sound effects. */
@@ -51,6 +53,7 @@ const DEFAULTS: Settings = {
   screenRotation: "landscape",
   autoAttack: false,
   mapLabels: "always",
+  unitOutlines: true,
   musicEnabled: true,
   sfxEnabled: true,
   audioVolume: 1,
@@ -88,6 +91,7 @@ export function getSettings(): Settings {
       }
       if (typeof parsed.autoAttack === "boolean") next.autoAttack = parsed.autoAttack;
       if (parsed.mapLabels === "selected" || parsed.mapLabels === "always") next.mapLabels = parsed.mapLabels;
+      if (typeof parsed.unitOutlines === "boolean") next.unitOutlines = parsed.unitOutlines;
       if (typeof parsed.musicEnabled === "boolean") next.musicEnabled = parsed.musicEnabled;
       if (typeof parsed.sfxEnabled === "boolean") next.sfxEnabled = parsed.sfxEnabled;
       if (typeof parsed.audioVolume === "number" && Number.isFinite(parsed.audioVolume)) {

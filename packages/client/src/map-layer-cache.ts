@@ -10,7 +10,8 @@ import {
 
 /** Skip world-layer caching above this width/height (mobile memory guard). */
 const MAX_CACHE_PX = 4096;
-/** Typical in-game zoom after fitCameraToStart; baking the cache near this keeps tiles sharp. */
+/** Typical in-game zoom after fitCameraToStart. The bake target is this times
+ *  devicePixelRatio so the blit is 1:1 with device pixels (sharp) at that zoom. */
 const TARGET_CACHE_ZOOM = 2;
 
 /**
@@ -24,29 +25,31 @@ export class MapLayerCache {
   /** World width/height at zoom 1 (used for blit placement). */
   private cacheW = 0;
   private cacheH = 0;
-  /** Zoom level the offscreen bitmap was rasterized at (>= 1). */
+  /** Zoom level the offscreen bitmap should be rasterized at (>= 1). */
   private buildZoom = 1;
+  /** Zoom level the current bitmap actually was rasterized at (dpr may change). */
+  private builtZoom = 0;
   private terrainRev = -1;
   private lastDrawn = 0;
   private usable = false;
 
   /** True when the map fits in a reasonably sized offscreen canvas. */
-  canUse(state: GameState): boolean {
-    this.buildZoom = resolveBuildZoom(state);
+  canUse(state: GameState, dpr = 1): boolean {
+    this.buildZoom = resolveBuildZoom(state, dpr);
     return this.buildZoom > 0;
   }
 
-  /** Zoom the cache bitmap was built at (1 when unused). */
+  /** Zoom the cache bitmap is (to be) built at (1 when unused). */
   get buildZoomLevel(): number {
     return this.buildZoom;
   }
 
   isValid(terrainRev: number): boolean {
-    return this.usable && this.terrainRev === terrainRev;
+    return this.usable && this.terrainRev === terrainRev && this.builtZoom === this.buildZoom;
   }
 
   rebuild(state: GameState, opts: RenderOptions, terrainRev: number): void {
-    const buildZoom = resolveBuildZoom(state);
+    const buildZoom = resolveBuildZoom(state, opts.dpr);
     if (buildZoom <= 0) {
       this.usable = false;
       return;
@@ -84,6 +87,7 @@ export class MapLayerCache {
       skipFogPass: true,
     });
     this.terrainRev = terrainRev;
+    this.builtZoom = buildZoom;
     this.usable = true;
   }
 
@@ -124,11 +128,12 @@ function cacheDimensions(state: GameState): {
   return { w, h, originX, originY };
 }
 
-/** Pick a bake zoom that fits in MAX_CACHE_PX and matches typical gameplay zoom. */
-function resolveBuildZoom(state: GameState): number {
+/** Pick a bake zoom that fits in MAX_CACHE_PX and matches typical gameplay
+ *  zoom in DEVICE pixels (zoom × devicePixelRatio), so the blit stays sharp. */
+function resolveBuildZoom(state: GameState, dpr: number): number {
   const { w, h } = cacheDimensions(state);
   if (w <= 0 || h <= 0) return 0;
   const maxDim = Math.max(w, h);
   if (maxDim > MAX_CACHE_PX) return 0;
-  return Math.min(TARGET_CACHE_ZOOM, MAX_CACHE_PX / maxDim);
+  return Math.min(TARGET_CACHE_ZOOM * Math.max(1, dpr), MAX_CACHE_PX / maxDim);
 }

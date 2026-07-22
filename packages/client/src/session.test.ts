@@ -1,12 +1,17 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
+  beginTurn,
+  createGame,
   ensureContact,
   proposeDeal,
   relationBetween,
+  serializeState,
   unitsOf,
   visibleForPlayer,
 } from "@roc/sim";
-import { LocalSession } from "./session";
+import { LocalSession, MAP_DIMENSIONS, toNewGameOptions, type LocalGameOptions } from "./session";
+
+const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 test("LocalSession fog includes a map-exchange partner's sight", () => {
   const session = new LocalSession({ seed: "sv-fog", mapSize: "small", aiCount: 1, barbarians: false });
@@ -28,6 +33,48 @@ test("LocalSession fog includes a map-exchange partner's sight", () => {
   expect(session.getVisible().has(key)).toBe(true);
   expect(session.getExplored().has(key)).toBe(true);
   expect(session.getViewerId()).toBe(0);
+});
+
+test("LocalSession adopts a menu-pregenerated world on finishWorldGen", async () => {
+  const opts: LocalGameOptions = { seed: "pg-adopt", mapSize: "small", aiCount: 1, barbarians: false };
+  const world = createGame(toNewGameOptions(opts));
+  beginTurn(world);
+  const session = new LocalSession({
+    ...opts,
+    deferWorldGen: true,
+    pregenerated: Promise.resolve(serializeState(world)),
+  });
+  expect(session.hasState()).toBe(false);
+
+  const updates = vi.fn();
+  session.onUpdate(updates);
+  session.finishWorldGen();
+  await flush();
+
+  expect(session.hasState()).toBe(true);
+  expect(updates).toHaveBeenCalled();
+  expect(session.getState().map.cols).toBe(MAP_DIMENSIONS.small.cols);
+  expect(session.getViewerId()).toBe(0);
+  expect(unitsOf(session.getState(), 0).length).toBeGreaterThan(0);
+});
+
+test("LocalSession falls back to main-thread worldgen when the pregen fails", async () => {
+  const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  const session = new LocalSession({
+    seed: "pg-fallback",
+    mapSize: "small",
+    aiCount: 1,
+    barbarians: false,
+    deferWorldGen: true,
+    pregenerated: Promise.reject(new Error("worker died")),
+  });
+  session.finishWorldGen();
+  await flush();
+
+  expect(session.hasState()).toBe(true);
+  expect(session.getState().map.cols).toBe(MAP_DIMENSIONS.small.cols);
+  expect(errSpy).toHaveBeenCalled();
+  errSpy.mockRestore();
 });
 
 test("LocalSession applies shared vision immediately when the AI accepts", () => {
