@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
+import { getTile } from "@roc/shared";
 import { createGame, viewForPlayer, applyCommand, beginTurn } from "@roc/sim";
 import {
   applyPlayerViewPatch,
   diffPlayerView,
   isEmptyPlayerViewPatch,
 } from "./view-patch";
+import { computeReachable, offsetNeighbors } from "./movement";
+import { isPassableLand } from "./terrain";
 
 describe("PlayerView patches", () => {
   it("empty diff when views are identical", () => {
@@ -21,17 +24,34 @@ describe("PlayerView patches", () => {
     expect(unit).toBeDefined();
     const fromCol = unit!.col;
     const fromRow = unit!.row;
-    const neighbors = [
-      { col: unit!.col + 1, row: unit!.row },
-      { col: unit!.col - 1, row: unit!.row },
-      { col: unit!.col, row: unit!.row + 1 },
-      { col: unit!.col, row: unit!.row - 1 },
-    ];
-    const dest = neighbors.find((n) => {
-      const res = applyCommand(state, { type: "move", unitId: unit!.id, col: n.col, row: n.row }, 0);
-      return res.ok;
-    });
-    expect(dest).toBeDefined();
+    // Procedural starts can box the warrior in; open one adjacent grassland tile.
+    for (const n of offsetNeighbors(state.map, unit!.col, unit!.row)) {
+      const t = getTile(state.map, n.col, n.row)!;
+      if (!isPassableLand(t.terrain)) t.terrain = "grassland";
+    }
+    for (const other of [...state.units.values()]) {
+      if (other.id === unit!.id) continue;
+      const blocks = offsetNeighbors(state.map, unit!.col, unit!.row).some(
+        (n) => n.col === other.col && n.row === other.row,
+      );
+      if (!blocks) continue;
+      const escape = state.map.tiles.find(
+        (t) =>
+          isPassableLand(t.terrain) &&
+          !offsetNeighbors(state.map, unit!.col, unit!.row).some((n) => n.col === t.col && n.row === t.row) &&
+          ![...state.units.values()].some((u) => u.col === t.col && u.row === t.row),
+      );
+      if (escape) {
+        other.col = escape.col;
+        other.row = escape.row;
+      }
+    }
+    const reachable = computeReachable(state, unit!);
+    const destKey = [...reachable.keys()].find((k) => k !== `${fromCol},${fromRow}`);
+    expect(destKey).toBeDefined();
+    const [destCol, destRow] = destKey!.split(",").map(Number) as [number, number];
+    const moveRes = applyCommand(state, { type: "move", unitId: unit!.id, col: destCol, row: destRow }, 0);
+    expect(moveRes.ok).toBe(true);
     const after = viewForPlayer(state, 0);
     const patch = diffPlayerView(before, after);
     expect(patch.units?.some((u) => u.id === unit!.id && (u.col !== fromCol || u.row !== fromRow))).toBe(true);

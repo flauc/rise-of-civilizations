@@ -2,7 +2,7 @@
 // validation and mutate local state directly, so they are only exposed through
 // LocalSession and never sent to the multiplayer server.
 
-import { getTile } from "@roc/shared";
+import { getTile, offsetToAxial, axialDistance } from "@roc/shared";
 import { getWonder } from "@roc/data";
 import {
   advanceWorks,
@@ -79,19 +79,19 @@ function findOpenLandTile(
   col: number,
   row: number,
 ): { col: number; row: number } | null {
-  for (let r = 0; r <= 3; r++) {
-    for (let dr = -r; dr <= r; dr++) {
-      for (let dc = -r; dc <= r; dc++) {
-        const tc = col + dc;
-        const tr = row + dr;
-        const tile = getTile(state.map, tc, tr);
-        if (!tile || !isPassableLand(tile.terrain)) continue;
-        if (unitAt(state, tc, tr)) continue;
-        return { col: tc, row: tr };
-      }
+  const center = offsetToAxial({ col, row });
+  let best: { col: number; row: number } | null = null;
+  let bestDist = Infinity;
+  for (const t of state.map.tiles) {
+    if (!isPassableLand(t.terrain)) continue;
+    if (unitAt(state, t.col, t.row)) continue;
+    const d = axialDistance(center, offsetToAxial({ col: t.col, row: t.row }));
+    if (d < bestDist) {
+      bestDist = d;
+      best = { col: t.col, row: t.row };
     }
   }
-  return null;
+  return best;
 }
 
 function findOpenNavalTile(
@@ -100,19 +100,19 @@ function findOpenNavalTile(
   row: number,
   oceanUnlocked: boolean,
 ): { col: number; row: number } | null {
-  for (let r = 0; r <= 3; r++) {
-    for (let dr = -r; dr <= r; dr++) {
-      for (let dc = -r; dc <= r; dc++) {
-        const tc = col + dc;
-        const tr = row + dr;
-        const tile = getTile(state.map, tc, tr);
-        if (!tile || !isNavalPassable(tile.terrain, oceanUnlocked)) continue;
-        if (unitAt(state, tc, tr)) continue;
-        return { col: tc, row: tr };
-      }
+  const center = offsetToAxial({ col, row });
+  let best: { col: number; row: number } | null = null;
+  let bestDist = Infinity;
+  for (const t of state.map.tiles) {
+    if (!isNavalPassable(t.terrain, oceanUnlocked)) continue;
+    if (unitAt(state, t.col, t.row)) continue;
+    const d = axialDistance(center, offsetToAxial({ col: t.col, row: t.row }));
+    if (d < bestDist) {
+      bestDist = d;
+      best = { col: t.col, row: t.row };
     }
   }
-  return null;
+  return best;
 }
 
 export function applyCheat(
