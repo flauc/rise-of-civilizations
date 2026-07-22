@@ -580,6 +580,9 @@ export interface TradeRoute {
 
 export type BarbarianActivity = "none" | "minimal" | "low" | "normal" | "high";
 
+/** AI opponent skill/intensity (no "none": AI opponents are always present when slotted). */
+export type AiDifficulty = "minimal" | "low" | "normal" | "high";
+
 /** Tribal village density on the map (lobby option). */
 export type VillageDensity = "none" | "medium" | "high";
 
@@ -743,6 +746,8 @@ export interface GameState {
   tradeHistory: TradeRecord[];
   /** Barbarian intensity setting for this game. */
   barbarianActivity: BarbarianActivity;
+  /** AI opponent difficulty for this game. */
+  aiDifficulty: AiDifficulty;
   /** Active barbarian truces bought via bribery (see bribery.ts). */
   barbarianBribes: BarbarianBribe[];
   /** Player-scoped events reported at the start of the next turn. */

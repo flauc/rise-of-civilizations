@@ -8,7 +8,7 @@ import {
   isGameAudioUnlocked,
 } from "./game-audio-unlock";
 import { duckBackgroundMusic, unduckBackgroundMusic } from "./game-sounds";
-import { TUTORIAL_STEP_IDS, type TutorialStepId } from "./tutorial-coach";
+import { TUTORIAL_STEP_IDS, type TutorialStepId } from "./tutorial-coach-steps";
 
 const MP3_LOAD_TIMEOUT_MS = 15000;
 const PLAY_RETRY_MS = 120;

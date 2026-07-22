@@ -385,6 +385,47 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
     }));
   }
 
+  async leaderboardBestPerPlayer(limit = 25): Promise<LeaderboardEntry[]> {
+    const all = await this.allSessionRows();
+    const byClient = buildHandleByClientId(all);
+    const byUser = new Map<string, string>();
+    for (const r of all) {
+      if (r.userId && r.handle?.trim()) byUser.set(r.userId, r.handle.trim());
+    }
+    const rows = await this.sql<Record<string, unknown>>`
+      SELECT session_id, client_id, user_id, handle, civ_id, score, outcome, turns,
+        COALESCE(ended_at, started_at, 0) AS ts
+      FROM (
+        SELECT *,
+          ROW_NUMBER() OVER (
+            PARTITION BY COALESCE(user_id, client_id)
+            ORDER BY score DESC, COALESCE(ended_at, started_at, 0) DESC
+          ) AS rn
+        FROM sessions
+        WHERE score IS NOT NULL AND outcome IN ('win','loss')
+      ) ranked
+      WHERE rn = 1
+      ORDER BY score DESC
+      LIMIT ${limit}`;
+    return rows.map((r) => ({
+      handle: resolvePlayerHandle(
+        {
+          handle: r.handle == null ? undefined : String(r.handle),
+          userId: r.user_id == null ? undefined : String(r.user_id),
+          clientId: String(r.client_id),
+        },
+        byClient,
+        byUser,
+      ),
+      sessionId: String(r.session_id),
+      civId: r.civ_id == null ? undefined : String(r.civ_id),
+      score: num(r.score),
+      outcome: String(r.outcome) as SessionOutcome,
+      turns: num(r.turns),
+      ts: num(r.ts),
+    }));
+  }
+
   /** All session rows (for admin handle backfill). */
   async exportSessionRows(): Promise<SessionRow[]> {
     return this.allSessionRows();

@@ -3286,8 +3286,8 @@ export interface NaturalWonderDef {
   /** Land feature beside moving or standing water (waterfalls): the tile or a
    *  neighbour must be a river, lake, ocean, or coast. */
   adjacentToWater?: boolean;
-  /** On Real World maps, the wonder may only spawn inside this lat/lon box. */
-  realWorldBox?: { latMin: number; latMax: number; lonMin: number; lonMax: number };
+  /** Mandatory lat/lon box (degrees). Enforced on every map via `mapGeoProfile`. */
+  realWorldBox: { latMin: number; latMax: number; lonMin: number; lonMax: number };
 }
 
 const NW = (d: NaturalWonderDef): NaturalWonderDef => d;
@@ -3316,10 +3316,10 @@ export const NATURAL_WONDER_DEFS: NaturalWonderDef[] = [
   NW({ id: "zhangye_danxia", name: "Zhangye Danxia", desc: "Rainbow-banded sandstone ridges.", validTerrain: ["mesa", "desert"], realWorldBox: RW(37, 39, 99, 101), tileYields: { culture: 2, science: 1, gold: 1 }, discoveryBonus: { culture: 60, science: 40 } }),
   NW({ id: "cappadocia", name: "Cappadocia", desc: "Fairy-chimney spires and hidden cave cities.", validTerrain: ["mesa", "hills"], realWorldBox: RW(38, 39, 34, 35), tileYields: { faith: 2, culture: 1, production: 1 }, discoveryBonus: { faith: 60, culture: 60 } }),
   NW({ id: "pamukkale", name: "Pamukkale", desc: "Cascading white travertine terraces and hot springs.", validTerrain: ["hills"], realWorldBox: RW(37, 38, 28, 30), tileYields: { faith: 2, gold: 1, culture: 1 }, discoveryBonus: { faith: 50, culture: 50 } }),
-  NW({ id: "sahara_dunes", name: "Sahara", desc: "An endless sea of wind-sculpted dunes.", validTerrain: ["desert"], realWorldBox: RW(15, 30, -15, 35), tileYields: { gold: 2, faith: 1, production: 1 }, discoveryBonus: { gold: 90, faith: 40 } }),
+  NW({ id: "sahara_dunes", name: "Sahara", desc: "An endless sea of wind-sculpted dunes.", validTerrain: ["desert"], realWorldBox: RW(17, 31, -11, 33), tileYields: { gold: 2, faith: 1, production: 1 }, discoveryBonus: { gold: 90, faith: 40 } }),
 
   // ---- coasts, reefs & islands (gold / science) ---------------------------
-  NW({ id: "great_barrier_reef", name: "Great Barrier Reef", desc: "The largest living structure on Earth.", validTerrain: ["coast"], coastalWater: true, realWorldBox: RW(-22, -10, 142, 155), tileYields: { food: 3, gold: 2, science: 1 }, discoveryBonus: { gold: 80, science: 60 } }),
+  NW({ id: "great_barrier_reef", name: "Great Barrier Reef", desc: "The largest living structure on Earth.", validTerrain: ["coast"], coastalWater: true, realWorldBox: RW(-20, -11, 144, 154), tileYields: { food: 3, gold: 2, science: 1 }, discoveryBonus: { gold: 80, science: 60 } }),
   NW({ id: "galapagos_islands", name: "Galápagos Islands", desc: "Isolated isles teeming with singular life.", validTerrain: ["ocean"], openOcean: true, realWorldBox: RW(-2, 2, -93, -89), tileYields: { science: 3, food: 1 }, discoveryBonus: { science: 90, freeTech: true } }),
   NW({ id: "cliffs_of_dover", name: "White Cliffs of Dover", desc: "Gleaming chalk cliffs facing the sea.", validTerrain: ["grassland", "plains", "hills"], coastalFront: true, realWorldBox: RW(50.5, 51.5, 0, 2), tileYields: { gold: 3, culture: 1 }, discoveryBonus: { gold: 70, culture: 30 } }),
   NW({ id: "giants_causeway", name: "Giant's Causeway", desc: "Interlocking basalt columns marching into the sea.", validTerrain: ["hills", "grassland", "plains"], coastal: true, realWorldBox: RW(55, 55.5, -7, -5.5), tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 40 } }),
@@ -3335,7 +3335,7 @@ export const NATURAL_WONDER_DEFS: NaturalWonderDef[] = [
   NW({ id: "moraine_lake", name: "Moraine Lake", desc: "Glacial meltwater of impossible blue beneath the peaks.", validTerrain: ["mountains", "lake"], realWorldBox: RW(51, 52, -117, -115), tileYields: { science: 2, culture: 2 }, discoveryBonus: { culture: 50, science: 50 } }),
 
   // ---- great forests & valleys (science / production / culture) -----------
-  NW({ id: "amazon_rainforest", name: "Amazon Rainforest", desc: "An immense, teeming green ocean of trees.", validTerrain: ["jungle"], realWorldBox: RW(-10, 5, -70, -45), tileYields: { food: 2, production: 2, science: 1 }, discoveryBonus: { science: 100, freeTech: true } }),
+  NW({ id: "amazon_rainforest", name: "Amazon Rainforest", desc: "An immense, teeming green ocean of trees.", validTerrain: ["jungle"], realWorldBox: RW(-8, 2, -68, -48), tileYields: { food: 2, production: 2, science: 1 }, discoveryBonus: { science: 100, freeTech: true } }),
   NW({ id: "pantanal", name: "Pantanal", desc: "The world's largest tropical wetland.", validTerrain: ["grassland", "jungle"], realWorldBox: RW(-22, -15, -60, -54), tileYields: { food: 3, gold: 1 }, discoveryBonus: { gold: 60, science: 40 } }),
   NW({ id: "yosemite", name: "Yosemite Valley", desc: "Sheer granite walls above ancient sequoias.", validTerrain: ["mountains", "forest"], realWorldBox: RW(37.5, 38, -120, -119), tileYields: { production: 2, culture: 1, science: 1 }, discoveryBonus: { culture: 60, science: 40 } }),
   NW({ id: "zhangjiajie", name: "Zhangjiajie", desc: "A forest of towering quartzite pillars.", validTerrain: ["mountains", "forest"], realWorldBox: RW(29, 30, 110, 111), tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 50 } }),

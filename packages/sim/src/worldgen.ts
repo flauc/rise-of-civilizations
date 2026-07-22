@@ -15,12 +15,14 @@ import {
   type Rng,
 } from "@roc/shared";
 import { makeValueNoise } from "./noise";
-import { isWorldLand } from "./worldmask";
+import { mapGeoProfile } from "./map-geo";
+import { isGeoMapLand, isGeoMapType, regionalGeoMapOmitsPoleAxis, regionalGeoMapSkipsOffshoreIslands } from "./geo-maps";
 
 /**
  * The shape of the world a map is generated as. Procedural types shape the
- * elevation field into recognizable landmass layouts; "realworld" instead lays
- * the baked Natural Earth continents down and grows terrain on top of them.
+ * elevation field into recognizable landmass layouts; geodata types
+ * ("realworld", regional continents, Mediterranean) instead lay baked Natural
+ * Earth coastlines down and grow terrain on top of them.
  */
 export type MapType =
   | "random"
@@ -32,7 +34,13 @@ export type MapType =
   | "archipelago"
   | "inland_sea"
   | "islands"
-  | "realworld";
+  | "realworld"
+  | "mediterranean"
+  | "europe"
+  | "africa"
+  | "asia"
+  | "north_america"
+  | "south_america";
 
 /** Layouts the "Random" menu choice can roll (excludes the meta "random" type). */
 export const RANDOM_MAP_POOL: readonly MapType[] = [
@@ -45,6 +53,7 @@ export const RANDOM_MAP_POOL: readonly MapType[] = [
   "inland_sea",
   "islands",
   "realworld",
+  "mediterranean",
 ];
 
 /** All map-type values (menu + internal). */
@@ -59,6 +68,12 @@ export const MAP_TYPES: readonly MapType[] = [
   "inland_sea",
   "islands",
   "realworld",
+  "mediterranean",
+  "europe",
+  "africa",
+  "asia",
+  "north_america",
+  "south_america",
 ];
 
 /** Human-readable names for map layouts (menus + in-game HUD). */
@@ -73,6 +88,12 @@ export const MAP_TYPE_LABELS: Record<MapType, string> = {
   inland_sea: "Inland Sea",
   islands: "Islands",
   realworld: "Real World (Earth)",
+  mediterranean: "Mediterranean (Roman Empire)",
+  europe: "Europe",
+  africa: "Africa",
+  asia: "Asia",
+  north_america: "North America",
+  south_america: "South America",
 };
 
 export function mapTypeLabel(type: MapType | string | undefined): string {
@@ -398,6 +419,12 @@ function shaperFor(type: MapType, layout: ContinentLayout | null, seed?: number 
       // Mostly open ocean; populateIslandsWorld stamps visible islets afterward.
       return { seaLevel: 0.56, freq: 2.4, mask: (_u, _v, e) => (0.46 + 0.38 * e) * (0.5 + 0.5 * e) };
     case "realworld":
+    case "mediterranean":
+    case "europe":
+    case "africa":
+    case "asia":
+    case "north_america":
+    case "south_america":
     case "continents":
     default:
       // Default: the original behavior — continents kept off the map borders.
@@ -900,7 +927,7 @@ const WARP_AMP = 0.045;
 function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
   const { cols, rows } = opts;
   const mapType = opts.mapType ?? "continents";
-  const realWorld = mapType === "realworld";
+  const geoMap = isGeoMapType(mapType);
   const layout = makeContinentLayout(opts.seed, mapType);
   const shaper = shaperFor(mapType, layout, opts.seed);
   const seaLevel = opts.seaLevel ?? shaper.seaLevel;
@@ -917,7 +944,7 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
   // skirts around mountain cores, so a separate noise band rolls open uplands.
   const hillNoise = makeValueNoise(rng, 40, 4);
   const warp = (u: number, v: number): [number, number] =>
-    realWorld
+    geoMap
       ? [u, v]
       : [
           u + (warpNoise(u * 2.6, v * 2.6) - 0.5) * 2 * warpAmp,
@@ -939,12 +966,24 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
     }
     return hillNoise(col * nx * 1.7 + 31.7, row * ny * 1.7 + 17.3) > 0.56 ? "hills" : terrain;
   };
-  // The frozen poles sit at a random pair of opposite edges; Earth stays N/S.
-  const poleAxis: "ns" | "ew" = !realWorld && makeRng(`${opts.seed}:poles`).next() < 0.5 ? "ew" : "ns";
-  const equatorAt = (col: number, row: number): number =>
-    poleAxis === "ns"
-      ? 1 - Math.abs((rows > 1 ? row / (rows - 1) : 0.5) - 0.5) * 2
-      : 1 - Math.abs((cols > 1 ? col / (cols - 1) : 0.5) - 0.5) * 2;
+  // Geodata maps use real latitude; procedural maps pick a random pole axis.
+  // Regional geodata (Mediterranean) omits poleAxis: its land touches the map
+  // borders, so polarCapLand would flood-fill most of the landmass as "ice cap"
+  // and leave no viable player starts on smaller sizes.
+  const poleAxis: "ns" | "ew" | undefined = regionalGeoMapOmitsPoleAxis(mapType)
+    ? undefined
+    : geoMap
+      ? "ns"
+      : "ns";
+  const geo = mapGeoProfile(mapType);
+  const latLonAt = (col: number, row: number): { lat: number; lon: number } =>
+    geo.tileLatLon(col, row, cols, rows);
+  const isGeoLandAt = (col: number, row: number): boolean =>
+    isGeoMapLand(mapType, col, row, cols, rows);
+  const equatorAt = (col: number, row: number): number => {
+    const { lat } = latLonAt(col, row);
+    return 1 - Math.min(1, Math.abs(lat) / 90);
+  };
 
   for (let row = 0; row < rows; row++) {
     // Falloff toward the map edges keeps continents off the borders.
@@ -959,9 +998,9 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
 
       let terrain: TerrainType;
       let height: number;
-      if (realWorld) {
-        // Lay down the real continents, then grow elevation/biomes on the land.
-        if (!isWorldLand(col, row, cols, rows)) {
+      if (geoMap) {
+        // Lay down real coastlines, then grow elevation/biomes on the land.
+        if (!isGeoLandAt(col, row)) {
           terrain = "ocean";
           height = seaLevel * 0.5;
         } else {
@@ -1002,7 +1041,7 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
     }
   }
 
-  const map: GameMap = { cols, rows, tiles, poleAxis };
+  const map: GameMap = poleAxis ? { cols, rows, tiles, poleAxis } : { cols, rows, tiles };
   if (layout && layout.seeds.length > 1) {
     carveContinentSeams(map, layout, CONTINENT_SEPARATION * separationScale, warp, heights, seaLevel);
   }
@@ -1022,8 +1061,8 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
     populateIslandsWorld(map, heights, rng, seaLevel, moistAt, equatorAt);
   } else if (inlandSea && setoSpec) {
     populateSetoInlandIslands(map, heights, setoSpec, rng, seaLevel, moistAt, equatorAt);
-  } else if (mapType !== "archipelago") {
-    sprinkleIslands(map, heights, rng, seaLevel, moistAt, equatorAt, poleAxis);
+  } else if (mapType !== "archipelago" && !regionalGeoMapSkipsOffshoreIslands(mapType)) {
+    sprinkleIslands(map, heights, rng, seaLevel, moistAt, equatorAt, poleAxis ?? "ns");
   }
   // Moist hills grow a forest cover — wooded hills, everywhere on the map
   // (continents, islands, bridges alike).

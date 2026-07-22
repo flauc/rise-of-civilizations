@@ -1,11 +1,11 @@
 /// <reference types="vite/client" />
 
+import type { GameState } from "@roc/sim";
 import { ASSET_BASE_URL } from "./asset-base";
-import { shareAtlas } from "./atlas-cache";
-import { NATURAL_WONDER_IDS } from "@roc/data";
 
 export interface NaturalWonderAtlas {
   readonly images: Record<string, HTMLImageElement | undefined>;
+  /** True once every requested id has settled (loaded or missing). */
   loaded: boolean;
 }
 
@@ -13,21 +13,42 @@ function isReady(img: HTMLImageElement): boolean {
   return img.complete && img.naturalWidth > 0;
 }
 
-/** Starts loading every natural-wonder full-tile sprite
- *  (public/natural-wonders/<id>.png). Each is a 256×384 hex tile, like terrain,
- *  drawn by the renderer in place of the underlying terrain. Missing art is fine
- *  — the tile then falls back to its terrain and a name label. */
-export const loadNaturalWonderAtlas = shareAtlas(loadNaturalWonderAtlasUncached);
+let shared: NaturalWonderAtlas | null = null;
 
-function loadNaturalWonderAtlasUncached(onLoad?: () => void): NaturalWonderAtlas {
-  const images: Record<string, HTMLImageElement | undefined> = {};
-  let remaining = NATURAL_WONDER_IDS.length;
-  const atlas: NaturalWonderAtlas = { images, loaded: remaining === 0 };
-  for (const id of NATURAL_WONDER_IDS) {
+/** Shared on-demand atlas; starts empty (already "loaded"). */
+export function getNaturalWonderAtlas(): NaturalWonderAtlas {
+  if (!shared) shared = { images: {}, loaded: true };
+  return shared;
+}
+
+/** Natural wonder ids placed on the map (typically 6–10 on a large world). */
+export function naturalWonderIdsOnMap(state: GameState): string[] {
+  const ids = new Set<string>();
+  for (const t of state.map.tiles) {
+    if (t.naturalWonder) ids.add(t.naturalWonder);
+  }
+  return [...ids];
+}
+
+/** Load full-tile sprites for the given ids; skips ids already requested. */
+export function ensureNaturalWonderTiles(
+  atlas: NaturalWonderAtlas,
+  ids: readonly string[],
+  onLoad?: () => void,
+): void {
+  const pending = ids.filter((id) => !(id in atlas.images));
+  if (pending.length === 0) {
+    onLoad?.();
+    return;
+  }
+  atlas.loaded = false;
+  let remaining = pending.length;
+  for (const id of pending) {
+    atlas.images[id] = undefined;
     const img = new Image();
     img.src = `${ASSET_BASE_URL}natural-wonders/${id}.png`;
     const done = (): void => {
-      if (isReady(img)) images[id] = img;
+      if (isReady(img)) atlas.images[id] = img;
       remaining--;
       if (remaining === 0) atlas.loaded = true;
       onLoad?.();
@@ -35,7 +56,6 @@ function loadNaturalWonderAtlasUncached(onLoad?: () => void): NaturalWonderAtlas
     img.onload = done;
     img.onerror = done;
   }
-  return atlas;
 }
 
 /** The loaded full-tile sprite for a wonder id, or undefined if not ready. */

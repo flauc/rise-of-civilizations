@@ -8,7 +8,7 @@ declare const process: { env: Record<string, string | undefined> };
 interface ServerWebSocket<T = unknown> {
   data: T;
   readyState: number;
-  send(message: string | ArrayBufferView | ArrayBuffer): number;
+  send(message: string | ArrayBufferView | ArrayBuffer, compress?: boolean): number;
   close(code?: number, reason?: string): void;
   subscribe(topic: string): void;
   publish(topic: string, message: string): void;
@@ -30,6 +30,7 @@ interface BunServeOptions<T> {
   websocket?: {
     /** Seconds of inactivity before the server closes the connection. 0 = disabled. */
     idleTimeout?: number;
+    perMessageDeflate?: boolean;
     open?(ws: ServerWebSocket<T>): void | Promise<void>;
     message?(ws: ServerWebSocket<T>, message: string | ArrayBuffer): void | Promise<void>;
     close?(ws: ServerWebSocket<T>, code?: number, reason?: string): void | Promise<void>;

@@ -11,8 +11,9 @@ import { placeFeatures } from "./features";
 import { placeResources } from "./resources";
 import { placeNaturalWonders } from "./natural-wonders";
 import { GLOBAL_MORALE_BASE, startingUnitMorale } from "./morale";
-import type { BarbarianActivity } from "./state";
+import type { AiDifficulty, BarbarianActivity } from "./state";
 import { normalizeGameSpeed, type GameSpeed } from "./game-speed";
+import { normalizeAiDifficulty } from "./ai-difficulty";
 
 export interface NewGameOptions {
   cols?: number;
@@ -28,6 +29,8 @@ export interface NewGameOptions {
   humanSlots?: number;
   /** Barbarian intensity. `false` = none, `true` = normal. */
   barbarians?: boolean | BarbarianActivity;
+  /** AI opponent difficulty. Defaults to normal. */
+  aiDifficulty?: AiDifficulty;
   /** Enable the Legends (heroes) feature. Defaults to on. */
   legends?: boolean;
   /** Scatter natural wonders across the map. Defaults to off. */
@@ -213,6 +216,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   const count = Math.max(1, opts.playerCount ?? opts.playerNames?.length ?? 2);
   const humanSlots = opts.humanSlots ?? count;
   const activity = normalizeBarbarians(opts.barbarians);
+  const aiDifficulty = normalizeAiDifficulty(opts.aiDifficulty);
   const legendsEnabled = opts.legends ?? true;
   const startGold = startingGoldAmount(opts.startingGold);
 
@@ -372,6 +376,7 @@ export function createGame(opts: NewGameOptions = {}): GameState {
     diploProposals: [],
     tradeHistory: [],
     barbarianActivity: activity,
+    aiDifficulty,
     barbarianBribes: [],
     turnUpdates: [],
     nextTurnUpdateId: 1,

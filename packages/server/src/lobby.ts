@@ -10,7 +10,9 @@ import {
   PLAYER_COLORS,
   TOGGLEABLE_VICTORIES,
   normalizeGameSpeed,
+  normalizeAiDifficulty,
   type BarbarianActivity,
+  type AiDifficulty,
   type GameSpeed,
   type GameState,
   type GameSummary,
@@ -53,6 +55,7 @@ export interface LobbyGame {
   mapSize?: string;
   mapType: MapType;
   barbarians: BarbarianActivity;
+  aiDifficulty: AiDifficulty;
   naturalWonders: boolean;
   villages: VillageDensity;
   startingGold: StartingGold;
@@ -87,6 +90,7 @@ export interface CreateOptions {
   aiCount?: number;
   mapType?: MapType;
   barbarians?: BarbarianActivity;
+  aiDifficulty?: AiDifficulty;
   naturalWonders?: boolean;
   villages?: boolean | VillageDensity;
   startingGold?: StartingGold;
@@ -113,6 +117,7 @@ export interface ConfigurePatch {
   mapSize?: string;
   mapType?: MapType;
   barbarians?: BarbarianActivity;
+  aiDifficulty?: AiDifficulty;
   naturalWonders?: boolean;
   villages?: boolean | VillageDensity;
   startingGold?: StartingGold;
@@ -186,6 +191,7 @@ export class Lobby {
       mapSize: opts.mapSize,
       mapType: opts.mapType ?? "random",
       barbarians: opts.barbarians ?? "normal",
+      aiDifficulty: normalizeAiDifficulty(opts.aiDifficulty),
       naturalWonders: opts.naturalWonders ?? true,
       villages: normalizeVillageDensity(opts.villages),
       startingGold: opts.startingGold ?? "balanced",
@@ -243,6 +249,9 @@ export class Lobby {
     if (patch.mapSize !== undefined) game.mapSize = patch.mapSize;
     if (patch.mapType !== undefined) game.mapType = patch.mapType;
     if (patch.barbarians !== undefined) game.barbarians = patch.barbarians;
+    if (patch.aiDifficulty !== undefined) {
+      game.aiDifficulty = normalizeAiDifficulty(patch.aiDifficulty as AiDifficulty | "none");
+    }
     if (patch.naturalWonders !== undefined) game.naturalWonders = patch.naturalWonders;
     if (patch.villages !== undefined) game.villages = normalizeVillageDensity(patch.villages);
     if (patch.startingGold !== undefined) game.startingGold = patch.startingGold;
@@ -358,6 +367,7 @@ export class Lobby {
       mapType: g.mapType,
       mapSize: g.mapSize,
       barbarians: g.barbarians,
+      aiDifficulty: g.aiDifficulty,
       naturalWonders: g.naturalWonders,
       villages: g.villages,
       startingGold: g.startingGold,
@@ -398,6 +408,7 @@ export class Lobby {
       playerCount: ordered.length,
       humanSlots: humans.length,
       barbarians: game.barbarians,
+      aiDifficulty: game.aiDifficulty,
       naturalWonders: game.naturalWonders,
       villages: game.villages,
       startingGold: game.startingGold,

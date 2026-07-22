@@ -15,7 +15,15 @@ import {
 } from "@roc/data";
 import { log, playerById, unitAt, citiesOf, type City, type GameState, type Player, type WonderDiscoveryInfo } from "./state";
 import { TECH_DEFS, type TechId } from "./content";
-import { inRealWorldWonderBox, worldTileLatLon } from "../worldmask";
+import { mapGeoProfile, tileInWonderBox, wonderBoxOverlapsMap, assertNaturalWonderGeo, type RealWorldWonderBox } from "../map-geo";
+import { isGeoMapType, isRegionalGeoMapType } from "../geo-maps";
+import {
+  anchorRegionalWonderTerrain,
+  isInlandNaturalWonder,
+  regionalEligibleWonderCount,
+  regionalInlandSeaOk,
+  REGIONAL_WONDER_SPACING,
+} from "../regional-wonder-terrain";
 import { isPassableLand, ZERO_YIELDS, type Yields } from "./terrain";
 import { cityTerritory } from "./territory";
 
@@ -200,20 +208,47 @@ export function placeNaturalWonders(
   // Scale wonder count to map size: ~8–10 on giant maps, fewer on small ones.
   // Cap at 10 so the world never feels overcrowded with wonders.
   const WONDER_TILES_PER = 750;
-  const targetCount = Math.max(
+  const geo = mapGeoProfile(map.mapType);
+
+  // Regional maps: stamp authentic terrain at each wonder's lat/lon anchor first.
+  const regionalAnchors = anchorRegionalWonderTerrain(map);
+
+  const areaTarget = Math.max(
     3,
     Math.min(10, Math.round((map.cols * map.rows) / WONDER_TILES_PER)),
   );
+  const eligibleRegional = regionalEligibleWonderCount(map);
+  const targetCount =
+    eligibleRegional > 0 ? Math.min(areaTarget, eligibleRegional) : areaTarget;
 
-  // Deterministically shuffle the wonder defs so each game places a varied subset
-  // rather than always the first N in declaration order.
-  const order = NATURAL_WONDER_DEFS
-    .map((def) => ({ def, key: hashSeed(`nw-order:${def.id}:${seed}`) }))
-    .sort((a, b) => a.key - b.key)
-    .map((o) => o.def);
+  const MIN_WONDER_SPACING = eligibleRegional > 0 ? REGIONAL_WONDER_SPACING : 10;
 
   const occupied = (t: Tile): boolean =>
     !!t.naturalWonder || !!t.feature || !!t.resource || t.ownerCityId !== undefined;
+
+  /** Fast pre-check: terrain + geo box (ignores coastal rules). Used to sort placement order. */
+  const roughGeoTerrainMatches = (def: (typeof NATURAL_WONDER_DEFS)[number]): number => {
+    if (!wonderBoxOverlapsMap(geo, map.cols, map.rows, def.realWorldBox)) return 0;
+    let n = 0;
+    for (const t of map.tiles) {
+      if (occupied(t) || t.river || !def.validTerrain.includes(t.terrain)) continue;
+      if (!tileInWonderBox(geo, t.col, t.row, map.cols, map.rows, def.realWorldBox)) continue;
+      n++;
+      if (n >= 3) break;
+    }
+    return n;
+  };
+
+  // Prefer wonders that can actually fit this map's geography, then shuffle within tiers.
+  const order = NATURAL_WONDER_DEFS
+    .map((def) => ({
+      def,
+      rough: roughGeoTerrainMatches(def),
+      key: hashSeed(`nw-order:${def.id}:${seed}`),
+    }))
+    .sort((a, b) => b.rough - a.rough || a.key - b.key)
+    .map((o) => o.def);
+
   // Coastline wonders (sea cliffs) must sit on a LAND tile that borders open water,
   // so the neighbouring sea paints the shoreline against the cliff.
   const isSea = (col: number, row: number): boolean => {
@@ -259,60 +294,60 @@ export function placeNaturalWonders(
       (n) => isWater(n.terrain) || n.river || n.riverLake,
     );
   };
+  type RealWorldBox = RealWorldWonderBox;
   const farFromStarts = (col: number, row: number): boolean => {
-    const minDist = realWorld ? 4 : 6;
+    const minDist = isGeoMapType(map.mapType) ? 4 : 6;
     return starts.every((s) => !s || axialDistance(offsetToAxial(s), offsetToAxial({ col, row })) >= minDist);
   };
-  // Hard spacing guarantee: two wonders never sit within 10 hexes of each other.
-  const MIN_WONDER_SPACING = 10;
+  // Hard spacing guarantee: two wonders never sit too close on the same map.
   const tooClose = (col: number, row: number): boolean =>
     placed.some((p) => axialDistance(offsetToAxial(p), offsetToAxial({ col, row })) < MIN_WONDER_SPACING);
-  const realWorld = map.mapType === "realworld";
-  type RealWorldBox = NonNullable<(typeof NATURAL_WONDER_DEFS)[number]["realWorldBox"]>;
-  const REAL_WORLD_BOX_PAD = 2;
-  const expandedBox = (box: RealWorldBox): RealWorldBox => ({
-    latMin: box.latMin - REAL_WORLD_BOX_PAD,
-    latMax: box.latMax + REAL_WORLD_BOX_PAD,
-    lonMin: box.lonMin - REAL_WORLD_BOX_PAD,
-    lonMax: box.lonMax + REAL_WORLD_BOX_PAD,
-  });
-  const inWonderRegion = (col: number, row: number, box: RealWorldBox): boolean => {
-    const { lat, lon } = worldTileLatLon(col, row, map.cols, map.rows);
-    return inRealWorldWonderBox(lat, lon, realWorld ? expandedBox(box) : box);
+  const inWonderRegion = (col: number, row: number, box: RealWorldBox): boolean =>
+    tileInWonderBox(geo, col, row, map.cols, map.rows, box);
+
+  const tileAcceptsWonder = (def: (typeof NATURAL_WONDER_DEFS)[number], col: number, row: number): boolean => {
+    const t = getTile(map, col, row);
+    if (!t || occupied(t) || t.river || !def.validTerrain.includes(t.terrain)) return false;
+    if (def.openOcean && (t.terrain !== "ocean" || !ringedByOcean(col, row))) return false;
+    if (def.coastalWater && (!isWater(t.terrain) || !bordersLand(col, row))) return false;
+    if (def.adjacentToWater && !besideWater(t)) return false;
+    if (def.coastalFront) {
+      if (!frontFacesSea(col, row)) return false;
+    } else if (def.coastal && !bordersSea(col, row)) return false;
+    if (isRegionalGeoMapType(map.mapType) && isInlandNaturalWonder(def) && !regionalInlandSeaOk(map, col, row)) return false;
+    if (!inWonderRegion(col, row, def.realWorldBox)) return false;
+    if (!farFromStarts(col, row)) return false;
+    if (unitAt(state, col, row)) return false;
+    return true;
+  };
+
+  const placeWonderAt = (def: (typeof NATURAL_WONDER_DEFS)[number], col: number, row: number): boolean => {
+    if (!tileAcceptsWonder(def, col, row) || tooClose(col, row)) return false;
+    const t = getTile(map, col, row);
+    if (!t) return false;
+    t.naturalWonder = def.id;
+    placed.push({ col, row });
+    placedIds.push(def.id);
+    return true;
   };
 
   for (const def of order) {
     if (placedIds.length >= targetCount) break;
+    const anchor = regionalAnchors.get(def.id);
+    if (anchor && placeWonderAt(def, anchor.col, anchor.row)) continue;
+
     const candidates: { col: number; row: number; key: number }[] = [];
     for (const t of map.tiles) {
-      // Never place a wonder on a river tile or an occupied/invalid tile.
-      if (occupied(t) || t.river || !def.validTerrain.includes(t.terrain)) continue;
-      // Coastline wonders additionally require adjacent sea. Front-facing cliffs
-      // need their two lower edges on the water; others just need any sea neighbour.
-      if (def.openOcean && (t.terrain !== "ocean" || !ringedByOcean(t.col, t.row))) continue;
-      if (def.coastalWater && (!isWater(t.terrain) || !bordersLand(t.col, t.row))) continue;
-      if (def.adjacentToWater && !besideWater(t)) continue;
-      if (def.coastalFront) {
-        if (!frontFacesSea(t.col, t.row)) continue;
-      } else if (def.coastal && !bordersSea(t.col, t.row)) continue;
-      if (realWorld && def.realWorldBox && !inWonderRegion(t.col, t.row, def.realWorldBox)) continue;
-      if (!farFromStarts(t.col, t.row)) continue;
-      if (unitAt(state, t.col, t.row)) continue;
+      if (!tileAcceptsWonder(def, t.col, t.row)) continue;
       candidates.push({ col: t.col, row: t.row, key: hashSeed(`nw:${def.id}:${t.col},${t.row}:${seed}`) });
     }
     if (candidates.length === 0) continue;
     candidates.sort((a, b) => a.key - b.key);
-    // Spacing is a hard rule: if this wonder can't be placed far enough from the
-    // others, skip it (another def with different terrain may still fit).
     const pick = candidates.find((c) => !tooClose(c.col, c.row));
     if (!pick) continue;
-    const t = getTile(map, pick.col, pick.row);
-    if (t) {
-      t.naturalWonder = def.id;
-      placed.push({ col: pick.col, row: pick.row });
-      placedIds.push(def.id);
-    }
+    placeWonderAt(def, pick.col, pick.row);
   }
 
+  assertNaturalWonderGeo(map);
   state.naturalWonderIds = placedIds;
 }

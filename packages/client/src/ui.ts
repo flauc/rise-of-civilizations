@@ -1,18 +1,17 @@
 import { ASSET_BASE_URL, assetUrl } from "./asset-base";
 import { swapArt, clearArt } from "./art-swap";
 import { rewardArtUrl } from "./reward-art";
-import { renderTechTreeInto } from "./techtree";
-import { createWiki } from "./wiki";
+import { renderTechTreeIntoLazy } from "./techtree-lazy";
+import { createLazyWiki } from "./wiki-lazy";
 import { confirmDialog } from "./confirm-dialog";
-import { createEmpire, type Tab as EmpireTab } from "./empire";
-import { createDiplomacy } from "./diplomacy";
+import { createLazyEmpire } from "./empire-lazy";
+import { createLazyDiplomacy } from "./diplomacy-lazy";
 import { isPhoneShell } from "./viewport-shell";
 import { bindDialogClose, wirePanelClose } from "./dialog-close";
 import { gameHud, initGameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
 import { setPreservedHtml, withPreservedScroll } from "./panel-scroll";
 import type { DealItem } from "@roc/sim";
 import type { SaveRecord } from "./save-db";
-import type { CheatAction } from "./god-mode";
 import { getSettings, updateSettings, type TurnUpdateView } from "./settings";
 import { eventMatchesKeybind, getKeybinds, isKeybindCaptureActive, keybindHint } from "./game-keybinds";
 import {
@@ -235,31 +234,22 @@ import {
 } from "@roc/data";
 import { abilityIconHtml, type AbilityAtlas } from "./ability-assets";
 import { abandonActiveSession } from "./analytics";
+import type { GodModePanel, GodModeView } from "./ui-god-mode";
+
+export type {
+  CombatOdds,
+  Suggestion,
+  TileTip,
+  UIView,
+  UIHandlers,
+  UI,
+} from "./ui-types";
+import type { CombatOdds, Suggestion, TileTip, UIView, UIHandlers, UI } from "./ui-types";
+import type { Tab as EmpireTab } from "./empire";
 
 function stateMapLabel(state: GameState): string {
   if (!state.map.mapType) return "";
   return mapTypeDisplay(state.map.mapTypeRequested, state.map.mapType);
-}
-
-export interface CombatOdds {
-  targetName: string;
-  toDefender: number;
-  toAttacker: number;
-  vsCity: boolean;
-}
-
-export interface Suggestion {
-  kind: "units" | "research" | "civic" | "religion" | "production";
-  label: string;
-}
-
-/** Limited info shown in the cursor-following hover tooltip. */
-export interface TileTip {
-  name: string;
-  /** true = rough, false = open, null = unknown/unexplored (chip hidden). */
-  rough: boolean | null;
-  /** Path cost from the selected unit, when hovering a reachable tile. */
-  moveCost?: number;
 }
 
 type TileLine = { kind: "good" | "bad" | "neutral"; text: string };
@@ -443,170 +433,6 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
   }
 
   return { name, subtitle, yields: y, lines };
-}
-
-export interface UIView {
-  state: GameState;
-  selectedUnit: Unit | null;
-  selectedCity: City | null;
-  /** Inspected tile, shown when no unit/city is selected. */
-  selectedTile?: Tile | null;
-  /** The player this client is rendering for. */
-  viewerId: number;
-  /** Combat odds for the attack target currently hovered (if any). */
-  odds?: CombatOdds | null;
-  /** Next suggested action (drives the smart action button). */
-  suggestion?: Suggestion | null;
-  /** Multiplayer saves available to the host for loading. */
-  mpSaves?: SaveRecord[];
-  /** True when the local session supports God Mode cheats. */
-  cheatsEnabled?: boolean;
-  /** Simultaneous multiplayer (online session). */
-  isMultiplayer?: boolean;
-  /** True while God Mode's "Lift Fog of War" reveal is active. */
-  liftFog?: boolean;
-  /** True when the player dismissed the summary to pan the revealed end-game map. */
-  gameOverExploreMap?: boolean;
-}
-
-export interface UIHandlers {
-  onEndTurn(): void;
-  onFoundCity(): void;
-  onPromote(promotion: PromotionId): void;
-  /** Upgrade a unit to its next type (gold cost, loses turn, must be on own territory). */
-  onUpgradeUnit(): void;
-  /** Invoke an active ability. The controller decides whether it needs a target. */
-  onAbility(ability: ActiveAbilityId): void;
-  onSleep(): void;
-  onWake(): void;
-  /** Board an adjacent friendly warship (passenger must be selected). */
-  onBoardShip(shipId: number): void;
-  /** Leave a ship onto the nearest available shore tile. */
-  onDisembarkFromShip(passengerId: number): void;
-  onConvertCitizen(cityId: number, specialistId: string, delta: number): void;
-  /** Toggle a city's governor mode (auto-manage toward a focus); null = manual. */
-  onSetCityAutoMode(cityId: number, mode: CityAutoFocus | null): void;
-  /** Enter the picker to choose which tile the city claims next as it grows. */
-  onPickExpandTile(cityId: number): void;
-  /** Enter the aimer to fire the city's once-a-turn bombardment at a nearby enemy. */
-  onCityBombard(cityId: number): void;
-  onStartWork(kind: string, col: number, row: number): void;
-  /** Begin a multi-tile road route from this tile (player taps the destination next). */
-  onStartRoadRoute(col: number, row: number): void;
-  onStartWonder(wonderId: string, col: number, row: number): void;
-  onCancelWork(workId: number): void;
-  /** Close an existing trade route — the trader that opened it is lost. */
-  onCancelTradeRoute(routeId: number): void;
-  onAssignTradeEscort(unitId: number, routeId: number): void;
-  onLeaveTradeEscort(routeId: number): void;
-  onPlunderTradeRoute(unitId: number, routeId: number): void;
-  /** Destroy an enemy improvement or road on this unit's tile and loot it. */
-  onPillage(unitId: number): void;
-  /** Spend a stockpiled resource to instantly finish a city's production. */
-  onRushProduction(cityId: number, currency: RushCurrency): void;
-  /** Spend a stockpiled resource to instantly finish a tile/defensive work. */
-  onRushWork(workId: number, currency: RushCurrency): void;
-  /** Pin (on) or release (off) one of the player's specialists to/from a work. */
-  onAssignSpecialist(workId: number, specialistId: number, on: boolean): void;
-  onSelectUnit(unitId: number): void;
-  onSelectCity(cityId: number): void;
-  onDeclareWar(targetId: number): void;
-  onMakePeace(targetId: number): void;
-  onDenounce(targetId: number): void;
-  onGift(targetId: number, gold: number): void;
-  onDemandTribute(targetId: number, gold: number): void;
-  onProposeDeal(targetId: number, give: DealItem[], want: DealItem[]): void;
-  onCancelSharedVision(targetId: number): void;
-  onRespondProposal(proposalId: number, accept: boolean): void;
-  onFinalizeDeal(proposalId: number, confirm: boolean): void;
-  onAcknowledgeContact(otherId: number): void;
-  onSetProduction(item: ProductionItem): void;
-  onStartTraining(cityId: number, unit: UnitTypeId): void;
-  onCancelTraining(cityId: number, orderId: number): void;
-  onRushTraining(cityId: number, orderId: number, currency: RushCurrency): void;
-  onSetResearch(techId: TechId): void;
-  onSetResearchTarget(techId: TechId): void;
-  onResearchGovernment(governmentId: string): void;
-  onSetGovernment(governmentId: string): void;
-  onAdoptCivic(civicId: string): void;
-  onSlotCivic(civicId: string): void;
-  onUnslotCivic(civicId: string): void;
-  onFoundReligion(cityId: number, name: string, beliefs: string[]): void;
-  /** Raise the player's founded religion one tier (faith + follower-city gated). */
-  onUpgradeReligion(): void;
-  /** Spend an unspent perk pick on a belief from the shared pool. */
-  onPickReligionPerk(perkId: string): void;
-  /** Move the religion's holy capital to another follower city (costs faith). */
-  onMoveHolyCity(cityId: number): void;
-  onBuyReligiousUnit(cityId: number, unit: "missionary" | "apostle" | "inquisitor"): void;
-  onEvangelize(unitId: number, cityId: number): void;
-  onPurgeHeresy(unitId: number, cityId: number): void;
-  onBoardTradeRoute(unitId: number, routeId: number): void;
-  onActivateGreatPerson(greatPersonId: string): void;
-  onRecruitLegend(legendId: string): void;
-  /** Fire the civ's active leader ability (cooldown/unlock gated server-side). */
-  onUseLeaderAbility(): void;
-  onEstablishTrade(destCityId: number): void;
-  onBribeBarbarian(unitId: number): void;
-  onRecruitBarbarian(unitId: number): void;
-  onCloseCity(): void;
-  onCloseTile(): void;
-  onSuggestion(): void;
-  onSave(name: string): Promise<void>;
-  onExportCurrentSave(): Promise<string>;
-  /** Whether the Save Game action is offered (guests save locally too). */
-  canSave: boolean;
-  /** Single-player registered users are prompted to save when leaving. */
-  promptSaveOnLeave: boolean;
-  /** Called after the player confirms leaving (optionally after saving). */
-  onLeaveGame(): void;
-  /** Concede defeat in a multiplayer match (eliminates the local player). */
-  onSurrender?(): void;
-  /**
-   * Submit a bug report with the player's description. The handler captures the
-   * game state/context. Resolves `true` if sent now, `false` if queued offline.
-   */
-  onReportBug(message: string): Promise<boolean>;
-  onMenuOpen(): void;
-  onLoadMpSave(blob: string): Promise<void>;
-  onCheat(action: CheatAction): void;
-  /** Toggle God Mode's render-only "Lift Fog of War" reveal. */
-  onToggleLiftFog(enabled: boolean): void;
-  /** Leave the summary overlay and reveal the full map (fog lifted). */
-  onGameOverExploreMap(): void;
-  /** Return from map exploration to the end-game summary overlay. */
-  onGameOverBackToSummary(): void;
-  /** Exit to the main menu after the game has ended. */
-  onGameOverQuit(): void;
-  /** Set the empire's military-pay level (percent of base upkeep, −100…+200). */
-  onSetUpkeepModifier(pct: number): void;
-  onTurnUpdateLocate(tile: { col: number; row: number }): void;
-  onTurnUpdateOpenProduction(cityId: number): void;
-  onTurnUpdateOpenResearch(): void;
-  onTurnUpdateOpenCivics(): void;
-  onTurnUpdateOpenGreatPeople(): void;
-  onTurnUpdateOpenLegends(): void;
-  onTurnUpdateOpenGold(): void;
-  onTurnUpdateDismiss(): void;
-}
-
-export interface UI {
-  render(view: UIView): void;
-  banner(text: string): void;
-  openResearch(): void;
-  openCivics(): void;
-  openReligion(): void;
-  openGreatPeople(): void;
-  openLegends(): void;
-  openTechTree(): void;
-  openGodMode(): void;
-  openTurnUpdates(): void;
-  openProductionForCity(cityId: number): void;
-  setMpSaves(saves: SaveRecord[]): void;
-  /** Provide the (optional) ability-icon atlas for action buttons. */
-  setAbilityAtlas(atlas: AbilityAtlas): void;
-  /** Show the docked hover tooltip with limited tile info (null hides it). */
-  setTileTip(tip: TileTip | null): void;
 }
 
 function div(id: string, cls: string): HTMLDivElement {
@@ -991,7 +817,40 @@ export function createUI(handlers: UIHandlers): UI {
   );
   const saveModal = div("save-modal", "panel hidden");
   const godPanel = div("god-panel", "panel hidden");
-  const wiki = createWiki();
+  let godModeEnabled = false;
+  let godModePanel: GodModePanel | null = null;
+  let godModeLoad: Promise<GodModePanel> | null = null;
+
+  function ensureGodModePanel(): Promise<GodModePanel> {
+    if (godModePanel) return Promise.resolve(godModePanel);
+    if (!godModeLoad) {
+      godModeLoad = import("./ui-god-mode").then((m) => {
+        godModePanel = m.mountGodModePanel(godPanel, {
+          onCheat: (action) => handlers.onCheat(action),
+          onToggleLiftFog: (enabled) => handlers.onToggleLiftFog(enabled),
+        });
+        return godModePanel;
+      });
+    }
+    return godModeLoad;
+  }
+
+  function godModeView(view: UIView): GodModeView {
+    return {
+      state: view.state,
+      viewerId: view.viewerId,
+      selectedUnit: view.selectedUnit,
+      selectedTile: view.selectedTile,
+      liftFog: view.liftFog,
+    };
+  }
+
+  function renderGodMode(view: UIView): void {
+    if (!view.cheatsEnabled && !godModePanel) return;
+    void ensureGodModePanel().then((panel) => panel.render(godModeView(view)));
+  }
+
+  const wiki = createLazyWiki();
   /** Markup for a compact "view in Encyclopedia" button, encoding its target. */
   const wikiBtn = (nav: string, label = "📖", extraClass = ""): string =>
     `<button class="btn wiki-jump${extraClass ? ` ${extraClass}` : ""}" data-wiki-open="${nav}" title="View in Encyclopedia" ` +
@@ -1423,8 +1282,8 @@ export function createUI(handlers: UIHandlers): UI {
         hideTurnUpdateDialog();
         return;
       }
-      if (godModeOpen) {
-        godModeOpen = false;
+      if (godModePanel?.isOpen()) {
+        godModePanel.close();
         if (lastView) renderGodMode(lastView);
         return;
       }
@@ -1457,7 +1316,7 @@ export function createUI(handlers: UIHandlers): UI {
       if (!leaderboardDialog.classList.contains("hidden")) { hideLeaderboard(); return; }
       // Blocking overlays with no single positive action: swallow Enter rather
       // than ending the turn behind them.
-      if (isSettingsPanelOpen() || menuOpen || godModeOpen || empire.isOpen() || diplomacy.isOpen()) return;
+      if (isSettingsPanelOpen() || menuOpen || godModePanel?.isOpen() || empire.isOpen() || diplomacy.isOpen()) return;
       endturn.click();
     } else if (!e.repeat) {
       handleGameKeybind(e);
@@ -1518,10 +1377,6 @@ export function createUI(handlers: UIHandlers): UI {
   let isSaving = false;
   let isReporting = false;
   let mpSaves: SaveRecord[] = [];
-  let godModeEnabled = false;
-  let godModeOpen = false;
-  /** Skip god-panel DOM rebuilds when cheat UI content is unchanged (preserves scroll). */
-  let godModeRenderSig = "";
   let lastView: UIView | null = null;
   /** Game-over standings row selected to show that player's victory progress. */
   let gameOverDetailPlayerId: number | null = null;
@@ -1965,14 +1820,19 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
     endturn.classList.remove("hidden");
+    const resolving = !!view.resolvingTurn;
+    endturn.disabled = resolving;
+    endturn2.disabled = resolving;
+    endturn.classList.toggle("roc-resolving-turn", resolving);
+    endturn2.classList.toggle("roc-resolving-turn", resolving);
     if (view.suggestion) {
-      endturn.title = view.suggestion.label;
-      endturn.onclick = () => handlers.onSuggestion();
-      endturn2.onclick = () => handlers.onEndTurn();
+      endturn.title = resolving ? "Resolving turn…" : view.suggestion.label;
+      endturn.onclick = resolving ? null : () => handlers.onSuggestion();
+      endturn2.onclick = resolving ? null : () => handlers.onEndTurn();
       endturn2.classList.remove("hidden");
     } else {
-      endturn.title = "End Turn";
-      endturn.onclick = () => handlers.onEndTurn();
+      endturn.title = resolving ? "Resolving turn…" : "End Turn";
+      endturn.onclick = resolving ? null : () => handlers.onEndTurn();
       endturn2.onclick = null;
       endturn2.classList.add("hidden");
     }
@@ -2424,23 +2284,27 @@ export function createUI(handlers: UIHandlers): UI {
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-enable-god")?.addEventListener("click", () => {
         godModeEnabled = true;
-        godModeOpen = true;
-        menuOpen = false;
-        closeSideSheets();
-        closePickers(state);
-        renderMenu(state);
-        if (lastView) {
-          renderTilePanel(lastView.state, lastView.selectedTile ?? null, lastView.viewerId, lastView.cheatsEnabled ?? false);
-          renderGodMode(lastView);
-        }
+        void ensureGodModePanel().then((panel) => {
+          panel.open();
+          menuOpen = false;
+          closeSideSheets();
+          closePickers(state);
+          renderMenu(state);
+          if (lastView) {
+            renderTilePanel(lastView.state, lastView.selectedTile ?? null, lastView.viewerId, lastView.cheatsEnabled ?? false);
+            renderGodMode(lastView);
+          }
+        });
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-god")?.addEventListener("click", () => {
         menuOpen = false;
         closeSideSheets();
         closePickers(state);
         renderMenu(state);
-        godModeOpen = true;
-        if (lastView) renderGodMode(lastView);
+        void ensureGodModePanel().then((panel) => {
+          panel.open();
+          if (lastView) renderGodMode(lastView);
+        });
       });
       saveModal.querySelector<HTMLButtonElement>("#menu-leave")!.addEventListener("click", () => {
         if (handlers.promptSaveOnLeave && handlers.canSave) {
@@ -2840,7 +2704,7 @@ export function createUI(handlers: UIHandlers): UI {
     if (!techtreeOpen) return;
     const viewerId = state.players[state.currentPlayerIndex]!.id;
     const inner = document.createElement("div");
-    renderTechTreeInto(
+    renderTechTreeIntoLazy(
       inner,
       state,
       viewerId,
@@ -4516,20 +4380,6 @@ export function createUI(handlers: UIHandlers): UI {
     "fishing_boats", "fishery", "saltern",
     "road", "wall", "tower",
   ];
-  const CHEAT_WORK_KINDS = [
-    "farm",
-    "lumber_camp",
-    "mine",
-    "quarry",
-    "fishery",
-    "saltern",
-    "pasture",
-    "plantation",
-    "camp",
-    "fishing_boats",
-    "wall",
-    "tower",
-  ];
 
   /** Rich construction detail for an in-progress Work on the selected tile: per-craft
    *  progress, the crew's labour/turn + ETA, the assigned specialists (with Remove),
@@ -4869,212 +4719,9 @@ export function createUI(handlers: UIHandlers): UI {
       el.addEventListener("click", () => handlers.onAssignSpecialist(existing!.id, Number(el.dataset.assignOff), false)),
     );
     tilePanel.querySelector<HTMLButtonElement>("#tile-god")?.addEventListener("click", () => {
-      godModeOpen = true;
-      if (lastView) renderGodMode(lastView);
-    });
-  };
-
-  function godModeSignature(view: UIView): string {
-    const tile = view.selectedTile;
-    const tileKey = tile ? `${tile.col},${tile.row},${tile.terrain}` : "none";
-    const unitKey = view.selectedUnit ? `${view.selectedUnit.id},${view.selectedUnit.col},${view.selectedUnit.row}` : "none";
-    const wonders = [...view.state.completedWonders].sort().join(",");
-    return `${view.liftFog ? 1 : 0}|${tileKey}|${unitKey}|${wonders}`;
-  }
-
-  function godModeUnitOptions(tile: NonNullable<UIView["selectedTile"]> | undefined): string {
-    const waterTile = !!tile && isWaterTerrain(tile.terrain);
-    return Object.entries(UNIT_DEFS)
-      .filter(([, d]) => (waterTile ? isNaval(d) : !isNaval(d)))
-      .map(([id, d]) => `<option value="${id}">${escapeHtml(d.name)}</option>`)
-      .join("");
-  }
-
-  function renderGodMode(view: UIView): void {
-    godPanel.classList.toggle("hidden", !godModeOpen);
-    if (!godModeOpen) {
-      godModeRenderSig = "";
-      return;
-    }
-    const sig = godModeSignature(view);
-    if (sig === godModeRenderSig) return;
-
-    const tile = view.selectedTile;
-    const tileOk = !!tile && isPassableLand(tile.terrain);
-    const waterTile = !!tile && isWaterTerrain(tile.terrain);
-    const spawnTileOk = tileOk || waterTile;
-    const teleportUnit =
-      view.selectedUnit && view.selectedUnit.ownerId === view.viewerId ? view.selectedUnit : null;
-    const unitOptions = godModeUnitOptions(tile ?? undefined);
-    const builtWonders = new Set(view.state.completedWonders);
-    const wonderOptions = WONDER_DEFS.filter((w) => !builtWonders.has(w.id))
-      .map((w) => `<option value="${w.id}">${escapeHtml(w.name)}</option>`)
-      .join("");
-
-    let html = dialogHeader("God Mode", "god-close");
-    html += `<div class="panel-dialog-body"><div style="display:flex;flex-direction:column;gap:8px">` +
-      `<button class="btn" data-cheat="unlockTechs">Unlock All Techs</button>` +
-      `<button class="btn" data-cheat="completeWorks">Complete All Works</button>` +
-      `<button class="btn" data-cheat="healUnits">Heal All Units</button>` +
-      `<button class="btn" data-cheat="revealMap">Reveal Map</button>` +
-      `<button class="btn" id="god-liftfog"${view.liftFog ? ` style="background:#2f5a2f;border-color:#4a8a4a"` : ""}>` +
-      `Lift Fog of War: ${view.liftFog ? "On" : "Off"}</button>` +
-      `<button class="btn" data-cheat="addGold" data-amount="100">+100 Gold</button>` +
-      `<button class="btn" data-cheat="addPopulation">Add Population</button>` +
-      `<button class="btn" data-cheat="addResource" data-resource="copper" data-amount="5">+5 Copper</button>` +
-      `<button class="btn" data-cheat="addResource" data-resource="iron" data-amount="5">+5 Iron</button>` +
-      `<button class="btn" data-cheat="addResource" data-resource="horses" data-amount="5">+5 Horses</button>`;
-
-    if (tileOk) {
-      html +=
-        `<div class="csub">Selected Tile (${escapeHtml(TERRAIN_NAMES[tile.terrain])})</div>` +
-        `<button class="btn" data-cheat="buildRoad" data-level="1">Build Dirt Road</button>` +
-        `<button class="btn" data-cheat="buildRoad" data-level="2">Build Paved Road</button>` +
-        `<button class="btn" data-cheat="buildRoad" data-level="3">Build Imperial Road</button>` +
-        `<button class="btn" data-cheat="foundCity">Found City</button>` +
-        `<div class="csub">Construction Works</div>` +
-        `<div class="row" style="flex-wrap:wrap;gap:6px">` +
-        CHEAT_WORK_KINDS.map((k) => `<button class="btn" data-cheat="buildWork" data-kind="${k}">${workName(k, 3)}</button>`).join("") +
-        `</div>` +
-        (wonderOptions
-          ? `<div class="csub">Wonders</div>` +
-            `<div style="display:flex;gap:6px;align-items:center;margin-top:4px">` +
-            `<select id="cheat-wonder" class="lobby-in" style="flex:1">${wonderOptions}</select>` +
-            `<button class="btn" data-cheat="buildWonder">Build Wonder</button>` +
-            `</div>`
-          : `<div class="csub">Wonders</div><div class="sub">All wonders built.</div>`);
-    } else if (waterTile) {
-      html +=
-        `<div class="csub">Selected Tile (${escapeHtml(TERRAIN_NAMES[tile.terrain])})</div>` +
-        `<div class="sub">Land tile cheats need passable land. Naval units can spawn here.</div>`;
-    } else if (tile) {
-      html +=
-        `<div class="csub">Selected Tile (${escapeHtml(TERRAIN_NAMES[tile.terrain])})</div>` +
-        `<div class="sub">Select passable land or water for tile cheats.</div>`;
-    } else {
-      html +=
-        `<div class="csub">Selected Tile</div>` +
-        `<div class="sub">Select a tile to use tile cheats.</div>`;
-    }
-
-    if (spawnTileOk && unitOptions) {
-      html +=
-        `<div style="display:flex;gap:6px;align-items:center;margin-top:4px">` +
-        `<select id="cheat-unit" class="lobby-in" style="flex:1">${unitOptions}</select>` +
-        `<button class="btn" data-cheat="spawnUnit">Spawn Unit</button>` +
-        `</div>`;
-    } else if (spawnTileOk) {
-      html += `<div class="sub">No units available for this tile type.</div>`;
-    }
-
-    if (teleportUnit && spawnTileOk) {
-      const unitLabel = escapeHtml(UNIT_DEFS[teleportUnit.type].name);
-      html +=
-        `<button class="btn" data-cheat="teleportUnit">Teleport ${unitLabel} here</button>`;
-    } else if (teleportUnit) {
-      html += `<div class="sub">Select a passable land or water tile to teleport ${escapeHtml(UNIT_DEFS[teleportUnit.type].name)}.</div>`;
-    } else if (spawnTileOk) {
-      html += `<div class="sub">Select one of your units to teleport it to this tile.</div>`;
-    }
-    html += `</div></div>`;
-
-    withPreservedScroll(godPanel, () => {
-      godPanel.innerHTML = html;
-    });
-    godModeRenderSig = sig;
-    const closeGod = (): void => {
-      godModeOpen = false;
-      renderGodMode(view);
-    };
-    bindDialogClose(godPanel.querySelector<HTMLButtonElement>("#god-close")!, closeGod);
-    godPanel.querySelector<HTMLButtonElement>("#god-liftfog")?.addEventListener("click", () => {
-      handlers.onToggleLiftFog(!view.liftFog);
-    });
-    godPanel.querySelectorAll<HTMLButtonElement>("[data-cheat]").forEach((el) => {
-      el.addEventListener("click", () => {
-        const type = el.dataset.cheat!;
-        switch (type) {
-          case "unlockTechs":
-            handlers.onCheat({ type: "unlockTechs" });
-            break;
-          case "completeWorks":
-            handlers.onCheat({ type: "completeWorks" });
-            break;
-          case "healUnits":
-            handlers.onCheat({ type: "healUnits" });
-            break;
-          case "revealMap":
-            handlers.onCheat({ type: "revealMap" });
-            break;
-          case "addGold":
-            handlers.onCheat({ type: "addGold", amount: Number(el.dataset.amount) });
-            break;
-          case "addPopulation":
-            handlers.onCheat({ type: "addPopulation" });
-            break;
-          case "addResource":
-            handlers.onCheat({ type: "addResource", resource: el.dataset.resource!, amount: Number(el.dataset.amount) });
-            break;
-          case "buildRoad": {
-            if (!tile) break;
-            handlers.onCheat({
-              type: "buildRoad",
-              col: tile.col,
-              row: tile.row,
-              level: Number(el.dataset.level) as 1 | 2 | 3,
-            });
-            break;
-          }
-          case "foundCity": {
-            if (!tile) break;
-            handlers.onCheat({ type: "foundCity", col: tile.col, row: tile.row });
-            break;
-          }
-          case "buildWork": {
-            if (!tile) break;
-            handlers.onCheat({
-              type: "buildWork",
-              kind: el.dataset.kind!,
-              col: tile.col,
-              row: tile.row,
-            });
-            break;
-          }
-          case "spawnUnit": {
-            if (!tile) break;
-            const sel = godPanel.querySelector<HTMLSelectElement>("#cheat-unit")!;
-            handlers.onCheat({
-              type: "spawnUnit",
-              unitType: sel.value as UnitTypeId,
-              col: tile.col,
-              row: tile.row,
-            });
-            break;
-          }
-          case "teleportUnit": {
-            const unit = view.selectedUnit;
-            if (!unit || !tile) break;
-            handlers.onCheat({
-              type: "teleportUnit",
-              unitId: unit.id,
-              col: tile.col,
-              row: tile.row,
-            });
-            break;
-          }
-          case "buildWonder": {
-            if (!tile) break;
-            const sel = godPanel.querySelector<HTMLSelectElement>("#cheat-wonder");
-            if (!sel || !sel.value) break;
-            handlers.onCheat({
-              type: "buildWonder",
-              wonderId: sel.value,
-              col: tile.col,
-              row: tile.row,
-            });
-            break;
-          }
-        }
+      void ensureGodModePanel().then((panel) => {
+        panel.open();
+        if (lastView) renderGodMode(lastView);
       });
     });
   };
@@ -5481,7 +5128,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
 
   // Empire overview (Units / Cities / Specialists & Wonders) side panel.
-  const empire = createEmpire({
+  const empire = createLazyEmpire({
     onSelectUnit: (id) => handlers.onSelectUnit(id),
     onSelectCity: (id) => handlers.onSelectCity(id),
     onConvertCitizen: (cityId, sid, delta) => handlers.onConvertCitizen(cityId, sid, delta),
@@ -5491,7 +5138,7 @@ export function createUI(handlers: UIHandlers): UI {
   });
 
   // Diplomacy: first-contact dialog + Contacts/negotiation screen + toggle button.
-  const diplomacy = createDiplomacy({
+  const diplomacy = createLazyDiplomacy({
     onDeclareWar: (t) => handlers.onDeclareWar(t),
     onMakePeace: (t) => handlers.onMakePeace(t),
     onDenounce: (t) => handlers.onDenounce(t),
@@ -5709,7 +5356,7 @@ export function createUI(handlers: UIHandlers): UI {
         wiki.isOpen() ||
         techtreeOpen ||
         menuOpen ||
-        godModeOpen ||
+        godModePanel?.isOpen() ||
         goldDialogOpen ||
         moraleDialogOpen ||
         unitPromoDialogOpen ||
@@ -5818,8 +5465,10 @@ export function createUI(handlers: UIHandlers): UI {
       if (menuOpen && lastState) renderMenu(lastState);
     },
     openGodMode() {
-      godModeOpen = true;
-      if (lastView) renderGodMode(lastView);
+      void ensureGodModePanel().then((panel) => {
+        panel.open();
+        if (lastView) renderGodMode(lastView);
+      });
     },
     openTurnUpdates() {
       turnUpdateHasNew = false;

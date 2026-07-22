@@ -6,7 +6,13 @@
 // per-owner and broadcasts fog-filtered state.
 
 import type { ClientMessage, LobbyChatMessage, ServerMessage } from "@roc/sim";
-import { deserializeState, serializeState } from "@roc/sim";
+import {
+  deserializeState,
+  diffPlayerView,
+  isEmptyPlayerViewPatch,
+  serializeState,
+  type PlayerView,
+} from "@roc/sim";
 import type { AnalyticsBatch, AdminRegisteredUser } from "@roc/shared";
 import { isSafeLookupId } from "@roc/shared";
 import { MemoryStorage } from "./storage";
@@ -31,6 +37,50 @@ interface Conn {
   gameId?: string;
   playerId?: number;
   slot?: number;
+  /** Monotonic state sequence for delta updates. */
+  viewSeq?: number;
+  lastView?: PlayerView;
+  lastAwaiting?: number[];
+  viewDeltas?: boolean;
+}
+
+function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+interface StateHost {
+  view(playerId: number): PlayerView;
+  awaiting(): number[];
+}
+
+function sendStateToConn(ws: ServerWebSocket<Conn>, host: StateHost, forceFull = false): void {
+  if (ws.data.playerId === undefined) return;
+  const nextView = host.view(ws.data.playerId);
+  const awaiting = host.awaiting();
+  const seq = (ws.data.viewSeq ?? 0) + 1;
+
+  if (forceFull || !ws.data.viewDeltas || ws.data.lastView === undefined) {
+    ws.data.viewSeq = seq;
+    ws.data.lastView = nextView;
+    ws.data.lastAwaiting = [...awaiting];
+    sendState(ws, { t: "state", seq, view: nextView, awaiting });
+    return;
+  }
+
+  const patch = diffPlayerView(ws.data.lastView, nextView);
+  const awaitingChanged = !sameJson(ws.data.lastAwaiting ?? [], awaiting);
+  if (isEmptyPlayerViewPatch(patch) && !awaitingChanged) return;
+
+  ws.data.viewSeq = seq;
+  ws.data.lastView = nextView;
+  ws.data.lastAwaiting = [...awaiting];
+  sendState(ws, {
+    t: "statePatch",
+    seq,
+    baseSeq: seq - 1,
+    patch,
+    ...(awaitingChanged ? { awaiting } : {}),
+  });
 }
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -124,6 +174,16 @@ async function adminLeaderboard() {
   return enrichLeaderboard(entries, rows, byUser);
 }
 
+async function publicLeaderboard(limit = 25) {
+  const capped = Math.min(50, Math.max(1, limit));
+  const [entries, rows, byUser] = await Promise.all([
+    analytics.leaderboardBestPerPlayer(capped),
+    loadSessionRows(),
+    registeredUserHandles(),
+  ]);
+  return enrichLeaderboard(entries, rows, byUser);
+}
+
 async function adminSessionsPerPlayer() {
   const [entries, rows, byUser] = await Promise.all([
     analytics.sessionsPerPlayer(),
@@ -186,8 +246,12 @@ async function adminQuery(name: string, searchParams?: URLSearchParams): Promise
   }
 }
 
-function send(ws: ServerWebSocket<Conn>, msg: ServerMessage): void {
-  ws.send(JSON.stringify(msg));
+function send(ws: ServerWebSocket<Conn>, msg: ServerMessage, compress = false): void {
+  ws.send(JSON.stringify(msg), compress);
+}
+
+function sendState(ws: ServerWebSocket<Conn>, msg: Extract<ServerMessage, { t: "state" } | { t: "statePatch" }>): void {
+  send(ws, msg, true);
 }
 
 function addConn(gameId: string, ws: ServerWebSocket<Conn>): void {
@@ -201,12 +265,11 @@ function noteConnClosed(gameId: string): void {
   abandonScheduler.playerDisconnected(gameId, liveConnectionCount(gameId));
 }
 
-function broadcastState(gameId: string): void {
+function broadcastState(gameId: string, forceFull = false): void {
   const host = lobby.get(gameId)?.host;
   if (!host) return;
   for (const ws of gameConns.get(gameId) ?? []) {
-    if (ws.data.playerId === undefined) continue;
-    send(ws, { t: "state", view: host.view(ws.data.playerId), awaiting: host.awaiting() });
+    sendStateToConn(ws, host, forceFull);
   }
 }
 
@@ -302,6 +365,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         aiCount: msg.aiCount,
         mapType: msg.mapType,
         barbarians: msg.barbarians,
+        aiDifficulty: msg.aiDifficulty,
         naturalWonders: msg.naturalWonders,
         villages: msg.villages,
         startingGold: msg.startingGold,
@@ -333,11 +397,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         ws.data.playerId = r.playerId ?? game.slots.find((s) => s.userId === ws.data.userId)?.playerId;
         send(ws, { t: "started", gameId: msg.gameId });
         if (ws.data.playerId !== undefined && game.host) {
-          send(ws, {
-            t: "state",
-            view: game.host.view(ws.data.playerId),
-            awaiting: game.host.awaiting(),
-          });
+          sendStateToConn(ws, game.host, true);
         }
         return;
       }
@@ -362,6 +422,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         mapSize: msg.mapSize,
         mapType: msg.mapType,
         barbarians: msg.barbarians,
+        aiDifficulty: msg.aiDifficulty,
         naturalWonders: msg.naturalWonders,
         villages: msg.villages,
         startingGold: msg.startingGold,
@@ -419,7 +480,17 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         c.data.playerId = game?.slots.find((s) => s.userId === c.data.userId)?.playerId;
       }
       for (const c of gameConns.get(msg.gameId) ?? []) send(c, { t: "started", gameId: msg.gameId });
-      broadcastState(msg.gameId);
+      broadcastState(msg.gameId, true);
+      return;
+    }
+    case "setFeatures": {
+      ws.data.viewDeltas = msg.deltas ?? false;
+      return;
+    }
+    case "resyncState": {
+      const host = ws.data.gameId ? lobby.get(ws.data.gameId)?.host : undefined;
+      if (!host || ws.data.playerId === undefined) return;
+      sendStateToConn(ws, host, true);
       return;
     }
     case "deleteGame": {
@@ -455,6 +526,16 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
     }
     case "ping":
       return; // keepalive — nothing to do
+    case "getLeaderboard": {
+      try {
+        const limit = msg.limit ?? 25;
+        const entries = await publicLeaderboard(limit);
+        return send(ws, { t: "leaderboard", entries });
+      } catch (err) {
+        console.error("leaderboard error:", err);
+        return send(ws, { t: "error", message: "leaderboard unavailable" });
+      }
+    }
     case "order": {
       const host = ws.data.gameId ? lobby.get(ws.data.gameId)?.host : undefined;
       if (!host || ws.data.playerId === undefined) return send(ws, { t: "error", message: "not in a game" });
@@ -490,7 +571,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       }
       const r = lobby.restore(game.id, state);
       if ("error" in r) return send(ws, { t: "error", message: r.error });
-      broadcastState(game.id);
+      broadcastState(game.id, true);
       return send(ws, { t: "loaded", gameId: game.id });
     }
   }
@@ -533,6 +614,18 @@ const server = Bun.serve<Conn>({
         console.error("analytics ingest error:", err);
       }
       return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    if (url.pathname === "/api/leaderboard" && req.method === "GET") {
+      try {
+        const limitRaw = url.searchParams.get("limit");
+        const limit = limitRaw ? Number.parseInt(limitRaw, 10) : 25;
+        const entries = await publicLeaderboard(Number.isFinite(limit) ? limit : 25);
+        return jsonResponse({ entries });
+      } catch (err) {
+        console.error("leaderboard error:", err);
+        return jsonResponse({ error: "unavailable" }, 503);
+      }
     }
 
     if (url.pathname === "/support" && req.method === "POST") {
@@ -616,6 +709,7 @@ const server = Bun.serve<Conn>({
   },
   websocket: {
     idleTimeout: 0, // never time out idle connections (game state is server-authoritative; clients may be AFK)
+    perMessageDeflate: true,
     open() {
       /* connection opens unauthenticated; client sends register/login next */
     },

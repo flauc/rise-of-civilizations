@@ -10,6 +10,7 @@ dist-itchio/
 .roc-bug-reports.json
 .idea/workspace.xml
 tools/geodata-poc/*.hexmap.json
+tools/geodata-poc/*.mask.json
 Hex Samples
 assets/generated/
 assets/purchased/

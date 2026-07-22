@@ -24,6 +24,7 @@ import { availablePromotions } from "./combat";
 import { rushCurrencies, canRushWork, canRushTraining, canRushCity, type RushCurrency } from "./rush";
 import { availableTraining, freeCitizens } from "./training";
 import { BELIEFS, WONDER_DEFS, uniqueUnitForCiv, type CivEffects, type DiploPersonality, type WonderDef } from "@roc/data";
+import { aiExecutes } from "./ai-difficulty";
 import {
   availableSpecialists,
   workerSlots,
@@ -887,10 +888,12 @@ function exploredFraction(state: GameState, pid: number): number {
 /** How many cities this civ aims to settle before consolidating. Wide empires win
  *  (every city adds population to spend on army, settlers, science and gold), so
  *  the AI now expands far more ambitiously — `findSettleSpot` caps it by real land. */
-function targetCityCount(p: DiploPersonality): number {
-  if (p.aggression > 0.7) return 14; // warmongers settle a strong core, then conquer the rest
-  if (p.aggression < 0.45) return 26; // peaceful builders blanket the map
-  return 20;
+function targetCityCount(state: GameState, p: DiploPersonality): number {
+  let base: number;
+  if (p.aggression > 0.7) base = 14;
+  else if (p.aggression < 0.45) base = 26;
+  else base = 20;
+  return base;
 }
 
 /**
@@ -1032,8 +1035,8 @@ function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPers
   // wither. Now safe backline cities keep expanding while the front does the fighting.
   const localThreat = hostileNearCity(state, player.id, city, 2);
   const atWar = player.atWar.length > 0;
-  const expanding = !localThreat && cityCount + settlersOut < targetCityCount(p);
-  const settlersWanted = maxSettlersWanted(cityCount, targetCityCount(p));
+  const expanding = !localThreat && cityCount + settlersOut < targetCityCount(state, p);
+  const settlersWanted = maxSettlersWanted(cityCount, targetCityCount(state, p));
   const canBuildSettler =
     expanding &&
     settlersPipeline < settlersWanted &&
@@ -1089,9 +1092,10 @@ function aiTrainUnits(state: GameState, player: Player, city: City, p: DiploPers
   // that scales with the empire (warlike civs hold a bigger host so they can threaten
   // neighbours, not just defend). Cities still expanding above don't reach here, so the
   // army is mustered by frontier cities and by those that have hit the expansion target.
-  const desired = ((atWar || localThreat)
-    ? cityCount * (winningAtWar(state, player.id) ? 3 : 2) + (winningAtWar(state, player.id) ? 4 : 2)
-    : Math.max(cityCount + (p.aggression > 0.6 ? 3 : 2), 4)) + (escortShortfall ? 2 : 0);
+  const desired =
+    ((atWar || localThreat)
+      ? cityCount * (winningAtWar(state, player.id) ? 3 : 2) + (winningAtWar(state, player.id) ? 4 : 2)
+      : Math.max(cityCount + (p.aggression > 0.6 ? 3 : 2), 4)) + (escortShortfall ? 2 : 0);
   if (milCount < desired) {
     const type = bestTrainableMilitary(trainable, player.civId, atWar || localThreat);
     if (type) tryTrain(type);
@@ -2609,6 +2613,7 @@ function aiRush(
   escortShortfall = false,
   wonderCtx: AiWonderContext = { gatheringCrew: false, building: false },
 ): void {
+  if (!aiExecutes(state, player.id, "rush")) return;
   const pid = player.id;
   const avail = rushCurrencies(state, pid);
   if (avail.length === 0) return;
@@ -2660,7 +2665,7 @@ function aiRush(
   //    — the single biggest tempo swing the AI can buy.
   if (!threatened) {
     const empireSize = citiesOf(state, pid).length + unitsOf(state, pid).filter((u) => u.type === "settler").length;
-    if (empireSize <= targetCityCount(p)) {
+    if (empireSize <= targetCityCount(state, p)) {
       for (const city of citiesOf(state, pid)) {
         for (const order of city.trainingQueue) {
           if (order.unit !== "settler") continue;
@@ -2708,6 +2713,7 @@ function aiRush(
  * that isn't openly hostile almost always agrees.
  */
 export function aiSeekOpenBorders(state: GameState, player: Player, focus: VictoryKind): void {
+  if (!aiExecutes(state, player.id, "openBorders")) return;
   if (focus !== "economic" && focus !== "culture" && focus !== "religious") return;
   const pid = player.id;
   for (const otherId of player.met) {
@@ -2744,6 +2750,7 @@ function nearestRivalCityDistance(state: GameState, pid: number, otherId: number
  * down and a fleet is ready, it also opens wars across the sea.
  */
 export function aiSeekConquest(state: GameState, player: Player, focus: VictoryKind): void {
+  if (!aiExecutes(state, player.id, "conquest")) return;
   const pid = player.id;
   const p = personalityOf(state, pid);
   const army = unitsOf(state, pid).filter((u) => isMilitary(u.type) && u.hp >= 40).length;
@@ -2835,6 +2842,7 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
   const player = playerById(state, playerId);
   if (!player) return;
   const p = personalityOf(state, playerId);
+  const wonderEnabled = aiExecutes(state, playerId, "wonders");
   const atWarNow = player.atWar.length > 0;
   const threatened = atWarNow || hostileNearCities(state, playerId);
   // The victory this civ is actively steering toward — it biases wonders, construction,
@@ -2875,8 +2883,10 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
           ? BARBARIAN_DIPLOMACY_TECH
           : (techs.includes("foraging" as TechId) ? ("foraging" as TechId) : pickTech(techs, p, atWarNow));
       } else {
-        const wonderTech = aiWonderResearchPick(state, playerId, player, techs, atWarNow, threatened);
-        const wonderReady = empireDevelopedForWonders(state, playerId, player);
+        const wonderTech = wonderEnabled
+          ? aiWonderResearchPick(state, playerId, player, techs, atWarNow, threatened)
+          : null;
+        const wonderReady = wonderEnabled && empireDevelopedForWonders(state, playerId, player);
         if (wonderTech && wonderReady && techs.includes(wonderTech)) {
           techId = wonderTech;
         } else if (
@@ -2944,7 +2954,7 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
 
   // Recruit a Legend when enough track glory is banked — pick the hero we can
   // afford soonest on the track with the most surplus glory.
-  if (state.legendsEnabled) {
+  if (state.legendsEnabled && aiExecutes(state, playerId, "legends")) {
     const options = availableLegendsForPlayer(state, playerId)
       .map((l) => ({ l, check: canRecruitLegend(state, playerId, l.id) }))
       .filter((x) => x.check.ok)
@@ -3003,10 +3013,14 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
 
   aiConnectRoads(state, playerId);
 
-  const wonderCtx = aiWonderContext(state, playerId, player, p, focus);
-  aiWonderClearDistractions(state, playerId, wonderCtx);
-  if (wonderCtx.gatheringCrew && wonderCtx.target) {
-    aiFreeWonderCrew(state, playerId, wonderCtx.target);
+  const wonderCtx = wonderEnabled
+    ? aiWonderContext(state, playerId, player, p, focus)
+    : { gatheringCrew: false, building: false };
+  if (wonderEnabled) {
+    aiWonderClearDistractions(state, playerId, wonderCtx);
+    if (wonderCtx.gatheringCrew && wonderCtx.target) {
+      aiFreeWonderCrew(state, playerId, wonderCtx.target);
+    }
   }
 
   for (const city of citiesOf(state, playerId)) {
@@ -3018,10 +3032,10 @@ export function aiTakeTurn(state: GameState, playerId: number): void {
     aiTrainReligionUnit(state, player, city, p, focus); // muster the faith's holy unit
     aiManageCity(state, city, player, playerId, wonderCtx);
   }
-  if (wonderCtx.target) {
+  if (wonderEnabled && wonderCtx.target) {
     aiWonderCrewPrep(state, playerId, wonderCtx.target, wonderCtx.gatheringCrew ? 40 : 4);
   }
-  aiWonders(state, playerId, player, p, focus);
+  if (wonderEnabled) aiWonders(state, playerId, player, p, focus);
   const wonderActive = worksOf(state, playerId).some((w) => w.kind === "wonder");
   const staffCtx: AiWonderContext = wonderActive
     ? { target: wonderCtx.target, gatheringCrew: false, building: true }

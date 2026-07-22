@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CIVILIZATIONS } from "./index";
 import { CIV_REGIONS } from "./history-geo";
-import { bgmTrackForCiv, civBgmRegion } from "./civ-bgm";
+import { bgmTrackForCiv, civBgmRegion, CIV_BGM_FILTER_CHIPS, type CivBgmRegion } from "./civ-bgm";
 
 describe("civBgmRegion", () => {
   it("covers every civilization", () => {
@@ -31,5 +31,20 @@ describe("civBgmRegion", () => {
     for (const id of regionIds) {
       expect(civBgmRegion(id)).toBeTruthy();
     }
+  });
+
+  it("exposes a lobby filter chip for every music region", () => {
+    const chipRegions = CIV_BGM_FILTER_CHIPS.filter((c) => c.id !== "all").map((c) => c.id);
+    const expected: CivBgmRegion[] = [
+      "africa",
+      "ancientMiddleEast",
+      "celtic",
+      "eastAsia",
+      "india",
+      "japan",
+      "siberian",
+      "default",
+    ];
+    expect(chipRegions.sort()).toEqual(expected.sort());
   });
 });

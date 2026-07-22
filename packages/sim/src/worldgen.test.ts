@@ -56,6 +56,7 @@ describe("worldgen map types", () => {
       "inland_sea",
       "islands",
       "realworld",
+      "mediterranean",
     ]);
     const resolved = resolveMapType("roll-check", "random");
     expect(playable.has(resolved)).toBe(true);
@@ -232,12 +233,10 @@ describe("worldgen map types", () => {
     expect(withBig).toBeGreaterThanOrEqual(3);
   });
 
-  it("rolls both pole orientations across seeds, and packs ice at the poles", () => {
-    const axes = new Set<string>();
+  it("uses north-south poles aligned with the Earth lat/lon grid, with ice at the map edges", () => {
     for (let i = 0; i < 8; i++) {
       const map = generateMap({ cols: 64, rows: 44, seed: `pole-${i}`, mapType: "pangaea" });
-      expect(map.poleAxis).toBeDefined();
-      axes.add(map.poleAxis!);
+      expect(map.poleAxis).toBe("ns");
       // Any land within 3 tiles of a polar edge must be frozen; pack ice should
       // make at least some such land exist.
       const frozen = new Set(["snow", "tundra", "taiga"]);
@@ -270,7 +269,6 @@ describe("worldgen map types", () => {
       }
       expect(biggestCap, `pole-${i} cap should be a real landmass`).toBeGreaterThanOrEqual(20);
     }
-    expect(axes).toEqual(new Set(["ns", "ew"]));
   });
 
   it("rolls hill country away from mountain ranges", () => {
@@ -310,5 +308,27 @@ describe("worldgen map types", () => {
   it("the real world keeps its north/south poles", () => {
     const map = generateMap({ cols: 64, rows: 44, seed: "earth-poles", mapType: "realworld" });
     expect(map.poleAxis).toBe("ns");
+  });
+
+  it("mediterranean map uses geodata coastlines with land and sea", () => {
+    const map = generateMap({ cols: 80, rows: 56, seed: "rome-384", mapType: "mediterranean" });
+    expect(map.mapType).toBe("mediterranean");
+    expect(map.poleAxis).toBeUndefined();
+    let land = 0;
+    let water = 0;
+    for (const t of map.tiles) {
+      if (isWater(t.terrain)) water++;
+      else land++;
+    }
+    expect(land).toBeGreaterThan(100);
+    expect(water).toBeGreaterThan(100);
+    expect(land / (land + water)).toBeGreaterThan(0.45);
+    expect(land / (land + water)).toBeLessThan(0.85);
+  });
+
+  it("mediterranean generation is deterministic", () => {
+    const a = generateMap({ cols: 52, rows: 36, seed: "rome-det", mapType: "mediterranean" });
+    const b = generateMap({ cols: 52, rows: 36, seed: "rome-det", mapType: "mediterranean" });
+    expect(a.tiles.map((t) => t.terrain)).toEqual(b.tiles.map((t) => t.terrain));
   });
 });

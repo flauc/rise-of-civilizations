@@ -8,6 +8,7 @@
     "dev": "vite",
     "dev:no-hmr": "vite --mode no-hmr",
     "build": "vite build",
+    "analyze": "ANALYZE=1 vite build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@types/d3-geo": "^3.1.0",
-    "@types/topojson-client": "^3.1.5"
+    "@types/topojson-client": "^3.1.5",
+    "rollup-plugin-visualizer": "^7.0.1"
   }
 }

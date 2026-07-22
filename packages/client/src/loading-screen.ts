@@ -112,7 +112,7 @@ export interface LoadingScreenOptions {
 export interface LoadingScreenHandle {
   /** World/sim state exists; dismiss still waits for the map to finish rendering. */
   notifyWorldGenerated(): void;
-  /** Map, atlases, and HUD icons are ready; hide "Loading...", show Skip when it works. */
+  /** First map frame painted and HUD wired behind the veil; hide "Loading...", show Skip. */
   notifyMapRendered(): void;
   destroy(): void;
 }
@@ -159,7 +159,7 @@ function ensureStyles(): void {
       display:flex;flex-direction:column;align-items:stretch;gap:14px;
     }
     /* Bottom slot: "Loading..." while the world builds, cross-fading into Skip
-       once the map and core sprites are painted and ready to play. */
+       once the map has painted and the HUD is wired (sprites may still stream in). */
     #game-loading .gl-foot{
       flex-shrink:0;display:grid;justify-items:end;align-items:center;min-height:44px;
     }
@@ -758,8 +758,22 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
   function resetForceDismissTimer(): void {
     if (dismissTimer) window.clearTimeout(dismissTimer);
     dismissTimer = window.setTimeout(() => {
-      if (!dismissed) skip();
+      dismissTimer = 0;
+      if (dismissed) return;
+      if (canSkipNow()) skip();
+      else pollForceDismiss();
     }, forceDismissMs(speech?.text ?? activeScroll?.text));
+  }
+
+  /** Safety skip once the game is playable, if the main cap fired while still loading. */
+  function pollForceDismiss(): void {
+    if (dismissed || dismissTimer) return;
+    dismissTimer = window.setTimeout(() => {
+      dismissTimer = 0;
+      if (dismissed) return;
+      if (canSkipNow()) skip();
+      else pollForceDismiss();
+    }, 400);
   }
 
   function startSpeech(): void {
@@ -842,7 +856,9 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
       typingDone = true;
     }
     holdComplete = true;
-    tryDismiss();
+    // Skip is only visible once the map and HUD are painted; enter the game at once.
+    if (canSkipNow()) dismiss();
+    else tryDismiss();
   }
 
   function dismiss(): void {
@@ -964,6 +980,8 @@ function ensureTutorialPrepStyles(): void {
 export interface TutorialPreparingOptions {
   /** Fired when the preparing veil is removed and the coach may start. */
   onDismiss?: () => void;
+  /** Tutorial waits for the coach portrait before dismissing. */
+  portraitReady?: () => Promise<void>;
 }
 
 /** Minimal veil while the tutorial world generates and the first map frame paints. */
@@ -974,8 +992,16 @@ export function createTutorialPreparingScreen(
   const mountedAt = performance.now();
   let worldReady = false;
   let mapRendered = false;
+  let portraitReady = !options.portraitReady;
   let dismissed = false;
   let dismissTimer = 0;
+
+  if (options.portraitReady) {
+    void options.portraitReady().then(() => {
+      portraitReady = true;
+      tryDismiss();
+    });
+  }
 
   const root = document.createElement("div");
   root.id = "game-loading";
@@ -1010,7 +1036,7 @@ export function createTutorialPreparingScreen(
   }
 
   function tryDismiss(): void {
-    if (dismissed || !worldReady || !mapRendered) return;
+    if (dismissed || !worldReady || !mapRendered || !portraitReady) return;
     const elapsed = performance.now() - mountedAt;
     if (elapsed < TUTORIAL_PREP_MIN_MS) {
       if (!dismissTimer) {
@@ -1028,6 +1054,7 @@ export function createTutorialPreparingScreen(
     if (dismissed) return;
     worldReady = true;
     mapRendered = true;
+    portraitReady = true;
     dismiss();
   }, TUTORIAL_PREP_FORCE_MS);
 

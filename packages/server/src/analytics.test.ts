@@ -104,6 +104,24 @@ describe("MemoryAnalyticsStore", () => {
     expect(lb[0]!.handle).toBe("Bob");
   });
 
+  it("leaderboardBestPerPlayer keeps one row per player at their highest score", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      startCfg("s1", "p1", { civId: "rome", handle: "Alice", userId: "u1" }),
+      end("s1", "p1", "win", 40, 250),
+      startCfg("s2", "p1", { civId: "egypt", handle: "Alice", userId: "u1" }),
+      end("s2", "p1", "loss", 30, 400),
+      startCfg("s3", "p2", { civId: "greece", handle: "Bob", userId: "u2" }),
+      end("s3", "p2", "win", 20, 180),
+    ]);
+    const lb = await a.leaderboardBestPerPlayer();
+    expect(lb).toHaveLength(2);
+    expect(lb.map((e) => e.handle).sort()).toEqual(["Alice", "Bob"]);
+    expect(lb.find((e) => e.handle === "Alice")?.score).toBe(400);
+    expect(lb.find((e) => e.handle === "Bob")?.score).toBe(180);
+    expect(lb[0]!.handle).toBe("Alice");
+  });
+
   it("aggregates the game-setup config players chose", async () => {
     const a = new MemoryAnalyticsStore();
     await a.record([

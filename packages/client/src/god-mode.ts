@@ -34,6 +34,22 @@ import {
   type UnitTypeId,
 } from "@roc/sim";
 
+/** Tile works surfaced in the God Mode cheat panel. */
+export const CHEAT_WORK_KINDS = [
+  "farm",
+  "lumber_camp",
+  "mine",
+  "quarry",
+  "fishery",
+  "saltern",
+  "pasture",
+  "plantation",
+  "camp",
+  "fishing_boats",
+  "wall",
+  "tower",
+] as const;
+
 export type CheatAction =
   | { type: "unlockTechs" }
   | { type: "completeWorks" }

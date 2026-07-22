@@ -82,6 +82,8 @@ export interface AnalyticsStore {
   /** Win/loss counts grouped by the victory condition the game ended on. */
   victoryBreakdown(): Promise<VictoryTypeCount[]>;
   leaderboard(limit?: number): Promise<LeaderboardEntry[]>;
+  /** One row per player: their highest score from any completed game. */
+  leaderboardBestPerPlayer(limit?: number): Promise<LeaderboardEntry[]>;
   voteTotals(): Promise<VoteTotal[]>;
   /** Bug reports, newest first (summaries — no heavy state payload). */
   bugReports(limit?: number): Promise<BugReportSummary[]>;
@@ -314,6 +316,32 @@ export class MemoryAnalyticsStore implements AnalyticsStore {
       }))
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
+  }
+
+  async leaderboardBestPerPlayer(limit = 25): Promise<LeaderboardEntry[]> {
+    const rows = this.rows();
+    const byClient = buildHandleByClientId(rows);
+    const byUser = new Map<string, string>();
+    for (const r of rows) {
+      if (r.userId && r.handle?.trim()) byUser.set(r.userId, r.handle.trim());
+    }
+    const best = new Map<string, LeaderboardEntry>();
+    for (const r of rows) {
+      if (r.score === undefined || (r.outcome !== "win" && r.outcome !== "loss")) continue;
+      const key = r.userId ?? r.clientId;
+      const entry: LeaderboardEntry = {
+        handle: resolvePlayerHandle(r, byClient, byUser),
+        sessionId: r.sessionId,
+        civId: r.civId,
+        score: r.score,
+        outcome: r.outcome,
+        turns: r.turns ?? 0,
+        ts: r.endedAt ?? r.startedAt ?? 0,
+      };
+      const cur = best.get(key);
+      if (!cur || entry.score > cur.score) best.set(key, entry);
+    }
+    return [...best.values()].sort((a, b) => b.score - a.score).slice(0, limit);
   }
 
   async voteTotals(): Promise<VoteTotal[]> {

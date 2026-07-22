@@ -1,4 +1,4 @@
-const CACHE_NAME = "rise-of-civ-v2";
+const CACHE_NAME = "rise-of-civ-v3-art";
 
 // Core shell files that should be available immediately after install.
 const PRECACHE = [
@@ -14,6 +14,28 @@ const PRECACHE = [
   "/terms.html",
   "/delete-account.html",
 ];
+
+/** Immutable PNG sprites — cache-first on repeat visits. */
+const ART_PREFIXES = [
+  "/hex-terrain/",
+  "/units/",
+  "/roads/",
+  "/improvements/",
+  "/resources/",
+  "/natural-wonders/",
+  "/wonders/",
+  "/buildings/",
+  "/features/",
+  "/ui/",
+  "/icons/",
+  "/leaders/",
+  "/village-rewards/",
+  "/barbarian-rewards/",
+];
+
+function isGameArt(pathname) {
+  return ART_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -56,6 +78,23 @@ self.addEventListener("fetch", (event) => {
     url.pathname === "/delete-account.html"
   ) {
     event.respondWith(fetch(request).catch(() => caches.match(request)));
+    return;
+  }
+
+  // Game art: cache-first so repeat sessions skip re-downloading hundreds of PNGs.
+  if (isGameArt(url.pathname)) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        if (cached) return cached;
+        return fetch(request).then((networkResponse) => {
+          if (networkResponse && networkResponse.ok) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return networkResponse;
+        });
+      }),
+    );
     return;
   }
 

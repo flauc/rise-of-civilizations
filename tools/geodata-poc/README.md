@@ -13,6 +13,14 @@ node bake.mjs --res=50m --cols=160   # higher-detail source for a regional map
 ```
 Options: `--cols=<n>` grid width · `--res=110m|50m|10m` Natural Earth scale · `--out=<file>`.
 
+**Regional presets** (`bake-regional-mask.mjs`):
+
+```bash
+node bake-regional-mask.mjs --preset=mediterranean
+```
+
+Bakes a bit-packed land mask for the Mediterranean / Roman Empire viewport (circa 384 CE) into `mediterranean.mask.json`. Copy the emitted base64 into `packages/sim/src/mediterranean-mask.ts` when refreshing coastlines.
+
 ## What it proves / what's still placeholder
 - ✅ Geodata sourcing, TopoJSON→GeoJSON, spherical point-in-polygon, hex sampling, baking — all real.
 - ✅ Output is recognizable as Earth (continents in the right places) — visible in the console ASCII preview.

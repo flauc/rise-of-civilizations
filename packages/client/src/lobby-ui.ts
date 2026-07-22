@@ -5,11 +5,10 @@ import { ASSET_BASE_URL } from "./asset-base";
 import { LocalSession, OnlineSession, MAP_DIMENSIONS, type MapSize, type Session } from "./session";
 import { isMobileMpUi, renderChatLogEl, CHAT_MODERATION_CSS } from "./mp-chat";
 import { onChatModerationChange } from "./chat-moderation";
-import { createWiki } from "./wiki";
-import { createRoadmap } from "./roadmap";
-import { createCredits } from "./credits";
+import { createLazyWiki } from "./wiki-lazy";
+import { createLazyChangelog, createLazyCredits, createLazyRoadmap } from "./lobby-overlays-lazy";
+import { CURRENT_VERSION } from "./version";
 import { confirmDialog } from "./confirm-dialog";
-import { createChangelog, CURRENT_VERSION } from "./changelog";
 import {
   CIVILIZATIONS,
   PLAYER_COLORS,
@@ -50,8 +49,13 @@ import { SCREEN_ROTATION_STYLES } from "./screen-rotation-ui";
 import { openSettingsPanel } from "./settings-ui";
 import { bindDialogClose } from "./dialog-close";
 import { openSupportPage } from "./support-page";
+import { fetchOnlineLeaderboard, loadOnlineLeaderboard, renderOnlineLeaderboard } from "./online-leaderboard";
 import { loadLeaderAtlas, isImageReady } from "./leader-assets";
 import type { GameSetup } from "./analytics";
+import {
+  CIV_BGM_FILTER_CHIPS,
+  civBgmRegion,
+} from "@roc/data";
 import {
   createTutorialSession,
   TUTORIAL_CIV_ID,
@@ -71,11 +75,13 @@ const CIVS_BY_NAME = [...CIVILIZATIONS].sort((a, b) => a.name.localeCompare(b.na
 type Screen = "start" | "login" | "signup" | "sp" | "mp" | "load";
 
 type BarbLevel = "none" | "minimal" | "low" | "normal" | "high";
+type AiLevel = "minimal" | "low" | "normal" | "high";
+const AI_LEVELS: AiLevel[] = ["minimal", "low", "normal", "high"];
 type StartingGold = "tight" | "balanced" | "generous";
 
 /** Map layout presets, in menu order, each with a short explanation. */
 const MAP_TYPE_OPTIONS: { value: MapType; label: string; desc: string }[] = [
-  { value: "random", label: "Random", desc: "Roll any map layout — random or fixed continents, archipelago, inland sea, islands, or real world." },
+  { value: "random", label: "Random", desc: "Roll any procedural layout, real world, or Mediterranean." },
   { value: "continents", label: "Continents (1-4)", desc: "Each game rolls one to four separate continents, from one supercontinent up to four distant landmasses." },
   { value: "pangaea", label: "One Continent", desc: "A single supercontinent: everyone shares one landmass with little ocean between." },
   { value: "two_continents", label: "Two Continents", desc: "Two major landmasses divided by open ocean." },
@@ -85,6 +91,12 @@ const MAP_TYPE_OPTIONS: { value: MapType; label: string; desc: string }[] = [
   { value: "inland_sea", label: "Inland Sea", desc: "Japan's Seto Inland Sea: Honshu, Shikoku, and Kyushu shores around a sea dotted with islands." },
   { value: "islands", label: "Islands", desc: "Lots of small, scattered islands across a wide ocean." },
   { value: "realworld", label: "Real World (Earth)", desc: "The continents of Earth, baked from real-world geodata." },
+  { value: "mediterranean", label: "Mediterranean (Roman Empire)", desc: "Real coastlines from Iberia to the Euphrates and Britain to the Sahara, circa 384 CE." },
+  { value: "europe", label: "Europe", desc: "Natural Earth coastlines from Iceland and Scandinavia to the Mediterranean and the Urals fringe." },
+  { value: "africa", label: "Africa", desc: "The African continent from the Mediterranean coast through the Sahara, Congo, and the Cape." },
+  { value: "asia", label: "Asia", desc: "From the Middle East and India to China, Japan, and Siberia." },
+  { value: "north_america", label: "North America", desc: "Alaska, Canada, the United States, and Central America on real coastlines." },
+  { value: "south_america", label: "South America", desc: "The Andes, Amazon basin, and Southern Cone on real coastlines." },
 ];
 
 /** Starting-treasury presets, shown as chips with explanatory tooltips. */
@@ -136,6 +148,7 @@ interface MenuState {
     mapType: MapType;
     ais: AiConfig[];
     barbarians: BarbLevel;
+    aiDifficulty: AiLevel;
     naturalWonders: boolean;
     villages: VillageLevel;
     legends: boolean;
@@ -216,6 +229,19 @@ function barbarianSelect(id: string, value: string): string {
   ];
   return `<select id="${id}" class="menu-in">${opts
     .map((o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${o.label}</option>`)
+    .join("")}</select>`;
+}
+
+function aiDifficultySelect(id: string, value: string): string {
+  const normalized = value === "none" ? "minimal" : value;
+  const opts = [
+    { value: "minimal", label: "Minimal" },
+    { value: "low", label: "Low" },
+    { value: "normal", label: "Normal" },
+    { value: "high", label: "High" },
+  ];
+  return `<select id="${id}" class="menu-in">${opts
+    .map((o) => `<option value="${o.value}"${o.value === normalized ? " selected" : ""}>${o.label}</option>`)
     .join("")}</select>`;
 }
 
@@ -354,6 +380,7 @@ function defaultSpSetup(): SpSetup {
     mapType: "random",
     ais: [{ civId: RANDOM_CIV, color: PLAYER_COLORS[1]! }],
     barbarians: "normal",
+    aiDifficulty: "normal",
     naturalWonders: true,
     villages: "medium",
     legends: true,
@@ -419,6 +446,10 @@ function loadSpSetup(defaults: SpSetup): SpSetup {
   if (typeof saved.mapSize === "string" && saved.mapSize in MAP_DIMENSIONS) out.mapSize = saved.mapSize;
   if (MAP_TYPE_OPTIONS.some((o) => o.value === saved!.mapType)) out.mapType = saved.mapType!;
   if (BARB_LEVELS.includes(saved.barbarians as BarbLevel)) out.barbarians = saved.barbarians!;
+  const savedAi = saved.aiDifficulty as string | undefined;
+  if (savedAi === "none" || AI_LEVELS.includes(savedAi as AiLevel)) {
+    out.aiDifficulty = savedAi === "none" ? "minimal" : (savedAi as AiLevel);
+  }
   if (typeof saved.naturalWonders === "boolean") out.naturalWonders = saved.naturalWonders;
   out.villages = normalizeVillageLevel(saved.villages);
   if (typeof saved.legends === "boolean") out.legends = saved.legends;
@@ -519,10 +550,10 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
   const leaderAtlas = loadLeaderAtlas();
 
-  const wiki = createWiki();
-  const roadmap = createRoadmap();
-  const credits = createCredits();
-  const changelog = createChangelog();
+  const wiki = createLazyWiki();
+  const roadmap = createLazyRoadmap();
+  const credits = createLazyCredits();
+  const changelog = createLazyChangelog();
 
   const root = document.createElement("div");
   root.id = "lobby";
@@ -673,19 +704,25 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .showcase-art-wrapper{position:relative;flex:0 1 auto;width:100%;max-height:min(300px,calc(100dvh - 96px));aspect-ratio:13/16;min-height:0;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.55);border:1px solid rgba(201,162,39,.25)}
     .showcase-art{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;border-radius:16px}
     .showcase-art-placeholder{position:absolute;inset:0;border:2px dashed rgba(201,162,39,.2);border-radius:16px;display:flex;align-items:center;justify-content:center;color:#b8aa8d;font-size:13px;text-align:center;background:rgba(201,162,39,.05)}
-    .showcase-reroll{position:relative;flex:0 0 auto;width:100%;margin-top:0;z-index:2}
-    /* Desktop / tall screens: hero copy and portrait both anchored from the top. */
-    @media (min-width:861px) and (min-height:521px){
+    .showcase-reroll{width:100%;margin-top:0;padding:10px 12px;font-size:13px;line-height:1.35;text-align:center;justify-content:center;white-space:normal;align-self:stretch;position:relative;z-index:2;min-height:44px}
+    /* Tablet / small laptop: keep text and portrait in a two-column grid (no overlap). */
+    @media (min-width:761px) and (max-width:1199px){
+      .lobby-right{display:grid;grid-template-columns:minmax(0,1fr) clamp(140px,22vw,220px);grid-template-rows:minmax(0,1fr);gap:16px 20px;align-items:start;padding:24px 28px;overflow-y:auto}
+      .showcase{grid-column:1;grid-row:1;max-height:none;overflow:visible;padding-right:4px}
+      .showcase-side{position:static;grid-column:2;grid-row:1;width:100%;max-width:220px;justify-self:end}
+      .showcase-art-wrapper{width:100%;max-height:min(280px,calc(100dvh - 120px));aspect-ratio:13/16}
+    }
+    /* Wide desktop: hero copy with portrait pinned top-right. */
+    @media (min-width:1200px) and (min-height:521px){
       .lobby-right{display:flex;flex-direction:column;align-items:stretch;gap:0;padding:48px 56px;overflow-y:auto}
-      .showcase{align-self:start;margin-top:0;max-width:720px;max-height:none;overflow:visible;padding-right:0;padding-bottom:0}
+      .showcase{align-self:start;margin-top:0;max-width:none;max-height:none;overflow:visible;padding-right:312px;padding-bottom:0}
       .showcase-civ{font-size:52px}
       .showcase-leader{font-size:22px;margin-top:8px}
       .showcase-quote{font-size:20px;line-height:1.5;margin-top:22px;max-width:640px}
       .showcase-ability{margin-top:26px;padding:16px 18px}
-      .showcase-side{position:absolute;top:48px;right:56px;width:260px;align-self:auto;justify-self:auto;max-height:none;gap:12px}
-      .showcase-art-wrapper{width:260px;height:320px;max-height:320px;aspect-ratio:auto;flex:none;border-radius:16px}
+      .showcase-side{position:absolute;top:48px;right:56px;width:280px;align-self:auto;justify-self:auto;max-height:none;gap:12px}
+      .showcase-art-wrapper{width:280px;height:320px;max-height:320px;aspect-ratio:auto;flex:none;border-radius:16px}
       .showcase-art{object-position:top center;border-radius:16px}
-      .showcase-reroll{width:100%}
     }
     /* Unique-unit block — shared by the showcase and the civ picker. Clickable
        (a button) to open the expanded ability detail; no ability text inline. */
@@ -768,7 +805,16 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .cp-close{width:34px;height:34px;border-radius:8px;border:1px solid var(--edge);background:transparent;color:#e8dcc5;cursor:pointer;font-size:15px}
     .cp-close:hover{background:rgba(201,162,39,.12);border-color:#c9a227}
     .cp-body{flex:1;display:flex;min-height:0}
-    .cp-list{width:300px;flex:none;overflow-y:auto;border-right:1px solid var(--edge);padding:10px;display:flex;flex-direction:column;gap:4px}
+    .cp-list-wrap{width:300px;flex:none;display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--edge)}
+    .cp-toolbar{flex:none;padding:10px 10px 6px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--edge)}
+    .cp-search{width:100%;padding:8px 10px;border-radius:8px;border:1px solid var(--edge);background:#15120c;color:#e8dcc5;font:inherit;font-size:13px}
+    .cp-search::placeholder{color:#8a8070}
+    .cp-filters{display:flex;flex-wrap:wrap;gap:5px}
+    .cp-filter{font:inherit;font-size:11px;line-height:1.2;padding:4px 8px;border-radius:999px;border:1px solid var(--edge);background:transparent;color:#b8aa8d;cursor:pointer}
+    .cp-filter:hover{border-color:#c9a227;color:#e8dcc5}
+    .cp-filter.sel{background:rgba(201,162,39,.16);border-color:#c9a227;color:#f0d878}
+    .cp-list{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:4px;min-height:0}
+    .cp-empty{padding:16px 12px;color:#8a8070;font-size:13px;text-align:center;line-height:1.45}
     .cp-item{display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;padding:9px 12px;border:1px solid transparent;border-radius:10px;background:transparent;color:#e8dcc5;cursor:pointer;font:inherit}
     .cp-item:hover{background:rgba(201,162,39,.08)}
     .cp-item.sel{background:rgba(201,162,39,.16);border-color:#c9a227}
@@ -801,7 +847,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     html.roc-phone-shell .civ-picker{width:100%;height:100%;max-width:none;border-radius:0;border:none}
     html.roc-phone-shell .cp-body{flex-direction:column}
     html.roc-phone-shell .cp-detail{flex:none;order:-1;max-height:48vh;border-bottom:1px solid var(--edge)}
-    html.roc-phone-shell .cp-list{width:100%;flex:1;border-right:none}
+    html.roc-phone-shell .cp-list-wrap{width:100%;flex:1;border-right:none;min-height:0}
+    html.roc-phone-shell .cp-list{flex:1}
     html.roc-phone-shell .cp-portrait{width:110px;height:138px}
     html.roc-phone-shell .cp-civ{font-size:24px}
     html.roc-phone-shell .cp-quote{display:none}
@@ -918,6 +965,22 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     .mp-opt>span{font-size:12px;color:#b8aa8d}
     .mp-create-foot{display:flex;justify-content:flex-end;margin-top:18px}
     .mp-empty{color:#b8aa8d;font-size:13px;text-align:center;padding:24px 8px}
+    .mp-lb-empty{color:#b8aa8d;font-size:13px;text-align:center;padding:18px 8px}
+    #mp-leaderboard{overflow-x:auto;-webkit-overflow-scrolling:touch}
+    .mp-lb-table{width:100%;border-collapse:collapse;font-size:13px}
+    .mp-lb-table th{text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#8a7f6a;padding:0 8px 10px;border-bottom:1px solid var(--edge)}
+    .mp-lb-table td{padding:9px 8px;border-bottom:1px solid rgba(255,255,255,.04);color:#cdbfa6;vertical-align:middle}
+    .mp-lb-table tr:last-child td{border-bottom:none}
+    .mp-lb-rank{width:2.2em;color:#7c7560;font-family:'Cinzel',Georgia,serif;font-weight:700}
+    .mp-lb-top .mp-lb-rank{color:#f0d878}
+    .mp-lb-player{color:#e8dcc5;font-weight:600;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .mp-lb-civ{max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .mp-lb-score{font-family:'Cinzel',Georgia,serif;font-weight:700;color:#f0d878;text-align:right;white-space:nowrap}
+    .mp-lb-outcome{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+    .mp-lb-outcome-win{color:#9bbf86}
+    .mp-lb-outcome-loss{color:#c98a7a}
+    .mp-lb-when{color:#8a7f6a;font-size:12px;white-space:nowrap}
+    .mp-lb-table th:nth-child(3),.mp-lb-table td:nth-child(3){text-align:right}
     /* Room */
     .mp-player-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:14px}
     .mp-pcard{position:relative;background:#1f1c14;border:1px solid var(--edge);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:11px;min-height:96px}
@@ -1090,7 +1153,13 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           <button class="cp-close" id="cp-close" aria-label="Close">✕</button>
         </div>
         <div class="cp-body">
-          <div class="cp-list" id="cp-list"></div>
+          <div class="cp-list-wrap">
+            <div class="cp-toolbar">
+              <input type="search" class="cp-search" id="cp-search" placeholder="Search by name or leader…" autocomplete="off" />
+              <div class="cp-filters" id="cp-filters"></div>
+            </div>
+            <div class="cp-list" id="cp-list"></div>
+          </div>
           <div class="cp-detail" id="cp-detail"></div>
         </div>
         <div class="cp-footer">
@@ -1103,6 +1172,10 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     const listEl = overlay.querySelector<HTMLDivElement>("#cp-list")!;
     const detailEl = overlay.querySelector<HTMLDivElement>("#cp-detail")!;
     const confirmName = overlay.querySelector<HTMLSpanElement>("#cp-confirm-name")!;
+    const searchEl = overlay.querySelector<HTMLInputElement>("#cp-search")!;
+    const filtersEl = overlay.querySelector<HTMLDivElement>("#cp-filters")!;
+    let regionFilter: (typeof CIV_BGM_FILTER_CHIPS)[number]["id"] = "all";
+    let searchQuery = "";
 
     const close = (): void => {
       overlay.remove();
@@ -1113,21 +1186,63 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     };
     document.addEventListener("keydown", onKey);
 
-    const randomItem = allowRandom
-      ? `<button type="button" class="cp-item${selected === RANDOM_CIV ? " sel" : ""}" data-civ="${RANDOM_CIV}">
-          <span class="cp-item-name">Random civilization</span>
-          <span class="cp-item-leader">Let fate decide</span>
-        </button>`
-      : "";
-    listEl.innerHTML =
-      randomItem +
-      CIVS_BY_NAME.map((c) => {
-        const taken = takenByOthers.has(c.id) && c.id !== currentCivId;
-        return `<button type="button" class="cp-item${c.id === selected ? " sel" : ""}" data-civ="${c.id}"${taken ? " disabled" : ""}>
-        <span class="cp-item-name">${escapeHtml(c.name)}</span>
-        <span class="cp-item-leader">${escapeHtml(c.leader)}${taken ? " · taken" : ""}</span>
-      </button>`;
-      }).join("");
+    const civSearchText = (c: (typeof CIVILIZATIONS)[number]): string =>
+      `${c.name} ${c.leader} ${c.abilityName} ${c.abilityDesc}`.toLowerCase();
+
+    const civMatchesFilter = (c: (typeof CIVILIZATIONS)[number]): boolean => {
+      if (regionFilter !== "all" && civBgmRegion(c.id) !== regionFilter) return false;
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return true;
+      return civSearchText(c).includes(q);
+    };
+
+    const renderList = (): void => {
+      const showRandom = allowRandom && (!searchQuery.trim() && regionFilter === "all");
+      const randomItem = showRandom
+        ? `<button type="button" class="cp-item${selected === RANDOM_CIV ? " sel" : ""}" data-civ="${RANDOM_CIV}">
+            <span class="cp-item-name">Random civilization</span>
+            <span class="cp-item-leader">Let fate decide</span>
+          </button>`
+        : "";
+      const visible = CIVS_BY_NAME.filter(civMatchesFilter);
+      const items = visible
+        .map((c) => {
+          const taken = takenByOthers.has(c.id) && c.id !== currentCivId;
+          return `<button type="button" class="cp-item${c.id === selected ? " sel" : ""}" data-civ="${c.id}"${taken ? " disabled" : ""}>
+          <span class="cp-item-name">${escapeHtml(c.name)}</span>
+          <span class="cp-item-leader">${escapeHtml(c.leader)}${taken ? " · taken" : ""}</span>
+        </button>`;
+        })
+        .join("");
+      listEl.innerHTML =
+        randomItem +
+        (items || `<div class="cp-empty">No civilizations match your search.</div>`);
+      listEl.querySelectorAll<HTMLButtonElement>(".cp-item").forEach((btn) =>
+        btn.addEventListener("click", () => {
+          selected = btn.dataset.civ!;
+          listEl.querySelectorAll(".cp-item").forEach((b) => b.classList.toggle("sel", b === btn));
+          renderDetail();
+          detailEl.scrollTop = 0;
+        }),
+      );
+      listEl.querySelector<HTMLButtonElement>(".cp-item.sel")?.scrollIntoView({ block: "nearest" });
+    };
+
+    filtersEl.innerHTML = CIV_BGM_FILTER_CHIPS.map(
+      (chip) =>
+        `<button type="button" class="cp-filter${chip.id === regionFilter ? " sel" : ""}" data-region="${chip.id}">${escapeHtml(chip.label)}</button>`,
+    ).join("");
+    filtersEl.querySelectorAll<HTMLButtonElement>(".cp-filter").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        regionFilter = btn.dataset.region as (typeof CIV_BGM_FILTER_CHIPS)[number]["id"];
+        filtersEl.querySelectorAll(".cp-filter").forEach((b) => b.classList.toggle("sel", b === btn));
+        renderList();
+      }),
+    );
+    searchEl.addEventListener("input", () => {
+      searchQuery = searchEl.value;
+      renderList();
+    });
 
     const renderDetail = (): void => {
       if (selected === RANDOM_CIV) {
@@ -1187,15 +1302,6 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       wireUuDetail(detailEl);
     };
 
-    listEl.querySelectorAll<HTMLButtonElement>(".cp-item").forEach((btn) =>
-      btn.addEventListener("click", () => {
-        selected = btn.dataset.civ!;
-        listEl.querySelectorAll(".cp-item").forEach((b) => b.classList.toggle("sel", b === btn));
-        renderDetail();
-        detailEl.scrollTop = 0;
-      }),
-    );
-
     bindDialogClose(overlay.querySelector<HTMLButtonElement>("#cp-close")!, close);
     bindDialogClose(overlay.querySelector<HTMLButtonElement>("#cp-cancel")!, close);
     overlay.querySelector<HTMLButtonElement>("#cp-confirm")!.addEventListener("click", () => {
@@ -1205,8 +1311,8 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     });
 
     renderDetail();
-    // Bring the selected entry into view on open.
-    listEl.querySelector<HTMLButtonElement>(".cp-item.sel")?.scrollIntoView({ block: "center" });
+    renderList();
+    searchEl.focus();
   }
 
   function resetSpSetupForMenu(): void {
@@ -1470,6 +1576,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           <div class="menu-row"><span>Game speed</span>${gameSpeedSelect("sp-speed", state.sp.gameSpeed)}</div>
           <div class="menu-hint" id="sp-speed-desc"></div>
           <div class="menu-row"><span>Barbarians</span>${barbarianSelect("sp-barb", state.sp.barbarians)}</div>
+          <div class="menu-row"><span>AI difficulty</span>${aiDifficultySelect("sp-ai", state.sp.aiDifficulty)}</div>
           <div class="menu-row"><span>Tribal villages</span>${villageSelect("sp-villages", state.sp.villages)}</div>
           <div class="menu-row"><span>Natural wonders</span>${onOffSelect("sp-wonders", state.sp.naturalWonders)}</div>
           <div class="menu-row"><span>Legends (heroes)</span>${onOffSelect("sp-legends", state.sp.legends)}</div>
@@ -1636,6 +1743,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       close();
       const spMapSize = $select("#sp-map").value as MapSize;
       const spBarb = $select("#sp-barb").value as BarbLevel;
+      const spAi = $select("#sp-ai").value as AiLevel;
       const spVillages = normalizeVillageLevel($select("#sp-villages").value);
       const spWonders = $select("#sp-wonders").value === "on";
       const spLegends = $select("#sp-legends").value === "on";
@@ -1646,6 +1754,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       // already live there), then persist so the next new game defaults to it.
       state.sp.mapSize = spMapSize;
       state.sp.barbarians = spBarb;
+      state.sp.aiDifficulty = spAi;
       state.sp.villages = spVillages;
       state.sp.naturalWonders = spWonders;
       state.sp.legends = spLegends;
@@ -1662,6 +1771,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           aiCivIds: spAiCivIds,
           colors: [state.sp.color, ...state.sp.ais.map((a) => a.color)],
           barbarians: spBarb,
+          aiDifficulty: spAi,
           villages: spVillages,
           naturalWonders: spWonders,
           legends: spLegends,
@@ -1680,6 +1790,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
           villages: spVillages,
           naturalWonders: spWonders,
           barbarianLevel: spBarb,
+          aiDifficulty: spAi,
           aiCivIds: spAiCivIds,
           legends: spLegends,
           turnLimit: spTurnLimit,
@@ -1884,6 +1995,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         mapType: "random",
         capacity: 2,
         barbarians: "normal",
+        aiDifficulty: "normal",
         naturalWonders: true,
         villages: "medium",
         startingGold: "balanced",
@@ -1906,9 +2018,9 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
                 <div class="mp-create-foot"><button class="menu-btn primary" id="mp-create" style="width:auto">Create game</button></div>
               </div>
               <div class="mp-panel">
-                <div class="mp-panel-title">Tutorial</div>
-                <div class="menu-hint" style="margin-bottom:14px">Learn the basics in a short offline game — small map, one AI, minimal barbarians.</div>
-                <div class="mp-create-foot"><button class="menu-btn" id="mp-tutorial" style="width:auto">Play Tutorial</button></div>
+                <div class="mp-panel-title">Leaderboard <button class="menu-btn secondary" id="mp-lb-refresh" style="margin-left:auto;width:auto;padding:6px 12px;font-size:12px">Refresh</button></div>
+                <div class="menu-hint" style="margin-bottom:12px">Each player's best score from a completed game. Log in so your username appears here.</div>
+                <div id="mp-leaderboard"></div>
               </div>
             </div>
             <div class="mp-panel">
@@ -1921,7 +2033,27 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       screen.querySelector<HTMLButtonElement>("#mp-back")!.addEventListener("click", () => showScreen("start"));
       screen.querySelector<HTMLButtonElement>("#mp-refresh")!.addEventListener("click", () => mpSession?.send({ t: "listGames" }));
       screen.querySelector<HTMLButtonElement>("#mp-create")!.addEventListener("click", doCreate);
-      screen.querySelector<HTMLButtonElement>("#mp-tutorial")!.addEventListener("click", () => launchTutorialGame());
+      const lbEl = screen.querySelector<HTMLDivElement>("#mp-leaderboard")!;
+      const loadLeaderboard = (): void => {
+        renderOnlineLeaderboard(lbEl, null);
+        void loadOnlineLeaderboard(25, {
+          wsUrl: state.mp.url,
+          requestViaWs:
+            mpSession?.isOpen()
+              ? () => mpSession!.requestLeaderboard(25)
+              : undefined,
+        })
+          .then((entries) => renderOnlineLeaderboard(lbEl, entries))
+          .catch(() =>
+            renderOnlineLeaderboard(
+              lbEl,
+              null,
+              "Could not load scores. Restart the game server (bun run server) if you are playing locally.",
+            ),
+          );
+      };
+      screen.querySelector<HTMLButtonElement>("#mp-lb-refresh")!.addEventListener("click", loadLeaderboard);
+      loadLeaderboard();
       screen.querySelector<HTMLInputElement>("#mp-name")!.addEventListener("keydown", (e) => {
         if (e.key === "Enter") doCreate();
       });
@@ -1965,6 +2097,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
             <div class="mp-opt"><span>Turn limit</span>${turnLimitSelect("rm-turnlimit", room.turnLimit ?? DEFAULT_TURN_LIMIT)}</div>
             <div class="mp-opt"><span>Game speed</span>${gameSpeedSelect("rm-speed", room.gameSpeed ?? DEFAULT_GAME_SPEED)}</div>
             <div class="mp-opt"><span>Barbarians</span>${barbarianSelect("rm-barb", room.barbarians)}</div>
+            <div class="mp-opt"><span>AI difficulty</span>${aiDifficultySelect("rm-ai", room.aiDifficulty ?? "normal")}</div>
             <div class="mp-opt"><span>Tribal villages</span>${villageSelect("rm-villages", normalizeVillageLevel(room.villages))}</div>
             <div class="mp-opt"><span>Natural wonders</span>${onOffSelect("rm-wonders", room.naturalWonders)}</div>
             <div class="mp-opt"><span>Starting treasury</span>${goldChips("rm-gold", room.startingGold)}</div>
@@ -1976,6 +2109,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
             <span><b>Turn limit:</b> ${escapeHtml(turnLimitLabel(room.turnLimit ?? DEFAULT_TURN_LIMIT))}</span>
             <span><b>Game speed:</b> ${escapeHtml(gameSpeedLabel(room.gameSpeed ?? DEFAULT_GAME_SPEED))}</span>
             <span><b>Barbarians:</b> ${escapeHtml(room.barbarians)}</span>
+            <span><b>AI difficulty:</b> ${escapeHtml(room.aiDifficulty ?? "normal")}</span>
             <span><b>Tribal villages:</b> ${escapeHtml(normalizeVillageLevel(room.villages).replace(/^./, (c) => c.toUpperCase()))}</span>
             <span><b>Natural wonders:</b> ${room.naturalWonders ? "On" : "Off"}</span>
             <span><b>Treasury:</b> ${escapeHtml(room.startingGold)}</span>
@@ -2089,6 +2223,9 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         );
         body.querySelector<HTMLSelectElement>("#rm-barb")?.addEventListener("change", (e) =>
           configure({ barbarians: (e.target as HTMLSelectElement).value }),
+        );
+        body.querySelector<HTMLSelectElement>("#rm-ai")?.addEventListener("change", (e) =>
+          configure({ aiDifficulty: (e.target as HTMLSelectElement).value }),
         );
         body.querySelector<HTMLSelectElement>("#rm-villages")?.addEventListener("change", (e) => {
           const villages = normalizeVillageLevel((e.target as HTMLSelectElement).value);

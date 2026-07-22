@@ -173,4 +173,37 @@ describe("starting profiles", () => {
     applyCommand(s, { type: "foundCity", unitId: settler.id });
     expect(citiesOf(s, 0)[0]!.population).toBe(2);
   });
+
+  it("mediterranean maps place separated starts at every standard size", () => {
+    const sizes: [number, number][] = [
+      [36, 24],
+      [52, 34],
+      [68, 44],
+      [84, 56],
+      [100, 68],
+    ];
+    for (const [cols, rows] of sizes) {
+      const state = createGame({
+        seed: `med-starts-${cols}x${rows}`,
+        cols,
+        rows,
+        mapType: "mediterranean",
+        playerCount: 5,
+        humanSlots: 1,
+        barbarians: false,
+      });
+      const settlers = nonBarb(state)
+        .map((p) => unitsOf(state, p.id).find((u) => u.type === "settler"))
+        .filter((u): u is NonNullable<typeof u> => !!u);
+      expect(settlers, `${cols}x${rows}`).toHaveLength(5);
+      const coords = settlers.map((u) => `${u.col},${u.row}`);
+      expect(new Set(coords).size, `${cols}x${rows} unique starts`).toBe(5);
+      for (let i = 0; i < settlers.length; i++) {
+        for (let j = i + 1; j < settlers.length; j++) {
+          const d = axialDistance(offsetToAxial(settlers[i]!), offsetToAxial(settlers[j]!));
+          expect(d, `${cols}x${rows} min separation`).toBeGreaterThanOrEqual(2);
+        }
+      }
+    }
+  });
 });

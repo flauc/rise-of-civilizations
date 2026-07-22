@@ -21,6 +21,7 @@ import { cityMaxHp } from "./combat";
 import { applyVictoryCheck } from "./victory";
 import { onWarDeclared } from "./morale";
 import { emitWarDeclared } from "./turn-updates";
+import { aiExecutes } from "./ai-difficulty";
 import { RESOURCE_DEFS, empireLuxuryTypes, tradeableLuxuries, type ResourceId } from "./resources";
 import { SPECIALIST_DEFS, type SpecialistId } from "./specialists";
 
@@ -1718,9 +1719,10 @@ export function aiConsiderDiplomacy(state: GameState, aiId: number): void {
     const intent = aggressiveIntent(state, aiId, otherId);
     if (intent && (!pick || intent.priority > pick.intent.priority)) pick = { id: otherId, intent };
   }
-  if (pick) {
-    if (pick.intent.action === "demand") demandTribute(state, aiId, pick.id, pick.intent.demand);
-    else declareWar(state, aiId, pick.id);
+  if (pick && aiExecutes(state, aiId, "diplomacyAggro")) {
+    if (pick.intent.action === "demand") {
+      demandTribute(state, aiId, pick.id, pick.intent.demand);
+    } else declareWar(state, aiId, pick.id);
   }
 
   for (const otherId of [...me.met]) {

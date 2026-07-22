@@ -49,12 +49,13 @@ import {
 import { drawOverlay } from "./overlay";
 import { attachInput } from "./input";
 import { pickUnitAtScreen } from "./unit-pick";
-import { createUI, type CombatOdds, type TileTip } from "./ui";
+import { createUI } from "./ui";
+import type { CombatOdds, TileTip } from "./ui-types";
 import { showCombatPreviewDialog } from "./combat-preview-ui";
 import { getSettings } from "./settings";
 import { mountGameChat } from "./mp-chat";
 import { createLobby } from "./lobby-ui";
-import { preloadGameAssets } from "./asset-preload";
+import { preloadGameAssets, preloadDeferredGameAssets } from "./asset-preload";
 import { createLegalViewer, type LegalPage } from "./legal-viewer";
 import { createSupportPage, registerSupportPage, supportPageFromLocation } from "./support-page";
 import { initPhoneShellSync } from "./viewport-shell";
@@ -68,8 +69,12 @@ import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
 import { loadConstructionAtlas } from "./construction-assets";
 import { loadFeatureAtlas } from "./feature-assets";
-import { loadNaturalWonderAtlas } from "./natural-wonder-assets";
-import { loadWonderAtlas } from "./wonder-assets";
+import {
+  ensureNaturalWonderTiles,
+  getNaturalWonderAtlas,
+  naturalWonderIdsOnMap,
+} from "./natural-wonder-assets";
+import { ensureWonderTiles, getWonderAtlas, wonderIdsOnMap } from "./wonder-assets";
 import { loadResourceAtlas } from "./resource-assets";
 import { loadAbilityAtlas } from "./ability-assets";
 import { loadReligionIconAtlas } from "./religion-assets";
@@ -78,7 +83,6 @@ import type { CheatAction } from "./god-mode";
 import { exportSave, listSavesForUser, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
 import { getAccount, getSaveOwnerId } from "./account";
 import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, abandonActiveSession, buildSessionScoreboard, viewerScoreFromBoard, registerSessionSnapshotProvider, type GameSetup } from "./analytics";
-import { createTutorialCoach } from "./tutorial-coach";
 import { resetHudOverlays } from "./hud-root";
 import { unlockCoachAudio, retryCoachVoiceIfNeeded } from "./coach-voice";
 import { unlockGameAudio } from "./game-audio-unlock";
@@ -98,9 +102,14 @@ import {
   ensureReachableTutorialVillage,
   seedTutorialSurroundings,
 } from "./tutorial";
+import {
+  beginTutorialCoachPortraitPreload,
+  tutorialCoachPortraitReady,
+} from "./tutorial-coach-portrait";
 import { installIconifyHook } from "./icons";
 import { initScreenRotation, getCanvasViewportSize } from "./screen-rotation";
 import { createLoadingScreen, createTutorialPreparingScreen, type LoadingScreenHandle } from "./loading-screen";
+import { MapLayerCache } from "./map-layer-cache";
 
 const canvas = document.getElementById("game") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d");
@@ -165,8 +174,18 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     document.getElementById("game-loading")?.remove();
     fitted = false;
     resize();
+    bumpMapLayers();
     update();
+    renderGameHud();
     needsRedraw = true;
+    // WebKit can miss the first HUD wiring pass; repaint once more before input.
+    requestAnimationFrame(() => {
+      renderGameHud();
+      needsRedraw = true;
+    });
+    if (session.hasState()) {
+      ui.banner(`${st().players[st().currentPlayerIndex]?.name ?? "Player"} — Turn ${st().turn}`);
+    }
     if (setup.isTutorial) ensureTutorialCoach();
   }
   const unlockGameAudioFromGesture = (): void => {
@@ -177,8 +196,12 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   };
   document.addEventListener("pointerdown", unlockGameAudioFromGesture, { capture: true });
   document.addEventListener("touchstart", unlockGameAudioFromGesture, { capture: true });
+  if (setup.isTutorial) beginTutorialCoachPortraitPreload();
   const loadingScreen: LoadingScreenHandle = setup.isTutorial
-    ? createTutorialPreparingScreen({ onDismiss: onLoadingDismiss })
+    ? createTutorialPreparingScreen({
+        onDismiss: onLoadingDismiss,
+        portraitReady: () => tutorialCoachPortraitReady(),
+      })
     : createLoadingScreen({
         civId: setup.civId,
         resolveCivId: () => {
@@ -190,7 +213,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       });
   let worldGenNotified = false;
   let mapFramePainted = false;
-  let coreAtlasesReady = false;
+  let hudPrimed = false;
   function maybeNotifyWorldGenerated(): void {
     if (worldGenNotified || !session.hasState()) return;
     worldGenNotified = true;
@@ -204,6 +227,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   let cssHeight = 0;
   let needsRedraw = true;
   let fitted = false;
+  const mapLayerCache = new MapLayerCache();
+  let terrainRev = 0;
+  let fogRev = 0;
+  const bumpMapLayers = (): void => {
+    terrainRev++;
+    fogRev++;
+  };
 
   let selectedUnitId: number | null = null;
   let selectedCityId: number | null = null;
@@ -238,6 +268,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   let liftFog = false; // God Mode: render the whole map with no fog
   let gameOverShown = false;
   let gameOverExploreMap = false;
+  let wasResolvingTurn = false;
   let sessionTracked = false;
   let hoverOdds: CombatOdds | null = null;
   let idleCycle = 0;
@@ -415,6 +446,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       });
     }
     needsRedraw = true;
+    bumpMapLayers();
+    syncMapWonderAssets();
+    const resolving = session.isResolvingTurn?.() ?? false;
+    if (wasResolvingTurn && !resolving && !session.isOnline) {
+      ui.banner(`${st().players[st().currentPlayerIndex]!.name} — Turn ${st().turn}`);
+    }
+    wasResolvingTurn = resolving;
   }
   session.onUpdate(update);
 
@@ -431,6 +469,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         console.error("tutorial seed failed:", err);
       }
     }
+    bumpMapLayers();
+    syncMapWonderAssets();
     maybeNotifyWorldGenerated();
   }
 
@@ -520,10 +560,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
 
   const ui = createUI({
     onEndTurn: () => {
+      if (session.isResolvingTurn?.()) return;
+      const wasLocal = !session.isOnline;
       session.endTurn();
       clearSelection();
       if (session.isOnline) ui.banner(`Turn submitted — waiting for opponents…`);
-      else ui.banner(`${st().players[st().currentPlayerIndex]!.name} — Turn ${st().turn}`);
+      else if (session.isResolvingTurn?.()) ui.banner("Resolving turn…");
+      else if (wasLocal) ui.banner(`${st().players[st().currentPlayerIndex]!.name} — Turn ${st().turn}`);
     },
     onFoundCity: () => {
       if (selectedUnitId == null) return;
@@ -827,11 +870,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     },
     onToggleLiftFog: (enabled) => {
       liftFog = enabled;
+      bumpMapLayers();
       needsRedraw = true;
     },
     onGameOverExploreMap: () => {
       gameOverExploreMap = true;
       liftFog = true;
+      bumpMapLayers();
       camera.fitToView(computeWorldBounds(st().map), cssWidth, cssHeight, BASE_SIZE * 2);
       needsRedraw = true;
     },
@@ -882,10 +927,14 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     ? mountGameChat(session as import("./session").OnlineSession, getAccount()?.userId)
     : null;
 
-  let tutorialCoach: ReturnType<typeof createTutorialCoach> | null = null;
+  let tutorialCoach: { tick(): void } | null = null;
+  let tutorialCoachLoading = false;
   function ensureTutorialCoach(): void {
-    if (!setup.isTutorial || tutorialCoach || !session.hasState()) return;
-    tutorialCoach = createTutorialCoach({
+    if (!setup.isTutorial || tutorialCoach || tutorialCoachLoading || !session.hasState()) return;
+    tutorialCoachLoading = true;
+    void import("./tutorial-coach").then(({ createTutorialCoach }) => {
+      if (tutorialCoach) return;
+      tutorialCoach = createTutorialCoach({
         getState: st,
         getViewerId: () => session.getViewerId(),
         getSelectedUnitId: () => selectedUnitId,
@@ -914,6 +963,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
           update();
         },
       });
+    });
   }
 
   type Suggestion = { kind: "units" | "research" | "civic" | "religion" | "production"; label: string } | null;
@@ -934,6 +984,29 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     const noProd = citiesOf(st(), me).filter((c) => c.production == null);
     if (noProd.length > 0) return { kind: "production", label: `⚒️ Set Production (${noProd.length})` };
     return null;
+  }
+  function renderGameHud(): void {
+    if (!session.hasState()) return;
+    const me = session.getViewerId();
+    const selCity = selectedCityId != null ? st().cities.get(selectedCityId) ?? null : null;
+    ui.render({
+      state: st(),
+      selectedUnit: selectedUnitId != null ? st().units.get(selectedUnitId) ?? null : null,
+      selectedCity: selCity,
+      selectedTile:
+        selectedTile && isExplored(selectedTile.col, selectedTile.row)
+          ? getTile(st().map, selectedTile.col, selectedTile.row) ?? null
+          : null,
+      viewerId: me,
+      odds: hoverOdds,
+      suggestion: computeSuggestion(),
+      mpSaves,
+      cheatsEnabled: !session.isOnline && isLocalhost,
+      isMultiplayer: session.isOnline,
+      liftFog,
+      gameOverExploreMap,
+      resolvingTurn: session.isResolvingTurn?.() ?? false,
+    });
   }
   function centerOn(col: number, row: number): void {
     const c = tileCenterWorld(col, row);
@@ -1224,42 +1297,33 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   screen.orientation?.addEventListener?.("change", scheduleResize);
   window.visualViewport?.addEventListener("resize", scheduleResize);
 
-  const terrainAtlas = loadTerrainAtlas(() => {
+  const mapAtlasRepaint = (): void => {
+    bumpMapLayers();
     needsRedraw = true;
-  });
-  const coastAtlas = loadCoastAtlas(() => {
-    needsRedraw = true;
-  });
-  const riverAtlas = loadRiverAtlas(() => {
-    needsRedraw = true;
-  });
-  const roadAtlas = loadRoadAtlas(() => {
-    needsRedraw = true;
-  });
+  };
+
+  preloadDeferredGameAssets();
+
+  const terrainAtlas = loadTerrainAtlas(mapAtlasRepaint);
+  const coastAtlas = loadCoastAtlas(mapAtlasRepaint);
+  const riverAtlas = loadRiverAtlas(mapAtlasRepaint);
+  const roadAtlas = loadRoadAtlas(mapAtlasRepaint);
   const unitAtlas = loadUnitAtlas(() => {
     needsRedraw = true;
   });
   const cityAtlas = loadCityAtlas(() => {
     needsRedraw = true;
   });
-  const improvementAtlas = loadImprovementAtlas(() => {
-    needsRedraw = true;
-  });
+  const improvementAtlas = loadImprovementAtlas(mapAtlasRepaint);
   const constructionAtlas = loadConstructionAtlas(() => {
     needsRedraw = true;
   });
   const featureAtlas = loadFeatureAtlas(() => {
     needsRedraw = true;
   });
-  const naturalWonderAtlas = loadNaturalWonderAtlas(() => {
-    needsRedraw = true;
-  });
-  const wonderAtlas = loadWonderAtlas(() => {
-    needsRedraw = true;
-  });
-  const resourceAtlas = loadResourceAtlas(() => {
-    needsRedraw = true;
-  });
+  const naturalWonderAtlas = getNaturalWonderAtlas();
+  const wonderAtlas = getWonderAtlas();
+  const resourceAtlas = loadResourceAtlas(mapAtlasRepaint);
   const abilityAtlas = loadAbilityAtlas(() => {
     needsRedraw = true;
   });
@@ -1268,33 +1332,46 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   });
   ui.setAbilityAtlas(abilityAtlas);
 
-  // The map and overlay draw from these atlases; the loading veil lifts once every
-  // one has finished streaming (loaded or errored) and a full frame has painted.
-  const coreAtlases = [
-    terrainAtlas, coastAtlas, riverAtlas, roadAtlas, unitAtlas, cityAtlas,
-    improvementAtlas, featureAtlas, naturalWonderAtlas, wonderAtlas, resourceAtlas, abilityAtlas,
-  ];
-  function maybeNotifyMapPainted(): void {
-    if (mapRenderNotified || !session.hasState() || !mapFramePainted || !coreAtlasesReady) return;
+  function syncMapWonderAssets(): void {
+    if (!session.hasState()) return;
+    const state = st();
+    ensureNaturalWonderTiles(naturalWonderAtlas, naturalWonderIdsOnMap(state), mapAtlasRepaint);
+    ensureWonderTiles(wonderAtlas, wonderIdsOnMap(state), mapAtlasRepaint);
+  }
+
+  function primeGameHud(): boolean {
+    if (hudPrimed || !session.hasState()) return hudPrimed;
+    try {
+      renderGameHud();
+      hudPrimed = true;
+    } catch (err) {
+      console.error("HUD prime failed:", err);
+    }
+    return hudPrimed;
+  }
+  function maybeNotifyGamePlayable(): void {
+    if (
+      mapRenderNotified ||
+      !session.hasState() ||
+      !mapFramePainted ||
+      !hudPrimed ||
+      cssWidth <= 0 ||
+      cssHeight <= 0
+    ) {
+      return;
+    }
     mapRenderNotified = true;
     document.body.classList.add("roc-map-painted");
     loadingScreen.notifyMapRendered();
   }
-  // Skip stays hidden until every core atlas has loaded and a full map frame has painted.
-  const readyPoll = window.setInterval(() => {
-    if (!coreAtlases.every((a) => a.loaded)) return;
-    window.clearInterval(readyPoll);
-    coreAtlasesReady = true;
-    needsRedraw = true;
-    maybeNotifyMapPainted();
-  }, 150);
-  // Emergency backstop if atlases stall — still waits for a painted frame before Skip.
+  // Safety backstop if the first paint or HUD prime stalls (atlases keep loading in the background).
   window.setTimeout(() => {
     if (mapRenderNotified) return;
-    coreAtlasesReady = true;
+    mapFramePainted = true;
+    primeGameHud();
     needsRedraw = true;
-    maybeNotifyMapPainted();
-  }, 20000);
+    maybeNotifyGamePlayable();
+  }, 3000);
 
   function fitCameraToStart(): void {
     if (fitted || !session.hasState() || cssWidth <= 0 || cssHeight <= 0) return;
@@ -1348,10 +1425,12 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         resourceAtlas,
         naturalWonderAtlas,
         wonderAtlas,
+        mapLayerCache,
+        terrainRev,
+        fogRev,
       });
       if (!mapFramePainted) {
         mapFramePainted = true;
-        maybeNotifyMapPainted();
       }
       } catch (err) {
         console.error("drawScene failed:", err);
@@ -1386,26 +1465,14 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         constructionAtlas,
         religionIconAtlas,
       });
-      try {
-      ui.render({
-        state: st(),
-        selectedUnit: selectedUnitId != null ? st().units.get(selectedUnitId) ?? null : null,
-        selectedCity: selCity,
-        selectedTile:
-          selectedTile && isExplored(selectedTile.col, selectedTile.row)
-            ? getTile(st().map, selectedTile.col, selectedTile.row) ?? null
-            : null,
-        viewerId: me,
-        odds: hoverOdds,
-        suggestion: computeSuggestion(),
-        mpSaves,
-        cheatsEnabled: !session.isOnline && isLocalhost,
-        isMultiplayer: session.isOnline,
-        liftFog,
-        gameOverExploreMap,
-      });
-      } catch (err) {
-        console.error("RENDER-THREW", (err as Error)?.stack || err);
+      if (loadingDismissed) {
+        try {
+          renderGameHud();
+        } catch (err) {
+          console.error("RENDER-THREW", (err as Error)?.stack || err);
+        }
+      } else if (cssWidth > 0 && cssHeight > 0) {
+        if (primeGameHud() && mapFramePainted) maybeNotifyGamePlayable();
       }
     }
     // Tick the coach EVERY frame, not only on redraws: tapping an info-only bubble
@@ -1419,9 +1486,6 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   resize();
   bootstrapWorld();
   update();
-  if (session.hasState()) {
-    ui.banner(`${st().players[st().currentPlayerIndex]?.name ?? "Player"} — Turn ${st().turn}`);
-  }
   requestAnimationFrame(frame);
 
   if (import.meta.env.DEV) {

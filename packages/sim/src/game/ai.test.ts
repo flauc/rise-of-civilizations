@@ -507,6 +507,7 @@ describe("AI opponent", () => {
       site.wonder = undefined;
       site.naturalWonder = undefined;
     }
+    s.aiDifficulty = "high";
     aiTakeTurn(s, 1);
     expect(worksOf(s, 1).some((w) => w.kind === "wonder")).toBe(true);
   });
@@ -527,6 +528,7 @@ describe("AI opponent", () => {
       for (let i = 0; i < n; i++) city.specialists.push({ id: id++, type, xp: 0, level: 1 });
     }
     s.works = s.works.filter((w) => w.ownerId !== 1);
+    s.aiDifficulty = "high";
     aiTakeTurn(s, 1);
     expect(worksOf(s, 1).some((w) => w.kind === "wonder")).toBe(true);
   });
@@ -930,6 +932,7 @@ describe("AI opponent", () => {
     }
     expect(placed).toBeGreaterThanOrEqual(3);
     expect(atWar(s, 0, 1)).toBe(false);
+    s.aiDifficulty = "high";
     aiSeekConquest(s, s.players[0]!, "domination");
     expect(atWar(s, 0, 1)).toBe(true); // a beatable neighbour within reach → war
   });
@@ -957,6 +960,7 @@ describe("AI opponent", () => {
       s.units.set(id, makeUnit(id, 0, "swordsman", nb!.col, nb!.row));
     }
     expect(atWar(s, 0, 1)).toBe(false);
+    s.aiDifficulty = "high";
     aiSeekConquest(s, s.players[0]!, "science"); // not a warmonger focus, but a huge edge
     expect(atWar(s, 0, 1)).toBe(true);
   });

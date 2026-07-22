@@ -747,6 +747,11 @@
         bottom: max(12px, env(safe-area-inset-bottom));
         z-index: 25;
       }
+      #endturn:disabled,
+      #endturn2:disabled {
+        opacity: 0.55;
+        pointer-events: none;
+      }
       /* Victory / defeat overlay */
       #gameover {
         position: fixed;
@@ -3895,9 +3900,6 @@
       #game-hud:has(#empire:not(.hidden)) #topbar,
       #game-hud:has(#empire:not(.hidden)) #leader-avatar,
       #game-hud:has(#empire:not(.hidden)) #game-chat:not(.open),
-      #game-hud:has(#save-modal:not(.hidden)) #topbar,
-      #game-hud:has(#save-modal:not(.hidden)) #leader-avatar,
-      #game-hud:has(#save-modal:not(.hidden)) #game-chat:not(.open),
       #game-hud:has(#game-chat.open.fullscreen) #topbar,
       #game-hud:has(#game-chat.open.fullscreen) #leader-avatar,
       #game-hud:has(#game-chat.open.fullscreen) #game-chat-toggle {

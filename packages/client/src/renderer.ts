@@ -343,6 +343,14 @@ export interface RenderOptions {
   resourceAtlas?: ResourceAtlas | undefined;
   naturalWonderAtlas?: NaturalWonderAtlas | undefined;
   wonderAtlas?: WonderAtlas | undefined;
+  /** World-space terrain/fog cache; rebuilds when revisions change, blits on pan/zoom. */
+  mapLayerCache?: import("./map-layer-cache").MapLayerCache;
+  terrainRev?: number;
+  fogRev?: number;
+  /** Internal: painting into the offscreen world cache (do not recurse). */
+  skipLayerCache?: boolean;
+  /** Internal: terrain-only cache build — fog is painted on screen each frame. */
+  skipFogPass?: boolean;
 }
 
 /** 6-bit land-neighbour mask for a water tile: bit `d` set when the neighbour in
@@ -610,6 +618,129 @@ function drawImprovement(
   ctx.restore();
 }
 
+function primaryTerrainImage(
+  t: { col: number; row: number; terrain: string; naturalWonder?: string; river?: number },
+  opts: Pick<RenderOptions, "terrainAtlas" | "naturalWonderAtlas" | "riverAtlas">,
+): HTMLImageElement | undefined {
+  const variants = opts.terrainAtlas?.images[t.terrain as keyof TerrainAtlas["images"]];
+  let img =
+    variants && variants.length > 0
+      ? variants[hashSeed(`${t.col},${t.row},${t.terrain}`) % variants.length]
+      : undefined;
+  if (t.naturalWonder) {
+    const wonderImg = naturalWonderTileImage(opts.naturalWonderAtlas, t.naturalWonder);
+    if (wonderImg) img = wonderImg;
+  }
+  const mtnRiverImg =
+    t.terrain === "mountains" && t.river
+      ? riverMountainFrame(opts.riverAtlas, t.river, t.col, t.row)
+      : undefined;
+  if (mtnRiverImg && isImageReady(mtnRiverImg)) img = mtnRiverImg;
+  return img && isImageReady(img) ? img : undefined;
+}
+
+function paintFogOfWar(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  camera: Camera,
+  opts: Pick<RenderOptions, "fog" | "terrainAtlas" | "naturalWonderAtlas" | "riverAtlas" | "dpr" | "cssWidth" | "cssHeight">,
+  size: number,
+  footprint: number,
+  corners: Point[],
+  margin: number,
+): void {
+  const fog = opts.fog;
+  if (!fog) return;
+  const { map } = state;
+  const fogDraws: { img: HTMLImageElement | undefined; sx: number; sy: number }[] = [];
+  const unexploredDraws: { sx: number; sy: number }[] = [];
+
+  for (const t of map.tiles) {
+    const c = tileCenterWorld(t.col, t.row);
+    const sx = camera.worldToScreenX(c.x);
+    const sy = camera.worldToScreenY(c.y);
+    if (
+      sx < -margin ||
+      sy < -margin ||
+      sx > opts.cssWidth + margin ||
+      sy > opts.cssHeight + margin
+    ) {
+      continue;
+    }
+    const key = `${t.col},${t.row}`;
+    const explored = fog.explored.has(key);
+    const visible = fog.visible.has(key);
+    if (!explored) {
+      unexploredDraws.push({ sx, sy });
+      continue;
+    }
+    if (!visible) {
+      fogDraws.push({ img: primaryTerrainImage(t, opts), sx, sy });
+    }
+  }
+
+  const traceHex = (c: CanvasRenderingContext2D, sx: number, sy: number): void => {
+    c.beginPath();
+    c.moveTo(sx + corners[0]!.x, sy + corners[0]!.y);
+    for (let i = 1; i < 6; i++) c.lineTo(sx + corners[i]!.x, sy + corners[i]!.y);
+    c.closePath();
+  };
+
+  if (unexploredDraws.length > 0) {
+    ctx.fillStyle = UNEXPLORED_FILL;
+    for (const u of unexploredDraws) {
+      traceHex(ctx, u.sx, u.sy);
+      ctx.fill();
+    }
+  }
+
+  if (fogDraws.length > 0) {
+    const layer = getFogLayer(ctx.canvas.width, ctx.canvas.height);
+    const fc = layer.ctx;
+    fc.setTransform(1, 0, 0, 1, 0, 0);
+    fc.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
+    fc.setTransform(opts.dpr, 0, 0, opts.dpr, 0, 0);
+    fc.fillStyle = FOG_SOLID;
+    for (const f of fogDraws) {
+      traceHex(fc, f.sx, f.sy);
+      fc.fill();
+      if (f.img) {
+        const sil = fogSilhouette(f.img);
+        const scale = footprint / sil.width;
+        const drawW = sil.width * scale;
+        const drawH = sil.height * scale;
+        fc.drawImage(sil, f.sx - drawW / 2, f.sy + footprint / 2 - drawH, drawW, drawH);
+      }
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = FOG_ALPHA;
+    ctx.drawImage(layer.canvas, 0, 0);
+    ctx.restore();
+  }
+}
+
+function drawHoverHighlight(
+  ctx: CanvasRenderingContext2D,
+  camera: Camera,
+  hovered: Offset,
+  size: number,
+  corners: Point[],
+): void {
+  const c = tileCenterWorld(hovered.col, hovered.row);
+  const sx = camera.worldToScreenX(c.x);
+  const sy = camera.worldToScreenY(c.y);
+  ctx.beginPath();
+  ctx.moveTo(sx + corners[0]!.x, sy + corners[0]!.y);
+  for (let i = 1; i < 6; i++) {
+    ctx.lineTo(sx + corners[i]!.x, sy + corners[i]!.y);
+  }
+  ctx.closePath();
+  ctx.lineWidth = Math.max(1.5, size * 0.08);
+  ctx.strokeStyle = HEX_HOVER_STROKE;
+  ctx.stroke();
+}
+
 /** Draws the visible map; returns how many tiles were rendered (for the HUD). */
 export function drawScene(
   ctx: CanvasRenderingContext2D,
@@ -617,8 +748,31 @@ export function drawScene(
   camera: Camera,
   opts: RenderOptions,
 ): number {
+  const { dpr, cssWidth, cssHeight, hovered, mapLayerCache, terrainRev = 0, skipLayerCache } =
+    opts;
+
+  const size = BASE_SIZE * camera.zoom;
+  const footprint = tileFootprint(size);
+  const corners: Point[] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = (Math.PI / 180) * (60 * i - 30);
+    corners.push({ x: size * Math.cos(a), y: size * Math.sin(a) * VSQUISH });
+  }
+
+  if (!skipLayerCache && mapLayerCache?.canUse(state)) {
+    if (!mapLayerCache.isValid(terrainRev)) {
+      mapLayerCache.rebuild(state, opts, terrainRev);
+    }
+    mapLayerCache.blit(ctx, camera, dpr);
+    paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, footprint * 2);
+    if (hovered) {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      drawHoverHighlight(ctx, camera, hovered, size, corners);
+    }
+    return mapLayerCache.tileCount;
+  }
+
   const { map } = state;
-  const { dpr, cssWidth, cssHeight, hovered } = opts;
   // Clear/fill in device pixels first so there is no sub-pixel gap on fractional-DPR displays.
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -626,15 +780,7 @@ export function drawScene(
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-  const size = BASE_SIZE * camera.zoom;
-  const footprint = tileFootprint(size); // square hex footprint (width == height)
   const margin = footprint * 2;
-  // pre-compute corner unit offsets (pointy-top, vertically squished to square)
-  const corners: Point[] = [];
-  for (let i = 0; i < 6; i++) {
-    const a = (Math.PI / 180) * (60 * i - 30);
-    corners.push({ x: size * Math.cos(a), y: size * Math.sin(a) * VSQUISH });
-  }
 
   ctx.lineWidth = Math.max(0.5, size * 0.03);
   ctx.strokeStyle = HEX_STROKE;
@@ -644,11 +790,7 @@ export function drawScene(
     cityKeys.add(`${c.col},${c.row}`);
   }
 
-  // Fog is painted in a dedicated pass AFTER all terrain (below), so it covers
-  // overhanging sprites and the seams where neighbouring tiles overlap. Here we
-  // just record which tiles need fog and the sprite drawn on each.
-  const fogDraws: { img: HTMLImageElement | undefined; sx: number; sy: number }[] = [];
-  const unexploredDraws: { sx: number; sy: number }[] = [];
+  // Fog is painted in a dedicated pass AFTER all terrain (see paintFogOfWar).
 
   // Distance (in tiles) from a tile to its nearest polar map edge, and the width
   // of the polar zone — used to place crevasse and iceberg decor near the caps.
@@ -671,7 +813,6 @@ export function drawScene(
     }
     const key = `${t.col},${t.row}`;
     const explored = opts.fog ? opts.fog.explored.has(key) : true;
-    const visible = opts.fog ? opts.fog.visible.has(key) : true;
 
     ctx.beginPath();
     ctx.moveTo(sx + corners[0]!.x, sy + corners[0]!.y);
@@ -679,9 +820,8 @@ export function drawScene(
       ctx.lineTo(sx + corners[i]!.x, sy + corners[i]!.y);
     }
     ctx.closePath();
-    if (!explored) {
-      unexploredDraws.push({ sx, sy }); // hidden under an opaque fill in the fog pass
-      continue; // skip terrain entirely
+    if (!explored && !opts.skipFogPass) {
+      continue; // live path: fog pass covers unexplored tiles
     }
     const variants = opts.terrainAtlas?.images[t.terrain];
     let img =
@@ -819,12 +959,6 @@ export function drawScene(
       drawFootprintOverlay(ctx, riverChannelFrame(opts.riverAtlas, t.river, !!t.riverLake, t.col, t.row), sx, sy, footprint);
     }
 
-    if (!visible) {
-      // Defer the fog veil to the post-terrain pass; remember the sprite so the
-      // veil can follow its silhouette (covering peaks above the flat hex).
-      fogDraws.push({ img, sx, sy });
-    }
-
     // Tile improvements & roads (only worth drawing when reasonably zoomed in).
     if (size > 10) {
       const isCity = cityKeys.has(key);
@@ -886,67 +1020,13 @@ export function drawScene(
   }
 
   // ---- Fog of war -------------------------------------------------------
-  // Painted after everything else so it covers tall overhanging sprites and the
-  // overlaps between neighbouring tiles. Unexplored tiles are hidden under an
-  // opaque fill; explored-but-unseen tiles are veiled by a single half-strength
-  // mask (built opaque offscreen, then composited once) that hugs each sprite.
-  const traceHex = (c: CanvasRenderingContext2D, sx: number, sy: number): void => {
-    c.beginPath();
-    c.moveTo(sx + corners[0]!.x, sy + corners[0]!.y);
-    for (let i = 1; i < 6; i++) c.lineTo(sx + corners[i]!.x, sy + corners[i]!.y);
-    c.closePath();
-  };
-
-  if (unexploredDraws.length > 0) {
-    ctx.fillStyle = UNEXPLORED_FILL;
-    for (const u of unexploredDraws) {
-      traceHex(ctx, u.sx, u.sy);
-      ctx.fill();
-    }
-  }
-
-  if (fogDraws.length > 0) {
-    const layer = getFogLayer(ctx.canvas.width, ctx.canvas.height);
-    const fc = layer.ctx;
-    fc.setTransform(1, 0, 0, 1, 0, 0);
-    fc.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
-    fc.setTransform(dpr, 0, 0, dpr, 0, 0);
-    fc.fillStyle = FOG_SOLID;
-    for (const f of fogDraws) {
-      // Hex floor: covers water, flat terrain and tiles whose sprite isn't ready.
-      traceHex(fc, f.sx, f.sy);
-      fc.fill();
-      // Sprite silhouette: covers tall art up to its peak (matches the main draw).
-      if (f.img && isImageReady(f.img)) {
-        const sil = fogSilhouette(f.img);
-        const scale = footprint / sil.width;
-        const drawW = sil.width * scale; // == footprint
-        const drawH = sil.height * scale;
-        fc.drawImage(sil, f.sx - drawW / 2, f.sy + footprint / 2 - drawH, drawW, drawH);
-      }
-    }
-    // Composite the opaque mask once at half strength: a uniform veil, no seams.
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalAlpha = FOG_ALPHA;
-    ctx.drawImage(layer.canvas, 0, 0);
-    ctx.restore();
+  if (!opts.skipFogPass) {
+    paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, margin);
   }
 
   // Hover highlight on top.
   if (hovered) {
-    const c = tileCenterWorld(hovered.col, hovered.row);
-    const sx = camera.worldToScreenX(c.x);
-    const sy = camera.worldToScreenY(c.y);
-    ctx.beginPath();
-    ctx.moveTo(sx + corners[0]!.x, sy + corners[0]!.y);
-    for (let i = 1; i < 6; i++) {
-      ctx.lineTo(sx + corners[i]!.x, sy + corners[i]!.y);
-    }
-    ctx.closePath();
-    ctx.lineWidth = Math.max(1.5, size * 0.08);
-    ctx.strokeStyle = HEX_HOVER_STROKE;
-    ctx.stroke();
+    drawHoverHighlight(ctx, camera, hovered, size, corners);
   }
 
   return drawn;

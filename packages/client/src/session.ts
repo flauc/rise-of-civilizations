@@ -12,7 +12,10 @@ import {
   createGame,
   visibleForPlayer,
   deserializeState,
+  serializeState,
+  applyPlayerViewPatch,
   type BarbarianActivity,
+  type AiDifficulty,
   type ClientMessage,
   type Command,
   type GameState,
@@ -20,6 +23,7 @@ import {
   type MapType,
   type Player,
   type PlayerView,
+  type PublicLeaderboardEntry,
   type SerializedState,
   type ServerMessage,
   type VictoryKind,
@@ -28,6 +32,7 @@ import {
 import { filterChatText } from "@roc/shared";
 import type { TerrainType, Tile } from "@roc/shared";
 import { applyCheat, type CheatAction, type CheatResult } from "./god-mode";
+import { SimWorkerClient } from "./sim-worker-client";
 
 export interface Session {
   readonly isOnline: boolean;
@@ -40,6 +45,8 @@ export interface Session {
   /** Cheats are only available in single-player local sessions. */
   cheat?(action: CheatAction): CheatResult;
   endTurn(): void;
+  /** True while AI/barbarian turns run off-thread (local play only). */
+  isResolvingTurn?(): boolean;
   onUpdate(cb: () => void): void;
   awaiting(): number[];
 }
@@ -65,6 +72,8 @@ export interface LocalGameOptions {
   mapType?: MapType;
   aiCount?: number;
   barbarians?: boolean | BarbarianActivity;
+  /** AI opponent difficulty. Defaults to normal. */
+  aiDifficulty?: AiDifficulty;
   /** Enable the Legends (heroes) feature. Defaults to on. */
   legends?: boolean;
   /** Scatter natural wonders across the map. Defaults to off. */
@@ -98,6 +107,8 @@ export class LocalSession implements Session {
   private humanPlayerId = 0;
   private cb: () => void = () => {};
   private pendingOpts: LocalGameOptions | null = null;
+  private simWorker: SimWorkerClient | null = null;
+  private resolvingTurn = false;
 
   constructor(opts: LocalGameOptions = {}) {
     if (opts.savedState) {
@@ -142,6 +153,7 @@ export class LocalSession implements Session {
       humanSlots: 1,
       playerCount: 1 + aiCount,
       barbarians: opts.barbarians ?? true,
+      aiDifficulty: opts.aiDifficulty ?? "normal",
       legends: opts.legends ?? true,
       naturalWonders: opts.naturalWonders ?? true,
       villages: opts.villages ?? "medium",
@@ -173,17 +185,48 @@ export class LocalSession implements Session {
     return exploredForPlayer(this.getState(), this.getViewerId());
   }
   order(cmd: Command): void {
+    if (this.resolvingTurn) return;
     applyCommand(this.getState(), cmd);
     this.cb();
   }
   cheat(action: CheatAction): CheatResult {
+    if (this.resolvingTurn) return { ok: false, error: "turn resolving" };
     const res = applyCheat(this.getState(), this.getViewerId(), action);
     this.cb();
     return res;
   }
+  isResolvingTurn(): boolean {
+    return this.resolvingTurn;
+  }
   endTurn(): void {
-    applyCommand(this.getState(), { type: "endTurn" });
+    if (this.resolvingTurn || !this.state) return;
+    const needsWorker =
+      SimWorkerClient.supported() &&
+      this.state.players.some((p) => !p.isHuman && !this.state!.gameOver);
+    if (!needsWorker) {
+      applyCommand(this.state, { type: "endTurn" });
+      this.cb();
+      return;
+    }
+    if (!this.simWorker) this.simWorker = new SimWorkerClient();
+    this.resolvingTurn = true;
     this.cb();
+    const snapshot = serializeState(this.state);
+    void this.simWorker
+      .endTurn(snapshot)
+      .then((saved) => {
+        this.resolvingTurn = false;
+        if (!this.state) return;
+        this.state = deserializeState(saved);
+        this.cb();
+      })
+      .catch((err) => {
+        console.error("sim worker endTurn failed, falling back to main thread:", err);
+        this.resolvingTurn = false;
+        if (!this.state) return;
+        applyCommand(this.state, { type: "endTurn" });
+        this.cb();
+      });
   }
   onUpdate(cb: () => void): void {
     this.cb = cb;
@@ -308,6 +351,7 @@ function reconstruct(view: PlayerView): { state: GameState; visible: Set<string>
     diploProposals: dip?.proposals ?? [],
     tradeHistory: dip?.tradeHistory ?? [],
     barbarianActivity: view.barbarianActivity ?? "normal",
+    aiDifficulty: view.aiDifficulty ?? "normal",
     turnUpdates: view.turnUpdates ?? [],
     nextTurnUpdateId: 1,
     barbarianBribes: (view.you.barbarianBribes ?? []).map((b) => ({
@@ -335,6 +379,9 @@ export class OnlineSession implements Session {
   private exportReject: ((reason: string) => void) | null = null;
   private loadResolve: (() => void) | null = null;
   private loadReject: ((reason: string) => void) | null = null;
+  private leaderboardResolve: ((entries: PublicLeaderboardEntry[]) => void) | null = null;
+  private leaderboardReject: ((reason: string) => void) | null = null;
+  private leaderboardTimer: ReturnType<typeof setTimeout> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   /** Server game id; set when joining/creating a lobby room. */
   gameId?: string;
@@ -343,6 +390,8 @@ export class OnlineSession implements Session {
   private chatHandle = "You";
   private chatUserId = "";
   private chatHandlers = new Set<(messages: readonly LobbyChatMessage[]) => void>();
+  private lastView: PlayerView | null = null;
+  private lastSeq = 0;
 
   constructor(private readonly url: string) {}
 
@@ -365,6 +414,7 @@ export class OnlineSession implements Session {
       );
       ws.onopen = () => {
         opened = true;
+        this.send({ t: "setFeatures", deltas: true });
         this.pingTimer = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ t: "ping" }));
         }, 45_000);
@@ -386,18 +436,40 @@ export class OnlineSession implements Session {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
+  private applyServerView(view: PlayerView, awaiting: number[]): void {
+    const { state, visible } = reconstruct(view);
+    this.state = state;
+    this.visible = visible;
+    this.viewerId = view.yourId;
+    this.awaitingIds = awaiting;
+    this.cb();
+  }
+
   private onMessage(msg: ServerMessage): void {
     if (msg.t === "state") {
-      const { state, visible } = reconstruct(msg.view);
-      this.state = state;
-      this.visible = visible;
-      this.viewerId = msg.view.yourId;
-      this.awaitingIds = msg.awaiting;
-      this.cb();
+      this.lastView = msg.view;
+      this.lastSeq = msg.seq ?? 0;
+      this.applyServerView(msg.view, msg.awaiting);
+    } else if (msg.t === "statePatch") {
+      if (!this.lastView || msg.baseSeq !== this.lastSeq) {
+        this.send({ t: "resyncState" });
+        return;
+      }
+      this.lastView = applyPlayerViewPatch(this.lastView, msg.patch);
+      this.lastSeq = msg.seq;
+      this.applyServerView(this.lastView, msg.awaiting ?? this.awaitingIds);
     } else if (msg.t === "exported") {
       this.exportResolve?.(msg.blob);
       this.exportResolve = null;
       this.exportReject = null;
+    } else if (msg.t === "leaderboard") {
+      if (this.leaderboardTimer) {
+        clearTimeout(this.leaderboardTimer);
+        this.leaderboardTimer = null;
+      }
+      this.leaderboardResolve?.(msg.entries);
+      this.leaderboardResolve = null;
+      this.leaderboardReject = null;
     } else if (msg.t === "loaded") {
       this.loadResolve?.();
       this.loadResolve = null;
@@ -435,6 +507,13 @@ export class OnlineSession implements Session {
       this.loadReject?.(msg.message);
       this.loadResolve = null;
       this.loadReject = null;
+      this.leaderboardReject?.(msg.message);
+      this.leaderboardResolve = null;
+      this.leaderboardReject = null;
+      if (this.leaderboardTimer) {
+        clearTimeout(this.leaderboardTimer);
+        this.leaderboardTimer = null;
+      }
     }
     for (const h of this.handlers) h(msg);
   }
@@ -519,6 +598,8 @@ export class OnlineSession implements Session {
     this.chatMessages = [];
     this.pendingChat = null;
     this.state = null;
+    this.lastView = null;
+    this.lastSeq = 0;
   }
 
   hasState(): boolean {
@@ -567,6 +648,25 @@ export class OnlineSession implements Session {
       this.loadResolve = resolve;
       this.loadReject = reject;
       this.send({ t: "loadGame", blob });
+    });
+  }
+
+  /** Top scores from completed games on this server. */
+  requestLeaderboard(limit = 25): Promise<PublicLeaderboardEntry[]> {
+    return new Promise((resolve, reject) => {
+      if (!this.isOpen()) {
+        reject(new Error("not connected"));
+        return;
+      }
+      this.leaderboardResolve = resolve;
+      this.leaderboardReject = reject;
+      this.leaderboardTimer = setTimeout(() => {
+        this.leaderboardTimer = null;
+        this.leaderboardResolve = null;
+        this.leaderboardReject = null;
+        reject(new Error("leaderboard timeout"));
+      }, 8_000);
+      this.send({ t: "getLeaderboard", limit });
     });
   }
 }

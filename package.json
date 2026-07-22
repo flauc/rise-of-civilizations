@@ -12,6 +12,7 @@
     "dev:no-hmr": "bun run --filter @roc/client dev:no-hmr",
     "dev:admin": "bun run --filter @roc/admin dev",
     "build": "bun run --filter @roc/client build",
+    "analyze": "ANALYZE=1 bun run --filter @roc/client build",
     "build:admin": "bun run --filter @roc/admin build",
     "itch.io-version": "bun run tools/build-itchio.mjs --asset-base=https://game.rise-of-civilizations.com/ --ws-url=wss://server.rise-of-civilizations.com/ws",
     "preview": "bun run --filter @roc/client preview",

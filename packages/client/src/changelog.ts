@@ -3,9 +3,9 @@
 // from the start screen via the version label so players can see what's new.
 
 import { bindDialogClose } from "./dialog-close";
+import { CURRENT_VERSION } from "./version";
 
-/** The current game version — shown on the start screen and atop the changelog. */
-export const CURRENT_VERSION = "0.7.9";
+export { CURRENT_VERSION };
 
 interface ChangeEntry {
   /** Short category badge, e.g. "New", "Gameplay", "Fix". */

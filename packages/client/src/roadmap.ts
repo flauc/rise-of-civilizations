@@ -24,72 +24,7 @@ interface Milestone {
  * longer listed here.)
  */
 const MILESTONES: Milestone[] = [
-  {
-    id: "combat-system",
-    title: "Improved Combat System",
-    desc: "Deeper tactical combat: flanking, terrain bonuses, formations and clearer odds previews.",
-    tag: "Systems",
-  },
-  {
-    id: "ai-difficulty",
-    title: "AI Difficulty Levels",
-    desc: "Choose your challenge — Easy, Medium, Hard and beyond — with smarter, more aggressive opponents at the top.",
-    tag: "Systems",
-  },
-  {
-    id: "leaderboards",
-    title: "Online Leaderboards",
-    desc: "Compete globally. Track wins, scores and fastest victories on persistent online leaderboards.",
-    tag: "Online",
-  },
-  {
-    id: "map-historical-starts",
-    title: "Historical Starting Positions",
-    desc: "Begin where history did — civilizations placed on their real-world homelands across the accurate maps.",
-    tag: "Maps",
-  },
-  {
-    id: "map-europe",
-    title: "Map: Europe",
-    desc: "A geographically accurate map of Europe, from the Atlantic coast to the Urals.",
-    tag: "Maps",
-  },
-  {
-    id: "map-mediterranean",
-    title: "Map: Mediterranean",
-    desc: "The cradle of classical civilization — an accurate Mediterranean basin map.",
-    tag: "Maps",
-  },
-  {
-    id: "map-indus-valley",
-    title: "Map: Indus Valley",
-    desc: "The river valleys of the Indus and beyond, rendered from real-world geography.",
-    tag: "Maps",
-  },
-  {
-    id: "map-africa",
-    title: "Map: Africa",
-    desc: "The whole African continent as an accurate, playable map.",
-    tag: "Maps",
-  },
-  {
-    id: "map-asia",
-    title: "Map: Asia",
-    desc: "From the steppes to the far east — a geographically accurate map of Asia.",
-    tag: "Maps",
-  },
-  {
-    id: "map-north-america",
-    title: "Map: North America",
-    desc: "An accurate map of the North American continent.",
-    tag: "Maps",
-  },
-  {
-    id: "map-south-america",
-    title: "Map: South America",
-    desc: "The Andes, the Amazon and the southern cone — an accurate South America map.",
-    tag: "Maps",
-  },
+  
 ];
 
 const STORAGE_KEY = "roc-roadmap-v1";

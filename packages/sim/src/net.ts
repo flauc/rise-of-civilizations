@@ -3,8 +3,9 @@
 // and the Bun server import these.
 
 import type { Command } from "./game/commands";
-import type { BarbarianActivity, VictoryKind, VillageDensity } from "./game/state";
+import type { AiDifficulty, BarbarianActivity, VictoryKind, VillageDensity } from "./game/state";
 import type { PlayerView } from "./game/serialize";
+import type { PlayerViewPatch } from "./game/view-patch";
 import type { MapType } from "./worldgen";
 import type { GameSpeed } from "./game/game-speed";
 
@@ -43,6 +44,7 @@ export interface LobbyRoom {
   mapType: MapType;
   mapSize?: string;
   barbarians: BarbarianActivity;
+  aiDifficulty: AiDifficulty;
   naturalWonders: boolean;
   /** Tribal village density. */
   villages: VillageDensity;
@@ -66,6 +68,17 @@ export interface LobbyChatMessage {
   at: number;
 }
 
+/** One row on the public score leaderboard (completed games, ranked by score). */
+export interface PublicLeaderboardEntry {
+  handle?: string;
+  sessionId: string;
+  civId?: string;
+  score: number;
+  outcome: "win" | "loss" | "abandoned";
+  turns: number;
+  ts: number;
+}
+
 export type ClientMessage =
   | { t: "register"; handle: string; password: string; email?: string; newsletter?: boolean }
   | { t: "login"; handle: string; password: string }
@@ -81,6 +94,7 @@ export type ClientMessage =
       capacity?: number;
       aiCount?: number;
       barbarians?: BarbarianActivity;
+      aiDifficulty?: AiDifficulty;
       /** Scatter natural wonders across the map. Defaults to off. */
       naturalWonders?: boolean;
       /** Tribal village density. Defaults to medium. Legacy boolean accepted. */
@@ -118,6 +132,7 @@ export type ClientMessage =
       mapSize?: string;
       mapType?: MapType;
       barbarians?: BarbarianActivity;
+      aiDifficulty?: AiDifficulty;
       naturalWonders?: boolean;
       /** Tribal village density. Legacy boolean accepted. */
       villages?: boolean | VillageDensity;
@@ -141,6 +156,9 @@ export type ClientMessage =
   | { t: "deleteGame"; gameId: string } // host removes a game from the lobby
   | { t: "leaveGame"; gameId: string } // a non-host player leaves the lobby, freeing their seat
   | { t: "lobbyChat"; gameId: string; text: string }
+  | { t: "setFeatures"; deltas?: boolean } // opt into sequenced statePatch updates
+  | { t: "resyncState" } // request a full state snapshot (seq mismatch)
+  | { t: "getLeaderboard"; limit?: number }
   | { t: "ping" }; // keepalive — server ignores, just prevents idle-timeout
 
 export type ServerMessage =
@@ -152,10 +170,12 @@ export type ServerMessage =
   | { t: "lobby"; room: LobbyRoom } // live pre-game roster (seats + chosen civs)
   | { t: "kicked"; gameId: string } // the host removed you from the game
   | { t: "started"; gameId: string }
-  | { t: "state"; view: PlayerView; awaiting: number[] }
+  | { t: "state"; seq?: number; view: PlayerView; awaiting: number[] }
+  | { t: "statePatch"; seq: number; baseSeq: number; patch: PlayerViewPatch; awaiting?: number[] }
   | { t: "orderRejected"; reason: string }
   | { t: "exported"; blob: string } // full SerializedState JSON blob, sent only to host
   | { t: "loaded"; gameId: string } // confirms the server restored the uploaded save
   | { t: "deleted"; gameId: string } // the game was removed by the host
   | { t: "lobbyChat"; gameId: string; message: LobbyChatMessage }
-  | { t: "lobbyChatHistory"; gameId: string; messages: LobbyChatMessage[] };
+  | { t: "lobbyChatHistory"; gameId: string; messages: LobbyChatMessage[] }
+  | { t: "leaderboard"; entries: PublicLeaderboardEntry[] };

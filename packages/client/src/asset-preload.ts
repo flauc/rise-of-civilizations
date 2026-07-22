@@ -1,9 +1,12 @@
 // Pull the game's assets down while the player is still in the lobby.
 //
-// Everything here is work startGame would do anyway. Doing it at boot buys the
-// gap between "page opened" and "Start Game clicked", which is usually several
-// seconds of an idle connection, so the sprite set and the coach lines are warm
-// before the loading veil ever appears.
+// Tier 1 (boot): map essentials the loading veil needs — terrain, units, cities,
+// improvements, coast/rivers, resources, features.
+//
+// Tier 2 (startGame): roads, abilities, construction, religion — loaded in the
+// background; the renderer falls back until they arrive.
+//
+// Wonders load on demand for ids actually on the map (see natural-wonder-assets).
 //
 // What is deliberately NOT preloaded: the per-civ loading narration. There are
 // 137 of those clips totalling ~117 MB and a game plays exactly one, which is
@@ -18,17 +21,11 @@
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadCoastAtlas } from "./coast-assets";
 import { loadRiverAtlas } from "./river-assets";
-import { loadRoadAtlas } from "./road-assets";
 import { loadUnitAtlas } from "./unit-assets";
 import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
-import { loadConstructionAtlas } from "./construction-assets";
 import { loadFeatureAtlas } from "./feature-assets";
-import { loadNaturalWonderAtlas } from "./natural-wonder-assets";
-import { loadWonderAtlas } from "./wonder-assets";
 import { loadResourceAtlas } from "./resource-assets";
-import { loadAbilityAtlas } from "./ability-assets";
-import { loadReligionIconAtlas } from "./religion-assets";
 import { preloadCoachVoice } from "./coach-voice";
 import { allRewardArtUrls } from "./reward-art";
 
@@ -49,22 +46,14 @@ function networkInfo(): NetworkInformation | undefined {
 }
 
 /**
- * Whether this connection should eat ~50 MB of sprites for a game that may never
+ * Whether this connection should eat sprites for a game that may never
  * be started.
- *
- * Only Chromium exposes this API. Safari and Firefox report nothing, and we
- * preload anyway rather than punish every iPhone and Mac user for the gap: the
- * download is the same one startGame would trigger minutes later, so the cost of
- * guessing wrong is early bytes, not wasted bytes.
  */
 export function shouldPreloadAssets(): boolean {
   const info = networkInfo();
   if (!info) return true;
   if (info.saveData) return false;
   if (info.type === "cellular") return false;
-  // Some browsers report only effectiveType. It is a round-trip estimate rather
-  // than a link type, so a throttled wifi connection can read as 3g: treating
-  // that as "too slow to prefetch" is the outcome we want either way.
   if (info.effectiveType === "slow-2g" || info.effectiveType === "2g" || info.effectiveType === "3g") {
     return false;
   }
@@ -83,34 +72,43 @@ function preloadRewardArt(): void {
   }
 }
 
-let started = false;
+let tier1Started = false;
+let tier2Started = false;
 
 /**
- * Warm the game's assets if the connection can spare it. Safe to call more than
- * once; the atlases are shared and the coach clips are cached, so a later
- * startGame reuses these exact loads instead of re-issuing them.
+ * Tier 1: warm map essentials during the lobby (shared via atlas-cache when
+ * startGame asks for the same atlases).
  */
 export function preloadGameAssets(): void {
-  if (started || !shouldPreloadAssets()) return;
-  started = true;
+  if (tier1Started || !shouldPreloadAssets()) return;
+  tier1Started = true;
 
-  // No onLoad callbacks: nothing is drawing yet, so there is no redraw to ping.
-  // startGame passes its own when it asks for these same atlases later.
   loadTerrainAtlas();
   loadCoastAtlas();
   loadRiverAtlas();
-  loadRoadAtlas();
   loadUnitAtlas();
   loadCityAtlas();
   loadImprovementAtlas();
-  loadConstructionAtlas();
   loadFeatureAtlas();
-  loadNaturalWonderAtlas();
-  loadWonderAtlas();
   loadResourceAtlas();
-  loadAbilityAtlas();
-  loadReligionIconAtlas();
 
   preloadRewardArt();
   preloadCoachVoice();
+}
+
+/**
+ * Tier 2: non-blocking atlases for startGame (roads, UI panels). Safe to call
+ * multiple times.
+ */
+export function preloadDeferredGameAssets(): void {
+  if (tier2Started || !shouldPreloadAssets()) return;
+  tier2Started = true;
+
+  void import("./road-assets").then(({ loadRoadAtlas }) => loadRoadAtlas());
+  void import("./ability-assets").then(({ loadAbilityAtlas }) => loadAbilityAtlas());
+  void import("./construction-assets").then(({ loadConstructionAtlas }) => loadConstructionAtlas());
+  void import("./empire-lazy").then(({ preloadEmpireModule }) => preloadEmpireModule());
+  void import("./diplomacy-lazy").then(({ preloadDiplomacyModule }) => preloadDiplomacyModule());
+  void import("./techtree-lazy").then(({ preloadTechTreeModule }) => preloadTechTreeModule());
+  void import("./ui-god-mode").then(({ preloadGodModePanelModule }) => preloadGodModePanelModule());
 }

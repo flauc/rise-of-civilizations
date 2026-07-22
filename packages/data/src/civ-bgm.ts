@@ -24,6 +24,19 @@ export const CIV_BGM_TRACKS: Record<CivBgmRegion, string> = {
   default: "audio/background/background.ogg",
 };
 
+/** Lobby civ-picker filter chips — same regional buckets as background music. */
+export const CIV_BGM_FILTER_CHIPS: { id: CivBgmRegion | "all"; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "ancientMiddleEast", label: "Near East & Mediterranean" },
+  { id: "africa", label: "Africa" },
+  { id: "celtic", label: "Celtic & Nordic" },
+  { id: "eastAsia", label: "East Asia" },
+  { id: "india", label: "India" },
+  { id: "japan", label: "Japan" },
+  { id: "siberian", label: "Steppe & Siberia" },
+  { id: "default", label: "Europe & Americas" },
+];
+
 const mesopotamia = new Set(CIV_REGIONS[0]!.civIds);
 const persia = new Set(CIV_REGIONS[1]!.civIds);
 const africaRegion = new Set(CIV_REGIONS[2]!.civIds);

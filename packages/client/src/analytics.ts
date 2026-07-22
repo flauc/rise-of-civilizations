@@ -216,6 +216,7 @@ export type GameSetup = Pick<
   | "naturalWonders"
   | "villages"
   | "barbarianLevel"
+  | "aiDifficulty"
   | "aiCivIds"
   | "legends"
   | "turnLimit"
@@ -235,6 +236,7 @@ export interface SessionStartMeta {
   barbarians?: boolean;
   legends?: boolean;
   barbarianLevel?: string;
+  aiDifficulty?: string;
   naturalWonders?: boolean;
   villages?: boolean | "none" | "medium" | "high";
   startingGold?: string;

@@ -24,60 +24,19 @@ import {
 } from "./tutorial";
 import { iconify } from "./icons";
 import { speakCoachLine, stopCoachVoice, unlockCoachAudio, retryCoachVoiceIfNeeded } from "./coach-voice";
-import { assetUrl } from "./asset-base";
-import { cutLegendPortraitBackground } from "./coach-portrait";
+import {
+  isTutorialCoachPortraitReady,
+  resolvedTutorialCoachPortraitUrl,
+  tutorialCoachPortraitReady,
+} from "./tutorial-coach-portrait";
+import { TUTORIAL_STEP_IDS, type TutorialStepId } from "./tutorial-coach-steps";
 
-/** Portrait for the tutorial advisor — file: `public/legends/<id>.png`. */
-export const TUTORIAL_COACH_LEGEND_ID = "herodotus";
-
-export function tutorialCoachPortraitUrl(): string {
-  return assetUrl(`legends/${TUTORIAL_COACH_LEGEND_ID}.png`);
-}
-
-/** Pre-cut coach portrait (transparent PNG). Used when present — no runtime matting. */
-export function tutorialCoachCutoutUrl(): string {
-  return assetUrl(`coach/legends/${TUTORIAL_COACH_LEGEND_ID}.png`);
-}
-
-/** Every coach step, in narration order. The list is the runtime source of truth
- *  for TutorialStepId, so the voice preloader cannot drift out of sync with it. */
-export const TUTORIAL_STEP_IDS = [
-  "t1_intro",
-  "t1_select_scout",
-  "t1_unit_stats",
-  "t1_unit_kinds",
-  "t1_move_scout",
-  "t1_select_warrior",
-  "t1_move_warrior",
-  "t1_select_settler",
-  "t1_found_city",
-  "t1_yields",
-  "t1_open_research",
-  "t1_pick_research",
-  "t1_select_city",
-  "t1_open_construction",
-  "t1_pick_build",
-  "t1_open_train",
-  "t1_train_unit",
-  "t1_next_button",
-  "t1_end_turn",
-  "spot_barbarian",
-  "spot_enemy",
-  "t2_check_city",
-  "t2_combat_brief",
-  "t2_attack_barbarian",
-  "t2_victory",
-  "t2_end_turn",
-  "t3_village",
-  "t3_end_turn",
-  "t4_diplomacy",
-  "t4_end_turn",
-  "t5_wrap_up",
-  "t5_choice",
-  "complete",
-] as const;
-
-export type TutorialStepId = (typeof TUTORIAL_STEP_IDS)[number];
+export { TUTORIAL_STEP_IDS, type TutorialStepId };
+export {
+  TUTORIAL_COACH_LEGEND_ID,
+  tutorialCoachCutoutUrl,
+  tutorialCoachPortraitUrl,
+} from "./tutorial-coach-portrait";
 
 export interface TutorialCoachFlags {
   barbarianExplained: boolean;
@@ -1012,26 +971,15 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
   for (const type of GATE_EVENTS) window.addEventListener(type, gateHandler, true);
 
   function loadPortrait(): void {
-    const sourceUrl = tutorialCoachPortraitUrl();
-    const cutoutUrl = tutorialCoachCutoutUrl();
-
-    const show = (url: string): void => {
+    const url = resolvedTutorialCoachPortraitUrl();
+    if (url) {
       portraitEl.src = url;
-    };
-
-    // Prefer a baked transparent coach cutout when shipped in public/coach/legends/.
-    const preCut = new Image();
-    preCut.onload = () => show(cutoutUrl);
-    preCut.onerror = () => {
-      const img = new Image();
-      img.onload = () => {
-        const cut = cutLegendPortraitBackground(img);
-        show(cut ?? sourceUrl);
-      };
-      img.onerror = () => portraitEl.removeAttribute("src");
-      img.src = sourceUrl;
-    };
-    preCut.src = cutoutUrl;
+      return;
+    }
+    void tutorialCoachPortraitReady().then(() => {
+      const readyUrl = resolvedTutorialCoachPortraitUrl();
+      if (readyUrl) portraitEl.src = readyUrl;
+    });
   }
   loadPortrait();
 
@@ -1223,11 +1171,18 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
   function tick(): void {
     if (dismissed) return;
 
-    if (!deps.isWorldReady()) {
+    if (!deps.isWorldReady() || !isTutorialCoachPortraitReady()) {
       gateActive = false;
       root.classList.add("hidden");
       stopTyping();
       stopCoachVoice();
+      return;
+    }
+
+    // Hide the coach until the portrait element has decoded (avoids an empty bubble flash).
+    if (resolvedTutorialCoachPortraitUrl() && (!portraitEl.complete || portraitEl.naturalWidth <= 0)) {
+      gateActive = false;
+      root.classList.add("hidden");
       return;
     }
 

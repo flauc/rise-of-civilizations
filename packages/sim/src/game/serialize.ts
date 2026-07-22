@@ -1,6 +1,6 @@
 import { getTile } from "@roc/shared";
 import type {
-  Attitude, BarbarianActivity, BarbarianBribe, City, ContactEvent, GameOver, GameState,
+  Attitude, AiDifficulty, BarbarianActivity, BarbarianBribe, City, ContactEvent, GameOver, GameState,
   LogEntry, MoraleEvent, Proposal, Relation, Religion, RoadRoute, TradeRecord, TradeRoute, TurnUpdateEvent,
   Unit, VictoryKind, Work,
 } from "./state";
@@ -8,9 +8,40 @@ import { defaultEnabledVictories } from "./state";
 import { exploredForPlayer, visibleForPlayer } from "./visibility";
 import { attitudeLabel, attitudeScore } from "./diplomacy";
 import { GLOBAL_MORALE_BASE } from "./morale";
-import { victoryProgress, type VictoryProgressEntry } from "./victory";
 import type { TechId } from "./content";
 import { normalizeGameSpeed, type GameSpeed } from "./game-speed";
+import { normalizeAiDifficulty } from "./ai-difficulty";
+
+/** Wire-safe unit snapshot — never alias live sim state (patch diffs compare views). */
+function cloneUnit(u: Unit): Unit {
+  return {
+    ...u,
+    promotions: [...u.promotions],
+    ...(u.abilityCooldowns ? { abilityCooldowns: { ...u.abilityCooldowns } } : {}),
+    ...(u.inTransit ? { inTransit: { ...u.inTransit } } : {}),
+  };
+}
+
+/** Wire-safe city snapshot — never alias live sim state (patch diffs compare views). */
+function cloneCity(c: City): City {
+  return {
+    ...c,
+    buildings: [...c.buildings],
+    training: { ...c.training },
+    trainingQueue: c.trainingQueue.map((o) => ({ ...o })),
+    specialists: c.specialists.map((s) => ({ ...s })),
+    wonders: [...c.wonders],
+    workedTiles: [...c.workedTiles],
+    lockedTiles: c.lockedTiles ? [...c.lockedTiles] : undefined,
+    lockedSpecialists: c.lockedSpecialists ? [...c.lockedSpecialists] : undefined,
+    pendingSpecialistRelease: c.pendingSpecialistRelease ? [...c.pendingSpecialistRelease] : undefined,
+    expandTarget: c.expandTarget ? { ...c.expandTarget } : undefined,
+    religionPressure: c.religionPressure ? { ...c.religionPressure } : undefined,
+    greatWorks: c.greatWorks?.map((w) => ({ ...w })),
+    production: c.production ? { ...c.production } : null,
+    modifiers: c.modifiers.map((m) => ({ ...m, effect: { ...m.effect } })),
+  };
+}
 
 export interface DiploView {
   met: number[];
@@ -141,9 +172,8 @@ export interface PlayerView {
   gameOver: GameOver | null;
   /** Decisive win conditions enabled this game (score/extinction always apply). */
   enabledVictories: VictoryKind[];
-  /** The viewer's standing on every enabled victory path (for the Victory panel). */
-  victoryProgress: VictoryProgressEntry[];
   barbarianActivity: BarbarianActivity;
+  aiDifficulty: AiDifficulty;
 }
 
 /**
@@ -191,6 +221,9 @@ function buildDiploView(state: GameState, playerId: number): DiploView {
   };
 }
 
+/** Max log lines included in a wire PlayerView (full game log still grows client-side via patches). */
+export const VIEW_WIRE_LOG_MAX = 200;
+
 /** Build the state a player is allowed to see (fog of war enforced here). */
 export function viewForPlayer(state: GameState, playerId: number): PlayerView {
   const me = state.players.find((p) => p.id === playerId);
@@ -222,18 +255,20 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
   for (const u of state.units.values()) {
     // Cargo is hidden below decks — never reveal enemy troops stowed on a ship.
     if (u.aboardShipId !== undefined) {
-      if (u.ownerId === playerId) units.push(u);
+      if (u.ownerId === playerId) units.push(cloneUnit(u));
       continue;
     }
     // Hidden enemy units are concealed even on a visible tile until discovered.
-    if (u.ownerId === playerId || (visible.has(`${u.col},${u.row}`) && !u.hidden)) units.push(u);
+    if (u.ownerId === playerId || (visible.has(`${u.col},${u.row}`) && !u.hidden)) units.push(cloneUnit(u));
   }
   const cities: City[] = [];
   for (const c of state.cities.values()) {
-    if (c.ownerId === playerId || visible.has(`${c.col},${c.row}`)) cities.push(c);
+    if (c.ownerId === playerId || visible.has(`${c.col},${c.row}`)) cities.push(cloneCity(c));
   }
 
-  const log = state.log.filter((entry) => isLogEntryVisible(entry, playerId, explored));
+  const allLog = state.log.filter((entry) => isLogEntryVisible(entry, playerId, explored));
+  const log =
+    allLog.length > VIEW_WIRE_LOG_MAX ? allLog.slice(-VIEW_WIRE_LOG_MAX) : allLog;
   const turnUpdates = state.turnUpdates
     .filter((e) => e.playerId === playerId)
     .sort((a, b) => a.id - b.id);
@@ -311,15 +346,15 @@ export function viewForPlayer(state: GameState, playerId: number): PlayerView {
     rows: state.map.rows,
     poleAxis: state.map.poleAxis,
     tiles,
-    visible: [...visible],
+    visible: [...visible].sort(),
     units,
     cities,
     log,
     turnUpdates,
     gameOver: state.gameOver,
     enabledVictories: [...(state.enabledVictories ?? defaultEnabledVictories())],
-    victoryProgress: victoryProgress(state, playerId),
     barbarianActivity: state.barbarianActivity,
+    aiDifficulty: state.aiDifficulty,
   };
 }
 
@@ -353,6 +388,7 @@ export interface SerializedState {
   diploProposals: Proposal[];
   tradeHistory: TradeRecord[];
   barbarianActivity: BarbarianActivity;
+  aiDifficulty: AiDifficulty;
   barbarianBribes: BarbarianBribe[];
   turnUpdates: TurnUpdateEvent[];
   nextTurnUpdateId: number;
@@ -397,6 +433,7 @@ export function serializeState(state: GameState): SerializedState {
     diploProposals: state.diploProposals,
     tradeHistory: state.tradeHistory,
     barbarianActivity: state.barbarianActivity,
+    aiDifficulty: state.aiDifficulty,
     barbarianBribes: state.barbarianBribes,
     turnUpdates: state.turnUpdates,
     nextTurnUpdateId: state.nextTurnUpdateId,
@@ -448,6 +485,7 @@ export function deserializeState(s: SerializedState): GameState {
     diploProposals: s.diploProposals ?? [],
     tradeHistory: s.tradeHistory ?? [],
     barbarianActivity: s.barbarianActivity ?? "normal",
+    aiDifficulty: normalizeAiDifficulty(s.aiDifficulty as AiDifficulty | "none" | undefined),
     barbarianBribes: s.barbarianBribes ?? [],
     turnUpdates: s.turnUpdates ?? [],
     nextTurnUpdateId: s.nextTurnUpdateId ?? 1,
