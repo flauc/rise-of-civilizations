@@ -57,6 +57,7 @@ export interface LobbyGame {
   barbarians: BarbarianActivity;
   aiDifficulty: AiDifficulty;
   naturalWonders: boolean;
+  legends: boolean;
   villages: VillageDensity;
   startingGold: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. */
@@ -92,6 +93,7 @@ export interface CreateOptions {
   barbarians?: BarbarianActivity;
   aiDifficulty?: AiDifficulty;
   naturalWonders?: boolean;
+  legends?: boolean;
   villages?: boolean | VillageDensity;
   startingGold?: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. Defaults to 120. */
@@ -119,6 +121,7 @@ export interface ConfigurePatch {
   barbarians?: BarbarianActivity;
   aiDifficulty?: AiDifficulty;
   naturalWonders?: boolean;
+  legends?: boolean;
   villages?: boolean | VillageDensity;
   startingGold?: StartingGold;
   /** Turn at which the score victory triggers; 0 = unlimited. */
@@ -193,6 +196,7 @@ export class Lobby {
       barbarians: opts.barbarians ?? "normal",
       aiDifficulty: normalizeAiDifficulty(opts.aiDifficulty),
       naturalWonders: opts.naturalWonders ?? true,
+      legends: opts.legends ?? true,
       villages: normalizeVillageDensity(opts.villages),
       startingGold: opts.startingGold ?? "balanced",
       turnLimit: opts.turnLimit ?? 120,
@@ -253,6 +257,7 @@ export class Lobby {
       game.aiDifficulty = normalizeAiDifficulty(patch.aiDifficulty as AiDifficulty | "none");
     }
     if (patch.naturalWonders !== undefined) game.naturalWonders = patch.naturalWonders;
+    if (patch.legends !== undefined) game.legends = patch.legends;
     if (patch.villages !== undefined) game.villages = normalizeVillageDensity(patch.villages);
     if (patch.startingGold !== undefined) game.startingGold = patch.startingGold;
     if (patch.turnLimit !== undefined) game.turnLimit = Math.max(0, Math.floor(patch.turnLimit));
@@ -369,6 +374,7 @@ export class Lobby {
       barbarians: g.barbarians,
       aiDifficulty: g.aiDifficulty,
       naturalWonders: g.naturalWonders,
+      legends: g.legends,
       villages: g.villages,
       startingGold: g.startingGold,
       turnLimit: g.turnLimit,
@@ -410,6 +416,7 @@ export class Lobby {
       barbarians: game.barbarians,
       aiDifficulty: game.aiDifficulty,
       naturalWonders: game.naturalWonders,
+      legends: game.legends,
       villages: game.villages,
       startingGold: game.startingGold,
       turnLimit: game.turnLimit,

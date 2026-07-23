@@ -232,6 +232,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   let cssWidth = 0;
   let cssHeight = 0;
   let needsRedraw = true;
+  let needsHudRender = true;
   let fitted = false;
   const mapLayerCache = new MapLayerCache();
   let terrainRev = 0;
@@ -452,6 +453,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       });
     }
     needsRedraw = true;
+    needsHudRender = true;
     bumpMapLayers();
     syncMapWonderAssets();
     const resolving = session.isResolvingTurn?.() ?? false;
@@ -517,6 +519,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     cancelRoadRoutePick();
     recomputeOverlays();
     needsRedraw = true;
+    needsHudRender = true;
   }
   function selectCity(id: number): void {
     selectedCityId = id;
@@ -532,6 +535,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     const city = st().cities.get(id);
     cityWorkable = city ? new Set(workableTiles(st(), city).map((t) => `${t.col},${t.row}`)) : new Set();
     needsRedraw = true;
+    needsHudRender = true;
   }
   function selectTile(col: number, row: number): void {
     selectedTile = { col, row };
@@ -547,6 +551,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
+    needsHudRender = true;
   }
   function clearSelection(): void {
     selectedUnitId = null;
@@ -562,6 +567,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
+    needsHudRender = true;
   }
 
   const ui = createUI({
@@ -1241,6 +1247,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     if (next?.targetName !== hoverOdds?.targetName || next?.toDefender !== hoverOdds?.toDefender) {
       hoverOdds = next;
       needsRedraw = true;
+      needsHudRender = true;
     }
   }
 
@@ -1252,6 +1259,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       if (hoverOdds) {
         hoverOdds = null;
         needsRedraw = true;
+        needsHudRender = true;
       }
     },
     onTap: handleTap,
@@ -1505,8 +1513,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         featureAtlas,
         constructionAtlas,
         religionIconAtlas,
-      });
-      if (loadingDismissed) {
+      }, cssWidth, cssHeight);
+      if (loadingDismissed && needsHudRender) {
+        needsHudRender = false;
         try {
           renderGameHud();
         } catch (err) {

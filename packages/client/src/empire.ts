@@ -57,11 +57,6 @@ export interface EmpireHandlers {
 export type Tab = "units" | "cities" | "specialists" | "trade";
 
 const STYLE = `
-/* Overlay + centered dialog, same treatment as the treasury (#gold-dialog) and
-   morale dialogs. The hidden class (not .show) also keeps the tutorial coach's
-   findVisibleTarget from anchoring to the closed dialog. */
-#empire-overlay{position:fixed;inset:0;background:rgba(15,14,11,.72);opacity:1;pointer-events:none;transition:opacity .2s;z-index:60}
-#empire-overlay.hidden{opacity:0;pointer-events:none}
 #empire{position:fixed;left:50%;top:var(--dialog-top);transform:var(--dialog-transform);width:min(560px,calc(100vw - 32px));max-height:min(80vh,var(--dialog-max-h));background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;overflow:hidden;opacity:1;pointer-events:auto;transition:opacity .2s}
 #empire.hidden{opacity:0;pointer-events:none}
 /* Cinzel/accent title styling comes from the shared .emp-title rule in
@@ -121,11 +116,6 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
   style.textContent = STYLE;
   document.head.appendChild(style);
 
-  const overlay = document.createElement("div");
-  overlay.id = "empire-overlay";
-  overlay.className = "hidden";
-  gameHud().appendChild(overlay);
-
   const root = document.createElement("div");
   root.id = "empire";
   root.className = "panel roc-dialog hidden";
@@ -143,7 +133,6 @@ export function createEmpire(handlers: EmpireHandlers): Empire {
     if (open === next) return;
     open = next;
     root.classList.toggle("hidden", !open);
-    overlay.classList.toggle("hidden", !open);
   }
 
   function close(): void {

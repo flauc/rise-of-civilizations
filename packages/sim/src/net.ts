@@ -46,6 +46,8 @@ export interface LobbyRoom {
   barbarians: BarbarianActivity;
   aiDifficulty: AiDifficulty;
   naturalWonders: boolean;
+  /** Whether recruitable legend heroes are enabled. */
+  legends: boolean;
   /** Tribal village density. */
   villages: VillageDensity;
   startingGold: "tight" | "balanced" | "generous";
@@ -97,6 +99,8 @@ export type ClientMessage =
       aiDifficulty?: AiDifficulty;
       /** Scatter natural wonders across the map. Defaults to off. */
       naturalWonders?: boolean;
+      /** Recruitable legend heroes. Defaults to on. */
+      legends?: boolean;
       /** Tribal village density. Defaults to medium. Legacy boolean accepted. */
       villages?: boolean | VillageDensity;
       /** Landmass layout to generate (one big continent, archipelago, real world…). */
@@ -134,6 +138,8 @@ export type ClientMessage =
       barbarians?: BarbarianActivity;
       aiDifficulty?: AiDifficulty;
       naturalWonders?: boolean;
+      /** Recruitable legend heroes. */
+      legends?: boolean;
       /** Tribal village density. Legacy boolean accepted. */
       villages?: boolean | VillageDensity;
       startingGold?: "tight" | "balanced" | "generous";

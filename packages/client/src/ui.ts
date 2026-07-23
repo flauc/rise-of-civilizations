@@ -1017,9 +1017,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
   const showLeaderboard = (state: GameState): void => {
     closeSideSheets();
-    closePickers(state);
-    menuOpen = false;
-    renderMenu(state);
+    closeHudCenterPanels(state);
     const viewerId = lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? -1);
     const rows = state.players
       .filter((p) => !p.isBarbarian)
@@ -1435,6 +1433,14 @@ export function createUI(handlers: UIHandlers): UI {
     renderSpecialists(state);
     renderTraining(state);
     renderTechTree(state);
+  };
+  /** Close ledger dialogs and pickers so only one centered HUD panel is open. */
+  const closeHudCenterPanels = (state: GameState): void => {
+    hideGoldDialog();
+    hideMoraleDialog();
+    hideLogDialog();
+    hideLeaderboard();
+    closePickers(state);
   };
   const closeSideSheets = (): void => {
     empire.close();
@@ -1960,14 +1966,15 @@ export function createUI(handlers: UIHandlers): UI {
 
     topbar.querySelector<HTMLButtonElement>("#research-btn")!.addEventListener("click", () => {
       const opening = !researchOpen;
-      researchOpen = !researchOpen;
       civicsOpen = false;
       religionOpen = false;
       if (opening) {
         closeSideSheets();
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
+      researchOpen = opening;
       renderResearch(state);
       renderCivics(state);
       renderReligion(state);
@@ -1975,14 +1982,15 @@ export function createUI(handlers: UIHandlers): UI {
     if (showCivics) {
       topbar.querySelector<HTMLButtonElement>("#civics-btn")!.addEventListener("click", () => {
         const opening = !civicsOpen;
-        civicsOpen = !civicsOpen;
         researchOpen = false;
         religionOpen = false;
         if (opening) {
           closeSideSheets();
+          closeHudCenterPanels(state);
           menuOpen = false;
           renderMenu(state);
         }
+        civicsOpen = opening;
         renderCivics(state);
         renderResearch(state);
         renderReligion(state);
@@ -1991,14 +1999,15 @@ export function createUI(handlers: UIHandlers): UI {
     if (showReligion) {
       topbar.querySelector<HTMLButtonElement>("#religion-btn")!.addEventListener("click", () => {
         const opening = !religionOpen;
-        religionOpen = !religionOpen;
         researchOpen = false;
         civicsOpen = false;
         if (opening) {
           closeSideSheets();
+          closeHudCenterPanels(state);
           menuOpen = false;
           renderMenu(state);
         }
+        religionOpen = opening;
         renderReligion(state);
         renderResearch(state);
         renderCivics(state);
@@ -2006,15 +2015,16 @@ export function createUI(handlers: UIHandlers): UI {
     }
     topbar.querySelector<HTMLButtonElement>("#great-people-btn")!.addEventListener("click", () => {
       const opening = !greatPeopleOpen;
-      greatPeopleOpen = !greatPeopleOpen;
       researchOpen = false;
       civicsOpen = false;
       religionOpen = false;
       if (opening) {
         closeSideSheets();
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
+      greatPeopleOpen = opening;
       renderGreatPeople(state);
       renderResearch(state);
       renderCivics(state);
@@ -2022,16 +2032,17 @@ export function createUI(handlers: UIHandlers): UI {
     });
     topbar.querySelector<HTMLButtonElement>("#legends-btn")?.addEventListener("click", () => {
       const opening = !legendsOpen;
-      legendsOpen = !legendsOpen;
       researchOpen = false;
       civicsOpen = false;
       religionOpen = false;
       greatPeopleOpen = false;
       if (opening) {
         closeSideSheets();
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
+      legendsOpen = opening;
       renderLegends(state);
       renderGreatPeople(state);
       renderResearch(state);
@@ -2041,10 +2052,8 @@ export function createUI(handlers: UIHandlers): UI {
     const openEmpire = (tab: EmpireTab) => {
       const opening = !empire.isOpen();
       if (opening) {
-        hideGoldDialog();
-        hideMoraleDialog();
         closeSideSheets();
-        closePickers(state);
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
@@ -2057,10 +2066,8 @@ export function createUI(handlers: UIHandlers): UI {
     topbar.querySelector<HTMLButtonElement>("#diplo-pill")!.addEventListener("click", () => {
       const opening = !diplomacy.isOpen();
       if (opening) {
-        hideGoldDialog();
-        hideMoraleDialog();
         closeSideSheets();
-        closePickers(state);
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
@@ -2079,25 +2086,25 @@ export function createUI(handlers: UIHandlers): UI {
     });
     topbar.querySelector<HTMLButtonElement>("#score-btn")!.addEventListener("click", () => showLeaderboard(state));
     topbar.querySelector<HTMLButtonElement>("#gold-btn")!.addEventListener("click", () => {
-      goldDialogOpen = !goldDialogOpen;
-      if (goldDialogOpen) {
-        hideMoraleDialog();
+      const opening = !goldDialogOpen;
+      if (opening) {
         closeSideSheets();
-        closePickers(state);
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
+      goldDialogOpen = opening;
       renderGoldDialog(state);
     });
     topbar.querySelector<HTMLButtonElement>("#morale-pill")!.addEventListener("click", () => {
-      moraleDialogOpen = !moraleDialogOpen;
-      if (moraleDialogOpen) {
-        hideGoldDialog();
+      const opening = !moraleDialogOpen;
+      if (opening) {
         closeSideSheets();
-        closePickers(state);
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
+      moraleDialogOpen = opening;
       renderMoraleDialog(state);
     });
     topbar.querySelector<HTMLButtonElement>("#turn-update-btn")!.addEventListener("click", () => {
@@ -2248,6 +2255,7 @@ export function createUI(handlers: UIHandlers): UI {
         saveModalBody.innerHTML = html;
       });
       saveModalBody.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
+        if (lastState) closeHudCenterPanels(lastState);
         openGameSettings();
       });
       saveModalBody.querySelector<HTMLButtonElement>("#menu-save")?.addEventListener("click", () => {
@@ -2256,20 +2264,16 @@ export function createUI(handlers: UIHandlers): UI {
         renderMenu(state);
       });
       saveModalBody.querySelector<HTMLButtonElement>("#menu-wiki")!.addEventListener("click", () => {
-        menuOpen = false;
         closeSideSheets();
-        closePickers(state);
-        renderMenu(state);
+        if (lastState) closeHudCenterPanels(lastState);
         wiki.open();
       });
       saveModalBody.querySelector<HTMLButtonElement>("#menu-leaderboard")!.addEventListener("click", () => {
-        menuOpen = false;
-        renderMenu(state);
         showLeaderboard(state);
       });
       saveModalBody.querySelector<HTMLButtonElement>("#menu-log")!.addEventListener("click", () => {
-        menuOpen = false;
-        renderMenu(state);
+        closeSideSheets();
+        closeHudCenterPanels(state);
         setPreservedHtml(
           logDialogContent,
           visibleLog(state, lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? 0))
@@ -2287,11 +2291,9 @@ export function createUI(handlers: UIHandlers): UI {
       saveModalBody.querySelector<HTMLButtonElement>("#menu-enable-god")?.addEventListener("click", () => {
         godModeEnabled = true;
         void ensureGodModePanel().then((panel) => {
-          panel.open();
-          menuOpen = false;
           closeSideSheets();
-          closePickers(state);
-          renderMenu(state);
+          if (lastState) closeHudCenterPanels(lastState);
+          panel.open();
           if (lastView) {
             renderTilePanel(lastView.state, lastView.selectedTile ?? null, lastView.viewerId, lastView.cheatsEnabled ?? false);
             renderGodMode(lastView);
@@ -2299,10 +2301,8 @@ export function createUI(handlers: UIHandlers): UI {
         });
       });
       saveModalBody.querySelector<HTMLButtonElement>("#menu-god")?.addEventListener("click", () => {
-        menuOpen = false;
         closeSideSheets();
-        closePickers(state);
-        renderMenu(state);
+        if (lastState) closeHudCenterPanels(lastState);
         void ensureGodModePanel().then((panel) => {
           panel.open();
           if (lastView) renderGodMode(lastView);
@@ -2693,9 +2693,8 @@ export function createUI(handlers: UIHandlers): UI {
       techtree.classList.add("hidden");
       return;
     }
-    researchOpen = false;
-    research.classList.add("hidden");
     closeSideSheets();
+    closeHudCenterPanels(lastState);
     menuOpen = false;
     renderMenu(lastState);
     techtreeOpen = true;
@@ -5209,10 +5208,8 @@ export function createUI(handlers: UIHandlers): UI {
     const viewerId = lastViewerId >= 0 ? lastViewerId : (lastState.players[lastState.currentPlayerIndex]?.id ?? -1);
     const opening = !empire.isOpen();
     if (opening) {
-      hideGoldDialog();
-      hideMoraleDialog();
       closeSideSheets();
-      closePickers(lastState);
+      closeHudCenterPanels(lastState);
       menuOpen = false;
       renderMenu(lastState);
     }
@@ -5254,10 +5251,8 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
     if (!lastState) return;
-    menuOpen = false;
     closeSideSheets();
-    closePickers(lastState);
-    renderMenu(lastState);
+    closeHudCenterPanels(lastState);
     wiki.open();
   }
 
@@ -5267,9 +5262,8 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
     if (!lastState) return;
-    hideGoldDialog();
     closeSideSheets();
-    closePickers(lastState);
+    closeHudCenterPanels(lastState);
     menuOpen = false;
     renderMenu(lastState);
     moraleDialogOpen = true;
@@ -5283,14 +5277,11 @@ export function createUI(handlers: UIHandlers): UI {
       renderLegends(lastState);
       return;
     }
-    legendsOpen = true;
-    researchOpen = false;
-    civicsOpen = false;
-    religionOpen = false;
-    greatPeopleOpen = false;
     closeSideSheets();
+    closeHudCenterPanels(lastState);
     menuOpen = false;
     renderMenu(lastState);
+    legendsOpen = true;
     renderLegends(lastState);
     renderGreatPeople(lastState);
     renderResearch(lastState);
@@ -5303,11 +5294,7 @@ export function createUI(handlers: UIHandlers): UI {
       closeSettingsPanel();
       return;
     }
-    if (lastState) {
-      closePickers(lastState);
-      menuOpen = false;
-      renderMenu(lastState);
-    }
+    if (lastState) closeHudCenterPanels(lastState);
     openGameSettings();
   }
 
@@ -5492,26 +5479,36 @@ export function createUI(handlers: UIHandlers): UI {
     },
     openResearch() {
       if (!lastState) return;
+      closeSideSheets();
+      closeHudCenterPanels(lastState);
       researchOpen = true;
       renderResearch(lastState);
     },
     openCivics() {
       if (!lastState) return;
+      closeSideSheets();
+      closeHudCenterPanels(lastState);
       civicsOpen = true;
       renderCivics(lastState);
     },
     openReligion() {
       if (!lastState) return;
+      closeSideSheets();
+      closeHudCenterPanels(lastState);
       religionOpen = true;
       renderReligion(lastState);
     },
     openGreatPeople() {
       if (!lastState) return;
+      closeSideSheets();
+      closeHudCenterPanels(lastState);
       greatPeopleOpen = true;
       renderGreatPeople(lastState);
     },
     openLegends() {
       if (!lastState) return;
+      closeSideSheets();
+      closeHudCenterPanels(lastState);
       legendsOpen = true;
       renderLegends(lastState);
     },

@@ -100,6 +100,26 @@ export function computeWorldBounds(map: GameMap): Bounds {
   };
 }
 
+/** True when the map's world bounds project into (or near) the CSS viewport. */
+export function mapIntersectsViewport(
+  camera: Camera,
+  map: GameMap,
+  cssWidth: number,
+  cssHeight: number,
+  margin = 0,
+): boolean {
+  const b = computeWorldBounds(map);
+  const sx0 = camera.worldToScreenX(b.minX);
+  const sx1 = camera.worldToScreenX(b.maxX);
+  const sy0 = camera.worldToScreenY(b.minY);
+  const sy1 = camera.worldToScreenY(b.maxY);
+  const minX = Math.min(sx0, sx1) - margin;
+  const maxX = Math.max(sx0, sx1) + margin;
+  const minY = Math.min(sy0, sy1) - margin;
+  const maxY = Math.max(sy0, sy1) + margin;
+  return maxX >= 0 && minX <= cssWidth && maxY >= 0 && minY <= cssHeight;
+}
+
 /** Compute a 6-bit edge mask for a road tile from its neighbors. A road connects
  *  to adjacent roads and to adjacent cities — but a river along the shared edge
  *  severs the link until a bridge spans it, so unbridged crossings dead-end at the
@@ -803,7 +823,11 @@ export function drawScene(
     }
     mapLayerCache.blit(ctx, camera, dpr);
     // The baked bitmap has no fog, so unexplored tiles must fully conceal it.
-    paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, footprint * 2, true);
+    if (
+      mapIntersectsViewport(camera, state.map, opts.cssWidth, opts.cssHeight, footprint * 2)
+    ) {
+      paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, footprint * 2, true);
+    }
     if (hovered) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       drawHoverHighlight(ctx, camera, hovered, size, corners);
@@ -830,6 +854,10 @@ export function drawScene(
   }
 
   // Fog is painted in a dedicated pass AFTER all terrain (see paintFogOfWar).
+
+  if (!mapIntersectsViewport(camera, map, opts.cssWidth, opts.cssHeight, margin)) {
+    return 0;
+  }
 
   // Distance (in tiles) from a tile to its nearest polar map edge, and the width
   // of the polar zone — used to place crevasse and iceberg decor near the caps.

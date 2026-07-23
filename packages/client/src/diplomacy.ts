@@ -95,9 +95,6 @@ html.roc-phone-shell #diplo-proposal{align-items:center;padding:16px}
 .dc-ability{color:var(--parchment-dim);font-size:12px;line-height:1.4}
 .dc-quote{font-style:italic;color:var(--parchment);font-size:13px;padding:12px 18px;text-align:center;border-top:1px solid var(--edge)}
 .dc-actions{display:flex;gap:10px;justify-content:center;padding:14px;border-top:1px solid var(--edge)}
-/* Overlay + centered dialog, same treatment as the treasury / empire dialogs. */
-#diplomacy-overlay{position:fixed;inset:0;background:rgba(15,14,11,.72);opacity:1;pointer-events:auto;transition:opacity .2s;z-index:60}
-#diplomacy-overlay.hidden{opacity:0;pointer-events:none}
 #diplomacy{position:fixed;left:50%;top:var(--dialog-top);transform:var(--dialog-transform);width:min(560px,calc(100vw - 32px));max-height:min(80vh,var(--dialog-max-h));background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;overflow:hidden;opacity:1;pointer-events:auto;transition:opacity .2s}
 #diplomacy.hidden{opacity:0;pointer-events:none}
 /* Title and ✕ come from the shared .dialog-title / .dialog-x rules in index.html.
@@ -282,10 +279,6 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   const seenProposals = new Set<number>(); // proposals we've already surfaced
 
   // --- contacts dialog ---
-  const overlay = document.createElement("div");
-  overlay.id = "diplomacy-overlay";
-  overlay.className = "hidden";
-  gameHud().appendChild(overlay);
   const panel = document.createElement("div");
   panel.id = "diplomacy";
   panel.className = "roc-dialog hidden";
@@ -333,7 +326,6 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     if (open === next) return;
     open = next;
     panel.classList.toggle("hidden", !open);
-    overlay.classList.toggle("hidden", !open);
     if (!open) selected = null;
   }
 

@@ -3393,7 +3393,7 @@
       }
       #settings-dialog .settings-hint {
         font-size: 11px;
-        color: #9fc0dc;
+        color: var(--accent-bright);
         margin: 2px 0 8px;
       }
       #settings-dialog .settings-row {
@@ -3412,7 +3412,7 @@
       #settings-dialog .settings-check input {
         width: 16px;
         height: 16px;
-        accent-color: var(--gold);
+        accent-color: var(--accent);
       }
       #settings-dialog .settings-volumes {
         display: grid;
@@ -3435,7 +3435,7 @@
       }
       #settings-dialog .settings-volume-value {
         font-variant-numeric: tabular-nums;
-        color: #9fc0dc;
+        color: var(--accent-bright);
         font-size: 12px;
         min-width: 3ch;
         text-align: right;
@@ -3444,7 +3444,7 @@
         width: 100%;
         margin: 0;
         height: 28px;
-        accent-color: var(--gold);
+        accent-color: var(--accent);
         cursor: pointer;
         touch-action: manipulation;
       }
@@ -3474,7 +3474,7 @@
       }
       #settings-dialog .settings-fold-chevron {
         flex: 0 0 auto;
-        color: #9fc0dc;
+        color: var(--accent-bright);
         font-size: 14px;
         line-height: 1;
         transition: transform 0.15s ease;
@@ -3518,7 +3518,7 @@
       }
       #settings-dialog .settings-keybind-hint {
         font-size: 11px;
-        color: #9fc0dc;
+        color: var(--accent-bright);
         margin-top: 2px;
         line-height: 1.35;
       }
@@ -3528,8 +3528,8 @@
         min-height: 40px;
         padding: 8px 12px;
         border-radius: 8px;
-        border: 1px solid var(--edge);
-        background: var(--bg-card);
+        border: 1px solid rgba(201, 162, 39, 0.45);
+        background: rgba(201, 162, 39, 0.1);
         color: var(--accent-bright);
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         font-size: 13px;
@@ -3539,6 +3539,7 @@
       }
       #settings-dialog .settings-keybind-key.capturing {
         border-color: var(--accent);
+        background: rgba(201, 162, 39, 0.22);
         color: var(--parchment);
         animation: settings-keybind-pulse 1.2s ease-in-out infinite;
       }
@@ -3593,6 +3594,11 @@
         color: var(--parchment);
         font: inherit;
       }
+      #settings-dialog .settings-delete-input:focus {
+        outline: 2px solid rgba(201, 162, 39, 0.55);
+        outline-offset: 1px;
+        border-color: var(--accent);
+      }
       #settings-dialog .settings-delete-actions {
         display: flex;
         gap: 8px;
@@ -3634,8 +3640,8 @@
         background: rgba(255, 255, 255, 0.05);
       }
       #settings-dialog .seg-btn.active {
-        background: #c9a24a;
-        color: #1a160f;
+        background: linear-gradient(135deg, #c9a227, #a6821f);
+        color: #15120c;
         font-weight: 700;
       }
       /* combat preview dialog */
@@ -3986,10 +3992,6 @@
       #game-hud #gameover-explore-bar:not(.hidden) {
         pointer-events: auto;
       }
-      /* Hide chrome only while fullscreen chat is open (not empire/diplomacy HUD dialogs). */
-      #game-hud:has(#game-chat.open.fullscreen) #topbar,
-      #game-hud:has(#game-chat.open.fullscreen) #leader-avatar,
-      #game-hud:has(#game-chat.open.fullscreen) #game-chat-toggle {
       /* Hide chrome only while a full-screen sheet is actually open (not a stale body class).
          Phone shell only: on desktop these are windowed dialogs and the top bar stays visible. */
       html.roc-phone-shell #game-hud:has(#diplomacy:not(.hidden)) #topbar,

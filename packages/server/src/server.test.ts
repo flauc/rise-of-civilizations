@@ -229,6 +229,33 @@ describe("lobby + game host (simultaneous multiplayer)", () => {
     expect(lobby.start(g.id, "uA")).toEqual({ ok: true });
   });
 
+  it("honors the legends option when starting a game", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("No Legends", "uA", "Alice", {
+      seed: "seed-legends",
+      capacity: 1,
+      legends: false,
+    });
+    expect(lobby.room(g.id)!.legends).toBe(false);
+    expect(lobby.start(g.id)).toEqual({ ok: true });
+    expect(lobby.get(g.id)!.host!.state.legendsEnabled).toBe(false);
+
+    const g2 = lobby.create("Legends On", "uA", "Alice", {
+      seed: "seed-legends2",
+      capacity: 1,
+      legends: true,
+    });
+    lobby.start(g2.id);
+    expect(lobby.get(g2.id)!.host!.state.legendsEnabled).toBe(true);
+  });
+
+  it("lets the host toggle legends in configure", () => {
+    const lobby = new Lobby();
+    const g = lobby.create("Legends", "uA", "Alice", { seed: "seed-leg-cfg", capacity: 1 });
+    expect(lobby.configure(g.id, "uA", { legends: false })).toEqual({ ok: true });
+    expect(lobby.room(g.id)!.legends).toBe(false);
+  });
+
   it("honors the startingGold option and applies it to player treasuries", () => {
     const lobby = new Lobby();
     const g = lobby.create("Tight", "uA", "Alice", {
