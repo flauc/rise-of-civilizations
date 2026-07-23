@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isWater, landmassSizes } from "@roc/shared";
+import { isWater, isBottomMapBorderTile, landmassSizes } from "@roc/shared";
 import {
   generateMap,
   getSetoInlandSeaSpec,
@@ -268,6 +268,16 @@ describe("worldgen map types", () => {
         }
       }
       expect(biggestCap, `pole-${i} cap should be a real landmass`).toBeGreaterThanOrEqual(20);
+    }
+  });
+
+  it("keeps the bottom map row as water on procedural maps (skirt rim)", () => {
+    for (let i = 0; i < 8; i++) {
+      const map = generateMap({ cols: 80, rows: 56, seed: `bottom-rim-${i}`, mapType: "pangaea" });
+      for (const t of map.tiles) {
+        if (!isBottomMapBorderTile(map, t.col, t.row)) continue;
+        expect(isWater(t.terrain), `${t.terrain} at bottom ${t.col},${t.row} (${i})`).toBe(true);
+      }
     }
   });
 

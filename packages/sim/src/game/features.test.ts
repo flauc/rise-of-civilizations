@@ -13,7 +13,7 @@ import {
   VILLAGE_GLOBAL_MORALE,
   VILLAGE_UNIT_MORALE,
 } from "./morale";
-import { getTile, isPolarTile, axialDistance, offsetToAxial } from "@roc/shared";
+import { getTile, isMapBorderTile, isPolarTile, axialDistance, offsetToAxial } from "@roc/shared";
 import type { GameSpeed } from "./game-speed";
 import { UNIT_DEFS, type UnitTypeId } from "./content";
 
@@ -42,6 +42,17 @@ describe("map features", () => {
       if (barb) {
         for (const u of unitsOf(state, barb.id)) {
           expect(isPolarTile(state.map, u.col, u.row), `barbarian at ${u.col},${u.row} (${seed})`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("never places villages or camps on the map border", () => {
+    for (const seed of ["rim-feat-1", "rim-feat-2", "rim-feat-3"]) {
+      const state = createGame({ seed, cols: 60, rows: 40, barbarians: "high", villages: "high" });
+      for (const t of state.map.tiles) {
+        if (t.feature === "village" || t.feature === "barb_camp") {
+          expect(isMapBorderTile(state.map, t.col, t.row), `${t.feature} at ${t.col},${t.row} (${seed})`).toBe(false);
         }
       }
     }

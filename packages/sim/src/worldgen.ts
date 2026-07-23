@@ -9,6 +9,7 @@ import {
   offsetToAxial,
   offsetNeighborDeltas,
   isWater,
+  isBottomMapBorderTile,
   type GameMap,
   type Tile,
   type TerrainType,
@@ -1070,6 +1071,7 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
     if (t.terrain === "hills" && moistAt(t.col, t.row) > 0.5) t.wooded = true;
   }
   markLakes(map);
+  if (!geoMap) scrubBottomMapBorderOcean(map);
   markCoasts(map);
   generateRivers(map, heights, rng);
   return map;
@@ -1843,6 +1845,14 @@ function markLakes(map: GameMap): void {
         for (const i of region) tiles[i]!.terrain = "lake";
       }
     }
+  }
+}
+
+/** Bottom map row stays open water so cliff skirts never sit on land tiles. */
+function scrubBottomMapBorderOcean(map: GameMap): void {
+  for (const tile of map.tiles) {
+    if (!isBottomMapBorderTile(map, tile.col, tile.row)) continue;
+    if (!isWater(tile.terrain)) tile.terrain = "ocean";
   }
 }
 

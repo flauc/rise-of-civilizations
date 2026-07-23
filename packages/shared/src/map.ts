@@ -117,6 +117,52 @@ export function offsetNeighborDeltas(row: number): readonly (readonly [number, n
     : [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]];
 }
 
+/** True when at least one hex neighbour lies outside the map rectangle. */
+export function isMapBorderTile(map: GameMap, col: number, row: number): boolean {
+  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return false;
+  for (const [dc, dr] of offsetNeighborDeltas(row)) {
+    const nc = col + dc;
+    const nr = row + dr;
+    if (nc < 0 || nr < 0 || nc >= map.cols || nr >= map.rows) return true;
+  }
+  return false;
+}
+
+/** True on the bottom row of the map grid (where cliff skirts are drawn). */
+export function isBottomMapBorderTile(map: GameMap, col: number, row: number): boolean {
+  return col >= 0 && row >= 0 && col < map.cols && row === map.rows - 1;
+}
+
+/** Map-edge cliff skirt (`hexUnderVoid*`). */
+export type MapEdgeSkirtKind = "void";
+
+/** Every map-border tile uses the void cliff skirt. */
+export function mapEdgeSkirtKind(map: GameMap, col: number, row: number): MapEdgeSkirtKind | null {
+  if (!isMapBorderTile(map, col, row)) return null;
+  return "void";
+}
+
+/** Which screen edge a map-border tile (or off-map ghost) faces. */
+export type MapEdgeSide = "bottom" | "top" | "left" | "right";
+
+export function mapEdgeSkirtSide(map: GameMap, col: number, row: number): MapEdgeSide {
+  const { cols, rows } = map;
+  if (row >= rows) return "bottom";
+  if (col >= cols) return "right";
+  if (row < 0) return "top";
+  if (col < 0) return "left";
+
+  const distTop = row;
+  const distBottom = rows - 1 - row;
+  const distLeft = col;
+  const distRight = cols - 1 - col;
+  const minDist = Math.min(distTop, distBottom, distLeft, distRight);
+  if (distBottom === minDist) return "bottom";
+  if (distRight === minDist) return "right";
+  if (distTop === minDist) return "top";
+  return "left";
+}
+
 /** Width (in tiles) of the frozen polar zone near each pole edge — the band the
  *  ice caps and polar decor occupy. 0 when the map has no rolled poleAxis. */
 export function polarBandWidth(map: GameMap): number {

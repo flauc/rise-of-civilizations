@@ -4,7 +4,7 @@
 // All randomness is DETERMINISTIC — seeded from turn/unit/tile coordinates via
 // the shared RNG — so the server and clients agree (no stored RNG state needed).
 
-import { axialDistance, getTile, hashSeed, isPolarTile, makeRng, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, hashSeed, isMapBorderTile, isPolarTile, makeRng, offsetToAxial } from "@roc/shared";
 import {
   citiesOf,
   log,
@@ -562,6 +562,7 @@ export function maybeSpawnCamps(state: GameState, _barbId: number): void {
     if (!isPassableLand(tile.terrain) || tile.feature) continue;
     if (tile.naturalWonder) continue; // never squat a camp on a natural wonder
     if (isPolarTile(state.map, tile.col, tile.row)) continue; // no raiders at the poles
+    if (isMapBorderTile(state.map, tile.col, tile.row)) continue; // not on the map rim
     if (sighted.has(`${tile.col},${tile.row}`)) continue; // must be hidden in fog
     if (unitAt(state, tile.col, tile.row)) continue;
     if (tooCloseToCamp(tile.col, tile.row)) continue;
@@ -597,6 +598,7 @@ export function placeFeatures(
     if (!isPassableLand(tile.terrain) || tile.feature) continue;
     if (tile.naturalWonder) continue; // camps/villages never spawn on a natural wonder
     if (isPolarTile(map, tile.col, tile.row)) continue; // no villages/camps at the poles
+    if (isMapBorderTile(map, tile.col, tile.row)) continue; // not on the map rim
     const here = offsetToAxial({ col: tile.col, row: tile.row });
     if (starts.some((s) => s && axialDistance(here, offsetToAxial(s)) < startClearance)) continue;
     if (unitAt(state, tile.col, tile.row)) continue;

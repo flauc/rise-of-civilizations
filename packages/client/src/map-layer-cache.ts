@@ -85,6 +85,7 @@ export class MapLayerCache {
       hovered: undefined,
       skipLayerCache: true,
       skipFogPass: true,
+      skipMapEdgePass: true,
     });
     this.terrainRev = terrainRev;
     this.builtZoom = buildZoom;

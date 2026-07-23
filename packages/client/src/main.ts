@@ -62,6 +62,7 @@ import { initPhoneShellSync } from "./viewport-shell";
 import { consumeNativeBootRoute, initialOverlayRoute, isNativeApp, isStandaloneDisplay, setLobbyHidden } from "./app-routes";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadCoastAtlas } from "./coast-assets";
+import { loadMapEdgeAtlas } from "./map-edge-assets";
 import { loadRiverAtlas } from "./river-assets";
 import { loadRoadAtlas } from "./road-assets";
 import { loadUnitAtlas } from "./unit-assets";
@@ -1320,6 +1321,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
 
   const terrainAtlas = loadTerrainAtlas(mapAtlasRepaint);
   const coastAtlas = loadCoastAtlas(mapAtlasRepaint);
+  const mapEdgeAtlas = loadMapEdgeAtlas(mapAtlasRepaint);
   const riverAtlas = loadRiverAtlas(mapAtlasRepaint);
   const roadAtlas = loadRoadAtlas(mapAtlasRepaint);
   const unitAtlas = loadUnitAtlas(() => {
@@ -1467,6 +1469,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         fog: liftFog ? undefined : { visible: drawVisible, explored },
         terrainAtlas,
         coastAtlas,
+        mapEdgeAtlas,
         riverAtlas,
         roadAtlas,
         improvementAtlas,
