@@ -412,12 +412,17 @@ function drawWonderStandin(
   ctx.restore();
 }
 
-// A fog "silhouette" is the terrain sprite recoloured to a flat fog colour, so a
-// fogged tile's tall art (mountains, forests) is covered all the way to its peak
-// rather than only inside the flat hex. Cached per source image (built once).
-const fogSilhouetteCache = new WeakMap<HTMLImageElement, HTMLCanvasElement>();
-function fogSilhouette(img: HTMLImageElement): HTMLCanvasElement {
-  let c = fogSilhouetteCache.get(img);
+// A fog "silhouette" is the terrain sprite recoloured to a flat colour, so a
+// covered tile's tall art (mountains, forests) is hidden all the way to its peak
+// rather than only inside the flat hex. Cached per (source image, colour).
+const fogSilhouetteCache = new WeakMap<HTMLImageElement, Map<string, HTMLCanvasElement>>();
+function fogSilhouette(img: HTMLImageElement, color: string): HTMLCanvasElement {
+  let byColor = fogSilhouetteCache.get(img);
+  if (!byColor) {
+    byColor = new Map();
+    fogSilhouetteCache.set(img, byColor);
+  }
+  let c = byColor.get(color);
   if (!c) {
     c = document.createElement("canvas");
     c.width = img.naturalWidth;
@@ -425,9 +430,9 @@ function fogSilhouette(img: HTMLImageElement): HTMLCanvasElement {
     const cx = c.getContext("2d")!;
     cx.drawImage(img, 0, 0);
     cx.globalCompositeOperation = "source-in"; // keep only the sprite's alpha shape
-    cx.fillStyle = FOG_SOLID;
+    cx.fillStyle = color;
     cx.fillRect(0, 0, c.width, c.height);
-    fogSilhouetteCache.set(img, c);
+    byColor.set(color, c);
   }
   return c;
 }
@@ -648,12 +653,16 @@ function paintFogOfWar(
   footprint: number,
   corners: Point[],
   margin: number,
+  /** True when fog is painted over the baked terrain bitmap (which has no fog
+   *  of its own): unexplored tiles must then also cover their sprite's tall
+   *  overhang, or mountain peaks leak out above the flat hex fills. */
+  coverUnexploredArt: boolean,
 ): void {
   const fog = opts.fog;
   if (!fog) return;
   const { map } = state;
   const fogDraws: { img: HTMLImageElement | undefined; sx: number; sy: number }[] = [];
-  const unexploredDraws: { sx: number; sy: number }[] = [];
+  const unexploredDraws: { img: HTMLImageElement | undefined; sx: number; sy: number }[] = [];
 
   for (const t of map.tiles) {
     const c = tileCenterWorld(t.col, t.row);
@@ -671,7 +680,11 @@ function paintFogOfWar(
     const explored = fog.explored.has(key);
     const visible = fog.visible.has(key);
     if (!explored) {
-      unexploredDraws.push({ sx, sy });
+      unexploredDraws.push({
+        img: coverUnexploredArt ? primaryTerrainImage(t, opts) : undefined,
+        sx,
+        sy,
+      });
       continue;
     }
     if (!visible) {
@@ -687,10 +700,25 @@ function paintFogOfWar(
   };
 
   if (unexploredDraws.length > 0) {
+    // Fill AND stroke each hex: adjacent flat fills alone leave ~1px antialias
+    // seams through which the terrain beneath shines as a bright hex grid.
     ctx.fillStyle = UNEXPLORED_FILL;
+    ctx.strokeStyle = UNEXPLORED_FILL;
+    ctx.lineWidth = Math.max(1, size * 0.05);
     for (const u of unexploredDraws) {
       traceHex(ctx, u.sx, u.sy);
       ctx.fill();
+      ctx.stroke();
+    }
+    // Then cover tall sprite overhang (baked-bitmap mode only): without this,
+    // mountain/forest peaks poke out above the flat fills at the map's edge.
+    for (const u of unexploredDraws) {
+      if (!u.img) continue;
+      const sil = fogSilhouette(u.img, UNEXPLORED_FILL);
+      const scale = footprint / sil.width;
+      const drawW = sil.width * scale;
+      const drawH = sil.height * scale;
+      ctx.drawImage(sil, u.sx - drawW / 2, u.sy + footprint / 2 - drawH, drawW, drawH);
     }
   }
 
@@ -701,11 +729,14 @@ function paintFogOfWar(
     fc.clearRect(0, 0, layer.canvas.width, layer.canvas.height);
     fc.setTransform(opts.dpr, 0, 0, opts.dpr, 0, 0);
     fc.fillStyle = FOG_SOLID;
+    fc.strokeStyle = FOG_SOLID;
+    fc.lineWidth = Math.max(1, size * 0.05);
     for (const f of fogDraws) {
       traceHex(fc, f.sx, f.sy);
       fc.fill();
+      fc.stroke(); // seal the antialias seam between adjacent fog hexes
       if (f.img) {
-        const sil = fogSilhouette(f.img);
+        const sil = fogSilhouette(f.img, FOG_SOLID);
         const scale = footprint / sil.width;
         const drawW = sil.width * scale;
         const drawH = sil.height * scale;
@@ -759,12 +790,20 @@ export function drawScene(
     corners.push({ x: size * Math.cos(a), y: size * Math.sin(a) * VSQUISH });
   }
 
-  if (!skipLayerCache && mapLayerCache?.canUse(state)) {
+  // Blit the baked terrain bitmap only while it maps to at least 1:1 device
+  // pixels — past its bake resolution it would upscale and blur, so draw live
+  // instead (few tiles are on screen that far in, so the live path stays cheap).
+  if (
+    !skipLayerCache &&
+    mapLayerCache?.canUse(state, dpr) &&
+    camera.zoom * dpr <= mapLayerCache.buildZoomLevel
+  ) {
     if (!mapLayerCache.isValid(terrainRev)) {
       mapLayerCache.rebuild(state, opts, terrainRev);
     }
     mapLayerCache.blit(ctx, camera, dpr);
-    paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, footprint * 2);
+    // The baked bitmap has no fog, so unexplored tiles must fully conceal it.
+    paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, footprint * 2, true);
     if (hovered) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       drawHoverHighlight(ctx, camera, hovered, size, corners);
@@ -1021,7 +1060,8 @@ export function drawScene(
 
   // ---- Fog of war -------------------------------------------------------
   if (!opts.skipFogPass) {
-    paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, margin);
+    // Live path: unexplored tiles never drew their art, so plain fills suffice.
+    paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, margin, false);
   }
 
   // Hover highlight on top.

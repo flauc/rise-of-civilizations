@@ -239,7 +239,10 @@ export function createGame(opts: NewGameOptions = {}): GameState {
   const usedCivs = new Set<string>();
   const civForSlot = (i: number): string | undefined => {
     const req = requested[i];
-    const civ = req && !usedCivs.has(req) ? req : pool[poolIdx++];
+    // Only honour real civ ids: placeholders like "random" (the client's
+    // random-pick sentinel) and unknown ids fall through to the shuffled pool.
+    const valid = req && CIV_IDS.includes(req) && !usedCivs.has(req) ? req : undefined;
+    const civ = valid ?? pool[poolIdx++];
     if (civ) usedCivs.add(civ);
     return civ;
   };

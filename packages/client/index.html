@@ -3990,6 +3990,17 @@
       #game-hud:has(#game-chat.open.fullscreen) #topbar,
       #game-hud:has(#game-chat.open.fullscreen) #leader-avatar,
       #game-hud:has(#game-chat.open.fullscreen) #game-chat-toggle {
+      /* Hide chrome only while a full-screen sheet is actually open (not a stale body class).
+         Phone shell only: on desktop these are windowed dialogs and the top bar stays visible. */
+      html.roc-phone-shell #game-hud:has(#diplomacy:not(.hidden)) #topbar,
+      html.roc-phone-shell #game-hud:has(#diplomacy:not(.hidden)) #leader-avatar,
+      html.roc-phone-shell #game-hud:has(#diplomacy:not(.hidden)) #game-chat:not(.open),
+      html.roc-phone-shell #game-hud:has(#empire:not(.hidden)) #topbar,
+      html.roc-phone-shell #game-hud:has(#empire:not(.hidden)) #leader-avatar,
+      html.roc-phone-shell #game-hud:has(#empire:not(.hidden)) #game-chat:not(.open),
+      html.roc-phone-shell #game-hud:has(#game-chat.open.fullscreen) #topbar,
+      html.roc-phone-shell #game-hud:has(#game-chat.open.fullscreen) #leader-avatar,
+      html.roc-phone-shell #game-hud:has(#game-chat.open.fullscreen) #game-chat-toggle {
         visibility: hidden;
         pointer-events: none;
       }
@@ -4291,11 +4302,13 @@
           color: var(--parchment-dim);
           font-size: 10px;
         }
-        /* Mobile: all three docked info panels share the bottom slot, stretch
-           full-width, and collapse to just their summary bar (the .panel.collapsed
-           rule above) so a selection no longer eats half the screen. */
+        /* Mobile: all three docked info panels (unit / tile / city) share the
+           same bottom slot, stretch full-width, and collapse to just their
+           summary bar (the .panel.collapsed rule above) so a selection no
+           longer eats half the screen. */
         html.roc-phone-shell #unit-panel,
-        html.roc-phone-shell #tile-panel {
+        html.roc-phone-shell #tile-panel,
+        html.roc-phone-shell #city-panel {
           left: max(6px, env(safe-area-inset-left));
           right: max(6px, env(safe-area-inset-right));
           width: auto;
@@ -4303,18 +4316,6 @@
           top: auto;
           bottom: calc(54px + env(safe-area-inset-bottom));
           max-height: min(46vh, 320px);
-          overflow: auto;
-          z-index: 10;
-        }
-        /* City sheet: top-right under the menu bar, not the bottom slot. */
-        html.roc-phone-shell #city-panel {
-          left: auto;
-          right: max(6px, var(--roc-safe-right, env(safe-area-inset-right, 0px)));
-          width: min(320px, calc(100vw - 12px - var(--roc-safe-left, 0px) - var(--roc-safe-right, 0px)));
-          min-width: 0;
-          top: calc(var(--topbar-h, 60px) + var(--roc-safe-top, env(safe-area-inset-top, 0px)) + 6px);
-          bottom: auto;
-          max-height: min(42vh, 300px);
           overflow: auto;
           z-index: 10;
         }

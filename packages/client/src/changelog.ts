@@ -24,6 +24,150 @@ interface Release {
 /** Newest release first. */
 const CHANGELOG: Release[] = [
   {
+    version: "0.8.0",
+    date: "July 2026",
+    changes: [
+      {
+        tag: "New",
+        title: "Six new real-world maps",
+        desc:
+          "The map list now includes Mediterranean (Roman Empire), Europe, Africa, Asia, North America, and South America, all built from real coastlines with climate that follows true latitude. Natural wonders appear at their real locations on each of these maps, and the Mediterranean map can also come up when you pick Random.",
+      },
+      {
+        tag: "New",
+        title: "Single-player games start instantly",
+        desc:
+          "While you are still choosing settings on the single-player setup screen, the game already builds the world in the background. Press Start Game and you drop straight in with no map generation wait. If you change a setting at the last moment, the world is rebuilt behind the usual loading screen as before.",
+      },
+      {
+        tag: "New",
+        title: "Background music",
+        desc:
+          "The game now plays background music in the menu and during play, chosen to match your civilization's region: eight tracks covering Japan, India, the Celtic and Nordic north, the steppe and Siberia, Africa, the ancient Near East and Mediterranean, East Asia, and a general theme for everyone else. The music fades smoothly between tracks and lowers itself while the tutorial coach or a leader speech is talking.",
+      },
+      {
+        tag: "New",
+        title: "Combat and construction sound effects",
+        desc:
+          "Attacks now play sounds matched to the weapon: dogs growl, axes and spears clash, arrows swish, siege engines thump, and swords ring for everything else. Queuing a build or a tile improvement plays a hammer on wood sound. A new Audio section in Settings has a volume slider and separate toggles for music and sound effects.",
+      },
+      {
+        tag: "New",
+        title: "Keyboard shortcuts",
+        desc:
+          "The game now has keyboard shortcuts: Space cycles through your cities, U opens the unit list, L opens the standings, W opens the encyclopedia, and O opens Settings. Every shortcut can be rebound in the new Keyboard shortcuts section of Settings, and button tooltips show the current key.",
+      },
+      {
+        tag: "New",
+        title: "AI difficulty setting",
+        desc:
+          "Game setup now has an AI difficulty option with four levels: Minimal, Low, Normal, and High. It is available in multiplayer rooms too, and your choice is remembered for the next game. The AI never cheats at any level, it plays by the same rules you do. Difficulty instead controls how consistently the AI uses its sharpest plays, such as rushing production, timing wars, racing for wonders, and recruiting legends: at High it always does, at lower levels it regularly passes them up.",
+      },
+      {
+        tag: "New",
+        title: "Surrender in multiplayer",
+        desc:
+          "You can now concede a multiplayer match. Surrendering removes your units and cities, marks you eliminated, and notifies the other players, and the game then checks whether someone has won.",
+      },
+      {
+        tag: "New",
+        title: "Rejoin multiplayer games in progress",
+        desc:
+          "If you disconnect from a multiplayer game you can now rejoin it while it is still running. Games that every player has left are cleaned up automatically after five minutes instead of lingering in the game browser.",
+      },
+      {
+        tag: "New",
+        title: "Online leaderboard",
+        desc:
+          "The multiplayer lobby now has a leaderboard showing each player's best score from a completed game, with their civilization and when it was played. Log in to have your name appear on it.",
+      },
+      {
+        tag: "New",
+        title: "Search and filters in the civilization picker",
+        desc:
+          "The civilization picker now has a search box that matches names, leaders, and abilities, plus region filter chips such as Near East and Mediterranean, Africa, Celtic and Nordic, East Asia, India, Japan, and Steppe and Siberia.",
+      },
+      {
+        tag: "UI",
+        title: "Units stand out on the map",
+        desc:
+          "Unit sprites are drawn larger, and every unit now has a thin outline in its owner's color so you can tell whose it is at a glance against any terrain. The outline can be turned off in Settings.",
+      },
+      {
+        tag: "UI",
+        title: "Cleaner single-player setup",
+        desc:
+          "The single-player setup screen was reorganized: options line up in a tidy grid, starting treasury is a dropdown, and victory conditions moved into their own section with an on or off choice per victory type.",
+      },
+      {
+        tag: "UI",
+        title: "Faster loading and smoother play",
+        desc:
+          "Large parts of the interface such as Diplomacy, the Empire panel, the tech tree, and the encyclopedia now load only when opened, so the game starts faster and uses less memory. The terrain is drawn once and reused while you pan and zoom instead of being repainted every frame, ending a single-player turn no longer freezes the interface while the AI thinks, and multiplayer sends much smaller updates over the network.",
+      },
+      {
+        tag: "Fix",
+        title: "Phone layout no longer overlaps",
+        desc:
+          "The layout on phones now follows the screen itself instead of a fixed width, fixing home menu buttons and the civilization portrait overlapping in portrait and landscape. Versions installed to the home screen now respect the notch and rounded corners, and the city panel on phones moved to the same collapsible bottom slot as the unit and tile panels.",
+      },
+      {
+        tag: "Fix",
+        title: "Sharper map and wonder art",
+        desc:
+          "The map no longer turns blurry when you zoom far in, and it renders at full sharpness on high resolution displays. Natural wonder tiles now use crisp full-tile art instead of the blurry versions some maps showed.",
+      },
+      {
+        tag: "Fix",
+        title: "Fog of war seals cleanly",
+        desc:
+          "Tall terrain such as mountains no longer pokes out above unexplored fog at the map edge, and the faint grid pattern that could shine through fog along tile seams is gone.",
+      },
+      {
+        tag: "Fix",
+        title: "Tutorial coach speaks reliably",
+        desc:
+          "The tutorial coach could stay silent or appear without a portrait, especially on iPhones where audio needs a tap before it may play. The coach now unlocks audio on your first tap, retries a line that was blocked, and always shows its portrait.",
+      },
+      {
+        tag: "Fix",
+        title: "Chat works properly",
+        desc:
+          "The in-game chat's Send button now works. The panel sits below the leader avatar instead of covering other elements, shows an unread message badge, and opens as a full screen sheet on phones. Clicking in the chat no longer triggers a stray click on the map behind it.",
+      },
+      {
+        tag: "Fix",
+        title: "Scouting pulse revealed too much",
+        desc:
+          "The Reconnoiter ability was flushing hidden units up to two tiles beyond its stated scouting range, and units it revealed could fail to appear on tiles you had not explored yet. It now reveals exactly the range it says, and everything it reveals is drawn.",
+      },
+      {
+        tag: "Fix",
+        title: "Random civilization picks assign correctly",
+        desc:
+          "Choosing Random for a civilization slot now always draws from the shuffled pool of unused civilizations during world creation instead of being treated as a fixed pick.",
+      },
+      {
+        tag: "Fix",
+        title: "Skip button waits for the game to be ready",
+        desc:
+          "The Skip button on the loading screen now appears only once the map has drawn its first frame, instead of showing up while the game was still preparing.",
+      },
+      {
+        tag: "Fix",
+        title: "Close buttons respond on touch",
+        desc:
+          "The combat preview, Settings, civilization picker, and chat close buttons could ignore taps on touch screens. They now close reliably.",
+      },
+      {
+        tag: "Fix",
+        title: "God Mode placement finds room",
+        desc:
+          "In the single-player God Mode sandbox, placing a unit near a crowded spot no longer fails silently. The game now searches the whole map for the nearest open tile.",
+      },
+    ],
+  },
+  {
     version: "0.7.9",
     date: "July 2026",
     changes: [

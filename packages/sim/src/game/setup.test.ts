@@ -26,6 +26,25 @@ describe("createGame setup options", () => {
     expect(new Set(civs).size).toBe(civs.length);
   });
 
+  it('resolves the "random" sentinel and unknown civ ids to a real civ from the pool', () => {
+    // The client's civ picker sends the literal id "random" for a random seat;
+    // it must never leak onto a player (that civ id has no ability/UU/leader).
+    const state = createGame({
+      seed: "random-civ",
+      playerCount: 3,
+      humanSlots: 1,
+      civIds: ["random", "not-a-civ", "rome"],
+      barbarians: false,
+    });
+    const players = nonBarb(state);
+    expect(players[0]!.civId).not.toBe("random");
+    expect(players[1]!.civId).not.toBe("not-a-civ");
+    expect(players[2]!.civId).toBe("rome");
+    const civs = players.map((p) => p.civId);
+    expect(civs.every(Boolean)).toBe(true);
+    expect(new Set(civs).size).toBe(civs.length);
+  });
+
   it("never lets two players share a civilization even when duplicates are requested", () => {
     const state = createGame({
       seed: "dup-civ",

@@ -179,6 +179,12 @@ function settingsHtml(): string {
     `<button class="seg-btn ${s.mapLabels === "always" ? "active" : ""}" data-map-labels="always" title="Always show every name label">Always</button>` +
     `</div></div>` +
     `<div class="settings-section">` +
+    `<div class="settings-title">Unit Outlines</div>` +
+    `<div class="settings-hint">Outline each unit in its owner's color so units stand out against the terrain.</div>` +
+    `<div class="settings-row">` +
+    `<label class="settings-check"><input type="checkbox" id="settings-unit-outlines" ${s.unitOutlines ? "checked" : ""} /> Colored unit outlines</label>` +
+    `</div></div>` +
+    `<div class="settings-section">` +
     `<div class="settings-title">Audio</div>` +
     `<div class="settings-hint">Background music and combat sound effects play in the lobby and during games.</div>` +
     `<div class="settings-volumes">` +
@@ -249,6 +255,9 @@ function bindSettingsPanel(): void {
       renderSettingsPanel();
     }),
   );
+  dialog.querySelector<HTMLInputElement>("#settings-unit-outlines")?.addEventListener("change", (e) => {
+    updateSettings({ unitOutlines: (e.target as HTMLInputElement).checked });
+  });
   dialog.querySelector<HTMLInputElement>("#settings-music")?.addEventListener("change", (e) => {
     updateSettings({ musicEnabled: (e.target as HTMLInputElement).checked });
     unlockAppAudioFromGesture();

@@ -21,6 +21,7 @@ import {
   type GameState,
   type LobbyChatMessage,
   type MapType,
+  type NewGameOptions,
   type Player,
   type PlayerView,
   type PublicLeaderboardEntry,
@@ -98,6 +99,39 @@ export interface LocalGameOptions {
   savedState?: SerializedState;
   /** Build the map on finishWorldGen() so the loading scroll can appear first. */
   deferWorldGen?: boolean;
+  /** World already generated off-thread in the menu (see world-pregen.ts).
+   *  Must have been built from these same options (including seed); on rejection
+   *  finishWorldGen() falls back to generating on the main thread. */
+  pregenerated?: Promise<SerializedState>;
+}
+
+/** The exact createGame() options a LocalSession would generate its world with.
+ *  Shared with world-pregen.ts so a menu-time speculative generation is
+ *  guaranteed to produce the same world the session would have built itself. */
+export function toNewGameOptions(opts: LocalGameOptions): NewGameOptions {
+  const dims = MAP_DIMENSIONS[opts.mapSize ?? "medium"];
+  const aiCivIds = opts.aiCivIds ?? [];
+  const aiCount = Math.max(0, opts.aiCount ?? aiCivIds.length);
+  const civIds = [opts.civId, ...aiCivIds.map((c) => c ?? undefined)].slice(0, 1 + aiCount);
+  return {
+    seed: opts.seed ?? "rise",
+    cols: dims.cols,
+    rows: dims.rows,
+    mapType: opts.mapType ?? "random",
+    humanSlots: 1,
+    playerCount: 1 + aiCount,
+    barbarians: opts.barbarians ?? true,
+    aiDifficulty: opts.aiDifficulty ?? "normal",
+    legends: opts.legends ?? true,
+    naturalWonders: opts.naturalWonders ?? true,
+    villages: opts.villages ?? "medium",
+    startingGold: opts.startingGold ?? "balanced",
+    turnLimit: opts.turnLimit ?? 120,
+    gameSpeed: opts.gameSpeed ?? "normal",
+    enabledVictories: opts.enabledVictories,
+    civIds,
+    colors: opts.colors ?? undefined,
+  };
 }
 
 export class LocalSession implements Session {
@@ -129,41 +163,38 @@ export class LocalSession implements Session {
     return this.pendingOpts != null;
   }
 
-  /** Run procedural world generation (call once after the loading UI is visible). */
+  /** Run procedural world generation (call once after the loading UI is visible).
+   *  With a pre-generated world attached this resolves asynchronously: state
+   *  appears on the next microtask (or when the worker finishes) via onUpdate. */
   finishWorldGen(): void {
     if (!this.pendingOpts) return;
     const opts = this.pendingOpts;
     this.pendingOpts = null;
-    this.state = this.buildGameState(opts);
+    if (opts.pregenerated) {
+      void opts.pregenerated
+        .then((saved) => {
+          if (this.state) return;
+          this.adoptState(deserializeState(saved));
+        })
+        .catch((err) => {
+          console.error("pre-generated world unavailable, generating now:", err);
+          if (this.state) return;
+          this.adoptState(this.buildGameState(opts));
+        });
+      return;
+    }
+    this.adoptState(this.buildGameState(opts));
+  }
+
+  private adoptState(state: GameState): void {
+    this.state = state;
     this.humanPlayerId =
-      this.state.players.find((p) => p.isHuman && !p.isBarbarian)?.id ?? 0;
+      state.players.find((p) => p.isHuman && !p.isBarbarian)?.id ?? 0;
     this.cb();
   }
 
   private buildGameState(opts: LocalGameOptions): GameState {
-    const dims = MAP_DIMENSIONS[opts.mapSize ?? "medium"];
-    const aiCivIds = opts.aiCivIds ?? [];
-    const aiCount = Math.max(0, opts.aiCount ?? aiCivIds.length);
-    const civIds = [opts.civId, ...aiCivIds.map((c) => c ?? undefined)].slice(0, 1 + aiCount);
-    const state = createGame({
-      seed: opts.seed ?? "rise",
-      cols: dims.cols,
-      rows: dims.rows,
-      mapType: opts.mapType ?? "random",
-      humanSlots: 1,
-      playerCount: 1 + aiCount,
-      barbarians: opts.barbarians ?? true,
-      aiDifficulty: opts.aiDifficulty ?? "normal",
-      legends: opts.legends ?? true,
-      naturalWonders: opts.naturalWonders ?? true,
-      villages: opts.villages ?? "medium",
-      startingGold: opts.startingGold ?? "balanced",
-      turnLimit: opts.turnLimit ?? 120,
-      gameSpeed: opts.gameSpeed ?? "normal",
-      enabledVictories: opts.enabledVictories,
-      civIds,
-      colors: opts.colors ?? undefined,
-    });
+    const state = createGame(toNewGameOptions(opts));
     beginTurn(state);
     return state;
   }

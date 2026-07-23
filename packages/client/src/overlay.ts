@@ -24,6 +24,8 @@ export interface OverlayState {
   selectedCityId: number | null;
   /** When true, draw every unit/city name label; otherwise only the selected one. */
   alwaysShowLabels?: boolean;
+  /** Player-color contour behind unit sprites (defaults to on). */
+  unitOutlines?: boolean;
   reachable: Set<string>;
   attackTargets: Set<string>;
   /** Tiles a pending targeted ability can be used against (highlighted distinctly). */
@@ -49,6 +51,62 @@ export interface OverlayState {
   featureAtlas?: FeatureAtlas;
   constructionAtlas?: ConstructionAtlas;
   religionIconAtlas?: ReligionIconAtlas;
+}
+
+// ---- unit silhouette outlines ---------------------------------------------
+// A thin contour in the owning player's color drawn behind unit sprites, so
+// units separate cleanly from terrain of any color and read as theirs at a
+// glance. Built once per (image, color) pair: the sprite's alpha shape is
+// stamped at 8 offsets (a dilation), the union is filled with the player
+// color, and the result is cached for the image's lifetime.
+const OUTLINE_FRAC = 0.025; // contour thickness as a fraction of sprite width
+const OUTLINE_ALPHA = 0.6; // soften the rim so bright player colors don't glare
+const outlineCache = new WeakMap<HTMLImageElement, Map<string, HTMLCanvasElement>>();
+
+function spriteOutline(img: HTMLImageElement, color: string): HTMLCanvasElement | undefined {
+  if (!img.naturalWidth) return undefined;
+  let byColor = outlineCache.get(img);
+  if (!byColor) {
+    byColor = new Map();
+    outlineCache.set(img, byColor);
+  }
+  let c = byColor.get(color);
+  if (!c) {
+    const pad = Math.max(2, Math.ceil(img.naturalWidth * OUTLINE_FRAC));
+    c = document.createElement("canvas");
+    c.width = img.naturalWidth + pad * 2;
+    c.height = img.naturalHeight + pad * 2;
+    const cx = c.getContext("2d")!;
+    for (let i = 0; i < 8; i++) {
+      const a = (Math.PI / 4) * i;
+      cx.drawImage(img, pad + Math.cos(a) * pad, pad + Math.sin(a) * pad);
+    }
+    cx.globalCompositeOperation = "source-in";
+    cx.globalAlpha = OUTLINE_ALPHA;
+    cx.fillStyle = color;
+    cx.fillRect(0, 0, c.width, c.height);
+    byColor.set(color, c);
+  }
+  return c;
+}
+
+/** drawImage plus the sprite's colored contour behind it (same placement math). */
+function drawOutlinedSprite(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  color: string,
+): void {
+  const outline = spriteOutline(img, color);
+  if (outline) {
+    const exW = (outline.width - img.naturalWidth) * (w / img.naturalWidth);
+    const exH = (outline.height - img.naturalHeight) * (h / img.naturalHeight);
+    ctx.drawImage(outline, x - exW / 2, y - exH / 2, w + exW, h + exH);
+  }
+  ctx.drawImage(img, x, y, w, h);
 }
 
 /** Vector fallback for a construction site when the sprite atlas hasn't loaded
@@ -224,6 +282,10 @@ function drawHpBar(
 }
 
 const MOBILE_UNIT_SCALE = 1.35;
+// Bump so unit sprites read more prominently against the terrain. Tuned per
+// platform: mobile is at its sweet spot, desktop wants units a notch larger.
+const MOBILE_UNIT_DRAW_SCALE = 1.08;
+const DESKTOP_UNIT_DRAW_SCALE = 1.2;
 
 /** Draws reachable + attack highlights, then cities and units, respecting fog. */
 export function drawOverlay(
@@ -710,7 +772,9 @@ export function drawOverlay(
   }
 
   // Units.
-  const unitScale = isPhoneShell() ? MOBILE_UNIT_SCALE : 1;
+  const unitScale = isPhoneShell()
+    ? MOBILE_UNIT_SCALE * MOBILE_UNIT_DRAW_SCALE
+    : DESKTOP_UNIT_DRAW_SCALE;
   const civByPlayer = new Map(state.players.map((p) => [p.id, p.civId]));
   for (const unit of state.units.values()) {
     if (unit.aboardShipId !== undefined) continue;
@@ -746,7 +810,11 @@ export function drawOverlay(
       (uu && o.unitAtlas?.images[uu.id]) ||
       o.unitAtlas?.images[unit.type];
     if (unitImg && isImageReady(unitImg)) {
-      ctx.drawImage(unitImg, imgX, imgY, imgSize, imgSize);
+      if (o.unitOutlines === false) {
+        ctx.drawImage(unitImg, imgX, imgY, imgSize, imgSize);
+      } else {
+        drawOutlinedSprite(ctx, unitImg, imgX, imgY, imgSize, imgSize, colorOf(unit.ownerId));
+      }
     } else if (showLabels) {
       ctx.fillStyle = "#fff";
       ctx.font = `bold ${Math.round(size * 0.5 * unitScale)}px system-ui, sans-serif`;

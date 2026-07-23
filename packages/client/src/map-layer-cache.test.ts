@@ -25,6 +25,21 @@ describe("MapLayerCache", () => {
     expect(cache.buildZoomLevel).toBe(2);
   });
 
+  it("bakes at higher resolution on HiDPI displays (still capped by canvas size)", () => {
+    const state = createGame({
+      seed: "cache-test",
+      cols: 36,
+      rows: 24,
+      playerCount: 1,
+      humanSlots: 1,
+      playerNames: ["Rome"],
+    });
+    const cache = new MapLayerCache();
+    expect(cache.canUse(state, 2)).toBe(true);
+    expect(cache.buildZoomLevel).toBeGreaterThan(2);
+    expect(cache.buildZoomLevel).toBeLessThanOrEqual(4);
+  });
+
   it("blit aligns cache pixels with live world-to-screen", () => {
     const state = createGame({ seed: "align", cols: 24, rows: 16, playerCount: 1 });
     const tile = state.map.tiles[Math.floor(state.map.tiles.length / 2)]!;
