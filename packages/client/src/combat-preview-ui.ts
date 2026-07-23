@@ -1,7 +1,7 @@
 // Pre-attack confirmation dialog: estimated damage and combat modifiers.
 
 import type { CombatModifier, CombatPreviewDetail } from "@roc/sim";
-import { bindDialogClose } from "./dialog-close";
+import { bindDialogClose, dialogHeader } from "./dialog-close";
 import { assetUrl } from "./asset-base";
 
 let overlayEl: HTMLDivElement | null = null;
@@ -15,7 +15,7 @@ function ensureElements(): { overlay: HTMLDivElement; dialog: HTMLDivElement } {
     overlayEl.className = "combat-preview-overlay";
     dialogEl = document.createElement("div");
     dialogEl.id = "combat-preview-dialog";
-    dialogEl.className = "combat-preview-dialog panel";
+    dialogEl.className = "combat-preview-dialog panel roc-dialog";
     document.body.appendChild(overlayEl);
     document.body.appendChild(dialogEl);
   }
@@ -99,8 +99,7 @@ function sideColumn(
 function dialogHtml(d: CombatPreviewDetail): string {
   const noRetal = d.ranged;
   return (
-    `<button type="button" class="dialog-x" id="combat-preview-close" title="Close" aria-label="Close">✕</button>` +
-    `<div class="combat-preview-header"><b>Attack Preview</b></div>` +
+    dialogHeader("Attack Preview", "combat-preview-close") +
     `<div class="combat-preview-scroll panel-dialog-body">` +
     `<div class="combat-preview-matchup">` +
     sideColumn(d, "attacker", d.attackerName, d.attackerHp, d.attackerHpAfter, d.attackerMaxHp, d.attackerDamage, d.attackerMods, false) +

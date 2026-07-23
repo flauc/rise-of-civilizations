@@ -33,14 +33,20 @@ export function gameAudioUrl(path: string): string {
   return assetUrl(encoded);
 }
 
-function audioVolumeScale(): number {
-  return getSettings().audioVolume;
+function musicVolumeScale(): number {
+  const v = getSettings().musicVolume;
+  return Number.isFinite(v) ? v : 1;
+}
+
+function sfxVolumeScale(): number {
+  const v = getSettings().sfxVolume;
+  return Number.isFinite(v) ? v : 1;
 }
 
 function bgmTargetVolume(): number {
   if (!getSettings().musicEnabled) return 0;
   const base = duckDepth > 0 ? HTML_BGM_DUCK : HTML_BGM_VOLUME;
-  return base * audioVolumeScale();
+  return base * musicVolumeScale();
 }
 
 function ensureBgmSlot(slot: 0 | 1): HTMLAudioElement {
@@ -284,7 +290,7 @@ export function playBuildingSound(): void {
 async function playHtmlOneShotSfx(clipPath: string, fallbackPath?: string): Promise<void> {
   const clip = new Audio(gameAudioUrl(clipPath));
   configureMobileAudio(clip);
-  clip.volume = HTML_SFX_VOLUME * audioVolumeScale();
+  clip.volume = HTML_SFX_VOLUME * sfxVolumeScale();
   clip.addEventListener(
     "error",
     () => {

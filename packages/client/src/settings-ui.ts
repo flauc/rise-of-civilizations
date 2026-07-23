@@ -10,7 +10,7 @@ import {
 import { isNativeApp, setLobbyHidden } from "./app-routes";
 import { unlockAppAudioFromGesture } from "./game-sounds";
 import { getSettings, updateSettings, type TurnUpdateView } from "./settings";
-import { bindDialogClose } from "./dialog-close";
+import { bindDialogClose, dialogCloseButton } from "./dialog-close";
 import {
   applyCapturedKeybind,
   cancelKeybindCapture,
@@ -81,7 +81,7 @@ function ensureElements(): { overlay: HTMLDivElement; dialog: HTMLDivElement } {
     overlayEl.className = "settings-overlay";
     dialogEl = document.createElement("div");
     dialogEl.id = "settings-dialog";
-    dialogEl.className = "settings-dialog";
+    dialogEl.className = "settings-dialog roc-dialog";
     document.body.appendChild(overlayEl);
     document.body.appendChild(dialogEl);
     document.addEventListener("keydown", (e) => {
@@ -152,7 +152,7 @@ function settingsHtml(): string {
 
   return (
     `<div class="settings-head-band">` +
-    `<button type="button" class="dialog-x" id="settings-close" title="Close" aria-label="Close">✕</button>` +
+    dialogCloseButton("settings-close") +
     `<b class="settings-head-title">SETTINGS</b>` +
     `</div>` +
     `<div class="settings-body panel-dialog-body">` +
@@ -181,12 +181,21 @@ function settingsHtml(): string {
     `<div class="settings-section">` +
     `<div class="settings-title">Audio</div>` +
     `<div class="settings-hint">Background music and combat sound effects play in the lobby and during games.</div>` +
+    `<div class="settings-volumes">` +
     `<div class="settings-volume">` +
     `<div class="settings-volume-head">` +
-    `<span class="settings-volume-label">Volume</span>` +
-    `<span class="settings-volume-value" id="settings-audio-volume-val">${Math.round(s.audioVolume * 100)}%</span>` +
+    `<span class="settings-volume-label">Music volume</span>` +
+    `<span class="settings-volume-value" id="settings-music-volume-val">${Math.round(s.musicVolume * 100)}%</span>` +
     `</div>` +
-    `<input type="range" id="settings-audio-volume" min="0" max="100" step="1" value="${Math.round(s.audioVolume * 100)}" aria-label="Volume" />` +
+    `<input type="range" id="settings-music-volume" min="0" max="100" step="1" value="${Math.round(s.musicVolume * 100)}" aria-label="Music volume" />` +
+    `</div>` +
+    `<div class="settings-volume">` +
+    `<div class="settings-volume-head">` +
+    `<span class="settings-volume-label">Sound effects volume</span>` +
+    `<span class="settings-volume-value" id="settings-sfx-volume-val">${Math.round(s.sfxVolume * 100)}%</span>` +
+    `</div>` +
+    `<input type="range" id="settings-sfx-volume" min="0" max="100" step="1" value="${Math.round(s.sfxVolume * 100)}" aria-label="Sound effects volume" />` +
+    `</div>` +
     `</div>` +
     `<div class="settings-row">` +
     `<label class="settings-check"><input type="checkbox" id="settings-music" ${s.musicEnabled ? "checked" : ""} /> Music</label>` +
@@ -248,12 +257,20 @@ function bindSettingsPanel(): void {
     updateSettings({ sfxEnabled: (e.target as HTMLInputElement).checked });
     unlockAppAudioFromGesture();
   });
-  const volumeSlider = dialog.querySelector<HTMLInputElement>("#settings-audio-volume");
-  const volumeLabel = dialog.querySelector<HTMLSpanElement>("#settings-audio-volume-val");
-  volumeSlider?.addEventListener("input", (e) => {
+  const musicVolumeSlider = dialog.querySelector<HTMLInputElement>("#settings-music-volume");
+  const musicVolumeLabel = dialog.querySelector<HTMLSpanElement>("#settings-music-volume-val");
+  musicVolumeSlider?.addEventListener("input", (e) => {
     const pct = Number((e.target as HTMLInputElement).value);
-    if (volumeLabel) volumeLabel.textContent = `${pct}%`;
-    updateSettings({ audioVolume: pct / 100 });
+    if (musicVolumeLabel) musicVolumeLabel.textContent = `${pct}%`;
+    updateSettings({ musicVolume: pct / 100 });
+    unlockAppAudioFromGesture();
+  });
+  const sfxVolumeSlider = dialog.querySelector<HTMLInputElement>("#settings-sfx-volume");
+  const sfxVolumeLabel = dialog.querySelector<HTMLSpanElement>("#settings-sfx-volume-val");
+  sfxVolumeSlider?.addEventListener("input", (e) => {
+    const pct = Number((e.target as HTMLInputElement).value);
+    if (sfxVolumeLabel) sfxVolumeLabel.textContent = `${pct}%`;
+    updateSettings({ sfxVolume: pct / 100 });
     unlockAppAudioFromGesture();
   });
   if (shouldOfferScreenRotation()) bindScreenRotationControls(dialog, () => renderSettingsPanel());

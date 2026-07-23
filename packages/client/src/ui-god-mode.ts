@@ -14,7 +14,7 @@ import {
 import type { Tile } from "@roc/shared";
 import { WONDER_DEFS } from "@roc/data";
 import { CHEAT_WORK_KINDS, type CheatAction } from "./god-mode";
-import { bindDialogClose } from "./dialog-close";
+import { bindDialogClose, dialogHeader } from "./dialog-close";
 import { withPreservedScroll } from "./panel-scroll";
 
 export interface GodModeHandlers {
@@ -64,8 +64,7 @@ export function mountGodModePanel(godPanel: HTMLElement, handlers: GodModeHandle
   let renderSig = "";
 
   godPanel.innerHTML =
-    `<div class="panel-dialog-header"><b>God Mode</b></div>` +
-    `<button type="button" class="dialog-x" id="god-close" title="Close" aria-label="Close"></button>` +
+    dialogHeader("God Mode", "god-close") +
     `<div class="panel-dialog-body" id="god-panel-body"></div>`;
   const godBody = godPanel.querySelector<HTMLDivElement>("#god-panel-body")!;
 

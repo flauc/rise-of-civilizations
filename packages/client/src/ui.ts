@@ -7,7 +7,7 @@ import { confirmDialog } from "./confirm-dialog";
 import { createLazyEmpire } from "./empire-lazy";
 import { createLazyDiplomacy } from "./diplomacy-lazy";
 import { isPhoneShell } from "./viewport-shell";
-import { bindDialogClose, wirePanelClose } from "./dialog-close";
+import { bindDialogClose, wirePanelClose, dialogHeader, dialogCloseButton } from "./dialog-close";
 import { gameHud, initGameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
 import { setPreservedHtml, withPreservedScroll } from "./panel-scroll";
 import type { DealItem } from "@roc/sim";
@@ -588,17 +588,8 @@ function unitPanelRenderSig(
   return sig;
 }
 
-/** Sticky title row shared by city sub-dialogs (construction, training, specialists). */
-function dialogHeader(title: string, closeId: string, opts?: { subtitle?: string; extra?: string }): string {
-  return (
-    `<div class="panel-dialog-header">` +
-    `<b>${title}</b>` +
-    (opts?.subtitle ? `<div class="sub" style="margin-top:4px">${opts.subtitle}</div>` : "") +
-    (opts?.extra ?? "") +
-    `</div>` +
-    `<button type="button" class="dialog-x" id="${closeId}" title="Close" aria-label="Close"></button>`
-  );
-}
+/** Overlay panels that share the universal pinned ✕ (above top bar). */
+const HUD_DIALOG = "panel roc-dialog hidden";
 
 const RUSH_GLYPH: Record<RushCurrency, string> = { gold: "🪙", faith: "☮️", culture: "🎭" };
 
@@ -781,24 +772,21 @@ export function createUI(handlers: UIHandlers): UI {
   });
 
   const cityPanel = div("city-panel", "panel hidden");
-  const research = div("research", "panel hidden");
+  const research = div("research", HUD_DIALOG);
   research.innerHTML =
-    `<div class="panel-dialog-header research-dialog-header">` +
-    `<b>Choose Research</b>` +
-    `<div class="research-head-actions">` +
-    `<button type="button" class="btn" id="open-techtree">🌳 View full</button>` +
-    `<button type="button" class="dialog-x" id="rclose" title="Close" aria-label="Close"></button>` +
-    `</div></div>` +
+    dialogHeader("Choose Research", "rclose", {
+      headBtn: `<button type="button" class="dialog-head-btn btn" id="open-techtree">🌳 View full</button>`,
+    }) +
     `<div class="panel-dialog-body" id="research-body"></div>`;
   const researchBody = research.querySelector<HTMLDivElement>("#research-body")!;
-  const techtree = div("techtree", "panel hidden");
-  const civics = div("civics", "panel hidden");
-  const religionPanel = div("religion", "panel hidden");
-  const greatPeoplePanel = div("great-people", "panel hidden");
-  const legendsPanel = div("legends", "panel hidden");
-  const production = div("production", "panel hidden");
-  const specialists = div("specialists", "panel hidden");
-  const training = div("training", "panel hidden");
+  const techtree = div("techtree", HUD_DIALOG);
+  const civics = div("civics", HUD_DIALOG);
+  const religionPanel = div("religion", HUD_DIALOG);
+  const greatPeoplePanel = div("great-people", HUD_DIALOG);
+  const legendsPanel = div("legends", HUD_DIALOG);
+  const production = div("production", HUD_DIALOG);
+  const specialists = div("specialists", HUD_DIALOG);
+  const training = div("training", HUD_DIALOG);
   const log = div("log", "");
   const bannerEl = div("banner", "");
   const gameover = div("gameover", "hidden");
@@ -812,13 +800,13 @@ export function createUI(handlers: UIHandlers): UI {
   gameoverExploreBar.querySelector<HTMLButtonElement>("#go-quit-map")?.addEventListener("click", () =>
     handlers.onGameOverQuit(),
   );
-  const saveModal = div("save-modal", "panel hidden");
+  const saveModal = div("save-modal", HUD_DIALOG);
   saveModal.innerHTML =
     dialogHeader("Game Menu", "save-close") +
     `<div class="panel-dialog-body save-modal-body" id="save-modal-body"></div>`;
   const saveModalBody = saveModal.querySelector<HTMLDivElement>("#save-modal-body")!;
-  const saveModalTitleEl = saveModal.querySelector<HTMLDivElement>(".panel-dialog-header > b")!;
-  const godPanel = div("god-panel", "panel hidden");
+  const saveModalTitleEl = saveModal.querySelector<HTMLDivElement>(".roc-dialog-head-title > b")!;
+  const godPanel = div("god-panel", HUD_DIALOG);
   let godModeEnabled = false;
   let godModePanel: GodModePanel | null = null;
   let godModeLoad: Promise<GodModePanel> | null = null;
@@ -869,9 +857,9 @@ export function createUI(handlers: UIHandlers): UI {
     );
   };
   const villageOverlay = div("village-overlay", "");
-  const villageDialog = div("village-dialog", "");
+  const villageDialog = div("village-dialog", "roc-dialog");
   villageDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="village-close" title="Close" aria-label="Close">✕</button>` +
+    dialogCloseButton("village-close") +
     `<img class="village-art" id="village-art" src="" alt="" />` +
     `<div class="village-title" id="village-title">Village Discovered</div>` +
     `<div class="village-msg" id="village-msg"></div>` +
@@ -896,9 +884,9 @@ export function createUI(handlers: UIHandlers): UI {
   // Great-person activation confirmation: explains exactly what activating a
   // recruited figure will do before the (one-shot, irreversible) commitment.
   const gpActivateOverlay = div("gp-activate-overlay", "");
-  const gpActivateDialog = div("gp-activate-dialog", "");
+  const gpActivateDialog = div("gp-activate-dialog", "roc-dialog");
   gpActivateDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="gp-activate-x" title="Close" aria-label="Close">✕</button>` +
+    dialogCloseButton("gp-activate-x") +
     `<img class="gp-activate-art" id="gp-activate-art" src="" alt="" />` +
     `<div class="gp-activate-title" id="gp-activate-title"></div>` +
     `<div class="gp-activate-sub" id="gp-activate-sub"></div>` +
@@ -951,9 +939,9 @@ export function createUI(handlers: UIHandlers): UI {
   // portrait. Always explains the ability; the Use button is enabled only when
   // the ability is unlocked and off cooldown.
   const leaderAbilityOverlay = div("leader-ability-overlay", "");
-  const leaderAbilityDialog = div("leader-ability-dialog", "");
+  const leaderAbilityDialog = div("leader-ability-dialog", "roc-dialog");
   leaderAbilityDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="la-dialog-x" title="Close" aria-label="Close">✕</button>` +
+    dialogCloseButton("la-dialog-x") +
     `<img class="la-dialog-art" id="la-dialog-art" src="" alt="" />` +
     `<div class="la-dialog-title" id="la-dialog-title"></div>` +
     `<div class="la-dialog-sub" id="la-dialog-sub"></div>` +
@@ -1008,7 +996,7 @@ export function createUI(handlers: UIHandlers): UI {
     handlers.onUseLeaderAbility();
   });
 
-  const logDialog = div("log-dialog", "panel hidden");
+  const logDialog = div("log-dialog", HUD_DIALOG);
   logDialog.innerHTML =
     dialogHeader("Game Log", "log-close") +
     `<div class="panel-dialog-body log-dialog-content" id="log-dialog-content"></div>`;
@@ -1018,7 +1006,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
   wirePanelClose(logDialog.querySelector<HTMLButtonElement>("#log-close")!, hideLogDialog);
 
-  const leaderboardDialog = div("leaderboard-dialog", "panel hidden");
+  const leaderboardDialog = div("leaderboard-dialog", HUD_DIALOG);
   leaderboardDialog.innerHTML =
     dialogHeader("Civilization Standings", "leaderboard-close") +
     `<div class="panel-dialog-body" id="leaderboard-content"></div>`;
@@ -1119,7 +1107,7 @@ export function createUI(handlers: UIHandlers): UI {
     syncOverlayHudShell();
   };
 
-  const goldDialog = div("gold-dialog", "panel hidden");
+  const goldDialog = div("gold-dialog", HUD_DIALOG);
   goldDialog.innerHTML =
     dialogHeader("Treasury", "gold-close") +
     `<div class="panel-dialog-body" id="gold-dialog-content"></div>`;
@@ -1131,7 +1119,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
   wirePanelClose(goldDialog.querySelector<HTMLButtonElement>("#gold-close")!, hideGoldDialog);
 
-  const moraleDialog = div("morale-dialog", "panel hidden");
+  const moraleDialog = div("morale-dialog", HUD_DIALOG);
   moraleDialog.innerHTML =
     dialogHeader("Empire Morale", "morale-close") +
     `<div class="panel-dialog-body morale-scroll">` +
@@ -1168,9 +1156,9 @@ export function createUI(handlers: UIHandlers): UI {
   wirePanelClose(moraleClose, hideMoraleDialog);
 
   const unitPromoOverlay = div("unit-promo-overlay", "");
-  const unitPromoDialog = div("unit-promo-dialog", "");
+  const unitPromoDialog = div("unit-promo-dialog", "roc-dialog");
   unitPromoDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="unit-promo-close" title="Close" aria-label="Close">✕</button>` +
+    dialogCloseButton("unit-promo-close") +
     `<div class="unit-promo-dialog-title">Unit Promotions</div>` +
     `<div id="unit-promo-dialog-content"></div>`;
   const unitPromoDialogContent = unitPromoDialog.querySelector<HTMLDivElement>("#unit-promo-dialog-content")!;
@@ -1190,13 +1178,12 @@ export function createUI(handlers: UIHandlers): UI {
   bindDialogClose(unitPromoClose, hideUnitPromoDialog);
 
   const turnUpdateOverlay = div("turn-update-overlay", "");
-  const turnUpdateDialog = div("turn-update-dialog", "");
+  const turnUpdateDialog = div("turn-update-dialog", "roc-dialog");
   turnUpdateDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="turn-update-close" title="Close" aria-label="Close">✕</button>` +
-    `<div class="turn-update-header">` +
-    `<div class="turn-update-heading" id="turn-update-heading">Turn Updates</div>` +
-    `<button class="btn tu-view-toggle" id="turn-update-view-toggle"></button>` +
-    `</div>` +
+    dialogHeader("Turn Updates", "turn-update-close", {
+      titleId: "turn-update-heading",
+      headBtn: `<button type="button" class="dialog-head-btn btn tu-view-toggle" id="turn-update-view-toggle"></button>`,
+    }) +
     `<div class="turn-update-expanded" id="turn-update-expanded">` +
     `<img class="turn-update-art" id="turn-update-art" src="" alt="" />` +
     `<div class="turn-update-title" id="turn-update-title"></div>` +
@@ -1566,7 +1553,6 @@ export function createUI(handlers: UIHandlers): UI {
     turnUpdateIndex = Math.min(turnUpdateIndex, turnUpdateQueue.length - 1);
     turnUpdateOverlay.classList.add("show");
     turnUpdateDialog.classList.add("show");
-    wirePanelClose(turnUpdateClose, hideTurnUpdateDialog);
     syncOverlayHudShell();
     renderTurnUpdateDialog();
   };
@@ -1814,7 +1800,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderTurnUpdateDialog();
     }
   });
-  wirePanelClose(turnUpdateClose, hideTurnUpdateDialog);
+  bindDialogClose(turnUpdateClose, hideTurnUpdateDialog);
 
   const renderAction = (view: UIView): void => {
     if (view.state.gameOver) {
