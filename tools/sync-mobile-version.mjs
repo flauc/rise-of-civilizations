@@ -1,9 +1,15 @@
 #!/usr/bin/env node
 /**
- * Sync native app versions before a store build.
+ * Sync app version from root package.json before a mobile or client build.
  *
- * - versionName / MARKETING_VERSION ← root package.json "version"
- * - versionCode / CURRENT_PROJECT_VERSION ← 1000 + run*10 + attempt in CI (GITHUB_RUN_* env)
+ * Single source of truth: package.json "version"
+ *
+ * Targets:
+ * - Android versionName / versionCode (mobile/android/app/build.gradle)
+ * - iOS MARKETING_VERSION / CURRENT_PROJECT_VERSION (project.pbxproj)
+ * - Lobby + changelog label (packages/client/src/version.ts)
+ *
+ * Build numbers: 1000 + run*10 + attempt in CI (GITHUB_RUN_* env), else current + 1.
  *
  * Usage:
  *   node tools/sync-mobile-version.mjs
@@ -20,6 +26,7 @@ const versionName = String(pkg.version ?? "0.0.0").trim();
 
 const gradlePath = join(repoRoot, "mobile/android/app/build.gradle");
 const pbxPath = join(repoRoot, "mobile/ios/App/App.xcodeproj/project.pbxproj");
+const versionTsPath = join(repoRoot, "packages/client/src/version.ts");
 
 function readBuildNumber() {
   const gradle = readFileSync(gradlePath, "utf8");
@@ -52,4 +59,11 @@ pbx = pbx.replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${versionN
 pbx = pbx.replace(/CURRENT_PROJECT_VERSION = [^;]+;/g, `CURRENT_PROJECT_VERSION = ${buildNumber};`);
 writeFileSync(pbxPath, pbx);
 
-console.log(`✓ mobile versions → ${versionName} (${buildNumber})`);
+let versionTs = readFileSync(versionTsPath, "utf8");
+versionTs = versionTs.replace(
+  /export const CURRENT_VERSION = "[^"]*";/,
+  `export const CURRENT_VERSION = "${versionName}";`,
+);
+writeFileSync(versionTsPath, versionTs);
+
+console.log(`✓ app version ${versionName} (build ${buildNumber}) → Android, iOS, client`);

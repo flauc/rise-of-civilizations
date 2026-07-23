@@ -31,6 +31,16 @@ const assetBase = (process.env.ASSET_BASE || "https://game.rise-of-civilizations
 const wsUrl = (process.env.WS_URL || "wss://server.rise-of-civilizations.com/ws").trim();
 const legalBase = (process.env.LEGAL_BASE || assetBase.replace(/\/$/, "")).trim();
 
+console.log("> syncing app version from package.json…");
+const syncVersion = spawnSync("node", [join(repoRoot, "tools", "sync-mobile-version.mjs")], {
+  cwd: repoRoot,
+  stdio: "inherit",
+  shell: process.platform === "win32",
+});
+if (syncVersion.status !== 0) {
+  process.exit(syncVersion.status ?? 1);
+}
+
 console.log(`> building client (assets -> ${assetBase}, multiplayer -> ${wsUrl}, legal -> ${legalBase})…`);
 const build = spawnSync("bun", ["run", "--filter", "@roc/client", "build"], {
   cwd: repoRoot,
