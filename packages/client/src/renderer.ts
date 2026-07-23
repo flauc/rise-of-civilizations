@@ -7,8 +7,10 @@ import {
   getTile,
   hashSeed,
   isWater,
-  isMapBorderTile,
+  isBottomMapBorderTile,
+  isSideVoidEdgeTile,
   mapEdgeSkirtKind,
+  mapEdgeSkirtRotationRad,
   offsetToAxial,
   pixelToAxial,
   type GameMap,
@@ -20,7 +22,7 @@ import { TERRAIN_COLORS, HEX_STROKE, HEX_HOVER_STROKE } from "./palette";
 import { isImageReady, type TerrainAtlas } from "./terrain-assets";
 import { improvementFrameFor, type ImprovementAtlas } from "./improvement-assets";
 import { coastFrameFor, type CoastAtlas } from "./coast-assets";
-import { type MapEdgeAtlas } from "./map-edge-assets";
+import { mapEdgeFrameFor, type MapEdgeAtlas } from "./map-edge-assets";
 import { riverChannelFrame, riverMouthFrame, riverMountainFrame, type RiverAtlas } from "./river-assets";
 import { roadFrame, isolatedRoadFrame, type RoadAtlas } from "./road-assets";
 import { RESOURCE_DEFS, resourceActive, type GameState, type ResourceId } from "@roc/sim";
@@ -393,8 +395,67 @@ function landNeighborMask(map: GameMap, col: number, row: number): number {
   return mask;
 }
 
-/** How many off-map hex rings of void to paint beyond each explored border edge. */
-const MAP_EDGE_VOID_DEPTH = 5;
+/** How many off-map hex rings of void beyond top/left/right (BFS-filled band). */
+const MAP_EDGE_VOID_DEPTH = 4;
+/** Slight overscale so void hex art overlaps and hides seams between tiles. */
+const MAP_EDGE_VOID_TILE_SCALE = 1.045;
+
+function isOffMapTile(map: GameMap, col: number, row: number): boolean {
+  return col < 0 || row < 0 || col >= map.cols || row >= map.rows;
+}
+
+interface VoidGhost {
+  col: number;
+  row: number;
+  depth: number;
+}
+
+/** All off-map void hexes reachable from explored side edges (connected fill). */
+function collectMapEdgeVoidGhosts(
+  map: GameMap,
+  maxDepth: number,
+  explored: Set<string> | undefined,
+  skipFogPass: boolean | undefined,
+): VoidGhost[] {
+  const queued = new Map<string, number>();
+
+  for (const t of map.tiles) {
+    if (!isSideVoidEdgeTile(map, t.col, t.row)) continue;
+    const key = `${t.col},${t.row}`;
+    if (explored && !explored.has(key) && !skipFogPass) continue;
+    const here = offsetToAxial({ col: t.col, row: t.row });
+    for (const d of outwardEdgeDirections(map, t.col, t.row)) {
+      const ghost = axialToOffset(axialNeighbor(here, d));
+      if (!isOffMapTile(map, ghost.col, ghost.row)) continue;
+      const gk = `${ghost.col},${ghost.row}`;
+      const prev = queued.get(gk);
+      if (prev === undefined || 1 < prev) queued.set(gk, 1);
+    }
+  }
+
+  const queue: VoidGhost[] = [...queued.entries()].map(([gk, depth]) => {
+    const [col, row] = gk.split(",").map(Number) as [number, number];
+    return { col, row, depth };
+  });
+
+  for (let qi = 0; qi < queue.length; qi++) {
+    const cur = queue[qi]!;
+    if (cur.depth >= maxDepth) continue;
+    const here = offsetToAxial({ col: cur.col, row: cur.row });
+    for (let d = 0; d < 6; d++) {
+      const nb = axialToOffset(axialNeighbor(here, d));
+      if (!isOffMapTile(map, nb.col, nb.row)) continue;
+      const nk = `${nb.col},${nb.row}`;
+      const nextDepth = cur.depth + 1;
+      const prev = queued.get(nk);
+      if (prev !== undefined && prev <= nextDepth) continue;
+      queued.set(nk, nextDepth);
+      queue.push({ col: nb.col, row: nb.row, depth: nextDepth });
+    }
+  }
+
+  return queue.sort((a, b) => a.depth - b.depth || a.row - b.row || a.col - b.col);
+}
 
 /** Draw hex-under art anchored like a terrain tile (256×384 footprint). */
 function drawHexUnderOverlay(
@@ -403,23 +464,29 @@ function drawHexUnderOverlay(
   sx: number,
   sy: number,
   footprint: number,
+  rotationRad = 0,
 ): void {
   if (!img || !isImageReady(img)) return;
   const scale = footprint / img.naturalWidth;
   const drawW = img.naturalWidth * scale;
   const drawH = img.naturalHeight * scale;
-  ctx.drawImage(img, sx - drawW / 2, sy + footprint / 2 - drawH, drawW, drawH);
+  ctx.save();
+  ctx.translate(sx, sy);
+  if (rotationRad !== 0) ctx.rotate(rotationRad);
+  ctx.drawImage(img, -drawW / 2, footprint / 2 - drawH, drawW, drawH);
+  ctx.restore();
 }
 
-/** Draw map-edge skirt at the south hex tip (0° — bottom row only). */
+/** Draw map-edge skirt (same anchor/rotation as other hex-under art). */
 function drawSkirtOverlay(
   ctx: CanvasRenderingContext2D,
   img: HTMLImageElement | null | undefined,
   sx: number,
   sy: number,
   footprint: number,
+  rotationRad = 0,
 ): void {
-  drawHexUnderOverlay(ctx, img, sx, sy, footprint);
+  drawHexUnderOverlay(ctx, img, sx, sy, footprint, rotationRad);
 }
 
 /** Hex directions that step off-map toward this tile's outward edge(s). */
@@ -442,7 +509,7 @@ function outwardEdgeDirections(map: GameMap, col: number, row: number): number[]
   return dirs;
 }
 
-/** Void hexes stepping off-map from explored border tiles. */
+/** Void hexes in a connected off-map band beyond top/left/right. */
 function paintMapEdgeVoidBand(
   ctx: CanvasRenderingContext2D,
   map: GameMap,
@@ -453,36 +520,27 @@ function paintMapEdgeVoidBand(
   cssWidth: number,
   cssHeight: number,
 ): void {
-  const voidImg = opts.mapEdgeAtlas?.voidTile;
-  if (!voidImg) return;
-  const seen = new Set<string>();
+  const voidImg = mapEdgeFrameFor(opts.mapEdgeAtlas, "void0");
+  if (!voidImg || !isImageReady(voidImg)) return;
 
-  for (const t of map.tiles) {
-    if (!isMapBorderTile(map, t.col, t.row)) continue;
-    const key = `${t.col},${t.row}`;
-    if (opts.fog && !opts.fog.explored.has(key) && !opts.skipFogPass) continue;
-    const here = offsetToAxial({ col: t.col, row: t.row });
-    for (const d of outwardEdgeDirections(map, t.col, t.row)) {
-      let walk = here;
-      for (let depth = 1; depth <= MAP_EDGE_VOID_DEPTH; depth++) {
-        walk = axialNeighbor(walk, d);
-        const ghost = axialToOffset(walk);
-        if (ghost.col >= 0 && ghost.row >= 0 && ghost.col < map.cols && ghost.row < map.rows) break;
-        const ghostKey = `${ghost.col},${ghost.row}`;
-        if (seen.has(ghostKey)) continue;
-        seen.add(ghostKey);
-        const c = tileCenterWorld(ghost.col, ghost.row);
-        const sx = camera.worldToScreenX(c.x);
-        const sy = camera.worldToScreenY(c.y);
-        if (sx < -margin || sy < -margin || sx > cssWidth + margin || sy > cssHeight + margin) continue;
-        drawSkirtOverlay(ctx, voidImg, sx, sy, footprint);
-      }
-    }
+  const ghosts = collectMapEdgeVoidGhosts(
+    map,
+    MAP_EDGE_VOID_DEPTH,
+    opts.fog?.explored,
+    opts.skipFogPass,
+  );
+
+  for (const ghost of ghosts) {
+    const c = tileCenterWorld(ghost.col, ghost.row);
+    const sx = camera.worldToScreenX(c.x);
+    const sy = camera.worldToScreenY(c.y);
+    if (sx < -margin || sy < -margin || sx > cssWidth + margin || sy > cssHeight + margin) continue;
+    drawFootprintOverlay(ctx, voidImg, sx, sy, footprint, MAP_EDGE_VOID_TILE_SCALE);
   }
 }
 
-/** Void underlay on every explored map-border tile. */
-function paintMapEdgeRimVoid(
+/** Hex-under skirt on every explored map-border tile. */
+function paintMapEdgeRimSkirts(
   ctx: CanvasRenderingContext2D,
   map: GameMap,
   camera: Camera,
@@ -492,17 +550,18 @@ function paintMapEdgeRimVoid(
   cssWidth: number,
   cssHeight: number,
 ): void {
-  const voidImg = opts.mapEdgeAtlas?.voidTile;
-  if (!voidImg) return;
   for (const t of map.tiles) {
-    if (mapEdgeSkirtKind(map, t.col, t.row) !== "void") continue;
+    const kind = mapEdgeSkirtKind(map, t.col, t.row);
+    if (!kind) continue;
     const key = `${t.col},${t.row}`;
     if (opts.fog && !opts.fog.explored.has(key) && !opts.skipFogPass) continue;
+    const img = mapEdgeFrameFor(opts.mapEdgeAtlas, kind);
     const c = tileCenterWorld(t.col, t.row);
     const sx = camera.worldToScreenX(c.x);
     const sy = camera.worldToScreenY(c.y);
     if (sx < -margin || sy < -margin || sx > cssWidth + margin || sy > cssHeight + margin) continue;
-    drawHexUnderOverlay(ctx, voidImg, sx, sy, footprint);
+    const rot = mapEdgeSkirtRotationRad(map, t.col, t.row);
+    drawHexUnderOverlay(ctx, img, sx, sy, footprint, rot);
   }
 }
 
@@ -516,7 +575,7 @@ function paintMapEdgeOverlays(
   cssWidth: number,
   cssHeight: number,
 ): void {
-  paintMapEdgeRimVoid(ctx, map, camera, opts, footprint, margin, cssWidth, cssHeight);
+  paintMapEdgeRimSkirts(ctx, map, camera, opts, footprint, margin, cssWidth, cssHeight);
   paintMapEdgeVoidBand(ctx, map, camera, opts, footprint, margin, cssWidth, cssHeight);
 }
 
@@ -616,10 +675,12 @@ function drawFootprintOverlay(
   sx: number,
   sy: number,
   footprint: number,
+  tileScale = 1,
 ): void {
   if (!img || !isImageReady(img)) return;
-  const scale = footprint / img.naturalWidth;
-  const drawW = img.naturalWidth * scale; // == footprint
+  const fp = footprint * tileScale;
+  const scale = fp / img.naturalWidth;
+  const drawW = img.naturalWidth * scale;
   const drawH = img.naturalHeight * scale;
   ctx.drawImage(img, sx - drawW / 2, sy + footprint / 2 - drawH, drawW, drawH);
 }
@@ -1038,8 +1099,8 @@ export function drawScene(
     if (!explored && !opts.skipFogPass) {
       continue; // live path: fog pass covers unexplored tiles
     }
-    // Map rim: no normal terrain sprites — void underlay is painted in the edge pass.
-    if (isMapBorderTile(map, t.col, t.row)) {
+    // Bottom skirt row: no normal terrain sprites — hex-under skirts paint in the edge pass.
+    if (isBottomMapBorderTile(map, t.col, t.row)) {
       continue;
     }
     const variants = opts.terrainAtlas?.images[t.terrain];
@@ -1149,7 +1210,7 @@ export function drawScene(
       if (
         bergs &&
         bergs.length > 0 &&
-        !isMapBorderTile(map, t.col, t.row) &&
+        !isBottomMapBorderTile(map, t.col, t.row) &&
         polarEdgeDist(t.col, t.row) <= bergBand &&
         hashSeed(`berg:${t.col},${t.row}`) % 100 < 29
       ) {

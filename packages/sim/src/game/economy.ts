@@ -1,4 +1,4 @@
-import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, isUnitPlayableTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City, Player, Unit, CityAutoFocus } from "./state";
 import { areEnemies, cityAt, log, makeUnit, playerById, unitAt, unitsOf } from "./state";
 import { isAtWarWithMajor } from "./diplomacy";
@@ -644,12 +644,12 @@ export function placeUnit(
   };
   // Naval units spawn on an adjacent water tile; land units spawn on land.
   const wantsWater = udef.cls === "naval_melee" || udef.cls === "naval_ranged";
-  if (!wantsWater && !unitAt(state, city.col, city.row)) {
+  if (!wantsWater && !unitAt(state, city.col, city.row) && isUnitPlayableTile(state.map, city.col, city.row)) {
     return spawn(city.col, city.row);
   }
   for (const n of offsetNeighbors(state.map, city.col, city.row)) {
     const tile = getTile(state.map, n.col, n.row);
-    if (!tile || unitAt(state, n.col, n.row)) continue;
+    if (!tile || unitAt(state, n.col, n.row) || !isUnitPlayableTile(state.map, n.col, n.row)) continue;
     if (wantsWater && isWaterTerrain(tile.terrain)) {
       return spawn(n.col, n.row);
     }

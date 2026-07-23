@@ -2,6 +2,8 @@
 // and tools (the geodata baker bakes into this same shape). Storage is odd-r
 // offset (col/row) for a simple rectangle; gameplay math converts to axial.
 
+import { hexDirectionAngleRad } from "./hex";
+
 export type TerrainType =
   | "ocean"
   | "coast"
@@ -128,18 +130,83 @@ export function isMapBorderTile(map: GameMap, col: number, row: number): boolean
   return false;
 }
 
-/** True on the bottom row of the map grid (where cliff skirts are drawn). */
+/** True on in-bounds tiles where units may stand (excludes the bottom skirt row). */
+export function isUnitPlayableTile(map: GameMap, col: number, row: number): boolean {
+  if (!getTile(map, col, row)) return false;
+  return !isBottomMapBorderTile(map, col, row);
+}
+
+/** True on the bottom row of the map grid (on-map ocean/dirt cliff skirts). */
 export function isBottomMapBorderTile(map: GameMap, col: number, row: number): boolean {
   return col >= 0 && row >= 0 && col < map.cols && row === map.rows - 1;
 }
 
-/** Map-edge cliff skirt (`hexUnderVoid*`). */
-export type MapEdgeSkirtKind = "void";
+/** Top/left/right map edge — void paints off-map only (terrain stays playable). */
+export function isSideVoidEdgeTile(map: GameMap, col: number, row: number): boolean {
+  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return false;
+  if (row === map.rows - 1) return false;
+  return row === 0 || col === 0 || col === map.cols - 1;
+}
 
-/** Every map-border tile uses the void cliff skirt. */
+/** Map-edge underlay sprite id (matches `hex-terrain/map-edge/` PNG basenames). */
+export type MapEdgeSkirtKind =
+  | "void0"
+  | "void1"
+  | "void2"
+  | "void3"
+  | "ocean"
+  | "oceanShoreBoth"
+  | "oceanShoreEast"
+  | "oceanShoreWest"
+  | "dirt";
+
+/** Void tile for top/left/right off-map band (`hexVoid00.png`, full hex sprite). */
+export function mapEdgeVoidKind(map: GameMap, col: number, row: number): "void0" | "void1" | "void2" | "void3" {
+  switch (mapEdgeSkirtSide(map, col, row)) {
+    case "top":
+    case "right":
+    case "left":
+      return "void0";
+    case "bottom":
+      return "void2";
+  }
+}
+
+/** True for bottom-row skirt PNGs that use the ocean/coast set (not dirt). */
+export function isBottomOceanSkirtTerrain(terrain: TerrainType): boolean {
+  return terrain === "ocean" || terrain === "coast";
+}
+
+/** Pick the hex-under skirt for an on-map border tile (bottom row only). */
 export function mapEdgeSkirtKind(map: GameMap, col: number, row: number): MapEdgeSkirtKind | null {
-  if (!isMapBorderTile(map, col, row)) return null;
-  return "void";
+  if (!isBottomMapBorderTile(map, col, row)) return null;
+  const tile = getTile(map, col, row);
+  if (!tile) return null;
+  if (!isBottomOceanSkirtTerrain(tile.terrain)) return "dirt";
+
+  const west = getTile(map, col - 1, row);
+  const east = getTile(map, col + 1, row);
+  const westLand = west !== undefined && !isBottomOceanSkirtTerrain(west.terrain);
+  const eastLand = east !== undefined && !isBottomOceanSkirtTerrain(east.terrain);
+
+  if (westLand && eastLand) return "oceanShoreBoth";
+  if (westLand) return "oceanShoreWest";
+  if (eastLand) return "oceanShoreEast";
+  return "ocean";
+}
+
+/** Canvas rotation (radians) for bottom-row ocean/dirt skirts. */
+export function mapEdgeSkirtRotationRad(_map: GameMap, _col: number, _row: number): number {
+  return Math.PI;
+}
+
+/** hexUnderVoid00 at 0 rotation matches this outward step (top edge). */
+const VOID0_CANONICAL_OUTWARD = 2;
+
+/** Rotate void skirts so they align with the actual off-map step direction. */
+export function mapEdgeVoidRotationRad(side: MapEdgeSide, outwardDirection: number): number {
+  const canon = side === "bottom" ? 4 : VOID0_CANONICAL_OUTWARD;
+  return hexDirectionAngleRad(outwardDirection) - hexDirectionAngleRad(canon);
 }
 
 /** Which screen edge a map-border tile (or off-map ghost) faces. */

@@ -253,6 +253,10 @@ automatic release after Apple approval. Set `IOS_SUBMIT_FOR_REVIEW: false` for u
 **Version numbers:** CI sets `versionName` / `MARKETING_VERSION` from root
 `package.json` and bumps `versionCode` / `CURRENT_PROJECT_VERSION` from the
 GitHub run number. Bump `package.json` when you want a new store-facing version.
+**iOS:** `CFBundleShortVersionString` must be **higher** than the latest version
+already approved or live on the App Store (e.g. if `1.0.3` is on the store, the
+next upload must be at least `1.0.4`). A lower `package.json` version will fail
+with errors 90062 / 90186.
 
 Local dry run (no upload):
 

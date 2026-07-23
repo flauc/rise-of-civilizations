@@ -24,6 +24,8 @@ export const HEX_DIRECTIONS: readonly Axial[] = [
   { q: 0, r: 1 },
 ];
 
+const SQRT3 = Math.sqrt(3);
+
 export function axial(q: number, r: number): Axial {
   return { q, r };
 }
@@ -34,6 +36,14 @@ export function axialAdd(a: Axial, b: Axial): Axial {
 
 export function axialEquals(a: Axial, b: Axial): boolean {
   return a.q === b.q && a.r === b.r;
+}
+
+/** Screen angle (radians) of a hex neighbor step from a tile center. */
+export function hexDirectionAngleRad(direction: number): number {
+  const dir = HEX_DIRECTIONS[((direction % 6) + 6) % 6]!;
+  const x = SQRT3 * dir.q + (SQRT3 / 2) * dir.r;
+  const y = 1.5 * dir.r;
+  return Math.atan2(y, x);
 }
 
 /** Neighbor in one of the six directions (0..5). */
@@ -59,8 +69,6 @@ export function hexKey(h: Axial): string {
 }
 
 // ---- pixel conversions (pointy-top) --------------------------------------
-
-const SQRT3 = Math.sqrt(3);
 
 /** Axial hex -> pixel center, given a hex size (center-to-corner radius). */
 export function axialToPixel(h: Axial, size: number): Point {

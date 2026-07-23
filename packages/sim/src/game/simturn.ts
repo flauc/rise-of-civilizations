@@ -23,7 +23,7 @@ import { tickLegends } from "./legends";
 import { tickLegendPassives } from "./legend-passives";
 import { canStealthMove, stealthMovement } from "./stealth";
 import { diplomacyTick } from "./diplomacy";
-import { ejectTrespassers } from "./movement";
+import { ejectBorderUnits, ejectTrespassers } from "./movement";
 import { aiTakeTurn, autoManageCities } from "./ai";
 
 /** Begin a fresh turn for ALL players at once: refresh movement, heal, reveal. */
@@ -87,6 +87,7 @@ export function resolveSimultaneousTurn(state: GameState): void {
     advanceWorks(state, p.id); // specialists labour on public works
   }
   ejectTrespassers(state); // borders that grew this round bump foreign units off the land
+  ejectBorderUnits(state); // visual rim tiles are not playable
   spreadReligion(state);
   diplomacyTick(state); // pay deal obligations, decay relations, expire pacts (once per round)
   pruneBarbarianBribes(state); // expire truces whose 10 turns have elapsed

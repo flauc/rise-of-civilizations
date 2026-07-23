@@ -4,6 +4,7 @@ import {
   axialToOffset,
   getTile,
   hexKey,
+  isUnitPlayableTile,
   offsetToAxial,
   type GameMap,
   type Offset,
@@ -253,6 +254,7 @@ export function computeReachable(
     const curCost = best.get(key(cur))!;
 
     for (const n of offsetNeighbors(map, cur.col, cur.row)) {
+      if (!isUnitPlayableTile(map, n.col, n.row)) continue;
       const tile = getTile(map, n.col, n.row);
       if (!tile || !isTilePassableForUnit(state, unit, tile)) continue;
       const nk = key(n);
@@ -285,6 +287,7 @@ export function computeReachable(
 
   // "At least one step": any adjacent passable, unoccupied tile is reachable.
   for (const n of offsetNeighbors(map, unit.col, unit.row)) {
+    if (!isUnitPlayableTile(map, n.col, n.row)) continue;
     const tile = getTile(map, n.col, n.row);
     if (!tile || !isTilePassableForUnit(state, unit, tile)) continue;
     const nk = `${n.col},${n.row}`;
@@ -353,7 +356,7 @@ function nearestLegalTile(state: GameState, unit: Unit): Offset | null {
         if (seen.has(k)) continue;
         seen.add(k);
         const tile = getTile(state.map, n.col, n.row);
-        if (!tile) continue;
+        if (!tile || !isUnitPlayableTile(state.map, n.col, n.row)) continue;
         next.push(n); // keep expanding the search even past tiles we can't stop on
         if (!isTilePassableForUnit(state, unit, tile)) continue;
         if (occupied(n.col, n.row)) continue;
@@ -386,6 +389,17 @@ export function ejectTrespassers(state: GameState): void {
       targetIds: [unit.ownerId],
       tile: { col: dest.col, row: dest.row },
     });
+  }
+}
+
+/** Move any unit stuck on the visual map rim inward to the nearest legal tile. */
+export function ejectBorderUnits(state: GameState): void {
+  for (const unit of state.units.values()) {
+    if (isUnitPlayableTile(state.map, unit.col, unit.row)) continue;
+    const dest = nearestLegalTile(state, unit);
+    if (!dest) continue;
+    unit.col = dest.col;
+    unit.row = dest.row;
   }
 }
 

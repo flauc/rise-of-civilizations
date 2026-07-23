@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { getTile } from "@roc/shared";
+import { getTile, isBottomMapBorderTile, isUnitPlayableTile } from "@roc/shared";
 import { createGame } from "./setup";
 import { makeUnit, type City } from "./state";
-import { computeReachable, riverBetween, followingRiverChannel } from "./movement";
+import { computeReachable, ejectBorderUnits, riverBetween, followingRiverChannel } from "./movement";
 
 /** Register a city owned by `ownerId` in the state and return its id (for tile ownership). */
 function ownedCity(s: ReturnType<typeof flatGame>, col: number, row: number, ownerId = 0): number {
@@ -160,5 +160,30 @@ describe("road movement speed", () => {
     expect(computeReachable(s, u).get("9,10")).toBeUndefined();
     roadRow(s, 3);
     expect(computeReachable(s, u).get("9,10")!.cost).toBe(2); // 8 tiles × ¼
+  });
+});
+
+describe("map border tiles", () => {
+  it("blocks movement onto the bottom skirt row", () => {
+    const s = flatGame();
+    const u = makeUnit(s.nextEntityId++, 0, "warrior", 1, 1);
+    u.movementLeft = 4;
+    s.units.set(u.id, u);
+    expect(isBottomMapBorderTile(s.map, 0, s.map.rows - 1)).toBe(true);
+    expect(isUnitPlayableTile(s.map, 0, s.map.rows - 1)).toBe(false);
+    expect(computeReachable(s, u).has(`0,${s.map.rows - 1}`)).toBe(false);
+  });
+
+  it("allows units on side/top edge tiles", () => {
+    const s = flatGame();
+    expect(isUnitPlayableTile(s.map, 0, 1)).toBe(true);
+  });
+
+  it("ejects units stuck on the bottom row inward", () => {
+    const s = flatGame();
+    const u = makeUnit(s.nextEntityId++, 0, "warrior", 0, s.map.rows - 1);
+    s.units.set(u.id, u);
+    ejectBorderUnits(s);
+    expect(isUnitPlayableTile(s.map, u.col, u.row)).toBe(true);
   });
 });
