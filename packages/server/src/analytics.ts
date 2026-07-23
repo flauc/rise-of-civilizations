@@ -83,7 +83,7 @@ export interface AnalyticsStore {
   victoryBreakdown(): Promise<VictoryTypeCount[]>;
   leaderboard(limit?: number): Promise<LeaderboardEntry[]>;
   /** One row per player: their highest score from any completed game. */
-  leaderboardBestPerPlayer(limit?: number): Promise<LeaderboardEntry[]>;
+  leaderboardBestPerPlayer(limit?: number, registeredOnly?: boolean): Promise<LeaderboardEntry[]>;
   voteTotals(): Promise<VoteTotal[]>;
   /** Bug reports, newest first (summaries — no heavy state payload). */
   bugReports(limit?: number): Promise<BugReportSummary[]>;
@@ -318,7 +318,7 @@ export class MemoryAnalyticsStore implements AnalyticsStore {
       .slice(0, limit);
   }
 
-  async leaderboardBestPerPlayer(limit = 25): Promise<LeaderboardEntry[]> {
+  async leaderboardBestPerPlayer(limit = 25, registeredOnly = false): Promise<LeaderboardEntry[]> {
     const rows = this.rows();
     const byClient = buildHandleByClientId(rows);
     const byUser = new Map<string, string>();
@@ -328,7 +328,8 @@ export class MemoryAnalyticsStore implements AnalyticsStore {
     const best = new Map<string, LeaderboardEntry>();
     for (const r of rows) {
       if (r.score === undefined || (r.outcome !== "win" && r.outcome !== "loss")) continue;
-      const key = r.userId ?? r.clientId;
+      if (registeredOnly && !r.userId) continue;
+      const key = registeredOnly ? r.userId! : (r.userId ?? r.clientId);
       const entry: LeaderboardEntry = {
         handle: resolvePlayerHandle(r, byClient, byUser),
         sessionId: r.sessionId,
