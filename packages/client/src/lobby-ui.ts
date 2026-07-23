@@ -7,6 +7,7 @@ import { isMobileMpUi, renderChatLogEl, CHAT_MODERATION_CSS } from "./mp-chat";
 import { onChatModerationChange } from "./chat-moderation";
 import { createLazyWiki } from "./wiki-lazy";
 import { createLazyChangelog, createLazyCredits, createLazyRoadmap } from "./lobby-overlays-lazy";
+import { roadmapHasMilestones } from "./roadmap-data";
 import { CURRENT_VERSION } from "./version";
 import { confirmDialog } from "./confirm-dialog";
 import {
@@ -552,6 +553,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
   const wiki = createLazyWiki();
   const roadmap = createLazyRoadmap();
+  const showRoadmap = roadmapHasMilestones();
   const credits = createLazyCredits();
   const changelog = createLazyChangelog();
 
@@ -1050,7 +1052,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     gameCanvas.style.pointerEvents = on ? "none" : "";
   }
   document.getElementById("game-loading")?.remove();
-  document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
+  document.body.classList.remove("roc-loading-scroll", "roc-loading-block-input", "roc-map-painted");
   setLobbyMapInputPassthrough(true);
 
   const left = root.querySelector<HTMLDivElement>("#lobby-left")!;
@@ -1444,7 +1446,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         <button class="menu-btn" id="lobby-settings">Settings</button>
         <button class="menu-btn" id="lobby-support">Support</button>
         <button class="menu-btn" id="lobby-wiki">Wiki</button>
-        <button class="menu-btn" id="lobby-roadmap">Roadmap</button>
+        ${showRoadmap ? `<button class="menu-btn" id="lobby-roadmap">Roadmap</button>` : ""}
         <button class="menu-btn" id="lobby-changelog">Changelog</button>
         <button class="menu-btn" id="lobby-credits">Credits</button>
       </div>
@@ -1479,7 +1481,9 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       showScreen("login");
     });
     left.querySelector<HTMLButtonElement>("#lobby-wiki")?.addEventListener("click", () => wiki.open());
-    left.querySelector<HTMLButtonElement>("#lobby-roadmap")?.addEventListener("click", () => roadmap.open());
+    if (showRoadmap) {
+      left.querySelector<HTMLButtonElement>("#lobby-roadmap")!.addEventListener("click", () => roadmap.open());
+    }
     left.querySelector<HTMLButtonElement>("#lobby-changelog")?.addEventListener("click", () => changelog.open());
     left.querySelector<HTMLButtonElement>("#lobby-credits")?.addEventListener("click", () => credits.open());
     left.querySelector<HTMLButtonElement>("#lobby-version")?.addEventListener("click", () => changelog.open());

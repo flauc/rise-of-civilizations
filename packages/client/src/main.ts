@@ -165,11 +165,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   if (setup.civId && setup.civId !== "random") setCivilizationBgm(setup.civId);
   let playerBgmSynced = !!(setup.civId && setup.civId !== "random");
   let loadingDismissed = false;
-  let mapRenderNotified = false;
+  let mapBackdropNotified = false;
+  let hudInteractiveNotified = false;
+  let hudInteractivePending = false;
   let loadingRepaintAt = 0;
   function onLoadingDismiss(): void {
     loadingDismissed = true;
-    document.body.classList.remove("roc-loading-scroll");
+    document.body.classList.remove("roc-loading-scroll", "roc-loading-block-input");
     document.body.classList.add("roc-map-painted");
     document.getElementById("game-loading")?.remove();
     fitted = false;
@@ -178,10 +180,14 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     update();
     renderGameHud();
     needsRedraw = true;
-    // WebKit can miss the first HUD wiring pass; repaint once more before input.
+    // WebKit can miss the first HUD wiring pass; repaint a few frames before input.
     requestAnimationFrame(() => {
       renderGameHud();
       needsRedraw = true;
+      requestAnimationFrame(() => {
+        renderGameHud();
+        needsRedraw = true;
+      });
     });
     if (session.hasState()) {
       ui.banner(`${st().players[st().currentPlayerIndex]?.name ?? "Player"} — Turn ${st().turn}`);
@@ -1349,28 +1355,62 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     }
     return hudPrimed;
   }
-  function maybeNotifyGamePlayable(): void {
+  function isHudDomReady(): boolean {
+    const hud = document.getElementById("game-hud");
+    const endturn = document.getElementById("endturn");
+    const topbar = document.getElementById("topbar");
+    const menuBtn = document.getElementById("menu-btn");
+    return !!hud && !!endturn && !!topbar && !!menuBtn;
+  }
+  function armHudForInput(): void {
+    document.body.classList.remove("roc-loading-block-input");
+    renderGameHud();
+  }
+  function scheduleHudInteractiveNotify(): void {
+    if (hudInteractiveNotified || hudInteractivePending || !session.hasState()) return;
+    if (!mapFramePainted || !hudPrimed || cssWidth <= 0 || cssHeight <= 0) return;
+    hudInteractivePending = true;
+    requestAnimationFrame(() => {
+      armHudForInput();
+      requestAnimationFrame(() => {
+        renderGameHud();
+        requestAnimationFrame(() => {
+          renderGameHud();
+          requestAnimationFrame(() => {
+            hudInteractivePending = false;
+            if (hudInteractiveNotified || !session.hasState() || !hudPrimed || !isHudDomReady()) {
+              if (!hudInteractiveNotified && hudPrimed && mapFramePainted) scheduleHudInteractiveNotify();
+              return;
+            }
+            hudInteractiveNotified = true;
+            loadingScreen.notifyHudInteractive();
+          });
+        });
+      });
+    });
+  }
+  function maybeNotifyMapBackdrop(): void {
     if (
-      mapRenderNotified ||
+      mapBackdropNotified ||
       !session.hasState() ||
       !mapFramePainted ||
-      !hudPrimed ||
       cssWidth <= 0 ||
       cssHeight <= 0
     ) {
       return;
     }
-    mapRenderNotified = true;
-    document.body.classList.add("roc-map-painted");
+    mapBackdropNotified = true;
     loadingScreen.notifyMapRendered();
+    scheduleHudInteractiveNotify();
   }
   // Safety backstop if the first paint or HUD prime stalls (atlases keep loading in the background).
   window.setTimeout(() => {
-    if (mapRenderNotified) return;
+    if (hudInteractiveNotified) return;
     mapFramePainted = true;
     primeGameHud();
     needsRedraw = true;
-    maybeNotifyGamePlayable();
+    maybeNotifyMapBackdrop();
+    scheduleHudInteractiveNotify();
   }, 3000);
 
   function fitCameraToStart(): void {
@@ -1394,7 +1434,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       needsRedraw = true;
     } else if (
       !loadingDismissed &&
-      !mapRenderNotified &&
+      !hudInteractiveNotified &&
       session.hasState() &&
       performance.now() >= loadingRepaintAt
     ) {
@@ -1472,7 +1512,10 @@ function startGame(session: Session, setup: GameSetup = {}): void {
           console.error("RENDER-THREW", (err as Error)?.stack || err);
         }
       } else if (cssWidth > 0 && cssHeight > 0) {
-        if (primeGameHud() && mapFramePainted) maybeNotifyGamePlayable();
+        if (primeGameHud() && mapFramePainted) {
+          maybeNotifyMapBackdrop();
+          scheduleHudInteractiveNotify();
+        }
       }
     }
     // Tick the coach EVERY frame, not only on redraws: tapping an info-only bubble

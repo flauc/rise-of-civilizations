@@ -294,7 +294,7 @@ export function emitTreasuryExhausted(state: GameState, playerId: number): void 
   emitTurnUpdate(state, {
     type: "treasuryExhausted",
     playerId,
-    message: "Your treasury is exhausted; a unit was disbanded and your army's morale has collapsed.",
+    message: "Your treasury is exhausted. Military pay reset to normal, unpaid troops deserted or were disbanded, and army morale collapsed.",
   });
 }
 

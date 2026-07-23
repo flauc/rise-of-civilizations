@@ -7,15 +7,9 @@
 import { trackFeatureVote } from "./analytics";
 import { bindDialogClose } from "./dialog-close";
 
-interface Milestone {
-  id: string;
-  title: string;
-  desc: string;
-  /** Short category badge, e.g. "Victory", "Maps". */
-  tag: string;
-  /** Optional planned-phase label for the headline victory milestones. */
-  phase?: string;
-}
+import { ROADMAP_MILESTONES, type RoadmapMilestone } from "./roadmap-data";
+
+interface Milestone extends RoadmapMilestone {}
 
 /**
  * The milestone catalogue of planned, not-yet-built features. Every entry is
@@ -23,9 +17,7 @@ interface Milestone {
  * Religious, Economic — and Culture — victories shipped in v0.2.0 and so are no
  * longer listed here.)
  */
-const MILESTONES: Milestone[] = [
-  
-];
+const MILESTONES: Milestone[] = ROADMAP_MILESTONES;
 
 const STORAGE_KEY = "roc-roadmap-v1";
 
@@ -82,6 +74,10 @@ function escapeHtml(text: string): string {
 }
 
 export function createRoadmap(): { open(): void; close(): void } {
+  if (MILESTONES.length === 0) {
+    return { open() {}, close() {} };
+  }
+
   const store = loadStore();
   saveStore(store); // persist the freshly seeded tally on first run
 

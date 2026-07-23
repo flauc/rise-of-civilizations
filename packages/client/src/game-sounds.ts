@@ -14,9 +14,9 @@ const COMBAT_LOG =
 /** Targeted abilities that do not deal damage (skip attack SFX). */
 const NON_COMBAT_TARGETED = new Set<ActiveAbilityId>(["uprising"]);
 
-const HTML_BGM_VOLUME = 0.62;
+const HTML_BGM_VOLUME = 0.45;
 const HTML_BGM_DUCK = 0.1;
-const HTML_SFX_VOLUME = 0.9;
+const HTML_SFX_VOLUME = 1;
 const BGM_CROSSFADE_MS = 2200;
 const BUILDING_SFX = "audio/building.wav";
 

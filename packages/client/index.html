@@ -3331,14 +3331,14 @@
         left: 50%;
         top: var(--dialog-top);
         transform: var(--dialog-transform);
-        width: min(420px, calc(100vw - 32px));
+        width: min(640px, calc(100vw - 48px));
         max-height: min(80vh, var(--dialog-max-h));
         overflow: hidden;
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
-        padding: 16px 18px;
-        padding-top: 16px;
+        padding: 20px 24px;
+        padding-top: 20px;
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.2s;
@@ -3415,9 +3415,9 @@
         accent-color: var(--gold);
       }
       #settings-dialog .settings-volumes {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px 20px;
         margin-bottom: 10px;
       }
       #settings-dialog .settings-volume {
@@ -3492,9 +3492,9 @@
         margin-top: 0;
       }
       #settings-dialog .settings-keybinds {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 12px;
         margin-top: 4px;
       }
       #settings-dialog .settings-keybind-row {
@@ -3921,10 +3921,21 @@
       #game-hud.roc-overlay-dialog-open {
         pointer-events: auto;
       }
-      /* Loading veil hides the HUD; never leave it stuck after dismiss. */
-      body.roc-loading-scroll #game-hud {
+      /* Loading veil hides the HUD until input is armed; never leave block-input stuck after dismiss. */
+      body.roc-loading-scroll.roc-loading-block-input #game-hud {
         opacity: 0;
         pointer-events: none;
+      }
+      body.roc-loading-scroll:not(.roc-loading-block-input) #game-hud {
+        opacity: 1;
+        transition: opacity 0.45s ease;
+      }
+      /* WebKit: re-assert chrome hit targets once input is armed (parent pointer-events:none breaks children). */
+      body:not(.roc-loading-block-input) #game-hud #topbar,
+      body:not(.roc-loading-block-input) #game-hud #bottom-bar,
+      body:not(.roc-loading-block-input) #game-hud .action-btn,
+      body:not(.roc-loading-block-input) #game-hud #leader-avatar:not(.empty) {
+        pointer-events: auto !important;
       }
       #game-hud .panel:not(.hidden),
       #game-hud #techtree:not(.hidden),
@@ -4072,9 +4083,16 @@
           padding-top: max(4px, var(--roc-safe-top, env(safe-area-inset-top, 0px)));
         }
         html.roc-phone-shell #settings-dialog {
+          width: min(calc(100vw - 24px), 420px);
           padding: 12px 14px;
           --dialog-x-top: 0px;
           --dialog-x-right: 0px;
+        }
+        html.roc-phone-shell #settings-dialog .settings-volumes {
+          grid-template-columns: 1fr;
+        }
+        html.roc-phone-shell #settings-dialog .settings-keybinds {
+          grid-template-columns: 1fr;
         }
         html.roc-phone-shell #game-hud {
           --hud-scale: 1;

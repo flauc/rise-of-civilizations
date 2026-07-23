@@ -3,7 +3,16 @@
 import { getSettings, updateSettings } from "./settings";
 
 /** Logical shortcut ids wired in ui.ts. */
-export type GameKeybindAction = "cycleCity" | "units" | "leaderboard" | "wiki" | "settings";
+export type GameKeybindAction =
+  | "cycleCity"
+  | "cities"
+  | "units"
+  | "morale"
+  | "techTree"
+  | "legends"
+  | "leaderboard"
+  | "wiki"
+  | "settings";
 
 /** KeyboardEvent.code value (layout-independent). */
 export type KeybindCode = string;
@@ -18,7 +27,11 @@ export interface GameKeybindDef {
 
 export const GAME_KEYBIND_DEFS: readonly GameKeybindDef[] = [
   { action: "cycleCity", label: "Cycle cities", hint: "Select and pan to your next city" },
+  { action: "cities", label: "Cities", hint: "Open or close the Empire cities list" },
   { action: "units", label: "Units", hint: "Open the Empire units list" },
+  { action: "morale", label: "Morale", hint: "Toggle empire morale" },
+  { action: "techTree", label: "Technology tree", hint: "Open or close the full research tree" },
+  { action: "legends", label: "Legends", hint: "Toggle legends" },
   { action: "leaderboard", label: "Standings", hint: "Toggle civilization standings" },
   { action: "wiki", label: "Encyclopedia", hint: "Toggle the in-game wiki" },
   { action: "settings", label: "Settings", hint: "Open or close this settings panel" },
@@ -26,7 +39,11 @@ export const GAME_KEYBIND_DEFS: readonly GameKeybindDef[] = [
 
 export const DEFAULT_KEYBINDS: GameKeybinds = {
   cycleCity: "Space",
+  cities: "KeyC",
   units: "KeyU",
+  morale: "KeyM",
+  techTree: "KeyT",
+  legends: "KeyJ",
   leaderboard: "KeyL",
   wiki: "KeyW",
   settings: "KeyO",

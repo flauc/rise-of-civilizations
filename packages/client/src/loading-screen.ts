@@ -112,8 +112,10 @@ export interface LoadingScreenOptions {
 export interface LoadingScreenHandle {
   /** World/sim state exists; dismiss still waits for the map to finish rendering. */
   notifyWorldGenerated(): void;
-  /** First map frame painted and HUD wired behind the veil; hide "Loading...", show Skip. */
+  /** First map frame painted behind the veil (map backdrop may fade in). */
   notifyMapRendered(): void;
+  /** HUD primed and interactive; hide "Loading...", show Skip, allow dismiss. */
+  notifyHudInteractive(): void;
   destroy(): void;
 }
 
@@ -142,9 +144,12 @@ function ensureStyles(): void {
     #game-loading .gl-panel{pointer-events:auto;position:relative;z-index:1}
     #game-loading.hide{opacity:0;pointer-events:none}
     #game-loading.hide,#game-loading.hide *{pointer-events:none !important}
-    body.roc-loading-scroll #game-hud{
+    body.roc-loading-scroll.roc-loading-block-input #game-hud{
       opacity:0;pointer-events:none;
       transition:opacity .45s ease;
+    }
+    body.roc-loading-scroll:not(.roc-loading-block-input) #game-hud{
+      opacity:1;transition:opacity .45s ease;
     }
     /* Canvas stays invisible until the first full-quality frame has painted,
        then fades in behind the translucent veil. */
@@ -159,7 +164,7 @@ function ensureStyles(): void {
       display:flex;flex-direction:column;align-items:stretch;gap:14px;
     }
     /* Bottom slot: "Loading..." while the world builds, cross-fading into Skip
-       once the map has painted and the HUD is wired (sprites may still stream in). */
+       once the HUD is wired and tappable (sprites may still stream in). */
     #game-loading .gl-foot{
       flex-shrink:0;display:grid;justify-items:end;align-items:center;min-height:44px;
     }
@@ -354,6 +359,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
   if (civId) preloadLoadingVoice(civId);
   let worldReady = false;
   let mapRendered = false;
+  let hudInteractive = false;
   let speechDone = false;
   let typingDone = false;
   let skipped = false;
@@ -417,7 +423,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     `</div>` +
     `</div>`;
   document.body.appendChild(root);
-  document.body.classList.add("roc-loading-scroll");
+  document.body.classList.add("roc-loading-scroll", "roc-loading-block-input");
   root.addEventListener(
     "pointerdown",
     () => {
@@ -428,7 +434,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
   );
 
   function clearLoadingBodyClass(): void {
-    document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
+    document.body.classList.remove("roc-loading-scroll", "roc-loading-block-input", "roc-map-painted");
   }
 
   const scrollBodyEl = root.querySelector<HTMLDivElement>(".gl-scroll-body")!;
@@ -876,10 +882,10 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
   }
 
   function canSkipNow(): boolean {
-    return !dismissed && worldReady && mapRendered;
+    return !dismissed && worldReady && mapRendered && hudInteractive;
   }
 
-  /** Skip stays hidden until the world is painted and tapping it enters the game. */
+  /** Skip stays hidden until the HUD is live and tapping it enters a playable game. */
   function refreshSkipButton(): void {
     const ready = canSkipNow();
     root.classList.toggle("game-ready", ready);
@@ -887,7 +893,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
   }
 
   function tryDismiss(): void {
-    if (dismissed || !worldReady || !mapRendered) return;
+    if (dismissed || !worldReady || !mapRendered || !hudInteractive) return;
     tryResolveCiv();
     const elapsed = performance.now() - mountedAt;
     if (!skipped && elapsed < MIN_VISIBLE_MS) return;
@@ -921,26 +927,25 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
 
   resetForceDismissTimer();
 
-  /** Swap "Loading..." for Skip once Skip will dismiss into the live game. */
-  function markGameReadyIfLoaded(): void {
-    refreshSkipButton();
-  }
-
   return {
     notifyWorldGenerated() {
       if (worldReady) return;
       worldReady = true;
-      markGameReadyIfLoaded();
       tryDismiss();
     },
     notifyMapRendered() {
       if (mapRendered || dismissed) return;
       mapRendered = true;
       document.body.classList.add("roc-map-painted");
-      markGameReadyIfLoaded();
       if (!root.classList.contains("post-speech-hold")) {
         root.classList.add("map-backdrop");
       }
+      tryDismiss();
+    },
+    notifyHudInteractive() {
+      if (hudInteractive || dismissed) return;
+      hudInteractive = true;
+      refreshSkipButton();
       tryDismiss();
     },
     destroy() {
@@ -992,6 +997,7 @@ export function createTutorialPreparingScreen(
   const mountedAt = performance.now();
   let worldReady = false;
   let mapRendered = false;
+  let hudInteractive = false;
   let portraitReady = !options.portraitReady;
   let dismissed = false;
   let dismissTimer = 0;
@@ -1011,7 +1017,7 @@ export function createTutorialPreparingScreen(
     `<div class="tp-status">Preparing a tutorial...</div>` +
     `</div>`;
   document.body.appendChild(root);
-  document.body.classList.add("roc-loading-scroll");
+  document.body.classList.add("roc-loading-scroll", "roc-loading-block-input");
   root.addEventListener(
     "pointerdown",
     () => {
@@ -1022,7 +1028,7 @@ export function createTutorialPreparingScreen(
   );
 
   function clearLoadingBodyClass(): void {
-    document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
+    document.body.classList.remove("roc-loading-scroll", "roc-loading-block-input", "roc-map-painted");
   }
 
   function dismiss(): void {
@@ -1036,7 +1042,7 @@ export function createTutorialPreparingScreen(
   }
 
   function tryDismiss(): void {
-    if (dismissed || !worldReady || !mapRendered || !portraitReady) return;
+    if (dismissed || !worldReady || !mapRendered || !hudInteractive || !portraitReady) return;
     const elapsed = performance.now() - mountedAt;
     if (elapsed < TUTORIAL_PREP_MIN_MS) {
       if (!dismissTimer) {
@@ -1054,6 +1060,7 @@ export function createTutorialPreparingScreen(
     if (dismissed) return;
     worldReady = true;
     mapRendered = true;
+    hudInteractive = true;
     portraitReady = true;
     dismiss();
   }, TUTORIAL_PREP_FORCE_MS);
@@ -1068,6 +1075,11 @@ export function createTutorialPreparingScreen(
       if (mapRendered || dismissed) return;
       mapRendered = true;
       document.body.classList.add("roc-map-painted");
+      tryDismiss();
+    },
+    notifyHudInteractive() {
+      if (hudInteractive || dismissed) return;
+      hudInteractive = true;
       tryDismiss();
     },
     destroy() {

@@ -1920,16 +1920,16 @@ export function createUI(handlers: UIHandlers): UI {
           `<span class="tb-pl">🏛️</span><b>${cName}</b><span class="tb-score">+${cul}</span></button>` : ""}
         ${showReligion ? `<button class="tb-pill" id="religion-btn" title="Religion">` +
           `<span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b><span class="tb-score">+${fth}</span></button>` : ""}
-        <button class="tb-pill" id="morale-pill" title="Empire morale (0–200). Tap for recent events and how morale works.">
+        <button class="tb-pill" id="morale-pill" title="Empire morale (0–200). Tap for recent events and how morale works. ${keybindHint("morale")}">
           <span class="tb-pl">🎌</span><b style="color:${moraleColor}">${morale}</b></button>
       </div>
       <div class="tb-grp">
-        <button class="tb-pill empire" id="cities-btn" title="Cities"><span class="tb-pl">🏙️</span><b>${cityCount}</b></button>
+        <button class="tb-pill empire" id="cities-btn" title="Cities ${keybindHint("cities")}"><span class="tb-pl">🏙️</span><b>${cityCount}</b></button>
         <button class="tb-pill empire" id="units-btn" title="Units ${keybindHint("units")}"><span class="tb-pl">⚔️</span><b>${unitCount}</b></button>
         <button class="tb-pill empire" id="specialists-btn" title="Specialists"><span class="tb-pl">👷</span><b>${specCount}</b></button>
         <button class="tb-pill empire" id="trade-btn" title="Trade Routes"><span class="tb-pl">🐫</span><b>${routeCount}</b></button>
         <button class="tb-pill empire ${gpReady ? "has-badge" : ""}" id="great-people-btn" title="Great People"><span class="tb-pl">🎖️</span><b>${gpReady}</b>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>
-        ${legendsOn ? `<button class="tb-pill empire ${canRecruitLegendNow ? "has-badge" : ""}" id="legends-btn" title="Legends"><span class="tb-pl">⭐</span><b>${myLegends}</b>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : ""}
+        ${legendsOn ? `<button class="tb-pill empire ${canRecruitLegendNow ? "has-badge" : ""}" id="legends-btn" title="Legends ${keybindHint("legends")}"><span class="tb-pl">⭐</span><b>${myLegends}</b>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : ""}
         <button class="tb-pill ${diploActionable ? "has-badge" : ""}" id="diplo-pill" title="${diploActionable ? `Diplomacy — ${diploActionable} proposal${diploActionable > 1 ? "s" : ""} need your attention` : "Diplomacy"}">
           <span class="tb-pl">🕊️</span><b>${player.met.length}</b>${diploActionable ? `<span class="tu-badge"></span>` : ""}</button>
         <button class="tb-pill ${turnUpdateHasNew ? "has-badge" : ""}" id="turn-update-btn" title="Turn Updates">
@@ -2633,6 +2633,8 @@ export function createUI(handlers: UIHandlers): UI {
 
   const renderResearch = (state: GameState): void => {
     research.classList.toggle("hidden", !researchOpen);
+    const techBtn = research.querySelector<HTMLButtonElement>("#open-techtree");
+    if (techBtn) techBtn.title = `View full technology tree ${keybindHint("techTree")}`;
     if (!researchOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const techs = availableTechs(player);
@@ -2681,14 +2683,24 @@ export function createUI(handlers: UIHandlers): UI {
     research.classList.add("hidden");
   });
   research.querySelector<HTMLButtonElement>("#open-techtree")!.addEventListener("click", () => {
+    openTechTreePanel();
+  });
+
+  function openTechTreePanel(): void {
+    if (!lastState) return;
+    if (techtreeOpen) {
+      techtreeOpen = false;
+      techtree.classList.add("hidden");
+      return;
+    }
     researchOpen = false;
     research.classList.add("hidden");
     closeSideSheets();
     menuOpen = false;
-    if (lastState) renderMenu(lastState);
+    renderMenu(lastState);
     techtreeOpen = true;
-    if (lastState) renderTechTree(lastState);
-  });
+    renderTechTree(lastState);
+  }
 
   const renderTechTree = (state: GameState): void => {
     techtree.classList.toggle("hidden", !techtreeOpen);
@@ -5249,6 +5261,43 @@ export function createUI(handlers: UIHandlers): UI {
     wiki.open();
   }
 
+  function toggleMoralePanel(): void {
+    if (moraleDialogOpen) {
+      hideMoraleDialog();
+      return;
+    }
+    if (!lastState) return;
+    hideGoldDialog();
+    closeSideSheets();
+    closePickers(lastState);
+    menuOpen = false;
+    renderMenu(lastState);
+    moraleDialogOpen = true;
+    renderMoraleDialog(lastState);
+  }
+
+  function toggleLegendsPanel(): void {
+    if (!lastState) return;
+    if (legendsOpen) {
+      legendsOpen = false;
+      renderLegends(lastState);
+      return;
+    }
+    legendsOpen = true;
+    researchOpen = false;
+    civicsOpen = false;
+    religionOpen = false;
+    greatPeopleOpen = false;
+    closeSideSheets();
+    menuOpen = false;
+    renderMenu(lastState);
+    renderLegends(lastState);
+    renderGreatPeople(lastState);
+    renderResearch(lastState);
+    renderCivics(lastState);
+    renderReligion(lastState);
+  }
+
   function toggleSettingsPanelShortcut(): void {
     if (isSettingsPanelOpen()) {
       closeSettingsPanel();
@@ -5278,6 +5327,18 @@ export function createUI(handlers: UIHandlers): UI {
     if (eventMatchesKeybind(e, binds.units)) {
       e.preventDefault();
       openEmpireTab("units");
+    } else if (eventMatchesKeybind(e, binds.cities)) {
+      e.preventDefault();
+      openEmpireTab("cities");
+    } else if (eventMatchesKeybind(e, binds.morale)) {
+      e.preventDefault();
+      toggleMoralePanel();
+    } else if (eventMatchesKeybind(e, binds.techTree)) {
+      e.preventDefault();
+      openTechTreePanel();
+    } else if (eventMatchesKeybind(e, binds.legends)) {
+      e.preventDefault();
+      toggleLegendsPanel();
     } else if (eventMatchesKeybind(e, binds.leaderboard)) {
       e.preventDefault();
       toggleLeaderboardPanel();
