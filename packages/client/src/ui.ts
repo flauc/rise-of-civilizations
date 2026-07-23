@@ -591,25 +591,13 @@ function unitPanelRenderSig(
 /** Sticky title row shared by city sub-dialogs (construction, training, specialists). */
 function dialogHeader(title: string, closeId: string, opts?: { subtitle?: string; extra?: string }): string {
   return (
-    `<button type="button" class="dialog-x" id="${closeId}" title="Close" aria-label="Close">✕</button>` +
     `<div class="panel-dialog-header">` +
     `<b>${title}</b>` +
     (opts?.subtitle ? `<div class="sub" style="margin-top:4px">${opts.subtitle}</div>` : "") +
     (opts?.extra ?? "") +
-    `</div>`
+    `</div>` +
+    `<button type="button" class="dialog-x" id="${closeId}" title="Close" aria-label="Close"></button>`
   );
-}
-
-function menuDialogHeader(title: string, closeId: string): string {
-  return (
-    `<button type="button" class="dialog-x" id="${closeId}" title="Close" aria-label="Close">✕</button>` +
-    `<div class="panel-dialog-header"><b>${title}</b></div>`
-  );
-}
-
-/** Scrollable body beneath a pinned menu-dialog header + ✕. */
-function menuDialogBody(body: string): string {
-  return `<div class="panel-dialog-body save-modal-body">${body}</div>`;
 }
 
 const RUSH_GLYPH: Record<RushCurrency, string> = { gold: "🪙", faith: "☮️", culture: "🎭" };
@@ -794,6 +782,15 @@ export function createUI(handlers: UIHandlers): UI {
 
   const cityPanel = div("city-panel", "panel hidden");
   const research = div("research", "panel hidden");
+  research.innerHTML =
+    `<div class="panel-dialog-header research-dialog-header">` +
+    `<b>Choose Research</b>` +
+    `<div class="research-head-actions">` +
+    `<button type="button" class="btn" id="open-techtree">🌳 View full</button>` +
+    `<button type="button" class="dialog-x" id="rclose" title="Close" aria-label="Close"></button>` +
+    `</div></div>` +
+    `<div class="panel-dialog-body" id="research-body"></div>`;
+  const researchBody = research.querySelector<HTMLDivElement>("#research-body")!;
   const techtree = div("techtree", "panel hidden");
   const civics = div("civics", "panel hidden");
   const religionPanel = div("religion", "panel hidden");
@@ -816,6 +813,11 @@ export function createUI(handlers: UIHandlers): UI {
     handlers.onGameOverQuit(),
   );
   const saveModal = div("save-modal", "panel hidden");
+  saveModal.innerHTML =
+    dialogHeader("Game Menu", "save-close") +
+    `<div class="panel-dialog-body save-modal-body" id="save-modal-body"></div>`;
+  const saveModalBody = saveModal.querySelector<HTMLDivElement>("#save-modal-body")!;
+  const saveModalTitleEl = saveModal.querySelector<HTMLDivElement>(".panel-dialog-header > b")!;
   const godPanel = div("god-panel", "panel hidden");
   let godModeEnabled = false;
   let godModePanel: GodModePanel | null = null;
@@ -1374,6 +1376,7 @@ export function createUI(handlers: UIHandlers): UI {
   let menuOpen = false;
   let menuHudOverlay = false;
   let menuView: "menu" | "save" | "leave" | "bug" = "menu";
+  let menuBodySig = "";
   let isSaving = false;
   let isReporting = false;
   let mpSaves: SaveRecord[] = [];
@@ -2157,15 +2160,25 @@ export function createUI(handlers: UIHandlers): UI {
       else popHudOverlay();
       menuHudOverlay = menuOpen;
     }
-    if (!menuOpen) return;
+    if (!menuOpen) {
+      menuBodySig = "";
+      return;
+    }
     const player = state.players[state.currentPlayerIndex]!;
     const isHost = state.players[0]?.id === player.id;
+    const saveModalTitles = {
+      menu: "Game Menu",
+      save: "Save Game",
+      leave: "Leave Game",
+      bug: "Report a Bug",
+    } as const;
+    saveModalTitleEl.textContent = saveModalTitles[menuView];
 
     // If the save form is already open, don't rebuild it every frame: that would
     // reset the input value and steal focus, which makes typing impossible on
     // touch devices. Just sync the save button state.
-    if (menuView === "save" && saveModal.querySelector<HTMLInputElement>("#save-name")) {
-      const confirmBtn = saveModal.querySelector<HTMLButtonElement>("#save-confirm");
+    if (menuView === "save" && saveModalBody.querySelector<HTMLInputElement>("#save-name")) {
+      const confirmBtn = saveModalBody.querySelector<HTMLButtonElement>("#save-confirm");
       if (confirmBtn) {
         confirmBtn.disabled = isSaving;
         confirmBtn.textContent = isSaving ? "Saving…" : "Save";
@@ -2175,8 +2188,8 @@ export function createUI(handlers: UIHandlers): UI {
 
     // Same anti-flicker guard for the bug-report form: don't rebuild it (and clear
     // the textarea / steal focus) on every frame while the player is typing.
-    if (menuView === "bug" && saveModal.querySelector<HTMLTextAreaElement>("#bug-text")) {
-      const confirmBtn = saveModal.querySelector<HTMLButtonElement>("#bug-confirm");
+    if (menuView === "bug" && saveModalBody.querySelector<HTMLTextAreaElement>("#bug-text")) {
+      const confirmBtn = saveModalBody.querySelector<HTMLButtonElement>("#bug-confirm");
       if (confirmBtn) {
         confirmBtn.disabled = isReporting;
         confirmBtn.textContent = isReporting ? "Sending…" : "Submit report";
@@ -2184,8 +2197,8 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
 
-    if (menuView === "leave" && saveModal.querySelector<HTMLInputElement>("#leave-save-name")) {
-      const confirmBtn = saveModal.querySelector<HTMLButtonElement>("#leave-save");
+    if (menuView === "leave" && saveModalBody.querySelector<HTMLInputElement>("#leave-save-name")) {
+      const confirmBtn = saveModalBody.querySelector<HTMLButtonElement>("#leave-save");
       if (confirmBtn) {
         confirmBtn.disabled = isSaving;
         confirmBtn.textContent = isSaving ? "Saving…" : "Save & Leave";
@@ -2196,6 +2209,14 @@ export function createUI(handlers: UIHandlers): UI {
     if (menuView === "menu") {
       const mapLabel = stateMapLabel(state);
       const viewer = state.players.find((p) => p.id === player.id);
+      const menuSig =
+        `menu|${state.turn}|${player.id}|${mpSaves.map((s) => s.id).join(",")}|` +
+        `${godModeEnabled ? 1 : 0}|${lastView?.cheatsEnabled ? 1 : 0}|${lastView?.isMultiplayer ? 1 : 0}|` +
+        `${handlers.canSave ? 1 : 0}|${viewer?.eliminated ? 1 : 0}`;
+      if (menuSig === menuBodySig && saveModalBody.querySelector<HTMLButtonElement>("#menu-settings")) {
+        return;
+      }
+      menuBodySig = menuSig;
       const surrenderBtn =
         lastView?.isMultiplayer && handlers.onSurrender && viewer && !viewer.eliminated
           ? `<button class="btn" id="menu-surrender">Surrender</button>`
@@ -2209,64 +2230,58 @@ export function createUI(handlers: UIHandlers): UI {
       const saveBtn = handlers.canSave
         ? `<button class="btn primary" id="menu-save">Save Game</button>`
         : "";
-      let html =
-        menuDialogHeader("Game Menu", "save-close") +
-        menuDialogBody(
-          `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}` +
-          (mapLabel ? `<br/><span style="font-size:11px">Map: ${escapeHtml(mapLabel)}</span>` : "") +
-          `</div>` +
-          `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
-          saveBtn +
+      const html =
+        `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}` +
+        (mapLabel ? `<br/><span style="font-size:11px">Map: ${escapeHtml(mapLabel)}</span>` : "") +
+        `</div>` +
+        `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
+        saveBtn +
         `<button class="btn" id="menu-settings">Settings ${keybindHint("settings")}</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki ${keybindHint("wiki")}</button>` +
         `<button class="btn" id="menu-leaderboard">Leaderboard ${keybindHint("leaderboard")}</button>` +
-          `<button class="btn" id="menu-log">Game Log</button>` +
-          `<button class="btn" id="menu-bug">🐞 Report a Bug</button>` +
-          godMenuBtn +
-          surrenderBtn +
-          `<button class="btn" id="menu-leave">Leave Game</button>` +
-          `</div>` +
-          (isHost && mpSaves.length > 0
-            ? `<div style="margin-top:16px;border-top:1px solid var(--edge);padding-top:12px"><b>Host MP Saves</b></div>` +
-              mpSaves
-                .map(
-                  (s) =>
-                    `<div class="gi" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:6px;border:1px solid var(--edge);border-radius:8px">` +
-                    `<span>${escapeHtml(s.name)}<br/><span style="color:#9fc0dc;font-size:11px">Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}</span></span>` +
-                    `<button class="btn" data-load-mp="${s.id}">Load</button>` +
-                    `</div>`,
-                )
-                .join("")
-            : "") +
-          `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`,
-        );
-      withPreservedScroll(saveModal, () => {
-        saveModal.innerHTML = html;
+        `<button class="btn" id="menu-log">Game Log</button>` +
+        `<button class="btn" id="menu-bug">🐞 Report a Bug</button>` +
+        godMenuBtn +
+        surrenderBtn +
+        `<button class="btn" id="menu-leave">Leave Game</button>` +
+        `</div>` +
+        (isHost && mpSaves.length > 0
+          ? `<div style="margin-top:16px;border-top:1px solid var(--edge);padding-top:12px"><b>Host MP Saves</b></div>` +
+            mpSaves
+              .map(
+                (s) =>
+                  `<div class="gi" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:6px;border:1px solid var(--edge);border-radius:8px">` +
+                  `<span>${escapeHtml(s.name)}<br/><span style="color:#9fc0dc;font-size:11px">Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}</span></span>` +
+                  `<button class="btn" data-load-mp="${s.id}">Load</button>` +
+                  `</div>`,
+              )
+              .join("")
+          : "") +
+        `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+      withPreservedScroll(saveModalBody, () => {
+        saveModalBody.innerHTML = html;
       });
-      bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
-        menuOpen = false;
-        renderMenu(state);
-      });
-      saveModal.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
         openGameSettings();
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-save")?.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-save")?.addEventListener("click", () => {
         menuView = "save";
+        menuBodySig = "";
         renderMenu(state);
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-wiki")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-wiki")!.addEventListener("click", () => {
         menuOpen = false;
         closeSideSheets();
         closePickers(state);
         renderMenu(state);
         wiki.open();
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-leaderboard")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-leaderboard")!.addEventListener("click", () => {
         menuOpen = false;
         renderMenu(state);
         showLeaderboard(state);
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-log")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-log")!.addEventListener("click", () => {
         menuOpen = false;
         renderMenu(state);
         setPreservedHtml(
@@ -2278,11 +2293,12 @@ export function createUI(handlers: UIHandlers): UI {
         );
         logDialog.classList.remove("hidden");
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-bug")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-bug")!.addEventListener("click", () => {
         menuView = "bug";
+        menuBodySig = "";
         renderMenu(state);
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-enable-god")?.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-enable-god")?.addEventListener("click", () => {
         godModeEnabled = true;
         void ensureGodModePanel().then((panel) => {
           panel.open();
@@ -2296,7 +2312,7 @@ export function createUI(handlers: UIHandlers): UI {
           }
         });
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-god")?.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-god")?.addEventListener("click", () => {
         menuOpen = false;
         closeSideSheets();
         closePickers(state);
@@ -2304,11 +2320,13 @@ export function createUI(handlers: UIHandlers): UI {
         void ensureGodModePanel().then((panel) => {
           panel.open();
           if (lastView) renderGodMode(lastView);
+          syncOverlayHudShell();
         });
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-leave")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-leave")!.addEventListener("click", () => {
         if (handlers.promptSaveOnLeave && handlers.canSave) {
           menuView = "leave";
+          menuBodySig = "";
           renderMenu(state);
           return;
         }
@@ -2321,7 +2339,7 @@ export function createUI(handlers: UIHandlers): UI {
           if (ok) handlers.onLeaveGame();
         });
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-surrender")?.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-surrender")?.addEventListener("click", () => {
         void confirmDialog({
           title: "Surrender",
           body: "Concede defeat and leave this match? Other players will be notified.",
@@ -2334,7 +2352,7 @@ export function createUI(handlers: UIHandlers): UI {
           handlers.onSurrender?.();
         });
       });
-      saveModal.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
+      saveModalBody.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
         el.addEventListener("click", async () => {
           const id = el.dataset.loadMp;
           const record = mpSaves.find((s) => s.id === id);
@@ -2349,7 +2367,7 @@ export function createUI(handlers: UIHandlers): UI {
           } catch (err) {
             isSaving = false;
             renderMenu(state);
-            saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+            saveModalBody.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
           }
         }),
       );
@@ -2359,32 +2377,25 @@ export function createUI(handlers: UIHandlers): UI {
     if (menuView === "leave") {
       const civ = getCiv(player.civId);
       const defaultName = `${civ ? civ.name : player.name} - Turn ${state.turn}`;
-      withPreservedScroll(saveModal, () => {
-        saveModal.innerHTML =
-          menuDialogHeader("Leave Game", "save-close") +
-          menuDialogBody(
-            `<div style="margin:8px 0;color:#9fc0dc">Save your progress before returning to the main menu?</div>` +
-            `<input id="leave-save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
-            `<button class="btn primary" id="leave-save" style="width:100%" ${isSaving ? "disabled" : ""}>` +
-            (isSaving ? "Saving…" : "Save & Leave") +
-            `</button>` +
-            `<button class="btn" id="leave-discard" style="width:100%;margin-top:8px">Leave without saving</button>` +
-            `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`,
-          );
+      withPreservedScroll(saveModalBody, () => {
+        saveModalBody.innerHTML =
+          `<div style="margin:8px 0;color:#9fc0dc">Save your progress before returning to the main menu?</div>` +
+          `<input id="leave-save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
+          `<button class="btn primary" id="leave-save" style="width:100%" ${isSaving ? "disabled" : ""}>` +
+          (isSaving ? "Saving…" : "Save & Leave") +
+          `</button>` +
+          `<button class="btn" id="leave-discard" style="width:100%;margin-top:8px">Leave without saving</button>` +
+          `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
       });
-      const input = saveModal.querySelector<HTMLInputElement>("#leave-save-name")!;
+      const input = saveModalBody.querySelector<HTMLInputElement>("#leave-save-name")!;
       input.focus();
-      bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
-        menuView = "menu";
-        renderMenu(state);
-      });
-      saveModal.querySelector<HTMLButtonElement>("#leave-discard")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#leave-discard")!.addEventListener("click", () => {
         handlers.onLeaveGame();
       });
-      saveModal.querySelector<HTMLButtonElement>("#leave-save")!.addEventListener("click", async () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#leave-save")!.addEventListener("click", async () => {
         const name = input.value.trim();
         if (!name) {
-          saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = "Enter a save name.";
+          saveModalBody.querySelector<HTMLDivElement>("#save-error")!.textContent = "Enter a save name.";
           return;
         }
         isSaving = true;
@@ -2395,7 +2406,7 @@ export function createUI(handlers: UIHandlers): UI {
         } catch (err) {
           isSaving = false;
           renderMenu(state);
-          saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+          saveModalBody.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
         }
       });
       return;
@@ -2403,28 +2414,21 @@ export function createUI(handlers: UIHandlers): UI {
 
     // Bug-report form view
     if (menuView === "bug") {
-      withPreservedScroll(saveModal, () => {
-        saveModal.innerHTML =
-          menuDialogHeader("Report a Bug", "bug-close") +
-          menuDialogBody(
-            `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
-            `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
-            `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
-            `style="width:100%;min-height:120px;resize:vertical;margin-bottom:8px"></textarea>` +
-            `<button class="btn primary" id="bug-confirm" style="width:100%" ${isReporting ? "disabled" : ""}>` +
-            (isReporting ? "Sending…" : "Submit report") +
-            `</button>` +
-            `<div id="bug-status" style="margin-top:8px"></div>`,
-          );
+      withPreservedScroll(saveModalBody, () => {
+        saveModalBody.innerHTML =
+          `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
+          `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
+          `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
+          `style="width:100%;min-height:120px;resize:vertical;margin-bottom:8px"></textarea>` +
+          `<button class="btn primary" id="bug-confirm" style="width:100%" ${isReporting ? "disabled" : ""}>` +
+          (isReporting ? "Sending…" : "Submit report") +
+          `</button>` +
+          `<div id="bug-status" style="margin-top:8px"></div>`;
       });
-      const ta = saveModal.querySelector<HTMLTextAreaElement>("#bug-text")!;
+      const ta = saveModalBody.querySelector<HTMLTextAreaElement>("#bug-text")!;
       ta.focus();
-      const statusEl = saveModal.querySelector<HTMLDivElement>("#bug-status")!;
-      bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#bug-close")!, () => {
-        menuView = "menu";
-        renderMenu(state);
-      });
-      saveModal.querySelector<HTMLButtonElement>("#bug-confirm")!.addEventListener("click", async () => {
+      const statusEl = saveModalBody.querySelector<HTMLDivElement>("#bug-status")!;
+      saveModalBody.querySelector<HTMLButtonElement>("#bug-confirm")!.addEventListener("click", async () => {
         const message = ta.value.trim();
         if (!message) {
           statusEl.innerHTML = `<span style="color:#ff8a8a">Please describe the problem first.</span>`;
@@ -2442,7 +2446,7 @@ export function createUI(handlers: UIHandlers): UI {
         } catch (err) {
           isReporting = false;
           renderMenu(state);
-          const el = saveModal.querySelector<HTMLDivElement>("#bug-status");
+          const el = saveModalBody.querySelector<HTMLDivElement>("#bug-status");
           if (el) el.innerHTML = `<span style="color:#ff8a8a">${escapeHtml(String(err))}</span>`;
         }
       });
@@ -2452,30 +2456,23 @@ export function createUI(handlers: UIHandlers): UI {
     // Save form view
     const civ = getCiv(player.civId);
     const defaultName = `${civ ? civ.name : player.name} - Turn ${state.turn}`;
-    let html =
-      menuDialogHeader("Save Game", "save-close") +
-      menuDialogBody(
-        `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
-        `<input id="save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
-        `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
-        (isSaving ? "Saving…" : "Save") +
-        `</button>` +
-        `<button class="btn" id="save-export" style="width:100%;margin-top:8px">💾 Export Current Save</button>` +
-        `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`,
-      );
-    withPreservedScroll(saveModal, () => {
-      saveModal.innerHTML = html;
+    const html =
+      `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
+      `<input id="save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
+      `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
+      (isSaving ? "Saving…" : "Save") +
+      `</button>` +
+      `<button class="btn" id="save-export" style="width:100%;margin-top:8px">💾 Export Current Save</button>` +
+      `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+    withPreservedScroll(saveModalBody, () => {
+      saveModalBody.innerHTML = html;
     });
-    const input = saveModal.querySelector<HTMLInputElement>("#save-name")!;
+    const input = saveModalBody.querySelector<HTMLInputElement>("#save-name")!;
     input.focus();
-    bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
-      menuView = "menu";
-      renderMenu(state);
-    });
-    saveModal.querySelector<HTMLButtonElement>("#save-confirm")!.addEventListener("click", async () => {
+    saveModalBody.querySelector<HTMLButtonElement>("#save-confirm")!.addEventListener("click", async () => {
       const name = input.value.trim();
       if (!name) {
-        saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = "Enter a save name.";
+        saveModalBody.querySelector<HTMLDivElement>("#save-error")!.textContent = "Enter a save name.";
         return;
       }
       isSaving = true;
@@ -2490,11 +2487,11 @@ export function createUI(handlers: UIHandlers): UI {
       } catch (err) {
         isSaving = false;
         renderMenu(state);
-        saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+        saveModalBody.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
       }
     });
-    saveModal.querySelector<HTMLButtonElement>("#save-export")!.addEventListener("click", async () => {
-      const errorEl = saveModal.querySelector<HTMLDivElement>("#save-error")!;
+    saveModalBody.querySelector<HTMLButtonElement>("#save-export")!.addEventListener("click", async () => {
+      const errorEl = saveModalBody.querySelector<HTMLDivElement>("#save-error")!;
       errorEl.textContent = "";
       try {
         const json = await handlers.onExportCurrentSave();
@@ -2505,6 +2502,18 @@ export function createUI(handlers: UIHandlers): UI {
       }
     });
   };
+
+  bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
+    if (menuView !== "menu") {
+      menuView = "menu";
+      menuBodySig = "";
+      if (lastState) renderMenu(lastState);
+    } else {
+      menuOpen = false;
+      menuBodySig = "";
+      if (lastState) renderMenu(lastState);
+    }
+  });
 
   const renderGoldDialog = (state: GameState): void => {
     goldDialog.classList.toggle("hidden", !goldDialogOpen);
@@ -2654,43 +2663,25 @@ export function createUI(handlers: UIHandlers): UI {
       const t = Math.ceil(left / sciPerTurn);
       return `${t} turn${t === 1 ? "" : "s"}`;
     };
-    withPreservedScroll(research, () => {
-      research.innerHTML =
-        dialogHeader("Choose Research", "rclose", {
-          extra: `<button type="button" class="btn dialog-head-btn" id="open-techtree">🌳 View full</button>`,
-        }) +
-        `<div class="panel-dialog-body">` +
-        (techs.length === 0
-          ? `<div style="margin-top:8px;color:#9fc0dc">All available techs researched.</div>`
-          : techs
-              .map((t) => {
-                const u = techUnlocks(t);
-                const cost = scaledTechCost(state, t);
-                return (
-                  `<div class="tech" data-tech="${t}"><div style="flex:1">` +
-                  `<div><b>${TECH_DEFS[t].name}</b></div>` +
-                  (u.length ? `<div class="sub">Unlocks: ${u.join(", ")}</div>` : "") +
-                  `</div><span class="cost">${cost}🔬<span class="sub tech-eta">${turnsFor(cost)}</span></span></div>`
-                );
-              })
-              .join("")) +
-        `</div>`;
+    const html =
+      techs.length === 0
+        ? `<div style="margin-top:8px;color:#9fc0dc">All available techs researched.</div>`
+        : techs
+            .map((t) => {
+              const u = techUnlocks(t);
+              const cost = scaledTechCost(state, t);
+              return (
+                `<div class="tech" data-tech="${t}"><div style="flex:1">` +
+                `<div><b>${TECH_DEFS[t].name}</b></div>` +
+                (u.length ? `<div class="sub">Unlocks: ${u.join(", ")}</div>` : "") +
+                `</div><span class="cost">${cost}🔬<span class="sub tech-eta">${turnsFor(cost)}</span></span></div>`
+              );
+            })
+            .join("");
+    withPreservedScroll(researchBody, () => {
+      researchBody.innerHTML = html;
     });
-    const closeResearch = (): void => {
-      researchOpen = false;
-      research.classList.add("hidden");
-    };
-    wirePanelClose(research.querySelector<HTMLButtonElement>("#rclose")!, closeResearch);
-    research.querySelector<HTMLButtonElement>("#open-techtree")!.addEventListener("click", () => {
-      researchOpen = false;
-      research.classList.add("hidden");
-      closeSideSheets();
-      menuOpen = false;
-      renderMenu(state);
-      techtreeOpen = true;
-      renderTechTree(state);
-    });
-    research.querySelectorAll<HTMLDivElement>(".tech").forEach((el) => {
+    researchBody.querySelectorAll<HTMLDivElement>(".tech").forEach((el) => {
       el.addEventListener("click", () => {
         handlers.onSetResearch(el.dataset.tech as TechId);
         researchOpen = false;
@@ -2698,6 +2689,20 @@ export function createUI(handlers: UIHandlers): UI {
       });
     });
   };
+
+  wirePanelClose(research.querySelector<HTMLButtonElement>("#rclose")!, () => {
+    researchOpen = false;
+    research.classList.add("hidden");
+  });
+  research.querySelector<HTMLButtonElement>("#open-techtree")!.addEventListener("click", () => {
+    researchOpen = false;
+    research.classList.add("hidden");
+    closeSideSheets();
+    menuOpen = false;
+    if (lastState) renderMenu(lastState);
+    techtreeOpen = true;
+    if (lastState) renderTechTree(lastState);
+  });
 
   const renderTechTree = (state: GameState): void => {
     techtree.classList.toggle("hidden", !techtreeOpen);
@@ -5313,7 +5318,15 @@ export function createUI(handlers: UIHandlers): UI {
       gpActivateDialog.classList.contains("show") ||
       leaderAbilityDialog.classList.contains("show") ||
       document.getElementById("combat-preview-dialog")?.classList.contains("show") ||
-      !saveModal.classList.contains("hidden");
+      !saveModal.classList.contains("hidden") ||
+      researchOpen ||
+      godModePanel?.isOpen() ||
+      civicsOpen ||
+      religionOpen ||
+      productionOpen ||
+      specialistsOpen ||
+      trainingOpen ||
+      techtreeOpen;
     gameHud().classList.toggle("roc-overlay-dialog-open", open);
   };
 

@@ -1,4 +1,4 @@
-/** Same close wiring as Train Units (#trclose): direct click on the ✕ button. */
+/** Same close wiring as Empire Morale (#morale-close): direct click on the ✕ button. */
 export function bindDialogClose(btn: HTMLButtonElement, close: () => void): void {
   btn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -6,10 +6,7 @@ export function bindDialogClose(btn: HTMLButtonElement, close: () => void): void
   });
 }
 
-/** Re-bind after innerHTML rebuild (city sub-dialogs re-render each open). */
+/** Stable panels wired once at init (Empire Morale, game menu, research, …). */
 export function wirePanelClose(btn: HTMLButtonElement, close: () => void): void {
-  btn.onclick = (e) => {
-    e.stopPropagation();
-    close();
-  };
+  bindDialogClose(btn, close);
 }

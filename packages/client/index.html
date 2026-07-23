@@ -940,7 +940,7 @@
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        z-index: 40;
+        z-index: 62;
       }
       /* Top-bar pickers: below the status bar so the map and end-turn stay reachable */
       #research,
@@ -960,10 +960,50 @@
       #research {
         width: min(460px, calc(100vw - 24px));
         max-height: min(80vh, var(--dialog-max-h));
+        z-index: 62;
       }
-      /* Clear both the close button and the "View full" button beside it. */
-      #research .panel-dialog-header {
-        padding-right: 158px;
+      /* Title + View full + ✕ share one flex row (no absolute overlap). */
+      #research .research-dialog-header {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        text-align: left;
+        padding-left: 0;
+        padding-right: 0;
+        min-height: calc(var(--dialog-x-top) + var(--dialog-x-size));
+        pointer-events: none;
+      }
+      #research .research-dialog-header > b {
+        flex: 1;
+        min-width: 0;
+        text-align: left;
+        padding-right: 8px;
+        pointer-events: none;
+      }
+      #research .research-head-actions {
+        display: flex;
+        flex: none;
+        align-items: center;
+        gap: 8px;
+        pointer-events: auto;
+      }
+      #research .research-head-actions .btn {
+        height: var(--dialog-x-size);
+        padding: 0 12px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+      #research .research-head-actions .dialog-x {
+        position: relative;
+        top: auto;
+        right: auto;
+        flex: none;
       }
       /* Great People & Legends — richer cards, wider/taller panels. */
       #great-people,
@@ -1021,7 +1061,7 @@
         transform: var(--dialog-transform);
         width: min(320px, calc(100vw - 32px));
         max-height: min(520px, var(--dialog-max-h));
-        z-index: 40;
+        z-index: 62;
       }
       #god-panel select.lobby-in,
       #god-panel select {
@@ -2696,6 +2736,10 @@
          morale, diplomacy, empire, the city sub-dialogs, unique-unit cards. Add
          .dialog-title (or .panel-dialog-header) to the title beside it and the
          gutter is reserved for you. */
+      /* Pinned ✕ paints above the header band (DOM order + stacking). */
+      .panel > .dialog-x {
+        z-index: 101;
+      }
       .dialog-x {
         position: absolute;
         top: var(--dialog-x-top);
@@ -2710,15 +2754,20 @@
         border: 1px solid var(--edge);
         background: var(--bg-card);
         color: var(--parchment);
-        font-size: 16px;
-        line-height: 1;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 0;
+        line-height: 0;
         cursor: pointer;
         touch-action: manipulation;
         overflow: visible;
-        /* Stays above positioned siblings, e.g. the unique-unit card's art. */
-        z-index: 50;
+        /* Above header bands and head-row controls (View full, etc.). */
+        z-index: 101;
         pointer-events: auto;
         transition: background 0.15s ease, color 0.15s ease;
+      }
+      /* Legacy markup may still iconify ✕ to img.gi — hide it; glyph comes from ::after. */
+      .dialog-x .gi {
+        display: none !important;
       }
       #gold-dialog .dialog-x,
       #log-dialog .dialog-x,
@@ -2726,13 +2775,23 @@
       #morale-dialog .dialog-x,
       #settings-dialog .dialog-x,
       #save-modal .dialog-x,
+      #research .dialog-x,
+      #civics .dialog-x,
+      #religion .dialog-x,
+      #techtree .dialog-x,
+      #production .dialog-x,
+      #specialists .dialog-x,
+      #training .dialog-x,
+      #god-panel .dialog-x,
       #combat-preview-dialog .dialog-x,
       #turn-update-dialog .dialog-x,
       #village-dialog .dialog-x,
       #gp-activate-dialog .dialog-x,
       #leader-ability-dialog .dialog-x,
-      #unit-promo-dialog .dialog-x {
-        z-index: 100;
+      #unit-promo-dialog .dialog-x,
+      #empire .dialog-x,
+      #diplomacy .dialog-x {
+        z-index: 101;
         pointer-events: auto;
         touch-action: manipulation;
       }
@@ -2740,22 +2799,49 @@
       #morale-dialog,
       #log-dialog,
       #leaderboard-dialog,
+      #save-modal,
+      #research,
+      #civics,
+      #religion,
+      #techtree,
+      #production,
+      #specialists,
+      #training,
+      #god-panel,
       #unit-promo-dialog,
       #turn-update-dialog,
       #village-dialog,
       #gp-activate-dialog,
       #leader-ability-dialog,
-      #combat-preview-dialog {
+      #combat-preview-dialog,
+      #empire,
+      #diplomacy {
         isolation: isolate;
       }
       #settings-dialog {
         isolation: isolate;
       }
-      /* Invisible expanded tap target; clicks stay on the button (not a blocking layer). */
+      /* Invisible expanded tap target behind the glyph. */
       .dialog-x::before {
         content: "";
         position: absolute;
         inset: -12px;
+        border-radius: inherit;
+        pointer-events: none;
+      }
+      /* Centered × (pointer-events: none so clicks hit the button, not the pseudo). */
+      .dialog-x::after {
+        content: "×";
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: calc(var(--dialog-x-size) * 0.52);
+        font-weight: 400;
+        line-height: 1;
+        color: inherit;
         pointer-events: none;
       }
       .dialog-x:hover {
@@ -2771,9 +2857,6 @@
         padding-right: var(--dialog-x-gutter);
         margin-bottom: 12px;
         z-index: 2;
-      }
-      .dialog-x .gi {
-        pointer-events: none;
       }
       /* Every in-game dialog title, one scale. Keep this list and the header-band
          list below in sync when a dialog is added. */
@@ -2808,12 +2891,58 @@
       .gold-dialog-title,
       .morale-dialog-title,
       .unit-promo-dialog-title,
+      .emp-title,
+      .dp-head,
       #combat-preview-dialog .combat-preview-header {
         min-height: calc(var(--dialog-x-top) + var(--dialog-x-size));
         padding-right: var(--dialog-x-gutter);
         overflow: visible;
         position: relative;
         z-index: 2;
+        /* Pass taps in the ✕ corner through to .dialog-x (WebKit + stacked headers). */
+        pointer-events: none;
+      }
+      /* Titles/subtitles must not steal ✕ taps (block-level <b> spans the header row). */
+      .panel-dialog-header > b,
+      .panel-dialog-header > .sub,
+      .dialog-title,
+      .log-dialog-title,
+      .gold-dialog-title,
+      .morale-dialog-title,
+      .unit-promo-dialog-title,
+      .emp-title,
+      .dp-title,
+      #settings-dialog .settings-head-title,
+      #combat-preview-dialog .combat-preview-header b,
+      #turn-update-dialog .turn-update-heading {
+        pointer-events: none;
+      }
+      /* Only real controls in the header row receive taps again. */
+      .panel-dialog-header .btn,
+      .panel > .dialog-head-btn,
+      .panel-dialog-header button,
+      .panel-dialog-header a,
+      .panel-dialog-header input,
+      .panel-dialog-header textarea,
+      .panel-dialog-header select,
+      .panel-dialog-header label,
+      .dialog-head-band .btn,
+      .dialog-head-band button,
+      .dialog-head-band a,
+      .dialog-head-band input,
+      .dialog-head-band select,
+      #settings-dialog .settings-head-band .btn,
+      #settings-dialog .settings-head-band button,
+      #combat-preview-dialog .combat-preview-header .btn,
+      #combat-preview-dialog .combat-preview-header button,
+      .dp-head .btn,
+      .dp-head button,
+      .emp-title .btn,
+      .emp-title button,
+      #turn-update-dialog .turn-update-header .tu-view-toggle,
+      #research .research-head-actions .btn,
+      #research .research-head-actions .dialog-x {
+        pointer-events: auto;
       }
       /* Bands whose whole content is the title: centre it against the ✕. The
          headers left out here lay their own children out in a row. */
@@ -2826,6 +2955,9 @@
         display: flex;
         flex-direction: column;
         justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding-left: var(--dialog-x-gutter);
       }
       /* Art-topped dialogs centre their title, and hide the art entirely when it
          fails to load, which lifts the title up beside the ✕. A symmetric gutter
@@ -2840,9 +2972,9 @@
       /* Small action parked on the header line, just left of the close button. */
       .dialog-head-btn {
         position: absolute;
-        top: 12px;
-        right: 56px;
-        height: 34px;
+        top: var(--dialog-x-top);
+        right: calc(var(--dialog-x-right) + var(--dialog-x-size) + 10px);
+        height: var(--dialog-x-size);
         padding: 0 12px;
         display: inline-flex;
         align-items: center;
@@ -2851,6 +2983,8 @@
         font-size: 12px;
         line-height: 1;
         white-space: nowrap;
+        z-index: 50;
+        pointer-events: auto;
       }
       /* Morale dialog — panel + .hidden, same close wiring as Train Units. */
       #morale-overlay {
@@ -3307,6 +3441,7 @@
         padding-right: var(--dialog-x-gutter);
         margin-bottom: 8px;
         z-index: 2;
+        pointer-events: none;
       }
       #settings-dialog .settings-head-title {
         margin: 0;
@@ -3844,6 +3979,14 @@
       #game-hud:has(#leader-ability-dialog.show),
       #game-hud:has(#combat-preview-dialog.show),
       #game-hud:has(#save-modal:not(.hidden)),
+      #game-hud:has(#research:not(.hidden)),
+      #game-hud:has(#god-panel:not(.hidden)),
+      #game-hud:has(#civics:not(.hidden)),
+      #game-hud:has(#religion:not(.hidden)),
+      #game-hud:has(#techtree:not(.hidden)),
+      #game-hud:has(#production:not(.hidden)),
+      #game-hud:has(#specialists:not(.hidden)),
+      #game-hud:has(#training:not(.hidden)),
       #game-hud.roc-overlay-dialog-open {
         pointer-events: auto;
       }
@@ -3854,6 +3997,14 @@
       }
       #game-hud .panel:not(.hidden),
       #game-hud #techtree:not(.hidden),
+      #game-hud #save-modal:not(.hidden),
+      #game-hud #research:not(.hidden),
+      #game-hud #god-panel:not(.hidden),
+      #game-hud #civics:not(.hidden),
+      #game-hud #religion:not(.hidden),
+      #game-hud #production:not(.hidden),
+      #game-hud #specialists:not(.hidden),
+      #game-hud #training:not(.hidden),
       #game-hud #gold-dialog:not(.hidden),
       #game-hud #morale-dialog:not(.hidden),
       #game-hud #leaderboard-dialog:not(.hidden),
@@ -3922,6 +4073,7 @@
         pointer-events: auto;
       }
       body.roc-native:has(#game-hud #save-modal:not(.hidden)) #game,
+      body.roc-native:has(#game-hud #god-panel:not(.hidden)) #game,
       body.roc-native:has(#game-hud #empire:not(.hidden)) #game,
       body.roc-native:has(#game-hud #diplomacy:not(.hidden)) #game,
       body.roc-native:has(#game-hud #game-chat.open.fullscreen) #game,
@@ -3933,6 +4085,7 @@
       body.roc-native:has(#game-hud #leaderboard-dialog:not(.hidden)) #game,
       body.roc-native:has(#settings-overlay.show) #game,
       body.roc-standalone:has(#game-hud #save-modal:not(.hidden)) #game,
+      body.roc-standalone:has(#game-hud #god-panel:not(.hidden)) #game,
       body.roc-standalone:has(#game-hud #empire:not(.hidden)) #game,
       body.roc-standalone:has(#game-hud #diplomacy:not(.hidden)) #game,
       body.roc-standalone:has(#game-hud #game-chat.open.fullscreen) #game,
@@ -3983,7 +4136,8 @@
         html.roc-phone-shell #log-dialog,
         html.roc-phone-shell #leaderboard-dialog,
         html.roc-phone-shell #settings-dialog,
-        html.roc-phone-shell #save-modal {
+        html.roc-phone-shell #save-modal,
+        html.roc-phone-shell #god-panel {
           --dialog-x-top: 10px;
           --dialog-x-right: 10px;
         }
