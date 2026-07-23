@@ -252,11 +252,14 @@ describe("governor mode (city auto-management)", () => {
 
 function workableFarmTile(s: ReturnType<typeof createGame>, city: ReturnType<typeof citiesOf>[0]) {
   for (const t of s.map.tiles) {
-    if (t.ownerCityId !== city.id || t.improvement || t.resource) continue;
+    if (t.ownerCityId !== city.id || t.improvement || t.resource || t.river) continue;
     if (t.terrain === "grassland" || t.terrain === "plains") return t;
   }
   const t = getTile(s.map, city.col + 1, city.row)!;
   t.terrain = "grassland";
+  t.improvement = undefined;
+  t.resource = undefined;
+  t.river = undefined;
   t.ownerCityId = city.id;
   return t;
 }

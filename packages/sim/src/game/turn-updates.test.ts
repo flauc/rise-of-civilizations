@@ -101,10 +101,24 @@ describe("turn update events", () => {
     // Train a carpenter and find a farmable tile.
     city.specialists.push({ id: 1, type: "carpenter", xp: 0, level: 1, name: "Test Carpenter" });
     const farmTile = state.map.tiles.find(
-      (t) => t.ownerCityId === city.id && (t.terrain === "grassland" || t.terrain === "plains"),
-    )!;
+      (t) =>
+        t.ownerCityId === city.id &&
+        !t.improvement &&
+        !t.resource &&
+        !t.river &&
+        (t.terrain === "grassland" || t.terrain === "plains"),
+    );
+    if (!farmTile) {
+      const fallback = getTile(state.map, city.col + 1, city.row)!;
+      fallback.terrain = "grassland";
+      fallback.improvement = undefined;
+      fallback.resource = undefined;
+      fallback.river = undefined;
+      fallback.ownerCityId = city.id;
+    }
+    const tile = farmTile ?? getTile(state.map, city.col + 1, city.row)!;
 
-    const res = startWork(state, 0, "farm", farmTile.col, farmTile.row);
+    const res = startWork(state, 0, "farm", tile.col, tile.row);
     expect(res.ok).toBe(true);
     const work = state.works.find((w) => w.ownerId === 0 && w.kind === "farm")!;
     work.progress = { ...work.requirement };

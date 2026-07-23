@@ -103,6 +103,7 @@ describe("road routes", () => {
     const s = gameWithSurveyor();
     const city = citiesOf(s, 0)[0]!;
     const start = grassland(s, city, city.col + 1, city.row);
+    grassland(s, city, city.col + 2, city.row);
     const end = grassland(s, city, city.col + 3, city.row);
     expect(
       applyCommand(s, {

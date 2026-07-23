@@ -10,6 +10,7 @@ import {
   offsetNeighborDeltas,
   isWater,
   isBottomMapBorderTile,
+  skirtBridgedLandNeighbors,
   type GameMap,
   type Tile,
   type TerrainType,
@@ -893,11 +894,11 @@ export function generateMap(opts: WorldGenOptions): GameMap {
     ...map,
     mapType,
     mapTypeRequested: requested,
-    // Polar caps are not continents; inland-sea shores may touch borders.
     landmassCount:
-      mapType === "inland_sea"
+      map.landmassCount ??
+      (mapType === "inland_sea"
         ? countLandmasses(map, minSize, null)
-        : countLandmasses(map, minSize, map.poleAxis),
+        : countLandmasses(map, minSize, map.poleAxis)),
   });
   if (mapType === "inland_sea") {
     for (let attempt = 0; attempt < 12; attempt++) {
@@ -916,7 +917,8 @@ export function generateMap(opts: WorldGenOptions): GameMap {
     // Land bridges deliberately join continents, so the promised landmass count
     // is the layout's connected-component count, not the raw continent count.
     const layout = makeContinentLayout(seed, mapType)!;
-    if (countLandmasses(map, minSize, map.poleAxis) === layoutComponents(layout)) return stamp(map);
+    const counted = map.landmassCount ?? countLandmasses(map, minSize, map.poleAxis);
+    if (counted === layoutComponents(layout)) return stamp(map);
   }
   // Last resort: regenerate with wider seam carving to force separation.
   return stamp(generateMapOnce({ ...genOpts, seed: `${opts.seed}:continent:force` }, 1.35));
@@ -1071,10 +1073,15 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
     if (t.terrain === "hills" && moistAt(t.col, t.row) > 0.5) t.wooded = true;
   }
   markLakes(map);
+  const minSize = majorLandmassMin(cols, rows);
+  const landmassCount =
+    mapType === "inland_sea"
+      ? countLandmasses(map, minSize, null)
+      : countLandmasses(map, minSize, poleAxis ?? "ns");
   if (!geoMap) scrubBottomMapBorderOcean(map);
   markCoasts(map);
   generateRivers(map, heights, rng);
-  return map;
+  return { ...map, landmassCount };
 }
 
 /**
@@ -1107,6 +1114,13 @@ export function countLandmasses(
           touchesPole = true;
         }
         for (const [nc, nr] of waterNeighbors(map, c, r)) {
+          const ni = nr * cols + nc;
+          if (!seen[ni] && !isWater(tiles[ni]!.terrain)) {
+            seen[ni] = true;
+            stack.push([nc, nr]);
+          }
+        }
+        for (const [nc, nr] of skirtBridgedLandNeighbors(map, c, r)) {
           const ni = nr * cols + nc;
           if (!seen[ni] && !isWater(tiles[ni]!.terrain)) {
             seen[ni] = true;

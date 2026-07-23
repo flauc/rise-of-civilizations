@@ -2,7 +2,7 @@
 // and tools (the geodata baker bakes into this same shape). Storage is odd-r
 // offset (col/row) for a simple rectangle; gameplay math converts to axial.
 
-import { hexDirectionAngleRad } from "./hex";
+import { hexDirectionAngleRad, axialNeighbor, axialToOffset, offsetToAxial } from "./hex";
 
 export type TerrainType =
   | "ocean"
@@ -289,6 +289,34 @@ export function polarCapLand(map: GameMap): Set<number> {
   return out;
 }
 
+/** Land on the row above the bottom skirt row connects across the ocean skirt. */
+export function skirtBridgedLandNeighbors(map: GameMap, col: number, row: number): Array<[number, number]> {
+  const { rows } = map;
+  if (row !== rows - 2) return [];
+  const bottom = rows - 1;
+  const out: Array<[number, number]> = [];
+  const seen = new Set<string>();
+  const here = offsetToAxial({ col, row });
+  for (let d = 0; d < 6; d++) {
+    const mid = axialToOffset(axialNeighbor(here, d));
+    if (mid.row !== bottom) continue;
+    const midAx = offsetToAxial(mid);
+    for (let d2 = 0; d2 < 6; d2++) {
+      const nb = axialToOffset(axialNeighbor(midAx, d2));
+      if (nb.row !== rows - 2) continue;
+      if (nb.col === col && nb.row === row) continue;
+      const key = `${nb.col},${nb.row}`;
+      if (seen.has(key)) continue;
+      const t = getTile(map, nb.col, nb.row);
+      if (t && !isWater(t.terrain)) {
+        seen.add(key);
+        out.push([nb.col, nb.row]);
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Size of the connected land region each tile belongs to (0 for water tiles).
  * Lets callers tell continent tiles from small-island tiles cheaply.
@@ -311,6 +339,13 @@ export function landmassSizes(map: GameMap): Int32Array {
           const nc = c + dc;
           const nr = r + dr;
           if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+          const ni = nr * cols + nc;
+          if (!seen[ni] && !isWater(tiles[ni]!.terrain)) {
+            seen[ni] = true;
+            stack.push([nc, nr]);
+          }
+        }
+        for (const [nc, nr] of skirtBridgedLandNeighbors(map, c, r)) {
           const ni = nr * cols + nc;
           if (!seen[ni] && !isWater(tiles[ni]!.terrain)) {
             seen[ni] = true;

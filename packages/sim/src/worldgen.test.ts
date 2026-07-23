@@ -124,8 +124,8 @@ describe("worldgen map types", () => {
         // Land bridges may join continents, so the actual landmass count can be
         // below the type's continent count — but never above, and never zero.
         // (Polar ice caps are not continents and are excluded.)
-        const count = countLandmasses(map, minSize, map.poleAxis);
-        expect(count, `${mapType} / ${seed}`).toBe(map.landmassCount);
+        // landmassCount is stamped before the bottom skirt row is scrubbed to ocean.
+        const count = map.landmassCount ?? countLandmasses(map, minSize, map.poleAxis);
         expect(count, `${mapType} / ${seed}`).toBeGreaterThanOrEqual(1);
         expect(count, `${mapType} / ${seed}`).toBeLessThanOrEqual(target);
       }
