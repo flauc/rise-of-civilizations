@@ -4,6 +4,7 @@ import {
   BASE_SIZE,
   computeWorldBounds,
   drawScene,
+  punchCacheBottomSkirtHoles,
   tileFootprint,
   type RenderOptions,
 } from "./renderer";
@@ -67,7 +68,7 @@ export class MapLayerCache {
     }
     this.canvas.width = pxW;
     this.canvas.height = pxH;
-    const ctx = this.canvas.getContext("2d");
+    const ctx = this.canvas.getContext("2d", { alpha: true });
     if (!ctx) {
       this.usable = false;
       return;
@@ -87,17 +88,21 @@ export class MapLayerCache {
       skipFogPass: true,
       skipMapEdgePass: true,
     });
+    punchCacheBottomSkirtHoles(ctx, state.map, originX, originY, buildZoom);
     this.terrainRev = terrainRev;
     this.builtZoom = buildZoom;
     this.usable = true;
   }
 
-  blit(ctx: CanvasRenderingContext2D, camera: Camera, dpr: number): void {
+  /** When clear is false, composite cached terrain over whatever is already drawn (hex-under skirts). */
+  blit(ctx: CanvasRenderingContext2D, camera: Camera, dpr: number, clear = true): void {
     if (!this.canvas || !this.usable) return;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    ctx.fillStyle = "#0a1624";
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    if (clear) {
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.fillStyle = "#0a1624";
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const z = camera.zoom;
     ctx.drawImage(

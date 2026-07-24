@@ -13,7 +13,7 @@ import {
   VILLAGE_GLOBAL_MORALE,
   VILLAGE_UNIT_MORALE,
 } from "./morale";
-import { getTile, isBottomMapBorderTile, isPolarTile, axialDistance, offsetToAxial } from "@roc/shared";
+import { getTile, isBottomMapBorderTile, isMapBorderTile, isPolarTile, axialDistance, offsetToAxial } from "@roc/shared";
 import type { GameSpeed } from "./game-speed";
 import { UNIT_DEFS, type UnitTypeId } from "./content";
 
@@ -53,6 +53,17 @@ describe("map features", () => {
       for (const t of state.map.tiles) {
         if (t.feature === "village" || t.feature === "barb_camp") {
           expect(isBottomMapBorderTile(state.map, t.col, t.row), `${t.feature} at ${t.col},${t.row} (${seed})`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("never places villages or camps on any map border tile", () => {
+    for (const seed of ["border-feat-1", "border-feat-2", "border-feat-3"]) {
+      const state = createGame({ seed, cols: 60, rows: 40, barbarians: "high", villages: "high" });
+      for (const t of state.map.tiles) {
+        if (t.feature === "village" || t.feature === "barb_camp") {
+          expect(isMapBorderTile(state.map, t.col, t.row), `${t.feature} at ${t.col},${t.row} (${seed})`).toBe(false);
         }
       }
     }

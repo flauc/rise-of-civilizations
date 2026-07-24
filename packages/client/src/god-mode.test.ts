@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { getTile } from "@roc/shared";
+import { getTile, isMapTilePresent } from "@roc/shared";
 import { beginTurn, createGame, currentPlayer, territorySize, unitAt } from "@roc/sim";
 import { applyCheat } from "./god-mode";
 
@@ -143,7 +143,7 @@ test("teleports a selected unit to a tile", () => {
 test("places land units on nearby land when a water tile is selected", () => {
   const s = newGame();
   const p = currentPlayer(s);
-  const tile = s.map.tiles.find((t) => t.terrain === "ocean")!;
+  const tile = s.map.tiles.find((t) => t.terrain === "ocean" && isMapTilePresent(s.map, t.col, t.row))!;
   const beforeIds = new Set(s.units.keys());
   const res = applyCheat(s, p.id, { type: "spawnUnit", unitType: "warrior", col: tile.col, row: tile.row });
   expect(res.ok).toBe(true);

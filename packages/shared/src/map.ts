@@ -119,13 +119,161 @@ export function offsetNeighborDeltas(row: number): readonly (readonly [number, n
     : [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]];
 }
 
-/** True when at least one hex neighbour lies outside the map rectangle. */
-export function isMapBorderTile(map: GameMap, col: number, row: number): boolean {
+/** True when this col/row slot is part of the map (staggered left edge + bottom corners). */
+export function isMapTilePresent(map: GameMap, col: number, row: number): boolean {
   if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return false;
+  // Bottom row: omit both corner columns (inset last row).
+  if (row === map.rows - 1 && (col === 0 || col === map.cols - 1)) return false;
+  // Left edge: omit col 0 on 1st, 3rd, 5th… rows (1-based), stair-step like the right rim.
+  if (col === 0 && (row & 1) === 0) return false;
+  return true;
+}
+
+/** Col-0 slots on the last three rows that get a west hex-under curb. */
+export function leftBottomHexUnderSlots(map: GameMap): ReadonlyArray<{ readonly col: number; readonly row: number }> {
+  const antepenultimate = map.rows - 3;
+  const penultimate = map.rows - 2;
+  const bottom = map.rows - 1;
+  const out: { col: number; row: number }[] = [];
+  if (antepenultimate >= 0) out.push({ col: 0, row: antepenultimate });
+  if (penultimate >= 0) out.push({ col: 0, row: penultimate });
+  if (bottom >= 0) out.push({ col: 0, row: bottom });
+  return out;
+}
+
+/** dirt or ocean hex-under for a left-bottom col-0 slot, from the inward neighbor terrain. */
+export function leftBottomHexUnderKind(map: GameMap, col: number, row: number): MapEdgeSkirtKind | null {
+  if (col !== 0) return null;
+  const antepenultimate = map.rows - 3;
+  const penultimate = map.rows - 2;
+  const bottom = map.rows - 1;
+  const refAtRow = (r: number): Tile | undefined => {
+    const refCol = isMapTilePresent(map, 0, r) ? 0 : 1;
+    return getMapSlotTile(map, refCol, r) ?? getMapSlotTile(map, 1, r);
+  };
+  if (row === antepenultimate || row === penultimate) {
+    const ref = refAtRow(row);
+    if (!ref) return null;
+    return isBottomOceanSkirtTerrain(ref.terrain) ? "ocean" : "dirt";
+  }
+  if (row === bottom) {
+    const ref = refAtRow(penultimate);
+    if (!ref) return null;
+    return isBottomOceanSkirtTerrain(ref.terrain) ? "ocean" : "dirt";
+  }
+  return null;
+}
+
+/** Inward playable tile whose west curb a left-bottom ghost slot sits under. */
+export function leftBottomHexUnderAnchor(
+  map: GameMap,
+  slotRow: number,
+): { readonly col: number; readonly row: number } {
+  const penultimate = map.rows - 2;
+  const bottom = map.rows - 1;
+  if (slotRow === bottom) {
+    if (isMapTilePresent(map, 1, bottom)) return { col: 1, row: bottom };
+    return { col: 1, row: penultimate };
+  }
+  if (slotRow === penultimate || slotRow === map.rows - 3) {
+    if (isMapTilePresent(map, 0, slotRow)) return { col: 0, row: slotRow };
+    return { col: 1, row: slotRow };
+  }
+  return { col: 1, row: slotRow };
+}
+
+/** @deprecated Use {@link leftBottomHexUnderSlots} — void is not painted on these slots. */
+export function leftBottomEdgeGhostSlots(map: GameMap): ReadonlyArray<{ readonly col: number; readonly row: number }> {
+  return leftBottomHexUnderSlots(map);
+}
+
+/** Last-two-row left/right edge extension slots (left bottom ghost + penultimate east ghost). */
+export function mapBottomEdgeTerrainSlots(
+  map: GameMap,
+): ReadonlyArray<{ readonly col: number; readonly row: number }> {
+  const penultimate = map.rows - 2;
+  const bottom = map.rows - 1;
+  if (penultimate < 0) return [];
+  const out: { col: number; row: number }[] = [];
+  for (const row of [penultimate, bottom]) {
+    if (!isMapTilePresent(map, 0, row)) out.push({ col: 0, row });
+    if (row === penultimate) {
+      if (!isMapTilePresent(map, map.cols - 1, row)) {
+        out.push({ col: map.cols - 1, row });
+      } else {
+        // Playable right-edge penultimate: half cliff on east ghost (col === cols).
+        out.push({ col: map.cols, row: penultimate });
+      }
+    } else if (!isMapTilePresent(map, map.cols - 1, row)) {
+      // Bottom right ghost half (mirrors col 0 on the left); inward tile uses full rim skirt.
+      out.push({ col: map.cols - 1, row });
+    }
+  }
+  return out;
+}
+
+/** Inward column whose terrain feeds a bottom edge extension slot. */
+export function mapBottomEdgeTerrainRefCol(map: GameMap, col: number, _row: number): number {
+  if (col <= 0) return 1;
+  if (col >= map.cols) return map.cols - 1;
+  return map.cols - 2;
+}
+
+/** Screen anchor column for a bottom-edge extension slot (ghost col). */
+export function mapBottomEdgeTerrainDrawCol(_map: GameMap, col: number, _row: number): number {
+  return col;
+}
+
+/** Rightmost present column on the bottom skirt row (corner columns omitted). */
+export function rightmostBottomPlayableCol(map: GameMap): number {
+  const bottom = map.rows - 1;
+  for (let col = map.cols - 1; col >= 0; col--) {
+    if (isMapTilePresent(map, col, bottom)) return col;
+  }
+  return -1;
+}
+
+export function isMapBottomEdgeTerrainSlot(map: GameMap, col: number, row: number): boolean {
+  return mapBottomEdgeTerrainSlots(map).some((s) => s.col === col && s.row === row);
+}
+
+
+/** hexUnderDirt / hexUnderOcean for a bottom edge extension slot. */
+export function mapBottomEdgeSkirtKind(map: GameMap, col: number, row: number): MapEdgeSkirtKind | null {
+  if (!isMapBottomEdgeTerrainSlot(map, col, row)) return null;
+  const refCol = mapBottomEdgeTerrainRefCol(map, col, row);
+  const bottom = map.rows - 1;
+  const penultimate = map.rows - 2;
+  const refRow = row === bottom ? penultimate : row;
+  const ref = getMapSlotTile(map, refCol, refRow);
+  if (!ref) return null;
+  return isBottomOceanSkirtTerrain(ref.terrain) ? "ocean" : "dirt";
+}
+
+/** 180° rotation + flipY: flipY keeps PNG colors upright, π seats the cliff on the edge. */
+export const MAP_BOTTOM_EDGE_SKIRT_ROTATION_RAD = Math.PI;
+
+/** Rotation for hex-under on bottom-edge extension slots. */
+export function mapBottomEdgeSkirtRotationRad(_map: GameMap, _col: number, _row: number): number {
+  return MAP_BOTTOM_EDGE_SKIRT_ROTATION_RAD;
+}
+
+/** @deprecated Use {@link isMapBottomEdgeTerrainSlot}. */
+export function isLeftBottomGapTerrainSlot(map: GameMap, col: number, row: number): boolean {
+  return isMapBottomEdgeTerrainSlot(map, col, row) && col === 0;
+}
+
+/** Tile data at a grid slot even when {@link isMapTilePresent} is false (rendering only). */
+export function getMapSlotTile(map: GameMap, col: number, row: number): Tile | undefined {
+  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return undefined;
+  return map.tiles[tileIndex(map, col, row)];
+}
+
+/** True when at least one hex neighbour lies outside the playable map. */
+export function isMapBorderTile(map: GameMap, col: number, row: number): boolean {
+  if (!isMapTilePresent(map, col, row)) return false;
   for (const [dc, dr] of offsetNeighborDeltas(row)) {
-    const nc = col + dc;
-    const nr = row + dr;
-    if (nc < 0 || nr < 0 || nc >= map.cols || nr >= map.rows) return true;
+    if (!isMapTilePresent(map, col + dc, row + dr)) return true;
   }
   return false;
 }
@@ -136,14 +284,19 @@ export function isUnitPlayableTile(map: GameMap, col: number, row: number): bool
   return !isBottomMapBorderTile(map, col, row);
 }
 
-/** True on the bottom row of the map grid (on-map ocean/dirt cliff skirts). */
+/** True on the bottom skirt row (present tiles only; corners omitted). */
 export function isBottomMapBorderTile(map: GameMap, col: number, row: number): boolean {
-  return col >= 0 && row >= 0 && col < map.cols && row === map.rows - 1;
+  return isMapTilePresent(map, col, row) && row === map.rows - 1;
+}
+
+/** @deprecated Alias for {@link isBottomMapBorderTile}. */
+export function isBottomSkirtTile(map: GameMap, col: number, row: number): boolean {
+  return isBottomMapBorderTile(map, col, row);
 }
 
 /** Top/left/right map edge — void paints off-map only (terrain stays playable). */
 export function isSideVoidEdgeTile(map: GameMap, col: number, row: number): boolean {
-  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return false;
+  if (!isMapTilePresent(map, col, row)) return false;
   if (row === map.rows - 1) return false;
   return row === 0 || col === 0 || col === map.cols - 1;
 }
@@ -209,14 +362,11 @@ export function mapEdgeSkirtKind(map: GameMap, col: number, row: number): MapEdg
 
   if (l === "land" && r === "land") return "dirt";
   if (l === "water" && r === "water") return "ocean";
-  // Mixed flanks = a shoreline cliff. The sprites render with a 180 degree mirror
-  // (mapEdgeSkirtRotationRad), so land on the LEFT uses the East-shore art and land
-  // on the RIGHT uses the West-shore art to end up on the correct side on screen.
+  // Mixed flanks = shoreline cliff. π + flipY mirrors horizontally, so swap shore variants.
   return l === "land" ? "oceanShoreEast" : "oceanShoreWest";
 }
 
-/** Canvas rotation (radians) for bottom-row ocean/dirt skirts: a 180° spin so
- *  the authored chevron seats as the tile's downward cliff. */
+/** Canvas rotation (radians) for bottom-row ocean/dirt skirts. */
 export function mapEdgeSkirtRotationRad(_map: GameMap, _col: number, _row: number): number {
   return Math.PI;
 }
@@ -381,6 +531,6 @@ export function landmassSizes(map: GameMap): Int32Array {
 }
 
 export function getTile(map: GameMap, col: number, row: number): Tile | undefined {
-  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return undefined;
+  if (!isMapTilePresent(map, col, row)) return undefined;
   return map.tiles[tileIndex(map, col, row)];
 }

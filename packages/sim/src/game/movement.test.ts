@@ -110,7 +110,8 @@ describe("road movement speed", () => {
   /** Lay a straight east-west road of a given tier along row 10. */
   function roadRow(s: ReturnType<typeof flatGame>, level: number) {
     for (let col = 0; col < s.map.cols; col++) {
-      const t = getTile(s.map, col, 10)!;
+      const t = getTile(s.map, col, 10);
+      if (!t) continue;
       t.road = true;
       t.roadLevel = level;
     }
@@ -169,9 +170,10 @@ describe("map border tiles", () => {
     const u = makeUnit(s.nextEntityId++, 0, "warrior", 1, 1);
     u.movementLeft = 4;
     s.units.set(u.id, u);
-    expect(isBottomMapBorderTile(s.map, 0, s.map.rows - 1)).toBe(true);
-    expect(isUnitPlayableTile(s.map, 0, s.map.rows - 1)).toBe(false);
-    expect(computeReachable(s, u).has(`0,${s.map.rows - 1}`)).toBe(false);
+    const skirtCol = 1;
+    expect(isBottomMapBorderTile(s.map, skirtCol, s.map.rows - 1)).toBe(true);
+    expect(isUnitPlayableTile(s.map, skirtCol, s.map.rows - 1)).toBe(false);
+    expect(computeReachable(s, u).has(`${skirtCol},${s.map.rows - 1}`)).toBe(false);
   });
 
   it("allows units on side/top edge tiles", () => {
@@ -181,7 +183,7 @@ describe("map border tiles", () => {
 
   it("ejects units stuck on the bottom row inward", () => {
     const s = flatGame();
-    const u = makeUnit(s.nextEntityId++, 0, "warrior", 0, s.map.rows - 1);
+    const u = makeUnit(s.nextEntityId++, 0, "warrior", 1, s.map.rows - 1);
     s.units.set(u.id, u);
     ejectBorderUnits(s);
     expect(isUnitPlayableTile(s.map, u.col, u.row)).toBe(true);

@@ -3,7 +3,7 @@ import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { tileYieldReport } from "./economy";
 import { citiesOf, unitsOf, type GameState } from "./state";
-import { getTile } from "@roc/shared";
+import { getTile, isMapTilePresent } from "@roc/shared";
 
 function game(): GameState {
   const s = createGame({ seed: "yield-report", cols: 40, rows: 28, barbarians: false, humanSlots: 2 });
@@ -47,7 +47,7 @@ describe("tileYieldReport", () => {
   it("previews the viewer's trait on an unclaimed coast tile without folding it into the headline", () => {
     const s = game();
     // A tile far from spawn, still unclaimed.
-    const free = s.map.tiles.find((t) => t.ownerCityId === undefined)!;
+    const free = s.map.tiles.find((t) => t.ownerCityId === undefined && isMapTilePresent(s.map, t.col, t.row))!;
     setTerrain(s, free.col, free.row, "coast");
 
     const r = tileYieldReport(s, free.col, free.row, 0);
@@ -60,7 +60,7 @@ describe("tileYieldReport", () => {
 
   it("does not list a coastal source on a landlocked grassland tile", () => {
     const s = game();
-    const free = s.map.tiles.find((t) => t.ownerCityId === undefined)!;
+    const free = s.map.tiles.find((t) => t.ownerCityId === undefined && isMapTilePresent(s.map, t.col, t.row))!;
     setTerrain(s, free.col, free.row, "grassland");
 
     const r = tileYieldReport(s, free.col, free.row, 0);

@@ -4,7 +4,7 @@
 // All randomness is DETERMINISTIC — seeded from turn/unit/tile coordinates via
 // the shared RNG — so the server and clients agree (no stored RNG state needed).
 
-import { axialDistance, getTile, hashSeed, isBottomMapBorderTile, isUnitPlayableTile, isPolarTile, makeRng, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, hashSeed, isBottomMapBorderTile, isMapBorderTile, isUnitPlayableTile, isPolarTile, makeRng, offsetToAxial } from "@roc/shared";
 import {
   citiesOf,
   log,
@@ -598,7 +598,7 @@ export function placeFeatures(
     if (!isPassableLand(tile.terrain) || tile.feature) continue;
     if (tile.naturalWonder) continue; // camps/villages never spawn on a natural wonder
     if (isPolarTile(map, tile.col, tile.row)) continue; // no villages/camps at the poles
-    if (isBottomMapBorderTile(map, tile.col, tile.row)) continue; // not on the bottom skirt row
+    if (isMapBorderTile(map, tile.col, tile.row)) continue; // not on any map border tile
     const here = offsetToAxial({ col: tile.col, row: tile.row });
     if (starts.some((s) => s && axialDistance(here, offsetToAxial(s)) < startClearance)) continue;
     if (unitAt(state, tile.col, tile.row)) continue;
