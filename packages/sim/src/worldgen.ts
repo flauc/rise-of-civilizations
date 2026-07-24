@@ -966,15 +966,13 @@ function generateMapOnce(opts: WorldGenOptions, separationScale = 1): GameMap {
     }
     return hillNoise(col * nx * 1.7 + 31.7, row * ny * 1.7 + 17.3) > 0.56 ? "hills" : terrain;
   };
-  // Geodata maps use real latitude; procedural maps pick a random pole axis.
-  // Regional geodata (Mediterranean) omits poleAxis: its land touches the map
-  // borders, so polarCapLand would flood-fill most of the landmass as "ice cap"
-  // and leave no viable player starts on smaller sizes.
-  const poleAxis: "ns" | "ew" | undefined = regionalGeoMapOmitsPoleAxis(mapType)
-    ? undefined
-    : geoMap
-      ? "ns"
-      : "ns";
+  // Both geodata and procedural maps derive climate from real latitude (see
+  // equatorAt below), so cold terrain runs north-south and the ice caps must sit
+  // on the top and bottom edges to match: the poles always run "ns". Regional
+  // geodata (Mediterranean) omits poleAxis entirely, because its land touches the
+  // map borders and polarCapLand would otherwise flood-fill most of the landmass
+  // as ice cap and leave no viable player starts on smaller sizes.
+  const poleAxis: "ns" | undefined = regionalGeoMapOmitsPoleAxis(mapType) ? undefined : "ns";
   const geo = mapGeoProfile(mapType);
   const latLonAt = (col: number, row: number): { lat: number; lon: number } =>
     geo.tileLatLon(col, row, cols, rows);

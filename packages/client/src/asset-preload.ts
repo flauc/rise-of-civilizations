@@ -104,11 +104,21 @@ export function preloadDeferredGameAssets(): void {
   if (tier2Started || !shouldPreloadAssets()) return;
   tier2Started = true;
 
-  void import("./road-assets").then(({ loadRoadAtlas }) => loadRoadAtlas());
-  void import("./ability-assets").then(({ loadAbilityAtlas }) => loadAbilityAtlas());
-  void import("./construction-assets").then(({ loadConstructionAtlas }) => loadConstructionAtlas());
-  void import("./empire-lazy").then(({ preloadEmpireModule }) => preloadEmpireModule());
-  void import("./diplomacy-lazy").then(({ preloadDiplomacyModule }) => preloadDiplomacyModule());
-  void import("./techtree-lazy").then(({ preloadTechTreeModule }) => preloadTechTreeModule());
-  void import("./ui-god-mode").then(({ preloadGodModePanelModule }) => preloadGodModePanelModule());
+  preload(() => import("./road-assets").then(({ loadRoadAtlas }) => loadRoadAtlas()));
+  preload(() => import("./ability-assets").then(({ loadAbilityAtlas }) => loadAbilityAtlas()));
+  preload(() => import("./construction-assets").then(({ loadConstructionAtlas }) => loadConstructionAtlas()));
+  preload(() => import("./empire-lazy").then(({ preloadEmpireModule }) => preloadEmpireModule()));
+  preload(() => import("./diplomacy-lazy").then(({ preloadDiplomacyModule }) => preloadDiplomacyModule()));
+  preload(() => import("./techtree-lazy").then(({ preloadTechTreeModule }) => preloadTechTreeModule()));
+  preload(() => import("./ui-god-mode").then(({ preloadGodModePanelModule }) => preloadGodModePanelModule()));
+}
+
+/**
+ * Best-effort lazy preload. A failed chunk fetch (e.g. a stale PWA client
+ * requesting a chunk hash that no longer exists after a redeploy) is swallowed:
+ * these atlases/modules all have runtime fallbacks, so a preload miss must never
+ * surface as an unhandledrejection.
+ */
+function preload(load: () => Promise<unknown>): void {
+  void load().catch(() => {});
 }

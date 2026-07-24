@@ -306,6 +306,23 @@ function evict(gameId: string, userId: string): void {
   noteConnClosed(gameId);
 }
 
+/**
+ * Detach a socket from whatever game it is currently attached to, before it
+ * creates or joins another. Without this a socket that switches games without
+ * an explicit `leaveGame` lingers in the old game's `gameConns` set forever:
+ * the game never reaches zero live connections (so it is never abandoned),
+ * leaks its lobby entry, and keeps receiving broadcasts on a dead socket.
+ */
+function detachFromGame(ws: ServerWebSocket<Conn>): void {
+  const prev = ws.data.gameId;
+  if (!prev) return;
+  gameConns.get(prev)?.delete(ws);
+  ws.data.gameId = undefined;
+  ws.data.playerId = undefined;
+  ws.data.slot = undefined;
+  noteConnClosed(prev);
+}
+
 function removeGameConns(gameId: string): void {
   const set = gameConns.get(gameId);
   if (!set) return;
@@ -356,6 +373,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
 
     case "createGame": {
       if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
+      detachFromGame(ws);
       const game = lobby.create(msg.name, ws.data.userId, ws.data.handle ?? "Player", {
         seed: msg.seed,
         cols: msg.cols,
@@ -388,6 +406,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
       if (!ws.data.userId) return send(ws, { t: "error", message: "not logged in" });
       const r = lobby.join(msg.gameId, ws.data.userId, ws.data.handle ?? "Player", msg.password);
       if ("error" in r) return send(ws, { t: "error", message: r.error });
+      if (ws.data.gameId && ws.data.gameId !== msg.gameId) detachFromGame(ws);
       ws.data.gameId = msg.gameId;
       ws.data.slot = r.slotId;
       addConn(msg.gameId, ws);

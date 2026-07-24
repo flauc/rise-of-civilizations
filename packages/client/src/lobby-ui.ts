@@ -87,8 +87,8 @@ const MAP_TYPE_OPTIONS: { value: MapType; label: string; desc: string }[] = [
   { value: "pangaea", label: "One Continent", desc: "A single supercontinent: everyone shares one landmass with little ocean between." },
   { value: "two_continents", label: "Two Continents", desc: "Two major landmasses divided by open ocean." },
   { value: "three_continents", label: "Three Continents", desc: "Three landmasses scattered across the sea." },
-  { value: "four_continents", label: "Four Continents", desc: "Four separate continents — wide oceans between every rival." },
-  { value: "archipelago", label: "Archipelago", desc: "Many medium islands — exploration and naval play matter more." },
+  { value: "four_continents", label: "Four Continents", desc: "Four separate continents, wide oceans between every rival." },
+  { value: "archipelago", label: "Archipelago", desc: "Many medium islands, exploration and naval play matter more." },
   { value: "inland_sea", label: "Inland Sea", desc: "Japan's Seto Inland Sea: Honshu, Shikoku, and Kyushu shores around a sea dotted with islands." },
   { value: "islands", label: "Islands", desc: "Lots of small, scattered islands across a wide ocean." },
   { value: "realworld", label: "Real World (Earth)", desc: "The continents of Earth, baked from real-world geodata." },
@@ -102,7 +102,7 @@ const MAP_TYPE_OPTIONS: { value: MapType; label: string; desc: string }[] = [
 
 /** Starting-treasury presets, shown as chips with explanatory tooltips. */
 const GOLD_OPTIONS: { value: StartingGold; label: string; desc: string }[] = [
-  { value: "tight", label: "Tight", desc: "A smaller buffer — be careful about extra units early." },
+  { value: "tight", label: "Tight", desc: "A smaller buffer. Be careful about extra units early." },
   { value: "balanced", label: "Balanced", desc: "Enough to cover a modest army while your first economy comes online." },
   { value: "generous", label: "Generous", desc: "A comfortable cushion for several units or early barbarian bribes." },
 ];
@@ -121,10 +121,10 @@ const DEFAULT_TURN_LIMIT = 120;
 
 /** Game-speed presets — only research and civic costs change. */
 const GAME_SPEED_OPTIONS: { value: GameSpeed; label: string; desc: string }[] = [
-  { value: "slow", label: "Slow", desc: "Cheaper research and civics — eras pass quickly." },
+  { value: "slow", label: "Slow", desc: "Cheaper research and civics, eras pass quickly." },
   { value: "normal", label: "Normal", desc: "Default pacing for the technology and civics trees." },
-  { value: "fast", label: "Fast", desc: "Higher research and civic costs — linger longer in each age." },
-  { value: "epic", label: "Epic", desc: "Much higher costs — a long march through every era." },
+  { value: "fast", label: "Fast", desc: "Higher research and civic costs, linger longer in each age." },
+  { value: "epic", label: "Epic", desc: "Much higher costs, a long march through every era." },
 ];
 
 const DEFAULT_GAME_SPEED: GameSpeed = "normal";
@@ -191,7 +191,7 @@ function civOptions(selected: string, includeRandom: boolean, taken: Set<string>
   for (const c of CIVS_BY_NAME) {
     const isTaken = taken.has(c.id) && c.id !== selected;
     opts.push(
-      `<option value="${c.id}"${c.id === selected ? " selected" : ""}${isTaken ? " disabled" : ""}>${escapeHtml(c.name)} — ${escapeHtml(c.leader)}${isTaken ? " (taken)" : ""}</option>`,
+      `<option value="${c.id}"${c.id === selected ? " selected" : ""}${isTaken ? " disabled" : ""}>${escapeHtml(c.name)}, ${escapeHtml(c.leader)}${isTaken ? " (taken)" : ""}</option>`,
     );
   }
   return opts.join("");
@@ -520,12 +520,12 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         <div class="tutorial-prompt-icon">📜</div>
         <div class="tutorial-prompt-title">New to Rise of Civilizations?</div>
         <p class="tutorial-prompt-body">
-          We recommend playing the <b>Tutorial</b> first — a short game on a small map with one AI opponent
+          We recommend playing the <b>Tutorial</b> first: a short game on a small map with one AI opponent
           and light barbarian activity. You can always start a custom game instead.
         </p>
         <div class="tutorial-prompt-actions">
           <button class="menu-btn primary" id="tp-play" type="button" style="width:auto">Play Tutorial</button>
-          <button class="menu-btn secondary" id="tp-skip" type="button" style="width:auto">Skip — custom game</button>
+          <button class="menu-btn secondary" id="tp-skip" type="button" style="width:auto">Skip, custom game</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -2108,7 +2108,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         ? `
           <div class="mp-settings">
             <div class="mp-opt"><span>Game name</span><input id="rm-name" class="menu-in" value="${escapeHtml(room.name)}" maxlength="60" /></div>
-            <div class="mp-opt"><span>Password (optional)</span><input id="rm-pw" class="menu-in" type="text" placeholder="${room.hasPassword ? "Password set — type to change" : "No password"}" /></div>
+            <div class="mp-opt"><span>Password (optional)</span><input id="rm-pw" class="menu-in" type="text" placeholder="${room.hasPassword ? "Password set, type to change" : "No password"}" /></div>
             <div class="mp-opt"><span>Map type</span>${mapTypeSelect("rm-maptype", room.mapType)}</div>
             <div class="mp-opt"><span>Map size</span>${mapSelect("rm-map", (room.mapSize as MapSize) || "medium")}</div>
             <div class="mp-opt"><span>Turn limit</span>${turnLimitSelect("rm-turnlimit", room.turnLimit ?? DEFAULT_TURN_LIMIT)}</div>
@@ -2366,7 +2366,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         const text = input?.value.trim() ?? "";
         if (!text) return;
         if (!mpSession?.gameId) {
-          setStatus("Chat is not ready yet — wait a moment after joining the lobby.");
+          setStatus("Chat is not ready yet. Wait a moment after joining the lobby.");
           return;
         }
         mpSession.sendChat(text);
@@ -2546,7 +2546,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       void connectAndAuth("resume", { token: existing.token }).catch(() => {
         clearAccount();
         applyAccount(null);
-        setStatus("Session expired — log in or register again.");
+        setStatus("Session expired. Log in or register again.");
       });
     }
   }

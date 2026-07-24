@@ -91,6 +91,21 @@ describe("PlayerView patches", () => {
     expect(applyPlayerViewPatch(before, patch)).toEqual(after);
   });
 
+  it("reputation patch merges instead of dropping unchanged entries", () => {
+    const state = createGame({ seed: "patch-rep", cols: 36, rows: 24, playerCount: 2, barbarians: false });
+    const before = viewForPlayer(state, 0);
+    // Two known reputations going into the turn; only one of them changes.
+    before.diplomacy.reputation = { 0: 5, 1: 3 };
+    const after = viewForPlayer(state, 0);
+    after.diplomacy = { ...before.diplomacy, reputation: { 0: 5, 1: 8 } };
+    const patch = diffPlayerView(before, after);
+    // Only the changed key travels on the wire...
+    expect(patch.diplomacy?.reputation).toEqual({ 1: 8 });
+    // ...but applying it must preserve civ 0's unchanged reputation, not drop it.
+    const merged = applyPlayerViewPatch(before, patch);
+    expect(merged.diplomacy.reputation).toEqual({ 0: 5, 1: 8 });
+  });
+
   it("visible growth uses visibleAdd when tiles only enter sight", () => {
     const state = createGame({ seed: "patch-vis", cols: 40, rows: 28, playerCount: 2, barbarians: false });
     const before = viewForPlayer(state, 0);

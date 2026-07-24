@@ -345,7 +345,7 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
   else subtitle = "Open · 1 move to enter";
 
   const lines: TileLine[] = [];
-  if (y.food) lines.push({ kind: "good", text: `+${y.food} food${y.food >= 2 ? " — quick city growth" : ""}` });
+  if (y.food) lines.push({ kind: "good", text: `+${y.food} food${y.food >= 2 ? ", quick city growth" : ""}` });
   if (y.production) lines.push({ kind: "good", text: `+${y.production} production` });
   if (y.gold) lines.push({ kind: "good", text: `+${y.gold} gold` });
   if (y.science) lines.push({ kind: "good", text: `+${y.science} science` });
@@ -368,11 +368,11 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
     const lvl = tile.roadLevel ?? 1;
     lines.push({
       kind: "good",
-      text: `${workName("road", lvl)} — units spend only ${roadMoveCost(lvl)} of a move to cross (vs 1 on open ground)`,
+      text: `${workName("road", lvl)}: units spend only ${roadMoveCost(lvl)} of a move to cross (vs 1 on open ground)`,
     });
   }
   if (tile.river) {
-    lines.push({ kind: "good", text: tile.riverLake ? "River lake — fresh water (+1 food, +1 science)" : "River — fresh water (+1 food)" });
+    lines.push({ kind: "good", text: tile.riverLake ? "River lake: fresh water (+1 food, +1 science)" : "River: fresh water (+1 food)" });
     lines.push({ kind: "good", text: "Attackers assaulting across the river fight at -25%" });
     lines.push({ kind: "bad", text: "Crossing the river costs +1 movement" });
   }
@@ -387,9 +387,9 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
   }
   if (wonder) {
     const claimed = state.discoveredWonders?.[wonder.id];
-    lines.push({ kind: "good", text: `Natural Wonder — ${wonder.desc}` });
+    lines.push({ kind: "good", text: `Natural Wonder: ${wonder.desc}` });
     if (claimed === undefined) {
-      lines.push({ kind: "good", text: "Undiscovered — first to sight it claims a one-time bonus" });
+      lines.push({ kind: "good", text: "Undiscovered: first to sight it claims a one-time bonus" });
     } else {
       const owner = state.players.find((p) => p.id === claimed);
       lines.push({ kind: "neutral", text: `Discovered by ${owner?.name ?? "another civ"}` });
@@ -415,21 +415,21 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
       text: wparts.length ? `Wonder bonus: ${wparts.join(", ")}` : "An awe-inspiring natural wonder",
     });
   }
-  if (tile.feature === "village") lines.push({ kind: "good", text: "Village — a reward when one of your units enters" });
-  if (tile.feature === "ruin") lines.push({ kind: "neutral", text: "Ruins of a fallen city — fades over time, or build a new city here" });
+  if (tile.feature === "village") lines.push({ kind: "good", text: "Village: a reward when one of your units enters" });
+  if (tile.feature === "ruin") lines.push({ kind: "neutral", text: "Ruins of a fallen city, fades over time, or build a new city here" });
 
-  if (!y.food && !water) lines.push({ kind: "bad", text: "No food — cannot feed a growing city" });
-  if (rough) lines.push({ kind: "bad", text: "Rough ground — slow for units to cross" });
+  if (!y.food && !water) lines.push({ kind: "bad", text: "No food, cannot feed a growing city" });
+  if (rough) lines.push({ kind: "bad", text: "Rough ground, slow for units to cross" });
   if (!passable && !water) lines.push({ kind: "bad", text: "Land units cannot enter" });
   if (water) lines.push({ kind: "bad", text: "Needs a naval unit to cross" });
   else if (def === 0 && passable) lines.push({ kind: "neutral", text: "No defensive cover for units" });
-  if (tile.feature === "barb_camp") lines.push({ kind: "bad", text: "Barbarian camp — clear it for a reward" });
+  if (tile.feature === "barb_camp") lines.push({ kind: "bad", text: "Barbarian camp, clear it for a reward" });
 
   if (tile.ownerCityId != null) {
     const city = state.cities.get(tile.ownerCityId);
     if (city) lines.push({ kind: "neutral", text: `Within ${city.name}'s territory` });
   } else if (passable && !water) {
-    lines.push({ kind: "neutral", text: "Unclaimed — found or expand a city to work it" });
+    lines.push({ kind: "neutral", text: "Unclaimed, found or expand a city to work it" });
   }
 
   return { name, subtitle, yields: y, lines };
@@ -933,7 +933,7 @@ export function createUI(handlers: UIHandlers): UI {
     gpActivateMsg.innerHTML =
       `<div class="gp-activate-effect">${escapeHtml(preview.detail)}</div>` +
       `<div class="gp-activate-note">${escapeHtml(def.desc)}</div>` +
-      `<div class="gp-activate-warn">⚠️ A Great Person can be activated only once — they are spent for good.</div>`;
+      `<div class="gp-activate-warn">⚠️ A Great Person can be activated only once. They are spent for good.</div>`;
     gpActivateOverlay.classList.add("show");
     gpActivateDialog.classList.add("show");
   };
@@ -988,7 +988,7 @@ export function createUI(handlers: UIHandlers): UI {
       ? `<div class="la-dialog-ready">✓ Ready to use.</div>`
       : !unlocked
         ? `<div class="la-dialog-lock">🔒 Unlocks with ${escapeHtml(leaderAbilityUnlockLabel(def))}.</div>`
-        : `<div class="la-dialog-lock">⏳ On cooldown — ${cooldown} turn${cooldown > 1 ? "s" : ""} remaining.</div>`;
+        : `<div class="la-dialog-lock">⏳ On cooldown, ${cooldown} turn${cooldown > 1 ? "s" : ""} remaining.</div>`;
     laDialogMsg.innerHTML =
       `<div class="la-dialog-effect">${escapeHtml(def.desc)}</div>` +
       `<div class="la-dialog-foot">${def.cooldown}-turn cooldown</div>` +
@@ -1076,7 +1076,7 @@ export function createUI(handlers: UIHandlers): UI {
     const turnCaption =
       state.turnLimit > 0
         ? `Turn ${state.turn} of ${state.turnLimit} · highest score wins if the turn limit is reached`
-        : `Turn ${state.turn} · no turn limit — play until a decisive victory`;
+        : `Turn ${state.turn} · no turn limit, play until a decisive victory`;
 
     // Your standing on each enabled win condition, folded into the leaderboard so
     // players see standings and victory progress side by side in one place.
@@ -1139,7 +1139,7 @@ export function createUI(handlers: UIHandlers): UI {
     `<p>Empire morale runs from <b>0 to 200</b> and starts at <b>50</b>. It sets the floor for the morale of newly trained units (a fresh unit starts near <b>50 + half</b> your empire morale) and shifts with your fortunes on the battlefield.</p>` +
     `<p><b>What raises it:</b> winning battles, promoting units, recruiting a Great Person, and declaring war while already confident.</p>` +
     `<p><b>What lowers it:</b> losing units in battle, and declaring war when your army is already shaky.</p>` +
-    `<p><b>Drift:</b> a few quiet turns after your last morale gain, morale slowly fades back toward the base of 50 — it never decays below 50, only lost battles can push it lower.</p>` +
+    `<p><b>Drift:</b> a few quiet turns after your last morale gain, morale slowly fades back toward the base of 50. It never decays below 50, only lost battles can push it lower.</p>` +
     `<p><b>Military pay:</b> set how much you pay your army (−100% to +200% of normal upkeep). Paying more costs gold but slows the drift; at +100% decay stops entirely, and beyond that a lavishly funded army's morale actually climbs each turn. Paying less saves gold but makes morale fade faster.</p>` +
     `<p><b>Why it matters:</b> high morale makes units hit harder and hold ground, and keeps them from breaking and routing under fire; low morale does the opposite.</p>` +
     `</div>` +
@@ -1904,12 +1904,12 @@ export function createUI(handlers: UIHandlers): UI {
       const laReady = laUnlocked && laCooldown === 0;
       const laInner = laReady ? "✦" : !laUnlocked ? `<span class="la-lock">🔒</span>` : `<span class="la-cd">${laCooldown}</span>`;
       const laStatus = laReady
-        ? "Ready — click to use"
+        ? "Ready, click to use"
         : !laUnlocked
-          ? `Locked — unlocks with ${leaderAbilityUnlockLabel(laDef)}`
-          : `On cooldown — ${laCooldown} turn${laCooldown > 1 ? "s" : ""} left`;
+          ? `Locked, unlocks with ${leaderAbilityUnlockLabel(laDef)}`
+          : `On cooldown, ${laCooldown} turn${laCooldown > 1 ? "s" : ""} left`;
       leaderAbilityBadgeHtml =
-        `<button class="la-badge ${laReady ? "ready" : "inactive"}" id="leader-ability-badge" title="${escapeHtml(`${laDef.name} — ${laStatus}`)}">${laInner}</button>`;
+        `<button class="la-badge ${laReady ? "ready" : "inactive"}" id="leader-ability-badge" title="${escapeHtml(`${laDef.name}: ${laStatus}`)}">${laInner}</button>`;
     }
 
     const mapLabel = stateMapLabel(state);
@@ -1931,7 +1931,7 @@ export function createUI(handlers: UIHandlers): UI {
           `<span class="tb-pl">🏛️</span><b>${cName}</b><span class="tb-score">+${cul}</span></button>` : ""}
         ${showReligion ? `<button class="tb-pill" id="religion-btn" title="Religion">` +
           `<span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b><span class="tb-score">+${fth}</span></button>` : ""}
-        <button class="tb-pill" id="morale-pill" title="Empire morale (0–200). Tap for recent events and how morale works.">
+        <button class="tb-pill" id="morale-pill" title="Empire morale (0 to 200). Tap for recent events and how morale works.">
           <span class="tb-pl">🎌</span><b style="color:${moraleColor}">${morale}</b></button>
       </div>
       <div class="tb-grp">
@@ -1941,7 +1941,7 @@ export function createUI(handlers: UIHandlers): UI {
         <button class="tb-pill empire" id="trade-btn" title="Trade Routes"><span class="tb-pl">🐫</span><b>${routeCount}</b></button>
         <button class="tb-pill empire ${gpReady ? "has-badge" : ""}" id="great-people-btn" title="Great People"><span class="tb-pl">🎖️</span><b>${gpReady}</b>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>
         ${legendsOn ? `<button class="tb-pill empire ${canRecruitLegendNow ? "has-badge" : ""}" id="legends-btn" title="Legends"><span class="tb-pl">⭐</span><b>${myLegends}</b>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : ""}
-        <button class="tb-pill ${diploActionable ? "has-badge" : ""}" id="diplo-pill" title="${diploActionable ? `Diplomacy — ${diploActionable} proposal${diploActionable > 1 ? "s" : ""} need your attention` : "Diplomacy"}">
+        <button class="tb-pill ${diploActionable ? "has-badge" : ""}" id="diplo-pill" title="${diploActionable ? `Diplomacy, ${diploActionable} proposal${diploActionable > 1 ? "s" : ""} need your attention` : "Diplomacy"}">
           <span class="tb-pl">🕊️</span><b>${player.met.length}</b>${diploActionable ? `<span class="tu-badge"></span>` : ""}</button>
         <button class="tb-pill ${turnUpdateHasNew ? "has-badge" : ""}" id="turn-update-btn" title="Turn Updates">
           <span class="tb-pl">📜</span><b>Updates</b>${turnUpdateHasNew ? `<span class="tu-badge"></span>` : ""}</button>
@@ -1952,7 +1952,7 @@ export function createUI(handlers: UIHandlers): UI {
     if (civ) {
       leaderAvatar.classList.remove("empty");
       leaderAvatar.innerHTML =
-        `<img src="${ASSET_BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" title="${escapeHtml(civ.name)} — ${escapeHtml(civ.leader)} · standings ${keybindHint("leaderboard")}" onerror="this.style.visibility='hidden'">` +
+        `<img src="${ASSET_BASE_URL}leaders/${civ.id}.png" alt="${escapeHtml(civ.leader)}" title="${escapeHtml(civ.name)}, ${escapeHtml(civ.leader)} · standings ${keybindHint("leaderboard")}" onerror="this.style.visibility='hidden'">` +
         `<div class="leader-avatar-label"><b>${escapeHtml(civ.name)}</b><span>${escapeHtml(civ.leader)}</span></div>` +
         leaderAbilityBadgeHtml;
       // The portrait opens the standings; the ability badge keeps its own action.
@@ -2438,7 +2438,7 @@ export function createUI(handlers: UIHandlers): UI {
           menuOpen = false;
           menuView = "menu";
           renderMenu(state);
-          showBanner(sentNow ? "Bug report sent — thank you!" : "Report saved — it'll send when you're back online.");
+          showBanner(sentNow ? "Bug report sent. Thank you!" : "Report saved. It'll send when you're back online.");
         } catch (err) {
           isReporting = false;
           renderMenu(state);
@@ -2790,7 +2790,7 @@ export function createUI(handlers: UIHandlers): UI {
     html += `<div class="csub" style="margin-top:0">Your government</div>`;
     html +=
       `<div class="gc-current">` +
-      `<div class="gc-current-head"><b>${gov?.name ?? "—"}</b><span class="gc-badge">Active</span></div>` +
+      `<div class="gc-current-head"><b>${gov?.name ?? "None"}</b><span class="gc-badge">Active</span></div>` +
       `<div class="gc-chips">${gov ? govChips(gov) : ""}</div>` +
       `<div class="sub">${gov?.desc ?? ""}</div></div>`;
 
@@ -3088,7 +3088,7 @@ export function createUI(handlers: UIHandlers): UI {
         const mine = city.specialists.filter((s) => s.type === id);
         return (
           `<div class="row" style="justify-content:space-between;gap:6px;margin-top:6px">` +
-          `<span title="${def.latin} — ${def.desc}">${def.name} <b style="color:#fff">×${mine.length}</b></span>` +
+          `<span title="${def.latin}: ${def.desc}">${def.name} <b style="color:#fff">×${mine.length}</b></span>` +
           `<span style="display:flex;gap:4px">` +
           `<button class="btn" data-spec-minus="${id}"${mine.length ? "" : " disabled"}>−</button>` +
           `<button class="btn" data-spec-plus="${id}"${free > 0 ? "" : " disabled"}>＋</button>` +
@@ -3114,7 +3114,7 @@ export function createUI(handlers: UIHandlers): UI {
             const rate = Object.values(workLabourPerTurn(state, w)).reduce((a, b) => a + (b ?? 0), 0);
             const eta = workEtaTurns(state, w);
             const status = rate <= 0 ? "⏸ idle" : eta === Infinity ? "⏸ understaffed" : `+${rate.toFixed(1)}/t · ~${eta}t`;
-            return `<div class="sub" style="margin-top:4px">${escapeHtml(label)} — ${pct}% · 👷${w.assignedSpecialistIds.length} · ${status}<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div></div>`;
+            return `<div class="sub" style="margin-top:4px">${escapeHtml(label)}, ${pct}% · 👷${w.assignedSpecialistIds.length} · ${status}<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div></div>`;
           })
           .join("")
       : `<div class="sub" style="margin-top:12px">No public works under way. Train craftsmen, then develop a tile from its panel.</div>`;
@@ -3190,10 +3190,10 @@ export function createUI(handlers: UIHandlers): UI {
             .join(", ")
         : "";
       const uuDesc = uu
-        ? `\n★ Unique Unit — +${uu.bonus} combat${uuAbilityNames ? ` · ${uuAbilityNames}` : ""}`
+        ? `\n★ Unique Unit: +${uu.bonus} combat${uuAbilityNames ? ` · ${uuAbilityNames}` : ""}`
         : "";
       const title =
-        (can.ok ? `Train ${name} — ${t} turns, costs 1 citizen` : can.error ?? "") +
+        (can.ok ? `Train ${name}, ${t} turns, costs 1 citizen` : can.error ?? "") +
         uuDesc +
         (kit ? `\n${kit.abilityName}: ${kit.desc}` : "");
       return (
@@ -3260,7 +3260,7 @@ export function createUI(handlers: UIHandlers): UI {
             return (
               `<div class="row" style="justify-content:space-between;gap:6px;margin-top:4px">` +
               `<span>${UNIT_DEFS[o.unit].glyph} ${escapeHtml(name)} <span class="sub">${o.turnsLeft}t left</span></span>` +
-              `<span style="display:flex;gap:4px">${rushBtn}<button type="button" class="btn" data-cancel-train="${o.id}" title="Cancel — returns the citizen">✕</button></span></div>`
+              `<span style="display:flex;gap:4px">${rushBtn}<button type="button" class="btn" data-cancel-train="${o.id}" title="Cancel, returns the citizen">✕</button></span></div>`
             );
           })
           .join("")
@@ -3344,7 +3344,7 @@ export function createUI(handlers: UIHandlers): UI {
         ? ""
         : `<div class="csub">World religions</div>` +
           state.religions
-            .map((r) => `<div class="sub rel-row">${relEmblem(r.name)}<span>${r.name} — Tier ${r.tier} · ${cityFollowerCount(state, r.id)} cities</span></div>`)
+            .map((r) => `<div class="sub rel-row">${relEmblem(r.name)}<span>${r.name}, Tier ${r.tier} · ${cityFollowerCount(state, r.id)} cities</span></div>`)
             .join("");
 
     if (!myRel && !religionUnlocked(state, player.id)) {
@@ -3372,7 +3372,7 @@ export function createUI(handlers: UIHandlers): UI {
       .join("");
     const totalFaith = faithCities.reduce((n, c) => n + cityDisplayYields(state, c).faith, 0);
     html += `<div class="gold-section"><div class="gold-section-title">Faith / turn</div>`;
-    html += faithRows || `<div class="gold-row"><span class="sub">No cities producing faith yet — build Shrines and Temples.</span><span class="gold-amount">0</span></div>`;
+    html += faithRows || `<div class="gold-row"><span class="sub">No cities producing faith yet. Build Shrines and Temples.</span><span class="gold-amount">0</span></div>`;
     html += `<div class="gold-total"><span>Total faith</span><span class="gold-amount gold-positive">+${totalFaith}</span></div></div>`;
 
     if (myRel) {
@@ -3382,13 +3382,13 @@ export function createUI(handlers: UIHandlers): UI {
       const followers = majorityFollowerCount(state, myRel.id);
       if (def) html += `<div class="rel-mine-art"><img src="${assetUrl(`religions/${def.id}.png`)}" alt="${myRel.name}" onerror="this.style.display='none'"></div>`;
       html += `<div class="rel-mine-head">${relEmblem(myRel.name, 24)}<b style="font-size:15px">${myRel.name}</b><span class="rel-tier-badge">Tier ${myRel.tier}/${MAX_RELIGION_TIER}</span>${def ? wikiBtn(`religion:${def.id}`, "📖") : ""}</div>`;
-      html += `<div class="sub">Holy city: <b style="color:#fff">${escapeHtml(holy?.name ?? "—")}</b> · Following <b style="color:#fff">${cityFollowerCount(state, myRel.id)}/${totalCities}</b> cities · <b style="color:#fff">${followers}</b> majority</div>`;
+      html += `<div class="sub">Holy city: <b style="color:#fff">${escapeHtml(holy?.name ?? "None")}</b> · Following <b style="color:#fff">${cityFollowerCount(state, myRel.id)}/${totalCities}</b> cities · <b style="color:#fff">${followers}</b> majority</div>`;
 
       if (kit) {
         html += `<div class="csub">Empire benefit</div>`;
-        html += `<div class="sub">✨ <b style="color:#fff">${kit.preset.name}</b> — ${kit.preset.desc}</div>`;
-        html += `<div class="csub">Holy capital${holy ? ` — ${escapeHtml(holy.name)}` : ""}</div>`;
-        html += `<div class="sub">👑 <b style="color:#fff">${kit.capital.name}</b> — ${kit.capital.desc}</div>`;
+        html += `<div class="sub">✨ <b style="color:#fff">${kit.preset.name}</b>: ${kit.preset.desc}</div>`;
+        html += `<div class="csub">Holy capital${holy ? `: ${escapeHtml(holy.name)}` : ""}</div>`;
+        html += `<div class="sub">👑 <b style="color:#fff">${kit.capital.name}</b>: ${kit.capital.desc}</div>`;
       }
       // Move the holy capital to another majority-follower city the player owns.
       const moveTargets = [...state.cities.values()].filter(
@@ -3396,7 +3396,7 @@ export function createUI(handlers: UIHandlers): UI {
       );
       if (moveTargets.length) {
         const canMove = player.faith >= MOVE_HOLY_CITY_COST;
-        html += `<div class="sub" style="margin-top:4px">Move the holy capital — ${MOVE_HOLY_CITY_COST}☮️:</div>`;
+        html += `<div class="sub" style="margin-top:4px">Move the holy capital, ${MOVE_HOLY_CITY_COST}☮️:</div>`;
         html += `<div class="row" style="flex-wrap:wrap;gap:4px;margin-top:2px">${moveTargets
           .map((c) => {
             const title = canMove ? `Move the holy capital to ${c.name} for ${MOVE_HOLY_CITY_COST} faith` : `needs ${MOVE_HOLY_CITY_COST} faith`;
@@ -3412,7 +3412,7 @@ export function createUI(handlers: UIHandlers): UI {
         html += `<div class="csub">Next tier</div>`;
         html += `<div class="sub">Tier ${req.tier}: ${req.faithCost}☮️ · ${req.minFollowerCities} follower cities (have ${followers}). Each tier grants one belief pick.</div>`;
         html += `<button class="btn${can.ok ? " primary" : ""}" id="rel-upgrade"${can.ok ? "" : " disabled"} title="${escapeHtml(can.ok ? `Upgrade ${myRel.name} to tier ${req.tier}` : can.error ?? "")}" style="width:100%;margin-top:4px">` +
-          `⬆ Upgrade to Tier ${req.tier} — ${req.faithCost}☮️${can.ok ? "" : ` <span class="sub">(${escapeHtml(can.error ?? "")})</span>`}</button>`;
+          `⬆ Upgrade to Tier ${req.tier}, ${req.faithCost}☮️${can.ok ? "" : ` <span class="sub">(${escapeHtml(can.error ?? "")})</span>`}</button>`;
       } else {
         html += `<div class="csub">Next tier</div><div class="sub">🏆 ${myRel.name} has reached the highest tier.</div>`;
       }
@@ -3421,7 +3421,7 @@ export function createUI(handlers: UIHandlers): UI {
       html += myRel.beliefs.length
         ? myRel.beliefs.map((b) => {
             const bd = getBelief(b);
-            return `<div class="sub">• <b style="color:#fff">${bd?.name}</b>${bd ? ` <span class="rel-tier-badge">T${bd.tier}</span>` : ""} — ${bd?.desc}</div>`;
+            return `<div class="sub">• <b style="color:#fff">${bd?.name}</b>${bd ? ` <span class="rel-tier-badge">T${bd.tier}</span>` : ""}: ${bd?.desc}</div>`;
           }).join("")
         : `<div class="sub">No beliefs chosen.</div>`;
 
@@ -3430,7 +3430,7 @@ export function createUI(handlers: UIHandlers): UI {
       const pending = pendingPerkPicks(state, myRel.id);
       if (pending > 0) {
         const perks = [...availablePerks(state, myRel.id)].sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
-        html += `<div class="csub">Choose a belief — ${pending} pick${pending === 1 ? "" : "s"} left</div>`;
+        html += `<div class="csub">Choose a belief, ${pending} pick${pending === 1 ? "" : "s"} left</div>`;
         html += `<div class="sub" style="margin-bottom:4px">Beliefs are exclusive across all religions; you may pick any tier up to ${myRel.tier}.</div>`;
         html += perks.length
           ? perks.map((b) => `<div class="tech" data-perk="${b.id}"><div style="flex:1"><b>${b.name}</b> <span class="rel-tier-badge">T${b.tier}</span><div class="sub">${b.desc}</div></div></div>`).join("")
@@ -3442,11 +3442,11 @@ export function createUI(handlers: UIHandlers): UI {
       if (kit && ukit) {
         const udef = UNIT_DEFS[kit.unit.id as UnitTypeId];
         html += `<div class="csub">Unique unit</div>`;
-        html += `<div class="sub">${udef?.glyph ?? "⚔"} <b style="color:#fff">${kit.unit.name}</b> — ${kit.unit.blurb}</div>`;
-        html += `<div class="sub">📜 <b style="color:#fff">${ukit.abilityName}</b> — ${ukit.desc}</div>`;
+        html += `<div class="sub">${udef?.glyph ?? "⚔"} <b style="color:#fff">${kit.unit.name}</b>: ${kit.unit.blurb}</div>`;
+        html += `<div class="sub">📜 <b style="color:#fff">${ukit.abilityName}</b>: ${ukit.desc}</div>`;
         if (ukit.tier4Active) {
           const a4 = ACTIVE_ABILITY_DEFS[ukit.tier4Active];
-          html += `<div class="sub">🔓 <b style="color:#fff">${a4.name}</b> ${myRel.tier >= 4 ? "— unlocked" : "— unlocks at tier 4"}</div>`;
+          html += `<div class="sub">🔓 <b style="color:#fff">${a4.name}</b> ${myRel.tier >= 4 ? ", unlocked" : ", unlocks at tier 4"}</div>`;
         }
         const tierNote = myRel.tier > 1
           ? `Tier ${myRel.tier}: +${2 * (myRel.tier - 1)} strength, aura magnitudes +${25 * (myRel.tier - 1)}%.`
@@ -3498,9 +3498,9 @@ export function createUI(handlers: UIHandlers): UI {
           `<button class="btn rel-change" id="rel-change" title="Pick a different faith">Change</button></div>`;
         if (kit) {
           html += `<div class="csub">What ${def.name} grants</div>`;
-          html += `<div class="sub rel-kit-line">✨ <b style="color:#fff">${kit.preset.name}</b> (empire benefit) — ${kit.preset.desc}</div>`;
-          html += `<div class="sub rel-kit-line">👑 <b style="color:#fff">${kit.capital.name}</b> (holy capital) — ${kit.capital.desc}</div>`;
-          html += `<div class="sub rel-kit-line">${UNIT_DEFS[kit.unit.id as UnitTypeId]?.glyph ?? "⚔"} <b style="color:#fff">${kit.unit.name}</b> (unique unit) — ${kit.unit.blurb}</div>`;
+          html += `<div class="sub rel-kit-line">✨ <b style="color:#fff">${kit.preset.name}</b> (empire benefit): ${kit.preset.desc}</div>`;
+          html += `<div class="sub rel-kit-line">👑 <b style="color:#fff">${kit.capital.name}</b> (holy capital): ${kit.capital.desc}</div>`;
+          html += `<div class="sub rel-kit-line">${UNIT_DEFS[kit.unit.id as UnitTypeId]?.glyph ?? "⚔"} <b style="color:#fff">${kit.unit.name}</b> (unique unit): ${kit.unit.blurb}</div>`;
         }
         const taken = takenPerkIds(state);
         // A rival may have claimed the picked belief since last render.
@@ -3536,7 +3536,7 @@ export function createUI(handlers: UIHandlers): UI {
         .map((t) => {
           const cost = religiousUnitCost(t);
           const can = player.faith >= cost;
-          return `<button class="btn${can ? " primary" : ""}" data-buyrel="${t}" ${can ? "" : "disabled"} style="width:100%;margin-top:4px">${UNIT_DEFS[t].glyph} ${UNIT_DEFS[t].name} — ${cost}☮️</button>`;
+          return `<button class="btn${can ? " primary" : ""}" data-buyrel="${t}" ${can ? "" : "disabled"} style="width:100%;margin-top:4px">${UNIT_DEFS[t].glyph} ${UNIT_DEFS[t].name}, ${cost}☮️</button>`;
         })
         .join("");
     }
@@ -3977,8 +3977,8 @@ export function createUI(handlers: UIHandlers): UI {
       if (def.gunpowder) {
         const loaded = unit.loaded && !unit.reloading;
         headInfo += loaded
-          ? `<div style="margin-top:2px;color:#7ee787">🔫 Loaded — ready to fire</div>`
-          : `<div style="margin-top:2px;color:#ffb86b">🔄 Reloading — fires next turn</div>`;
+          ? `<div style="margin-top:2px;color:#7ee787">🔫 Loaded, ready to fire</div>`
+          : `<div style="margin-top:2px;color:#ffb86b">🔄 Reloading, fires next turn</div>`;
       }
     }
     // Header: big unit art on the left, name/stats on the right. Falls back to the
@@ -4009,7 +4009,7 @@ export function createUI(handlers: UIHandlers): UI {
         const recruitCost = barbarianRecruitCost(unit);
         html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)">`;
         if (pacified) {
-          html += `<div class="csub" style="color:#9fd9a0">🤝 Truce active — this war-band won't attack you.</div>`;
+          html += `<div class="csub" style="color:#9fd9a0">🤝 Truce active. This war-band won't attack you.</div>`;
         }
         if (!adjacent) {
           html += `<div class="locked-note">🤝 Move one of your units beside them to parley.</div>`;
@@ -4042,7 +4042,7 @@ export function createUI(handlers: UIHandlers): UI {
         html +=
           `<div style="margin-top:6px;padding:6px 8px;border-radius:4px;background:rgba(201,162,39,.12);border:1px solid rgba(201,162,39,.3)">` +
           `<span style="color:#ffd967;font-weight:700">★ ${escapeHtml(uu.name)}</span>` +
-          ` <span class="sub">— Unique Unit (+${uu.bonus} combat)</span>` +
+          `<span class="sub">, Unique Unit (+${uu.bonus} combat)</span>` +
           (uuAbilityNames ? `<div class="sub" style="margin-top:2px">Abilities: ${escapeHtml(uuAbilityNames)}</div>` : "") +
           `</div>`;
       }
@@ -4051,7 +4051,7 @@ export function createUI(handlers: UIHandlers): UI {
         if (unit.sleeping) {
           html += `<div class="csub" style="margin-top:8px">💤 Sleeping</div>`;
         } else if (unit.hidden) {
-          html += `<div class="csub" style="margin-top:8px">🌲 Hidden — concealed from enemies</div>`;
+          html += `<div class="csub" style="margin-top:8px">🌲 Hidden, concealed from enemies</div>`;
         } else if (unit.stance) {
           html += `<div class="csub" style="margin-top:8px">${ACTIVE_ABILITY_DEFS[unit.stance].glyph} In stance: <b>${ACTIVE_ABILITY_DEFS[unit.stance].name}</b></div>`;
         }
@@ -4094,7 +4094,7 @@ export function createUI(handlers: UIHandlers): UI {
           `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--edge)">` +
           `<div class="csub">Cargo: <b>${shipCargoLabel(state, unit)}</b></div>`;
         if (cargo.length === 0) {
-          html += `<div class="sub" style="margin-top:4px">Empty — move beside coastal troops and use <b>Jump In</b>.</div>`;
+          html += `<div class="sub" style="margin-top:4px">Empty. Move beside coastal troops and use <b>Jump In</b>.</div>`;
         } else {
           html += `<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">`;
           for (const p of cargo) {
@@ -4106,9 +4106,9 @@ export function createUI(handlers: UIHandlers): UI {
               html +=
                 `<button class="btn" data-disembark="${p.id}" title="Disembark onto the nearest shore">Jump Out</button>`;
             } else if (p.movementLeft <= 0) {
-              html += `<span class="sub">— waits for next turn</span>`;
+              html += `<span class="sub">, waits for next turn</span>`;
             } else {
-              html += `<span class="sub">— no shore nearby</span>`;
+              html += `<span class="sub">, no shore nearby</span>`;
             }
             html += `</div>`;
           }
@@ -4127,7 +4127,7 @@ export function createUI(handlers: UIHandlers): UI {
         } else {
           html +=
             `<div class="locked-note">🐪 No reachable partner from ${escapeHtml(origin.name)}. ` +
-            `Inland cities trade overland; sea lanes need a <b>port city</b> at each end — link far inland partners through a hub port on the same continent.</div>`;
+            `Inland cities trade overland; sea lanes need a <b>port city</b> at each end. Link far inland partners through a hub port on the same continent.</div>`;
         }
       }
 
@@ -4191,9 +4191,9 @@ export function createUI(handlers: UIHandlers): UI {
       if (def.religious) {
         const here = cityAt(state, unit.col, unit.row);
         const charges = unit.religiousCharges ?? 0;
-        html += `<div class="csub">✝ Holy mission — ${charges} charge${charges === 1 ? "" : "s"} left</div>`;
+        html += `<div class="csub">✝ Holy mission, ${charges} charge${charges === 1 ? "" : "s"} left</div>`;
         if (unit.inTransit) {
-          html += `<div class="sub">🐪 Travelling a trade route — arrives turn ${unit.inTransit.arrivesOnTurn}.</div>`;
+          html += `<div class="sub">🐪 Travelling a trade route, arrives turn ${unit.inTransit.arrivesOnTurn}.</div>`;
         } else if (here) {
           if (unit.type === "inquisitor" && here.ownerId === unit.ownerId) {
             html += `<button class="btn primary" data-purge="${here.id}" style="width:100%;margin-top:4px">☩ Purge heresy in ${escapeHtml(here.name)}</button>`;
@@ -4260,7 +4260,7 @@ export function createUI(handlers: UIHandlers): UI {
             `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--edge)">` +
             `<button class="btn${canUpgrade ? " primary" : ""}" data-upgrade ` +
             `${canUpgrade ? "" : "disabled"} ` +
-            `title="${canUpgrade ? `Upgrade to ${upgToDef.name} — loses its turn` : upgradeNote}" ` +
+            `title="${canUpgrade ? `Upgrade to ${upgToDef.name}, loses its turn` : upgradeNote}" ` +
             `style="width:100%;text-align:left;display:flex;justify-content:space-between;gap:8px${canUpgrade ? "" : ";opacity:.5"}">` +
             `<span>⬆️ Upgrade to <b style="color:#fff">${upgToDef.name}</b>${upgradeNote ? ` <span class="sub">(${upgradeNote})</span>` : ""}</span>` +
             `<span class="sub">${upgCost}🪙</span>` +
@@ -4297,7 +4297,7 @@ export function createUI(handlers: UIHandlers): UI {
         const usable = canUseAbility(state, unit, a).ok;
         quickBtns.push(
           `<button class="btn ip-quick-btn" data-ability="${a}" ${usable ? "" : "disabled"} ` +
-            `title="${ad.name} — ${ad.desc}"${usable ? "" : ' style="opacity:.5"'}>` +
+            `title="${ad.name}: ${ad.desc}"${usable ? "" : ' style="opacity:.5"'}>` +
             `${abilityIconHtml(abilityAtlas, a)}</button>`,
         );
       }
@@ -4395,7 +4395,7 @@ export function createUI(handlers: UIHandlers): UI {
     const overall = totalReq > 0 ? Math.floor((totalDone / totalReq) * 100) : 0;
     const eta = workEtaTurns(state, work);
     const etaText =
-      eta === 0 ? "Ready" : eta === Infinity ? "Idle — assign a specialist to begin" : `~${eta} turn${eta === 1 ? "" : "s"} left`;
+      eta === 0 ? "Ready" : eta === Infinity ? "Idle, assign a specialist to begin" : `~${eta} turn${eta === 1 ? "" : "s"} left`;
 
     const isWonder = work.kind === "wonder";
     // For a wonder the per-craft bar tracks CREW (how many of the needed craftsmen
@@ -4417,7 +4417,7 @@ export function createUI(handlers: UIHandlers): UI {
           const pct = need > 0 ? Math.floor((Math.min(have, need) / need) * 100) : 0;
           const full = have >= need;
           return (
-            `<div class="sub" style="margin-top:6px">${escapeHtml(specialistNameForDiscipline(d))} — ${have}/${need} committed${full ? " ✓" : ""}</div>` +
+            `<div class="sub" style="margin-top:6px">${escapeHtml(specialistNameForDiscipline(d))}, ${have}/${need} committed${full ? " ✓" : ""}</div>` +
             `<div class="bar"><i style="width:${pct}%;background:${full ? "#7ad08a" : "#c9a24a"}"></i></div>`
           );
         }
@@ -4426,7 +4426,7 @@ export function createUI(handlers: UIHandlers): UI {
         const pct = req > 0 ? Math.floor((done / req) * 100) : 0;
         const r = rate[d] ?? 0;
         return (
-          `<div class="sub" style="margin-top:6px">${escapeHtml(specialistNameForDiscipline(d))} — ${Math.floor(done)}/${req} ${
+          `<div class="sub" style="margin-top:6px">${escapeHtml(specialistNameForDiscipline(d))}, ${Math.floor(done)}/${req} ${
             r > 0 ? `(+${r.toFixed(1)}/turn)` : "(no one assigned)"
           }</div>` + `<div class="bar"><i style="width:${pct}%;background:#c9a24a"></i></div>`
         );
@@ -4465,18 +4465,18 @@ export function createUI(handlers: UIHandlers): UI {
     const crafts = reqDisc.map(specialistNameForDiscipline).join(" / ");
     const picker = avail.length
       ? `<div class="csub">Assign a specialist</div><div class="row" style="flex-wrap:wrap;gap:6px">${avail.join("")}</div>`
-      : `<div class="sub" style="margin-top:6px;color:#e0b07d">No free ${escapeHtml(crafts)} available — train one in a city to staff this.</div>`;
+      : `<div class="sub" style="margin-top:6px;color:#e0b07d">No free ${escapeHtml(crafts)} available. Train one in a city to staff this.</div>`;
 
     return (
-      `<div class="csub">🛠️ ${escapeHtml(buildLabel)} — ${overall}%</div>` +
+      `<div class="csub">🛠️ ${escapeHtml(buildLabel)}, ${overall}%</div>` +
       `<div class="sub">⏱️ ${etaText}</div>` +
       bars +
       (isWonder
-        ? `<div class="sub" style="margin-top:6px;color:#9fc3e0">Commit the full crew shown above to raise this wonder. It's a long build even fully crewed — but veteran craftsmen finish it faster.</div>`
+        ? `<div class="sub" style="margin-top:6px;color:#9fc3e0">Commit the full crew shown above to raise this wonder. It's a long build even fully crewed, but veteran craftsmen finish it faster.</div>`
         : "") +
       (crewRows
         ? `<div class="csub">Crew (${work.assignedSpecialistIds.length})</div>${crewRows}`
-        : `<div class="sub" style="margin-top:6px">No crew assigned yet — pick specialists below.</div>`) +
+        : `<div class="sub" style="margin-top:6px">No crew assigned yet. Pick specialists below.</div>`) +
       picker +
       (work.ownerId === viewerId
         ? rushButtonsHtml(state, viewerId, "rush-work", work.id, (cur, sur) => workRushCost(work, cur, sur))
@@ -4587,7 +4587,7 @@ export function createUI(handlers: UIHandlers): UI {
         const add = (icon: string, n: number) => { if (n) seg.push(`${icon}${n}`); };
         add("🍞", yld.food); add("⚒️", yld.production); add("🪙", yld.gold); add("🔬", yld.science); add("🙏", yld.faith);
         if (activates && rdef!.amenity) seg.push(`😊${rdef!.amenity}`);
-        let txt = seg.join(" ") || "—";
+        let txt = seg.join(" ") || "None";
         // Only flag a *new* activation (an upgrade leaves the resource already active).
         if (activates && !resourceActive(tile, state)) txt += ` · activates ${rdef!.name}`;
         return `<span class="imp-prev">${txt}</span>`;
@@ -4746,7 +4746,7 @@ export function createUI(handlers: UIHandlers): UI {
     const yd = cityDisplayYields(state, city);
     const need = foodToGrow(city.population);
     const options = availableProduction(state, player, city);
-    const curName = city.production ? prodName(city.production, player.civId) : "— nothing —";
+    const curName = city.production ? prodName(city.production, player.civId) : "None";
     const curCost = city.production ? prodCost(city.production) : 0;
     const prodPct = curCost
       ? Math.min(100, (city.productionStored / curCost) * 100)
@@ -4769,7 +4769,7 @@ export function createUI(handlers: UIHandlers): UI {
       growthMult > 1
         ? ` <span title="Surplus luxuries (${amenities} amenities vs ${unhappiness} unhappiness) speed growth" style="color:#7fd17f">🍷 +${Math.round((growthMult - 1) * 100)}%</span>`
         : growthMult < 1
-          ? ` <span title="Too few amenities (${amenities} vs ${unhappiness} unhappiness) — ${unhappiness - amenities} more would reach full speed" style="color:#d9a86a">😟 −${Math.round((1 - growthMult) * 100)}%</span>`
+          ? ` <span title="Too few amenities (${amenities} vs ${unhappiness} unhappiness), ${unhappiness - amenities} more would reach full speed" style="color:#d9a86a">😟 −${Math.round((1 - growthMult) * 100)}%</span>`
           : "";
 
     const free = workerSlots(city);
@@ -4781,7 +4781,7 @@ export function createUI(handlers: UIHandlers): UI {
     const isOwner = city.ownerId === cityViewer;
     const govMode = GOVERNOR_MODES.find((g) => (g.mode ?? null) === (city.autoMode ?? null)) ?? GOVERNOR_MODES[0]!;
     const govChip = isOwner
-      ? `<button class="gov-chip${city.autoMode ? " active" : ""}" id="gov-chip" aria-expanded="${governorPickerOpen}" title="Governor — ${escapeHtml(govMode.title)}"><span class="gi">${govMode.icon}</span>${govMode.label}<span class="gov-caret">${governorPickerOpen ? "▴" : "▾"}</span></button>`
+      ? `<button class="gov-chip${city.autoMode ? " active" : ""}" id="gov-chip" aria-expanded="${governorPickerOpen}" title="Governor: ${escapeHtml(govMode.title)}"><span class="gi">${govMode.icon}</span>${govMode.label}<span class="gov-caret">${governorPickerOpen ? "▴" : "▾"}</span></button>`
       : "";
     // Flag button: pick which tile the city claims next as it grows (default = nearest).
     const expandBtn = isOwner
@@ -4820,7 +4820,7 @@ export function createUI(handlers: UIHandlers): UI {
       // growth
       `<div class="cline" style="color:var(--parchment)">Growth ${Math.floor(city.foodStored)}/${need} ` +
       (buildingSettler
-        ? `<span title="A city pauses growth while it readies a settler" style="color:#d9a86a">(paused — settler)</span>`
+        ? `<span title="A city pauses growth while it readies a settler" style="color:#d9a86a">(paused, settler)</span>`
         : perTurn > 0
           ? `<span style="color:#9fc0dc">(+${perTurn}/turn · ${turnsToGrow}t)</span>`
           : `<span style="color:#d98a8a">(stalled)</span>`) +
@@ -4851,7 +4851,7 @@ export function createUI(handlers: UIHandlers): UI {
         if (!routes.length) return "";
         const totalGold = routes.reduce((s, r) => s + tradeRouteYield(state, r).gold, 0);
         const names = routes.map((r) => state.cities.get(r.toCityId)?.name ?? "?").join(", ");
-        return `<div class="cline" style="font-size:11px">🐪 Trade (${routes.length}): ${names} — +${totalGold}🪙</div>`;
+        return `<div class="cline" style="font-size:11px">🐪 Trade (${routes.length}): ${names}, +${totalGold}🪙</div>`;
       })() +
       (city.buildings.length
         ? `<div class="cline" style="font-size:11px">Built: ${city.buildings.map((b) => getBuildingDef(b)?.name ?? b).join(", ")}</div>`

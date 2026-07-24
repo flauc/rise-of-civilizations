@@ -93,7 +93,7 @@ export function createRoadmap(): { open(): void; close(): void } {
       <div class="roadmap-header">
         <div class="roadmap-heading">
           <div class="roadmap-title">Roadmap</div>
-          <div class="roadmap-subtitle">Vote for what we build next — the most-wanted milestones rise to the top.</div>
+          <div class="roadmap-subtitle">Vote for what we build next. The most-wanted milestones rise to the top.</div>
         </div>
         <button class="roadmap-close" id="roadmap-close" aria-label="Close">✕</button>
       </div>

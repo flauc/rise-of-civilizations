@@ -16,10 +16,17 @@ export function leaderboardApiUrl(wsUrl?: string): string {
 
 export async function fetchOnlineLeaderboard(limit = 25, wsUrl?: string): Promise<LeaderboardEntry[]> {
   const base = leaderboardApiUrl(wsUrl);
-  const url = base.startsWith("http")
-    ? `${base}?limit=${encodeURIComponent(String(limit))}`
-    : `${base}?limit=${encodeURIComponent(String(limit))}`;
-  const res = await fetch(url);
+  const url = `${base}?limit=${encodeURIComponent(String(limit))}`;
+  // Time the request out so a hung backend (accepts the connection but never
+  // responds) rejects instead of leaving the panel stuck on "Loading scores…".
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 8000);
+  let res: Response;
+  try {
+    res = await fetch(url, { signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error("leaderboard unavailable");
   const ct = res.headers.get("content-type") ?? "";
   if (!ct.includes("application/json")) throw new Error("leaderboard unavailable");

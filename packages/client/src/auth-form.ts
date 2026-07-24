@@ -47,7 +47,7 @@ export function authSplitPanelHtml(opts: {
   const pw = esc(opts.defaultLoginPassword ?? "");
   const advanced = opts.showAdvanced
     ? `<details class="mp-advanced auth-advanced">
-         <summary>Advanced — server address</summary>
+         <summary>Advanced: server address</summary>
          <div class="mp-field" style="margin-top:10px">
            <input id="${p}-url" class="menu-in" value="${esc(opts.advancedUrl ?? "")}" placeholder="ws://host:port/ws" />
          </div>
@@ -147,7 +147,7 @@ export function bindAuthSplitPanel(root: ParentNode, opts: AuthSplitBindOptions)
 function advancedHtml(p: string, showAdvanced?: boolean, advancedUrl?: string): string {
   if (!showAdvanced) return "";
   return `<details class="mp-advanced auth-advanced">
-       <summary>Advanced — server address</summary>
+       <summary>Advanced: server address</summary>
        <div class="mp-field" style="margin-top:10px">
          <input id="${p}-url" class="menu-in" value="${esc(advancedUrl ?? "")}" placeholder="ws://host:port/ws" />
        </div>

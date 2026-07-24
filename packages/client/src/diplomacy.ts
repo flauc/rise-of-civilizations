@@ -355,7 +355,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       card(youCiv?.id, youCiv?.name ?? "You", youCiv?.leader ?? "", youCiv?.abilityName ?? "", playerColor(youId, state)) +
       `<div class="dc-vs">vs</div>` +
       card(themCiv?.id, themCiv?.name ?? themP?.name ?? "Them", themCiv?.leader ?? "",
-        `${themCiv?.abilityName ?? ""} — feeling ${att}`, playerColor(otherId, state)) +
+        `${themCiv?.abilityName ?? ""}, feeling ${att}`, playerColor(otherId, state)) +
       `</div>` +
       (themCiv?.leaderQuote ? `<div class="dc-quote">“${themCiv.leaderQuote}”</div>` : "") +
       `<div class="dc-actions">` +
@@ -562,7 +562,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
         const who = incoming ? "You declined" : "They declined";
         resolved.push(
           `<div class="dp-resolved"><span>✗ ${who}${p.coercive ? " the demand" : " the offer"}` +
-          `${p.reason ? ` — “${p.reason}”` : ""}</span>` +
+          `${p.reason ? `, “${p.reason}”` : ""}</span>` +
           `<span class="x" data-cancel="${p.id}">Dismiss</span></div>`,
         );
       }
@@ -590,7 +590,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       rows.push(
         `<div class="dp-agree"><span>🗺 Shared vision <span class="dp-sub">(indefinite)</span></span>` +
         `<button class="btn" data-cancelsv="${otherId}">End sharing</button></div>` +
-        `<div class="dp-sub" style="margin:-4px 0 8px">Their explored map and current unit/city sight appear on your map — fogged where they've been, clear where they see now.</div>`,
+        `<div class="dp-sub" style="margin:-4px 0 8px">Their explored map and current unit/city sight appear on your map, fogged where they've been, clear where they see now.</div>`,
       );
     }
     if (rows.length === 0) return "";
@@ -796,7 +796,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       const pv = previewPeace(state, viewerId, cid);
       const cls = pv ? (pv.accept ? "yes" : "no") : "neutral";
       const line = pv
-        ? `<div class="dp-verdict ${cls}">${pv.accept ? "✓ They will accept" : "✗ They will refuse"}${pv.reason ? ` — <i>“${pv.reason}”</i>` : ""}</div>`
+        ? `<div class="dp-verdict ${cls}">${pv.accept ? "✓ They will accept" : "✗ They will refuse"}${pv.reason ? `, <i>“${pv.reason}”</i>` : ""}</div>`
         : "";
       topSection =
         `<button class="btn primary dp-cta" id="composer-peace" style="margin-top:0">🕊 Make peace</button>${line}` +
@@ -808,7 +808,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
         .map((k) => `<button class="dp-chip-toggle${dealTreaties.has(k) ? " on" : ""}" data-treaty-chip="${k}">${TREATY_META[k].icon} ${TREATY_META[k].label}</button>`)
         .join("");
       topSection = keys.length
-        ? `<div class="dp-deal-lbl">Treaty terms — binding on both sides</div><div class="dp-chips-row">${chips}</div>`
+        ? `<div class="dp-deal-lbl">Treaty terms, binding on both sides</div><div class="dp-chips-row">${chips}</div>`
         : `<div class="dp-sub" style="margin-bottom:12px">Every treaty is already in force.</div>`;
     }
 
@@ -817,7 +817,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
       topSection +
       renderTray("give", dealGive, state, viewerId, cid, yourGold) +
       renderTray("want", dealWant, state, viewerId, cid, yourGold) +
-      (pendingOut ? `<div class="dp-hint">You already have an offer awaiting their reply — proposing again replaces it.</div>` : "") +
+      (pendingOut ? `<div class="dp-hint">You already have an offer awaiting their reply. Proposing again replaces it.</div>` : "") +
       `<div class="dp-verdict neutral" id="composer-verdict">Pick treaty terms or add items to build an offer.</div>` +
       `<button class="btn primary dp-cta" id="composer-propose">${pendingOut ? "Revise offer" : "Propose deal"}</button>` +
       `</div>`
@@ -852,7 +852,7 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     if (!v) { el.className = "dp-verdict neutral"; el.innerHTML = summary; return; }
     el.className = `dp-verdict ${v.accept ? "yes" : "no"}`;
     el.innerHTML =
-      `${v.accept ? "✓ They will accept" : "✗ They will refuse"}${v.reason ? ` — <i>“${v.reason}”</i>` : ""}${summary}`;
+      `${v.accept ? "✓ They will accept" : "✗ They will refuse"}${v.reason ? `, <i>“${v.reason}”</i>` : ""}${summary}`;
   }
 
   /** Live verdict beside the tribute-demand input: would the AI pay up? */

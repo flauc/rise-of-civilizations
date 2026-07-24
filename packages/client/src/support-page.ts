@@ -48,7 +48,7 @@ function inquiryOptionsHtml(selected = "general"): string {
 
 function formHtml(): string {
   return (
-    `<p>Questions, account help, or feedback — we read every message.</p>` +
+    `<p>Questions, account help, or feedback. We read every message.</p>` +
     `<form id="support-form" class="support-form" novalidate>` +
     `<label class="support-field">` +
     `<span class="support-label">Inquiry type</span>` +
@@ -76,7 +76,7 @@ function successHtml(inquiryId: string): string {
   return (
     `<div class="support-success">` +
     `<h2>Message sent</h2>` +
-    `<p>Thanks — we received your inquiry (<code>${escapeHtml(inquiryId)}</code>) and will reply to your email when we can.</p>` +
+    `<p>Thanks, we received your inquiry (<code>${escapeHtml(inquiryId)}</code>) and will reply to your email when we can.</p>` +
     `<p>For account deletion, see <a href="/delete-account" data-support-link="/delete-account">Delete account</a>. For legal requests, email <a href="mailto:legal@rise-of-civilizations.com">legal@rise-of-civilizations.com</a>.</p>` +
     `<button type="button" class="menu-btn secondary" id="support-another">Send another message</button>` +
     `</div>`

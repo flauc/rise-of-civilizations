@@ -305,7 +305,7 @@ export function uniqueUnitDetailHtml(uu: typeof UNIQUE_UNITS[number]): string {
   if (bonus) compareParts.push(`<li><b>+${bonus} ${ranged ? "ranged" : "combat"} strength</b> over the ${escapeHtml(baseName)}.</li>`);
   if (gained.length) compareParts.push(`<li><b>Gains:</b> ${gained.map((a) => escapeHtml(ACTIVE_ABILITY_DEFS[a].name)).join(", ")}.</li>`);
   if (lost.length) compareParts.push(`<li><b>Loses:</b> ${lost.map((a) => escapeHtml(ACTIVE_ABILITY_DEFS[a].name)).join(", ")}.</li>`);
-  if (!gained.length && !lost.length) compareParts.push(`<li>Same tactical abilities as the ${escapeHtml(baseName)} — its edge is raw combat strength.</li>`);
+  if (!gained.length && !lost.length) compareParts.push(`<li>Same tactical abilities as the ${escapeHtml(baseName)}. Its edge is raw combat strength.</li>`);
 
   return (
     `<div class="uud-head">` +

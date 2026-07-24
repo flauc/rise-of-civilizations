@@ -314,8 +314,12 @@ export function applyPlayerViewPatch(base: PlayerView, patch: PlayerViewPatch): 
     next.allNaturalWondersClaimedBy = patch.allNaturalWondersClaimedBy ?? undefined;
   }
   if (patch.diplomacy !== undefined) {
-    const { tradeHistory, ...rest } = patch.diplomacy;
+    const { tradeHistory, reputation, ...rest } = patch.diplomacy;
     next.diplomacy = { ...next.diplomacy, ...rest };
+    // reputation is diffed as a partial record (only changed keys), so merge it
+    // into the existing full record rather than replacing it, or unchanged
+    // entries would vanish from the synced view until they next change.
+    if (reputation) next.diplomacy.reputation = { ...next.diplomacy.reputation, ...reputation };
     if (rest.relations) next.diplomacy.relations = rest.relations.map((r) => ({ ...r, deals: r.deals.map((d) => ({ ...d })) }));
     if (rest.attitudeToYou) {
       next.diplomacy.attitudeToYou = rest.attitudeToYou.map((a) => ({

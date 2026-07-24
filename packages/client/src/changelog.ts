@@ -823,37 +823,37 @@ const CHANGELOG: Release[] = [
         tag: "New",
         title: "Cities with plenty to build again",
         desc:
-          "Now that soldiers are trained from citizens rather than hammered out on the production line, cities had run short of things to build. Ten new buildings fill the gap — spanning growth, city defence and military support — so a developed city has a real construction queue from the ancient era to the age of gunpowder, instead of running out of work by the classical age. Every one is unlocked by research and slots into the techs you already climb.",
+          "Now that soldiers are trained from citizens rather than hammered out on the production line, cities had run short of things to build. Ten new buildings fill the gap, spanning growth, city defence and military support, so a developed city has a real construction queue from the ancient era to the age of gunpowder, instead of running out of work by the classical age. Every one is unlocked by research and slots into the techs you already climb.",
       },
       {
         tag: "New",
         title: "A fortress worth besieging",
         desc:
-          "Walls now anchor a whole chain of fortifications. A Castle raises a stone keep that outlasts the outer wall — adding defence and a deep reserve of city health — while Ballista Towers turn the ramparts into artillery, striking bombarded foes far harder. A Bombard Tower mounts gun batteries that let a city fire twice in a single turn, and a Beacon Tower lights a signal chain that lends its defence to every friendly city within sight of its flame. Layer them and a frontier capital becomes a nightmare to storm.",
+          "Walls now anchor a whole chain of fortifications. A Castle raises a stone keep that outlasts the outer wall, adding defence and a deep reserve of city health, while Ballista Towers turn the ramparts into artillery, striking bombarded foes far harder. A Bombard Tower mounts gun batteries that let a city fire twice in a single turn, and a Beacon Tower lights a signal chain that lends its defence to every friendly city within sight of its flame. Layer them and a frontier capital becomes a nightmare to storm.",
       },
       {
         tag: "Gameplay",
         title: "Armies forged, not just fielded",
         desc:
-          "Three new buildings back the muster field. A Drill Yard drills recruits so they train faster; an Armoury issues standardized iron arms, so soldiers march out already blooded with extra experience; and a late-era Arsenal — the pride of a great city — speeds production further and sends its troops off in high spirits. A city that invests in all three fields a faster, sharper, steadier army.",
+          "Three new buildings back the muster field. A Drill Yard drills recruits so they train faster; an Armoury issues standardized iron arms, so soldiers march out already blooded with extra experience; and a late-era Arsenal, the pride of a great city, speeds production further and sends its troops off in high spirits. A city that invests in all three fields a faster, sharper, steadier army.",
       },
       {
         tag: "Gameplay",
         title: "Storehouses, infirmaries and arches of triumph",
         desc:
-          "A Storehouse keeps a grain reserve, so a growing city never restarts its next citizen from empty — every generation builds on the last. An Infirmary tends the wounded, healing your units for a couple of tiles around it each turn, so a city that stages armies also mends them. And a Triumphal Arch turns victory into an address: when an enemy falls near it, your nearby soldiers are steeled by the sight and fight the harder for it.",
+          "A Storehouse keeps a grain reserve, so a growing city never restarts its next citizen from empty, every generation builds on the last. An Infirmary tends the wounded, healing your units for a couple of tiles around it each turn, so a city that stages armies also mends them. And a Triumphal Arch turns victory into an address: when an enemy falls near it, your nearby soldiers are steeled by the sight and fight the harder for it.",
       },
       {
         tag: "UI",
         title: "See what unlocks next",
         desc:
-          "The construction menu no longer hides a building you can't yet raise because it needs another first. A Castle, its towers and the great gun batteries appear greyed out with the prerequisite spelled beneath them, so you can plan the whole fortification chain ahead. The in-game encyclopedia's Buildings page is rebuilt too — a complete, always-accurate roster of every building, its cost, its tech and exactly what it does.",
+          "The construction menu no longer hides a building you can't yet raise because it needs another first. A Castle, its towers and the great gun batteries appear greyed out with the prerequisite spelled beneath them, so you can plan the whole fortification chain ahead. The in-game encyclopedia's Buildings page is rebuilt too: a complete, always-accurate roster of every building, its cost, its tech and exactly what it does.",
       },
       {
         tag: "Gameplay",
         title: "Rivals fortify and equip",
         desc:
-          "Rival empires make full use of the new roster. Cities near a war front raise walls, castles and towers before the blow lands and light beacon networks across a threatened frontier; war-minded civilizations equip their armies with drill yards and armouries; and every empire stocks storehouses and infirmaries to grow and heal — so an AI capital is now as hard to crack as one of your own.",
+          "Rival empires make full use of the new roster. Cities near a war front raise walls, castles and towers before the blow lands and light beacon networks across a threatened frontier; war-minded civilizations equip their armies with drill yards and armouries; and every empire stocks storehouses and infirmaries to grow and heal, so an AI capital is now as hard to crack as one of your own.",
       },
     ],
   },
@@ -865,19 +865,19 @@ const CHANGELOG: Release[] = [
         tag: "Gameplay",
         title: "Great works, built again and again",
         desc:
-          "A handful of the mightiest civ-unique buildings no longer count just once. Raise the Great Wall in a second city and its empire-wide bonus stacks with the first — and so it goes for the Roman Bath, the Cothon, the Storm Temple, the Royal Stable and the Feitoria. Each new copy adds its gift again, up to a generous ceiling, so an empire that commits to its signature building is rewarded for building it far and wide.",
+          "A handful of the mightiest civ-unique buildings no longer count just once. Raise the Great Wall in a second city and its empire-wide bonus stacks with the first, and so it goes for the Roman Bath, the Cothon, the Storm Temple, the Royal Stable and the Feitoria. Each new copy adds its gift again, up to a generous ceiling, so an empire that commits to its signature building is rewarded for building it far and wide.",
       },
       {
         tag: "UI",
         title: "Cliffs that face the sea",
         desc:
-          "The White Cliffs of Dover and the Giant's Causeway now stand where they belong — along the shoreline, their rock dropping straight into open water instead of floating inland. Several of the grandest wonders were repainted too: the Grand Canyon, Iguazú Falls, Victoria Falls and Yosemite now sit cleanly on the map, their sweeping breadth no longer spilling past the edges of their tile.",
+          "The White Cliffs of Dover and the Giant's Causeway now stand where they belong, along the shoreline, their rock dropping straight into open water instead of floating inland. Several of the grandest wonders were repainted too: the Grand Canyon, Iguazú Falls, Victoria Falls and Yosemite now sit cleanly on the map, their sweeping breadth no longer spilling past the edges of their tile.",
       },
       {
         tag: "UI",
         title: "See what a tile still needs",
         desc:
-          "When you can't yet develop a tile or raise a wonder, the option no longer simply vanishes. Locked improvements and world wonders now appear greyed out with the reason spelled out beneath them — the tech to research, the specialist to train, the resource to secure — so you always know what stands between you and the work.",
+          "When you can't yet develop a tile or raise a wonder, the option no longer simply vanishes. Locked improvements and world wonders now appear greyed out with the reason spelled out beneath them, the tech to research, the specialist to train, the resource to secure, so you always know what stands between you and the work.",
       },
     ],
   },
@@ -889,25 +889,25 @@ const CHANGELOG: Release[] = [
         tag: "New",
         title: "A tree of governments",
         desc:
-          "Governments are no longer a simple ladder of ever-better upgrades. They now form a branching tree you research with culture — the same way you research technology with science — spreading across three lineages: Authority, Assembly and Faith. Despotism and Tyranny rule by force; Councils and Republics by the citizenry; Priest-Kingships and Theocracies by the gods. Each carries its own strengths and a real weakness, and the government you hold decides which civics you may enact — so your form of rule is the spine of your whole strategy, not just a count of slots.",
+          "Governments are no longer a simple ladder of ever-better upgrades. They now form a branching tree you research with culture, the same way you research technology with science, spreading across three lineages: Authority, Assembly and Faith. Despotism and Tyranny rule by force; Councils and Republics by the citizenry; Priest-Kingships and Theocracies by the gods. Each carries its own strengths and a real weakness, and the government you hold decides which civics you may enact, so your form of rule is the spine of your whole strategy, not just a count of slots.",
       },
       {
         tag: "New",
         title: "Civics are bargains, not bonuses",
         desc:
-          "Every civic now carries a cost as well as a gift. Standing Army makes every soldier fiercer but drains your treasury to feed them; Open Markets pours gold in peacetime but chokes in war; Border Wardens harden your troops at home yet leave them weaker abroad. Buy civics with your culture, slot the ones your government allows, and swap them as the war turns — the right civics for a marching empire are the wrong ones for a peaceful one.",
+          "Every civic now carries a cost as well as a gift. Standing Army makes every soldier fiercer but drains your treasury to feed them; Open Markets pours gold in peacetime but chokes in war; Border Wardens harden your troops at home yet leave them weaker abroad. Buy civics with your culture, slot the ones your government allows, and swap them as the war turns: the right civics for a marching empire are the wrong ones for a peaceful one.",
       },
       {
         tag: "Gameplay",
         title: "Revolutions cost blood",
         desc:
-          "Changing government is no longer free. Your first is a celebration, and stepping deeper within the same lineage brings only a brief unrest — but abandoning your lineage for another is a revolution: three turns of turmoil in which every city's output falls by a quarter and your slotted civics fall dormant. Choose your path with care; you can't turn on a coin.",
+          "Changing government is no longer free. Your first is a celebration, and stepping deeper within the same lineage brings only a brief unrest, but abandoning your lineage for another is a revolution: three turns of turmoil in which every city's output falls by a quarter and your slotted civics fall dormant. Choose your path with care; you can't turn on a coin.",
       },
       {
         tag: "Balance",
         title: "A new order, weighed and measured",
         desc:
-          "Forty-three civics and fifteen governments arrive fully costed against one another, tier by tier, so no single card or constitution towers over its peers. Powers that only bite in certain moments — at war, on home soil, or against another faith — are priced for how often they truly matter, and every con is a genuine sacrifice rather than a token.",
+          "Forty-three civics and fifteen governments arrive fully costed against one another, tier by tier, so no single card or constitution towers over its peers. Powers that only bite in certain moments, at war, on home soil, or against another faith, are priced for how often they truly matter, and every con is a genuine sacrifice rather than a token.",
       },
       {
         tag: "UI",
@@ -919,7 +919,7 @@ const CHANGELOG: Release[] = [
         tag: "Gameplay",
         title: "Rivals rule with intent",
         desc:
-          "Rival empires now navigate the new tree with a mind of their own — warlords drive down the Authority line, builders and scholars toward the Assembly, the devout toward Faith — researching governments, adopting the civics that suit their temperament, and weighing whether a revolution is worth its unrest before they ever commit to one.",
+          "Rival empires now navigate the new tree with a mind of their own, warlords drive down the Authority line, builders and scholars toward the Assembly, the devout toward Faith, researching governments, adopting the civics that suit their temperament, and weighing whether a revolution is worth its unrest before they ever commit to one.",
       },
     ],
   },
@@ -931,7 +931,7 @@ const CHANGELOG: Release[] = [
         tag: "New",
         title: "Walls that strike back",
         desc:
-          "Your cities can now rain fire on an enemy within two tiles, once per turn. Aim it from the new bombard button, tap a highlighted foe, and the shot lands with no risk of return fire — and its strength scales with the city's defenses, so a well-fortified capital is a threat all on its own.",
+          "Your cities can now rain fire on an enemy within two tiles, once per turn. Aim it from the new bombard button, tap a highlighted foe, and the shot lands with no risk of return fire, and its strength scales with the city's defenses, so a well-fortified capital is a threat all on its own.",
       },
       {
         tag: "New",
@@ -943,31 +943,31 @@ const CHANGELOG: Release[] = [
         tag: "Gameplay",
         title: "Great Prophets each bring their own gift",
         desc:
-          "Every Great Prophet now carries a secondary gift drawn from history alongside the faith they reveal — Zarathustra's Sacred Fire turns kills into faith and lifts morale, Confucius raises temples in your best temple-less cities, Laozi swells faith across the whole empire, Siddhartha heals every wounded unit, Augustine ordains free missionaries at the holy city, Aquinas forges faith into a burst of science, and Rumi sends a wave of pressure and culture through every city. The plain faith reward is a little smaller now to make room for these.",
+          "Every Great Prophet now carries a secondary gift drawn from history alongside the faith they reveal: Zarathustra's Sacred Fire turns kills into faith and lifts morale, Confucius raises temples in your best temple-less cities, Laozi swells faith across the whole empire, Siddhartha heals every wounded unit, Augustine ordains free missionaries at the holy city, Aquinas forges faith into a burst of science, and Rumi sends a wave of pressure and culture through every city. The plain faith reward is a little smaller now to make room for these.",
       },
       {
         tag: "Gameplay",
         title: "Governors get to work at once",
         desc:
-          "Hand a city to a governor and it now chooses what to build that very turn instead of idling until the next — so a freshly appointed governor never wastes the turn you gave it.",
+          "Hand a city to a governor and it now chooses what to build that very turn instead of idling until the next, so a freshly appointed governor never wastes the turn you gave it.",
       },
       {
         tag: "Balance",
         title: "Sea-born wonders need the sea",
         desc:
-          "A handful of civilizations' unique buildings — Carthage and Phoenicia's trade houses, Portugal's feitoria, Corinth's Diolkos, and the harbor works of Venice, Majapahit, the Swahili and Eretria — now require a coastal city, so their maritime bonuses only rise where they truly belong.",
+          "A handful of civilizations' unique buildings, Carthage and Phoenicia's trade houses, Portugal's feitoria, Corinth's Diolkos, and the harbor works of Venice, Majapahit, the Swahili and Eretria, now require a coastal city, so their maritime bonuses only rise where they truly belong.",
       },
       {
         tag: "Balance",
         title: "Civics cost more as your culture deepens",
         desc:
-          "The price of adopting civics has risen across the board, and now climbs a further 12% for every civic you've already taken — so a runaway culture lead no longer sweeps the whole tree in a handful of turns.",
+          "The price of adopting civics has risen across the board, and now climbs a further 12% for every civic you've already taken, so a runaway culture lead no longer sweeps the whole tree in a handful of turns.",
       },
       {
         tag: "Balance",
         title: "Formations reach farther",
         desc:
-          "Discipline and Flanking now count every friendly unit within two tiles rather than only those pressed right alongside, each adding +2 strength up to +8 — so holding a broad line, not just a tight knot, is what wins the melee.",
+          "Discipline and Flanking now count every friendly unit within two tiles rather than only those pressed right alongside, each adding +2 strength up to +8, so holding a broad line, not just a tight knot, is what wins the melee.",
       },
       {
         tag: "UI",
@@ -979,19 +979,19 @@ const CHANGELOG: Release[] = [
         tag: "UI",
         title: "Wonders on the tech tree",
         desc:
-          "The tech tree now marks which wonders each technology unlocks, alongside its units and buildings — while the long rosters of holy units no longer flood the unlock lines.",
+          "The tech tree now marks which wonders each technology unlocks, alongside its units and buildings, while the long rosters of holy units no longer flood the unlock lines.",
       },
       {
         tag: "UI",
         title: "Faith and culture on every tile",
         desc:
-          "When you assign citizens, worked tiles now show their faith and culture yields too, not just food, production, gold and science — and the labels always sit clear of whatever unit is standing on the tile.",
+          "When you assign citizens, worked tiles now show their faith and culture yields too, not just food, production, gold and science, and the labels always sit clear of whatever unit is standing on the tile.",
       },
       {
         tag: "UI",
         title: "The lobby remembers your last game",
         desc:
-          "Setting up a new single-player game now starts from your last one — same civilization, colour, map, opponents and barbarian level — so you can jump back in with a single click.",
+          "Setting up a new single-player game now starts from your last one, same civilization, colour, map, opponents and barbarian level, so you can jump back in with a single click.",
       },
       {
         tag: "Fix",
@@ -1009,73 +1009,73 @@ const CHANGELOG: Release[] = [
         tag: "New",
         title: "Every religion is now its own religion",
         desc:
-          "Each of the 24 faiths carries a historically-fitting preset benefit the moment you found it — Islam's House of Wisdom feeds science and gold, the Aztec faith turns every kill into faith for the sun, Norse raiders plunder richer along the coasts, Jain merchants prosper, Zoroastrian fire temples drive production. Founding also grants one perk pick from a much larger shared pool — and perks are exclusive: a perk claimed by a rival religion is gone for good.",
+          "Each of the 24 faiths carries a historically-fitting preset benefit the moment you found it: Islam's House of Wisdom feeds science and gold, the Aztec faith turns every kill into faith for the sun, Norse raiders plunder richer along the coasts, Jain merchants prosper, Zoroastrian fire temples drive production. Founding also grants one perk pick from a much larger shared pool, and perks are exclusive: a perk claimed by a rival religion is gone for good.",
       },
       {
         tag: "New",
-        title: "Religion tiers — grow your faith to tier 5",
+        title: "Religion tiers: grow your faith to tier 5",
         desc:
-          "Religions now rise through five tiers. Each upgrade costs faith (250 / 500 / 1000 / 2000) and demands a minimum of follower cities (3 / 6 / 10 / 14), and every tier grants a new perk pick — from that tier or any below it. The perk pool spans five tiers too, from Tithe and Harvest Blessing all the way to Dominion of Heaven and the Sword of God.",
+          "Religions now rise through five tiers. Each upgrade costs faith (250 / 500 / 1000 / 2000) and demands a minimum of follower cities (3 / 6 / 10 / 14), and every tier grants a new perk pick, from that tier or any below it. The perk pool spans five tiers too, from Tithe and Harvest Blessing all the way to Dominion of Heaven and the Sword of God.",
       },
       {
         tag: "New",
         title: "Holy capitals",
         desc:
-          "The city where you found your faith is its religious capital: it radiates the strongest pressure and enjoys a bonus fitted to the religion — pilgrims enrich the Christian holy city, the Sikh Khalsa musters troops faster, the Grand Madrasa of Islam feeds science. For 200 faith the capital can be moved to any other follower city you own.",
+          "The city where you found your faith is its religious capital: it radiates the strongest pressure and enjoys a bonus fitted to the religion: pilgrims enrich the Christian holy city, the Sikh Khalsa musters troops faster, the Grand Madrasa of Islam feeds science. For 200 faith the capital can be moved to any other follower city you own.",
       },
       {
         tag: "New",
         title: "24 religion unique units with bespoke powers",
         desc:
-          "Every faith fields a unique holy unit, trained in any follower city with a Temple. Each carries a genuinely distinct kit: the Evangelist heals and converts as he walks, the Templar Knight and Ghazi turn war into faith, the Jain Ahimsa Ascetic cannot strike a blow yet unmans everyone around him, the Gothi promises Valhalla so every nearby death rallies the line, the Oracle of Delphi prophesies doom, the Nihang's chakram whirls through every adjacent enemy, the Miko dances the Kagura, the Egyptian Mortuary Priest harvests souls, the Manichaean Elect out-converts every preacher alive. Units grow stronger with your religion's tier — and several unlock a second signature ability at tier 4.",
+          "Every faith fields a unique holy unit, trained in any follower city with a Temple. Each carries a genuinely distinct kit: the Evangelist heals and converts as he walks, the Templar Knight and Ghazi turn war into faith, the Jain Ahimsa Ascetic cannot strike a blow yet unmans everyone around him, the Gothi promises Valhalla so every nearby death rallies the line, the Oracle of Delphi prophesies doom, the Nihang's chakram whirls through every adjacent enemy, the Miko dances the Kagura, the Egyptian Mortuary Priest harvests souls, the Manichaean Elect out-converts every preacher alive. Units grow stronger with your religion's tier, and several unlock a second signature ability at tier 4.",
       },
       {
         tag: "Fix",
         title: "Religious victory no longer triggers by accident",
         desc:
-          "A city now only counts as converted when a faith truly holds it — a strict majority of its religious pressure above an absolute floor. Previously the faintest trace of ambient spread counted as conversion, so the game could declare a religious victory nobody was pursuing.",
+          "A city now only counts as converted when a faith truly holds it: a strict majority of its religious pressure above an absolute floor. Previously the faintest trace of ambient spread counted as conversion, so the game could declare a religious victory nobody was pursuing.",
       },
       {
         tag: "New",
         title: "Religion wiki",
         desc:
-          "The wiki's religion section documents the whole system — founding, presets, perk tiers and exclusivity, holy capitals, spread and the fixed victory — and every religion now has its own page with its history, benefits and unique unit.",
+          "The wiki's religion section documents the whole system, founding, presets, perk tiers and exclusivity, holy capitals, spread and the fixed victory, and every religion now has its own page with its history, benefits and unique unit.",
       },
       {
         tag: "New",
         title: "Share vision across borders",
         desc:
-          "A new Exchange Maps treaty lets two civilizations see each other's explored lands and everything their units and cities can see, for as long as the pact holds. Offer it at the table like open borders, end it whenever you like from the agreements list — and it tears up the instant war breaks out. Rivals value it too, and will share sight with civilizations they've come to trust.",
+          "A new Exchange Maps treaty lets two civilizations see each other's explored lands and everything their units and cities can see, for as long as the pact holds. Offer it at the table like open borders, end it whenever you like from the agreements list, and it tears up the instant war breaks out. Rivals value it too, and will share sight with civilizations they've come to trust.",
       },
       {
         tag: "UI",
         title: "A rebuilt diplomacy table",
         desc:
-          "The negotiation screen has been rebuilt around two tabs — an Overview of every standing offer, action and agreement, and a Make a deal composer. Treaties are now one-tap chips, and everything changing hands sits in clear 'You give' and 'You receive' trays, so a single proposal can bundle open borders, gold, a luxury and a technology at once. One live verdict tells you whether the AI will accept before you send it, suing for peace has its own button and its own read on whether the enemy will take it, and the whole panel now wears the game's parchment-and-gold look.",
+          "The negotiation screen has been rebuilt around two tabs: an Overview of every standing offer, action and agreement, and a Make a deal composer. Treaties are now one-tap chips, and everything changing hands sits in clear 'You give' and 'You receive' trays, so a single proposal can bundle open borders, gold, a luxury and a technology at once. One live verdict tells you whether the AI will accept before you send it, suing for peace has its own button and its own read on whether the enemy will take it, and the whole panel now wears the game's parchment-and-gold look.",
       },
       {
         tag: "New",
         title: "Let a governor run your cities",
         desc:
-          "Any city can be handed to a governor with a focus — Growth, Military, Science or Money — and it will assign its citizens and choose what to build toward that goal on its own, or stay on Manual if you'd rather manage it yourself. Pick a mode from the compact selector on the city panel. A city you capture always reverts to Manual, so you decide its new course.",
+          "Any city can be handed to a governor with a focus, Growth, Military, Science or Money, and it will assign its citizens and choose what to build toward that goal on its own, or stay on Manual if you'd rather manage it yourself. Pick a mode from the compact selector on the city panel. A city you capture always reverts to Manual, so you decide its new course.",
       },
       {
         tag: "Balance",
         title: "Signature improvements are worth the upgrade",
         desc:
-          "A civilization's unique tile improvement now grows by +2 yields with every tier you upgrade it, instead of +1 — so putting your craftsmen on your signature works pulls decisively ahead of a plain farm or mine.",
+          "A civilization's unique tile improvement now grows by +2 yields with every tier you upgrade it, instead of +1, so putting your craftsmen on your signature works pulls decisively ahead of a plain farm or mine.",
       },
       {
         tag: "Gameplay",
         title: "Coastal bounty waits on the right craft",
         desc:
-          "Fisheries and Salt Pans now call for the Maritime Foraging technology before you can build them — and once you've researched a resource's unlocking tech, a city founded right on that resource reaps it automatically, with no improvement needed.",
+          "Fisheries and Salt Pans now call for the Maritime Foraging technology before you can build them, and once you've researched a resource's unlocking tech, a city founded right on that resource reaps it automatically, with no improvement needed.",
       },
       {
         tag: "Gameplay",
         title: "Improve the land before you claim it",
         desc:
-          "You can now lay roads and build tile improvements on unclaimed, neutral ground — prepare a route or a work site ahead of the settler that will one day annex it (defences and wonders still need your own territory). And a unit whose own civilization has learned Bridge Building can cross a bridged river even when the bridge sits on someone else's land.",
+          "You can now lay roads and build tile improvements on unclaimed, neutral ground, prepare a route or a work site ahead of the settler that will one day annex it (defences and wonders still need your own territory). And a unit whose own civilization has learned Bridge Building can cross a bridged river even when the bridge sits on someone else's land.",
       },
       {
         tag: "Fix",
@@ -1087,7 +1087,7 @@ const CHANGELOG: Release[] = [
         tag: "Gameplay",
         title: "Rivals wield the new systems",
         desc:
-          "The AI plays the expanded game. It raises its religion through the tiers, claims tier-fitting perks and musters its faith's unique holy units where they're needed; it prices units, cities and technologies far more shrewdly at the trade table — refusing to arm a civilization it distrusts except at a ransom and guarding its capital dearly; and a rival losing a war will now cede a besieged city (never its capital) to buy peace when the offer includes it.",
+          "The AI plays the expanded game. It raises its religion through the tiers, claims tier-fitting perks and musters its faith's unique holy units where they're needed; it prices units, cities and technologies far more shrewdly at the trade table, refusing to arm a civilization it distrusts except at a ransom and guarding its capital dearly; and a rival losing a war will now cede a besieged city (never its capital) to buy peace when the offer includes it.",
       },
     ],
   },
@@ -1099,25 +1099,25 @@ const CHANGELOG: Release[] = [
         tag: "New",
         title: "Legends' signature powers are now real",
         desc:
-          "Every one of the 29 heroes now carries a working, historically-rooted power. Combat legends field bespoke ability kits — Gilgamesh slays the beast, Boudica raises barbarian war-bands in revolt, Joan lifts the army with her sacred banner, Tamerlane's kills spread panic, Mehmed's great bombard outranges every engine. Support legends exert passive powers while they live: Mansa Musa floods your treasury, Qin Shi Huang walls every city, Sun Tzu drills the troops beside him, Pachacuti's roads carry your armies over rough ground.",
+          "Every one of the 29 heroes now carries a working, historically-rooted power. Combat legends field bespoke ability kits: Gilgamesh slays the beast, Boudica raises barbarian war-bands in revolt, Joan lifts the army with her sacred banner, Tamerlane's kills spread panic, Mehmed's great bombard outranges every engine. Support legends exert passive powers while they live: Mansa Musa floods your treasury, Qin Shi Huang walls every city, Sun Tzu drills the troops beside him, Pachacuti's roads carry your armies over rough ground.",
       },
       {
         tag: "New",
         title: "Legend wiki pages tell the history behind each power",
         desc:
-          "Every hero's wiki page now lists its real battlefield abilities and a detailed write-up of the historical events the power is drawn from — Thermopylae, Lake Trasimene, the Horns of Hattin, the towers of skulls, the treasure fleets.",
+          "Every hero's wiki page now lists its real battlefield abilities and a detailed write-up of the historical events the power is drawn from: Thermopylae, Lake Trasimene, the Horns of Hattin, the towers of skulls, the treasure fleets.",
       },
       {
         tag: "Gameplay",
         title: "Wonders are a real undertaking again",
         desc:
-          "Wonders no longer snap into being the moment you have a couple of craftsmen. Each wonder now demands a whole crew — you must gather its entire workforce idle and ready (e.g. 11 Masons and 6 Architects for the Great Pyramid), pooled from across your cities, before you can even break ground. That crew is the wonder's whole workforce; no more may join, so you can't rush it by piling on bodies. And even fully crewed, raising a wonder is a long build of many turns — though a crew of veterans, who each work faster, finishes sooner.",
+          "Wonders no longer snap into being the moment you have a couple of craftsmen. Each wonder now demands a whole crew: you must gather its entire workforce idle and ready (e.g. 11 Masons and 6 Architects for the Great Pyramid), pooled from across your cities, before you can even break ground. That crew is the wonder's whole workforce; no more may join, so you can't rush it by piling on bodies. And even fully crewed, raising a wonder is a long build of many turns, though a crew of veterans, who each work faster, finishes sooner.",
       },
       {
         tag: "New",
         title: "Wonders are unlocked, gated, and world-changing",
         desc:
-          "Every wonder is now unlocked by a specific technology, costs a one-time outlay of gold, faith, or culture to begin, and can only be raised where its geography fits — the Pyramids and Sphinx in the desert, Tenochtitlán on a hill, the Colossus on the coast, the Great Lighthouse on coastal water, the Hanging Gardens by fresh water, the Oracle beside a mountain, Stonehenge within sight of one, and the Great Library beside one of your cities. Their yields are stronger across the board — and several now reshape the game itself. The Great Lighthouse gives all your ships +2 sight and +1 movement; the Colossus launches a free, upkeep-free warship from its harbour every six turns; the Oracle lets you rush production with faith; Tenochtitlán's causeways grant all your land units +1 movement; and the Great Pyramid rewards a great offering of faith whenever one of your Legends falls in battle or passes into legend.",
+          "Every wonder is now unlocked by a specific technology, costs a one-time outlay of gold, faith, or culture to begin, and can only be raised where its geography fits: the Pyramids and Sphinx in the desert, Tenochtitlán on a hill, the Colossus on the coast, the Great Lighthouse on coastal water, the Hanging Gardens by fresh water, the Oracle beside a mountain, Stonehenge within sight of one, and the Great Library beside one of your cities. Their yields are stronger across the board, and several now reshape the game itself. The Great Lighthouse gives all your ships +2 sight and +1 movement; the Colossus launches a free, upkeep-free warship from its harbour every six turns; the Oracle lets you rush production with faith; Tenochtitlán's causeways grant all your land units +1 movement; and the Great Pyramid rewards a great offering of faith whenever one of your Legends falls in battle or passes into legend.",
       },
       {
         tag: "Fix",
@@ -1129,7 +1129,7 @@ const CHANGELOG: Release[] = [
         tag: "Fix",
         title: "Great People and Legends no longer overlap",
         desc:
-          "Eight figures appeared in both systems (Sun Tzu, Hannibal, Julius Caesar, Belisarius, Subutai, Joan of Arc, Zheng He, Yi Sun-sin). Each person now lives in one system only: they remain Legends, and the Great General and Great Admiral rosters gained era-matched replacements — Epaminondas, Pyrrhus of Epirus, Gaius Marius, Charles Martel, Baibars, Bertrand du Guesclin, Andrea Doria and Francis Drake — each with a freshly painted portrait.",
+          "Eight figures appeared in both systems (Sun Tzu, Hannibal, Julius Caesar, Belisarius, Subutai, Joan of Arc, Zheng He, Yi Sun-sin). Each person now lives in one system only: they remain Legends, and the Great General and Great Admiral rosters gained era-matched replacements, Epaminondas, Pyrrhus of Epirus, Gaius Marius, Charles Martel, Baibars, Bertrand du Guesclin, Andrea Doria and Francis Drake, each with a freshly painted portrait.",
       },
     ],
   },
@@ -1171,25 +1171,25 @@ const CHANGELOG: Release[] = [
         tag: "New",
         title: "Rivals play to win",
         desc:
-          "The AI no longer just grows and hopes for the best — it picks the victory best suited to its temperament and drives for it. A builder pours its wonders, buildings and research into science or culture; a merchant prince courts open borders to open lucrative international trade routes and out-commerce the field; a zealot founds a faith and sends missionaries across the world to convert rival cities; and a warmonger that spots a beatable neighbour declares war and marches on its capital. Left alone, rivals will now actually win by science, culture, religion, economy or conquest — not merely run up the score.",
+          "The AI no longer just grows and hopes for the best, it picks the victory best suited to its temperament and drives for it. A builder pours its wonders, buildings and research into science or culture; a merchant prince courts open borders to open lucrative international trade routes and out-commerce the field; a zealot founds a faith and sends missionaries across the world to convert rival cities; and a warmonger that spots a beatable neighbour declares war and marches on its capital. Left alone, rivals will now actually win by science, culture, religion, economy or conquest, not merely run up the score.",
       },
       {
         tag: "Gameplay",
         title: "Rivals expand like they mean it",
         desc:
-          "Rival civilizations settle far harder and faster. A new empire opens by hurrying a settler out of its capital for a quick, safe second city, then keeps planting new cities from every settlement that's out of harm's way — even while a distant frontier town is being raided. (Before, a single wandering barbarian near any one city could freeze an entire empire's expansion.) Expect the map to fill with rivals' borders much sooner.",
+          "Rival civilizations settle far harder and faster. A new empire opens by hurrying a settler out of its capital for a quick, safe second city, then keeps planting new cities from every settlement that's out of harm's way, even while a distant frontier town is being raided. (Before, a single wandering barbarian near any one city could freeze an entire empire's expansion.) Expect the map to fill with rivals' borders much sooner.",
       },
       {
         tag: "Fix",
         title: "Embarking out to sea needs Sailing",
         desc:
-          "Land units can no longer stroll onto the water before their civilization has researched Sailing — the tech that unlocks coastal embarkation. The AI is held to the same rule, so rival armies and settlers stay ashore until they've earned their sea legs.",
+          "Land units can no longer stroll onto the water before their civilization has researched Sailing, the tech that unlocks coastal embarkation. The AI is held to the same rule, so rival armies and settlers stay ashore until they've earned their sea legs.",
       },
       {
         tag: "Fix",
         title: "Foreign borders are borders",
         desc:
-          "Slipping a unit into another civilization's territory at peace is an act of war — and now that holds for everyone. The AI no longer wanders across borders uninvited; it routes around foreign land unless it has open borders or has declared war. And when a city's culture expands its borders around someone else's unit, that unit is escorted out to the nearest open ground rather than left camped on land it has no right to — unless the two of you have open borders.",
+          "Slipping a unit into another civilization's territory at peace is an act of war, and now that holds for everyone. The AI no longer wanders across borders uninvited; it routes around foreign land unless it has open borders or has declared war. And when a city's culture expands its borders around someone else's unit, that unit is escorted out to the nearest open ground rather than left camped on land it has no right to, unless the two of you have open borders.",
       },
     ],
   },
@@ -1201,23 +1201,23 @@ const CHANGELOG: Release[] = [
         tag: "Gameplay",
         title: "Rivals stop feeding their settlers to barbarians",
         desc:
-          "The AI no longer marches defenceless settlers straight into raiders. It now scouts a safe place to found, preferring clear ground over slightly better land that sits in harm's way, and sends a soldier along to guard any settler that must cross dangerous country. A settler caught near a raider founds on the spot if it can, or falls back toward a friendly city until the coast clears — so rivals actually plant the sprawling empires they set out to build.",
+          "The AI no longer marches defenceless settlers straight into raiders. It now scouts a safe place to found, preferring clear ground over slightly better land that sits in harm's way, and sends a soldier along to guard any settler that must cross dangerous country. A settler caught near a raider founds on the spot if it can, or falls back toward a friendly city until the coast clears, so rivals actually plant the sprawling empires they set out to build.",
       },
       {
         tag: "Gameplay",
-        title: "The AI works the wilds — villages and barbarian camps",
+        title: "The AI works the wilds: villages and barbarian camps",
         desc:
-          "Rival civilizations now make the map pay. Scouts divert to claim the tribal villages they've discovered for their free rewards, and armies march on known barbarian camps to clear them — pocketing the gold and shutting off the raider spawns at the source instead of chasing one war-band across the map.",
+          "Rival civilizations now make the map pay. Scouts divert to claim the tribal villages they've discovered for their free rewards, and armies march on known barbarian camps to clear them, pocketing the gold and shutting off the raider spawns at the source instead of chasing one war-band across the map.",
       },
       {
         tag: "New",
         title: "Rivals parley with the barbarians",
         desc:
-          "With the Parley tech in hand, the AI now deals with raiders the way you can: recruiting a war-band straight into its army when it needs bodies fast or the unit is a battle-hardened bargain, or buying a truce when raiders are pressing it — always keeping enough gold in the treasury that parley never bankrupts it.",
+          "With the Parley tech in hand, the AI now deals with raiders the way you can: recruiting a war-band straight into its army when it needs bodies fast or the unit is a battle-hardened bargain, or buying a truce when raiders are pressing it, always keeping enough gold in the treasury that parley never bankrupts it.",
       },
       {
         tag: "Balance",
-        title: "Rushing costs more — and a rushing spree costs much more",
+        title: "Rushing costs more, and a rushing spree costs much more",
         desc:
           "Hurrying things with gold, faith or culture is meaningfully pricier now, and settlers in particular cost a premium to rush. On top of that, every rush you make raises the price of the next one for a few turns: a single splurge is fine, but rushing several things back-to-back climbs steeply before cooling back down once you let the spree rest. The AI plays by the same rules, and spends its surplus far more readily.",
       },
@@ -1231,19 +1231,19 @@ const CHANGELOG: Release[] = [
         tag: "Balance",
         title: "Rivers enrich the land they cross",
         desc:
-          "A river running through a tile now adds food to whatever a citizen works there — and a river lake waters fresh ideas with extra science. River-loving civilization and leader perks now correctly count a riverside tile as fresh water, too.",
+          "A river running through a tile now adds food to whatever a citizen works there, and a river lake waters fresh ideas with extra science. River-loving civilization and leader perks now correctly count a riverside tile as fresh water, too.",
       },
       {
         tag: "UI",
         title: "See a tile improvement's payoff before you build it",
         desc:
-          "Build buttons for tile works now show a compact yield preview beneath the name — the food, production, gold, science or faith you'll gain, and the resource it would activate — so you can weigh a Fishery against Salt Pans at a glance. Pastures, Plantations, Camps and Fishing Boats are now on the build menu as well, so resources like cattle, wine, deer and fish can finally be improved.",
+          "Build buttons for tile works now show a compact yield preview beneath the name, the food, production, gold, science or faith you'll gain, and the resource it would activate, so you can weigh a Fishery against Salt Pans at a glance. Pastures, Plantations, Camps and Fishing Boats are now on the build menu as well, so resources like cattle, wine, deer and fish can finally be improved.",
       },
       {
         tag: "UI",
         title: "Cast abilities without opening the panel",
         desc:
-          "The compact unit bar now carries icon-only quick-cast buttons for a unit's abilities — and a one-tap Found City for settlers — so you can fire them straight from the collapsed panel without expanding it first.",
+          "The compact unit bar now carries icon-only quick-cast buttons for a unit's abilities, and a one-tap Found City for settlers, so you can fire them straight from the collapsed panel without expanding it first.",
       },
       {
         tag: "Gameplay",
@@ -1261,7 +1261,7 @@ const CHANGELOG: Release[] = [
         tag: "Fix",
         title: "Unique units called by their proper names",
         desc:
-          "Combat reports, leader-ability descriptions and the civilization picker now name a civ's unique unit instead of the generic one — your Minoan Biremes, Mycenaean Spearmen and Chola Warships read as themselves, and the lobby shows the unique units you field from turn one.",
+          "Combat reports, leader-ability descriptions and the civilization picker now name a civ's unique unit instead of the generic one, your Minoan Biremes, Mycenaean Spearmen and Chola Warships read as themselves, and the lobby shows the unique units you field from turn one.",
       },
     ],
   },
@@ -1273,19 +1273,19 @@ const CHANGELOG: Release[] = [
         tag: "New",
         title: "Four new ways to win",
         desc:
-          "Conquest is no longer the only road to victory. Win by SCIENCE — master the entire technology tree and then circumnavigate the globe, the great feat of the age. Win by CULTURE — let your wonders, Great Works and cultural splendour make your civilization the envy of every rival. Win by RELIGION — convert the whole world to your faith. Or win by ECONOMY — build a trading empire whose commercial might towers over everyone else's.",
+          "Conquest is no longer the only road to victory. Win by SCIENCE: master the entire technology tree and then circumnavigate the globe, the great feat of the age. Win by CULTURE: let your wonders, Great Works and cultural splendour make your civilization the envy of every rival. Win by RELIGION: convert the whole world to your faith. Or win by ECONOMY: build a trading empire whose commercial might towers over everyone else's.",
       },
       {
         tag: "New",
         title: "Choose how a game can be won",
         desc:
-          "When you create a game — single-player or multiplayer — you now pick exactly which victory conditions are in play. Turn off the ones you don't want; in multiplayer the host decides and everyone sees the rules before the match begins. Highest score at the turn limit, and last civilization standing, always apply.",
+          "When you create a game, single-player or multiplayer, you now pick exactly which victory conditions are in play. Turn off the ones you don't want; in multiplayer the host decides and everyone sees the rules before the match begins. Highest score at the turn limit, and last civilization standing, always apply.",
       },
       {
         tag: "UI",
         title: "Track every road to victory",
         desc:
-          "A new 🏆 Victory panel shows, at a glance, how close you stand on each enabled win condition — civilizations converted, technologies and your circumnavigation voyage, cultural influence, mercantile power and your running score — so you always know which path is within reach.",
+          "A new 🏆 Victory panel shows, at a glance, how close you stand on each enabled win condition, civilizations converted, technologies and your circumnavigation voyage, cultural influence, mercantile power and your running score, so you always know which path is within reach.",
       },
       {
         tag: "New",
@@ -1295,33 +1295,33 @@ const CHANGELOG: Release[] = [
       },
       {
         tag: "New",
-        title: "Trade with the world — and across the oceans",
+        title: "Trade with the world, and across the oceans",
         desc:
-          "Trade routes are no longer limited to your own cities. With open borders or an alliance you can open lucrative international routes to another civilization, and routes that cross the sea earn a further premium — the spice lanes of the age. International routes are drawn in teal on the map to set them apart, and a route severs the moment war breaks out.",
+          "Trade routes are no longer limited to your own cities. With open borders or an alliance you can open lucrative international routes to another civilization, and routes that cross the sea earn a further premium, the spice lanes of the age. International routes are drawn in teal on the map to set them apart, and a route severs the moment war breaks out.",
       },
       {
         tag: "New",
         title: "Trade technologies, cities and even soldiers",
         desc:
-          "The diplomacy table now lets you trade far more than gold and luxuries. Hand over (or buy) a technology, cede a city in a peace deal, and sell or lend a unit — a lent unit fights for its borrower and returns to you when the loan ends. The AI values each fairly and guards the techs that would arm a rival against it.",
+          "The diplomacy table now lets you trade far more than gold and luxuries. Hand over (or buy) a technology, cede a city in a peace deal, and sell or lend a unit, a lent unit fights for its borrower and returns to you when the loan ends. The AI values each fairly and guards the techs that would arm a rival against it.",
       },
       {
         tag: "New",
         title: "Banks, Museums and Great Works",
         desc:
-          "Two new buildings deepen your economy and culture: the Bank pours out gold and the Museum houses your culture. And a Great Artist now leaves behind a lasting Great Work in one of your cities — an enduring treasure that radiates culture and renown for the rest of the game.",
+          "Two new buildings deepen your economy and culture: the Bank pours out gold and the Museum houses your culture. And a Great Artist now leaves behind a lasting Great Work in one of your cities, an enduring treasure that radiates culture and renown for the rest of the game.",
       },
       {
         tag: "Gameplay",
         title: "A far stronger opponent",
         desc:
-          "Rival civilizations now play a much sharper game. They expand boldly — founding cities across the map instead of stopping at a handful — develop their economy and research with real purpose, build the new banks, museums and trade routes, reach out for international commerce, send missionaries to grow their faith, and put their treasury to work hurrying construction instead of letting gold pile up. Expect to be genuinely contested for the map.",
+          "Rival civilizations now play a much sharper game. They expand boldly, founding cities across the map instead of stopping at a handful, develop their economy and research with real purpose, build the new banks, museums and trade routes, reach out for international commerce, send missionaries to grow their faith, and put their treasury to work hurrying construction instead of letting gold pile up. Expect to be genuinely contested for the map.",
       },
       {
         tag: "UI",
         title: "Encyclopedia covers the new systems",
         desc:
-          "The in-game Encyclopedia's Victory and Religion pages have been rewritten to explain all four new victory conditions, the religious-pressure model, and the new Missionaries, Apostles and Inquisitors — and the new religious units now appear on the Units page.",
+          "The in-game Encyclopedia's Victory and Religion pages have been rewritten to explain all four new victory conditions, the religious-pressure model, and the new Missionaries, Apostles and Inquisitors, and the new religious units now appear on the Units page.",
       },
     ],
   },
@@ -1333,13 +1333,13 @@ const CHANGELOG: Release[] = [
         tag: "New",
         title: "A living Encyclopedia",
         desc:
-          "Click into any civilization, unit, great person or legend to open a dedicated page that repeats all its stats and adds a historical note on its origin and back story. Civilization pages also explain the real history behind their ability and bonuses, and show clickable cards for their unique unit and unique building that you can drill into for more — with a Back button to step out again.",
+          "Click into any civilization, unit, great person or legend to open a dedicated page that repeats all its stats and adds a historical note on its origin and back story. Civilization pages also explain the real history behind their ability and bonuses, and show clickable cards for their unique unit and unique building that you can drill into for more, with a Back button to step out again.",
       },
       {
         tag: "New",
         title: "Hundreds of historical write-ups",
         desc:
-          "Every one of the 137 civilizations, their unique units and buildings, every base unit, great person and legend now carries an extensive, hand-written historical note — the story of who they were, where their powers came from, and why they mattered.",
+          "Every one of the 137 civilizations, their unique units and buildings, every base unit, great person and legend now carries an extensive, hand-written historical note, the story of who they were, where their powers came from, and why they mattered.",
       },
       {
         tag: "New",
@@ -1357,7 +1357,7 @@ const CHANGELOG: Release[] = [
         tag: "UI",
         title: "Civilizations grouped by region",
         desc:
-          "The Encyclopedia's Civilizations page is now organised into regional sections — the Near East, Europe, Africa, Asia, the steppe, the Americas and Oceania — so it is far easier to browse all 137 peoples.",
+          "The Encyclopedia's Civilizations page is now organised into regional sections, the Near East, Europe, Africa, Asia, the steppe, the Americas and Oceania, so it is far easier to browse all 137 peoples.",
       },
     ],
   },
@@ -1369,25 +1369,25 @@ const CHANGELOG: Release[] = [
         tag: "New",
         title: "Train armies from dedicated military buildings",
         desc:
-          "Units are no longer built on the same queue as everything else. To raise an army you now construct the training building for each unit class — a Barracks for infantry, an Archery Range for ranged troops, a Stable for cavalry, a Siege Workshop for engines and a Shipyard for ships — then train units there. Every building has five tiers that train faster, muster steadier and more experienced recruits, and let you train several units at once.",
+          "Units are no longer built on the same queue as everything else. To raise an army you now construct the training building for each unit class, a Barracks for infantry, an Archery Range for ranged troops, a Stable for cavalry, a Siege Workshop for engines and a Shipyard for ships, then train units there. Every building has five tiers that train faster, muster steadier and more experienced recruits, and let you train several units at once.",
       },
       {
         tag: "Gameplay",
         title: "Every soldier is a citizen",
         desc:
-          "Training a unit now costs one population — a citizen leaves the fields to take up arms. Construction is reserved for buildings, wonders and projects, so the real limit on your army is food and growth, not hammers. Settlers, traders and scouts likewise cost a citizen and are trained from the city centre.",
+          "Training a unit now costs one population, a citizen leaves the fields to take up arms. Construction is reserved for buildings, wonders and projects, so the real limit on your army is food and growth, not hammers. Settlers, traders and scouts likewise cost a citizen and are trained from the city centre.",
       },
       {
         tag: "Balance",
         title: "A richer food economy",
         desc:
-          "With population now feeding your armies, the land feeds harder: grassland, lakes, wetlands and coasts yield more food, granaries and farms are more generous, cities grow faster, and every new city is founded at population 2 — or 3 for fertile river civilizations.",
+          "With population now feeding your armies, the land feeds harder: grassland, lakes, wetlands and coasts yield more food, granaries and farms are more generous, cities grow faster, and every new city is founded at population 2, or 3 for fertile river civilizations.",
       },
       {
         tag: "Gameplay",
         title: "Civilizations begin in character",
         desc:
-          "Each civ now starts with an army drawn from its identity. A people whose unique unit is a bowman — Aragon's Almogàver, Babylon's Bowman, Nubia's archers — opens with ranged troops; mounted and seafaring nations bring extra scouts; and fertile river valleys found their capital a citizen larger. The civilization picker now lists each civ's exact starting units and capital size.",
+          "Each civ now starts with an army drawn from its identity. A people whose unique unit is a bowman, Aragon's Almogàver, Babylon's Bowman, Nubia's archers, opens with ranged troops; mounted and seafaring nations bring extra scouts; and fertile river valleys found their capital a citizen larger. The civilization picker now lists each civ's exact starting units and capital size.",
       },
       {
         tag: "Balance",
@@ -1399,7 +1399,7 @@ const CHANGELOG: Release[] = [
         tag: "UI",
         title: "New training screen and military-building art",
         desc:
-          "A new Train Units panel on every city shows its military buildings, how many units they can train at once, recruits in progress (with the option to cancel or rush them), and a clear free-citizen count — all with freshly painted art for the Barracks, Archery Range, Stable, Siege Workshop and Shipyard.",
+          "A new Train Units panel on every city shows its military buildings, how many units they can train at once, recruits in progress (with the option to cancel or rush them), and a clear free-citizen count, all with freshly painted art for the Barracks, Archery Range, Stable, Siege Workshop and Shipyard.",
       },
     ],
   },
@@ -1409,15 +1409,15 @@ const CHANGELOG: Release[] = [
     changes: [
       {
         tag: "New",
-        title: "Rush production with gold — or faith and culture",
+        title: "Rush production with gold, or faith and culture",
         desc:
-          "Impatient? You can now spend your treasury to finish a city's current build or a tile/wonder work immediately, paying per unit of work remaining. Gold always works; the new Corvée policy lets you rush with culture, and the Labor of Devotion belief lets you rush with faith — both a little cheaper than coin.",
+          "Impatient? You can now spend your treasury to finish a city's current build or a tile/wonder work immediately, paying per unit of work remaining. Gold always works; the new Corvée policy lets you rush with culture, and the Labor of Devotion belief lets you rush with faith, both a little cheaper than coin.",
       },
       {
         tag: "Gameplay",
         title: "Staff public works with individual craftsmen",
         desc:
-          "Wonders and tile works are no longer powered by whole cities — you now assign specific craftsmen to them, and each works one project at a time. Start a work as soon as you've researched the right craft (you can staff it later), watch a turns-to-complete estimate, and pull crews onto whatever matters most right now.",
+          "Wonders and tile works are no longer powered by whole cities, you now assign specific craftsmen to them, and each works one project at a time. Start a work as soon as you've researched the right craft (you can staff it later), watch a turns-to-complete estimate, and pull crews onto whatever matters most right now.",
       },
       {
         tag: "Gameplay",
@@ -1435,19 +1435,19 @@ const CHANGELOG: Release[] = [
         tag: "Gameplay",
         title: "Smarter, less repetitive diplomacy",
         desc:
-          "AI civs now answer a lopsided trade with a fair counter-offer instead of a flat refusal, and they stop pestering you with the same deal — or the same peace plea — turn after turn. They also only declare wars they can actually prosecute, and commit to a single best target rather than picking a fight with the whole world at once.",
+          "AI civs now answer a lopsided trade with a fair counter-offer instead of a flat refusal, and they stop pestering you with the same deal, or the same peace plea, turn after turn. They also only declare wars they can actually prosecute, and commit to a single best target rather than picking a fight with the whole world at once.",
       },
       {
         tag: "Gameplay",
         title: "Barbarians burn your economy",
         desc:
-          "Raiders no longer only hunt your units and cities — they now pillage farms, mines and roads and plunder trade routes running through their reach, so an unguarded frontier bleeds yields fast.",
+          "Raiders no longer only hunt your units and cities, they now pillage farms, mines and roads and plunder trade routes running through their reach, so an unguarded frontier bleeds yields fast.",
       },
       {
         tag: "New",
         title: "Disband a trade route",
         desc:
-          "You can now close one of your own trade routes — handy when raiders keep plundering it. The trader that opened the route is lost and there's no refund, so choose your moment.",
+          "You can now close one of your own trade routes, handy when raiders keep plundering it. The trader that opened the route is lost and there's no refund, so choose your moment.",
       },
       {
         tag: "New",
@@ -1459,25 +1459,25 @@ const CHANGELOG: Release[] = [
         tag: "UI",
         title: "Construction sites on the map",
         desc:
-          "Tiles with a work under way now show an under-construction sprite — distinct for economic improvements, defences and wonders — so you can see at a glance where your craftsmen are busy.",
+          "Tiles with a work under way now show an under-construction sprite, distinct for economic improvements, defences and wonders, so you can see at a glance where your craftsmen are busy.",
       },
       {
         tag: "UI",
         title: "See exactly what a Great Person will do",
         desc:
-          "Activating a Great Person now previews the precise effect first — how much science, gold or production you'll gain, which city it lands in, or how many units get promoted or healed — so there are no surprises.",
+          "Activating a Great Person now previews the precise effect first, how much science, gold or production you'll gain, which city it lands in, or how many units get promoted or healed, so there are no surprises.",
       },
       {
         tag: "Fix",
         title: "Occupied tiles stop paying out",
         desc:
-          "An enemy or barbarian standing on one of your worked tiles now blocks it — your citizens won't venture out under a hostile occupation, so a besieging army actually chokes the city it surrounds.",
+          "An enemy or barbarian standing on one of your worked tiles now blocks it, your citizens won't venture out under a hostile occupation, so a besieging army actually chokes the city it surrounds.",
       },
       {
         tag: "Fix",
         title: "Truly unlimited games",
         desc:
-          "Setting no turn limit now means the game never ends on a score countdown — it runs until someone wins by a decisive condition (conquest, religion, and so on).",
+          "Setting no turn limit now means the game never ends on a score countdown, it runs until someone wins by a decisive condition (conquest, religion, and so on).",
       },
     ],
   },
@@ -1489,13 +1489,13 @@ const CHANGELOG: Release[] = [
         tag: "Gameplay",
         title: "Scouts reworked into true explorers",
         desc:
-          "Scouts no longer carry morale. They now grow by surviving attacks and by discovery — being the one to find villages, barbarian camps, natural wonders and new civilizations earns them experience. Their promotions are all reconnaissance now (sight, mobility, survival, defence), capped by a new Escape line: a rising chance — 50%, 75%, then 95% — to dodge an attack and slip back a tile unharmed, once per turn.",
+          "Scouts no longer carry morale. They now grow by surviving attacks and by discovery, being the one to find villages, barbarian camps, natural wonders and new civilizations earns them experience. Their promotions are all reconnaissance now (sight, mobility, survival, defence), capped by a new Escape line: a rising chance, 50%, 75%, then 95%, to dodge an attack and slip back a tile unharmed, once per turn.",
       },
       {
         tag: "New",
         title: "Tech tree highlights your civilization's unique unlocks",
         desc:
-          "The full tech tree now marks the technologies that unlock your civ's unique unit, unique building and leader ability — sometimes three different techs — and labels them with your unique's proper name instead of the generic one, so you can beeline what makes your civ special.",
+          "The full tech tree now marks the technologies that unlock your civ's unique unit, unique building and leader ability, sometimes three different techs, and labels them with your unique's proper name instead of the generic one, so you can beeline what makes your civ special.",
       },
       {
         tag: "UI",
@@ -1513,13 +1513,13 @@ const CHANGELOG: Release[] = [
         tag: "Fix",
         title: "Unit strength and movement now reflect civ bonuses",
         desc:
-          "The unit info window showed only base stats. Combat strength now includes your civilization's class bonuses and unique-unit bonuses, and movement reflects civ movement perks — so a +2-melee civ's Warrior reads 10, not 8, matching what actually happens in battle.",
+          "The unit info window showed only base stats. Combat strength now includes your civilization's class bonuses and unique-unit bonuses, and movement reflects civ movement perks, so a +2-melee civ's Warrior reads 10, not 8, matching what actually happens in battle.",
       },
       {
         tag: "Fix",
         title: "Military pay boosts are no longer free",
         desc:
-          "Paying your army extra to lift morale now costs a minimum each turn — 10, 20, 30 or 40 gold at +50%, +100%, +150% and +200% — even when you have few or no units. Previously a large army-pay morale boost could cost nothing at all.",
+          "Paying your army extra to lift morale now costs a minimum each turn, 10, 20, 30 or 40 gold at +50%, +100%, +150% and +200%, even when you have few or no units. Previously a large army-pay morale boost could cost nothing at all.",
       },
     ],
   },
@@ -1543,7 +1543,7 @@ const CHANGELOG: Release[] = [
         tag: "Gameplay",
         title: "Reworked barbarians",
         desc:
-          "Barbarian strength now scales with map size — no more near-empty giant maps. Camps keep raising war-bands with no global cap, and fresh camps emerge over time out in the fog of war, so clearing one eventually invites another to rise elsewhere.",
+          "Barbarian strength now scales with map size, no more near-empty giant maps. Camps keep raising war-bands with no global cap, and fresh camps emerge over time out in the fog of war, so clearing one eventually invites another to rise elsewhere.",
       },
       {
         tag: "New",

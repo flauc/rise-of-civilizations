@@ -84,8 +84,14 @@ entry and know exactly what is different in the game.
   fixes, what the wrong behaviour was. Name the units/wonders/mechanics/numbers
   involved. Do not editorialise about how exciting or impactful it is. Never
   mention file names, functions, tests, or refactors.
-- **No em dashes** in any changelog copy (see the `no-em-dashes` house rule). Use
-  commas, periods, or colons instead.
+- **No long dashes, ever** in any changelog copy (both the `changelog.ts` entry
+  and the `docs/CHANGELOG.html` mirror). Never use an em dash (`—`, U+2014) or an
+  en dash (`–`, U+2013): rewrite with a comma, period, or colon; for number/date
+  ranges use the word `to` (e.g. `1200 to 1550`); for an empty placeholder cell
+  use a word like `None`. This is the `no-em-dashes` house rule and it applies to
+  every player-facing string in the game, changelog included. It is easy to
+  reintroduce these by pasting polished prose, so re-check before finishing
+  (Step 3).
 - Order items by impact: new features first, then gameplay/balance changes, then
   fixes. AI-behaviour items usually go last.
 - `date`: the current month and year, e.g. `"July 2026"`.
@@ -101,6 +107,10 @@ Keep the two changelogs' wording identical.
 - Sanity-check `changelog.ts` still parses (balanced braces/brackets; the new
   block sits inside the array). A quick `bun run typecheck` or a targeted read of
   the edited region is enough.
+- **Check for long dashes** in both changelog files and remove any you
+  introduced: `git grep -nP '[\x{2013}\x{2014}]' -- packages/client/src/changelog.ts docs/CHANGELOG.html`.
+  The new entry must contribute zero hits (older released entries are cleaned up
+  separately, but never add a new one).
 - Do **not** verify in the browser preview — per the user's standing preference,
   they verify the running game themselves.
 

@@ -26,6 +26,17 @@ import {
 import { filterChatText } from "@roc/shared";
 import { GameHost } from "./gamehost";
 
+// Server-side bound on client-supplied map dimensions. The largest legit preset
+// (giant) is 100x68; this leaves generous headroom while preventing a malicious
+// or buggy client from requesting, say, 50000x50000 and OOM-crashing the shared
+// process during map generation.
+const MAP_DIM_MIN = 16;
+const MAP_DIM_MAX = 256;
+function clampMapDim(v: number | undefined): number | undefined {
+  if (v === undefined || !Number.isFinite(v)) return undefined;
+  return Math.max(MAP_DIM_MIN, Math.min(MAP_DIM_MAX, Math.floor(v)));
+}
+
 export type SlotKind = "human" | "ai";
 
 export interface Slot {
@@ -186,8 +197,8 @@ export class Lobby {
       name,
       status: "lobby",
       seed: opts.seed ?? id,
-      cols: opts.cols,
-      rows: opts.rows,
+      cols: clampMapDim(opts.cols),
+      rows: clampMapDim(opts.rows),
       mapSize: opts.mapSize,
       mapType: opts.mapType ?? "random",
       barbarians: opts.barbarians ?? "normal",
@@ -244,8 +255,8 @@ export class Lobby {
     if ("error" in game) return game;
     if (patch.name !== undefined) game.name = patch.name.slice(0, 60) || game.name;
     if (patch.password !== undefined) game.password = patch.password || undefined;
-    if (patch.cols !== undefined) game.cols = patch.cols;
-    if (patch.rows !== undefined) game.rows = patch.rows;
+    if (patch.cols !== undefined) game.cols = clampMapDim(patch.cols);
+    if (patch.rows !== undefined) game.rows = clampMapDim(patch.rows);
     if (patch.mapSize !== undefined) game.mapSize = patch.mapSize;
     if (patch.mapType !== undefined) game.mapType = patch.mapType;
     if (patch.barbarians !== undefined) game.barbarians = patch.barbarians;

@@ -184,7 +184,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       needsRedraw = true;
     });
     if (session.hasState()) {
-      ui.banner(`${st().players[st().currentPlayerIndex]?.name ?? "Player"} — Turn ${st().turn}`);
+      ui.banner(`${st().players[st().currentPlayerIndex]?.name ?? "Player"}, Turn ${st().turn}`);
     }
     if (setup.isTutorial) ensureTutorialCoach();
   }
@@ -450,7 +450,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     syncMapWonderAssets();
     const resolving = session.isResolvingTurn?.() ?? false;
     if (wasResolvingTurn && !resolving && !session.isOnline) {
-      ui.banner(`${st().players[st().currentPlayerIndex]!.name} — Turn ${st().turn}`);
+      ui.banner(`${st().players[st().currentPlayerIndex]!.name}, Turn ${st().turn}`);
     }
     wasResolvingTurn = resolving;
   }
@@ -564,9 +564,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       const wasLocal = !session.isOnline;
       session.endTurn();
       clearSelection();
-      if (session.isOnline) ui.banner(`Turn submitted — waiting for opponents…`);
+      if (session.isOnline) ui.banner(`Turn submitted, waiting for opponents…`);
       else if (session.isResolvingTurn?.()) ui.banner("Resolving turn…");
-      else if (wasLocal) ui.banner(`${st().players[st().currentPlayerIndex]!.name} — Turn ${st().turn}`);
+      else if (wasLocal) ui.banner(`${st().players[st().currentPlayerIndex]!.name}, Turn ${st().turn}`);
     },
     onFoundCity: () => {
       if (selectedUnitId == null) return;

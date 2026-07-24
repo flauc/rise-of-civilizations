@@ -166,7 +166,7 @@ export function defaultSaveName(mode: SaveMode, turn: number, playerNames: strin
     minute: "2-digit",
   });
   const prefix = mode === "sp" ? "SP" : "MP";
-  return `${prefix} Turn ${turn} — ${playerNames.join(", ")} (${date})`;
+  return `${prefix} Turn ${turn}: ${playerNames.join(", ")} (${date})`;
 }
 
 /** Serialize a full state and wrap it as a SaveRecord. */
