@@ -105,6 +105,26 @@ describe("unit upkeep", () => {
     expect(militaryUpkeepTotal(state, player)).toBe(0);
   });
 
+  it("bankruptcy sheds only as many units as the shortfall, at the billed rate", () => {
+    const state = createGame({ playerCount: 1, barbarians: false });
+    const player = state.players[0]!;
+    state.units.clear();
+    player.upkeepModifierPct = 200; // +200% military pay: each warrior upkeep is round(1 * 3) = 3.
+    for (let i = 0; i < 20; i++) {
+      const w = makeUnit(state.nextEntityId++, player.id, "warrior", i % 10, Math.floor(i / 10));
+      state.units.set(w.id, w);
+    }
+    expect(militaryUpkeepTotal(state, player)).toBe(60); // 20 x 3
+    player.gold = 50;
+    applyUnitUpkeep(state, player); // 50 - 60 = -10; refund 3 per unit, so shed 4 to reach +2.
+    const remaining = [...state.units.values()].filter((u) => u.ownerId === player.id).length;
+    // With the old bug (pay reset to 0 before refunding) each unit refunded only
+    // 1, forcing 10 units to be culled. Refunding at the billed rate sheds 4.
+    expect(remaining).toBe(16);
+    expect(player.gold).toBe(2);
+    expect(player.upkeepModifierPct).toBe(0); // dropped to normal wages afterward
+  });
+
   it("the pay floor binds only when it exceeds actual unit upkeep", () => {
     const state = createGame({ playerCount: 1, barbarians: false });
     const player = state.players[0]!;

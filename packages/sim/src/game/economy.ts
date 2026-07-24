@@ -894,8 +894,6 @@ export function applyUnitUpkeep(state: GameState, player: Player): void {
       targetIds: [player.id],
     });
     emitTreasuryExhausted(state, player.id);
-    // Can't sustain military pay: reset to normal wages before shedding troops.
-    player.upkeepModifierPct = 0;
     const barbId = barbarianPlayerId(state);
     // Shed the most expensive non-essential units until solvent. Scouts disband;
     // other troops desert to barbarians when that faction exists.
@@ -904,13 +902,21 @@ export function applyUnitUpkeep(state: GameState, player: Player): void {
       .sort((a, b) => unitUpkeep(state, b) - unitUpkeep(state, a));
     while (player.gold < 0 && disbandable.length > 0) {
       const u = disbandable.shift()!;
+      // Refund at the rate the unit was actually billed: read its upkeep before
+      // it changes owner (desertion) and before the pay modifier is reset below,
+      // so shedding stays proportional to the shortfall instead of over-culling
+      // the army when military pay was raised.
+      const refund = unitUpkeep(state, u);
       if (u.type === "scout" || barbId === undefined) {
         state.units.delete(u.id);
       } else {
         desertUnitToBarbarians(u, barbId);
       }
-      player.gold += unitUpkeep(state, u);
+      player.gold += refund;
     }
+    // Can't sustain the raised military pay: drop to normal wages going forward,
+    // now that this turn's shortfall has been settled at the rate it was billed.
+    player.upkeepModifierPct = 0;
     // Unpaid wages gut the army's spirit: global morale plunges and every
     // surviving unit loses heart (see onBankruptcy in morale.ts).
     onBankruptcy(state, player.id);

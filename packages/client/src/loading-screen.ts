@@ -766,7 +766,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     dismissTimer = window.setTimeout(() => {
       dismissTimer = 0;
       if (dismissed) return;
-      if (canSkipNow()) skip();
+      if (canForceDismiss()) skip();
       else pollForceDismiss();
     }, forceDismissMs(speech?.text ?? activeScroll?.text));
   }
@@ -777,7 +777,7 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
     dismissTimer = window.setTimeout(() => {
       dismissTimer = 0;
       if (dismissed) return;
-      if (canSkipNow()) skip();
+      if (canForceDismiss()) skip();
       else pollForceDismiss();
     }, 400);
   }
@@ -862,8 +862,11 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
       typingDone = true;
     }
     holdComplete = true;
-    // Skip is only visible once the map and HUD are painted; enter the game at once.
-    if (canSkipNow()) dismiss();
+    // skip() is only reached when the game is already playable (the button is
+    // gated on canSkipNow, the safety cap on canForceDismiss), so enter the game
+    // at once. Gate on canForceDismiss, not canSkipNow, so a never-interactive
+    // HUD can't trap the force cap in tryDismiss() forever.
+    if (canForceDismiss()) dismiss();
     else tryDismiss();
   }
 
@@ -883,6 +886,17 @@ export function createLoadingScreen(options: LoadingScreenOptions = {}): Loading
 
   function canSkipNow(): boolean {
     return !dismissed && worldReady && mapRendered && hudInteractive;
+  }
+
+  /**
+   * Readiness for the FORCE-dismiss safety cap. Unlike canSkipNow(), it does NOT
+   * require hudInteractive: that flag is only ever set once the HUD reports itself
+   * live, and HUD-prime failures are caught and swallowed in main.ts, so gating
+   * the cap on it can leave the loading veil polling forever. Once the world and
+   * map are ready the game is playable, so the cap dismisses regardless of the HUD.
+   */
+  function canForceDismiss(): boolean {
+    return !dismissed && worldReady && mapRendered;
   }
 
   /** Skip stays hidden until the HUD is live and tapping it enters a playable game. */

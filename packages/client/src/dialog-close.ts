@@ -33,11 +33,25 @@ export function dialogHeader(
   );
 }
 
-/** Same close wiring as Empire Morale (#morale-close): direct click on the ✕ button. */
+interface DialogCloseButton extends HTMLButtonElement {
+  __rocClose?: () => void;
+}
+
+/**
+ * Same close wiring as Empire Morale (#morale-close): direct click on the ✕
+ * button. Idempotent: the click listener is attached at most once per element
+ * and always invokes the most recently supplied handler, so callers that re-wire
+ * a persistent close button on every open (e.g. the leaderboard) do not stack
+ * duplicate listeners that fire the close N times after N opens.
+ */
 export function bindDialogClose(btn: HTMLButtonElement, close: () => void): void {
-  btn.addEventListener("click", (e) => {
+  const el = btn as DialogCloseButton;
+  el.__rocClose = close;
+  if (el.dataset.closeBound === "1") return;
+  el.dataset.closeBound = "1";
+  el.addEventListener("click", (e) => {
     e.stopPropagation();
-    close();
+    el.__rocClose?.();
   });
 }
 

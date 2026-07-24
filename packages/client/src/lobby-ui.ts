@@ -300,29 +300,6 @@ const VICTORY_LABELS: Record<VictoryKind, string> = {
   extinction: "Extinction",
 };
 
-/** A checklist of the toggleable decisive victories (Score/Extinction always on). */
-function victoryChecklist(idPrefix: string, enabled: VictoryKind[]): string {
-  const boxes = TOGGLEABLE_VICTORIES.map((v) => {
-    const checked = enabled.includes(v) ? " checked" : "";
-    return `<label class="vic-check"><input type="checkbox" data-vic="${v}" id="${idPrefix}-${v}"${checked}/> ${escapeHtml(
-      VICTORY_LABELS[v],
-    )}</label>`;
-  }).join("");
-  return `<div class="vic-checklist" id="${idPrefix}">${boxes}</div>`;
-}
-
-/** Read the checked victories from a checklist; Score is always implicitly on. */
-function readVictoryChecklist(idPrefix: string): VictoryKind[] {
-  const root = document.getElementById(idPrefix);
-  if (!root) return [...TOGGLEABLE_VICTORIES];
-  const out: VictoryKind[] = [];
-  for (const v of TOGGLEABLE_VICTORIES) {
-    const box = root.querySelector<HTMLInputElement>(`input[data-vic="${v}"]`);
-    if (box?.checked) out.push(v);
-  }
-  return out;
-}
-
 /** Read-only summary of enabled victories for the MP joiner view. */
 function victorySummary(enabled: VictoryKind[]): string {
   const on = TOGGLEABLE_VICTORIES.filter((v) => enabled.includes(v)).map((v) => VICTORY_LABELS[v]);
@@ -345,14 +322,6 @@ function mapTypeSelect(id: string, value: MapType): string {
   return `<select id="${id}" class="menu-in">${MAP_TYPE_OPTIONS.map(
     (o) => `<option value="${o.value}"${o.value === value ? " selected" : ""}>${escapeHtml(o.label)}</option>`,
   ).join("")}</select>`;
-}
-
-/** Starting-treasury chips: a compact, aligned row of options with tooltips. */
-function goldChips(id: string, value: StartingGold): string {
-  return `<div class="chips" id="${id}">${GOLD_OPTIONS.map(
-    (o) =>
-      `<button type="button" class="chip${o.value === value ? " sel" : ""}" data-gold="${o.value}" title="${escapeHtml(o.desc)}">${escapeHtml(o.label)}</button>`,
-  ).join("")}</div>`;
 }
 
 /** Starting-treasury as a plain dropdown, so it aligns with the other rows. */
@@ -1791,7 +1760,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       preloadLoadingVoice(state.sp.civId);
       if (state.sp.civId !== RANDOM_CIV) setCivilizationBgm(state.sp.civId);
       // Read the final setup while the screen is still in the document
-      // (readVictoryChecklist needs getElementById), then close the menu.
+      // (readVictoryOnOff needs getElementById), then close the menu.
       const opts = collectSpOptions()!;
       close();
       // Sync the DOM-read options back into state.sp (civ/color/mapType/ais/gold

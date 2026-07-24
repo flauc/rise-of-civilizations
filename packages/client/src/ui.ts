@@ -5272,6 +5272,9 @@ export function createUI(handlers: UIHandlers): UI {
 
   function toggleLegendsPanel(): void {
     if (!lastState) return;
+    // The Legends hotkey must respect the game setting: when legends are off the
+    // topbar button is hidden, so the panel should not open via the shortcut either.
+    if (lastState.legendsEnabled === false) return;
     if (legendsOpen) {
       legendsOpen = false;
       renderLegends(lastState);

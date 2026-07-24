@@ -411,12 +411,36 @@ interface VoidGhost {
 }
 
 /** All off-map void hexes reachable from explored side edges (connected fill). */
+let voidGhostCache: {
+  map: GameMap;
+  exploredSize: number;
+  skipFogPass: boolean;
+  maxDepth: number;
+  ghosts: VoidGhost[];
+} | null = null;
+
 function collectMapEdgeVoidGhosts(
   map: GameMap,
   maxDepth: number,
   explored: Set<string> | undefined,
   skipFogPass: boolean | undefined,
 ): VoidGhost[] {
+  // The ghost band depends only on the map and which border tiles are explored,
+  // never on the camera, so memoize it: idle panning (the common case) then
+  // reuses the last result instead of rebuilding a Map + BFS + sort every frame.
+  // Fog only grows, so its size is a sound invalidation key.
+  const skip = !!skipFogPass;
+  const exploredSize = explored?.size ?? -1;
+  if (
+    voidGhostCache &&
+    voidGhostCache.map === map &&
+    voidGhostCache.exploredSize === exploredSize &&
+    voidGhostCache.skipFogPass === skip &&
+    voidGhostCache.maxDepth === maxDepth
+  ) {
+    return voidGhostCache.ghosts;
+  }
+
   const queued = new Map<string, number>();
 
   for (const t of map.tiles) {
@@ -454,7 +478,9 @@ function collectMapEdgeVoidGhosts(
     }
   }
 
-  return queue.sort((a, b) => a.depth - b.depth || a.row - b.row || a.col - b.col);
+  const ghosts = queue.sort((a, b) => a.depth - b.depth || a.row - b.row || a.col - b.col);
+  voidGhostCache = { map, exploredSize, skipFogPass: skip, maxDepth, ghosts };
+  return ghosts;
 }
 
 /** Draw hex-under art anchored like a terrain tile (256×384 footprint). */
@@ -1016,26 +1042,19 @@ export function drawScene(
       mapLayerCache.rebuild(state, opts, terrainRev);
     }
     mapLayerCache.blit(ctx, camera, dpr);
+    // The void band extends MAP_EDGE_VOID_DEPTH rings beyond the map edge, so gate
+    // (and per-tile cull) the edge pass with a margin wide enough to keep it on
+    // screen when the map's own tiles have panned a little past the viewport.
+    const edgeMargin = footprint * (MAP_EDGE_VOID_DEPTH + 2);
     if (
-      mapIntersectsViewport(camera, state.map, opts.cssWidth, opts.cssHeight, footprint * 2) &&
-      !opts.skipMapEdgePass
+      !opts.skipMapEdgePass &&
+      mapIntersectsViewport(camera, state.map, opts.cssWidth, opts.cssHeight, edgeMargin)
     ) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      paintMapEdgeOverlays(
-        ctx,
-        state.map,
-        camera,
-        opts,
-        footprint,
-        footprint * 2,
-        cssWidth,
-        cssHeight,
-      );
+      paintMapEdgeOverlays(ctx, state.map, camera, opts, footprint, edgeMargin, cssWidth, cssHeight);
     }
     // The baked bitmap has no fog, so unexplored tiles must fully conceal it.
-    if (
-      mapIntersectsViewport(camera, state.map, opts.cssWidth, opts.cssHeight, footprint * 2)
-    ) {
+    if (mapIntersectsViewport(camera, state.map, opts.cssWidth, opts.cssHeight, footprint * 2)) {
       paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, footprint * 2, true);
     }
     if (hovered) {

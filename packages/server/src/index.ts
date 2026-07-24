@@ -177,11 +177,16 @@ async function adminLeaderboard() {
 async function publicLeaderboard(limit = 25) {
   const capped = Math.min(50, Math.max(1, limit));
   const [entries, rows, byUser] = await Promise.all([
-    analytics.leaderboardBestPerPlayer(capped, true),
+    // Over-fetch: a few registered players may have an unresolved handle and get
+    // dropped by the filter below, so ask for headroom and trim back to `capped`
+    // afterwards instead of returning short of the requested count.
+    analytics.leaderboardBestPerPlayer(capped * 2, true),
     loadSessionRows(),
     registeredUserHandles(),
   ]);
-  return enrichLeaderboard(entries, rows, byUser).filter((e) => Boolean(e.handle?.trim()));
+  return enrichLeaderboard(entries, rows, byUser)
+    .filter((e) => Boolean(e.handle?.trim()))
+    .slice(0, capped);
 }
 
 async function adminSessionsPerPlayer() {
