@@ -175,11 +175,11 @@ code changes are needed unless you add a Capacitor plugin.
 
 ## Continuous deployment (GitHub Actions)
 
-Pushes to **`main`** trigger [`.github/workflows/mobile-release.yml`](../.github/workflows/mobile-release.yml):
+Pushes to **`main`** (or manual **Publish iOS** workflow) run [`.github/workflows/iOS.yml`](../.github/workflows/iOS.yml):
 
 1. Sync app version from root `package.json` into Android, iOS, and the client lobby label (automatic via `build-mobile.mjs` → `tools/sync-mobile-version.mjs`).
-2. **Android:** build a signed `.aab` and upload to Google Play (`PLAY_TRACK`, default `production`).
-3. **iOS:** archive, export an `.ipa`, upload to App Store Connect, wait for processing, then submit for App Store review (`IOS_SUBMIT_FOR_REVIEW`, default `true`).
+2. **Android:** [`.github/workflows/android.yml`](../.github/workflows/android.yml) builds a signed `.aab` and uploads to Google Play (`PLAY_TRACK`, default `production`).
+3. **iOS:** archive, export an `.ipa`, upload to App Store Connect, wait for processing, then **submit for App Store review** (`IOS_SUBMIT_FOR_REVIEW: true` in the workflow — not TestFlight-only).
 
 The workflow bundles the latest web client shell from `main`. Game art still streams
 from the live CDN, so deploy the web client to `game.rise-of-civilizations.com`
