@@ -9,7 +9,8 @@
  * - iOS MARKETING_VERSION / CURRENT_PROJECT_VERSION (project.pbxproj)
  * - Lobby + changelog label (packages/client/src/version.ts)
  *
- * Build numbers: 1000 + run*10 + attempt in CI (GITHUB_RUN_* env), else current + 1.
+ * Build numbers: in CI, max(repo + 1, 1000 + run×10 + attempt, GITHUB_RUN_ID) so
+ * re-runs and pushes never reuse a cfBundleVersion already on App Store Connect.
  *
  * Usage:
  *   node tools/sync-mobile-version.mjs
@@ -40,9 +41,16 @@ function readBuildNumber() {
   }
   const run = process.env.GITHUB_RUN_NUMBER ? Number(process.env.GITHUB_RUN_NUMBER) : NaN;
   const attempt = process.env.GITHUB_RUN_ATTEMPT ? Number(process.env.GITHUB_RUN_ATTEMPT) : NaN;
+  const runId = process.env.GITHUB_RUN_ID ? Number(process.env.GITHUB_RUN_ID) : NaN;
   if (Number.isFinite(run) && run > 0) {
-    const ciBuild = 1000 + run * 10 + (Number.isFinite(attempt) && attempt > 0 ? attempt : 1);
-    return Math.max(current + 1, ciBuild);
+    const attemptN = Number.isFinite(attempt) && attempt > 0 ? attempt : 1;
+    const ciBuild = 1000 + run * 10 + attemptN;
+    let next = Math.max(current + 1, ciBuild);
+    // Repo-stored build numbers often lag behind App Store Connect; run id is unique per workflow.
+    if (Number.isFinite(runId) && runId > 0) {
+      next = Math.max(next, runId);
+    }
+    return next;
   }
   return current + 1;
 }
