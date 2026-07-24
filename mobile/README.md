@@ -256,7 +256,10 @@ GitHub run number. Bump `package.json` when you want a new store-facing version.
 **iOS:** `CFBundleShortVersionString` must be **higher** than the latest version
 already approved or live on the App Store (e.g. if `1.0.3` is on the store, the
 next upload must be at least `1.0.4`). A lower `package.json` version will fail
-with errors 90062 / 90186.
+with errors 90062 / 90186. If the build uploads but submit fails with
+*could not find an editable version*, either **1.0.x is already live** (bump
+`package.json` and push `main` again) or App Store Connect had no version slot yet
+(CI creates one via `submit-app-store-review.sh`).
 
 Local dry run (no upload):
 
