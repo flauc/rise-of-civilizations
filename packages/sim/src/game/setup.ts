@@ -1,4 +1,4 @@
-import { axialDistance, getTile, hashSeed, isPolarTile, landmassSizes, makeRng, offsetToAxial, polarCapLand } from "@roc/shared";
+import { axialDistance, getTile, hashSeed, isPolarTile, isUnitPlayableTile, landmassSizes, makeRng, offsetToAxial, polarCapLand } from "@roc/shared";
 import { CIV_IDS, startingUnitsFor } from "@roc/data";
 import { generateMap, majorLandmassMin, minViableIslandTiles, type MapType } from "../worldgen";
 import type { GameState, Player, VictoryKind } from "./state";
@@ -83,7 +83,7 @@ export const PLAYER_COLORS = [
 
 function startScore(state: GameState, col: number, row: number): number {
   const tile = getTile(state.map, col, row);
-  if (!tile || !isPassableLand(tile.terrain)) return -Infinity;
+  if (!tile || !isPassableLand(tile.terrain) || !isUnitPlayableTile(state.map, col, row)) return -Infinity;
   let score = TERRAIN_YIELDS[tile.terrain].food * 2;
   for (const n of offsetNeighbors(state.map, col, row)) {
     const nt = getTile(state.map, n.col, n.row);
@@ -165,7 +165,7 @@ function openTilesAround(
         seen.add(key);
         next.push(n);
         const tile = getTile(state.map, n.col, n.row);
-        if (tile && isPassableLand(tile.terrain) && ![...state.units.values()].some((u) => u.col === n.col && u.row === n.row)) {
+        if (tile && isPassableLand(tile.terrain) && isUnitPlayableTile(state.map, n.col, n.row) && ![...state.units.values()].some((u) => u.col === n.col && u.row === n.row)) {
           out.push({ col: n.col, row: n.row });
           if (out.length >= count) return out;
         }

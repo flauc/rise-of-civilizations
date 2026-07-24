@@ -122,6 +122,22 @@ describe("MemoryAnalyticsStore", () => {
     expect(lb[0]!.handle).toBe("Alice");
   });
 
+  it("leaderboardBestPerPlayer registeredOnly excludes guest sessions", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      startCfg("s1", "p1", { civId: "rome", handle: "Alice", userId: "u1" }),
+      end("s1", "p1", "win", 40, 250),
+      start("s2", "guest1"),
+      end("s2", "guest1", "win", 30, 900),
+    ]);
+    const all = await a.leaderboardBestPerPlayer();
+    expect(all.map((e) => e.score)).toEqual([900, 250]);
+    const registered = await a.leaderboardBestPerPlayer(25, true);
+    expect(registered).toHaveLength(1);
+    expect(registered[0]?.handle).toBe("Alice");
+    expect(registered[0]?.score).toBe(250);
+  });
+
   it("aggregates the game-setup config players chose", async () => {
     const a = new MemoryAnalyticsStore();
     await a.record([

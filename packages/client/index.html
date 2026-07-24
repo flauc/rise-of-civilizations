@@ -79,6 +79,8 @@
         --dialog-x-top: 12px;
         --dialog-x-right: 14px;
         --dialog-x-gutter: 44px;
+        /* In-game overlay dialogs sit above the top bar (z-index 70). */
+        --roc-overlay-z: 72;
         /* Every in-game dialog starts from the same place, whatever its
            height: hung from one top line on desktop (the research picker's
            anchor), vertically centered on mobile/tablet where the taller top
@@ -121,6 +123,10 @@
       /* Native / PWA lobby: #lobby is the scroll container (body stays overflow:hidden). */
       body.roc-lobby-open #lobby {
         touch-action: pan-y;
+      }
+      /* WebKit can deliver taps to the fullscreen canvas under the lobby. */
+      body.roc-lobby-open #game {
+        pointer-events: none !important;
       }
       /* iOS Safari and other mobile browsers cannot lock orientation in a tab.
          When the player picks Horizontal / Vertical, rotate the page in CSS. */
@@ -238,6 +244,10 @@
         backdrop-filter: blur(10px);
         box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
       }
+      .panel.roc-dialog,
+      [id].roc-dialog {
+        z-index: var(--roc-overlay-z);
+      }
       .panel b {
         color: var(--parchment);
       }
@@ -262,14 +272,14 @@
         padding: 6px 12px;
         border-radius: 12px;
         font-size: 13px;
-        z-index: 20;
+        z-index: 70;
       }
       #leader-avatar {
         position: fixed;
         top: max(6px, env(safe-area-inset-top));
         left: max(6px, env(safe-area-inset-left));
         width: 84px;
-        z-index: 21;
+        z-index: 70;
         display: flex;
         flex-direction: column;
       }
@@ -687,7 +697,7 @@
         left: calc(50% + 10px);
         transform: none;
         bottom: max(12px, env(safe-area-inset-bottom));
-        z-index: 25;
+        z-index: 70;
         width: 34px;
         height: 34px;
       }
@@ -745,7 +755,7 @@
         left: calc(50% - 44px);
         transform: none;
         bottom: max(12px, env(safe-area-inset-bottom));
-        z-index: 25;
+        z-index: 70;
       }
       #endturn:disabled,
       #endturn2:disabled {
@@ -940,7 +950,6 @@
         overflow: hidden;
         display: flex;
         flex-direction: column;
-        z-index: 40;
       }
       /* Top-bar pickers: below the status bar so the map and end-turn stay reachable */
       #research,
@@ -952,7 +961,6 @@
         width: 320px;
         max-height: min(420px, calc(100vh - 140px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
         overflow: hidden;
-        z-index: 40;
       }
       /* Research grows to the standard 80% on desktop so long tech lists don't
          squeeze into a stubby 420px box. It also gets extra width so the
@@ -960,10 +968,6 @@
       #research {
         width: min(460px, calc(100vw - 24px));
         max-height: min(80vh, var(--dialog-max-h));
-      }
-      /* Clear both the close button and the "View full" button beside it. */
-      #research .panel-dialog-header {
-        padding-right: 158px;
       }
       /* Great People & Legends — richer cards, wider/taller panels. */
       #great-people,
@@ -974,7 +978,6 @@
         width: min(440px, calc(100vw - 24px));
         max-height: var(--dialog-max-h);
         overflow: hidden;
-        z-index: 40;
       }
       /* Legends earns extra width on desktop: progress on the left, a grid of
          hero cards on the right. Mobile narrows it back below. */
@@ -1005,7 +1008,6 @@
         width: min(520px, calc(100vw - 32px));
         max-height: min(80vh, var(--dialog-max-h));
         overflow: hidden;
-        z-index: 62;
       }
       #leaderboard-dialog {
         width: min(560px, calc(100vw - 32px));
@@ -1021,7 +1023,6 @@
         transform: var(--dialog-transform);
         width: min(320px, calc(100vw - 32px));
         max-height: min(520px, var(--dialog-max-h));
-        z-index: 40;
       }
       #god-panel select.lobby-in,
       #god-panel select {
@@ -2696,6 +2697,7 @@
          morale, diplomacy, empire, the city sub-dialogs, unique-unit cards. Add
          .dialog-title (or .panel-dialog-header) to the title beside it and the
          gutter is reserved for you. */
+      /* Universal top-right ✕ for every .roc-dialog overlay. */
       .dialog-x {
         position: absolute;
         top: var(--dialog-x-top);
@@ -2710,57 +2712,55 @@
         border: 1px solid var(--edge);
         background: var(--bg-card);
         color: var(--parchment);
-        font-size: 16px;
-        line-height: 1;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 0;
+        line-height: 0;
         cursor: pointer;
         touch-action: manipulation;
         overflow: visible;
-        /* Stays above positioned siblings, e.g. the unique-unit card's art. */
-        z-index: 50;
+        z-index: 10000;
         pointer-events: auto;
         transition: background 0.15s ease, color 0.15s ease;
       }
-      #gold-dialog .dialog-x,
-      #log-dialog .dialog-x,
-      #leaderboard-dialog .dialog-x,
-      #morale-dialog .dialog-x,
-      #settings-dialog .dialog-x,
-      #save-modal .dialog-x,
-      #combat-preview-dialog .dialog-x,
-      #turn-update-dialog .dialog-x,
-      #village-dialog .dialog-x,
-      #gp-activate-dialog .dialog-x,
-      #leader-ability-dialog .dialog-x,
-      #unit-promo-dialog .dialog-x {
-        z-index: 100;
-        pointer-events: auto;
-        touch-action: manipulation;
+      .dialog-x .gi {
+        display: none !important;
       }
-      #gold-dialog,
-      #morale-dialog,
-      #log-dialog,
-      #leaderboard-dialog,
-      #unit-promo-dialog,
-      #turn-update-dialog,
-      #village-dialog,
-      #gp-activate-dialog,
-      #leader-ability-dialog,
-      #combat-preview-dialog {
-        isolation: isolate;
-      }
-      #settings-dialog {
-        isolation: isolate;
-      }
-      /* Invisible expanded tap target; clicks stay on the button (not a blocking layer). */
       .dialog-x::before {
         content: "";
         position: absolute;
         inset: -12px;
+        border-radius: inherit;
+        pointer-events: auto;
+      }
+      .dialog-x::after {
+        content: "×";
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: calc(var(--dialog-x-size) * 0.52);
+        font-weight: 400;
+        line-height: 1;
+        color: inherit;
         pointer-events: none;
       }
       .dialog-x:hover {
         background: rgba(201, 162, 39, 0.14);
         color: var(--accent-bright);
+      }
+      .roc-dialog,
+      #turn-update-dialog.roc-dialog,
+      #settings-dialog.roc-dialog,
+      #combat-preview-dialog.roc-dialog,
+      #village-dialog.roc-dialog,
+      #gp-activate-dialog.roc-dialog,
+      #leader-ability-dialog.roc-dialog,
+      #unit-promo-dialog.roc-dialog,
+      #empire.roc-dialog,
+      #diplomacy.roc-dialog {
+        isolation: isolate;
       }
       /* Pinned ✕ + title row; scrolling body stays beneath it. */
       .dialog-head-band {
@@ -2772,12 +2772,10 @@
         margin-bottom: 12px;
         z-index: 2;
       }
-      .dialog-x .gi {
-        pointer-events: none;
-      }
       /* Every in-game dialog title, one scale. Keep this list and the header-band
          list below in sync when a dialog is added. */
       .dialog-title,
+      .roc-dialog-head-title > b,
       .panel-dialog-header > b,
       .log-dialog-title,
       .gold-dialog-title,
@@ -2799,26 +2797,110 @@
         font-weight: 700;
         color: var(--accent-bright);
       }
-      /* The header band a pinned ✕ shares. min-height holds the row open to the
-         button's height, so the scrolling body beneath can't pass under it, and
-         the gutter keeps the title text clear of it. */
+      /* In-flow header row: title + actions (View full, ✕) on one flex line. */
+      .roc-dialog-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex: none;
+        min-height: calc(var(--dialog-x-top) + var(--dialog-x-size));
+        padding-right: 0;
+        overflow: visible;
+        position: relative;
+        z-index: 2;
+      }
+      .roc-dialog-head-title {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        pointer-events: none;
+      }
+      .roc-dialog-head:not(.roc-dialog-head--toolbar) .roc-dialog-head-title {
+        text-align: center;
+        padding-left: calc(var(--dialog-x-size) + 8px);
+      }
+      .roc-dialog-head--toolbar .roc-dialog-head-title {
+        text-align: left;
+        padding-left: 0;
+      }
+      .roc-dialog-head-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex: none;
+        position: relative;
+        z-index: 3;
+      }
+      .roc-dialog-head-actions > .dialog-x {
+        position: relative;
+        top: auto;
+        right: auto;
+        width: var(--dialog-x-size);
+        height: var(--dialog-x-size);
+        flex: none;
+        z-index: 2;
+      }
+      /* In a toolbar row the neighbor is 12px away — don't bleed into it. */
+      .roc-dialog-head-actions > .dialog-x::before {
+        inset: 0;
+      }
+      .roc-dialog-head-actions .dialog-head-btn {
+        position: relative;
+        top: auto;
+        right: auto;
+        height: var(--dialog-x-size);
+        padding: 0 12px;
+        z-index: 1;
+        flex: none;
+      }
+      /* Legacy pinned ✕ bands (empire, settings, art dialogs). */
       .dialog-title,
-      .panel-dialog-header,
       .log-dialog-title,
       .gold-dialog-title,
       .morale-dialog-title,
       .unit-promo-dialog-title,
+      .emp-title,
+      .dp-head,
       #combat-preview-dialog .combat-preview-header {
         min-height: calc(var(--dialog-x-top) + var(--dialog-x-size));
         padding-right: var(--dialog-x-gutter);
         overflow: visible;
         position: relative;
         z-index: 2;
+        pointer-events: none;
       }
-      /* Bands whose whole content is the title: centre it against the ✕. The
-         headers left out here lay their own children out in a row. */
+      /* Titles/subtitles must not steal ✕ taps on legacy pinned-✕ dialogs. */
       .dialog-title,
-      .panel-dialog-header,
+      .log-dialog-title,
+      .gold-dialog-title,
+      .morale-dialog-title,
+      .unit-promo-dialog-title,
+      .emp-title,
+      .dp-title,
+      #settings-dialog .settings-head-title,
+      #combat-preview-dialog .combat-preview-header b {
+        pointer-events: none;
+      }
+      /* Header controls on legacy pinned-✕ dialogs. */
+      .dialog-head-band .btn,
+      .dialog-head-band button,
+      .dialog-head-band a,
+      .dialog-head-band input,
+      .dialog-head-band select,
+      #settings-dialog .settings-head-band .btn,
+      #settings-dialog .settings-head-band button,
+      #combat-preview-dialog .combat-preview-header .btn,
+      #combat-preview-dialog .combat-preview-header button,
+      .dp-head .btn,
+      .dp-head button,
+      .emp-title .btn,
+      .emp-title button {
+        pointer-events: auto;
+      }
+      /* Legacy title-only bands: centre against a pinned ✕ sibling. */
+      .dialog-title,
       .log-dialog-title,
       .gold-dialog-title,
       .morale-dialog-title,
@@ -2826,31 +2908,35 @@
         display: flex;
         flex-direction: column;
         justify-content: center;
+        align-items: center;
+        text-align: center;
+        padding-left: var(--dialog-x-gutter);
       }
       /* Art-topped dialogs centre their title, and hide the art entirely when it
          fails to load, which lifts the title up beside the ✕. A symmetric gutter
-         clears the button without pulling the text off centre. Turn updates are
-         exempt: their own header row sits between the ✕ and the title. */
+         clears the button without pulling the text off centre. */
       #village-dialog .village-title,
       #gp-activate-dialog .gp-activate-title,
       #leader-ability-dialog .la-dialog-title {
         padding-left: var(--dialog-x-gutter);
         padding-right: var(--dialog-x-gutter);
       }
-      /* Small action parked on the header line, just left of the close button. */
+      /* Optional header action parked just left of the ✕ (legacy absolute layout). */
       .dialog-head-btn {
         position: absolute;
-        top: 12px;
-        right: 56px;
-        height: 34px;
+        top: var(--dialog-x-top);
+        right: calc(var(--dialog-x-right) + var(--dialog-x-size) + 10px);
+        height: var(--dialog-x-size);
         padding: 0 12px;
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 5px;
         border-radius: 999px;
         font-size: 12px;
         line-height: 1;
         white-space: nowrap;
+        z-index: 50;
       }
       /* Morale dialog — panel + .hidden, same close wiring as Train Units. */
       #morale-overlay {
@@ -3108,12 +3194,12 @@
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
-        padding: 18px 20px;
+        --tu-dialog-pad-y: 18px;
+        padding: var(--tu-dialog-pad-y) 20px;
         text-align: center;
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.2s;
-        z-index: 61;
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -3156,32 +3242,6 @@
       }
       #turn-update-dialog .btn.primary {
         align-self: center;
-      }
-      #turn-update-dialog .turn-update-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        flex: none;
-        min-height: var(--dialog-x-size);
-        padding-right: var(--dialog-x-gutter);
-        position: relative;
-        z-index: 2;
-        /* Let taps reach the pinned ✕ in the top-right corner. */
-        pointer-events: none;
-      }
-      #turn-update-dialog .turn-update-header .tu-view-toggle {
-        pointer-events: auto;
-      }
-      #turn-update-dialog .turn-update-heading {
-        font-family: 'Cinzel', Georgia, serif;
-        font-size: 16px;
-        font-weight: 700;
-        color: var(--parchment-dim);
-      }
-      #turn-update-dialog .tu-view-toggle {
-        font-size: 12px;
-        padding: 4px 10px;
       }
       #turn-update-dialog .turn-update-expanded {
         display: flex;
@@ -3271,18 +3331,17 @@
         left: 50%;
         top: var(--dialog-top);
         transform: var(--dialog-transform);
-        width: min(420px, calc(100vw - 32px));
+        width: min(640px, calc(100vw - 48px));
         max-height: min(80vh, var(--dialog-max-h));
         overflow: hidden;
         background: var(--panel);
         border: 1px solid var(--edge);
         border-radius: 16px;
-        padding: 16px 18px;
-        padding-top: 16px;
+        padding: 20px 24px;
+        padding-top: 20px;
         opacity: 0;
         pointer-events: none;
         transition: opacity 0.2s;
-        z-index: 63;
         display: flex;
         flex-direction: column;
         gap: 0;
@@ -3307,6 +3366,7 @@
         padding-right: var(--dialog-x-gutter);
         margin-bottom: 8px;
         z-index: 2;
+        pointer-events: none;
       }
       #settings-dialog .settings-head-title {
         margin: 0;
@@ -3333,7 +3393,7 @@
       }
       #settings-dialog .settings-hint {
         font-size: 11px;
-        color: #9fc0dc;
+        color: var(--accent-bright);
         margin: 2px 0 8px;
       }
       #settings-dialog .settings-row {
@@ -3352,10 +3412,16 @@
       #settings-dialog .settings-check input {
         width: 16px;
         height: 16px;
-        accent-color: var(--gold);
+        accent-color: var(--accent);
+      }
+      #settings-dialog .settings-volumes {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px 20px;
+        margin-bottom: 10px;
       }
       #settings-dialog .settings-volume {
-        margin-bottom: 10px;
+        margin-bottom: 0;
       }
       #settings-dialog .settings-volume-head {
         display: flex;
@@ -3369,7 +3435,7 @@
       }
       #settings-dialog .settings-volume-value {
         font-variant-numeric: tabular-nums;
-        color: #9fc0dc;
+        color: var(--accent-bright);
         font-size: 12px;
         min-width: 3ch;
         text-align: right;
@@ -3378,7 +3444,7 @@
         width: 100%;
         margin: 0;
         height: 28px;
-        accent-color: var(--gold);
+        accent-color: var(--accent);
         cursor: pointer;
         touch-action: manipulation;
       }
@@ -3408,7 +3474,7 @@
       }
       #settings-dialog .settings-fold-chevron {
         flex: 0 0 auto;
-        color: #9fc0dc;
+        color: var(--accent-bright);
         font-size: 14px;
         line-height: 1;
         transition: transform 0.15s ease;
@@ -3426,9 +3492,9 @@
         margin-top: 0;
       }
       #settings-dialog .settings-keybinds {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 12px;
         margin-top: 4px;
       }
       #settings-dialog .settings-keybind-row {
@@ -3452,7 +3518,7 @@
       }
       #settings-dialog .settings-keybind-hint {
         font-size: 11px;
-        color: #9fc0dc;
+        color: var(--accent-bright);
         margin-top: 2px;
         line-height: 1.35;
       }
@@ -3462,8 +3528,8 @@
         min-height: 40px;
         padding: 8px 12px;
         border-radius: 8px;
-        border: 1px solid var(--edge);
-        background: var(--bg-card);
+        border: 1px solid rgba(201, 162, 39, 0.45);
+        background: rgba(201, 162, 39, 0.1);
         color: var(--accent-bright);
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
         font-size: 13px;
@@ -3473,6 +3539,7 @@
       }
       #settings-dialog .settings-keybind-key.capturing {
         border-color: var(--accent);
+        background: rgba(201, 162, 39, 0.22);
         color: var(--parchment);
         animation: settings-keybind-pulse 1.2s ease-in-out infinite;
       }
@@ -3527,6 +3594,11 @@
         color: var(--parchment);
         font: inherit;
       }
+      #settings-dialog .settings-delete-input:focus {
+        outline: 2px solid rgba(201, 162, 39, 0.55);
+        outline-offset: 1px;
+        border-color: var(--accent);
+      }
       #settings-dialog .settings-delete-actions {
         display: flex;
         gap: 8px;
@@ -3568,8 +3640,8 @@
         background: rgba(255, 255, 255, 0.05);
       }
       #settings-dialog .seg-btn.active {
-        background: #c9a24a;
-        color: #1a160f;
+        background: linear-gradient(135deg, #c9a227, #a6821f);
+        color: #15120c;
         font-weight: 700;
       }
       /* combat preview dialog */
@@ -3844,16 +3916,43 @@
       #game-hud:has(#leader-ability-dialog.show),
       #game-hud:has(#combat-preview-dialog.show),
       #game-hud:has(#save-modal:not(.hidden)),
+      #game-hud:has(#research:not(.hidden)),
+      #game-hud:has(#god-panel:not(.hidden)),
+      #game-hud:has(#civics:not(.hidden)),
+      #game-hud:has(#religion:not(.hidden)),
+      #game-hud:has(#techtree:not(.hidden)),
+      #game-hud:has(#production:not(.hidden)),
+      #game-hud:has(#specialists:not(.hidden)),
+      #game-hud:has(#training:not(.hidden)),
       #game-hud.roc-overlay-dialog-open {
         pointer-events: auto;
       }
-      /* Loading veil hides the HUD; never leave it stuck after dismiss. */
-      body.roc-loading-scroll #game-hud {
+      /* Loading veil hides the HUD until input is armed; never leave block-input stuck after dismiss. */
+      body.roc-loading-scroll.roc-loading-block-input #game-hud {
         opacity: 0;
         pointer-events: none;
       }
+      body.roc-loading-scroll:not(.roc-loading-block-input) #game-hud {
+        opacity: 1;
+        transition: opacity 0.45s ease;
+      }
+      /* WebKit: re-assert chrome hit targets once input is armed (parent pointer-events:none breaks children). */
+      body:not(.roc-loading-block-input) #game-hud #topbar,
+      body:not(.roc-loading-block-input) #game-hud #bottom-bar,
+      body:not(.roc-loading-block-input) #game-hud .action-btn,
+      body:not(.roc-loading-block-input) #game-hud #leader-avatar:not(.empty) {
+        pointer-events: auto !important;
+      }
       #game-hud .panel:not(.hidden),
       #game-hud #techtree:not(.hidden),
+      #game-hud #save-modal:not(.hidden),
+      #game-hud #research:not(.hidden),
+      #game-hud #god-panel:not(.hidden),
+      #game-hud #civics:not(.hidden),
+      #game-hud #religion:not(.hidden),
+      #game-hud #production:not(.hidden),
+      #game-hud #specialists:not(.hidden),
+      #game-hud #training:not(.hidden),
       #game-hud #gold-dialog:not(.hidden),
       #game-hud #morale-dialog:not(.hidden),
       #game-hud #leaderboard-dialog:not(.hidden),
@@ -3923,6 +4022,7 @@
         pointer-events: auto;
       }
       body.roc-native:has(#game-hud #save-modal:not(.hidden)) #game,
+      body.roc-native:has(#game-hud #god-panel:not(.hidden)) #game,
       body.roc-native:has(#game-hud #empire:not(.hidden)) #game,
       body.roc-native:has(#game-hud #diplomacy:not(.hidden)) #game,
       body.roc-native:has(#game-hud #game-chat.open.fullscreen) #game,
@@ -3934,6 +4034,7 @@
       body.roc-native:has(#game-hud #leaderboard-dialog:not(.hidden)) #game,
       body.roc-native:has(#settings-overlay.show) #game,
       body.roc-standalone:has(#game-hud #save-modal:not(.hidden)) #game,
+      body.roc-standalone:has(#game-hud #god-panel:not(.hidden)) #game,
       body.roc-standalone:has(#game-hud #empire:not(.hidden)) #game,
       body.roc-standalone:has(#game-hud #diplomacy:not(.hidden)) #game,
       body.roc-standalone:has(#game-hud #game-chat.open.fullscreen) #game,
@@ -3984,17 +4085,27 @@
         html.roc-phone-shell #log-dialog,
         html.roc-phone-shell #leaderboard-dialog,
         html.roc-phone-shell #settings-dialog,
-        html.roc-phone-shell #save-modal {
+        html.roc-phone-shell #save-modal,
+        html.roc-phone-shell #god-panel,
+        html.roc-phone-shell #turn-update-dialog {
           --dialog-x-top: 10px;
           --dialog-x-right: 10px;
         }
+        html.roc-phone-shell .roc-dialog-head,
         html.roc-phone-shell .panel-dialog-header {
           padding-top: max(4px, var(--roc-safe-top, env(safe-area-inset-top, 0px)));
         }
         html.roc-phone-shell #settings-dialog {
+          width: min(calc(100vw - 24px), 420px);
           padding: 12px 14px;
           --dialog-x-top: 0px;
           --dialog-x-right: 0px;
+        }
+        html.roc-phone-shell #settings-dialog .settings-volumes {
+          grid-template-columns: 1fr;
+        }
+        html.roc-phone-shell #settings-dialog .settings-keybinds {
+          grid-template-columns: 1fr;
         }
         html.roc-phone-shell #game-hud {
           --hud-scale: 1;
@@ -4113,8 +4224,39 @@
           top: auto;
           padding: 4px 6px;
           border-radius: 10px;
-          z-index: 25;
+          z-index: 70;
           transform: none;
+        }
+        /* HUD pickers anchor under the top bar so navigation stays visible. */
+        html.roc-phone-shell #research,
+        html.roc-phone-shell #civics,
+        html.roc-phone-shell #religion,
+        html.roc-phone-shell #save-modal,
+        html.roc-phone-shell #god-panel,
+        html.roc-phone-shell #gold-dialog,
+        html.roc-phone-shell #morale-dialog,
+        html.roc-phone-shell #log-dialog,
+        html.roc-phone-shell #leaderboard-dialog,
+        html.roc-phone-shell #production,
+        html.roc-phone-shell #specialists,
+        html.roc-phone-shell #training,
+        html.roc-phone-shell #techtree,
+        html.roc-phone-shell #great-people,
+        html.roc-phone-shell #legends,
+        html.roc-phone-shell #empire,
+        html.roc-phone-shell #diplomacy,
+        html.roc-phone-shell #turn-update-dialog {
+          top: calc(
+            var(--topbar-h, 60px) + max(6px, var(--roc-safe-top, env(safe-area-inset-top, 0px))) + 8px
+          );
+          transform: translateX(-50%);
+          max-height: min(
+            80vh,
+            calc(
+              100dvh - var(--topbar-h, 60px) - max(72px, env(safe-area-inset-bottom)) -
+                max(6px, var(--roc-safe-top, env(safe-area-inset-top, 0px))) - 16px
+            )
+          );
         }
         html.roc-phone-shell .bb-grp {
           display: flex;
@@ -4312,7 +4454,8 @@
         html.roc-phone-shell #turn-update-dialog {
           width: min(340px, calc(100% - 24px));
           max-height: min(70dvh, var(--dialog-max-h));
-          padding: 14px 16px;
+          --tu-dialog-pad-y: 14px;
+          padding: var(--tu-dialog-pad-y) 16px;
         }
         html.roc-phone-shell #turn-update-dialog .turn-update-art {
           width: 130px;

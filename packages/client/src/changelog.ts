@@ -24,7 +24,7 @@ interface Release {
 /** Newest release first. */
 const CHANGELOG: Release[] = [
   {
-    version: "0.8.0",
+    version: "1.0.4",
     date: "July 2026",
     changes: [
       {

@@ -7,7 +7,7 @@ import { confirmDialog } from "./confirm-dialog";
 import { createLazyEmpire } from "./empire-lazy";
 import { createLazyDiplomacy } from "./diplomacy-lazy";
 import { isPhoneShell } from "./viewport-shell";
-import { bindDialogClose, wirePanelClose } from "./dialog-close";
+import { bindDialogClose, wirePanelClose, dialogHeader, dialogCloseButton } from "./dialog-close";
 import { gameHud, initGameHud, popHudOverlay, pushHudOverlay } from "./hud-root";
 import { setPreservedHtml, withPreservedScroll } from "./panel-scroll";
 import type { DealItem } from "@roc/sim";
@@ -588,29 +588,8 @@ function unitPanelRenderSig(
   return sig;
 }
 
-/** Sticky title row shared by city sub-dialogs (construction, training, specialists). */
-function dialogHeader(title: string, closeId: string, opts?: { subtitle?: string; extra?: string }): string {
-  return (
-    `<button type="button" class="dialog-x" id="${closeId}" title="Close" aria-label="Close">✕</button>` +
-    `<div class="panel-dialog-header">` +
-    `<b>${title}</b>` +
-    (opts?.subtitle ? `<div class="sub" style="margin-top:4px">${opts.subtitle}</div>` : "") +
-    (opts?.extra ?? "") +
-    `</div>`
-  );
-}
-
-function menuDialogHeader(title: string, closeId: string): string {
-  return (
-    `<button type="button" class="dialog-x" id="${closeId}" title="Close" aria-label="Close">✕</button>` +
-    `<div class="panel-dialog-header"><b>${title}</b></div>`
-  );
-}
-
-/** Scrollable body beneath a pinned menu-dialog header + ✕. */
-function menuDialogBody(body: string): string {
-  return `<div class="panel-dialog-body save-modal-body">${body}</div>`;
-}
+/** Overlay panels that share the universal pinned ✕ (above top bar). */
+const HUD_DIALOG = "panel roc-dialog hidden";
 
 const RUSH_GLYPH: Record<RushCurrency, string> = { gold: "🪙", faith: "☮️", culture: "🎭" };
 
@@ -793,15 +772,21 @@ export function createUI(handlers: UIHandlers): UI {
   });
 
   const cityPanel = div("city-panel", "panel hidden");
-  const research = div("research", "panel hidden");
-  const techtree = div("techtree", "panel hidden");
-  const civics = div("civics", "panel hidden");
-  const religionPanel = div("religion", "panel hidden");
-  const greatPeoplePanel = div("great-people", "panel hidden");
-  const legendsPanel = div("legends", "panel hidden");
-  const production = div("production", "panel hidden");
-  const specialists = div("specialists", "panel hidden");
-  const training = div("training", "panel hidden");
+  const research = div("research", HUD_DIALOG);
+  research.innerHTML =
+    dialogHeader("Choose Research", "rclose", {
+      headBtn: `<button type="button" class="dialog-head-btn btn" id="open-techtree">🌳 View full</button>`,
+    }) +
+    `<div class="panel-dialog-body" id="research-body"></div>`;
+  const researchBody = research.querySelector<HTMLDivElement>("#research-body")!;
+  const techtree = div("techtree", HUD_DIALOG);
+  const civics = div("civics", HUD_DIALOG);
+  const religionPanel = div("religion", HUD_DIALOG);
+  const greatPeoplePanel = div("great-people", HUD_DIALOG);
+  const legendsPanel = div("legends", HUD_DIALOG);
+  const production = div("production", HUD_DIALOG);
+  const specialists = div("specialists", HUD_DIALOG);
+  const training = div("training", HUD_DIALOG);
   const log = div("log", "");
   const bannerEl = div("banner", "");
   const gameover = div("gameover", "hidden");
@@ -815,8 +800,13 @@ export function createUI(handlers: UIHandlers): UI {
   gameoverExploreBar.querySelector<HTMLButtonElement>("#go-quit-map")?.addEventListener("click", () =>
     handlers.onGameOverQuit(),
   );
-  const saveModal = div("save-modal", "panel hidden");
-  const godPanel = div("god-panel", "panel hidden");
+  const saveModal = div("save-modal", HUD_DIALOG);
+  saveModal.innerHTML =
+    dialogHeader("Game Menu", "save-close") +
+    `<div class="panel-dialog-body save-modal-body" id="save-modal-body"></div>`;
+  const saveModalBody = saveModal.querySelector<HTMLDivElement>("#save-modal-body")!;
+  const saveModalTitleEl = saveModal.querySelector<HTMLDivElement>(".roc-dialog-head-title > b")!;
+  const godPanel = div("god-panel", HUD_DIALOG);
   let godModeEnabled = false;
   let godModePanel: GodModePanel | null = null;
   let godModeLoad: Promise<GodModePanel> | null = null;
@@ -867,9 +857,9 @@ export function createUI(handlers: UIHandlers): UI {
     );
   };
   const villageOverlay = div("village-overlay", "");
-  const villageDialog = div("village-dialog", "");
+  const villageDialog = div("village-dialog", "roc-dialog");
   villageDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="village-close" title="Close" aria-label="Close">✕</button>` +
+    dialogCloseButton("village-close") +
     `<img class="village-art" id="village-art" src="" alt="" />` +
     `<div class="village-title" id="village-title">Village Discovered</div>` +
     `<div class="village-msg" id="village-msg"></div>` +
@@ -894,9 +884,9 @@ export function createUI(handlers: UIHandlers): UI {
   // Great-person activation confirmation: explains exactly what activating a
   // recruited figure will do before the (one-shot, irreversible) commitment.
   const gpActivateOverlay = div("gp-activate-overlay", "");
-  const gpActivateDialog = div("gp-activate-dialog", "");
+  const gpActivateDialog = div("gp-activate-dialog", "roc-dialog");
   gpActivateDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="gp-activate-x" title="Close" aria-label="Close">✕</button>` +
+    dialogCloseButton("gp-activate-x") +
     `<img class="gp-activate-art" id="gp-activate-art" src="" alt="" />` +
     `<div class="gp-activate-title" id="gp-activate-title"></div>` +
     `<div class="gp-activate-sub" id="gp-activate-sub"></div>` +
@@ -949,9 +939,9 @@ export function createUI(handlers: UIHandlers): UI {
   // portrait. Always explains the ability; the Use button is enabled only when
   // the ability is unlocked and off cooldown.
   const leaderAbilityOverlay = div("leader-ability-overlay", "");
-  const leaderAbilityDialog = div("leader-ability-dialog", "");
+  const leaderAbilityDialog = div("leader-ability-dialog", "roc-dialog");
   leaderAbilityDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="la-dialog-x" title="Close" aria-label="Close">✕</button>` +
+    dialogCloseButton("la-dialog-x") +
     `<img class="la-dialog-art" id="la-dialog-art" src="" alt="" />` +
     `<div class="la-dialog-title" id="la-dialog-title"></div>` +
     `<div class="la-dialog-sub" id="la-dialog-sub"></div>` +
@@ -1006,7 +996,7 @@ export function createUI(handlers: UIHandlers): UI {
     handlers.onUseLeaderAbility();
   });
 
-  const logDialog = div("log-dialog", "panel hidden");
+  const logDialog = div("log-dialog", HUD_DIALOG);
   logDialog.innerHTML =
     dialogHeader("Game Log", "log-close") +
     `<div class="panel-dialog-body log-dialog-content" id="log-dialog-content"></div>`;
@@ -1016,7 +1006,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
   wirePanelClose(logDialog.querySelector<HTMLButtonElement>("#log-close")!, hideLogDialog);
 
-  const leaderboardDialog = div("leaderboard-dialog", "panel hidden");
+  const leaderboardDialog = div("leaderboard-dialog", HUD_DIALOG);
   leaderboardDialog.innerHTML =
     dialogHeader("Civilization Standings", "leaderboard-close") +
     `<div class="panel-dialog-body" id="leaderboard-content"></div>`;
@@ -1027,9 +1017,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
   const showLeaderboard = (state: GameState): void => {
     closeSideSheets();
-    closePickers(state);
-    menuOpen = false;
-    renderMenu(state);
+    closeHudCenterPanels(state);
     const viewerId = lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? -1);
     const rows = state.players
       .filter((p) => !p.isBarbarian)
@@ -1117,7 +1105,7 @@ export function createUI(handlers: UIHandlers): UI {
     syncOverlayHudShell();
   };
 
-  const goldDialog = div("gold-dialog", "panel hidden");
+  const goldDialog = div("gold-dialog", HUD_DIALOG);
   goldDialog.innerHTML =
     dialogHeader("Treasury", "gold-close") +
     `<div class="panel-dialog-body" id="gold-dialog-content"></div>`;
@@ -1129,7 +1117,7 @@ export function createUI(handlers: UIHandlers): UI {
   };
   wirePanelClose(goldDialog.querySelector<HTMLButtonElement>("#gold-close")!, hideGoldDialog);
 
-  const moraleDialog = div("morale-dialog", "panel hidden");
+  const moraleDialog = div("morale-dialog", HUD_DIALOG);
   moraleDialog.innerHTML =
     dialogHeader("Empire Morale", "morale-close") +
     `<div class="panel-dialog-body morale-scroll">` +
@@ -1166,9 +1154,9 @@ export function createUI(handlers: UIHandlers): UI {
   wirePanelClose(moraleClose, hideMoraleDialog);
 
   const unitPromoOverlay = div("unit-promo-overlay", "");
-  const unitPromoDialog = div("unit-promo-dialog", "");
+  const unitPromoDialog = div("unit-promo-dialog", "roc-dialog");
   unitPromoDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="unit-promo-close" title="Close" aria-label="Close">✕</button>` +
+    dialogCloseButton("unit-promo-close") +
     `<div class="unit-promo-dialog-title">Unit Promotions</div>` +
     `<div id="unit-promo-dialog-content"></div>`;
   const unitPromoDialogContent = unitPromoDialog.querySelector<HTMLDivElement>("#unit-promo-dialog-content")!;
@@ -1188,13 +1176,12 @@ export function createUI(handlers: UIHandlers): UI {
   bindDialogClose(unitPromoClose, hideUnitPromoDialog);
 
   const turnUpdateOverlay = div("turn-update-overlay", "");
-  const turnUpdateDialog = div("turn-update-dialog", "");
+  const turnUpdateDialog = div("turn-update-dialog", "roc-dialog");
   turnUpdateDialog.innerHTML =
-    `<button type="button" class="dialog-x" id="turn-update-close" title="Close" aria-label="Close">✕</button>` +
-    `<div class="turn-update-header">` +
-    `<div class="turn-update-heading" id="turn-update-heading">Turn Updates</div>` +
-    `<button class="btn tu-view-toggle" id="turn-update-view-toggle"></button>` +
-    `</div>` +
+    dialogHeader("Turn Updates", "turn-update-close", {
+      titleId: "turn-update-heading",
+      headBtn: `<button type="button" class="dialog-head-btn btn tu-view-toggle" id="turn-update-view-toggle"></button>`,
+    }) +
     `<div class="turn-update-expanded" id="turn-update-expanded">` +
     `<img class="turn-update-art" id="turn-update-art" src="" alt="" />` +
     `<div class="turn-update-title" id="turn-update-title"></div>` +
@@ -1374,6 +1361,7 @@ export function createUI(handlers: UIHandlers): UI {
   let menuOpen = false;
   let menuHudOverlay = false;
   let menuView: "menu" | "save" | "leave" | "bug" = "menu";
+  let menuBodySig = "";
   let isSaving = false;
   let isReporting = false;
   let mpSaves: SaveRecord[] = [];
@@ -1445,6 +1433,14 @@ export function createUI(handlers: UIHandlers): UI {
     renderSpecialists(state);
     renderTraining(state);
     renderTechTree(state);
+  };
+  /** Close ledger dialogs and pickers so only one centered HUD panel is open. */
+  const closeHudCenterPanels = (state: GameState): void => {
+    hideGoldDialog();
+    hideMoraleDialog();
+    hideLogDialog();
+    hideLeaderboard();
+    closePickers(state);
   };
   const closeSideSheets = (): void => {
     empire.close();
@@ -1563,7 +1559,6 @@ export function createUI(handlers: UIHandlers): UI {
     turnUpdateIndex = Math.min(turnUpdateIndex, turnUpdateQueue.length - 1);
     turnUpdateOverlay.classList.add("show");
     turnUpdateDialog.classList.add("show");
-    wirePanelClose(turnUpdateClose, hideTurnUpdateDialog);
     syncOverlayHudShell();
     renderTurnUpdateDialog();
   };
@@ -1811,7 +1806,7 @@ export function createUI(handlers: UIHandlers): UI {
       renderTurnUpdateDialog();
     }
   });
-  wirePanelClose(turnUpdateClose, hideTurnUpdateDialog);
+  bindDialogClose(turnUpdateClose, hideTurnUpdateDialog);
 
   const renderAction = (view: UIView): void => {
     if (view.state.gameOver) {
@@ -1931,16 +1926,16 @@ export function createUI(handlers: UIHandlers): UI {
           `<span class="tb-pl">🏛️</span><b>${cName}</b><span class="tb-score">+${cul}</span></button>` : ""}
         ${showReligion ? `<button class="tb-pill" id="religion-btn" title="Religion">` +
           `<span class="tb-pl">☮️</span><b>${Math.floor(player.faith)}</b><span class="tb-score">+${fth}</span></button>` : ""}
-        <button class="tb-pill" id="morale-pill" title="Empire morale (0 to 200). Tap for recent events and how morale works.">
+        <button class="tb-pill" id="morale-pill" title="Empire morale (0 to 200). Tap for recent events and how morale works. ${keybindHint("morale")}">
           <span class="tb-pl">🎌</span><b style="color:${moraleColor}">${morale}</b></button>
       </div>
       <div class="tb-grp">
-        <button class="tb-pill empire" id="cities-btn" title="Cities"><span class="tb-pl">🏙️</span><b>${cityCount}</b></button>
+        <button class="tb-pill empire" id="cities-btn" title="Cities ${keybindHint("cities")}"><span class="tb-pl">🏙️</span><b>${cityCount}</b></button>
         <button class="tb-pill empire" id="units-btn" title="Units ${keybindHint("units")}"><span class="tb-pl">⚔️</span><b>${unitCount}</b></button>
         <button class="tb-pill empire" id="specialists-btn" title="Specialists"><span class="tb-pl">👷</span><b>${specCount}</b></button>
         <button class="tb-pill empire" id="trade-btn" title="Trade Routes"><span class="tb-pl">🐫</span><b>${routeCount}</b></button>
         <button class="tb-pill empire ${gpReady ? "has-badge" : ""}" id="great-people-btn" title="Great People"><span class="tb-pl">🎖️</span><b>${gpReady}</b>${gpReady ? `<span class="tu-badge"></span>` : ""}</button>
-        ${legendsOn ? `<button class="tb-pill empire ${canRecruitLegendNow ? "has-badge" : ""}" id="legends-btn" title="Legends"><span class="tb-pl">⭐</span><b>${myLegends}</b>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : ""}
+        ${legendsOn ? `<button class="tb-pill empire ${canRecruitLegendNow ? "has-badge" : ""}" id="legends-btn" title="Legends ${keybindHint("legends")}"><span class="tb-pl">⭐</span><b>${myLegends}</b>${canRecruitLegendNow ? `<span class="tu-badge"></span>` : ""}</button>` : ""}
         <button class="tb-pill ${diploActionable ? "has-badge" : ""}" id="diplo-pill" title="${diploActionable ? `Diplomacy, ${diploActionable} proposal${diploActionable > 1 ? "s" : ""} need your attention` : "Diplomacy"}">
           <span class="tb-pl">🕊️</span><b>${player.met.length}</b>${diploActionable ? `<span class="tu-badge"></span>` : ""}</button>
         <button class="tb-pill ${turnUpdateHasNew ? "has-badge" : ""}" id="turn-update-btn" title="Turn Updates">
@@ -1971,14 +1966,15 @@ export function createUI(handlers: UIHandlers): UI {
 
     topbar.querySelector<HTMLButtonElement>("#research-btn")!.addEventListener("click", () => {
       const opening = !researchOpen;
-      researchOpen = !researchOpen;
       civicsOpen = false;
       religionOpen = false;
       if (opening) {
         closeSideSheets();
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
+      researchOpen = opening;
       renderResearch(state);
       renderCivics(state);
       renderReligion(state);
@@ -1986,14 +1982,15 @@ export function createUI(handlers: UIHandlers): UI {
     if (showCivics) {
       topbar.querySelector<HTMLButtonElement>("#civics-btn")!.addEventListener("click", () => {
         const opening = !civicsOpen;
-        civicsOpen = !civicsOpen;
         researchOpen = false;
         religionOpen = false;
         if (opening) {
           closeSideSheets();
+          closeHudCenterPanels(state);
           menuOpen = false;
           renderMenu(state);
         }
+        civicsOpen = opening;
         renderCivics(state);
         renderResearch(state);
         renderReligion(state);
@@ -2002,14 +1999,15 @@ export function createUI(handlers: UIHandlers): UI {
     if (showReligion) {
       topbar.querySelector<HTMLButtonElement>("#religion-btn")!.addEventListener("click", () => {
         const opening = !religionOpen;
-        religionOpen = !religionOpen;
         researchOpen = false;
         civicsOpen = false;
         if (opening) {
           closeSideSheets();
+          closeHudCenterPanels(state);
           menuOpen = false;
           renderMenu(state);
         }
+        religionOpen = opening;
         renderReligion(state);
         renderResearch(state);
         renderCivics(state);
@@ -2017,15 +2015,16 @@ export function createUI(handlers: UIHandlers): UI {
     }
     topbar.querySelector<HTMLButtonElement>("#great-people-btn")!.addEventListener("click", () => {
       const opening = !greatPeopleOpen;
-      greatPeopleOpen = !greatPeopleOpen;
       researchOpen = false;
       civicsOpen = false;
       religionOpen = false;
       if (opening) {
         closeSideSheets();
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
+      greatPeopleOpen = opening;
       renderGreatPeople(state);
       renderResearch(state);
       renderCivics(state);
@@ -2033,16 +2032,17 @@ export function createUI(handlers: UIHandlers): UI {
     });
     topbar.querySelector<HTMLButtonElement>("#legends-btn")?.addEventListener("click", () => {
       const opening = !legendsOpen;
-      legendsOpen = !legendsOpen;
       researchOpen = false;
       civicsOpen = false;
       religionOpen = false;
       greatPeopleOpen = false;
       if (opening) {
         closeSideSheets();
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
+      legendsOpen = opening;
       renderLegends(state);
       renderGreatPeople(state);
       renderResearch(state);
@@ -2052,10 +2052,8 @@ export function createUI(handlers: UIHandlers): UI {
     const openEmpire = (tab: EmpireTab) => {
       const opening = !empire.isOpen();
       if (opening) {
-        hideGoldDialog();
-        hideMoraleDialog();
         closeSideSheets();
-        closePickers(state);
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
@@ -2068,10 +2066,8 @@ export function createUI(handlers: UIHandlers): UI {
     topbar.querySelector<HTMLButtonElement>("#diplo-pill")!.addEventListener("click", () => {
       const opening = !diplomacy.isOpen();
       if (opening) {
-        hideGoldDialog();
-        hideMoraleDialog();
         closeSideSheets();
-        closePickers(state);
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
@@ -2090,25 +2086,25 @@ export function createUI(handlers: UIHandlers): UI {
     });
     topbar.querySelector<HTMLButtonElement>("#score-btn")!.addEventListener("click", () => showLeaderboard(state));
     topbar.querySelector<HTMLButtonElement>("#gold-btn")!.addEventListener("click", () => {
-      goldDialogOpen = !goldDialogOpen;
-      if (goldDialogOpen) {
-        hideMoraleDialog();
+      const opening = !goldDialogOpen;
+      if (opening) {
         closeSideSheets();
-        closePickers(state);
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
+      goldDialogOpen = opening;
       renderGoldDialog(state);
     });
     topbar.querySelector<HTMLButtonElement>("#morale-pill")!.addEventListener("click", () => {
-      moraleDialogOpen = !moraleDialogOpen;
-      if (moraleDialogOpen) {
-        hideGoldDialog();
+      const opening = !moraleDialogOpen;
+      if (opening) {
         closeSideSheets();
-        closePickers(state);
+        closeHudCenterPanels(state);
         menuOpen = false;
         renderMenu(state);
       }
+      moraleDialogOpen = opening;
       renderMoraleDialog(state);
     });
     topbar.querySelector<HTMLButtonElement>("#turn-update-btn")!.addEventListener("click", () => {
@@ -2157,15 +2153,25 @@ export function createUI(handlers: UIHandlers): UI {
       else popHudOverlay();
       menuHudOverlay = menuOpen;
     }
-    if (!menuOpen) return;
+    if (!menuOpen) {
+      menuBodySig = "";
+      return;
+    }
     const player = state.players[state.currentPlayerIndex]!;
     const isHost = state.players[0]?.id === player.id;
+    const saveModalTitles = {
+      menu: "Game Menu",
+      save: "Save Game",
+      leave: "Leave Game",
+      bug: "Report a Bug",
+    } as const;
+    saveModalTitleEl.textContent = saveModalTitles[menuView];
 
     // If the save form is already open, don't rebuild it every frame: that would
     // reset the input value and steal focus, which makes typing impossible on
     // touch devices. Just sync the save button state.
-    if (menuView === "save" && saveModal.querySelector<HTMLInputElement>("#save-name")) {
-      const confirmBtn = saveModal.querySelector<HTMLButtonElement>("#save-confirm");
+    if (menuView === "save" && saveModalBody.querySelector<HTMLInputElement>("#save-name")) {
+      const confirmBtn = saveModalBody.querySelector<HTMLButtonElement>("#save-confirm");
       if (confirmBtn) {
         confirmBtn.disabled = isSaving;
         confirmBtn.textContent = isSaving ? "Saving…" : "Save";
@@ -2175,8 +2181,8 @@ export function createUI(handlers: UIHandlers): UI {
 
     // Same anti-flicker guard for the bug-report form: don't rebuild it (and clear
     // the textarea / steal focus) on every frame while the player is typing.
-    if (menuView === "bug" && saveModal.querySelector<HTMLTextAreaElement>("#bug-text")) {
-      const confirmBtn = saveModal.querySelector<HTMLButtonElement>("#bug-confirm");
+    if (menuView === "bug" && saveModalBody.querySelector<HTMLTextAreaElement>("#bug-text")) {
+      const confirmBtn = saveModalBody.querySelector<HTMLButtonElement>("#bug-confirm");
       if (confirmBtn) {
         confirmBtn.disabled = isReporting;
         confirmBtn.textContent = isReporting ? "Sending…" : "Submit report";
@@ -2184,8 +2190,8 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
 
-    if (menuView === "leave" && saveModal.querySelector<HTMLInputElement>("#leave-save-name")) {
-      const confirmBtn = saveModal.querySelector<HTMLButtonElement>("#leave-save");
+    if (menuView === "leave" && saveModalBody.querySelector<HTMLInputElement>("#leave-save-name")) {
+      const confirmBtn = saveModalBody.querySelector<HTMLButtonElement>("#leave-save");
       if (confirmBtn) {
         confirmBtn.disabled = isSaving;
         confirmBtn.textContent = isSaving ? "Saving…" : "Save & Leave";
@@ -2196,6 +2202,14 @@ export function createUI(handlers: UIHandlers): UI {
     if (menuView === "menu") {
       const mapLabel = stateMapLabel(state);
       const viewer = state.players.find((p) => p.id === player.id);
+      const menuSig =
+        `menu|${state.turn}|${player.id}|${mpSaves.map((s) => s.id).join(",")}|` +
+        `${godModeEnabled ? 1 : 0}|${lastView?.cheatsEnabled ? 1 : 0}|${lastView?.isMultiplayer ? 1 : 0}|` +
+        `${handlers.canSave ? 1 : 0}|${viewer?.eliminated ? 1 : 0}`;
+      if (menuSig === menuBodySig && saveModalBody.querySelector<HTMLButtonElement>("#menu-settings")) {
+        return;
+      }
+      menuBodySig = menuSig;
       const surrenderBtn =
         lastView?.isMultiplayer && handlers.onSurrender && viewer && !viewer.eliminated
           ? `<button class="btn" id="menu-surrender">Surrender</button>`
@@ -2209,66 +2223,57 @@ export function createUI(handlers: UIHandlers): UI {
       const saveBtn = handlers.canSave
         ? `<button class="btn primary" id="menu-save">Save Game</button>`
         : "";
-      let html =
-        menuDialogHeader("Game Menu", "save-close") +
-        menuDialogBody(
-          `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}` +
-          (mapLabel ? `<br/><span style="font-size:11px">Map: ${escapeHtml(mapLabel)}</span>` : "") +
-          `</div>` +
-          `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
-          saveBtn +
+      const html =
+        `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}` +
+        (mapLabel ? `<br/><span style="font-size:11px">Map: ${escapeHtml(mapLabel)}</span>` : "") +
+        `</div>` +
+        `<div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">` +
+        saveBtn +
         `<button class="btn" id="menu-settings">Settings ${keybindHint("settings")}</button>` +
         `<button class="btn" id="menu-wiki">Open Wiki ${keybindHint("wiki")}</button>` +
         `<button class="btn" id="menu-leaderboard">Leaderboard ${keybindHint("leaderboard")}</button>` +
-          `<button class="btn" id="menu-log">Game Log</button>` +
-          `<button class="btn" id="menu-bug">🐞 Report a Bug</button>` +
-          godMenuBtn +
-          surrenderBtn +
-          `<button class="btn" id="menu-leave">Leave Game</button>` +
-          `</div>` +
-          (isHost && mpSaves.length > 0
-            ? `<div style="margin-top:16px;border-top:1px solid var(--edge);padding-top:12px"><b>Host MP Saves</b></div>` +
-              mpSaves
-                .map(
-                  (s) =>
-                    `<div class="gi" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:6px;border:1px solid var(--edge);border-radius:8px">` +
-                    `<span>${escapeHtml(s.name)}<br/><span style="color:#9fc0dc;font-size:11px">Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}</span></span>` +
-                    `<button class="btn" data-load-mp="${s.id}">Load</button>` +
-                    `</div>`,
-                )
-                .join("")
-            : "") +
-          `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`,
-        );
-      withPreservedScroll(saveModal, () => {
-        saveModal.innerHTML = html;
+        `<button class="btn" id="menu-log">Game Log</button>` +
+        `<button class="btn" id="menu-bug">🐞 Report a Bug</button>` +
+        godMenuBtn +
+        surrenderBtn +
+        `<button class="btn" id="menu-leave">Leave Game</button>` +
+        `</div>` +
+        (isHost && mpSaves.length > 0
+          ? `<div style="margin-top:16px;border-top:1px solid var(--edge);padding-top:12px"><b>Host MP Saves</b></div>` +
+            mpSaves
+              .map(
+                (s) =>
+                  `<div class="gi" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding:6px;border:1px solid var(--edge);border-radius:8px">` +
+                  `<span>${escapeHtml(s.name)}<br/><span style="color:#9fc0dc;font-size:11px">Turn ${s.turn} · ${new Date(s.createdAt).toLocaleString()}</span></span>` +
+                  `<button class="btn" data-load-mp="${s.id}">Load</button>` +
+                  `</div>`,
+              )
+              .join("")
+          : "") +
+        `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+      withPreservedScroll(saveModalBody, () => {
+        saveModalBody.innerHTML = html;
       });
-      bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
-        menuOpen = false;
-        renderMenu(state);
-      });
-      saveModal.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-settings")!.addEventListener("click", () => {
+        if (lastState) closeHudCenterPanels(lastState);
         openGameSettings();
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-save")?.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-save")?.addEventListener("click", () => {
         menuView = "save";
+        menuBodySig = "";
         renderMenu(state);
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-wiki")!.addEventListener("click", () => {
-        menuOpen = false;
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-wiki")!.addEventListener("click", () => {
         closeSideSheets();
-        closePickers(state);
-        renderMenu(state);
+        if (lastState) closeHudCenterPanels(lastState);
         wiki.open();
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-leaderboard")!.addEventListener("click", () => {
-        menuOpen = false;
-        renderMenu(state);
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-leaderboard")!.addEventListener("click", () => {
         showLeaderboard(state);
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-log")!.addEventListener("click", () => {
-        menuOpen = false;
-        renderMenu(state);
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-log")!.addEventListener("click", () => {
+        closeSideSheets();
+        closeHudCenterPanels(state);
         setPreservedHtml(
           logDialogContent,
           visibleLog(state, lastViewerId >= 0 ? lastViewerId : (state.players[state.currentPlayerIndex]?.id ?? 0))
@@ -2278,37 +2283,36 @@ export function createUI(handlers: UIHandlers): UI {
         );
         logDialog.classList.remove("hidden");
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-bug")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-bug")!.addEventListener("click", () => {
         menuView = "bug";
+        menuBodySig = "";
         renderMenu(state);
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-enable-god")?.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-enable-god")?.addEventListener("click", () => {
         godModeEnabled = true;
         void ensureGodModePanel().then((panel) => {
-          panel.open();
-          menuOpen = false;
           closeSideSheets();
-          closePickers(state);
-          renderMenu(state);
+          if (lastState) closeHudCenterPanels(lastState);
+          panel.open();
           if (lastView) {
             renderTilePanel(lastView.state, lastView.selectedTile ?? null, lastView.viewerId, lastView.cheatsEnabled ?? false);
             renderGodMode(lastView);
           }
         });
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-god")?.addEventListener("click", () => {
-        menuOpen = false;
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-god")?.addEventListener("click", () => {
         closeSideSheets();
-        closePickers(state);
-        renderMenu(state);
+        if (lastState) closeHudCenterPanels(lastState);
         void ensureGodModePanel().then((panel) => {
           panel.open();
           if (lastView) renderGodMode(lastView);
+          syncOverlayHudShell();
         });
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-leave")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-leave")!.addEventListener("click", () => {
         if (handlers.promptSaveOnLeave && handlers.canSave) {
           menuView = "leave";
+          menuBodySig = "";
           renderMenu(state);
           return;
         }
@@ -2321,7 +2325,7 @@ export function createUI(handlers: UIHandlers): UI {
           if (ok) handlers.onLeaveGame();
         });
       });
-      saveModal.querySelector<HTMLButtonElement>("#menu-surrender")?.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#menu-surrender")?.addEventListener("click", () => {
         void confirmDialog({
           title: "Surrender",
           body: "Concede defeat and leave this match? Other players will be notified.",
@@ -2334,7 +2338,7 @@ export function createUI(handlers: UIHandlers): UI {
           handlers.onSurrender?.();
         });
       });
-      saveModal.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
+      saveModalBody.querySelectorAll<HTMLButtonElement>("[data-load-mp]").forEach((el) =>
         el.addEventListener("click", async () => {
           const id = el.dataset.loadMp;
           const record = mpSaves.find((s) => s.id === id);
@@ -2349,7 +2353,7 @@ export function createUI(handlers: UIHandlers): UI {
           } catch (err) {
             isSaving = false;
             renderMenu(state);
-            saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+            saveModalBody.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
           }
         }),
       );
@@ -2359,32 +2363,25 @@ export function createUI(handlers: UIHandlers): UI {
     if (menuView === "leave") {
       const civ = getCiv(player.civId);
       const defaultName = `${civ ? civ.name : player.name} - Turn ${state.turn}`;
-      withPreservedScroll(saveModal, () => {
-        saveModal.innerHTML =
-          menuDialogHeader("Leave Game", "save-close") +
-          menuDialogBody(
-            `<div style="margin:8px 0;color:#9fc0dc">Save your progress before returning to the main menu?</div>` +
-            `<input id="leave-save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
-            `<button class="btn primary" id="leave-save" style="width:100%" ${isSaving ? "disabled" : ""}>` +
-            (isSaving ? "Saving…" : "Save & Leave") +
-            `</button>` +
-            `<button class="btn" id="leave-discard" style="width:100%;margin-top:8px">Leave without saving</button>` +
-            `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`,
-          );
+      withPreservedScroll(saveModalBody, () => {
+        saveModalBody.innerHTML =
+          `<div style="margin:8px 0;color:#9fc0dc">Save your progress before returning to the main menu?</div>` +
+          `<input id="leave-save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
+          `<button class="btn primary" id="leave-save" style="width:100%" ${isSaving ? "disabled" : ""}>` +
+          (isSaving ? "Saving…" : "Save & Leave") +
+          `</button>` +
+          `<button class="btn" id="leave-discard" style="width:100%;margin-top:8px">Leave without saving</button>` +
+          `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
       });
-      const input = saveModal.querySelector<HTMLInputElement>("#leave-save-name")!;
+      const input = saveModalBody.querySelector<HTMLInputElement>("#leave-save-name")!;
       input.focus();
-      bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
-        menuView = "menu";
-        renderMenu(state);
-      });
-      saveModal.querySelector<HTMLButtonElement>("#leave-discard")!.addEventListener("click", () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#leave-discard")!.addEventListener("click", () => {
         handlers.onLeaveGame();
       });
-      saveModal.querySelector<HTMLButtonElement>("#leave-save")!.addEventListener("click", async () => {
+      saveModalBody.querySelector<HTMLButtonElement>("#leave-save")!.addEventListener("click", async () => {
         const name = input.value.trim();
         if (!name) {
-          saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = "Enter a save name.";
+          saveModalBody.querySelector<HTMLDivElement>("#save-error")!.textContent = "Enter a save name.";
           return;
         }
         isSaving = true;
@@ -2395,7 +2392,7 @@ export function createUI(handlers: UIHandlers): UI {
         } catch (err) {
           isSaving = false;
           renderMenu(state);
-          saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+          saveModalBody.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
         }
       });
       return;
@@ -2403,28 +2400,21 @@ export function createUI(handlers: UIHandlers): UI {
 
     // Bug-report form view
     if (menuView === "bug") {
-      withPreservedScroll(saveModal, () => {
-        saveModal.innerHTML =
-          menuDialogHeader("Report a Bug", "bug-close") +
-          menuDialogBody(
-            `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
-            `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
-            `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
-            `style="width:100%;min-height:120px;resize:vertical;margin-bottom:8px"></textarea>` +
-            `<button class="btn primary" id="bug-confirm" style="width:100%" ${isReporting ? "disabled" : ""}>` +
-            (isReporting ? "Sending…" : "Submit report") +
-            `</button>` +
-            `<div id="bug-status" style="margin-top:8px"></div>`,
-          );
+      withPreservedScroll(saveModalBody, () => {
+        saveModalBody.innerHTML =
+          `<div style="margin:8px 0;color:#9fc0dc">Describe what went wrong. A snapshot of this game ` +
+          `(turn ${state.turn}, full state & recent errors) is attached automatically to help us reproduce it.</div>` +
+          `<textarea id="bug-text" class="lobby-in" placeholder="What happened? What did you expect?" ` +
+          `style="width:100%;min-height:120px;resize:vertical;margin-bottom:8px"></textarea>` +
+          `<button class="btn primary" id="bug-confirm" style="width:100%" ${isReporting ? "disabled" : ""}>` +
+          (isReporting ? "Sending…" : "Submit report") +
+          `</button>` +
+          `<div id="bug-status" style="margin-top:8px"></div>`;
       });
-      const ta = saveModal.querySelector<HTMLTextAreaElement>("#bug-text")!;
+      const ta = saveModalBody.querySelector<HTMLTextAreaElement>("#bug-text")!;
       ta.focus();
-      const statusEl = saveModal.querySelector<HTMLDivElement>("#bug-status")!;
-      bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#bug-close")!, () => {
-        menuView = "menu";
-        renderMenu(state);
-      });
-      saveModal.querySelector<HTMLButtonElement>("#bug-confirm")!.addEventListener("click", async () => {
+      const statusEl = saveModalBody.querySelector<HTMLDivElement>("#bug-status")!;
+      saveModalBody.querySelector<HTMLButtonElement>("#bug-confirm")!.addEventListener("click", async () => {
         const message = ta.value.trim();
         if (!message) {
           statusEl.innerHTML = `<span style="color:#ff8a8a">Please describe the problem first.</span>`;
@@ -2442,7 +2432,7 @@ export function createUI(handlers: UIHandlers): UI {
         } catch (err) {
           isReporting = false;
           renderMenu(state);
-          const el = saveModal.querySelector<HTMLDivElement>("#bug-status");
+          const el = saveModalBody.querySelector<HTMLDivElement>("#bug-status");
           if (el) el.innerHTML = `<span style="color:#ff8a8a">${escapeHtml(String(err))}</span>`;
         }
       });
@@ -2452,30 +2442,23 @@ export function createUI(handlers: UIHandlers): UI {
     // Save form view
     const civ = getCiv(player.civId);
     const defaultName = `${civ ? civ.name : player.name} - Turn ${state.turn}`;
-    let html =
-      menuDialogHeader("Save Game", "save-close") +
-      menuDialogBody(
-        `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
-        `<input id="save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
-        `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
-        (isSaving ? "Saving…" : "Save") +
-        `</button>` +
-        `<button class="btn" id="save-export" style="width:100%;margin-top:8px">💾 Export Current Save</button>` +
-        `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`,
-      );
-    withPreservedScroll(saveModal, () => {
-      saveModal.innerHTML = html;
+    const html =
+      `<div style="margin:8px 0;color:#9fc0dc">Turn ${state.turn} · ${player.name}</div>` +
+      `<input id="save-name" class="lobby-in" value="${escapeHtml(defaultName)}" placeholder="Save name…" style="width:100%;margin-bottom:8px" />` +
+      `<button class="btn primary" id="save-confirm" style="width:100%" ${isSaving ? "disabled" : ""}>` +
+      (isSaving ? "Saving…" : "Save") +
+      `</button>` +
+      `<button class="btn" id="save-export" style="width:100%;margin-top:8px">💾 Export Current Save</button>` +
+      `<div id="save-error" style="color:#ff8a8a;margin-top:6px"></div>`;
+    withPreservedScroll(saveModalBody, () => {
+      saveModalBody.innerHTML = html;
     });
-    const input = saveModal.querySelector<HTMLInputElement>("#save-name")!;
+    const input = saveModalBody.querySelector<HTMLInputElement>("#save-name")!;
     input.focus();
-    bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
-      menuView = "menu";
-      renderMenu(state);
-    });
-    saveModal.querySelector<HTMLButtonElement>("#save-confirm")!.addEventListener("click", async () => {
+    saveModalBody.querySelector<HTMLButtonElement>("#save-confirm")!.addEventListener("click", async () => {
       const name = input.value.trim();
       if (!name) {
-        saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = "Enter a save name.";
+        saveModalBody.querySelector<HTMLDivElement>("#save-error")!.textContent = "Enter a save name.";
         return;
       }
       isSaving = true;
@@ -2490,11 +2473,11 @@ export function createUI(handlers: UIHandlers): UI {
       } catch (err) {
         isSaving = false;
         renderMenu(state);
-        saveModal.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
+        saveModalBody.querySelector<HTMLDivElement>("#save-error")!.textContent = String(err);
       }
     });
-    saveModal.querySelector<HTMLButtonElement>("#save-export")!.addEventListener("click", async () => {
-      const errorEl = saveModal.querySelector<HTMLDivElement>("#save-error")!;
+    saveModalBody.querySelector<HTMLButtonElement>("#save-export")!.addEventListener("click", async () => {
+      const errorEl = saveModalBody.querySelector<HTMLDivElement>("#save-error")!;
       errorEl.textContent = "";
       try {
         const json = await handlers.onExportCurrentSave();
@@ -2505,6 +2488,18 @@ export function createUI(handlers: UIHandlers): UI {
       }
     });
   };
+
+  bindDialogClose(saveModal.querySelector<HTMLButtonElement>("#save-close")!, () => {
+    if (menuView !== "menu") {
+      menuView = "menu";
+      menuBodySig = "";
+      if (lastState) renderMenu(lastState);
+    } else {
+      menuOpen = false;
+      menuBodySig = "";
+      if (lastState) renderMenu(lastState);
+    }
+  });
 
   const renderGoldDialog = (state: GameState): void => {
     goldDialog.classList.toggle("hidden", !goldDialogOpen);
@@ -2638,6 +2633,8 @@ export function createUI(handlers: UIHandlers): UI {
 
   const renderResearch = (state: GameState): void => {
     research.classList.toggle("hidden", !researchOpen);
+    const techBtn = research.querySelector<HTMLButtonElement>("#open-techtree");
+    if (techBtn) techBtn.title = `View full technology tree ${keybindHint("techTree")}`;
     if (!researchOpen) return;
     const player = state.players[state.currentPlayerIndex]!;
     const techs = availableTechs(player);
@@ -2654,43 +2651,25 @@ export function createUI(handlers: UIHandlers): UI {
       const t = Math.ceil(left / sciPerTurn);
       return `${t} turn${t === 1 ? "" : "s"}`;
     };
-    withPreservedScroll(research, () => {
-      research.innerHTML =
-        dialogHeader("Choose Research", "rclose", {
-          extra: `<button type="button" class="btn dialog-head-btn" id="open-techtree">🌳 View full</button>`,
-        }) +
-        `<div class="panel-dialog-body">` +
-        (techs.length === 0
-          ? `<div style="margin-top:8px;color:#9fc0dc">All available techs researched.</div>`
-          : techs
-              .map((t) => {
-                const u = techUnlocks(t);
-                const cost = scaledTechCost(state, t);
-                return (
-                  `<div class="tech" data-tech="${t}"><div style="flex:1">` +
-                  `<div><b>${TECH_DEFS[t].name}</b></div>` +
-                  (u.length ? `<div class="sub">Unlocks: ${u.join(", ")}</div>` : "") +
-                  `</div><span class="cost">${cost}🔬<span class="sub tech-eta">${turnsFor(cost)}</span></span></div>`
-                );
-              })
-              .join("")) +
-        `</div>`;
+    const html =
+      techs.length === 0
+        ? `<div style="margin-top:8px;color:#9fc0dc">All available techs researched.</div>`
+        : techs
+            .map((t) => {
+              const u = techUnlocks(t);
+              const cost = scaledTechCost(state, t);
+              return (
+                `<div class="tech" data-tech="${t}"><div style="flex:1">` +
+                `<div><b>${TECH_DEFS[t].name}</b></div>` +
+                (u.length ? `<div class="sub">Unlocks: ${u.join(", ")}</div>` : "") +
+                `</div><span class="cost">${cost}🔬<span class="sub tech-eta">${turnsFor(cost)}</span></span></div>`
+              );
+            })
+            .join("");
+    withPreservedScroll(researchBody, () => {
+      researchBody.innerHTML = html;
     });
-    const closeResearch = (): void => {
-      researchOpen = false;
-      research.classList.add("hidden");
-    };
-    wirePanelClose(research.querySelector<HTMLButtonElement>("#rclose")!, closeResearch);
-    research.querySelector<HTMLButtonElement>("#open-techtree")!.addEventListener("click", () => {
-      researchOpen = false;
-      research.classList.add("hidden");
-      closeSideSheets();
-      menuOpen = false;
-      renderMenu(state);
-      techtreeOpen = true;
-      renderTechTree(state);
-    });
-    research.querySelectorAll<HTMLDivElement>(".tech").forEach((el) => {
+    researchBody.querySelectorAll<HTMLDivElement>(".tech").forEach((el) => {
       el.addEventListener("click", () => {
         handlers.onSetResearch(el.dataset.tech as TechId);
         researchOpen = false;
@@ -2698,6 +2677,29 @@ export function createUI(handlers: UIHandlers): UI {
       });
     });
   };
+
+  wirePanelClose(research.querySelector<HTMLButtonElement>("#rclose")!, () => {
+    researchOpen = false;
+    research.classList.add("hidden");
+  });
+  research.querySelector<HTMLButtonElement>("#open-techtree")!.addEventListener("click", () => {
+    openTechTreePanel();
+  });
+
+  function openTechTreePanel(): void {
+    if (!lastState) return;
+    if (techtreeOpen) {
+      techtreeOpen = false;
+      techtree.classList.add("hidden");
+      return;
+    }
+    closeSideSheets();
+    closeHudCenterPanels(lastState);
+    menuOpen = false;
+    renderMenu(lastState);
+    techtreeOpen = true;
+    renderTechTree(lastState);
+  }
 
   const renderTechTree = (state: GameState): void => {
     techtree.classList.toggle("hidden", !techtreeOpen);
@@ -5206,10 +5208,8 @@ export function createUI(handlers: UIHandlers): UI {
     const viewerId = lastViewerId >= 0 ? lastViewerId : (lastState.players[lastState.currentPlayerIndex]?.id ?? -1);
     const opening = !empire.isOpen();
     if (opening) {
-      hideGoldDialog();
-      hideMoraleDialog();
       closeSideSheets();
-      closePickers(lastState);
+      closeHudCenterPanels(lastState);
       menuOpen = false;
       renderMenu(lastState);
     }
@@ -5251,11 +5251,42 @@ export function createUI(handlers: UIHandlers): UI {
       return;
     }
     if (!lastState) return;
-    menuOpen = false;
     closeSideSheets();
-    closePickers(lastState);
-    renderMenu(lastState);
+    closeHudCenterPanels(lastState);
     wiki.open();
+  }
+
+  function toggleMoralePanel(): void {
+    if (moraleDialogOpen) {
+      hideMoraleDialog();
+      return;
+    }
+    if (!lastState) return;
+    closeSideSheets();
+    closeHudCenterPanels(lastState);
+    menuOpen = false;
+    renderMenu(lastState);
+    moraleDialogOpen = true;
+    renderMoraleDialog(lastState);
+  }
+
+  function toggleLegendsPanel(): void {
+    if (!lastState) return;
+    if (legendsOpen) {
+      legendsOpen = false;
+      renderLegends(lastState);
+      return;
+    }
+    closeSideSheets();
+    closeHudCenterPanels(lastState);
+    menuOpen = false;
+    renderMenu(lastState);
+    legendsOpen = true;
+    renderLegends(lastState);
+    renderGreatPeople(lastState);
+    renderResearch(lastState);
+    renderCivics(lastState);
+    renderReligion(lastState);
   }
 
   function toggleSettingsPanelShortcut(): void {
@@ -5263,11 +5294,7 @@ export function createUI(handlers: UIHandlers): UI {
       closeSettingsPanel();
       return;
     }
-    if (lastState) {
-      closePickers(lastState);
-      menuOpen = false;
-      renderMenu(lastState);
-    }
+    if (lastState) closeHudCenterPanels(lastState);
     openGameSettings();
   }
 
@@ -5287,6 +5314,18 @@ export function createUI(handlers: UIHandlers): UI {
     if (eventMatchesKeybind(e, binds.units)) {
       e.preventDefault();
       openEmpireTab("units");
+    } else if (eventMatchesKeybind(e, binds.cities)) {
+      e.preventDefault();
+      openEmpireTab("cities");
+    } else if (eventMatchesKeybind(e, binds.morale)) {
+      e.preventDefault();
+      toggleMoralePanel();
+    } else if (eventMatchesKeybind(e, binds.techTree)) {
+      e.preventDefault();
+      openTechTreePanel();
+    } else if (eventMatchesKeybind(e, binds.legends)) {
+      e.preventDefault();
+      toggleLegendsPanel();
     } else if (eventMatchesKeybind(e, binds.leaderboard)) {
       e.preventDefault();
       toggleLeaderboardPanel();
@@ -5313,7 +5352,15 @@ export function createUI(handlers: UIHandlers): UI {
       gpActivateDialog.classList.contains("show") ||
       leaderAbilityDialog.classList.contains("show") ||
       document.getElementById("combat-preview-dialog")?.classList.contains("show") ||
-      !saveModal.classList.contains("hidden");
+      !saveModal.classList.contains("hidden") ||
+      researchOpen ||
+      godModePanel?.isOpen() ||
+      civicsOpen ||
+      religionOpen ||
+      productionOpen ||
+      specialistsOpen ||
+      trainingOpen ||
+      techtreeOpen;
     gameHud().classList.toggle("roc-overlay-dialog-open", open);
   };
 
@@ -5432,26 +5479,36 @@ export function createUI(handlers: UIHandlers): UI {
     },
     openResearch() {
       if (!lastState) return;
+      closeSideSheets();
+      closeHudCenterPanels(lastState);
       researchOpen = true;
       renderResearch(lastState);
     },
     openCivics() {
       if (!lastState) return;
+      closeSideSheets();
+      closeHudCenterPanels(lastState);
       civicsOpen = true;
       renderCivics(lastState);
     },
     openReligion() {
       if (!lastState) return;
+      closeSideSheets();
+      closeHudCenterPanels(lastState);
       religionOpen = true;
       renderReligion(lastState);
     },
     openGreatPeople() {
       if (!lastState) return;
+      closeSideSheets();
+      closeHudCenterPanels(lastState);
       greatPeopleOpen = true;
       renderGreatPeople(lastState);
     },
     openLegends() {
       if (!lastState) return;
+      closeSideSheets();
+      closeHudCenterPanels(lastState);
       legendsOpen = true;
       renderLegends(lastState);
     },

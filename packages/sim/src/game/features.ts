@@ -4,7 +4,7 @@
 // All randomness is DETERMINISTIC — seeded from turn/unit/tile coordinates via
 // the shared RNG — so the server and clients agree (no stored RNG state needed).
 
-import { axialDistance, getTile, hashSeed, isPolarTile, makeRng, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, hashSeed, isBottomMapBorderTile, isUnitPlayableTile, isPolarTile, makeRng, offsetToAxial } from "@roc/shared";
 import {
   citiesOf,
   log,
@@ -248,7 +248,7 @@ function campHasNavalWater(state: GameState, col: number, row: number): boolean 
 /** Place a barbarian warship on a navigable water tile beside (col,row). */
 function spawnNavalNear(state: GameState, ownerId: number, type: UnitTypeId, col: number, row: number): Unit | null {
   for (const n of offsetNeighbors(state.map, col, row)) {
-    if (isNavalSpawnWater(state, n.col, n.row) && !unitAt(state, n.col, n.row)) {
+    if (isNavalSpawnWater(state, n.col, n.row) && isUnitPlayableTile(state.map, n.col, n.row) && !unitAt(state, n.col, n.row)) {
       const id = state.nextEntityId++;
       const u = makeUnit(id, ownerId, type, n.col, n.row, 0, startingUnitMorale(state, ownerId));
       state.units.set(id, u);
@@ -269,10 +269,10 @@ function spawnUnitNear(state: GameState, ownerId: number, type: UnitTypeId, col:
     state.units.set(id, u);
     return u;
   };
-  if (!unitAt(state, col, row)) return place(col, row);
+  if (!unitAt(state, col, row) && isUnitPlayableTile(state.map, col, row)) return place(col, row);
   for (const n of offsetNeighbors(state.map, col, row)) {
     const tile = getTile(state.map, n.col, n.row);
-    if (tile && isPassableLand(tile.terrain) && !unitAt(state, n.col, n.row)) return place(n.col, n.row);
+    if (tile && isPassableLand(tile.terrain) && isUnitPlayableTile(state.map, n.col, n.row) && !unitAt(state, n.col, n.row)) return place(n.col, n.row);
   }
   return null;
 }
@@ -562,6 +562,7 @@ export function maybeSpawnCamps(state: GameState, _barbId: number): void {
     if (!isPassableLand(tile.terrain) || tile.feature) continue;
     if (tile.naturalWonder) continue; // never squat a camp on a natural wonder
     if (isPolarTile(state.map, tile.col, tile.row)) continue; // no raiders at the poles
+    if (isBottomMapBorderTile(state.map, tile.col, tile.row)) continue; // not on the bottom skirt row
     if (sighted.has(`${tile.col},${tile.row}`)) continue; // must be hidden in fog
     if (unitAt(state, tile.col, tile.row)) continue;
     if (tooCloseToCamp(tile.col, tile.row)) continue;
@@ -597,6 +598,7 @@ export function placeFeatures(
     if (!isPassableLand(tile.terrain) || tile.feature) continue;
     if (tile.naturalWonder) continue; // camps/villages never spawn on a natural wonder
     if (isPolarTile(map, tile.col, tile.row)) continue; // no villages/camps at the poles
+    if (isBottomMapBorderTile(map, tile.col, tile.row)) continue; // not on the bottom skirt row
     const here = offsetToAxial({ col: tile.col, row: tile.row });
     if (starts.some((s) => s && axialDistance(here, offsetToAxial(s)) < startClearance)) continue;
     if (unitAt(state, tile.col, tile.row)) continue;

@@ -45,7 +45,11 @@ describe("validateKeybindCode", () => {
 describe("DEFAULT_KEYBINDS", () => {
   it("matches shipped shortcuts", () => {
     expect(DEFAULT_KEYBINDS.cycleCity).toBe("Space");
+    expect(DEFAULT_KEYBINDS.cities).toBe("KeyC");
     expect(DEFAULT_KEYBINDS.units).toBe("KeyU");
+    expect(DEFAULT_KEYBINDS.morale).toBe("KeyM");
+    expect(DEFAULT_KEYBINDS.techTree).toBe("KeyT");
+    expect(DEFAULT_KEYBINDS.legends).toBe("KeyJ");
     expect(DEFAULT_KEYBINDS.leaderboard).toBe("KeyL");
     expect(DEFAULT_KEYBINDS.wiki).toBe("KeyW");
     expect(DEFAULT_KEYBINDS.settings).toBe("KeyO");

@@ -89,7 +89,12 @@ export function renderOnlineLeaderboard(
     return;
   }
   if (!entries.length) {
-    el.innerHTML = `<div class="mp-lb-empty">No scores yet. Finish a match to appear here.</div>`;
+    el.innerHTML = `<div class="mp-lb-empty">No scores yet. Sign in and finish a match to appear here.</div>`;
+    return;
+  }
+  const registered = entries.filter((e) => Boolean(e.handle?.trim()));
+  if (!registered.length) {
+    el.innerHTML = `<div class="mp-lb-empty">No scores yet. Sign in and finish a match to appear here.</div>`;
     return;
   }
   el.innerHTML =
@@ -97,9 +102,9 @@ export function renderOnlineLeaderboard(
     `<thead><tr>` +
     `<th>#</th><th>Player</th><th>Best score</th><th>Civ</th><th>When</th>` +
     `</tr></thead><tbody>` +
-    entries
+    registered
       .map((e, i) => {
-        const player = e.handle?.trim() || "Guest";
+        const player = e.handle!.trim();
         const top = i < 3 ? ` class="mp-lb-top"` : "";
         return (
           `<tr${top}>` +

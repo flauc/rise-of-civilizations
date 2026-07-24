@@ -1,4 +1,4 @@
-import { axialDistance, getTile, offsetToAxial } from "@roc/shared";
+import { axialDistance, getTile, isUnitPlayableTile, offsetToAxial } from "@roc/shared";
 import type { GameState, City, Player, Unit, CityAutoFocus } from "./state";
 import { areEnemies, cityAt, log, makeUnit, playerById, unitAt, unitsOf } from "./state";
 import { isAtWarWithMajor } from "./diplomacy";
@@ -644,12 +644,12 @@ export function placeUnit(
   };
   // Naval units spawn on an adjacent water tile; land units spawn on land.
   const wantsWater = udef.cls === "naval_melee" || udef.cls === "naval_ranged";
-  if (!wantsWater && !unitAt(state, city.col, city.row)) {
+  if (!wantsWater && !unitAt(state, city.col, city.row) && isUnitPlayableTile(state.map, city.col, city.row)) {
     return spawn(city.col, city.row);
   }
   for (const n of offsetNeighbors(state.map, city.col, city.row)) {
     const tile = getTile(state.map, n.col, n.row);
-    if (!tile || unitAt(state, n.col, n.row)) continue;
+    if (!tile || unitAt(state, n.col, n.row) || !isUnitPlayableTile(state.map, n.col, n.row)) continue;
     if (wantsWater && isWaterTerrain(tile.terrain)) {
       return spawn(n.col, n.row);
     }
@@ -866,6 +866,22 @@ export function militaryUpkeepTotal(state: GameState, player: Player): number {
   return Math.max(total, minMilitaryPayCost(upkeepModifierPct(player)));
 }
 
+/** Barbarian player id when barbarians are enabled in this match. */
+function barbarianPlayerId(state: GameState): number | undefined {
+  return state.players.find((p) => p.isBarbarian)?.id;
+}
+
+/** Unpaid troops (except scouts) desert to the wild as a hostile barbarian war-band. */
+function desertUnitToBarbarians(unit: Unit, barbId: number): void {
+  unit.ownerId = barbId;
+  unit.campKey = `deserter:${unit.id}`;
+  unit.aboardShipId = undefined;
+  unit.inTransit = undefined;
+  unit.escortingRouteId = undefined;
+  unit.legendId = undefined;
+  unit.legendExpiresOnTurn = undefined;
+}
+
 /** Deduct empire-wide unit upkeep from a player's treasury after cities have produced yields. */
 export function applyUnitUpkeep(state: GameState, player: Player): void {
   if (player.isBarbarian) return;
@@ -878,13 +894,21 @@ export function applyUnitUpkeep(state: GameState, player: Player): void {
       targetIds: [player.id],
     });
     emitTreasuryExhausted(state, player.id);
-    // Disband the most expensive non-essential military unit until solvent.
+    // Can't sustain military pay: reset to normal wages before shedding troops.
+    player.upkeepModifierPct = 0;
+    const barbId = barbarianPlayerId(state);
+    // Shed the most expensive non-essential units until solvent. Scouts disband;
+    // other troops desert to barbarians when that faction exists.
     const disbandable = unitsOf(state, player.id)
       .filter((u) => u.type !== "settler")
       .sort((a, b) => unitUpkeep(state, b) - unitUpkeep(state, a));
     while (player.gold < 0 && disbandable.length > 0) {
       const u = disbandable.shift()!;
-      state.units.delete(u.id);
+      if (u.type === "scout" || barbId === undefined) {
+        state.units.delete(u.id);
+      } else {
+        desertUnitToBarbarians(u, barbId);
+      }
       player.gold += unitUpkeep(state, u);
     }
     // Unpaid wages gut the army's spirit: global morale plunges and every

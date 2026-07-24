@@ -95,10 +95,7 @@ html.roc-phone-shell #diplo-proposal{align-items:center;padding:16px}
 .dc-ability{color:var(--parchment-dim);font-size:12px;line-height:1.4}
 .dc-quote{font-style:italic;color:var(--parchment);font-size:13px;padding:12px 18px;text-align:center;border-top:1px solid var(--edge)}
 .dc-actions{display:flex;gap:10px;justify-content:center;padding:14px;border-top:1px solid var(--edge)}
-/* Overlay + centered dialog, same treatment as the treasury / empire dialogs. */
-#diplomacy-overlay{position:fixed;inset:0;background:rgba(15,14,11,.72);opacity:1;pointer-events:auto;transition:opacity .2s;z-index:60}
-#diplomacy-overlay.hidden{opacity:0;pointer-events:none}
-#diplomacy{position:fixed;left:50%;top:var(--dialog-top);transform:var(--dialog-transform);width:min(560px,calc(100vw - 32px));max-height:min(80vh,var(--dialog-max-h));background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;overflow:hidden;opacity:1;pointer-events:auto;transition:opacity .2s;z-index:61}
+#diplomacy{position:fixed;left:50%;top:var(--dialog-top);transform:var(--dialog-transform);width:min(560px,calc(100vw - 32px));max-height:min(80vh,var(--dialog-max-h));background:var(--panel);border:1px solid var(--edge);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;overflow:hidden;opacity:1;pointer-events:auto;transition:opacity .2s}
 #diplomacy.hidden{opacity:0;pointer-events:none}
 /* Title and ✕ come from the shared .dialog-title / .dialog-x rules in index.html.
    The head is unpositioned so the ✕ pins to the dialog corner itself; the head
@@ -282,14 +279,16 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   const seenProposals = new Set<number>(); // proposals we've already surfaced
 
   // --- contacts dialog ---
-  const overlay = document.createElement("div");
-  overlay.id = "diplomacy-overlay";
-  overlay.className = "hidden";
-  gameHud().appendChild(overlay);
   const panel = document.createElement("div");
   panel.id = "diplomacy";
-  panel.className = "hidden";
+  panel.className = "roc-dialog hidden";
+  panel.innerHTML =
+    `<div class="dp-head" id="dp-head"></div>` +
+    `<button type="button" class="dialog-x" id="dp-close" title="Close" aria-label="Close"></button>` +
+    `<div class="dp-body" id="dp-body"></div>`;
   gameHud().appendChild(panel);
+  const dpHead = panel.querySelector<HTMLDivElement>("#dp-head")!;
+  const dpBody = panel.querySelector<HTMLDivElement>("#dp-body")!;
   let open = false;
   let selected: number | null = null; // civ id in the negotiation view
   let tab: "overview" | "deal" = "overview"; // negotiation sub-tab
@@ -327,13 +326,13 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     if (open === next) return;
     open = next;
     panel.classList.toggle("hidden", !open);
-    overlay.classList.toggle("hidden", !open);
     if (!open) selected = null;
   }
 
   function close(): void {
     setPanelOpen(false);
   }
+  bindDialogClose(panel.querySelector<HTMLButtonElement>("#dp-close")!, close);
 
   // ---- first contact ----
   function showContact(state: GameState, youId: number, otherId: number): void {
@@ -509,12 +508,10 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
     }
 
     withPreservedScroll(panel, () => {
-      panel.innerHTML =
-        `<div class="dp-head">` +
+      dpHead.innerHTML =
         (selected !== null ? `<button type="button" class="btn" id="dp-back" aria-label="Back">←</button>` : "") +
-        `<span class="dp-title">Diplomacy</span>` +
-        `<button type="button" class="dialog-x" id="dp-close" title="Close" aria-label="Close">✕</button></div>` +
-        `<div class="dp-body">${body}${resultMsg ? `<div class="dp-empty" style="color:#ffd967">${resultMsg}</div>` : ""}</div>`;
+        `<span class="dp-title">Diplomacy</span>`;
+      dpBody.innerHTML = body + (resultMsg ? `<div class="dp-empty" style="color:#ffd967">${resultMsg}</div>` : "");
     });
     wire(state, viewerId);
   }
@@ -866,8 +863,6 @@ export function createDiplomacy(handlers: DiploHandlers): Diplomacy {
   }
 
   function wire(state: GameState, viewerId: number): void {
-    const dpClose = panel.querySelector<HTMLButtonElement>("#dp-close");
-    if (dpClose) bindDialogClose(dpClose, close);
     panel.querySelector<HTMLButtonElement>("#dp-back")?.addEventListener("click", () => { selected = null; resetComposer(); resultMsg = ""; forceRender(state, viewerId); });
     panel.querySelectorAll<HTMLDivElement>("[data-civ]").forEach((el) =>
       el.addEventListener("click", () => { selected = Number(el.dataset.civ); tab = "overview"; detailsOpen = false; resetComposer(); resultMsg = ""; forceRender(state, viewerId); }),

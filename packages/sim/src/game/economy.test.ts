@@ -140,6 +140,41 @@ describe("unit upkeep", () => {
     expect(unitMorale(survivors[0]!)).toBe(120 - BANKRUPTCY_UNIT_MORALE_PENALTY);
   });
 
+  it("bankruptcy resets military pay to normal", () => {
+    const state = createGame({ playerCount: 1, barbarians: false });
+    const player = state.players[0]!;
+    player.upkeepModifierPct = 200;
+    player.gold = 1;
+    state.units.clear();
+    const warrior = makeUnit(state.nextEntityId++, player.id, "warrior", 0, 0);
+    state.units.set(warrior.id, warrior);
+
+    applyUnitUpkeep(state, player);
+
+    expect(player.upkeepModifierPct).toBe(0);
+  });
+
+  it("bankruptcy deserts unpaid units to barbarians but disbands scouts", () => {
+    const state = createGame({ playerCount: 1, barbarians: true });
+    const player = state.players[0]!;
+    const barbId = state.players.find((p) => p.isBarbarian)!.id;
+    player.gold = 0;
+    state.units.clear();
+    const warrior = makeUnit(state.nextEntityId++, player.id, "warrior", 0, 0);
+    const scout = makeUnit(state.nextEntityId++, player.id, "scout", 1, 1);
+    state.units.set(warrior.id, warrior);
+    state.units.set(scout.id, scout);
+
+    applyUnitUpkeep(state, player);
+
+    expect(unitsOf(state, player.id)).toHaveLength(0);
+    expect(state.units.has(scout.id)).toBe(false);
+    expect(state.units.get(warrior.id)?.ownerId).toBe(barbId);
+    expect(state.units.get(warrior.id)?.campKey).toBe(`deserter:${warrior.id}`);
+    expect(player.upkeepModifierPct).toBe(0);
+    expect(player.gold).toBe(0);
+  });
+
   it("a solvent player suffers no bankruptcy morale hit", () => {
     const state = createGame({ playerCount: 1, barbarians: false });
     const player = state.players[0]!;

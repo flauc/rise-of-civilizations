@@ -177,11 +177,11 @@ async function adminLeaderboard() {
 async function publicLeaderboard(limit = 25) {
   const capped = Math.min(50, Math.max(1, limit));
   const [entries, rows, byUser] = await Promise.all([
-    analytics.leaderboardBestPerPlayer(capped),
+    analytics.leaderboardBestPerPlayer(capped, true),
     loadSessionRows(),
     registeredUserHandles(),
   ]);
-  return enrichLeaderboard(entries, rows, byUser);
+  return enrichLeaderboard(entries, rows, byUser).filter((e) => Boolean(e.handle?.trim()));
 }
 
 async function adminSessionsPerPlayer() {
@@ -385,6 +385,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         barbarians: msg.barbarians,
         aiDifficulty: msg.aiDifficulty,
         naturalWonders: msg.naturalWonders,
+        legends: msg.legends,
         villages: msg.villages,
         startingGold: msg.startingGold,
         turnLimit: msg.turnLimit,
@@ -443,6 +444,7 @@ async function handle(ws: ServerWebSocket<Conn>, msg: ClientMessage): Promise<vo
         barbarians: msg.barbarians,
         aiDifficulty: msg.aiDifficulty,
         naturalWonders: msg.naturalWonders,
+        legends: msg.legends,
         villages: msg.villages,
         startingGold: msg.startingGold,
         turnLimit: msg.turnLimit,

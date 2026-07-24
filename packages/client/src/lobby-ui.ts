@@ -8,6 +8,7 @@ import { isMobileMpUi, renderChatLogEl, CHAT_MODERATION_CSS } from "./mp-chat";
 import { onChatModerationChange } from "./chat-moderation";
 import { createLazyWiki } from "./wiki-lazy";
 import { createLazyChangelog, createLazyCredits, createLazyRoadmap } from "./lobby-overlays-lazy";
+import { roadmapHasMilestones } from "./roadmap-data";
 import { CURRENT_VERSION } from "./version";
 import { confirmDialog } from "./confirm-dialog";
 import {
@@ -372,6 +373,36 @@ function victoryOnOffRows(idPrefix: string, enabled: VictoryKind[]): string {
   ).join("");
 }
 
+/** One On/Off dropdown row per toggleable victory, aligned like MP lobby options. */
+function mpVictoryOnOffRows(idPrefix: string, enabled: VictoryKind[]): string {
+  return TOGGLEABLE_VICTORIES.map(
+    (v) =>
+      `<div class="mp-opt"><span>${escapeHtml(VICTORY_LABELS[v])}</span>${onOffSelect(
+        `${idPrefix}-${v}`,
+        enabled.includes(v),
+      )}</div>`,
+  ).join("");
+}
+
+/** Merge the live lobby room into analytics setup metadata. */
+function mpSetupFromRoom(room: LobbyRoom, prev?: GameSetup): GameSetup {
+  const aiSlots = room.slots.filter((s) => s.kind === "ai");
+  return {
+    ...prev,
+    mapType: room.mapType,
+    mapSize: room.mapSize,
+    startingGold: room.startingGold,
+    naturalWonders: room.naturalWonders,
+    villages: room.villages,
+    barbarianLevel: room.barbarians,
+    aiDifficulty: room.aiDifficulty,
+    legends: room.legends ?? true,
+    turnLimit: room.turnLimit,
+    gameSpeed: room.gameSpeed,
+    enabledVictories: room.enabledVictories,
+    aiCivIds: aiSlots.map((s) => s.civId ?? null),
+  };
+}
 /** Read the enabled victories from the per-victory On/Off dropdowns. */
 function readVictoryOnOff(idPrefix: string): VictoryKind[] {
   const out: VictoryKind[] = [];
@@ -424,15 +455,13 @@ const SP_SETUP_KEY = "roc:sp-setup";
 const BARB_LEVELS: BarbLevel[] = ["none", "minimal", "low", "normal", "high"];
 
 /**
- * Persist the single-player setup so the next new game starts from it. The AI
- * roster's specific civ/color picks are not kept, but its *size* is — the next
- * game defaults to the same number of AI opponents the player last used.
+ * Persist the single-player setup so the next new game starts from it. AI roster
+ * size is not kept: opening Single Player always defaults to one opponent.
  */
 function saveSpSetup(sp: SpSetup): void {
   try {
-    const { ais, ...rest } = sp;
-    const persisted = { ...rest, aiCount: ais.length };
-    localStorage.setItem(SP_SETUP_KEY, JSON.stringify(persisted));
+    const { ais: _ais, ...rest } = sp;
+    localStorage.setItem(SP_SETUP_KEY, JSON.stringify(rest));
   } catch {
     // Ignore write failures (quota, private mode); the game still starts.
   }
@@ -461,17 +490,6 @@ function loadSpSetup(defaults: SpSetup): SpSetup {
   const out: SpSetup = { ...defaults };
   if (isCiv(saved.civId)) out.civId = saved.civId;
   if (isColor(saved.color)) out.color = saved.color;
-  // Restore the last roster *size* (not the specific picks): rebuild that many
-  // random-civ opponents, each in a distinct free color.
-  const savedCount = (saved as { aiCount?: unknown }).aiCount;
-  if (typeof savedCount === "number" && Number.isInteger(savedCount) && savedCount >= 0 && savedCount <= MAX_AI) {
-    const used = new Set<string>([out.color]);
-    out.ais = Array.from({ length: savedCount }, () => {
-      const color = firstFreeColor(used);
-      used.add(color);
-      return { civId: RANDOM_CIV, color };
-    });
-  }
   if (typeof saved.mapSize === "string" && saved.mapSize in MAP_DIMENSIONS) out.mapSize = saved.mapSize;
   if (MAP_TYPE_OPTIONS.some((o) => o.value === saved!.mapType)) out.mapType = saved.mapType!;
   if (BARB_LEVELS.includes(saved.barbarians as BarbLevel)) out.barbarians = saved.barbarians!;
@@ -584,6 +602,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
 
   const wiki = createLazyWiki();
   const roadmap = createLazyRoadmap();
+  const showRoadmap = roadmapHasMilestones();
   const credits = createLazyCredits();
   const changelog = createLazyChangelog();
 
@@ -1079,7 +1098,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
     gameCanvas.style.pointerEvents = on ? "none" : "";
   }
   document.getElementById("game-loading")?.remove();
-  document.body.classList.remove("roc-loading-scroll", "roc-map-painted");
+  document.body.classList.remove("roc-loading-scroll", "roc-loading-block-input", "roc-map-painted");
   setLobbyMapInputPassthrough(true);
 
   const left = root.querySelector<HTMLDivElement>("#lobby-left")!;
@@ -1517,7 +1536,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         <button class="menu-btn" id="lobby-settings">Settings</button>
         <button class="menu-btn" id="lobby-support">Support</button>
         <button class="menu-btn" id="lobby-wiki">Wiki</button>
-        <button class="menu-btn" id="lobby-roadmap">Roadmap</button>
+        ${showRoadmap ? `<button class="menu-btn" id="lobby-roadmap">Roadmap</button>` : ""}
         <button class="menu-btn" id="lobby-changelog">Changelog</button>
         <button class="menu-btn" id="lobby-credits">Credits</button>
       </div>
@@ -1552,7 +1571,9 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
       showScreen("login");
     });
     left.querySelector<HTMLButtonElement>("#lobby-wiki")?.addEventListener("click", () => wiki.open());
-    left.querySelector<HTMLButtonElement>("#lobby-roadmap")?.addEventListener("click", () => roadmap.open());
+    if (showRoadmap) {
+      left.querySelector<HTMLButtonElement>("#lobby-roadmap")!.addEventListener("click", () => roadmap.open());
+    }
     left.querySelector<HTMLButtonElement>("#lobby-changelog")?.addEventListener("click", () => changelog.open());
     left.querySelector<HTMLButtonElement>("#lobby-credits")?.addEventListener("click", () => credits.open());
     left.querySelector<HTMLButtonElement>("#lobby-version")?.addEventListener("click", () => changelog.open());
@@ -1996,8 +2017,10 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         mapSize: "medium",
         startingGold: "balanced",
         naturalWonders: true,
+        legends: true,
         villages: "medium",
         barbarianLevel: "normal",
+        aiDifficulty: "normal",
         aiCivIds: [],
         turnLimit: DEFAULT_TURN_LIMIT,
         gameSpeed: DEFAULT_GAME_SPEED,
@@ -2014,6 +2037,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         barbarians: "normal",
         aiDifficulty: "normal",
         naturalWonders: true,
+        legends: true,
         villages: "medium",
         startingGold: "balanced",
         turnLimit: DEFAULT_TURN_LIMIT,
@@ -2117,8 +2141,10 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
             <div class="mp-opt"><span>AI difficulty</span>${aiDifficultySelect("rm-ai", room.aiDifficulty ?? "normal")}</div>
             <div class="mp-opt"><span>Tribal villages</span>${villageSelect("rm-villages", normalizeVillageLevel(room.villages))}</div>
             <div class="mp-opt"><span>Natural wonders</span>${onOffSelect("rm-wonders", room.naturalWonders)}</div>
-            <div class="mp-opt"><span>Starting treasury</span>${goldChips("rm-gold", room.startingGold)}</div>
-            <div class="mp-opt mp-opt-wide"><span>Victory conditions</span>${victoryChecklist("rm-victories", room.enabledVictories ?? [...TOGGLEABLE_VICTORIES])}</div>
+            <div class="mp-opt"><span>Legends (heroes)</span>${onOffSelect("rm-legends", room.legends ?? true)}</div>
+            <div class="mp-opt"><span>Starting treasury</span>${goldSelect("rm-gold", room.startingGold)}</div>
+            <div class="mp-roster-title">Victory conditions</div>
+            ${mpVictoryOnOffRows("rm-victories", room.enabledVictories ?? [...TOGGLEABLE_VICTORIES])}
           </div>`
         : `
           <div class="mp-settings-readonly">
@@ -2129,6 +2155,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
             <span><b>AI difficulty:</b> ${escapeHtml(room.aiDifficulty ?? "normal")}</span>
             <span><b>Tribal villages:</b> ${escapeHtml(normalizeVillageLevel(room.villages).replace(/^./, (c) => c.toUpperCase()))}</span>
             <span><b>Natural wonders:</b> ${room.naturalWonders ? "On" : "Off"}</span>
+            <span><b>Legends:</b> ${room.legends ?? true ? "On" : "Off"}</span>
             <span><b>Treasury:</b> ${escapeHtml(room.startingGold)}</span>
             <span><b>Victories:</b> ${escapeHtml(victorySummary(room.enabledVictories ?? [...TOGGLEABLE_VICTORIES]))}</span>
           </div>`;
@@ -2252,16 +2279,19 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         body.querySelector<HTMLSelectElement>("#rm-wonders")?.addEventListener("change", (e) =>
           configure({ naturalWonders: (e.target as HTMLSelectElement).value === "on" }),
         );
-        body.querySelectorAll<HTMLButtonElement>("#rm-gold .chip").forEach((chip) =>
-          chip.addEventListener("click", () => configure({ startingGold: chip.dataset.gold })),
+        body.querySelector<HTMLSelectElement>("#rm-legends")?.addEventListener("change", (e) =>
+          configure({ legends: (e.target as HTMLSelectElement).value === "on" }),
         );
-        body.querySelectorAll<HTMLInputElement>('#rm-victories input[data-vic]').forEach((box) =>
-          box.addEventListener("change", () => {
-            const vics = readVictoryChecklist("rm-victories");
+        body.querySelector<HTMLSelectElement>("#rm-gold")?.addEventListener("change", (e) =>
+          configure({ startingGold: (e.target as HTMLSelectElement).value as StartingGold }),
+        );
+        for (const v of TOGGLEABLE_VICTORIES) {
+          body.querySelector<HTMLSelectElement>(`#rm-victories-${v}`)?.addEventListener("change", () => {
+            const vics = readVictoryOnOff("rm-victories");
             if (mpSetup) mpSetup.enabledVictories = vics;
             configure({ enabledVictories: vics });
-          }),
-        );
+          });
+        }
         body.querySelector<HTMLButtonElement>("#mp-add-human")?.addEventListener("click", () =>
           mpSession?.send({ t: "addSlot", gameId: room.gameId, kind: "human" }),
         );
@@ -2461,6 +2491,7 @@ export function createLobby(onStartRaw: (session: Session, setup?: GameSetup) =>
         if (mpStage === "browse") renderGames();
       } else if (m.t === "lobby") {
         mpRoom = m.room;
+        mpSetup = mpSetupFromRoom(m.room, mpSetup);
         if (mpStage === "room" && joinedGameId === m.room.gameId) renderRoomBody();
       } else if (isMobileMpUi() && (m.t === "lobbyChat" || m.t === "lobbyChatHistory")) {
         renderMpChatLog();

@@ -62,6 +62,7 @@ import { initPhoneShellSync } from "./viewport-shell";
 import { consumeNativeBootRoute, initialOverlayRoute, isNativeApp, isStandaloneDisplay, setLobbyHidden } from "./app-routes";
 import { loadTerrainAtlas } from "./terrain-assets";
 import { loadCoastAtlas } from "./coast-assets";
+import { loadMapEdgeAtlas } from "./map-edge-assets";
 import { loadRiverAtlas } from "./river-assets";
 import { loadRoadAtlas } from "./road-assets";
 import { loadUnitAtlas } from "./unit-assets";
@@ -165,11 +166,13 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   if (setup.civId && setup.civId !== "random") setCivilizationBgm(setup.civId);
   let playerBgmSynced = !!(setup.civId && setup.civId !== "random");
   let loadingDismissed = false;
-  let mapRenderNotified = false;
+  let mapBackdropNotified = false;
+  let hudInteractiveNotified = false;
+  let hudInteractivePending = false;
   let loadingRepaintAt = 0;
   function onLoadingDismiss(): void {
     loadingDismissed = true;
-    document.body.classList.remove("roc-loading-scroll");
+    document.body.classList.remove("roc-loading-scroll", "roc-loading-block-input");
     document.body.classList.add("roc-map-painted");
     document.getElementById("game-loading")?.remove();
     fitted = false;
@@ -178,10 +181,14 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     update();
     renderGameHud();
     needsRedraw = true;
-    // WebKit can miss the first HUD wiring pass; repaint once more before input.
+    // WebKit can miss the first HUD wiring pass; repaint a few frames before input.
     requestAnimationFrame(() => {
       renderGameHud();
       needsRedraw = true;
+      requestAnimationFrame(() => {
+        renderGameHud();
+        needsRedraw = true;
+      });
     });
     if (session.hasState()) {
       ui.banner(`${st().players[st().currentPlayerIndex]?.name ?? "Player"}, Turn ${st().turn}`);
@@ -226,6 +233,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   let cssWidth = 0;
   let cssHeight = 0;
   let needsRedraw = true;
+  let needsHudRender = true;
   let fitted = false;
   const mapLayerCache = new MapLayerCache();
   let terrainRev = 0;
@@ -446,6 +454,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       });
     }
     needsRedraw = true;
+    needsHudRender = true;
     bumpMapLayers();
     syncMapWonderAssets();
     const resolving = session.isResolvingTurn?.() ?? false;
@@ -511,6 +520,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     cancelRoadRoutePick();
     recomputeOverlays();
     needsRedraw = true;
+    needsHudRender = true;
   }
   function selectCity(id: number): void {
     selectedCityId = id;
@@ -526,6 +536,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     const city = st().cities.get(id);
     cityWorkable = city ? new Set(workableTiles(st(), city).map((t) => `${t.col},${t.row}`)) : new Set();
     needsRedraw = true;
+    needsHudRender = true;
   }
   function selectTile(col: number, row: number): void {
     selectedTile = { col, row };
@@ -541,6 +552,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
+    needsHudRender = true;
   }
   function clearSelection(): void {
     selectedUnitId = null;
@@ -556,6 +568,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     cityWorkable = new Set();
     hoverOdds = null;
     needsRedraw = true;
+    needsHudRender = true;
   }
 
   const ui = createUI({
@@ -1235,6 +1248,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     if (next?.targetName !== hoverOdds?.targetName || next?.toDefender !== hoverOdds?.toDefender) {
       hoverOdds = next;
       needsRedraw = true;
+      needsHudRender = true;
     }
   }
 
@@ -1246,6 +1260,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       if (hoverOdds) {
         hoverOdds = null;
         needsRedraw = true;
+        needsHudRender = true;
       }
     },
     onTap: handleTap,
@@ -1306,6 +1321,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
 
   const terrainAtlas = loadTerrainAtlas(mapAtlasRepaint);
   const coastAtlas = loadCoastAtlas(mapAtlasRepaint);
+  const mapEdgeAtlas = loadMapEdgeAtlas(mapAtlasRepaint);
   const riverAtlas = loadRiverAtlas(mapAtlasRepaint);
   const roadAtlas = loadRoadAtlas(mapAtlasRepaint);
   const unitAtlas = loadUnitAtlas(() => {
@@ -1349,28 +1365,62 @@ function startGame(session: Session, setup: GameSetup = {}): void {
     }
     return hudPrimed;
   }
-  function maybeNotifyGamePlayable(): void {
+  function isHudDomReady(): boolean {
+    const hud = document.getElementById("game-hud");
+    const endturn = document.getElementById("endturn");
+    const topbar = document.getElementById("topbar");
+    const menuBtn = document.getElementById("menu-btn");
+    return !!hud && !!endturn && !!topbar && !!menuBtn;
+  }
+  function armHudForInput(): void {
+    document.body.classList.remove("roc-loading-block-input");
+    renderGameHud();
+  }
+  function scheduleHudInteractiveNotify(): void {
+    if (hudInteractiveNotified || hudInteractivePending || !session.hasState()) return;
+    if (!mapFramePainted || !hudPrimed || cssWidth <= 0 || cssHeight <= 0) return;
+    hudInteractivePending = true;
+    requestAnimationFrame(() => {
+      armHudForInput();
+      requestAnimationFrame(() => {
+        renderGameHud();
+        requestAnimationFrame(() => {
+          renderGameHud();
+          requestAnimationFrame(() => {
+            hudInteractivePending = false;
+            if (hudInteractiveNotified || !session.hasState() || !hudPrimed || !isHudDomReady()) {
+              if (!hudInteractiveNotified && hudPrimed && mapFramePainted) scheduleHudInteractiveNotify();
+              return;
+            }
+            hudInteractiveNotified = true;
+            loadingScreen.notifyHudInteractive();
+          });
+        });
+      });
+    });
+  }
+  function maybeNotifyMapBackdrop(): void {
     if (
-      mapRenderNotified ||
+      mapBackdropNotified ||
       !session.hasState() ||
       !mapFramePainted ||
-      !hudPrimed ||
       cssWidth <= 0 ||
       cssHeight <= 0
     ) {
       return;
     }
-    mapRenderNotified = true;
-    document.body.classList.add("roc-map-painted");
+    mapBackdropNotified = true;
     loadingScreen.notifyMapRendered();
+    scheduleHudInteractiveNotify();
   }
   // Safety backstop if the first paint or HUD prime stalls (atlases keep loading in the background).
   window.setTimeout(() => {
-    if (mapRenderNotified) return;
+    if (hudInteractiveNotified) return;
     mapFramePainted = true;
     primeGameHud();
     needsRedraw = true;
-    maybeNotifyGamePlayable();
+    maybeNotifyMapBackdrop();
+    scheduleHudInteractiveNotify();
   }, 3000);
 
   function fitCameraToStart(): void {
@@ -1394,7 +1444,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       needsRedraw = true;
     } else if (
       !loadingDismissed &&
-      !mapRenderNotified &&
+      !hudInteractiveNotified &&
       session.hasState() &&
       performance.now() >= loadingRepaintAt
     ) {
@@ -1419,6 +1469,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         fog: liftFog ? undefined : { visible: drawVisible, explored },
         terrainAtlas,
         coastAtlas,
+        mapEdgeAtlas,
         riverAtlas,
         roadAtlas,
         improvementAtlas,
@@ -1465,15 +1516,19 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         featureAtlas,
         constructionAtlas,
         religionIconAtlas,
-      });
-      if (loadingDismissed) {
+      }, cssWidth, cssHeight);
+      if (loadingDismissed && needsHudRender) {
+        needsHudRender = false;
         try {
           renderGameHud();
         } catch (err) {
           console.error("RENDER-THREW", (err as Error)?.stack || err);
         }
       } else if (cssWidth > 0 && cssHeight > 0) {
-        if (primeGameHud() && mapFramePainted) maybeNotifyGamePlayable();
+        if (primeGameHud() && mapFramePainted) {
+          maybeNotifyMapBackdrop();
+          scheduleHudInteractiveNotify();
+        }
       }
     }
     // Tick the coach EVERY frame, not only on redraws: tapping an info-only bubble

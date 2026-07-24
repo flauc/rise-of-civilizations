@@ -30,8 +30,10 @@ export interface Settings {
   musicEnabled: boolean;
   /** Sword clash and other combat sound effects. */
   sfxEnabled: boolean;
-  /** Master scale for music and combat SFX (0 = mute, 1 = full). */
-  audioVolume: number;
+  /** Master scale for background music (0 = mute, 1 = full). */
+  musicVolume: number;
+  /** Master scale for combat and UI sound effects (0 = mute, 1 = full). */
+  sfxVolume: number;
   /** Per-action keyboard overrides (KeyboardEvent.code). Empty object = all defaults. */
   keybinds?: Partial<Record<GameKeybindAction, KeybindCode>>;
 }
@@ -56,7 +58,8 @@ const DEFAULTS: Settings = {
   unitOutlines: true,
   musicEnabled: true,
   sfxEnabled: true,
-  audioVolume: 1,
+  musicVolume: 1,
+  sfxVolume: 1,
 };
 
 let cache: Settings | null = null;
@@ -94,8 +97,20 @@ export function getSettings(): Settings {
       if (typeof parsed.unitOutlines === "boolean") next.unitOutlines = parsed.unitOutlines;
       if (typeof parsed.musicEnabled === "boolean") next.musicEnabled = parsed.musicEnabled;
       if (typeof parsed.sfxEnabled === "boolean") next.sfxEnabled = parsed.sfxEnabled;
-      if (typeof parsed.audioVolume === "number" && Number.isFinite(parsed.audioVolume)) {
-        next.audioVolume = Math.min(1, Math.max(0, parsed.audioVolume));
+      const legacyVolume =
+        typeof (parsed as { audioVolume?: number }).audioVolume === "number" &&
+        Number.isFinite((parsed as { audioVolume?: number }).audioVolume)
+          ? Math.min(1, Math.max(0, (parsed as { audioVolume: number }).audioVolume))
+          : null;
+      if (typeof parsed.musicVolume === "number" && Number.isFinite(parsed.musicVolume)) {
+        next.musicVolume = Math.min(1, Math.max(0, parsed.musicVolume));
+      } else if (legacyVolume != null) {
+        next.musicVolume = legacyVolume;
+      }
+      if (typeof parsed.sfxVolume === "number" && Number.isFinite(parsed.sfxVolume)) {
+        next.sfxVolume = Math.min(1, Math.max(0, parsed.sfxVolume));
+      } else if (legacyVolume != null) {
+        next.sfxVolume = legacyVolume;
       }
       if (parsed.keybinds && typeof parsed.keybinds === "object") {
         const kb: Partial<Record<GameKeybindAction, KeybindCode>> = {};

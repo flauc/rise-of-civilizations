@@ -2,6 +2,8 @@
 // and tools (the geodata baker bakes into this same shape). Storage is odd-r
 // offset (col/row) for a simple rectangle; gameplay math converts to axial.
 
+import { hexDirectionAngleRad, axialNeighbor, axialToOffset, offsetToAxial } from "./hex";
+
 export type TerrainType =
   | "ocean"
   | "coast"
@@ -117,6 +119,117 @@ export function offsetNeighborDeltas(row: number): readonly (readonly [number, n
     : [[1, 0], [0, -1], [-1, -1], [-1, 0], [-1, 1], [0, 1]];
 }
 
+/** True when at least one hex neighbour lies outside the map rectangle. */
+export function isMapBorderTile(map: GameMap, col: number, row: number): boolean {
+  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return false;
+  for (const [dc, dr] of offsetNeighborDeltas(row)) {
+    const nc = col + dc;
+    const nr = row + dr;
+    if (nc < 0 || nr < 0 || nc >= map.cols || nr >= map.rows) return true;
+  }
+  return false;
+}
+
+/** True on in-bounds tiles where units may stand (excludes the bottom skirt row). */
+export function isUnitPlayableTile(map: GameMap, col: number, row: number): boolean {
+  if (!getTile(map, col, row)) return false;
+  return !isBottomMapBorderTile(map, col, row);
+}
+
+/** True on the bottom row of the map grid (on-map ocean/dirt cliff skirts). */
+export function isBottomMapBorderTile(map: GameMap, col: number, row: number): boolean {
+  return col >= 0 && row >= 0 && col < map.cols && row === map.rows - 1;
+}
+
+/** Top/left/right map edge — void paints off-map only (terrain stays playable). */
+export function isSideVoidEdgeTile(map: GameMap, col: number, row: number): boolean {
+  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return false;
+  if (row === map.rows - 1) return false;
+  return row === 0 || col === 0 || col === map.cols - 1;
+}
+
+/** Map-edge underlay sprite id (matches `hex-terrain/map-edge/` PNG basenames). */
+export type MapEdgeSkirtKind =
+  | "void0"
+  | "void1"
+  | "void2"
+  | "void3"
+  | "ocean"
+  | "oceanShoreBoth"
+  | "oceanShoreEast"
+  | "oceanShoreWest"
+  | "dirt";
+
+/** Void tile for top/left/right off-map band (`hexVoid00.png`, full hex sprite). */
+export function mapEdgeVoidKind(map: GameMap, col: number, row: number): "void0" | "void1" | "void2" | "void3" {
+  switch (mapEdgeSkirtSide(map, col, row)) {
+    case "top":
+    case "right":
+    case "left":
+      return "void0";
+    case "bottom":
+      return "void2";
+  }
+}
+
+/** True for bottom-row skirt PNGs that use the ocean/coast set (not dirt). */
+export function isBottomOceanSkirtTerrain(terrain: TerrainType): boolean {
+  return terrain === "ocean" || terrain === "coast";
+}
+
+/** Pick the hex-under skirt for an on-map border tile (bottom row only). */
+export function mapEdgeSkirtKind(map: GameMap, col: number, row: number): MapEdgeSkirtKind | null {
+  if (!isBottomMapBorderTile(map, col, row)) return null;
+  const tile = getTile(map, col, row);
+  if (!tile) return null;
+  if (!isBottomOceanSkirtTerrain(tile.terrain)) return "dirt";
+
+  const west = getTile(map, col - 1, row);
+  const east = getTile(map, col + 1, row);
+  const westLand = west !== undefined && !isBottomOceanSkirtTerrain(west.terrain);
+  const eastLand = east !== undefined && !isBottomOceanSkirtTerrain(east.terrain);
+
+  if (westLand && eastLand) return "oceanShoreBoth";
+  if (westLand) return "oceanShoreWest";
+  if (eastLand) return "oceanShoreEast";
+  return "ocean";
+}
+
+/** Canvas rotation (radians) for bottom-row ocean/dirt skirts. */
+export function mapEdgeSkirtRotationRad(_map: GameMap, _col: number, _row: number): number {
+  return Math.PI;
+}
+
+/** hexUnderVoid00 at 0 rotation matches this outward step (top edge). */
+const VOID0_CANONICAL_OUTWARD = 2;
+
+/** Rotate void skirts so they align with the actual off-map step direction. */
+export function mapEdgeVoidRotationRad(side: MapEdgeSide, outwardDirection: number): number {
+  const canon = side === "bottom" ? 4 : VOID0_CANONICAL_OUTWARD;
+  return hexDirectionAngleRad(outwardDirection) - hexDirectionAngleRad(canon);
+}
+
+/** Which screen edge a map-border tile (or off-map ghost) faces. */
+export type MapEdgeSide = "bottom" | "top" | "left" | "right";
+
+export function mapEdgeSkirtSide(map: GameMap, col: number, row: number): MapEdgeSide {
+  const { cols, rows } = map;
+  if (row >= rows) return "bottom";
+  if (col >= cols) return "right";
+  if (row < 0) return "top";
+  if (col < 0) return "left";
+
+  const distTop = row;
+  const distBottom = rows - 1 - row;
+  const distLeft = col;
+  const distRight = cols - 1 - col;
+  const minDist = Math.min(distTop, distBottom, distLeft, distRight);
+  if (distBottom === minDist) return "bottom";
+  if (distRight === minDist) return "right";
+  if (distTop === minDist) return "top";
+  return "left";
+}
+
 /** Width (in tiles) of the frozen polar zone near each pole edge — the band the
  *  ice caps and polar decor occupy. 0 when the map has no rolled poleAxis. */
 export function polarBandWidth(map: GameMap): number {
@@ -176,6 +289,34 @@ export function polarCapLand(map: GameMap): Set<number> {
   return out;
 }
 
+/** Land on the row above the bottom skirt row connects across the ocean skirt. */
+export function skirtBridgedLandNeighbors(map: GameMap, col: number, row: number): Array<[number, number]> {
+  const { rows } = map;
+  if (row !== rows - 2) return [];
+  const bottom = rows - 1;
+  const out: Array<[number, number]> = [];
+  const seen = new Set<string>();
+  const here = offsetToAxial({ col, row });
+  for (let d = 0; d < 6; d++) {
+    const mid = axialToOffset(axialNeighbor(here, d));
+    if (mid.row !== bottom) continue;
+    const midAx = offsetToAxial(mid);
+    for (let d2 = 0; d2 < 6; d2++) {
+      const nb = axialToOffset(axialNeighbor(midAx, d2));
+      if (nb.row !== rows - 2) continue;
+      if (nb.col === col && nb.row === row) continue;
+      const key = `${nb.col},${nb.row}`;
+      if (seen.has(key)) continue;
+      const t = getTile(map, nb.col, nb.row);
+      if (t && !isWater(t.terrain)) {
+        seen.add(key);
+        out.push([nb.col, nb.row]);
+      }
+    }
+  }
+  return out;
+}
+
 /**
  * Size of the connected land region each tile belongs to (0 for water tiles).
  * Lets callers tell continent tiles from small-island tiles cheaply.
@@ -198,6 +339,13 @@ export function landmassSizes(map: GameMap): Int32Array {
           const nc = c + dc;
           const nr = r + dr;
           if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
+          const ni = nr * cols + nc;
+          if (!seen[ni] && !isWater(tiles[ni]!.terrain)) {
+            seen[ni] = true;
+            stack.push([nc, nr]);
+          }
+        }
+        for (const [nc, nr] of skirtBridgedLandNeighbors(map, c, r)) {
           const ni = nr * cols + nc;
           if (!seen[ni] && !isWater(tiles[ni]!.terrain)) {
             seen[ni] = true;

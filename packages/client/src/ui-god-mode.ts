@@ -14,7 +14,7 @@ import {
 import type { Tile } from "@roc/shared";
 import { WONDER_DEFS } from "@roc/data";
 import { CHEAT_WORK_KINDS, type CheatAction } from "./god-mode";
-import { bindDialogClose } from "./dialog-close";
+import { bindDialogClose, dialogHeader } from "./dialog-close";
 import { withPreservedScroll } from "./panel-scroll";
 
 export interface GodModeHandlers {
@@ -43,13 +43,6 @@ function escapeHtml(text: string): string {
   return div.innerHTML;
 }
 
-function dialogHeader(title: string, closeId: string): string {
-  return (
-    `<button type="button" class="dialog-x" id="${closeId}" title="Close" aria-label="Close">✕</button>` +
-    `<div class="panel-dialog-header"><b>${title}</b></div>`
-  );
-}
-
 function signature(view: GodModeView): string {
   const tile = view.selectedTile;
   const tileKey = tile ? `${tile.col},${tile.row},${tile.terrain}` : "none";
@@ -69,6 +62,18 @@ function unitOptions(tile: Tile | undefined): string {
 export function mountGodModePanel(godPanel: HTMLElement, handlers: GodModeHandlers): GodModePanel {
   let open = false;
   let renderSig = "";
+
+  godPanel.innerHTML =
+    dialogHeader("God Mode", "god-close") +
+    `<div class="panel-dialog-body" id="god-panel-body"></div>`;
+  const godBody = godPanel.querySelector<HTMLDivElement>("#god-panel-body")!;
+
+  const closePanel = (): void => {
+    open = false;
+    godPanel.classList.add("hidden");
+    renderSig = "";
+  };
+  bindDialogClose(godPanel.querySelector<HTMLButtonElement>("#god-close")!, closePanel);
 
   const render = (view: GodModeView): void => {
     godPanel.classList.toggle("hidden", !open);
@@ -91,8 +96,7 @@ export function mountGodModePanel(godPanel: HTMLElement, handlers: GodModeHandle
       .map((w) => `<option value="${w.id}">${escapeHtml(w.name)}</option>`)
       .join("");
 
-    let html = dialogHeader("God Mode", "god-close");
-    html += `<div class="panel-dialog-body"><div style="display:flex;flex-direction:column;gap:8px">` +
+    let html = `<div style="display:flex;flex-direction:column;gap:8px">` +
       `<button class="btn" data-cheat="unlockTechs">Unlock All Techs</button>` +
       `<button class="btn" data-cheat="completeWorks">Complete All Works</button>` +
       `<button class="btn" data-cheat="healUnits">Heal All Units</button>` +
@@ -155,22 +159,17 @@ export function mountGodModePanel(godPanel: HTMLElement, handlers: GodModeHandle
     } else if (spawnTileOk) {
       html += `<div class="sub">Select one of your units to teleport it to this tile.</div>`;
     }
-    html += `</div></div>`;
+    html += `</div>`;
 
-    withPreservedScroll(godPanel, () => {
-      godPanel.innerHTML = html;
+    withPreservedScroll(godBody, () => {
+      godBody.innerHTML = html;
     });
     renderSig = sig;
 
-    const closeGod = (): void => {
-      open = false;
-      render(view);
-    };
-    bindDialogClose(godPanel.querySelector<HTMLButtonElement>("#god-close")!, closeGod);
-    godPanel.querySelector<HTMLButtonElement>("#god-liftfog")?.addEventListener("click", () => {
+    godBody.querySelector<HTMLButtonElement>("#god-liftfog")?.addEventListener("click", () => {
       handlers.onToggleLiftFog(!view.liftFog);
     });
-    godPanel.querySelectorAll<HTMLButtonElement>("[data-cheat]").forEach((el) => {
+    godBody.querySelectorAll<HTMLButtonElement>("[data-cheat]").forEach((el) => {
       el.addEventListener("click", () => {
         const type = el.dataset.cheat!;
         switch (type) {
@@ -222,7 +221,7 @@ export function mountGodModePanel(godPanel: HTMLElement, handlers: GodModeHandle
           }
           case "spawnUnit": {
             if (!tile) break;
-            const sel = godPanel.querySelector<HTMLSelectElement>("#cheat-unit")!;
+            const sel = godBody.querySelector<HTMLSelectElement>("#cheat-unit")!;
             handlers.onCheat({
               type: "spawnUnit",
               unitType: sel.value as UnitTypeId,
@@ -244,7 +243,7 @@ export function mountGodModePanel(godPanel: HTMLElement, handlers: GodModeHandle
           }
           case "buildWonder": {
             if (!tile) break;
-            const sel = godPanel.querySelector<HTMLSelectElement>("#cheat-wonder");
+            const sel = godBody.querySelector<HTMLSelectElement>("#cheat-wonder");
             if (!sel || !sel.value) break;
             handlers.onCheat({
               type: "buildWonder",
@@ -266,7 +265,7 @@ export function mountGodModePanel(godPanel: HTMLElement, handlers: GodModeHandle
       open = true;
     },
     close: () => {
-      open = false;
+      closePanel();
     },
   };
 }

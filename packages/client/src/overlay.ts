@@ -1,7 +1,7 @@
 import { cityAt, cityMaxHp, ownedTileYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, majorityReligion, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
-import { BASE_SIZE, VSQUISH, tileCenterWorld, tileFootprint } from "./renderer";
+import { BASE_SIZE, VSQUISH, tileCenterWorld, tileFootprint, mapIntersectsViewport } from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
 import { barbCampFrameFor, villageFrameFor, ruinFrameFor, type FeatureAtlas } from "./feature-assets";
@@ -293,15 +293,26 @@ export function drawOverlay(
   camera: Camera,
   state: GameState,
   o: OverlayState,
+  cssWidth: number,
+  cssHeight: number,
 ): void {
   const size = BASE_SIZE * camera.zoom;
+  const margin = size * 2;
   const screen = (col: number, row: number) => {
     const c = tileCenterWorld(col, row);
     return { x: camera.worldToScreenX(c.x), y: camera.worldToScreenY(c.y) };
   };
+  const onScreenPt = (sx: number, sy: number) =>
+    sx >= -margin && sy >= -margin && sx <= cssWidth + margin && sy <= cssHeight + margin;
+  const tileOnScreen = (col: number, row: number) => {
+    const s = screen(col, row);
+    return onScreenPt(s.x, s.y);
+  };
+  const mapOnScreen = mapIntersectsViewport(camera, state.map, cssWidth, cssHeight, margin);
   const colorOf = (ownerId: number) =>
     state.players.find((p) => p.id === ownerId)?.color ?? "#aaa";
 
+  if (mapOnScreen) {
   // ---- territory (cultural borders) ----
   const tileOwnerPlayer = new Map<number, number>(); // cityId -> playerId
   for (const c of state.cities.values()) tileOwnerPlayer.set(c.id, c.ownerId);
@@ -311,6 +322,7 @@ export function drawOverlay(
   };
   for (const t of state.map.tiles) {
     if (t.ownerCityId === undefined) continue;
+    if (!tileOnScreen(t.col, t.row)) continue;
     const key = `${t.col},${t.row}`;
     if (!o.explored.has(key)) continue;
     const owner = tileOwnerPlayer.get(t.ownerCityId);
@@ -343,6 +355,7 @@ export function drawOverlay(
   for (const t of state.map.tiles) {
     if (!t.feature) continue;
     if (!o.explored.has(`${t.col},${t.row}`)) continue;
+    if (!tileOnScreen(t.col, t.row)) continue;
     const s = screen(t.col, t.row);
     if (t.feature === "village") {
       const villageImg = villageFrameFor(o.featureAtlas, t.col, t.row, state.turn);
@@ -432,6 +445,7 @@ export function drawOverlay(
     for (const t of state.map.tiles) {
       if (!t.naturalWonder) continue;
       if (!o.explored.has(`${t.col},${t.row}`)) continue;
+      if (!tileOnScreen(t.col, t.row)) continue;
       const s = screen(t.col, t.row);
       const label = getNaturalWonder(t.naturalWonder)?.name ?? "Natural Wonder";
       const fontSize = Math.max(8, Math.round(size * 0.24));
@@ -452,6 +466,7 @@ export function drawOverlay(
     for (const t of state.map.tiles) {
       if (!t.wonder) continue;
       if (!o.explored.has(`${t.col},${t.row}`)) continue;
+      if (!tileOnScreen(t.col, t.row)) continue;
       const s = screen(t.col, t.row);
       const label = getWonder(t.wonder)?.name ?? "World Wonder";
       const fontSize = Math.max(8, Math.round(size * 0.22));
@@ -480,6 +495,7 @@ export function drawOverlay(
   for (const t of state.map.tiles) {
     if (!t.structure || t.structure.hp <= 0) continue;
     if (!o.explored.has(`${t.col},${t.row}`)) continue;
+    if (!tileOnScreen(t.col, t.row)) continue;
     const ownerPid = t.ownerCityId !== undefined ? tileOwnerPlayer.get(t.ownerCityId) : undefined;
     const color = ownerPid !== undefined ? colorOf(ownerPid) : "#999";
     const s = screen(t.col, t.row);
@@ -531,6 +547,7 @@ export function drawOverlay(
   if (o.works && o.works.length > 0) {
     for (const w of o.works) {
       if (!o.explored.has(`${w.col},${w.row}`)) continue;
+      if (!tileOnScreen(w.col, w.row)) continue;
       const s = screen(w.col, w.row);
       const cat = constructionCategoryForKind(w.kind, isEconKind, isDefenseKind);
       const img = constructionFrameFor(o.constructionAtlas, cat);
@@ -571,6 +588,8 @@ export function drawOverlay(
               return screen(c, rw);
             })
           : [screen(from.col, from.row), screen(to.col, to.row)];
+
+      if (!pts.some((p) => onScreenPt(p.x, p.y))) continue;
 
       // A segment is "on road" when both of its tiles are roaded (cities count
       // as hubs), so the caravan visibly follows the road network where one exists.
@@ -638,11 +657,14 @@ export function drawOverlay(
     ctx.restore();
   }
 
+  } // map fully off-screen: skip territory, entities, and trade routes
+
   const highlight = (set: Set<string>, fill: string, stroke: string) => {
     ctx.lineWidth = Math.max(1, size * 0.05);
     for (const key of set) {
       const [col, row] = key.split(",").map(Number) as [number, number];
       const s = screen(col, row);
+      if (!onScreenPt(s.x, s.y)) continue;
       hexPath(ctx, s.x, s.y, size * 0.92);
       ctx.fillStyle = fill;
       ctx.fill();
@@ -661,6 +683,7 @@ export function drawOverlay(
     ctx.textBaseline = "middle";
     for (const key of o.cityWorkable) {
       const [col, row] = key.split(",").map(Number) as [number, number];
+      if (!tileOnScreen(col, row)) continue;
       const s = screen(col, row);
       const worked = o.cityWorked.has(key);
       hexPath(ctx, s.x, s.y, size * 0.86);
@@ -686,9 +709,11 @@ export function drawOverlay(
   const labelDraws: Array<() => void> = [];
 
   // Cities.
+  if (mapOnScreen) {
   for (const city of state.cities.values()) {
     const own = city.ownerId === o.viewingPlayerId;
     if (!own && !o.visible.has(`${city.col},${city.row}`)) continue;
+    if (!tileOnScreen(city.col, city.row)) continue;
     const s = screen(city.col, city.row);
     const half = size * 0.62;
     const pop = Math.min(city.population, 12);
@@ -781,6 +806,7 @@ export function drawOverlay(
     if (unit.escortingRouteId !== undefined) continue;
     const own = unit.ownerId === o.viewingPlayerId;
     if (!own && !o.visible.has(`${unit.col},${unit.row}`)) continue;
+    if (!tileOnScreen(unit.col, unit.row)) continue;
     const uu = uniqueUnitForCiv(civByPlayer.get(unit.ownerId), unit.type);
     const s = screen(unit.col, unit.row);
     const half = size * 0.42 * unitScale;
@@ -905,6 +931,8 @@ export function drawOverlay(
     const unitHpMax = unitMaxHp(unit);
     if (unit.hp < unitHpMax) drawHpBar(ctx, s.x, s.y + half + size * 0.1, half * 1.8, unit.hp / unitHpMax);
   }
+
+  } // end mapOnScreen cities/units
 
   // All sprites are down — now paint every collected name label on top of them.
   for (const draw of labelDraws) draw();

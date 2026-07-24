@@ -13,7 +13,7 @@ export interface TerrainAtlas {
   readonly frozenLakes: HTMLImageElement[];
   /** Crevasse decor drawn on some polar (ice-cap) tiles. */
   readonly iceCrevasses: HTMLImageElement[];
-  /** Small iceberg decor scattered in polar waters. */
+  /** Iceberg decor scattered in polar waters (not map-edge skirts). */
   readonly icebergs: HTMLImageElement[];
   /** True once every requested variant image has finished loading or errored. */
   loaded: boolean;
@@ -138,7 +138,7 @@ function loadTerrainAtlasUncached(onLoad?: () => void): TerrainAtlas {
   for (const name of ["hill-trees", "hill-trees_1", "hill-trees_2"]) {
     load(imageUrl(name), hillTrees);
   }
-  // Cold-lands decor: frozen ponds, ice-cap crevasses, and drifting icebergs.
+  // Cold-lands decor: frozen ponds, ice-cap crevasses, and polar-sea icebergs.
   load(imageUrl("frozen-lake"), frozenLakes);
   for (const name of ["ice-crevasse", "ice-crevasse_1"]) load(imageUrl(name), iceCrevasses);
   for (const name of ["iceberg", "iceberg_1", "iceberg_2", "iceberg_3", "iceberg_4"]) {
