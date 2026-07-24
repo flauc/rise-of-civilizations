@@ -10,7 +10,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Android 15+ (targetSdk 35): draw behind system bars and let the WebView
+        // Android 15+ edge-to-edge (targetSdk 36): draw behind system bars and let the WebView
         // use CSS safe-area insets (viewport-fit=cover in index.html).
         EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);

@@ -182,7 +182,7 @@ Store releases are **manual only** (no auto-publish on push). In GitHub → **Ac
 
 Each run:
 
-1. Sync app version from root `package.json` into Android, iOS, and the client lobby label (automatic via `build-mobile.mjs` → `tools/sync-mobile-version.mjs`; CI build numbers use `GITHUB_RUN_ID` so uploads never reuse a bundle version).
+1. Sync app version from root `package.json` into Android, iOS, and the client lobby label (automatic via `build-mobile.mjs` → `tools/sync-mobile-version.mjs`; Android uses `1000 + run×10 + attempt`, iOS also bumps with `GITHUB_RUN_ID` when needed).
 2. **Android:** build a signed `.aab` and upload to the chosen Google Play track.
 3. **iOS:** archive, export an `.ipa`, upload to App Store Connect, wait for processing; if the submit checkbox is on, send for App Store review with your release notes (`IOS_SUBMIT_FOR_REVIEW` / fastlane deliver).
 

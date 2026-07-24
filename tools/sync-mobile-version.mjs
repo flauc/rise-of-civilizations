@@ -9,8 +9,9 @@
  * - iOS MARKETING_VERSION / CURRENT_PROJECT_VERSION (project.pbxproj)
  * - Lobby + changelog label (packages/client/src/version.ts)
  *
- * Build numbers: in CI, max(repo + 1, 1000 + run×10 + attempt, GITHUB_RUN_ID) so
- * re-runs and pushes never reuse a cfBundleVersion already on App Store Connect.
+ * Build numbers: in CI, Android uses max(repo + 1, 1000 + run×10 + attempt) capped at
+ * 2_147_483_647. iOS also considers GITHUB_RUN_ID so App Store Connect never sees a
+ * duplicate CFBundleVersion when repo-stored numbers lag.
  *
  * Usage:
  *   node tools/sync-mobile-version.mjs
@@ -29,15 +30,18 @@ const gradlePath = join(repoRoot, "mobile/android/app/build.gradle");
 const pbxPath = join(repoRoot, "mobile/ios/App/App.xcodeproj/project.pbxproj");
 const versionTsPath = join(repoRoot, "packages/client/src/version.ts");
 
-function readBuildNumber() {
-  const gradle = readFileSync(gradlePath, "utf8");
-  const m = gradle.match(/versionCode\s+(\d+)/);
-  const current = m ? Number(m[1]) : 1;
+const ANDROID_MAX_VERSION_CODE = 2_147_483_647;
+
+function readBuildNumbers(current) {
   const fromWorkflow = process.env.MOBILE_BUILD_NUMBER
     ? Number(process.env.MOBILE_BUILD_NUMBER)
     : NaN;
   if (Number.isFinite(fromWorkflow) && fromWorkflow > 0) {
-    return Math.max(current + 1, fromWorkflow);
+    const next = Math.max(current + 1, fromWorkflow);
+    return {
+      android: Math.min(next, ANDROID_MAX_VERSION_CODE),
+      ios: next,
+    };
   }
   const run = process.env.GITHUB_RUN_NUMBER ? Number(process.env.GITHUB_RUN_NUMBER) : NaN;
   const attempt = process.env.GITHUB_RUN_ATTEMPT ? Number(process.env.GITHUB_RUN_ATTEMPT) : NaN;
@@ -45,26 +49,35 @@ function readBuildNumber() {
   if (Number.isFinite(run) && run > 0) {
     const attemptN = Number.isFinite(attempt) && attempt > 0 ? attempt : 1;
     const ciBuild = 1000 + run * 10 + attemptN;
-    let next = Math.max(current + 1, ciBuild);
-    // Repo-stored build numbers often lag behind App Store Connect; run id is unique per workflow.
+    let android = Math.max(current + 1, ciBuild);
+    let ios = android;
+    // Run id fits iOS CFBundleVersion but overflows Android versionCode (int32 max).
     if (Number.isFinite(runId) && runId > 0) {
-      next = Math.max(next, runId);
+      ios = Math.max(ios, runId);
     }
-    return next;
+    android = Math.min(android, ANDROID_MAX_VERSION_CODE);
+    return { android, ios };
   }
-  return current + 1;
+  const next = current + 1;
+  return { android: Math.min(next, ANDROID_MAX_VERSION_CODE), ios: next };
 }
 
-const buildNumber = readBuildNumber();
+const { android: androidBuildNumber, ios: iosBuildNumber } = readBuildNumbers(
+  (() => {
+    const gradle = readFileSync(gradlePath, "utf8");
+    const m = gradle.match(/versionCode\s+(\d+)/);
+    return m ? Number(m[1]) : 1;
+  })(),
+);
 
 let gradle = readFileSync(gradlePath, "utf8");
-gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${buildNumber}`);
+gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${androidBuildNumber}`);
 gradle = gradle.replace(/versionName\s+"[^"]*"/, `versionName "${versionName}"`);
 writeFileSync(gradlePath, gradle);
 
 let pbx = readFileSync(pbxPath, "utf8");
 pbx = pbx.replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${versionName};`);
-pbx = pbx.replace(/CURRENT_PROJECT_VERSION = [^;]+;/g, `CURRENT_PROJECT_VERSION = ${buildNumber};`);
+pbx = pbx.replace(/CURRENT_PROJECT_VERSION = [^;]+;/g, `CURRENT_PROJECT_VERSION = ${iosBuildNumber};`);
 writeFileSync(pbxPath, pbx);
 
 let versionTs = readFileSync(versionTsPath, "utf8");
@@ -74,4 +87,6 @@ versionTs = versionTs.replace(
 );
 writeFileSync(versionTsPath, versionTs);
 
-console.log(`✓ app version ${versionName} (build ${buildNumber}) → Android, iOS, client`);
+console.log(
+  `✓ app version ${versionName} (Android build ${androidBuildNumber}, iOS build ${iosBuildNumber}) → Android, iOS, client`,
+);
