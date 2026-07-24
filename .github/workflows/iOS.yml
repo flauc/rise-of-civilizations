@@ -127,20 +127,17 @@ jobs:
           echo "IPA_PATH=$RUNNER_TEMP/export/App.ipa" >> "$GITHUB_ENV"
 
       - name: Prepare App Store Connect API key
-        id: asc_api_key
         env:
           APPSTORE_PRIVATE_KEY_BASE64: ${{ secrets.APPSTORE_PRIVATE_KEY_BASE64 }}
           APPSTORE_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
         run: bash mobile/scripts/prepare-appstore-api-key.sh
 
       - name: Upload to App Store Connect
-        uses: apple-actions/upload-testflight-build@v4
-        with:
-          app-path: ${{ env.IPA_PATH }}
-          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
-          api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
-          api-private-key: ${{ steps.asc_api_key.outputs.private_key }}
-          wait-for-processing: "true"
+        env:
+          IPA_PATH: ${{ env.IPA_PATH }}
+          APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+          APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+        run: bash mobile/scripts/upload-testflight-build.sh
 
       - name: Submit for App Store review
         if: inputs.submit_for_review

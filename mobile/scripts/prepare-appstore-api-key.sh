@@ -2,7 +2,7 @@
 # Decode and validate the App Store Connect API .p8 key for CI upload steps.
 set -euo pipefail
 
-if [ -z "${GITHUB_ENV:-}" ] || [ -z "${GITHUB_OUTPUT:-}" ]; then
+if [ -z "${GITHUB_ENV:-}" ]; then
   echo "prepare-appstore-api-key.sh must run in GitHub Actions." >&2
   exit 1
 fi
@@ -28,11 +28,4 @@ if ! openssl pkey -in "$KEY_FILE" -noout 2>/dev/null; then
 fi
 
 echo "APPSTORE_PRIVATE_KEY_FILE=$KEY_FILE" >> "$GITHUB_ENV"
-
-{
-  echo "private_key<<EOF"
-  cat "$KEY_FILE"
-  echo "EOF"
-} >> "$GITHUB_OUTPUT"
-
 echo "App Store Connect API key validated."
