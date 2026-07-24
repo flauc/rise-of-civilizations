@@ -177,34 +177,48 @@ export function isBottomOceanSkirtTerrain(terrain: TerrainType): boolean {
   return terrain === "ocean" || terrain === "coast";
 }
 
-/** Pick the hex-under skirt for an on-map border tile (bottom row only). */
+/**
+ * Pick the hex-under skirt for the bottom map edge. The bottom skirt row itself
+ * renders no terrain (it is skipped in the terrain pass), so the skirt's material
+ * follows the last VISIBLE tile in the column, which is the row directly above:
+ * a land column gets a dirt cliff, a water column gets an ocean cliff. Reading the
+ * skirt row directly would be wrong on procedural maps, where that row is scrubbed
+ * to ocean and would force an ocean cliff under every column, land included.
+ */
 export function mapEdgeSkirtKind(map: GameMap, col: number, row: number): MapEdgeSkirtKind | null {
   if (!isBottomMapBorderTile(map, col, row)) return null;
-  const tile = getTile(map, col, row);
-  if (!tile) return null;
-  if (!isBottomOceanSkirtTerrain(tile.terrain)) return "dirt";
+  // A skirt cliff sits below the GAP between the two visible tiles that flank it on
+  // the row above (hex rows are offset by half a tile), so it bridges them. Which
+  // two depends on the skirt row parity: an odd row sits below (col, above) and
+  // (col+1, above); an even row below (col-1, above) and (col, above). Reading a
+  // single same-column tile is wrong on one parity and puts a dirt cliff where a
+  // shore belongs at a land/water boundary.
+  const above = row - 1;
+  const oddRow = (row & 1) === 1;
+  const left = getTile(map, oddRow ? col : col - 1, above);
+  const right = getTile(map, oddRow ? col + 1 : col, above);
+  const kindOf = (t: Tile | undefined): "land" | "water" | null =>
+    t === undefined ? null : isBottomOceanSkirtTerrain(t.terrain) ? "water" : "land";
+  const l = kindOf(left);
+  const r = kindOf(right);
 
-  const west = getTile(map, col - 1, row);
-  const east = getTile(map, col + 1, row);
-  const westLand = west !== undefined && !isBottomOceanSkirtTerrain(west.terrain);
-  const eastLand = east !== undefined && !isBottomOceanSkirtTerrain(east.terrain);
+  // At the bottom corners one flank is off-map: follow the on-map side, no shore.
+  if (l === null && r === null) return null;
+  if (l === null) return r === "water" ? "ocean" : "dirt";
+  if (r === null) return l === "water" ? "ocean" : "dirt";
 
-  if (westLand && eastLand) return "oceanShoreBoth";
-  if (westLand) return "oceanShoreWest";
-  if (eastLand) return "oceanShoreEast";
-  return "ocean";
+  if (l === "land" && r === "land") return "dirt";
+  if (l === "water" && r === "water") return "ocean";
+  // Mixed flanks = a shoreline cliff. The sprites render with a 180 degree mirror
+  // (mapEdgeSkirtRotationRad), so land on the LEFT uses the East-shore art and land
+  // on the RIGHT uses the West-shore art to end up on the correct side on screen.
+  return l === "land" ? "oceanShoreEast" : "oceanShoreWest";
 }
 
-/**
- * Canvas rotation (radians) for bottom-row ocean/dirt skirts. The sprites are
- * authored as downward chevrons (the cliff already hangs below the tile), which
- * is exactly the bottom-edge orientation, so no rotation is applied.
- * drawHexUnderOverlay anchors the art below the tile centre and rotates about
- * that centre, so a 180° spin would flip the cliff to point upward and mirror
- * the West/East shore variants onto the wrong side.
- */
+/** Canvas rotation (radians) for bottom-row ocean/dirt skirts: a 180° spin so
+ *  the authored chevron seats as the tile's downward cliff. */
 export function mapEdgeSkirtRotationRad(_map: GameMap, _col: number, _row: number): number {
-  return 0;
+  return Math.PI;
 }
 
 /** hexUnderVoid00 at 0 rotation matches this outward step (top edge). */

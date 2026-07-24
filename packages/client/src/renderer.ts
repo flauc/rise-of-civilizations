@@ -397,8 +397,9 @@ function landNeighborMask(map: GameMap, col: number, row: number): number {
 
 /** How many off-map hex rings of void beyond top/left/right (BFS-filled band). */
 const MAP_EDGE_VOID_DEPTH = 4;
-/** Slight overscale so void hex art overlaps and hides seams between tiles. */
-const MAP_EDGE_VOID_TILE_SCALE = 1.045;
+/** Void hexes render at the same footprint as terrain tiles so they align to the
+ *  hex grid; the deep-space background fill covers any hairline seams between them. */
+const MAP_EDGE_VOID_TILE_SCALE = 1;
 
 function isOffMapTile(map: GameMap, col: number, row: number): boolean {
   return col < 0 || row < 0 || col >= map.cols || row >= map.rows;
@@ -579,6 +580,7 @@ function paintMapEdgeRimSkirts(
   cssWidth: number,
   cssHeight: number,
 ): void {
+  const voidImg = mapEdgeFrameFor(opts.mapEdgeAtlas, "void0") ?? undefined;
   for (const t of map.tiles) {
     const kind = mapEdgeSkirtKind(map, t.col, t.row);
     if (!kind) continue;
@@ -589,6 +591,9 @@ function paintMapEdgeRimSkirts(
     const sx = camera.worldToScreenX(c.x);
     const sy = camera.worldToScreenY(c.y);
     if (sx < -margin || sy < -margin || sx > cssWidth + margin || sy > cssHeight + margin) continue;
+    // Void tile directly behind the skirt so the canvas background never shows
+    // through the sprite's transparent areas or below the cliff.
+    drawFootprintOverlay(ctx, voidImg, sx, sy, footprint, MAP_EDGE_VOID_TILE_SCALE);
     const rot = mapEdgeSkirtRotationRad(map, t.col, t.row);
     drawHexUnderOverlay(ctx, img, sx, sy, footprint, rot);
   }
@@ -604,8 +609,10 @@ function paintMapEdgeOverlays(
   cssWidth: number,
   cssHeight: number,
 ): void {
-  paintMapEdgeRimSkirts(ctx, map, camera, opts, footprint, margin, cssWidth, cssHeight);
+  // Void first as the backdrop, then the rim skirts on top, so the edge tiles
+  // overlay the void and cover the blank seam where a cliff meets the star band.
   paintMapEdgeVoidBand(ctx, map, camera, opts, footprint, margin, cssWidth, cssHeight);
+  paintMapEdgeRimSkirts(ctx, map, camera, opts, footprint, margin, cssWidth, cssHeight);
 }
 
 const UNEXPLORED_FILL = "#0a1624";
@@ -1044,6 +1051,15 @@ export function drawScene(
     if (!mapLayerCache.isValid(terrainRev)) {
       mapLayerCache.rebuild(state, opts, terrainRev);
     }
+    // Fill the deep-space background first so off-map areas, and the transparent
+    // gaps between the void tiles, read as void instead of raw black. The cached
+    // terrain blit and the edge/void overlays draw on top of it. (The non-cached
+    // path below does the same fill; the cached path previously skipped it.)
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.fillStyle = "#0a1624";
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     mapLayerCache.blit(ctx, camera, dpr);
     // The void band extends MAP_EDGE_VOID_DEPTH rings beyond the map edge, so gate
     // (and per-tile cull) the edge pass with a margin wide enough to keep it on
