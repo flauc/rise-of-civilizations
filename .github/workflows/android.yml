@@ -1,7 +1,25 @@
+# Manual Android build + Google Play upload.
+#
+# Required GitHub secrets — see mobile/README.md § Continuous deployment.
+
 name: Publish Android
 
 on:
   workflow_dispatch:
+    inputs:
+      release_notes:
+        description: Google Play release notes (What's new)
+        required: true
+        default: Bug fixes and improvements
+      play_track:
+        description: Google Play track
+        type: choice
+        options:
+          - production
+          - internal
+          - alpha
+          - beta
+        default: production
 
 permissions:
   contents: read
@@ -10,39 +28,77 @@ concurrency:
   group: android-production-publish
   cancel-in-progress: false
 
+env:
+  PLAY_PACKAGE: com.riseofcivilizations.game
+
 jobs:
   publish-android:
-    name: Build and publish Android
+    name: Android (Play Store)
     runs-on: ubuntu-latest
-
-    environment: android-production
+    timeout-minutes: 45
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # Copy your Android setup steps here.
-      # Examples:
-      #
-      # - name: Set up Node.js
-      #   uses: actions/setup-node@v4
-      #   with:
-      #     node-version: 22
-      #     cache: npm
-      #
-      # - name: Install dependencies
-      #   run: npm ci
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
-      - name: Build Android
-        run: |
-          echo "Replace this with your Android build command"
-          # Example:
-          # npm run build:android
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
-      - name: Publish Android
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Install mobile dependencies
+        working-directory: mobile
+        run: npm ci
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Configure Android signing
         env:
-          ANDROID_SERVICE_ACCOUNT: ${{ secrets.ANDROID_SERVICE_ACCOUNT }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "Replace this with your Google Play publishing command"
-          # Example:
-          # npm run publish:android
+          test -n "$ANDROID_KEYSTORE_BASE64" || { echo "Missing ANDROID_KEYSTORE_BASE64 secret"; exit 1; }
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > mobile/android/app/roc-release.keystore
+          printf '%s\n' \
+            "storePassword=${ANDROID_KEYSTORE_PASSWORD}" \
+            "keyPassword=${ANDROID_KEY_PASSWORD}" \
+            "keyAlias=${ANDROID_KEY_ALIAS}" \
+            "storeFile=roc-release.keystore" \
+            > mobile/android/key.properties
+
+      - name: Build release AAB
+        working-directory: mobile
+        run: npm run bundle:release
+
+      - name: Prepare Play release notes
+        run: |
+          mkdir -p "$RUNNER_TEMP/whatsnew"
+          printf '%s\n' "${{ inputs.release_notes }}" > "$RUNNER_TEMP/whatsnew/en-US"
+          echo "WHATSNEW_DIR=$RUNNER_TEMP/whatsnew" >> "$GITHUB_ENV"
+
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1.1.3
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: ${{ env.PLAY_PACKAGE }}
+          releaseFiles: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          track: ${{ inputs.play_track }}
+          status: completed
+          whatsNewDirectory: ${{ env.WHATSNEW_DIR }}

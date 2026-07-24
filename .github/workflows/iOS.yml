@@ -1,4 +1,5 @@
-# Build, upload, and submit iOS to App Store review.
+# Manual iOS build + App Store Connect upload.
+# Submit for review is optional via the Run workflow checkbox.
 #
 # Required GitHub secrets — see mobile/README.md § Continuous deployment.
 
@@ -6,20 +7,27 @@ name: Publish iOS
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
+    inputs:
+      release_notes:
+        description: App Store release notes (used only if submitting to App Store)
+        required: true
+        default: Bug fixes and improvements
+      submit_for_review:
+        description: Submit build to App Store for review (auto-release after approval)
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 concurrency:
   group: ios-production-publish
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   IOS_APP_ID: com.riseofcivilizations.game
-  # Upload to TestFlight, then submit for App Store review (not TestFlight-only).
-  IOS_SUBMIT_FOR_REVIEW: true
+  IOS_SUBMIT_FOR_REVIEW: ${{ inputs.submit_for_review }}
+  IOS_RELEASE_NOTES: ${{ inputs.release_notes }}
 
 jobs:
   publish-ios:
@@ -128,11 +136,12 @@ jobs:
           wait-for-processing: "true"
 
       - name: Submit for App Store review
-        if: env.IOS_SUBMIT_FOR_REVIEW == 'true'
+        if: inputs.submit_for_review
         env:
           APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
           APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
           APPSTORE_PRIVATE_KEY: ${{ secrets.APPSTORE_PRIVATE_KEY }}
           IOS_APP_ID: ${{ env.IOS_APP_ID }}
           IOS_SUBMIT_FOR_REVIEW: ${{ env.IOS_SUBMIT_FOR_REVIEW }}
+          IOS_RELEASE_NOTES: ${{ env.IOS_RELEASE_NOTES }}
         run: bash mobile/scripts/submit-app-store-review.sh

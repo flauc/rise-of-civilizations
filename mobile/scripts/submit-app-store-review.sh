@@ -62,6 +62,10 @@ DELIVER_ARGS=(
   --force
 )
 
+if [[ -n "${IOS_RELEASE_NOTES:-}" ]]; then
+  DELIVER_ARGS+=(--release_notes "$IOS_RELEASE_NOTES")
+fi
+
 # Optional: cancel an existing Waiting for Review submission and submit this build instead.
 if [[ "${IOS_REJECT_WAITING_REVIEW:-false}" == "true" ]]; then
   DELIVER_ARGS+=(--reject_if_possible true)

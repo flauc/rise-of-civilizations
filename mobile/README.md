@@ -175,11 +175,16 @@ code changes are needed unless you add a Capacitor plugin.
 
 ## Continuous deployment (GitHub Actions)
 
-Pushes to **`main`** (or manual **Publish iOS** workflow) run [`.github/workflows/iOS.yml`](../.github/workflows/iOS.yml):
+Store releases are **manual only** (no auto-publish on push). In GitHub → **Actions**, run:
 
-1. Sync app version from root `package.json` into Android, iOS, and the client lobby label (automatic via `build-mobile.mjs` → `tools/sync-mobile-version.mjs`).
-2. **Android:** [`.github/workflows/android.yml`](../.github/workflows/android.yml) builds a signed `.aab` and uploads to Google Play (`PLAY_TRACK`, default `production`).
-3. **iOS:** archive, export an `.ipa`, upload to App Store Connect, wait for processing, then **submit for App Store review** (`IOS_SUBMIT_FOR_REVIEW: true` in the workflow — not TestFlight-only).
+- [**Publish iOS**](../.github/workflows/iOS.yml) — release notes + optional “Submit for App Store review” checkbox
+- [**Publish Android**](../.github/workflows/android.yml) — release notes + Play track (`production`, `internal`, …)
+
+Each run:
+
+1. Sync app version from root `package.json` into Android, iOS, and the client lobby label (automatic via `build-mobile.mjs` → `tools/sync-mobile-version.mjs`; CI build numbers use `GITHUB_RUN_ID` so uploads never reuse a bundle version).
+2. **Android:** build a signed `.aab` and upload to the chosen Google Play track.
+3. **iOS:** archive, export an `.ipa`, upload to App Store Connect, wait for processing; if the submit checkbox is on, send for App Store review with your release notes (`IOS_SUBMIT_FOR_REVIEW` / fastlane deliver).
 
 The workflow bundles the latest web client shell from `main`. Game art still streams
 from the live CDN, so deploy the web client to `game.rise-of-civilizations.com`
@@ -245,10 +250,7 @@ cp mobile/android/key.properties.example mobile/android/key.properties
 5. **Push to `main`** — iOS runs on every mobile-release workflow (same as Android). Until
    the secrets above exist, the iOS job will fail; Android can still succeed.
 
-**Tracks / release mode:** edit `PLAY_TRACK` in the workflow for Android (`internal` vs
-`production`). For iOS, `IOS_SUBMIT_FOR_REVIEW: true` uploads then submits for review with
-automatic release after Apple approval. Set `IOS_SUBMIT_FOR_REVIEW: false` for upload-only
-(build appears in TestFlight / App Store Connect, manual submit in the console).
+**Tracks / release mode:** choose the Play track when you run **Publish Android** (`production`, `internal`, `alpha`, `beta`). For iOS, check **Submit build to App Store for review** when running **Publish iOS** to submit with automatic release after Apple approval; leave it unchecked for TestFlight / App Store Connect upload only.
 
 **Version numbers:** CI sets `versionName` / `MARKETING_VERSION` from root
 `package.json` and bumps `versionCode` / `CURRENT_PROJECT_VERSION` from the
