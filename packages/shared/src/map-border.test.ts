@@ -98,9 +98,9 @@ describe("mapEdgeVoidKind", () => {
 });
 
 describe("mapEdgeSkirtRotationRad", () => {
-  it("uses 180° for bottom-row ocean/dirt skirts", () => {
+  it("is unrotated: skirt sprites are authored in bottom-edge (downward) orientation", () => {
     const map = tinyMap(5, 5);
-    expect(mapEdgeSkirtRotationRad(map, 2, 4)).toBeCloseTo(Math.PI);
+    expect(mapEdgeSkirtRotationRad(map, 2, 4)).toBeCloseTo(0);
   });
 });
 

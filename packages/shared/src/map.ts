@@ -195,9 +195,16 @@ export function mapEdgeSkirtKind(map: GameMap, col: number, row: number): MapEdg
   return "ocean";
 }
 
-/** Canvas rotation (radians) for bottom-row ocean/dirt skirts. */
+/**
+ * Canvas rotation (radians) for bottom-row ocean/dirt skirts. The sprites are
+ * authored as downward chevrons (the cliff already hangs below the tile), which
+ * is exactly the bottom-edge orientation, so no rotation is applied.
+ * drawHexUnderOverlay anchors the art below the tile centre and rotates about
+ * that centre, so a 180° spin would flip the cliff to point upward and mirror
+ * the West/East shore variants onto the wrong side.
+ */
 export function mapEdgeSkirtRotationRad(_map: GameMap, _col: number, _row: number): number {
-  return Math.PI;
+  return 0;
 }
 
 /** hexUnderVoid00 at 0 rotation matches this outward step (top edge). */

@@ -8,7 +8,7 @@ import {
   hashSeed,
   isWater,
   isBottomMapBorderTile,
-  isSideVoidEdgeTile,
+  isMapBorderTile,
   mapEdgeSkirtKind,
   mapEdgeSkirtRotationRad,
   offsetToAxial,
@@ -444,7 +444,10 @@ function collectMapEdgeVoidGhosts(
   const queued = new Map<string, number>();
 
   for (const t of map.tiles) {
-    if (!isSideVoidEdgeTile(map, t.col, t.row)) continue;
+    // Seed from every map-border tile, including the bottom skirt row, so the
+    // void/star band wraps the full perimeter (the bottom edge previously seeded
+    // nothing, leaving a gap where the cliffs met open background).
+    if (!isMapBorderTile(map, t.col, t.row)) continue;
     const key = `${t.col},${t.row}`;
     if (explored && !explored.has(key) && !skipFogPass) continue;
     const here = offsetToAxial({ col: t.col, row: t.row });
