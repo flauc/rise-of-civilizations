@@ -207,7 +207,8 @@ Add these under **Settings → Secrets and variables → Actions** on the repo:
 | `APPLE_TEAM_ID` | Apple Developer team id (10 chars) |
 | `APPSTORE_ISSUER_ID` | App Store Connect API issuer id |
 | `APPSTORE_KEY_ID` | App Store Connect API key id |
-| `APPSTORE_PRIVATE_KEY` | App Store Connect `.p8` private key contents |
+| `APPSTORE_PRIVATE_KEY_BASE64` | Base64 of the `.p8` file (recommended; avoids PEM newline issues in CI) |
+| `APPSTORE_PRIVATE_KEY` | Optional fallback: raw `.p8` PEM pasted into the secret |
 
 **Android keystore (once, locally):**
 
@@ -245,7 +246,11 @@ cp mobile/android/key.properties.example mobile/android/key.properties
    **App Store Connect API** → generate key (Admin access). Copy:
    - Key ID → `APPSTORE_KEY_ID`
    - Issuer ID → `APPSTORE_ISSUER_ID`
-   - Download `.p8` → paste full file contents into `APPSTORE_PRIVATE_KEY`
+   - Download `.p8`, then base64 it for GitHub (recommended):
+     ```sh
+     base64 -i ~/Downloads/AuthKey_<KEY_ID>.p8 | pbcopy   # → APPSTORE_PRIVATE_KEY_BASE64
+     ```
+     Raw PEM in `APPSTORE_PRIVATE_KEY` also works if newlines survive paste; CI validates the key before upload.
 
 5. **Push to `main`** — iOS runs on every mobile-release workflow (same as Android). Until
    the secrets above exist, the iOS job will fail; Android can still succeed.

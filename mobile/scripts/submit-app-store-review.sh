@@ -30,12 +30,17 @@ export APPSTORE_PRIVATE_KEY
 
 # App Store Connect API key JSON (deliver reads --api_key_path in CI).
 ruby -rjson -e '
+  key = if ENV["APPSTORE_PRIVATE_KEY_FILE"] && !ENV["APPSTORE_PRIVATE_KEY_FILE"].empty?
+    File.read(ENV["APPSTORE_PRIVATE_KEY_FILE"])
+  else
+    ENV.fetch("APPSTORE_PRIVATE_KEY")
+  end
   File.write(
     ENV.fetch("API_KEY_PATH"),
     {
       key_id: ENV.fetch("APPSTORE_KEY_ID"),
       issuer_id: ENV.fetch("APPSTORE_ISSUER_ID"),
-      key: ENV.fetch("APPSTORE_PRIVATE_KEY"),
+      key: key,
       in_house: false
     }.to_json
   )
