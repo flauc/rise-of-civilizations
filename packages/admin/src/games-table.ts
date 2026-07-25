@@ -22,6 +22,7 @@ type FilterKey =
   | "mode"
   | "civId"
   | "outcome"
+  | "tutorialOutcome"
   | "turns"
   | "score";
 
@@ -31,9 +32,19 @@ const COLUMNS: HeaderColumn[] = [
   { id: "mode", label: "Mode", sort: "mode", filterKey: "mode" },
   { id: "civId", label: "Civ", sort: "civId", filterKey: "civId" },
   { id: "outcome", label: "Result", sort: "outcome", filterKey: "outcome" },
+  { id: "tutorial", label: "Tutorial", filterKey: "tutorialOutcome" },
   { id: "turns", label: "Turns", sort: "turns", filterKey: "turns", align: "num" },
   { id: "score", label: "Score", sort: "score", filterKey: "score", align: "num" },
 ];
+
+/** Human label for the tutorial column: coaching outcome, or "—" for normal games. */
+function tutorialLabel(g: AdminGameSession): string {
+  if (!g.isTutorial) return "—";
+  if (g.tutorialOutcome === "completed") return "Finished";
+  if (g.tutorialOutcome === "skipped") return "Skipped";
+  if (g.tutorialOutcome === "abandoned") return "Left early";
+  return "Running";
+}
 
 function cellValue(g: AdminGameSession, key: FilterKey): string {
   switch (key) {
@@ -47,6 +58,8 @@ function cellValue(g: AdminGameSession, key: FilterKey): string {
       return g.civId ? titleCase(g.civId) : "—";
     case "outcome":
       return g.outcome ?? "—";
+    case "tutorialOutcome":
+      return tutorialLabel(g);
     case "turns":
       return g.turns != null ? String(g.turns) : "—";
     case "score":
@@ -63,6 +76,8 @@ function buildQueryParams(state: TableState): URLSearchParams {
   for (const [k, v] of Object.entries(state.filters)) {
     if (v !== undefined && v !== "") p.set(k, v);
   }
+  if (state.tutorialScope === "only") p.set("isTutorial", "true");
+  if (state.tutorialScope === "exclude") p.set("isTutorial", "false");
   return p;
 }
 
@@ -72,6 +87,8 @@ interface TableState {
   sort: string;
   order: "asc" | "desc";
   filters: Partial<Record<FilterKey, string>>;
+  /** "" = all games, "only" = tutorials, "exclude" = everything but tutorials. */
+  tutorialScope: "" | "only" | "exclude";
 }
 
 async function fetchGames(token: string, state: TableState): Promise<GameSessionListResponse> {
@@ -107,6 +124,11 @@ function bodyHtml(data: GameSessionListResponse | undefined, err: string | undef
         if (col.id === "handle") {
           return `<td>${playerCell(g.handle)}</td>`;
         }
+        if (col.id === "tutorial") {
+          return g.isTutorial
+            ? `<td><span class="pill tutorial">${esc(v)}</span></td>`
+            : `<td class="muted">—</td>`;
+        }
         if (col.id === "startedAt") {
           return `<td class="muted" title="${esc(startedTitle)}">${esc(v)}</td>`;
         }
@@ -126,6 +148,7 @@ export function mountGamesTable(host: HTMLElement, token: string): void {
     sort: "startedAt",
     order: "desc",
     filters: {},
+    tutorialScope: "",
   };
 
   let openFilter: string | null = null;
@@ -135,9 +158,21 @@ export function mountGamesTable(host: HTMLElement, token: string): void {
 
   const metaHtml = (): string => {
     const total = latestData?.total ?? 0;
-    const filtered = hasActiveFilters(state.filters as Record<string, string>);
+    const filtered = hasActiveFilters(state.filters as Record<string, string>) || state.tutorialScope !== "";
     const count = loading ? "Loading…" : `${total.toLocaleString()} game${total === 1 ? "" : "s"}`;
-    return `${count}${filtered && !loading ? ` · <button class="btn-link" id="games-clear" type="button">Clear filters</button>` : ""}`;
+    const scope = `<label class="games-scope">Show
+      <select id="games-tutorial-scope">
+        ${(
+          [
+            ["", "All games"],
+            ["only", "Tutorials only"],
+            ["exclude", "Exclude tutorials"],
+          ] as const
+        )
+          .map(([v, label]) => `<option value="${v}"${v === state.tutorialScope ? " selected" : ""}>${label}</option>`)
+          .join("")}
+      </select></label>`;
+    return `${count}${filtered && !loading ? ` · <button class="btn-link" id="games-clear" type="button">Clear filters</button>` : ""} · ${scope}`;
   };
 
   const pagerHtml = (): string => {
@@ -200,6 +235,7 @@ export function mountGamesTable(host: HTMLElement, token: string): void {
     if (!(el instanceof HTMLElement)) return;
     if (el.id === "games-clear") {
       state.filters = {};
+      state.tutorialScope = "";
       openFilter = null;
       state.page = 1;
       paintHead();
@@ -221,6 +257,11 @@ export function mountGamesTable(host: HTMLElement, token: string): void {
     const el = e.target;
     if (el instanceof HTMLSelectElement && el.id === "games-page-size") {
       state.pageSize = Number(el.value);
+      state.page = 1;
+      void load();
+    }
+    if (el instanceof HTMLSelectElement && el.id === "games-tutorial-scope") {
+      state.tutorialScope = el.value === "only" || el.value === "exclude" ? el.value : "";
       state.page = 1;
       void load();
     }

@@ -15,6 +15,7 @@ import {
   type GameMode,
   type SessionOutcome,
   type SessionScoreboardEntry,
+  type TutorialOutcome,
 } from "@roc/shared";
 import { buildSessionScoreboard } from "@roc/sim";
 
@@ -190,6 +191,11 @@ let active: ActiveSession | null = null;
 interface ActiveSession extends SessionStartMeta {
   sessionId: string;
   turns: number;
+  /** True while the tutorial coach is still running (no ending recorded yet). */
+  tutorialOpen?: boolean;
+  /** Coach step / turn last reported, attached to the tutorial ending. */
+  tutorialStep?: string;
+  tutorialTurn?: number;
 }
 
 function persistActive(): void {
@@ -278,8 +284,50 @@ function mergeSessionEndExtras(extras?: SessionEndExtras): SessionEndExtras {
   return extras ?? sessionSnapshotProvider?.() ?? {};
 }
 
+/**
+ * Emit the tutorial ending for the active session, once. `active` still holds
+ * the run, so callers must invoke this BEFORE clearing it.
+ */
+function enqueueTutorialEnd(outcome: TutorialOutcome): void {
+  if (!active?.tutorialOpen) return;
+  const { sessionId, tutorialStep, tutorialTurn } = active;
+  active.tutorialOpen = false;
+  const account = getAccount();
+  enqueue({
+    t: "tutorial_end",
+    sessionId,
+    clientId,
+    handle: account?.handle,
+    userId: account?.userId,
+    outcome,
+    step: tutorialStep,
+    turn: tutorialTurn,
+    ts: Date.now(),
+  });
+}
+
+/**
+ * Record how the guided tutorial's coaching ended (completed / skipped). Leaving
+ * the game with the coach still up is recorded as "abandoned" by the session
+ * abandon paths instead.
+ */
+export function trackTutorialEnd(outcome: TutorialOutcome): void {
+  enqueueTutorialEnd(outcome);
+  persistActive();
+}
+
+/** Cheap in-memory note of where the coach is, attached to the tutorial ending. */
+export function noteTutorialStep(step: string, turn: number): void {
+  if (!active?.tutorialOpen) return;
+  if (active.tutorialStep === step && active.tutorialTurn === turn) return;
+  active.tutorialStep = step;
+  active.tutorialTurn = turn;
+  persistActive();
+}
+
 export function abandonActiveSession(extras?: SessionEndExtras): void {
   if (!active) return;
+  enqueueTutorialEnd("abandoned");
   const { sessionId, turns } = active;
   const snap = mergeSessionEndExtras(extras);
   active = null;
@@ -301,7 +349,7 @@ export function trackSessionStart(meta: SessionStartMeta): string {
   // menu without a clean end), record it as abandoned before starting the new one.
   abandonActiveSession();
   const sessionId = uuid();
-  active = { sessionId, turns: 0, ...meta };
+  active = { sessionId, turns: 0, ...meta, tutorialOpen: meta.isTutorial === true };
   persistActive();
   const account = getAccount();
   enqueue({
@@ -327,6 +375,7 @@ export function trackSessionStart(meta: SessionStartMeta): string {
     gameSpeed: meta.gameSpeed,
     aiCivIds: meta.aiCivIds,
     enabledVictories: meta.enabledVictories,
+    isTutorial: meta.isTutorial,
     ts: Date.now(),
   });
   return sessionId;
@@ -347,6 +396,8 @@ export function trackSessionEnd(args: {
   scoreboard?: SessionScoreboardEntry[];
 }): void {
   if (!active) return;
+  // A game that resolves while the coach is still talking never finished coaching.
+  enqueueTutorialEnd("abandoned");
   const sessionId = active.sessionId;
   active = null;
   persistActive();
@@ -501,6 +552,19 @@ export function initAnalytics(): void {
       localStorage.removeItem(ACTIVE_KEY);
       if (stale?.sessionId) {
         const account = getAccount();
+        if (stale.tutorialOpen) {
+          enqueue({
+            t: "tutorial_end",
+            sessionId: stale.sessionId,
+            clientId,
+            handle: account?.handle,
+            userId: account?.userId,
+            outcome: "abandoned",
+            step: stale.tutorialStep,
+            turn: stale.tutorialTurn,
+            ts: Date.now(),
+          });
+        }
         enqueue({
           t: "session_end",
           sessionId: stale.sessionId,

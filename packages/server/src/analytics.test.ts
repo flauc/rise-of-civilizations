@@ -366,3 +366,59 @@ describe("MemoryAnalyticsStore", () => {
     expect(await a.gameSession("missing")).toBeUndefined();
   });
 });
+
+describe("tutorial tracking", () => {
+  it("marks tutorial sessions and records how the coaching ended", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      startCfg("t1", "p1", { isTutorial: true }),
+      { t: "tutorial_end", sessionId: "t1", clientId: "p1", outcome: "completed", turn: 5, ts: now + 500 },
+      end("t1", "p1", "win", 40, 500),
+      startCfg("t2", "p2", { isTutorial: true }),
+      {
+        t: "tutorial_end",
+        sessionId: "t2",
+        clientId: "p2",
+        outcome: "skipped",
+        step: "t2_attack_barbarian",
+        turn: 2,
+        ts: now + 500,
+      },
+      startCfg("g1", "p3", {}),
+    ]);
+    const o = await a.overview();
+    expect(o.totalSessions).toBe(3);
+    expect(o.tutorialsStarted).toBe(2);
+    expect(o.tutorialsCompleted).toBe(1);
+
+    const detail = await a.gameSession("t2");
+    expect(detail).toMatchObject({
+      isTutorial: true,
+      tutorialOutcome: "skipped",
+      tutorialStep: "t2_attack_barbarian",
+      tutorialTurn: 2,
+    });
+    expect((await a.gameSession("g1"))?.isTutorial).toBeUndefined();
+  });
+
+  it("keeps a tutorial_end that arrives before its session_start", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      { t: "tutorial_end", sessionId: "t1", clientId: "p1", outcome: "completed", ts: now },
+    ]);
+    await a.record([startCfg("t1", "p1", { isTutorial: true })]);
+    const detail = await a.gameSession("t1");
+    expect(detail?.isTutorial).toBe(true);
+    expect(detail?.tutorialOutcome).toBe("completed");
+  });
+
+  it("does not let a late abandon overwrite a finished tutorial", async () => {
+    const a = new MemoryAnalyticsStore();
+    await a.record([
+      startCfg("t1", "p1", { isTutorial: true }),
+      { t: "tutorial_end", sessionId: "t1", clientId: "p1", outcome: "completed", turn: 5, ts: now + 100 },
+      { t: "tutorial_end", sessionId: "t1", clientId: "p1", outcome: "abandoned", turn: 7, ts: now + 200 },
+    ]);
+    expect((await a.gameSession("t1"))?.tutorialOutcome).toBe("completed");
+  });
+});

@@ -24,6 +24,7 @@ import type {
   PlayerSessionStats,
   SessionOutcome,
   SessionScoreboardEntry,
+  TutorialOutcome,
   VictoryTypeCount,
   VoteTotal,
 } from "@roc/shared";
@@ -61,6 +62,13 @@ export interface SessionRow {
   score?: number;
   scoreRank?: number;
   scoreboard?: SessionScoreboardEntry[];
+  /** Guided tutorial scenario (set from session_start). */
+  isTutorial?: boolean;
+  /** How the coaching ended; filled by a tutorial_end event. */
+  tutorialOutcome?: TutorialOutcome;
+  tutorialStep?: string;
+  tutorialTurn?: number;
+  tutorialEndedAt?: number;
 }
 
 /** Full stored bug report row (list fields + heavy detail payload). */
@@ -131,7 +139,25 @@ export class MemoryAnalyticsStore implements AnalyticsStore {
         row.gameSpeed = e.gameSpeed;
         row.aiCivIds = e.aiCivIds;
         row.enabledVictories = e.enabledVictories;
+        row.isTutorial = e.isTutorial ?? row.isTutorial;
         row.startedAt = e.ts;
+        this.sessions.set(e.sessionId, row);
+      } else if (e.t === "tutorial_end") {
+        const row = this.sessions.get(e.sessionId) ?? { sessionId: e.sessionId, clientId: e.clientId };
+        row.clientId = row.clientId || e.clientId;
+        if (e.handle) row.handle = e.handle;
+        if (e.userId) row.userId = e.userId;
+        // A tutorial_end can only come from a tutorial run, even if its
+        // session_start is still queued on an offline client.
+        row.isTutorial = true;
+        // First real ending wins: a late "abandoned" (e.g. the tab closing after
+        // the coach already finished) must not overwrite completed/skipped.
+        if (!row.tutorialOutcome || (row.tutorialOutcome === "abandoned" && e.outcome !== "abandoned")) {
+          row.tutorialOutcome = e.outcome;
+          row.tutorialStep = e.step;
+          row.tutorialTurn = e.turn;
+          row.tutorialEndedAt = e.ts;
+        }
         this.sessions.set(e.sessionId, row);
       } else if (e.t === "session_end") {
         const row = this.sessions.get(e.sessionId) ?? { sessionId: e.sessionId, clientId: e.clientId };
@@ -181,6 +207,8 @@ export class MemoryAnalyticsStore implements AnalyticsStore {
       abandonedSessions: abandoned.length,
       avgTurns: Math.round(avgTurns * 10) / 10,
       sessionsToday: rows.filter((r) => (r.startedAt ?? r.endedAt ?? 0) >= today).length,
+      tutorialsStarted: rows.filter((r) => r.isTutorial).length,
+      tutorialsCompleted: rows.filter((r) => r.isTutorial && r.tutorialOutcome === "completed").length,
     };
   }
 

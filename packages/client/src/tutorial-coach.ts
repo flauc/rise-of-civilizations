@@ -860,6 +860,10 @@ export interface TutorialCoachDeps {
   ensureTutorialBarbarian?: () => void;
   /** Give the player's units fresh movement when a map-action lesson begins. */
   refreshTutorialMovement?: (stepId: string) => void;
+  /** Analytics: the coaching ended (all steps done, or the player skipped it). */
+  onTutorialEnd?: (outcome: "completed" | "skipped") => void;
+  /** Analytics: where the player currently is, so an abandon records the drop-off point. */
+  onTutorialStep?: (stepId: string, turn: number) => void;
 }
 
 export interface TutorialCoach {
@@ -1005,7 +1009,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     for (const type of GATE_EVENTS) window.removeEventListener(type, gateHandler, true);
   };
 
-  const dismiss = (message?: string): void => {
+  const dismiss = (outcome: "completed" | "skipped", message?: string): void => {
     if (dismissed) return;
     dismissed = true;
     removeGate();
@@ -1013,10 +1017,11 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     stopTyping();
     stopCoachVoice();
     root.remove();
+    deps.onTutorialEnd?.(outcome);
     if (message) deps.banner(message);
   };
 
-  skipBtn.addEventListener("click", () => dismiss("Tutorial tips off. You've got this!"));
+  skipBtn.addEventListener("click", () => dismiss("skipped", "Tutorial tips off. You've got this!"));
 
   const bubbleEl = root.querySelector<HTMLElement>("#tutorial-coach-bubble")!;
   const dialogEl = root.querySelector<HTMLElement>("#tutorial-coach-dialog")!;
@@ -1032,7 +1037,9 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     flags.infoAcknowledged = true;
   });
   choiceEl.querySelector<HTMLButtonElement>("#tutorial-coach-finish")!.addEventListener("click", () => {
-    dismiss();
+    // The choice only appears after the last coached turn, so leaving here still
+    // counts as having seen the tutorial through.
+    dismiss("completed");
     deps.exitToMenu?.();
   });
 
@@ -1197,7 +1204,7 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
 
     const turn = state.turn;
     if (turn > TUTORIAL_COACH_TURNS) {
-      dismiss("The chronicle is yours. Rule well!");
+      dismiss("completed", "The chronicle is yours. Rule well!");
       return;
     }
 
@@ -1248,11 +1255,12 @@ export function createTutorialCoach(deps: TutorialCoachDeps): TutorialCoach {
     }
 
     if (stepIndex >= steps.length) {
-      dismiss("The chronicle is yours. Rule well!");
+      dismiss("completed", "The chronicle is yours. Rule well!");
       return;
     }
 
     const step = steps[stepIndex]!;
+    deps.onTutorialStep?.(step.id, turn);
     if (lastStepId !== step.id) {
       if (step.id === "t2_attack_barbarian") {
         deps.ensureTutorialBarbarian?.();

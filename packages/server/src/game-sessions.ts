@@ -93,13 +93,14 @@ export function parseGameSessionFilters(params: URLSearchParams): GameSessionFil
   text("startingGold");
   text("gameSpeed");
   text("victory");
+  text("tutorialOutcome");
 
   for (const key of ["aiCount", "cols", "rows", "turnLimit"] as const) {
     const n = parseIntOpt(params.get(key));
     if (n !== undefined) filters[key] = n;
   }
 
-  for (const key of ["barbarians", "legends", "naturalWonders", "villages"] as const) {
+  for (const key of ["barbarians", "legends", "naturalWonders", "villages", "isTutorial"] as const) {
     const b = parseBool(params.get(key));
     if (b !== undefined) filters[key] = b;
   }
@@ -154,6 +155,11 @@ export function rowToAdminGameSession(row: SessionRow): AdminGameSession {
     scoreRank: row.scoreRank,
     startedAt: row.startedAt,
     endedAt: row.endedAt,
+    isTutorial: row.isTutorial,
+    tutorialOutcome: row.tutorialOutcome,
+    tutorialStep: row.tutorialStep,
+    tutorialTurn: row.tutorialTurn,
+    tutorialEndedAt: row.tutorialEndedAt,
   };
 }
 
@@ -252,6 +258,8 @@ function gameSessionSearchText(row: SessionRow): string {
     row.turns != null ? String(row.turns) : "",
     row.score != null ? String(row.score) : "",
     row.aiCount != null ? String(row.aiCount) : "",
+    row.isTutorial ? "tutorial" : "",
+    row.tutorialOutcome,
     ...(row.aiCivIds ?? []),
     ...(row.enabledVictories ?? []),
   ];
@@ -290,6 +298,15 @@ export function matchesGameSessionFilters(row: SessionRow, f: GameSessionFilters
   if (f.legends !== undefined && row.legends !== f.legends) return false;
   if (f.naturalWonders !== undefined && row.naturalWonders !== f.naturalWonders) return false;
   if (f.villages !== undefined && row.villages !== f.villages) return false;
+  // Tutorial rows predating this flag have it undefined, so "exclude tutorials"
+  // must treat undefined as not-a-tutorial.
+  if (f.isTutorial !== undefined && (row.isTutorial === true) !== f.isTutorial) return false;
+  if (
+    f.tutorialOutcome &&
+    !(row.tutorialOutcome ?? "").toLowerCase().includes(f.tutorialOutcome.toLowerCase())
+  ) {
+    return false;
+  }
   if (f.victory && !(row.enabledVictories ?? []).includes(f.victory)) return false;
   if (f.startedFrom !== undefined && (row.startedAt ?? 0) < f.startedFrom) return false;
   if (f.startedTo !== undefined && (row.startedAt ?? 0) > f.startedTo) return false;

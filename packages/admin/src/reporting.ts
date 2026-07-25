@@ -25,6 +25,9 @@ interface FilterState {
   villages: string;
   legends: string;
   victory: string;
+  /** "only" = tutorial sessions, "exclude" = everything else. */
+  tutorial: string;
+  tutorialOutcome: string;
 }
 
 const EMPTY_FILTERS: FilterState = {
@@ -42,7 +45,23 @@ const EMPTY_FILTERS: FilterState = {
   villages: "",
   legends: "",
   victory: "",
+  tutorial: "",
+  tutorialOutcome: "",
 };
+
+/** Shared by the report query and the "matching sessions" query. */
+function applyTutorialParams(p: URLSearchParams, f: FilterState): void {
+  if (f.tutorial === "only") p.set("isTutorial", "true");
+  if (f.tutorial === "exclude") p.set("isTutorial", "false");
+  if (f.tutorialOutcome) p.set("tutorialOutcome", f.tutorialOutcome);
+}
+
+function tutorialOptions(): { value: string; label: string }[] {
+  return [
+    { value: "only", label: "Tutorial only" },
+    { value: "exclude", label: "Exclude tutorials" },
+  ];
+}
 
 function filtersToQuery(f: FilterState): URLSearchParams {
   const p = new URLSearchParams();
@@ -60,6 +79,7 @@ function filtersToQuery(f: FilterState): URLSearchParams {
   if (f.villages === "on" || f.villages === "off") p.set("villages", f.villages);
   if (f.legends === "on" || f.legends === "off") p.set("legends", f.legends);
   if (f.victory) p.set("victory", f.victory);
+  applyTutorialParams(p, f);
   return p;
 }
 
@@ -128,6 +148,7 @@ function reportFiltersToGameParams(f: FilterState): URLSearchParams {
   if (f.villages === "off") p.set("villages", "false");
   if (f.legends === "on") p.set("legends", "true");
   if (f.legends === "off") p.set("legends", "false");
+  applyTutorialParams(p, f);
   return p;
 }
 
@@ -150,7 +171,12 @@ function matchingSessionsHtml(games: AdminGameSession[] | undefined, loading: bo
     .map((g) => {
       const when = g.startedAt ? timeAgo(g.startedAt) : "—";
       const outcome = g.outcome ? `<span class="pill ${esc(g.outcome)}">${esc(g.outcome)}</span>` : `<span class="muted">—</span>`;
-      const setup = [g.mapType ? titleCase(g.mapType) : "", g.mapSize ? titleCase(g.mapSize) : "", g.aiCount != null ? `${g.aiCount} AI` : ""]
+      const setup = [
+        g.isTutorial ? "Tutorial" : "",
+        g.mapType ? titleCase(g.mapType) : "",
+        g.mapSize ? titleCase(g.mapSize) : "",
+        g.aiCount != null ? `${g.aiCount} AI` : "",
+      ]
         .filter(Boolean)
         .join(" · ");
       return `<tr class="clickable-row" data-game="${esc(g.sessionId)}" title="View game details">
@@ -178,6 +204,44 @@ function matchingSessionsHtml(games: AdminGameSession[] | undefined, loading: bo
   </section>`;
 }
 
+/** Prettify a coach step id ("t3_village") for the drop-off table. */
+function stepLabel(id: string): string {
+  const m = /^t(\d+)_(.+)$/.exec(id);
+  if (m) return `Turn ${m[1]}: ${titleCase(m[2]!.replace(/_/g, " "))}`;
+  return titleCase(id.replace(/_/g, " "));
+}
+
+function tutorialHtml(t: SessionReportResponse["report"]["tutorial"]): string {
+  if (!t || t.started === 0) {
+    return `<section class="report-breakdown"><h3>Tutorial</h3>
+      <div class="muted">No tutorial sessions in this slice.</div></section>`;
+  }
+  return `<section class="report-tutorial">
+    <h3>Tutorial</h3>
+    <div class="cards report-cards">
+      ${card(t.started.toLocaleString(), "Tutorials played")}
+      ${card(t.completed.toLocaleString(), "Tutorials finished")}
+      ${card(t.skipped.toLocaleString(), "Skipped")}
+      ${card(t.abandoned.toLocaleString(), "Left early")}
+      ${card(t.inProgress.toLocaleString(), "Still running")}
+      ${card(t.gamesFinished.toLocaleString(), "Whole game finished")}
+    </div>
+    <div class="stat-line muted">
+      Tutorial completion rate: <b>${t.completionRate}%</b>
+      <span class="stat-sep">·</span>
+      Played the game to a result: <b>${t.gameCompletionRate}%</b>
+    </div>
+    ${
+      t.dropOff.length
+        ? `<div class="report-breakdown"><h4>Where players stopped</h4>${countTable(
+            t.dropOff.map((d) => ({ label: stepLabel(d.label), count: d.count })),
+            8,
+          )}</div>`
+        : ""
+    }
+  </section>`;
+}
+
 function resultsHtml(data: SessionReportResponse): string {
   const r = data.report;
   const avgScore = r.avgScore != null ? r.avgScore.toLocaleString() : "—";
@@ -201,6 +265,8 @@ function resultsHtml(data: SessionReportResponse): string {
       <span class="stat-sep">·</span>
       Avg score: <b>${avgScore}</b>
     </div>
+
+    ${tutorialHtml(r.tutorial)}
 
     <div class="grid2 report-grid">
       ${breakdownSection("By map type", r.byMapType)}
@@ -238,6 +304,8 @@ function filtersHtml(f: FilterState, facets: SessionReportResponse["facets"], op
       ${selectField("rf-villages", "Villages", f.villages, onOffOptions())}
       ${selectField("rf-legends", "Legends", f.legends, onOffOptions())}
       ${selectField("rf-victory", "Victory enabled", f.victory, facetOptions(facets.victories))}
+      ${selectField("rf-tutorial", "Tutorial", f.tutorial, tutorialOptions())}
+      ${selectField("rf-tutorialOutcome", "Tutorial ended", f.tutorialOutcome, facetOptions(facets.tutorialOutcomes ?? []))}
       <div class="report-actions">
         <button class="btn" type="submit">Apply filters</button>
         ${hasActiveFilters(f) ? `<button class="btn" type="button" id="report-clear">Clear</button>` : ""}
@@ -263,6 +331,8 @@ function readFilters(host: HTMLElement): FilterState {
     villages: val("rf-villages"),
     legends: val("rf-legends"),
     victory: val("rf-victory"),
+    tutorial: val("rf-tutorial"),
+    tutorialOutcome: val("rf-tutorialOutcome"),
   };
 }
 
