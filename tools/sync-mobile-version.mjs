@@ -9,9 +9,16 @@
  * - iOS MARKETING_VERSION / CURRENT_PROJECT_VERSION (project.pbxproj)
  * - Lobby + changelog label (packages/client/src/version.ts)
  *
- * Build numbers: in CI, Android uses max(repo + 1, 1000 + run×10 + attempt) capped at
- * 2_147_483_647. iOS also considers GITHUB_RUN_ID so App Store Connect never sees a
- * duplicate CFBundleVersion when repo-stored numbers lag.
+ * Build numbers: each platform floors on ITS OWN committed number (Android
+ * versionCode, iOS CURRENT_PROJECT_VERSION) plus one, then rises to the CI number
+ * 1000 + run×10 + attempt. iOS additionally rises to GITHUB_RUN_ID, which survives
+ * workflow renames (GITHUB_RUN_NUMBER restarts at 1) but overflows Android's int32
+ * versionCode, so the two platforms deliberately diverge.
+ *
+ * CAVEAT: CI does not commit the bumped numbers back, so after an iOS CI upload the
+ * committed CURRENT_PROJECT_VERSION still lags the uploaded CFBundleVersion. Commit
+ * the pbxproj that CI produced (or bump it by hand) before running a local sync, or
+ * App Store Connect will reject the local build as a duplicate.
  *
  * Usage:
  *   node tools/sync-mobile-version.mjs
@@ -32,50 +39,65 @@ const versionTsPath = join(repoRoot, "packages/client/src/version.ts");
 
 const ANDROID_MAX_VERSION_CODE = 2_147_483_647;
 
-function readBuildNumbers(current) {
-  const fromWorkflow = process.env.MOBILE_BUILD_NUMBER
-    ? Number(process.env.MOBILE_BUILD_NUMBER)
-    : NaN;
-  if (Number.isFinite(fromWorkflow) && fromWorkflow > 0) {
-    const next = Math.max(current + 1, fromWorkflow);
-    return {
-      android: Math.min(next, ANDROID_MAX_VERSION_CODE),
-      ios: next,
-    };
-  }
-  const run = process.env.GITHUB_RUN_NUMBER ? Number(process.env.GITHUB_RUN_NUMBER) : NaN;
-  const attempt = process.env.GITHUB_RUN_ATTEMPT ? Number(process.env.GITHUB_RUN_ATTEMPT) : NaN;
-  const runId = process.env.GITHUB_RUN_ID ? Number(process.env.GITHUB_RUN_ID) : NaN;
-  if (Number.isFinite(run) && run > 0) {
-    const attemptN = Number.isFinite(attempt) && attempt > 0 ? attempt : 1;
-    const ciBuild = 1000 + run * 10 + attemptN;
-    let android = Math.max(current + 1, ciBuild);
-    let ios = android;
-    // Run id fits iOS CFBundleVersion but overflows Android versionCode (int32 max).
-    if (Number.isFinite(runId) && runId > 0) {
-      ios = Math.max(ios, runId);
-    }
-    android = Math.min(android, ANDROID_MAX_VERSION_CODE);
-    return { android, ios };
-  }
-  const next = current + 1;
-  return { android: Math.min(next, ANDROID_MAX_VERSION_CODE), ios: next };
+/** Positive integer from an env var, or 0 when unset/unusable. */
+function envNumber(name) {
+  const n = Number(process.env[name]);
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-const { android: androidBuildNumber, ios: iosBuildNumber } = readBuildNumbers(
-  (() => {
-    const gradle = readFileSync(gradlePath, "utf8");
-    const m = gradle.match(/versionCode\s+(\d+)/);
-    return m ? Number(m[1]) : 1;
-  })(),
-);
+/** Committed build number a file currently records, or 0 when it has none. */
+function committedBuildNumber(src, pattern) {
+  const m = src.match(pattern);
+  return m ? Number(m[1]) : 0;
+}
+
+function nextBuildNumbers(currentAndroid, currentIos) {
+  // Each platform only ever moves forward from the number it last committed.
+  const androidFloor = currentAndroid + 1;
+  const iosFloor = currentIos + 1;
+
+  const fromWorkflow = envNumber("MOBILE_BUILD_NUMBER");
+  if (fromWorkflow > 0) {
+    return {
+      android: Math.max(androidFloor, fromWorkflow),
+      ios: Math.max(iosFloor, fromWorkflow),
+    };
+  }
+
+  const run = envNumber("GITHUB_RUN_NUMBER");
+  if (run > 0) {
+    const attempt = envNumber("GITHUB_RUN_ATTEMPT") || 1;
+    const ciBuild = 1000 + run * 10 + attempt;
+    return {
+      android: Math.max(androidFloor, ciBuild),
+      // Run id is globally monotonic (a workflow rename restarts run number but not
+      // run id) and fits CFBundleVersion, but would overflow int32 versionCode.
+      ios: Math.max(iosFloor, ciBuild, envNumber("GITHUB_RUN_ID")),
+    };
+  }
+
+  return { android: androidFloor, ios: iosFloor };
+}
 
 let gradle = readFileSync(gradlePath, "utf8");
+let pbx = readFileSync(pbxPath, "utf8");
+
+const { android: androidBuildNumber, ios: iosBuildNumber } = nextBuildNumbers(
+  committedBuildNumber(gradle, /versionCode\s+(\d+)/),
+  committedBuildNumber(pbx, /CURRENT_PROJECT_VERSION = (\d+);/),
+);
+
+if (androidBuildNumber > ANDROID_MAX_VERSION_CODE) {
+  throw new Error(
+    `Android versionCode ${androidBuildNumber} exceeds the int32 limit ${ANDROID_MAX_VERSION_CODE}. ` +
+      "Play will reject the upload; the build-number scheme in this script needs reworking.",
+  );
+}
+
 gradle = gradle.replace(/versionCode\s+\d+/, `versionCode ${androidBuildNumber}`);
 gradle = gradle.replace(/versionName\s+"[^"]*"/, `versionName "${versionName}"`);
 writeFileSync(gradlePath, gradle);
 
-let pbx = readFileSync(pbxPath, "utf8");
 pbx = pbx.replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${versionName};`);
 pbx = pbx.replace(/CURRENT_PROJECT_VERSION = [^;]+;/g, `CURRENT_PROJECT_VERSION = ${iosBuildNumber};`);
 writeFileSync(pbxPath, pbx);

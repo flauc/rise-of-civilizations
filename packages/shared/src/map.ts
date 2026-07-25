@@ -129,144 +129,22 @@ export function isMapTilePresent(map: GameMap, col: number, row: number): boolea
   return true;
 }
 
-/** Col-0 slots on the last three rows that get a west hex-under curb. */
-export function leftBottomHexUnderSlots(map: GameMap): ReadonlyArray<{ readonly col: number; readonly row: number }> {
-  const antepenultimate = map.rows - 3;
-  const penultimate = map.rows - 2;
-  const bottom = map.rows - 1;
-  const out: { col: number; row: number }[] = [];
-  if (antepenultimate >= 0) out.push({ col: 0, row: antepenultimate });
-  if (penultimate >= 0) out.push({ col: 0, row: penultimate });
-  if (bottom >= 0) out.push({ col: 0, row: bottom });
-  return out;
-}
-
-/** dirt or ocean hex-under for a left-bottom col-0 slot, from the inward neighbor terrain. */
-export function leftBottomHexUnderKind(map: GameMap, col: number, row: number): MapEdgeSkirtKind | null {
-  if (col !== 0) return null;
-  const antepenultimate = map.rows - 3;
-  const penultimate = map.rows - 2;
-  const bottom = map.rows - 1;
-  const refAtRow = (r: number): Tile | undefined => {
-    const refCol = isMapTilePresent(map, 0, r) ? 0 : 1;
-    return getMapSlotTile(map, refCol, r) ?? getMapSlotTile(map, 1, r);
-  };
-  if (row === antepenultimate || row === penultimate) {
-    const ref = refAtRow(row);
-    if (!ref) return null;
-    return isBottomOceanSkirtTerrain(ref.terrain) ? "ocean" : "dirt";
-  }
-  if (row === bottom) {
-    const ref = refAtRow(penultimate);
-    if (!ref) return null;
-    return isBottomOceanSkirtTerrain(ref.terrain) ? "ocean" : "dirt";
-  }
-  return null;
-}
-
-/** Inward playable tile whose west curb a left-bottom ghost slot sits under. */
-export function leftBottomHexUnderAnchor(
-  map: GameMap,
-  slotRow: number,
-): { readonly col: number; readonly row: number } {
-  const penultimate = map.rows - 2;
-  const bottom = map.rows - 1;
-  if (slotRow === bottom) {
-    if (isMapTilePresent(map, 1, bottom)) return { col: 1, row: bottom };
-    return { col: 1, row: penultimate };
-  }
-  if (slotRow === penultimate || slotRow === map.rows - 3) {
-    if (isMapTilePresent(map, 0, slotRow)) return { col: 0, row: slotRow };
-    return { col: 1, row: slotRow };
-  }
-  return { col: 1, row: slotRow };
-}
-
-/** @deprecated Use {@link leftBottomHexUnderSlots} — void is not painted on these slots. */
-export function leftBottomEdgeGhostSlots(map: GameMap): ReadonlyArray<{ readonly col: number; readonly row: number }> {
-  return leftBottomHexUnderSlots(map);
-}
-
-/** Last-two-row left/right edge extension slots (left bottom ghost + penultimate east ghost). */
-export function mapBottomEdgeTerrainSlots(
+/**
+ * Tiles that carry the bottom cliff band. The bottom row renders no terrain, so the
+ * last VISIBLE row is `rows - 2`: every present tile there gets exactly one hex-under
+ * cliff hanging off its own lower edge, which is what makes the band line up with the
+ * terrain above it (see {@link mapEdgeSkirtKind}).
+ */
+export function mapBottomCliffTiles(
   map: GameMap,
 ): ReadonlyArray<{ readonly col: number; readonly row: number }> {
-  const penultimate = map.rows - 2;
-  const bottom = map.rows - 1;
-  if (penultimate < 0) return [];
+  const row = map.rows - 2;
+  if (row < 0) return [];
   const out: { col: number; row: number }[] = [];
-  for (const row of [penultimate, bottom]) {
-    if (!isMapTilePresent(map, 0, row)) out.push({ col: 0, row });
-    if (row === penultimate) {
-      if (!isMapTilePresent(map, map.cols - 1, row)) {
-        out.push({ col: map.cols - 1, row });
-      } else {
-        // Playable right-edge penultimate: half cliff on east ghost (col === cols).
-        out.push({ col: map.cols, row: penultimate });
-      }
-    } else if (!isMapTilePresent(map, map.cols - 1, row)) {
-      // Bottom right ghost half (mirrors col 0 on the left); inward tile uses full rim skirt.
-      out.push({ col: map.cols - 1, row });
-    }
+  for (let col = 0; col < map.cols; col++) {
+    if (isMapTilePresent(map, col, row)) out.push({ col, row });
   }
   return out;
-}
-
-/** Inward column whose terrain feeds a bottom edge extension slot. */
-export function mapBottomEdgeTerrainRefCol(map: GameMap, col: number, _row: number): number {
-  if (col <= 0) return 1;
-  if (col >= map.cols) return map.cols - 1;
-  return map.cols - 2;
-}
-
-/** Screen anchor column for a bottom-edge extension slot (ghost col). */
-export function mapBottomEdgeTerrainDrawCol(_map: GameMap, col: number, _row: number): number {
-  return col;
-}
-
-/** Rightmost present column on the bottom skirt row (corner columns omitted). */
-export function rightmostBottomPlayableCol(map: GameMap): number {
-  const bottom = map.rows - 1;
-  for (let col = map.cols - 1; col >= 0; col--) {
-    if (isMapTilePresent(map, col, bottom)) return col;
-  }
-  return -1;
-}
-
-export function isMapBottomEdgeTerrainSlot(map: GameMap, col: number, row: number): boolean {
-  return mapBottomEdgeTerrainSlots(map).some((s) => s.col === col && s.row === row);
-}
-
-
-/** hexUnderDirt / hexUnderOcean for a bottom edge extension slot. */
-export function mapBottomEdgeSkirtKind(map: GameMap, col: number, row: number): MapEdgeSkirtKind | null {
-  if (!isMapBottomEdgeTerrainSlot(map, col, row)) return null;
-  const refCol = mapBottomEdgeTerrainRefCol(map, col, row);
-  const bottom = map.rows - 1;
-  const penultimate = map.rows - 2;
-  const refRow = row === bottom ? penultimate : row;
-  const ref = getMapSlotTile(map, refCol, refRow);
-  if (!ref) return null;
-  return isBottomOceanSkirtTerrain(ref.terrain) ? "ocean" : "dirt";
-}
-
-/** 180° rotation + flipY: flipY keeps PNG colors upright, π seats the cliff on the edge. */
-export const MAP_BOTTOM_EDGE_SKIRT_ROTATION_RAD = Math.PI;
-
-/** Rotation for hex-under on bottom-edge extension slots. */
-export function mapBottomEdgeSkirtRotationRad(_map: GameMap, _col: number, _row: number): number {
-  return MAP_BOTTOM_EDGE_SKIRT_ROTATION_RAD;
-}
-
-/** @deprecated Use {@link isMapBottomEdgeTerrainSlot}. */
-export function isLeftBottomGapTerrainSlot(map: GameMap, col: number, row: number): boolean {
-  return isMapBottomEdgeTerrainSlot(map, col, row) && col === 0;
-}
-
-/** Tile data at a grid slot even when {@link isMapTilePresent} is false (rendering only). */
-export function getMapSlotTile(map: GameMap, col: number, row: number): Tile | undefined {
-  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return undefined;
-  return map.tiles[tileIndex(map, col, row)];
 }
 
 /** True when at least one hex neighbour lies outside the playable map. */
@@ -287,11 +165,6 @@ export function isUnitPlayableTile(map: GameMap, col: number, row: number): bool
 /** True on the bottom skirt row (present tiles only; corners omitted). */
 export function isBottomMapBorderTile(map: GameMap, col: number, row: number): boolean {
   return isMapTilePresent(map, col, row) && row === map.rows - 1;
-}
-
-/** @deprecated Alias for {@link isBottomMapBorderTile}. */
-export function isBottomSkirtTile(map: GameMap, col: number, row: number): boolean {
-  return isBottomMapBorderTile(map, col, row);
 }
 
 /** Top/left/right map edge — void paints off-map only (terrain stays playable). */
@@ -331,42 +204,33 @@ export function isBottomOceanSkirtTerrain(terrain: TerrainType): boolean {
 }
 
 /**
- * Pick the hex-under skirt for the bottom map edge. The bottom skirt row itself
- * renders no terrain (it is skipped in the terrain pass), so the skirt's material
- * follows the last VISIBLE tile in the column, which is the row directly above:
- * a land column gets a dirt cliff, a water column gets an ocean cliff. Reading the
- * skirt row directly would be wrong on procedural maps, where that row is scrubbed
- * to ocean and would force an ocean cliff under every column, land included.
+ * Pick the hex-under cliff for one tile of the bottom cliff band. The sprite spans a
+ * single tile's footprint and its top edge is that tile's lower V, so the cliff belongs
+ * to exactly ONE tile: reading a pair of tiles instead put shore cliffs a tile west of
+ * the coast they belonged to. Land gets a plain dirt cliff; water gets an ocean cliff
+ * that fades to dirt on whichever side its row neighbour is land, so the sea cliff and
+ * the land cliff meet without a hard seam. π + flipY mirrors the art horizontally, so
+ * the east/west variants are swapped here.
  */
 export function mapEdgeSkirtKind(map: GameMap, col: number, row: number): MapEdgeSkirtKind | null {
-  if (!isBottomMapBorderTile(map, col, row)) return null;
-  // A skirt cliff sits below the GAP between the two visible tiles that flank it on
-  // the row above (hex rows are offset by half a tile), so it bridges them. Which
-  // two depends on the skirt row parity: an odd row sits below (col, above) and
-  // (col+1, above); an even row below (col-1, above) and (col, above). Reading a
-  // single same-column tile is wrong on one parity and puts a dirt cliff where a
-  // shore belongs at a land/water boundary.
-  const above = row - 1;
-  const oddRow = (row & 1) === 1;
-  const left = getTile(map, oddRow ? col : col - 1, above);
-  const right = getTile(map, oddRow ? col + 1 : col, above);
-  const kindOf = (t: Tile | undefined): "land" | "water" | null =>
-    t === undefined ? null : isBottomOceanSkirtTerrain(t.terrain) ? "water" : "land";
-  const l = kindOf(left);
-  const r = kindOf(right);
-
-  // At the bottom corners one flank is off-map: follow the on-map side, no shore.
-  if (l === null && r === null) return null;
-  if (l === null) return r === "water" ? "ocean" : "dirt";
-  if (r === null) return l === "water" ? "ocean" : "dirt";
-
-  if (l === "land" && r === "land") return "dirt";
-  if (l === "water" && r === "water") return "ocean";
-  // Mixed flanks = shoreline cliff. π + flipY mirrors horizontally, so swap shore variants.
-  return l === "land" ? "oceanShoreEast" : "oceanShoreWest";
+  if (row !== map.rows - 2) return null;
+  const tile = getTile(map, col, row);
+  if (!tile) return null;
+  if (!isBottomOceanSkirtTerrain(tile.terrain)) return "dirt";
+  const isLand = (c: number): boolean => {
+    const t = getTile(map, c, row);
+    return t !== undefined && !isBottomOceanSkirtTerrain(t.terrain);
+  };
+  const west = isLand(col - 1);
+  const east = isLand(col + 1);
+  if (west && east) return "oceanShoreBoth";
+  if (west) return "oceanShoreEast";
+  if (east) return "oceanShoreWest";
+  return "ocean";
 }
 
-/** Canvas rotation (radians) for bottom-row ocean/dirt skirts. */
+/** 180° rotation, paired with flipY: flipY keeps the PNG colours upright while π
+ *  seats the cliff on the tile's lower edge (the two compose to a mirror in X). */
 export function mapEdgeSkirtRotationRad(_map: GameMap, _col: number, _row: number): number {
   return Math.PI;
 }
@@ -471,6 +335,7 @@ export function skirtBridgedLandNeighbors(map: GameMap, col: number, row: number
   for (let d = 0; d < 6; d++) {
     const mid = axialToOffset(axialNeighbor(here, d));
     if (mid.row !== bottom) continue;
+    if (!isMapTilePresent(map, mid.col, mid.row)) continue; // omitted corner is not a skirt
     const midAx = offsetToAxial(mid);
     for (let d2 = 0; d2 < 6; d2++) {
       const nb = axialToOffset(axialNeighbor(midAx, d2));
@@ -496,10 +361,20 @@ export function landmassSizes(map: GameMap): Int32Array {
   const { cols, rows, tiles } = map;
   const sizes = new Int32Array(cols * rows);
   const seen = new Array<boolean>(cols * rows).fill(false);
+  // Absent slots (staggered left edge, bottom corners) are not land and never
+  // bridge two regions — the flood fill walks the same shape getTile() exposes.
+  const pushLand = (stack: [number, number][], nc: number, nr: number): void => {
+    if (!isMapTilePresent(map, nc, nr)) return;
+    const ni = nr * cols + nc;
+    if (seen[ni] || isWater(tiles[ni]!.terrain)) return;
+    seen[ni] = true;
+    stack.push([nc, nr]);
+  };
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col < cols; col++) {
       const start = row * cols + col;
-      if (seen[start] || isWater(tiles[start]!.terrain)) continue;
+      if (seen[start] || !isMapTilePresent(map, col, row)) continue;
+      if (isWater(tiles[start]!.terrain)) continue;
       const region: number[] = [];
       const stack: [number, number][] = [[col, row]];
       seen[start] = true;
@@ -507,21 +382,10 @@ export function landmassSizes(map: GameMap): Int32Array {
         const [c, r] = stack.pop()!;
         region.push(r * cols + c);
         for (const [dc, dr] of offsetNeighborDeltas(r)) {
-          const nc = c + dc;
-          const nr = r + dr;
-          if (nc < 0 || nr < 0 || nc >= cols || nr >= rows) continue;
-          const ni = nr * cols + nc;
-          if (!seen[ni] && !isWater(tiles[ni]!.terrain)) {
-            seen[ni] = true;
-            stack.push([nc, nr]);
-          }
+          pushLand(stack, c + dc, r + dr);
         }
         for (const [nc, nr] of skirtBridgedLandNeighbors(map, c, r)) {
-          const ni = nr * cols + nc;
-          if (!seen[ni] && !isWater(tiles[ni]!.terrain)) {
-            seen[ni] = true;
-            stack.push([nc, nr]);
-          }
+          pushLand(stack, nc, nr);
         }
       }
       for (const i of region) sizes[i] = region.length;

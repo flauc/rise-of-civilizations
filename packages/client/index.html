@@ -2713,8 +2713,9 @@
         background: var(--bg-card);
         color: var(--parchment);
         font-family: system-ui, -apple-system, sans-serif;
-        font-size: 0;
-        line-height: 0;
+        font-size: calc(var(--dialog-x-size) * 0.5);
+        font-weight: 400;
+        line-height: 1;
         cursor: pointer;
         touch-action: manipulation;
         overflow: visible;
@@ -2722,8 +2723,12 @@
         pointer-events: auto;
         transition: background 0.15s ease, color 0.15s ease;
       }
+      /* The ✕ text is swapped for the generated ic_close art by iconify(). */
       .dialog-x .gi {
-        display: none !important;
+        width: calc(var(--dialog-x-size) * 0.46);
+        height: calc(var(--dialog-x-size) * 0.46);
+        vertical-align: middle;
+        pointer-events: none;
       }
       .dialog-x::before {
         content: "";
@@ -2731,20 +2736,6 @@
         inset: -12px;
         border-radius: inherit;
         pointer-events: auto;
-      }
-      .dialog-x::after {
-        content: "×";
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-family: system-ui, -apple-system, sans-serif;
-        font-size: calc(var(--dialog-x-size) * 0.52);
-        font-weight: 400;
-        line-height: 1;
-        color: inherit;
-        pointer-events: none;
       }
       .dialog-x:hover {
         background: rgba(201, 162, 39, 0.14);

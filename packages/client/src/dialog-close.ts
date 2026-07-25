@@ -1,6 +1,6 @@
-/** Universal ✕ markup — glyph comes from `.dialog-x::after` in index.html. */
+/** Universal ✕ markup — the glyph is iconified to `ic_close` (see icons.ts). */
 export function dialogCloseButton(id: string): string {
-  return `<button type="button" class="dialog-x" id="${id}" title="Close" aria-label="Close"></button>`;
+  return `<button type="button" class="dialog-x" id="${id}" title="Close" aria-label="Close">✕</button>`;
 }
 
 /** Title row + in-flow ✕ (Treasury, Game Menu, God Mode, Choose Research, …). */
