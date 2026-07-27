@@ -7,21 +7,8 @@ import {
   isUnitPlayableTile,
   mapEdgeSkirtKind,
   mapEdgeSkirtRotationRad,
-  isBottomSkirtTile,
   isMapTilePresent,
-  leftBottomHexUnderSlots,
-  leftBottomHexUnderKind,
-  leftBottomHexUnderAnchor,
-  mapBottomEdgeTerrainSlots,
-  mapBottomEdgeTerrainRefCol,
-  mapBottomEdgeTerrainDrawCol,
-  isBottomOceanSkirtTerrain,
-  isMapBottomEdgeTerrainSlot,
-  mapBottomEdgeSkirtKind,
-  mapBottomEdgeSkirtRotationRad,
-  MAP_BOTTOM_EDGE_SKIRT_ROTATION_RAD,
-  isLeftBottomGapTerrainSlot,
-  getMapSlotTile,
+  mapBottomCliffTiles,
   mapEdgeSkirtSide,
   mapEdgeVoidKind,
   mapEdgeVoidRotationRad,
@@ -118,9 +105,9 @@ describe("mapEdgeVoidKind", () => {
 });
 
 describe("mapEdgeSkirtRotationRad", () => {
-  it("uses 180° for bottom-row ocean/dirt skirts", () => {
+  it("uses 180° for the bottom cliff band", () => {
     const map = tinyMap(5, 5);
-    expect(mapEdgeSkirtRotationRad(map, 2, 4)).toBeCloseTo(Math.PI);
+    expect(mapEdgeSkirtRotationRad(map, 2, 3)).toBeCloseTo(Math.PI);
   });
 });
 
@@ -138,60 +125,76 @@ describe("mapEdgeVoidRotationRad", () => {
 });
 
 describe("mapEdgeSkirtKind", () => {
-  it("returns null off the bottom row", () => {
+  it("returns null off the cliff row and on omitted slots", () => {
     const map = tinyMap(5, 5, "plains");
     expect(mapEdgeSkirtKind(map, 2, 0)).toBeNull();
-    expect(mapEdgeSkirtKind(map, 4, 2)).toBeNull();
-    expect(mapEdgeSkirtKind(map, 0, 2)).toBeNull();
+    expect(mapEdgeSkirtKind(map, 2, 2)).toBeNull();
+    expect(mapEdgeSkirtKind(map, 2, 4)).toBeNull(); // bottom row renders no terrain
+    // Row 3 is odd, so col 0 is present there; on an even cliff row it would not be.
+    const evenCliffRow = tinyMap(5, 6, "plains");
+    expect(isMapTilePresent(evenCliffRow, 0, 4)).toBe(false);
+    expect(mapEdgeSkirtKind(evenCliffRow, 0, 4)).toBeNull();
   });
 
-  it("uses dirt when both tiles flanking the skirt above are land", () => {
+  it("gives every land tile on the cliff row a dirt cliff", () => {
     const map = tinyMap(5, 5, "ocean");
-    const above = map.rows - 2;
-    setTerrain(map, 1, above, "plains");
-    setTerrain(map, 2, above, "bog");
-    expect(mapEdgeSkirtKind(map, 2, map.rows - 1)).toBe("dirt");
+    const cliff = map.rows - 2;
+    setTerrain(map, 1, cliff, "plains");
+    setTerrain(map, 2, cliff, "bog");
+    expect(mapEdgeSkirtKind(map, 1, cliff)).toBe("dirt");
+    expect(mapEdgeSkirtKind(map, 2, cliff)).toBe("dirt");
   });
 
-  it("picks ocean or a shore from the two flanking tiles above the skirt", () => {
-    const map = tinyMap(5, 5, "ocean");
-    const bottom = map.rows - 1;
-    const above = bottom - 1;
-    expect(mapEdgeSkirtKind(map, 2, bottom)).toBe("ocean");
+  it("fades a water cliff to dirt on whichever side its row neighbour is land", () => {
+    const map = tinyMap(6, 5, "ocean");
+    const cliff = map.rows - 2;
+    expect(mapEdgeSkirtKind(map, 3, cliff)).toBe("ocean");
 
-    setTerrain(map, 1, above, "plains");
-    expect(mapEdgeSkirtKind(map, 2, bottom)).toBe("oceanShoreEast");
+    // Land to the west: the art is mirrored, so the east variant lands the dirt west.
+    setTerrain(map, 2, cliff, "plains");
+    expect(mapEdgeSkirtKind(map, 3, cliff)).toBe("oceanShoreEast");
 
-    setTerrain(map, 1, above, "ocean");
-    setTerrain(map, 2, above, "plains");
-    expect(mapEdgeSkirtKind(map, 2, bottom)).toBe("oceanShoreWest");
+    setTerrain(map, 2, cliff, "ocean");
+    setTerrain(map, 4, cliff, "plains");
+    expect(mapEdgeSkirtKind(map, 3, cliff)).toBe("oceanShoreWest");
 
-    setTerrain(map, 1, above, "plains");
-    expect(mapEdgeSkirtKind(map, 2, bottom)).toBe("dirt");
+    setTerrain(map, 2, cliff, "plains");
+    expect(mapEdgeSkirtKind(map, 3, cliff)).toBe("oceanShoreBoth");
   });
 
-  it("bridges (col, above) and (col+1, above) on an odd skirt row", () => {
-    const map = tinyMap(6, 6, "ocean");
-    const bottom = map.rows - 1;
-    const above = bottom - 1;
-    setTerrain(map, 1, above, "plains");
-    expect(mapEdgeSkirtKind(map, 1, bottom)).toBe("oceanShoreEast");
-    expect(mapEdgeSkirtKind(map, 2, bottom)).toBe("ocean");
+  it("keeps the shore on the water tile, not the land tile beside it", () => {
+    // cols 0-2 land, cols 3-5 water: the coast runs between col 2 and col 3.
+    const map = tinyMap(6, 5, "ocean");
+    const cliff = map.rows - 2;
+    for (const col of [0, 1, 2]) setTerrain(map, col, cliff, "plains");
+    expect(mapEdgeSkirtKind(map, 2, cliff)).toBe("dirt");
+    expect(mapEdgeSkirtKind(map, 3, cliff)).toBe("oceanShoreEast");
+    expect(mapEdgeSkirtKind(map, 4, cliff)).toBe("ocean");
   });
 
-  it("treats coast like ocean and follows the on-map flank at the corners", () => {
+  it("treats coast like ocean and reads no shore off the map edge", () => {
     const map = tinyMap(5, 5, "plains");
-    const above = map.rows - 2;
-    setTerrain(map, 1, above, "coast");
-    expect(mapEdgeSkirtKind(map, 2, map.rows - 1)).toBe("oceanShoreWest");
-    setTerrain(map, 1, above, "plains");
-    setTerrain(map, 2, above, "plains");
-    expect(mapEdgeSkirtKind(map, 1, map.rows - 1)).toBe("dirt");
+    const cliff = map.rows - 2;
+    setTerrain(map, 2, cliff, "coast");
+    expect(mapEdgeSkirtKind(map, 2, cliff)).toBe("oceanShoreBoth");
+    setTerrain(map, map.cols - 1, cliff, "ocean");
+    expect(mapEdgeSkirtKind(map, map.cols - 1, cliff)).toBe("oceanShoreEast");
+  });
+});
+
+describe("mapBottomCliffTiles", () => {
+  it("lists the present tiles on the last row that renders terrain", () => {
+    // 8x8: the cliff row is 6, which is even, so its col 0 is omitted by the stagger.
+    const map = tinyMap(8, 8);
+    expect(mapBottomCliffTiles(map)).toEqual(
+      [1, 2, 3, 4, 5, 6, 7].map((col) => ({ col, row: 6 })),
+    );
   });
 
-  it("ignores interior tiles", () => {
-    const map = tinyMap(3, 3, "ocean");
-    expect(mapEdgeSkirtKind(map, 1, 1)).toBeNull();
+  it("includes col 0 when the cliff row is odd", () => {
+    const map = tinyMap(8, 9);
+    expect(mapBottomCliffTiles(map)[0]).toEqual({ col: 0, row: 7 });
+    expect(mapBottomCliffTiles(map)).toHaveLength(8);
   });
 });
 
@@ -216,121 +219,3 @@ describe("isMapTilePresent", () => {
   });
 });
 
-describe("leftBottomHexUnderSlots", () => {
-  it("lists col 0 on the last three rows", () => {
-    const map = tinyMap(7, 7);
-    const bottom = map.rows - 1;
-    const penultimate = map.rows - 2;
-    const antepenultimate = map.rows - 3;
-    expect(leftBottomHexUnderSlots(map)).toEqual([
-      { col: 0, row: antepenultimate },
-      { col: 0, row: penultimate },
-      { col: 0, row: bottom },
-    ]);
-  });
-
-  it("picks dirt or ocean from the inward neighbor terrain", () => {
-    const map = tinyMap(7, 7, "plains");
-    const penultimate = map.rows - 2;
-    const bottom = map.rows - 1;
-    const refCol = isMapTilePresent(map, 0, penultimate) ? 0 : 1;
-    setTerrain(map, refCol, penultimate, "ocean");
-    expect(leftBottomHexUnderKind(map, 0, penultimate)).toBe("ocean");
-    expect(leftBottomHexUnderKind(map, 0, bottom)).toBe("ocean");
-    setTerrain(map, refCol, penultimate, "forest");
-    expect(leftBottomHexUnderKind(map, 0, penultimate)).toBe("dirt");
-    expect(leftBottomHexUnderKind(map, 0, bottom)).toBe("dirt");
-  });
-
-  it("anchors west curbs on the playable ocean/land hex", () => {
-    const map = tinyMap(8, 8);
-    const penultimate = map.rows - 2;
-    const bottom = map.rows - 1;
-    const antepenultimate = map.rows - 3;
-    const expectAnchor = (row: number) =>
-      isMapTilePresent(map, 0, row) ? { col: 0, row } : { col: 1, row };
-    expect(leftBottomHexUnderAnchor(map, antepenultimate)).toEqual(expectAnchor(antepenultimate));
-    expect(leftBottomHexUnderAnchor(map, penultimate)).toEqual(expectAnchor(penultimate));
-    expect(leftBottomHexUnderAnchor(map, bottom)).toEqual({ col: 1, row: bottom });
-  });
-
-  it("anchors penultimate on col 0 when that slot is present", () => {
-    const map = tinyMap(7, 7);
-    const penultimate = map.rows - 2;
-    if (isMapTilePresent(map, 0, penultimate)) {
-      expect(leftBottomHexUnderAnchor(map, penultimate)).toEqual({ col: 0, row: penultimate });
-    }
-  });
-
-  it("flags penultimate col 0 when omitted for gap terrain", () => {
-    const map = tinyMap(8, 8);
-    const penultimate = map.rows - 2;
-    if (!isMapTilePresent(map, 0, penultimate)) {
-      expect(isLeftBottomGapTerrainSlot(map, 0, penultimate)).toBe(true);
-      expect(isMapBottomEdgeTerrainSlot(map, 0, penultimate)).toBe(true);
-      expect(getMapSlotTile(map, 0, penultimate)?.col).toBe(0);
-    }
-  });
-});
-
-describe("mapBottomEdgeTerrainSlots", () => {
-  it("lists omitted corners plus penultimate east ghost when right edge is present", () => {
-    const map = tinyMap(8, 8);
-    const penultimate = map.rows - 2;
-    const bottom = map.rows - 1;
-    const slots = mapBottomEdgeTerrainSlots(map);
-    expect(slots.some((s) => s.col === 0 && s.row === bottom)).toBe(true);
-    expect(slots.some((s) => s.col === map.cols - 1 && s.row === bottom)).toBe(true);
-    if (isMapTilePresent(map, map.cols - 1, penultimate)) {
-      expect(slots.some((s) => s.col === map.cols && s.row === penultimate)).toBe(true);
-      expect(slots.some((s) => s.col === map.cols - 1 && s.row === penultimate)).toBe(false);
-      expect(mapBottomEdgeTerrainRefCol(map, map.cols, penultimate)).toBe(map.cols - 1);
-    }
-    if (!isMapTilePresent(map, 0, penultimate)) {
-      expect(slots.some((s) => s.col === 0 && s.row === penultimate)).toBe(true);
-    }
-    expect(mapBottomEdgeTerrainRefCol(map, 0, bottom)).toBe(1);
-    expect(mapBottomEdgeTerrainRefCol(map, map.cols, penultimate)).toBe(map.cols - 1);
-    expect(mapBottomEdgeTerrainDrawCol(map, map.cols, penultimate)).toBe(map.cols);
-    expect(mapBottomEdgeTerrainDrawCol(map, 0, bottom)).toBe(0);
-    expect(mapEdgeSkirtKind(map, map.cols - 2, bottom)).not.toBeNull();
-  });
-
-  it("picks hexUnderOcean or hexUnderDirt from the inward neighbor", () => {
-    const map = tinyMap(8, 8, "plains");
-    const bottom = map.rows - 1;
-    const penultimate = map.rows - 2;
-    setTerrain(map, 1, penultimate, "ocean");
-    expect(mapBottomEdgeSkirtKind(map, 0, bottom)).toBe("ocean");
-    setTerrain(map, 1, penultimate, "forest");
-    expect(mapBottomEdgeSkirtKind(map, 0, bottom)).toBe("dirt");
-    setTerrain(map, map.cols - 2, penultimate, "ocean");
-    setTerrain(map, map.cols - 1, penultimate, "ocean");
-    expect(mapEdgeSkirtKind(map, map.cols - 2, bottom)).toBe("ocean");
-    if (isMapTilePresent(map, map.cols - 1, penultimate)) {
-      setTerrain(map, map.cols - 1, penultimate, "ocean");
-      expect(mapBottomEdgeSkirtKind(map, map.cols, penultimate)).toBe("ocean");
-      setTerrain(map, map.cols - 1, penultimate, "plains");
-      expect(mapBottomEdgeSkirtKind(map, map.cols, penultimate)).toBe("dirt");
-    }
-  });
-
-  it("uses 180° on all bottom-edge hex-under skirts", () => {
-    const map = tinyMap(8, 8);
-    const penultimate = map.rows - 2;
-    const bottom = map.rows - 1;
-    expect(mapBottomEdgeSkirtRotationRad(map, 0, bottom)).toBe(Math.PI);
-    expect(mapBottomEdgeSkirtRotationRad(map, 0, penultimate)).toBe(Math.PI);
-    expect(mapBottomEdgeSkirtRotationRad(map, map.cols, penultimate)).toBe(Math.PI);
-    expect(MAP_BOTTOM_EDGE_SKIRT_ROTATION_RAD).toBe(Math.PI);
-  });
-});
-
-describe("isBottomSkirtTile", () => {
-  it("matches the bottom skirt row alias", () => {
-    const map = tinyMap(5, 5);
-    expect(isBottomSkirtTile(map, 2, 4)).toBe(true);
-    expect(isBottomSkirtTile(map, 0, 4)).toBe(false);
-    expect(isBottomSkirtTile(map, 2, 3)).toBe(false);
-  });
-});

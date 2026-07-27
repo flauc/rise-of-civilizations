@@ -92,3 +92,75 @@ describe("session report", () => {
     expect(res.facets.mapTypes.length).toBeGreaterThan(0);
   });
 });
+
+describe("tutorial funnel", () => {
+  const rows: SessionRow[] = [
+    // Played the tutorial through, then won the game.
+    row({
+      sessionId: "t1",
+      clientId: "c1",
+      isTutorial: true,
+      tutorialOutcome: "completed",
+      outcome: "win",
+      turns: 40,
+    }),
+    // Finished the coaching, left the game after.
+    row({
+      sessionId: "t2",
+      clientId: "c2",
+      isTutorial: true,
+      tutorialOutcome: "completed",
+      outcome: "abandoned",
+      turns: 6,
+    }),
+    row({
+      sessionId: "t3",
+      clientId: "c3",
+      isTutorial: true,
+      tutorialOutcome: "skipped",
+      tutorialStep: "t2_attack_barbarian",
+      outcome: "abandoned",
+      turns: 2,
+    }),
+    row({
+      sessionId: "t4",
+      clientId: "c4",
+      isTutorial: true,
+      tutorialOutcome: "abandoned",
+      tutorialStep: "t2_attack_barbarian",
+    }),
+    // Started the tutorial, still playing it.
+    row({ sessionId: "t5", clientId: "c5", isTutorial: true }),
+    // Not a tutorial: must not appear anywhere in the funnel.
+    row({ sessionId: "g1", clientId: "c6", outcome: "win", turns: 90 }),
+  ];
+
+  it("counts plays, finishes, and how many went on to finish the game", () => {
+    const t = aggregateSessionReport(rows).tutorial;
+    expect(t.started).toBe(5);
+    expect(t.completed).toBe(2);
+    expect(t.skipped).toBe(1);
+    expect(t.abandoned).toBe(1);
+    expect(t.inProgress).toBe(1);
+    expect(t.completionRate).toBe(40);
+    expect(t.gamesFinished).toBe(1);
+    expect(t.gameCompletionRate).toBe(20);
+  });
+
+  it("reports where players stopped, ignoring completed runs", () => {
+    const t = aggregateSessionReport(rows).tutorial;
+    expect(t.dropOff).toEqual([{ label: "t2_attack_barbarian", count: 2 }]);
+  });
+
+  it("filters to tutorials only and excludes them again", () => {
+    expect(aggregateSessionReport(rows, { isTutorial: true }).totalSessions).toBe(5);
+    const nonTutorial = aggregateSessionReport(rows, { isTutorial: false });
+    expect(nonTutorial.totalSessions).toBe(1);
+    expect(nonTutorial.tutorial.started).toBe(0);
+    expect(nonTutorial.tutorial.completionRate).toBe(0);
+  });
+
+  it("exposes tutorial endings as facets", () => {
+    expect(collectReportFacets(rows).tutorialOutcomes).toEqual(["abandoned", "completed", "skipped"]);
+  });
+});

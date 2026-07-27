@@ -18,6 +18,14 @@ describe("admin filter query parsing", () => {
     expect(q.order).toBe("desc");
   });
 
+  it("parses the tutorial scope and ending filters", () => {
+    const only = parseGameSessionQuery(new URLSearchParams({ isTutorial: "true", tutorialOutcome: "skipped" }));
+    expect(only.filters?.isTutorial).toBe(true);
+    expect(only.filters?.tutorialOutcome).toBe("skipped");
+    expect(parseGameSessionQuery(new URLSearchParams({ isTutorial: "false" })).filters?.isTutorial).toBe(false);
+    expect(parseGameSessionQuery(new URLSearchParams()).filters?.isTutorial).toBeUndefined();
+  });
+
   it("sanitizes bug report filters the same way", () => {
     const q = parseBugReportQuery(
       new URLSearchParams({

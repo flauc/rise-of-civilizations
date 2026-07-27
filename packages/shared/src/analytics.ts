@@ -13,6 +13,13 @@ export type GameMode = "sp" | "mp";
 export type SessionOutcome = "win" | "loss" | "abandoned";
 export type VoteAction = "add" | "remove";
 
+/**
+ * How a guided-tutorial run ended. "completed" = the coach walked the player
+ * through all of its turns; "skipped" = they turned the tips off; "abandoned" =
+ * they left the game (or closed the tab) with the coach still running.
+ */
+export type TutorialOutcome = "completed" | "skipped" | "abandoned";
+
 /** A game session began (single-player or multiplayer). */
 /** Tribal village setting a player chose: a density level, or a legacy on/off boolean. */
 export type VillageSetting = boolean | "none" | "medium" | "high";
@@ -62,7 +69,29 @@ export interface SessionStartEvent {
   aiCivIds?: (string | null)[];
   /** Decisive win conditions enabled this game (e.g. ["domination","science"]). */
   enabledVictories?: string[];
+  /** True when this session is the guided tutorial scenario. */
+  isTutorial?: boolean;
   /** Epoch millis on the client when the session started. */
+  ts: number;
+}
+
+/**
+ * The guided tutorial stopped coaching. Emitted once per tutorial session; the
+ * matching `session_start` (with `isTutorial`) is the "tutorial was played"
+ * signal, so starts and finishes can be counted separately from whether the
+ * player went on to finish the whole game.
+ */
+export interface TutorialEndEvent {
+  t: "tutorial_end";
+  sessionId: string;
+  clientId: string;
+  handle?: string;
+  userId?: string;
+  outcome: TutorialOutcome;
+  /** Coach step the player was on when it ended (e.g. "t3_village"). */
+  step?: string;
+  /** Coached turn reached (1..TUTORIAL_COACH_TURNS). */
+  turn?: number;
   ts: number;
 }
 
@@ -199,7 +228,12 @@ export interface BugReportEvent {
   ts: number;
 }
 
-export type AnalyticsEvent = SessionStartEvent | SessionEndEvent | FeatureVoteEvent | BugReportEvent;
+export type AnalyticsEvent =
+  | SessionStartEvent
+  | SessionEndEvent
+  | TutorialEndEvent
+  | FeatureVoteEvent
+  | BugReportEvent;
 
 /** The POST body the client sends to the server's ingestion endpoint. */
 export interface AnalyticsBatch {
@@ -219,6 +253,10 @@ export interface AdminOverview {
   abandonedSessions: number;
   avgTurns: number;
   sessionsToday: number;
+  /** Guided-tutorial sessions started (absent on older server builds). */
+  tutorialsStarted?: number;
+  /** Tutorial sessions where the coach ran to the end. */
+  tutorialsCompleted?: number;
 }
 
 export interface PlayerSessionStats {
@@ -389,6 +427,15 @@ export interface AdminGameSession {
   scoreRank?: number;
   startedAt?: number;
   endedAt?: number;
+  /** True when this game was the guided tutorial scenario. */
+  isTutorial?: boolean;
+  /** How the tutorial coaching ended (only on tutorial sessions). */
+  tutorialOutcome?: TutorialOutcome;
+  /** Coach step reached when the tutorial ended. */
+  tutorialStep?: string;
+  /** Coached turn reached when the tutorial ended. */
+  tutorialTurn?: number;
+  tutorialEndedAt?: number;
 }
 
 /** Full detail for a single played game (admin drill-down). */
@@ -428,6 +475,10 @@ export interface GameSessionFilters {
   legends?: boolean;
   naturalWonders?: boolean;
   villages?: boolean;
+  /** true = tutorial sessions only, false = exclude tutorials. */
+  isTutorial?: boolean;
+  /** Match on how the tutorial coaching ended. */
+  tutorialOutcome?: string;
   /** Match sessions where this victory was enabled at setup. */
   victory?: string;
   startedFrom?: number;
@@ -486,6 +537,34 @@ export interface SessionReportFacets {
   civIds: string[];
   conditions: string[];
   victories: string[];
+  /** Tutorial endings present in the data ("completed" / "skipped" / "abandoned"). */
+  tutorialOutcomes: string[];
+}
+
+/**
+ * Tutorial funnel for a slice of sessions: how often the guided tutorial was
+ * played, how often the coaching itself was seen through, and how many of those
+ * players went on to finish the whole game.
+ */
+export interface TutorialFunnel {
+  /** Tutorial sessions started. */
+  started: number;
+  /** Coach ran to the end of its scripted turns. */
+  completed: number;
+  /** Player turned the tips off part-way through. */
+  skipped: number;
+  /** Player left the game with the coach still running. */
+  abandoned: number;
+  /** Tutorial started, no ending recorded yet. */
+  inProgress: number;
+  /** completed / started, 0-100. */
+  completionRate: number;
+  /** Tutorial sessions whose GAME reached a win/loss. */
+  gamesFinished: number;
+  /** gamesFinished / started, 0-100. */
+  gameCompletionRate: number;
+  /** Coach step players were on when they skipped or abandoned. */
+  dropOff: LabelCount[];
 }
 
 /** Aggregated metrics for a filtered slice of game sessions. */
@@ -511,6 +590,8 @@ export interface SessionReport {
   byGameSpeed: LabelCount[];
   byVictoryCondition: LabelCount[];
   topCivs: CivCount[];
+  /** Tutorial funnel over the same filtered slice. */
+  tutorial: TutorialFunnel;
 }
 
 export interface SessionReportResponse {

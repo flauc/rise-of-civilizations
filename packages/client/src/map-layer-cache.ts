@@ -4,7 +4,6 @@ import {
   BASE_SIZE,
   computeWorldBounds,
   drawScene,
-  punchCacheBottomSkirtHoles,
   tileFootprint,
   type RenderOptions,
 } from "./renderer";
@@ -88,7 +87,8 @@ export class MapLayerCache {
       skipFogPass: true,
       skipMapEdgePass: true,
     });
-    punchCacheBottomSkirtHoles(ctx, state.map, originX, originY, buildZoom);
+    // No holes are cut into the bitmap: the bake only paints present, non-bottom-row
+    // tiles, so everything the cliff band occupies is already transparent here.
     this.terrainRev = terrainRev;
     this.builtZoom = buildZoom;
     this.usable = true;

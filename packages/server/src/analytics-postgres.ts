@@ -80,7 +80,15 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
     await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_id TEXT`;
     await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handle TEXT`;
     await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS scoreboard TEXT`;
+    // Guided-tutorial tracking: which sessions were the tutorial, and how the
+    // coaching itself ended (completed / skipped / abandoned).
+    await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS is_tutorial BOOLEAN`;
+    await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS tutorial_outcome TEXT`;
+    await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS tutorial_step TEXT`;
+    await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS tutorial_turn INTEGER`;
+    await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS tutorial_ended_at BIGINT`;
     await sql`CREATE INDEX IF NOT EXISTS sessions_client_id_idx ON sessions (client_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS sessions_is_tutorial_idx ON sessions (is_tutorial)`;
     await sql`CREATE INDEX IF NOT EXISTS sessions_outcome_idx ON sessions (outcome)`;
     await sql`CREATE INDEX IF NOT EXISTS sessions_civ_id_idx ON sessions (civ_id)`;
     await sql`
@@ -141,14 +149,14 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
           INSERT INTO sessions (session_id, client_id, user_id, handle, mode, civ_id, map_type, map_size,
             map_cols, map_rows, ai_count, barbarians, legends, barbarian_level,
             natural_wonders, villages, starting_gold, turn_limit, game_speed,
-            ai_civ_ids, enabled_victories, started_at)
+            ai_civ_ids, enabled_victories, is_tutorial, started_at)
           VALUES (${e.sessionId}, ${e.clientId}, ${e.userId ?? null}, ${e.handle ?? null},
             ${e.mode ?? null}, ${e.civId ?? null},
             ${e.mapType ?? null}, ${e.mapSize ?? null}, ${e.cols ?? null}, ${e.rows ?? null},
             ${e.aiCount ?? null}, ${e.barbarians ?? null}, ${e.legends ?? null},
             ${e.barbarianLevel ?? null}, ${e.naturalWonders ?? null}, ${e.villages ?? null},
             ${e.startingGold ?? null}, ${e.turnLimit ?? null}, ${e.gameSpeed ?? null},
-            ${aiCivIds}, ${enabledVictories}, ${e.ts})
+            ${aiCivIds}, ${enabledVictories}, ${e.isTutorial ?? null}, ${e.ts})
           ON CONFLICT (session_id) DO UPDATE SET
             client_id = EXCLUDED.client_id, user_id = EXCLUDED.user_id, handle = EXCLUDED.handle,
             mode = EXCLUDED.mode, civ_id = EXCLUDED.civ_id,
@@ -158,7 +166,38 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
             natural_wonders = EXCLUDED.natural_wonders, villages = EXCLUDED.villages,
             starting_gold = EXCLUDED.starting_gold, turn_limit = EXCLUDED.turn_limit,
             game_speed = EXCLUDED.game_speed, ai_civ_ids = EXCLUDED.ai_civ_ids,
-            enabled_victories = EXCLUDED.enabled_victories, started_at = EXCLUDED.started_at`;
+            enabled_victories = EXCLUDED.enabled_victories,
+            is_tutorial = COALESCE(EXCLUDED.is_tutorial, sessions.is_tutorial),
+            started_at = EXCLUDED.started_at`;
+      } else if (e.t === "tutorial_end") {
+        // First real ending wins: a late "abandoned" (tab close after the coach
+        // already finished) must not overwrite completed/skipped.
+        await sql`
+          INSERT INTO sessions (session_id, client_id, user_id, handle, is_tutorial,
+            tutorial_outcome, tutorial_step, tutorial_turn, tutorial_ended_at)
+          VALUES (${e.sessionId}, ${e.clientId}, ${e.userId ?? null}, ${e.handle ?? null}, TRUE,
+            ${e.outcome}, ${e.step ?? null}, ${e.turn ?? null}, ${e.ts})
+          ON CONFLICT (session_id) DO UPDATE SET
+            client_id = COALESCE(sessions.client_id, EXCLUDED.client_id),
+            user_id = COALESCE(sessions.user_id, EXCLUDED.user_id),
+            handle = COALESCE(sessions.handle, EXCLUDED.handle),
+            is_tutorial = TRUE,
+            tutorial_outcome = CASE
+              WHEN sessions.tutorial_outcome IS NULL OR
+                   (sessions.tutorial_outcome = 'abandoned' AND EXCLUDED.tutorial_outcome <> 'abandoned')
+              THEN EXCLUDED.tutorial_outcome ELSE sessions.tutorial_outcome END,
+            tutorial_step = CASE
+              WHEN sessions.tutorial_outcome IS NULL OR
+                   (sessions.tutorial_outcome = 'abandoned' AND EXCLUDED.tutorial_outcome <> 'abandoned')
+              THEN EXCLUDED.tutorial_step ELSE sessions.tutorial_step END,
+            tutorial_turn = CASE
+              WHEN sessions.tutorial_outcome IS NULL OR
+                   (sessions.tutorial_outcome = 'abandoned' AND EXCLUDED.tutorial_outcome <> 'abandoned')
+              THEN EXCLUDED.tutorial_turn ELSE sessions.tutorial_turn END,
+            tutorial_ended_at = CASE
+              WHEN sessions.tutorial_outcome IS NULL OR
+                   (sessions.tutorial_outcome = 'abandoned' AND EXCLUDED.tutorial_outcome <> 'abandoned')
+              THEN EXCLUDED.tutorial_ended_at ELSE sessions.tutorial_ended_at END`;
       } else if (e.t === "session_end") {
         const scoreboard = e.scoreboard?.length ? JSON.stringify(e.scoreboard) : null;
         await sql`
@@ -232,7 +271,9 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
         COUNT(*) FILTER (WHERE outcome IN ('win','loss')) AS completed,
         COUNT(*) FILTER (WHERE outcome = 'abandoned') AS abandoned,
         COALESCE(AVG(turns) FILTER (WHERE turns IS NOT NULL), 0) AS avg_turns,
-        COUNT(*) FILTER (WHERE COALESCE(started_at, ended_at, 0) >= ${startOfTodayUtc}) AS today
+        COUNT(*) FILTER (WHERE COALESCE(started_at, ended_at, 0) >= ${startOfTodayUtc}) AS today,
+        COUNT(*) FILTER (WHERE is_tutorial) AS tutorials,
+        COUNT(*) FILTER (WHERE is_tutorial AND tutorial_outcome = 'completed') AS tutorials_completed
       FROM sessions`;
     return {
       totalSessions: num(r?.total),
@@ -241,6 +282,8 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
       abandonedSessions: num(r?.abandoned),
       avgTurns: Math.round(num(r?.avg_turns) * 10) / 10,
       sessionsToday: num(r?.today),
+      tutorialsStarted: num(r?.tutorials),
+      tutorialsCompleted: num(r?.tutorials_completed),
     };
   }
 
@@ -513,7 +556,8 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
       SELECT session_id, client_id, user_id, handle, mode, civ_id, map_type, map_size, map_cols, map_rows,
         ai_count, barbarians, legends, barbarian_level, natural_wonders, villages,
         starting_gold, turn_limit, game_speed, ai_civ_ids, enabled_victories,
-        started_at, ended_at, outcome, condition, turns, score, score_rank, scoreboard
+        started_at, ended_at, outcome, condition, turns, score, score_rank, scoreboard,
+        is_tutorial, tutorial_outcome, tutorial_step, tutorial_turn, tutorial_ended_at
       FROM sessions WHERE session_id = ${sessionId} LIMIT 1`;
     return r ? rowToAdminGameSessionDetail(pgRowToSessionRow(r)) : undefined;
   }
@@ -529,7 +573,8 @@ export class PostgresAnalyticsStore implements AnalyticsStore {
       SELECT session_id, client_id, user_id, handle, mode, civ_id, map_type, map_size, map_cols, map_rows,
         ai_count, barbarians, legends, barbarian_level, natural_wonders, villages,
         starting_gold, turn_limit, game_speed, ai_civ_ids, enabled_victories,
-        started_at, ended_at, outcome, condition, turns, score, score_rank, scoreboard
+        started_at, ended_at, outcome, condition, turns, score, score_rank, scoreboard,
+        is_tutorial, tutorial_outcome, tutorial_step, tutorial_turn, tutorial_ended_at
       FROM sessions`;
     return rows.map(pgRowToSessionRow);
   }
@@ -616,6 +661,14 @@ function pgRowToSessionRow(r: Record<string, unknown>): SessionRow {
     score: r.score == null ? undefined : num(r.score),
     scoreRank: r.score_rank == null ? undefined : num(r.score_rank),
     scoreboard: parseJson<import("@roc/shared").SessionScoreboardEntry[]>(r.scoreboard),
+    isTutorial: r.is_tutorial == null ? undefined : r.is_tutorial === true || r.is_tutorial === "t",
+    tutorialOutcome:
+      r.tutorial_outcome == null
+        ? undefined
+        : (String(r.tutorial_outcome) as import("@roc/shared").TutorialOutcome),
+    tutorialStep: r.tutorial_step == null ? undefined : String(r.tutorial_step),
+    tutorialTurn: r.tutorial_turn == null ? undefined : num(r.tutorial_turn),
+    tutorialEndedAt: r.tutorial_ended_at == null ? undefined : num(r.tutorial_ended_at),
   };
 }
 

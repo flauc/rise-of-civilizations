@@ -83,7 +83,7 @@ import { LocalSession, MAP_DIMENSIONS, type Session } from "./session";
 import type { CheatAction } from "./god-mode";
 import { exportSave, listSavesForUser, makeSaveRecord, saveGame, type SaveRecord } from "./save-db";
 import { getAccount, getSaveOwnerId } from "./account";
-import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, abandonActiveSession, buildSessionScoreboard, viewerScoreFromBoard, registerSessionSnapshotProvider, type GameSetup } from "./analytics";
+import { initAnalytics, trackSessionStart, trackSessionEnd, trackBugReport, noteTurns, abandonActiveSession, buildSessionScoreboard, viewerScoreFromBoard, registerSessionSnapshotProvider, trackTutorialEnd, noteTutorialStep, type GameSetup } from "./analytics";
 import { resetHudOverlays } from "./hud-root";
 import { unlockCoachAudio, retryCoachVoiceIfNeeded } from "./coach-voice";
 import { unlockGameAudio } from "./game-audio-unlock";
@@ -975,6 +975,8 @@ function startGame(session: Session, setup: GameSetup = {}): void {
           refreshTutorialMovement(st(), session.getViewerId(), stepId);
           update();
         },
+        onTutorialEnd: (outcome) => trackTutorialEnd(outcome),
+        onTutorialStep: (stepId, turn) => noteTutorialStep(stepId, turn),
       });
     });
   }

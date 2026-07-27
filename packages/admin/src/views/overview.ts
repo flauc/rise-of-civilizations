@@ -9,6 +9,10 @@ export function overviewContent(d: AllData): string {
   const winRate = completed > 0 ? Math.round((d.outcomes.win / completed) * 1000) / 10 : 0;
   const inProgress = Math.max(0, o.totalSessions - completed - d.outcomes.abandoned);
   const bugCount = d.bugReports.length;
+  const tutorialRate =
+    o.tutorialsStarted && o.tutorialsStarted > 0
+      ? Math.round(((o.tutorialsCompleted ?? 0) / o.tutorialsStarted) * 1000) / 10
+      : 0;
 
   return `
     <section class="page-section overview-page">
@@ -34,6 +38,20 @@ export function overviewContent(d: AllData): string {
         <span class="stat-sep">·</span>
         Avg turns: <b>${o.avgTurns}</b>
       </div>
+
+      ${
+        o.tutorialsStarted != null
+          ? `<div class="stat-line muted">
+        Tutorials played: <b>${o.tutorialsStarted.toLocaleString()}</b>
+        <span class="stat-sep">·</span>
+        Tutorials finished: <b>${(o.tutorialsCompleted ?? 0).toLocaleString()}</b>
+        <span class="stat-sep">·</span>
+        Tutorial completion: <b>${tutorialRate}%</b>
+        <span class="stat-sep">·</span>
+        <a href="${pageHref("reporting")}">Tutorial report</a>
+      </div>`
+          : ""
+      }
 
 
       <div class="grid2 dash-grid">

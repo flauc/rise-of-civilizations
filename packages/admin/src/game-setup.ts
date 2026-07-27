@@ -32,8 +32,19 @@ export function gameSetupFields(g: AdminGameSession): SetupField[] {
         ? `${g.aiCount} random`
         : "—";
 
+  const tutorial = !g.isTutorial
+    ? "No"
+    : g.tutorialOutcome === "completed"
+      ? "Yes, coaching finished"
+      : g.tutorialOutcome === "skipped"
+        ? `Yes, tips skipped${g.tutorialStep ? ` at ${g.tutorialStep}` : ""}`
+        : g.tutorialOutcome === "abandoned"
+          ? `Yes, left early${g.tutorialStep ? ` at ${g.tutorialStep}` : ""}`
+          : "Yes, coaching still running";
+
   return [
     { label: "Mode", value: g.mode ? g.mode.toUpperCase() : "—" },
+    { label: "Tutorial", value: tutorial },
     { label: "Map", value: map },
     { label: "Map size", value: mapSize },
     { label: "Game speed", value: g.gameSpeed ? titleCase(g.gameSpeed) : "—" },
