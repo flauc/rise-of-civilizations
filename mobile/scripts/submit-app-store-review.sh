@@ -4,7 +4,10 @@ set -euo pipefail
 
 : "${APPSTORE_KEY_ID:?APPSTORE_KEY_ID is required}"
 : "${APPSTORE_ISSUER_ID:?APPSTORE_ISSUER_ID is required}"
-: "${APPSTORE_PRIVATE_KEY:?APPSTORE_PRIVATE_KEY is required}"
+if [ -z "${APPSTORE_PRIVATE_KEY_FILE:-}" ] && [ -z "${APPSTORE_PRIVATE_KEY:-}" ]; then
+  echo "APPSTORE_PRIVATE_KEY_FILE (from prepare step) or APPSTORE_PRIVATE_KEY is required." >&2
+  exit 1
+fi
 
 if [[ "${IOS_SUBMIT_FOR_REVIEW:-true}" != "true" ]]; then
   echo "IOS_SUBMIT_FOR_REVIEW is not true; skipping App Store submission."
