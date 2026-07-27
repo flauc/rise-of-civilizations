@@ -1,2 +1,3 @@
-# Listing metadata lives in App Store Connect; this file exists so CI deliver runs non-interactively.
+# Listing metadata lives in App Store Connect; CI writes fastlane/metadata/en-US/release_notes.txt
+# before submit. Other fields stay in App Store Connect.
 app_identifier("com.riseofcivilizations.game")

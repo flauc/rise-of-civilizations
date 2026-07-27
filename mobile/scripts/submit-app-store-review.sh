@@ -38,6 +38,16 @@ cd "$MOBILE_DIR"
 
 echo "Submitting ${APP_ID} ${APP_VERSION} for App Store review (binary already uploaded)…"
 
+# fastlane deliver expects localized release notes (a locale → text hash). The CLI
+# flag only accepts a Hash, not a plain string, so write en-US whatsNew metadata.
+METADATA_DIR="$MOBILE_DIR/fastlane/metadata/en-US"
+mkdir -p "$METADATA_DIR"
+if [[ -n "${IOS_RELEASE_NOTES:-}" ]]; then
+  printf '%s\n' "$IOS_RELEASE_NOTES" > "$METADATA_DIR/release_notes.txt"
+else
+  rm -f "$METADATA_DIR/release_notes.txt"
+fi
+
 DELIVER_ARGS=(
   --api_key_path "$API_KEY_PATH"
   --app_identifier "$APP_ID"
@@ -45,17 +55,13 @@ DELIVER_ARGS=(
   --app_version "$APP_VERSION"
   --skip_binary_upload true
   --skip_screenshots true
-  --skip_metadata true
+  --skip_metadata false
   --skip_app_version_update false
   --submit_for_review true
   --automatic_release true
   --precheck_include_in_app_purchases false
   --force
 )
-
-if [[ -n "${IOS_RELEASE_NOTES:-}" ]]; then
-  DELIVER_ARGS+=(--release_notes "$IOS_RELEASE_NOTES")
-fi
 
 # Optional: cancel an existing Waiting for Review submission and submit this build instead.
 if [[ "${IOS_REJECT_WAITING_REVIEW:-false}" == "true" ]]; then
