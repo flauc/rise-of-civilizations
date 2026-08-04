@@ -891,10 +891,12 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       liftFog = true;
       bumpMapLayers();
       camera.fitToView(computeWorldBounds(st().map), cssWidth, cssHeight, BASE_SIZE * 2);
+      needsHudRender = true;
       needsRedraw = true;
     },
     onGameOverBackToSummary: () => {
       gameOverExploreMap = false;
+      needsHudRender = true;
       needsRedraw = true;
     },
     onGameOverQuit: () => {

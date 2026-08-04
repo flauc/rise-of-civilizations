@@ -9,6 +9,14 @@ import {
   mapEdgeSkirtRotationRad,
   isMapTilePresent,
   mapBottomCliffTiles,
+  mapBottomEdgeSkirtKind,
+  mapBottomEdgeSkirtRotationRad,
+  mapBottomEdgeTerrainDrawCol,
+  mapBottomEdgeTerrainRefCol,
+  mapBottomEdgeTerrainSlots,
+  getMapSlotTile,
+  isLeftBottomGapTerrainSlot,
+  isMapBottomEdgeTerrainSlot,
   mapEdgeSkirtSide,
   mapEdgeVoidKind,
   mapEdgeVoidRotationRad,
@@ -216,6 +224,72 @@ describe("isMapTilePresent", () => {
     expect(isMapTilePresent(map, 0, 3)).toBe(true);
     expect(isMapTilePresent(map, 0, 4)).toBe(false);
     expect(isMapTilePresent(map, 1, 0)).toBe(true);
+  });
+});
+
+describe("mapBottomEdgeTerrainSlots", () => {
+  it("flags penultimate col 0 when omitted for gap terrain", () => {
+    const map = tinyMap(8, 8);
+    const penultimate = map.rows - 2;
+    if (!isMapTilePresent(map, 0, penultimate)) {
+      expect(isLeftBottomGapTerrainSlot(map, 0, penultimate)).toBe(true);
+      expect(isMapBottomEdgeTerrainSlot(map, 0, penultimate)).toBe(true);
+      expect(getMapSlotTile(map, 0, penultimate)?.col).toBe(0);
+    }
+  });
+
+  it("lists omitted corners plus penultimate east ghost when right edge is present", () => {
+    const map = tinyMap(8, 8);
+    const penultimate = map.rows - 2;
+    const bottom = map.rows - 1;
+    const slots = mapBottomEdgeTerrainSlots(map);
+    expect(slots.some((s) => s.col === 0 && s.row === bottom)).toBe(true);
+    expect(slots.some((s) => s.col === map.cols - 1 && s.row === bottom)).toBe(true);
+    if (isMapTilePresent(map, map.cols - 1, penultimate)) {
+      expect(slots.some((s) => s.col === map.cols && s.row === penultimate)).toBe(true);
+      expect(slots.some((s) => s.col === map.cols - 1 && s.row === penultimate)).toBe(false);
+      expect(mapBottomEdgeTerrainRefCol(map, map.cols, penultimate)).toBe(map.cols - 1);
+    }
+    if (!isMapTilePresent(map, 0, penultimate)) {
+      expect(slots.some((s) => s.col === 0 && s.row === penultimate)).toBe(true);
+    }
+    expect(mapBottomEdgeTerrainRefCol(map, 0, bottom)).toBe(1);
+    expect(mapBottomEdgeTerrainRefCol(map, map.cols, penultimate)).toBe(map.cols - 1);
+    expect(mapBottomEdgeTerrainDrawCol(map, map.cols, penultimate)).toBe(map.cols);
+    expect(mapBottomEdgeTerrainDrawCol(map, 0, bottom)).toBe(0);
+    expect(mapEdgeSkirtKind(map, map.cols - 2, penultimate)).not.toBeNull();
+  });
+
+  it("picks hexUnderOcean or hexUnderDirt from the inward neighbor", () => {
+    const map = tinyMap(8, 8, "plains");
+    const bottom = map.rows - 1;
+    const penultimate = map.rows - 2;
+    setTerrain(map, 1, penultimate, "ocean");
+    expect(mapBottomEdgeSkirtKind(map, 0, bottom)).toBe("oceanShoreWest");
+    for (let c = 0; c < map.cols; c++) setTerrain(map, c, penultimate, "ocean");
+    expect(mapBottomEdgeSkirtKind(map, 0, bottom)).toBe("ocean");
+    setTerrain(map, 1, penultimate, "forest");
+    expect(mapBottomEdgeSkirtKind(map, 0, bottom)).toBe("dirt");
+    const east = tinyMap(8, 8, "plains");
+    const eastPen = east.rows - 2;
+    setTerrain(east, east.cols - 2, eastPen, "ocean");
+    setTerrain(east, east.cols - 1, eastPen, "ocean");
+    expect(mapEdgeSkirtKind(east, east.cols - 2, eastPen)).toBe("oceanShoreEast");
+    if (isMapTilePresent(east, east.cols - 1, eastPen)) {
+      for (let c = 0; c < east.cols; c++) setTerrain(east, c, eastPen, "ocean");
+      expect(mapBottomEdgeSkirtKind(east, east.cols, eastPen)).toBe("ocean");
+      setTerrain(east, east.cols - 1, eastPen, "plains");
+      expect(mapBottomEdgeSkirtKind(east, east.cols, eastPen)).toBe("dirt");
+    }
+  });
+
+  it("uses 180° on all bottom-edge hex-under skirts", () => {
+    const map = tinyMap(8, 8);
+    const penultimate = map.rows - 2;
+    expect(mapBottomEdgeSkirtRotationRad(map, 0, map.rows - 1)).toBe(Math.PI);
+    if (isMapTilePresent(map, map.cols - 1, penultimate)) {
+      expect(mapBottomEdgeSkirtRotationRad(map, map.cols, penultimate)).toBe(Math.PI);
+    }
   });
 });
 

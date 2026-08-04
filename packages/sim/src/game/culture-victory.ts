@@ -9,6 +9,9 @@ import type { GameState, Player } from "./state";
 import { citiesOf, playerById } from "./state";
 import { naturalWonderTerritoryTourismForPlayer } from "./natural-wonders";
 
+/** Rivals need this much lifetime culture before tourism can count as influential. */
+export const MIN_CULTURE_RESISTANCE = 25;
+
 /** Renown radiated by a single wonder, and by each tier of cultural building. */
 const TOURISM_PER_WONDER = 3;
 const CULTURE_BUILDING_TOURISM: Record<string, number> = {
@@ -86,8 +89,13 @@ export function accrueInfluence(state: GameState, playerId: number): void {
 export function influentialOver(state: GameState, fromId: number, toId: number): boolean {
   const from = playerById(state, fromId);
   const to = playerById(state, toId);
+  const resistance = to?.cultureLifetime ?? 0;
+  // Zero or tiny lifetime culture is not a meaningful bar — a monument's first
+  // tourism tick must not flip a rival on turn 1–2 before they have processed
+  // any city yields.
+  if (resistance < MIN_CULTURE_RESISTANCE) return false;
   const inf = from?.influenceOver?.[toId] ?? 0;
-  return inf > 0 && inf >= (to?.cultureLifetime ?? 0);
+  return inf >= resistance;
 }
 
 /** Rivals this civ still needs to win over, and those already influenced. */

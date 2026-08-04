@@ -225,15 +225,32 @@ describe("victory", () => {
       applyCommand(state, { type: "foundCity", unitId: settler.id }, owner);
     }
     state.enabledVictories = new Set(["culture"]);
-    // Player 0 projects renown (a cultural building); rival has little culture.
+    // Player 0 projects renown (a cultural building); rival has modest culture.
     citiesOf(state, 0)[0]!.buildings.push("amphitheater");
-    state.players[1]!.cultureLifetime = 3;
+    state.players[1]!.cultureLifetime = 25;
     expect(checkVictory(state)).toBeNull(); // no influence accrued yet
-    for (let i = 0; i < 5; i++) accrueInfluence(state, 0);
+    for (let i = 0; i < 13; i++) accrueInfluence(state, 0);
     expect(influentialOver(state, 0, 1)).toBe(true);
     const v = checkVictory(state);
     expect(v?.condition).toBe("culture");
     expect(v?.winnerId).toBe(0);
+  });
+
+  it("does not declare a culture victory from early tourism against zero lifetime culture", () => {
+    const state = createGame({ seed: "vic-cul-early", cols: 36, rows: 24, barbarians: false, humanSlots: 1, playerCount: 2 });
+    beginTurn(state);
+    for (const owner of [0, 1]) {
+      const settler = unitsOf(state, owner).find((u) => u.type === "settler")!;
+      applyCommand(state, { type: "foundCity", unitId: settler.id }, owner);
+    }
+    state.enabledVictories = new Set(["culture"]);
+    // Monument tourism on turn 1–2 must not beat rivals who have not accrued culture yet.
+    state.players[0]!.cultureLifetime = 0;
+    state.players[1]!.cultureLifetime = 0;
+    accrueInfluence(state, 0);
+    accrueInfluence(state, 0);
+    expect(influentialOver(state, 0, 1)).toBe(false);
+    expect(checkVictory(state)).toBeNull();
   });
 
   it("does not declare a religious victory from trace ambient pressure alone", () => {

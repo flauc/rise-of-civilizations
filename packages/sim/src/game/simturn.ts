@@ -12,7 +12,9 @@ import { healAndReset, towerBombardment } from "./combat";
 import { processCity, advanceResearch, advanceGovernment, applyUnitUpkeep } from "./economy";
 import { barbarianTurn } from "./barbarians";
 import { updateExplored } from "./visibility";
+import { accrueInfluence } from "./culture-victory";
 import { applyVictoryCheck } from "./victory";
+import { trackCircumnavigation } from "./science-victory";
 import { spreadReligion } from "./religion";
 import { pruneTradeRoutes, refreshTradeRoutePaths } from "./trade";
 import { pruneBarbarianBribes } from "./bribery";
@@ -85,6 +87,8 @@ export function resolveSimultaneousTurn(state: GameState): void {
     if (p.unrestTurns > 0) { p.unrestTurns -= 1; if (p.unrestTurns === 0) p.unrestEndedTurn = state.turn + 1; }
     applyUnitUpkeep(state, p); // empire-wide unit maintenance after city income
     advanceWorks(state, p.id); // specialists labour on public works
+    if (state.enabledVictories?.has("science")) trackCircumnavigation(state, p.id);
+    if (state.enabledVictories?.has("culture")) accrueInfluence(state, p.id);
   }
   ejectTrespassers(state); // borders that grew this round bump foreign units off the land
   ejectBorderUnits(state); // visual rim tiles are not playable

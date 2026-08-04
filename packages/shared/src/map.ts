@@ -147,6 +147,74 @@ export function mapBottomCliffTiles(
   return out;
 }
 
+/** Last-two-row left/right edge extension slots (penultimate west ghost + east ghost). */
+export function mapBottomEdgeTerrainSlots(
+  map: GameMap,
+): ReadonlyArray<{ readonly col: number; readonly row: number }> {
+  const penultimate = map.rows - 2;
+  const bottom = map.rows - 1;
+  if (penultimate < 0) return [];
+  const out: { col: number; row: number }[] = [];
+  for (const row of [penultimate, bottom]) {
+    if (!isMapTilePresent(map, 0, row)) out.push({ col: 0, row });
+    if (row === penultimate) {
+      if (!isMapTilePresent(map, map.cols - 1, row)) {
+        out.push({ col: map.cols - 1, row });
+      } else {
+        // Playable right-edge penultimate: half cliff on east ghost (col === cols).
+        out.push({ col: map.cols, row: penultimate });
+      }
+    } else if (!isMapTilePresent(map, map.cols - 1, row)) {
+      // Bottom right ghost half (mirrors col 0 on the left); inward tile uses full rim skirt.
+      out.push({ col: map.cols - 1, row });
+    }
+  }
+  return out;
+}
+
+/** Inward column whose terrain feeds a bottom edge extension slot. */
+export function mapBottomEdgeTerrainRefCol(map: GameMap, col: number, _row: number): number {
+  if (col <= 0) return 1;
+  if (col >= map.cols) return map.cols - 1;
+  return map.cols - 2;
+}
+
+/** Screen anchor column for a bottom-edge extension slot (ghost col). */
+export function mapBottomEdgeTerrainDrawCol(_map: GameMap, col: number, _row: number): number {
+  return col;
+}
+
+export function isMapBottomEdgeTerrainSlot(map: GameMap, col: number, row: number): boolean {
+  return mapBottomEdgeTerrainSlots(map).some((s) => s.col === col && s.row === row);
+}
+
+/** hexUnderDirt / hexUnderOcean for a bottom edge extension slot. */
+export function mapBottomEdgeSkirtKind(map: GameMap, col: number, row: number): MapEdgeSkirtKind | null {
+  if (!isMapBottomEdgeTerrainSlot(map, col, row)) return null;
+  const refCol = mapBottomEdgeTerrainRefCol(map, col, row);
+  const penultimate = map.rows - 2;
+  return mapEdgeSkirtKind(map, refCol, penultimate);
+}
+
+/** 180° rotation + flipY: flipY keeps PNG colors upright, π seats the cliff on the edge. */
+export const MAP_BOTTOM_EDGE_SKIRT_ROTATION_RAD = Math.PI;
+
+/** Rotation for hex-under on bottom-edge extension slots. */
+export function mapBottomEdgeSkirtRotationRad(_map: GameMap, _col: number, _row: number): number {
+  return MAP_BOTTOM_EDGE_SKIRT_ROTATION_RAD;
+}
+
+/** @deprecated Use {@link isMapBottomEdgeTerrainSlot}. */
+export function isLeftBottomGapTerrainSlot(map: GameMap, col: number, row: number): boolean {
+  return isMapBottomEdgeTerrainSlot(map, col, row) && col === 0;
+}
+
+/** Tile data at a grid slot even when {@link isMapTilePresent} is false (rendering only). */
+export function getMapSlotTile(map: GameMap, col: number, row: number): Tile | undefined {
+  if (col < 0 || row < 0 || col >= map.cols || row >= map.rows) return undefined;
+  return map.tiles[tileIndex(map, col, row)];
+}
+
 /** True when at least one hex neighbour lies outside the playable map. */
 export function isMapBorderTile(map: GameMap, col: number, row: number): boolean {
   if (!isMapTilePresent(map, col, row)) return false;

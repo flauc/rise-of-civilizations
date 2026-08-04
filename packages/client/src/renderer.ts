@@ -11,6 +11,11 @@ import {
   isMapBorderTile,
   isMapTilePresent,
   mapBottomCliffTiles,
+  mapBottomEdgeSkirtKind,
+  mapBottomEdgeSkirtRotationRad,
+  mapBottomEdgeTerrainDrawCol,
+  mapBottomEdgeTerrainRefCol,
+  mapBottomEdgeTerrainSlots,
   mapEdgeSkirtKind,
   mapEdgeSkirtRotationRad,
   offsetToAxial,
@@ -403,6 +408,28 @@ const MAP_EDGE_VOID_DEPTH = 4;
  *  exactly on the tile's lower V would be -0.5; the extra 0.05 tucks the cliff a
  *  hair under the terrain so no seam shows between them. */
 const MAP_BOTTOM_EDGE_SKIRT_OFFSET_Y = -0.45;
+/** Last-two-row left extension half-cliffs (col 0 slots). */
+const MAP_BOTTOM_EDGE_LEFT_EXT_SKIRT_OFFSET_X = -0.5;
+const MAP_BOTTOM_EDGE_LEFT_EXT_SKIRT_OFFSET_Y = 0.3;
+/** Last-two-row right extension half-cliffs (right-edge / east-ghost slots). */
+const MAP_BOTTOM_EDGE_RIGHT_EXT_SKIRT_OFFSET_X = 0.5;
+const MAP_BOTTOM_EDGE_RIGHT_EXT_SKIRT_OFFSET_Y = 0.3;
+
+function bottomExtensionSkirtScreenOffset(
+  col: number,
+  footprint: number,
+): { x: number; y: number } {
+  if (col <= 0) {
+    return {
+      x: footprint * MAP_BOTTOM_EDGE_LEFT_EXT_SKIRT_OFFSET_X,
+      y: footprint * MAP_BOTTOM_EDGE_LEFT_EXT_SKIRT_OFFSET_Y,
+    };
+  }
+  return {
+    x: footprint * MAP_BOTTOM_EDGE_RIGHT_EXT_SKIRT_OFFSET_X,
+    y: footprint * MAP_BOTTOM_EDGE_RIGHT_EXT_SKIRT_OFFSET_Y,
+  };
+}
 /** Void hexes render at the same footprint as terrain tiles so they align to the
  *  hex grid; the deep-space background fill covers any hairline seams between them. */
 const MAP_EDGE_VOID_TILE_SCALE = 1;
@@ -493,13 +520,18 @@ function collectMapEdgeVoidGhosts(
   return ghosts;
 }
 
+/** Which horizontal half of the hex-under PNG to draw (256px art split at center). */
+type HexUnderImageHalf = "all" | "left" | "right";
+
 interface HexUnderOverlayOptions {
   /** Canvas rotation applied before flipY. */
   readonly rotationRad?: number;
   /** Mirror vertically after rotation so cliff PNGs seat on the bottom/side edges. */
   readonly flipY?: boolean;
-  /** Screen-space nudge after rotate/flipY: positive Y = up. */
+  /** Screen-space nudge after rotate/flipY: positive X = left, positive Y = up. */
+  readonly screenOffsetX?: number;
   readonly screenOffsetY?: number;
+  readonly imageHalf?: HexUnderImageHalf;
 }
 
 /** Draw hex-under art anchored like a terrain tile (256×384 footprint). */
@@ -509,19 +541,39 @@ function drawHexUnderOverlay(
   sx: number,
   sy: number,
   footprint: number,
-  { rotationRad = 0, flipY = false, screenOffsetY = 0 }: HexUnderOverlayOptions = {},
+  {
+    rotationRad = 0,
+    flipY = false,
+    screenOffsetX = 0,
+    screenOffsetY = 0,
+    imageHalf = "all",
+  }: HexUnderOverlayOptions = {},
 ): void {
   if (!img || !isImageReady(img)) return;
   const scale = footprint / img.naturalWidth;
   const drawW = img.naturalWidth * scale;
   const drawH = img.naturalHeight * scale;
   const drawY = footprint / 2 - drawH;
+  let srcX = 0;
+  let srcW = img.naturalWidth;
+  let destX = -drawW / 2;
+  let destW = drawW;
+  if (imageHalf === "right") {
+    srcX = img.naturalWidth / 2;
+    srcW = img.naturalWidth / 2;
+    destX = 0;
+    destW = drawW / 2;
+  } else if (imageHalf === "left") {
+    srcW = img.naturalWidth / 2;
+    destX = -drawW / 2;
+    destW = drawW / 2;
+  }
   ctx.save();
   ctx.translate(sx, sy);
   if (rotationRad !== 0) ctx.rotate(rotationRad);
   if (flipY) ctx.scale(1, -1);
-  if (screenOffsetY !== 0) ctx.translate(0, -screenOffsetY);
-  ctx.drawImage(img, -drawW / 2, drawY, drawW, drawH);
+  if (screenOffsetX !== 0 || screenOffsetY !== 0) ctx.translate(screenOffsetX, -screenOffsetY);
+  ctx.drawImage(img, srcX, 0, srcW, img.naturalHeight, destX, drawY, destW, drawH);
   ctx.restore();
 }
 
@@ -605,6 +657,91 @@ function paintMapEdgeBottomVoidBridge(
   }
 }
 
+function skirtFogKey(map: GameMap, col: number, row: number): string {
+  const bottom = map.rows - 1;
+  const fogRow = row === bottom ? map.rows - 2 : row;
+  return `${col},${fogRow}`;
+}
+
+/** PNG half after π + flipY for bottom-edge extension slots. */
+function mapBottomEdgeSkirtImageHalf(map: GameMap, col: number, row: number): HexUnderImageHalf {
+  const bottom = map.rows - 1;
+  if (col <= 0) return "right";
+  if (col === map.cols - 1 && row === bottom) return "all";
+  return "left";
+}
+
+/** Off-map extension slots sit one hex beyond the grid; keep a wider cull margin. */
+function extensionSkirtCullMargin(map: GameMap, col: number, footprint: number, margin: number): number {
+  if (col <= 0 || col >= map.cols) return margin + footprint * 2;
+  return margin;
+}
+
+/** hexUnderDirt / hexUnderOcean on omitted penultimate/bottom corner slots. */
+function paintMapBottomEdgeSkirts(
+  ctx: CanvasRenderingContext2D,
+  map: GameMap,
+  camera: Camera,
+  opts: Pick<RenderOptions, "fog" | "mapEdgeAtlas" | "skipFogPass">,
+  footprint: number,
+  margin: number,
+  cssWidth: number,
+  cssHeight: number,
+): void {
+  if (!opts.mapEdgeAtlas) return;
+  const voidImg = mapEdgeFrameFor(opts.mapEdgeAtlas, "void0") ?? undefined;
+  const penultimate = map.rows - 2;
+
+  const drawExtensionSkirt = (
+    slotCol: number,
+    row: number,
+    drawCol: number,
+    imageHalf: HexUnderImageHalf,
+  ): void => {
+    const kind = mapBottomEdgeSkirtKind(map, slotCol, row);
+    if (!kind) return;
+    const refCol = mapBottomEdgeTerrainRefCol(map, slotCol, row);
+    const fogKey = skirtFogKey(map, refCol, row);
+    if (opts.fog && !opts.fog.explored.has(fogKey) && !opts.skipFogPass) return;
+    const img = mapEdgeFrameFor(opts.mapEdgeAtlas, kind);
+    const c = tileCenterWorld(drawCol, row);
+    const sx = camera.worldToScreenX(c.x);
+    const sy = camera.worldToScreenY(c.y);
+    const cullMargin = extensionSkirtCullMargin(map, slotCol, footprint, margin);
+    if (sx < -cullMargin || sy < -cullMargin || sx > cssWidth + cullMargin || sy > cssHeight + cullMargin) {
+      return;
+    }
+    // Void only behind ghost/off-map slots — never over a penultimate tile that still renders terrain.
+    const drawsOverTerrain = row === penultimate && isMapTilePresent(map, drawCol, row);
+    if (!drawsOverTerrain) {
+      drawFootprintOverlay(ctx, voidImg, sx, sy, footprint, MAP_EDGE_VOID_TILE_SCALE);
+    }
+    const rot = mapBottomEdgeSkirtRotationRad(map, slotCol, row);
+    const { x: skirtOffsetX, y: skirtOffsetY } = bottomExtensionSkirtScreenOffset(slotCol, footprint);
+    drawHexUnderOverlay(ctx, img, sx, sy, footprint, {
+      rotationRad: rot,
+      flipY: true,
+      screenOffsetX: skirtOffsetX,
+      screenOffsetY: skirtOffsetY,
+      imageHalf,
+    });
+  };
+
+  for (const { col, row } of mapBottomEdgeTerrainSlots(map)) {
+    if (col >= map.cols && row === penultimate) {
+      // Outward half only — the penultimate tile gets its full cliff from mapBottomCliffTiles.
+      drawExtensionSkirt(col, row, col, "left");
+      continue;
+    }
+    drawExtensionSkirt(
+      col,
+      row,
+      mapBottomEdgeTerrainDrawCol(map, col, row),
+      mapBottomEdgeSkirtImageHalf(map, col, row),
+    );
+  }
+}
+
 /**
  * The bottom cliff band, drawn before terrain so the tiles above cover the sprite's
  * top V and only the wall below the map shows. Each cliff hangs off its own tile on
@@ -636,6 +773,7 @@ function paintMapEdgeHexUnderSkirts(
       screenOffsetY: footprint * MAP_BOTTOM_EDGE_SKIRT_OFFSET_Y,
     });
   }
+  paintMapBottomEdgeSkirts(ctx, map, camera, opts, footprint, margin, cssWidth, cssHeight);
 }
 
 function paintMapEdgeVoidLayers(
@@ -1117,9 +1255,15 @@ export function drawScene(
       mapIntersectsViewport(camera, state.map, opts.cssWidth, opts.cssHeight, edgeMargin)
     ) {
       paintMapEdgeVoidLayers(ctx, state.map, camera, opts, footprint, edgeMargin, cssWidth, cssHeight);
-      paintMapEdgeHexUnderSkirts(ctx, state.map, camera, opts, footprint, edgeMargin, cssWidth, cssHeight);
     }
     mapLayerCache.blit(ctx, camera, dpr, false);
+    // Cliffs hang below rows-2 terrain — draw after the baked bitmap so tiles do not cover them.
+    if (
+      !opts.skipMapEdgePass &&
+      mapIntersectsViewport(camera, state.map, opts.cssWidth, opts.cssHeight, edgeMargin)
+    ) {
+      paintMapEdgeHexUnderSkirts(ctx, state.map, camera, opts, footprint, edgeMargin, cssWidth, cssHeight);
+    }
     // The baked bitmap has no fog, so unexplored tiles must fully conceal it.
     if (mapIntersectsViewport(camera, state.map, opts.cssWidth, opts.cssHeight, footprint * 2)) {
       paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, footprint * 2, true);
@@ -1157,7 +1301,6 @@ export function drawScene(
 
   if (!opts.skipMapEdgePass) {
     paintMapEdgeVoidLayers(ctx, map, camera, opts, footprint, margin, cssWidth, cssHeight);
-    paintMapEdgeHexUnderSkirts(ctx, map, camera, opts, footprint, margin, cssWidth, cssHeight);
   }
 
   // Polar band width for decor near the ice caps (crevasse fringe, polar icebergs).
@@ -1393,6 +1536,11 @@ export function drawScene(
   if (!opts.skipFogPass) {
     // Live path: unexplored tiles never drew their art, so plain fills suffice.
     paintFogOfWar(ctx, state, camera, opts, size, footprint, corners, margin, false);
+  }
+
+  // Bottom cliff band (rows-2): hex-under dirt/ocean skirts hang below terrain tiles.
+  if (!opts.skipMapEdgePass) {
+    paintMapEdgeHexUnderSkirts(ctx, map, camera, opts, footprint, margin, cssWidth, cssHeight);
   }
 
   // Hover highlight on top.
