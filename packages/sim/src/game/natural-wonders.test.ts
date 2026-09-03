@@ -3,6 +3,10 @@ import { createGame } from "./setup";
 import { applyCommand } from "./commands";
 import { updateExplored } from "./visibility";
 import {
+  isNaturalWonderAnchor,
+  naturalWonderAnchorFor,
+  naturalWonderFootprintTiles,
+  naturalWonderSpritePaintTile,
   naturalWonderYields,
   naturalWonderCulture,
   naturalWonderTerritoryCulture,
@@ -14,7 +18,7 @@ import { getCityYields } from "./economy";
 import { baseTourism } from "./culture-victory";
 import { citiesOf, unitsOf } from "./state";
 import { axialDistance, getTile, offsetToAxial, axialNeighbor, axialToOffset } from "@roc/shared";
-import { getNaturalWonder, NATURAL_WONDER_DEFS, NATURAL_WONDER_IDS } from "@roc/data";
+import { getNaturalWonder, naturalWonderTileCount, NATURAL_WONDER_DEFS, NATURAL_WONDER_IDS } from "@roc/data";
 import { mapGeoProfile, naturalWonderTileGeoValid, tileInWonderBox } from "../map-geo";
 import { REGIONAL_WONDER_SPACING } from "../regional-wonder-terrain";
 import { isRegionalGeoMapType } from "../geo-maps";
@@ -30,16 +34,124 @@ function foundCapital(state: ReturnType<typeof createGame>) {
 }
 
 describe("natural wonders", () => {
-  it("places several single-tile natural wonders on the map", () => {
+  it("places natural wonders on the map, each filling its whole footprint", () => {
     const state = createGame({ seed: "nw-map", cols: 80, rows: 56, barbarians: false, naturalWonders: true });
     expect(state.naturalWonderIds.length).toBeGreaterThanOrEqual(2);
-    // Every placed wonder occupies exactly one tile and is a known def.
+    // Every placed wonder is a known def and occupies exactly as many tiles as its
+    // footprint declares (one for ordinary wonders).
     for (const id of state.naturalWonderIds) {
       expect(getNaturalWonder(id)).toBeDefined();
       const tiles = state.map.tiles.filter((t) => t.naturalWonder === id);
-      expect(tiles.length).toBe(1);
-      expect(naturalWonderTileGeoValid(state.map, id, tiles[0]!.col, tiles[0]!.row)).toBe(true);
+      expect(tiles.length, id).toBe(naturalWonderTileCount(id));
+      const anchors = tiles.filter((t) => isNaturalWonderAnchor(state.map, t.col, t.row));
+      expect(anchors.length, `${id} anchors`).toBe(1);
+      expect(naturalWonderTileGeoValid(state.map, id, anchors[0]!.col, anchors[0]!.row)).toBe(true);
+      // The footprint stamped on the map is exactly the one the def declares.
+      const expected = naturalWonderFootprintTiles(getNaturalWonder(id), anchors[0]!.col, anchors[0]!.row)
+        .map((t) => `${t.col},${t.row}`)
+        .sort();
+      expect(tiles.map((t) => `${t.col},${t.row}`).sort(), id).toEqual(expected);
+      // Every tile of a wonder pays the same yields.
+      for (const t of tiles) {
+        expect(naturalWonderYields(t), id).toEqual(naturalWonderYields(anchors[0]!));
+        expect(naturalWonderTerritoryCulture(t), id).toBe(naturalWonderTerritoryCulture(anchors[0]!));
+        expect(naturalWonderTerritoryTourism(t), id).toBe(naturalWonderTerritoryTourism(anchors[0]!));
+      }
     }
+  });
+
+  it("places the multi-tile wonders across contiguous tiles of valid terrain", () => {
+    const multi = NATURAL_WONDER_DEFS.filter((d) => d.footprint);
+    expect(multi.length).toBeGreaterThan(0);
+    const seen = new Set<string>();
+    for (let i = 0; i < 8 && seen.size < multi.length; i++) {
+      const state = createGame({
+        seed: `nw-multi-${i}`,
+        cols: 90,
+        rows: 62,
+        mapType: "realworld",
+        barbarians: false,
+        naturalWonders: true,
+      });
+      for (const def of multi) {
+        const tiles = state.map.tiles.filter((t) => t.naturalWonder === def.id);
+        if (tiles.length === 0) continue;
+        seen.add(def.id);
+        expect(tiles.length, def.id).toBe(def.footprint!.length);
+        for (const t of tiles) {
+          expect(def.validTerrain, `${def.id} terrain`).toContain(t.terrain);
+          expect(t.river, `${def.id} river`).toBeFalsy();
+          expect(t.resource, `${def.id} resource`).toBeFalsy();
+          expect(t.feature, `${def.id} feature`).toBeFalsy();
+        }
+        // Contiguity: every tile touches at least one other tile of the wonder.
+        for (const t of tiles) {
+          const here = offsetToAxial({ col: t.col, row: t.row });
+          const touching = tiles.some(
+            (o) => o !== t && axialDistance(here, offsetToAxial({ col: o.col, row: o.row })) === 1,
+          );
+          expect(touching, `${def.id} at ${t.col},${t.row}`).toBe(true);
+        }
+      }
+    }
+    // The Amazon and the Grand Canyon both have plenty of room on a Real World map.
+    expect([...seen].sort()).toEqual(multi.map((d) => d.id).sort());
+  });
+
+  it("exposes one anchor and one paint tile per multi-tile wonder", () => {
+    const state = createGame({
+      seed: "nw-multi-anchor",
+      cols: 90,
+      rows: 62,
+      mapType: "realworld",
+      barbarians: false,
+      naturalWonders: true,
+    });
+    let checked = 0;
+    for (const id of state.naturalWonderIds) {
+      const tiles = state.map.tiles.filter((t) => t.naturalWonder === id);
+      const anchors = tiles.filter((t) => isNaturalWonderAnchor(state.map, t.col, t.row));
+      expect(anchors.length, id).toBe(1);
+      const anchor = anchors[0]!;
+      // Every tile of the wonder agrees on the anchor and on the paint tile.
+      const paint = naturalWonderSpritePaintTile(state.map, anchor.col, anchor.row)!;
+      for (const t of tiles) {
+        expect(naturalWonderAnchorFor(state.map, t.col, t.row), id).toEqual({
+          col: anchor.col,
+          row: anchor.row,
+        });
+        expect(naturalWonderSpritePaintTile(state.map, t.col, t.row), id).toEqual(paint);
+      }
+      // The renderer walks tiles row-major and paints the sprite over terrain it has
+      // already laid down, so the paint tile must be the LAST tile of the footprint.
+      for (const t of tiles) {
+        expect(t.row < paint.row || (t.row === paint.row && t.col <= paint.col), id).toBe(true);
+      }
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("discovers a multi-tile wonder from any one of its tiles", () => {
+    const state = createGame({
+      seed: "nw-multi-sight",
+      cols: 90,
+      rows: 62,
+      mapType: "realworld",
+      barbarians: false,
+      naturalWonders: true,
+    });
+    const def = NATURAL_WONDER_DEFS.find(
+      (d) => d.footprint && state.map.tiles.some((t) => t.naturalWonder === d.id),
+    )!;
+    expect(def).toBeDefined();
+    const tiles = state.map.tiles.filter((t) => t.naturalWonder === def.id);
+    // Sight the LAST tile of the footprint only: the whole wonder still counts.
+    const far = tiles[tiles.length - 1]!;
+    const player = state.players[0]!;
+    player.explored.add(`${far.col},${far.row}`);
+    checkNaturalWonderDiscovery(state, 0);
+    expect(state.discoveredWonders?.[def.id]).toBe(0);
   });
 
   it("never places two wonders close to each other", () => {
@@ -55,8 +167,10 @@ describe("natural wonders", () => {
         barbarians: false,
         naturalWonders: true,
       });
+      // One spot per wonder: the tiles WITHIN a multi-tile footprint are adjacent
+      // by design, so spacing is measured between wonders, not between their tiles.
       const spots = state.map.tiles
-        .filter((t) => t.naturalWonder)
+        .filter((t) => t.naturalWonder && isNaturalWonderAnchor(state.map, t.col, t.row))
         .map((t) => offsetToAxial({ col: t.col, row: t.row }));
       if (spots.length < 2) continue;
       const minSpacing = isRegionalGeoMapType(state.map.mapType) ? REGIONAL_WONDER_SPACING : 10;
@@ -371,8 +485,15 @@ describe("natural wonders", () => {
         const def = getNaturalWonder(t.naturalWonder);
         expect(def?.realWorldBox).toBeDefined();
         const { lat, lon } = geo.tileLatLon(t.col, t.row, state.map.cols, state.map.rows);
-        expect(tileInWonderBox(geo, t.col, t.row, state.map.cols, state.map.rows, def!.realWorldBox!)).toBe(true);
         sawAny = true;
+        // A multi-tile footprint may reach one tile past the edge of a tight box,
+        // so the box is asserted on the wonder as a whole (see the anchor tile).
+        if (isNaturalWonderAnchor(state.map, t.col, t.row)) {
+          expect(
+            tileInWonderBox(geo, t.col, t.row, state.map.cols, state.map.rows, def!.realWorldBox!),
+            t.naturalWonder,
+          ).toBe(true);
+        }
         if (t.naturalWonder === "plitvice_lakes") {
           expect(lat).toBeGreaterThan(40);
           expect(lat).toBeLessThan(50);

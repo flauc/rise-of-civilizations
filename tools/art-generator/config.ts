@@ -1359,11 +1359,21 @@ export const FLAT_NATURAL_WONDER_ART: Record<string, string> = {
     "the SALAR DE UYUNI salt flat seen straight down from directly overhead: a blinding-white salt plain patterned with the famous hexagonal salt-crust polygons and a thin mirror sheen of water in places — a flat aerial view",
 };
 
-// Each natural wonder is ONE full hex map TILE (256×384, same format as terrain),
-// generated and post-processed exactly like a terrain tile so it tessellates and
-// the renderer can draw it in place of the underlying terrain. Overhang wonders
+// Each single-tile natural wonder is ONE full hex map TILE (256×384, same format as
+// terrain), generated and post-processed exactly like a terrain tile so it tessellates
+// and the renderer can draw it in place of the underlying terrain. Overhang wonders
 // (see above) instead let their peak rise above the hex footprint.
-export const NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.map((w) => {
+//
+// MULTI-TILE wonders (those with a `footprint` in NATURAL_WONDER_DEFS: the Amazon,
+// the Grand Canyon) are deliberately NOT in this subset. Their art is one large
+// painting spanning several hexes, which the 256×384 single-tile pipeline cannot
+// produce or crop; it is painted separately and then fitted to the grid with
+// tools/art-generator/normalize_multitile_wonder.py, e.g.
+//
+//   python tools/art-generator/normalize_multitile_wonder.py //     <painting>.png packages/client/public/natural-wonders/grand_canyon.png 0,0 1,0
+//
+// Regenerating them here would overwrite that art with a one-hex version.
+export const NATURAL_WONDER_SUBSET: AssetEntry[] = NATURAL_WONDER_DEFS.filter((w) => !w.footprint).map((w) => {
   const encapsulated = FLAT_NATURAL_WONDER_IDS.has(w.id);
   return {
     id: w.id,

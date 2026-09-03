@@ -135,16 +135,29 @@ export function naturalWonderTileGeoValid(
   return tileInWonderBox(geo, col, row, map.cols, map.rows, def.realWorldBox);
 }
 
-/** List every natural-wonder tile that violates its geo box (empty = all valid). */
+/**
+ * List every natural wonder placed outside its geo box (empty = all valid). A
+ * MULTI-TILE wonder is judged as a whole: its footprint may straddle the edge of a
+ * tight box (the Grand Canyon's is barely a tile wide), so it counts as valid as
+ * long as at least one of its tiles falls inside.
+ */
 export function naturalWonderGeoViolations(
   map: MapTileGeo & { tiles: readonly { col: number; row: number; naturalWonder?: string }[] },
 ): string[] {
-  const out: string[] = [];
+  const inBox = new Set<string>();
+  const outOfBox = new Map<string, { col: number; row: number }>();
   for (const t of map.tiles) {
     if (!t.naturalWonder) continue;
-    if (!naturalWonderTileGeoValid(map, t.naturalWonder, t.col, t.row)) {
-      out.push(`${t.naturalWonder} at ${t.col},${t.row} on ${map.mapType ?? "earth"}`);
+    if (naturalWonderTileGeoValid(map, t.naturalWonder, t.col, t.row)) {
+      inBox.add(t.naturalWonder);
+    } else if (!outOfBox.has(t.naturalWonder)) {
+      outOfBox.set(t.naturalWonder, { col: t.col, row: t.row });
     }
+  }
+  const out: string[] = [];
+  for (const [id, t] of outOfBox) {
+    if (inBox.has(id)) continue;
+    out.push(`${id} at ${t.col},${t.row} on ${map.mapType ?? "earth"}`);
   }
   return out;
 }

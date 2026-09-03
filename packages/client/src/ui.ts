@@ -220,6 +220,7 @@ import {
 import { getTile, type Tile } from "@roc/shared";
 import {
   getNaturalWonder,
+  naturalWonderTileCount,
   WONDER_DEFS,
   getWonder,
   getGreatPerson,
@@ -388,6 +389,13 @@ function tileReport(state: GameState, tile: Tile, viewerId = -1): TileReport {
   if (wonder) {
     const claimed = state.discoveredWonders?.[wonder.id];
     lines.push({ kind: "good", text: `Natural Wonder: ${wonder.desc}` });
+    const wonderTiles = naturalWonderTileCount(wonder.id);
+    if (wonderTiles > 1) {
+      lines.push({
+        kind: "good",
+        text: `Spans ${wonderTiles} tiles, and each of them pays the same bonus`,
+      });
+    }
     if (claimed === undefined) {
       lines.push({ kind: "good", text: "Undiscovered: first to sight it claims a one-time bonus" });
     } else {

@@ -72,6 +72,7 @@ import {
   naturalWonderHistory,
   NATURAL_WONDER_DEFS,
   getNaturalWonder,
+  naturalWonderTileCount,
   ALL_NATURAL_WONDERS_BONUS,
   CIV_REGIONS,
   RELIGIONS,
@@ -1746,7 +1747,7 @@ function renderNaturalWonders(): string {
     WIKI_SHOWCASE_STYLE +
     section(
       "Wonders of the Natural World",
-      `<p>Natural wonders are single, unique tiles scattered across the map: the highest peak, the deepest lake, the loudest waterfall. Nobody builds them. They are simply out there, waiting, and the only way to claim one is to <b>send someone to look</b>.</p>` +
+      `<p>Natural wonders are unique places scattered across the map: the highest peak, the deepest lake, the loudest waterfall. Most fill a single tile, and the grandest of them sprawl across several. Nobody builds them. They are simply out there, waiting, and the only way to claim one is to <b>send someone to look</b>.</p>` +
         `<p>The <b>first civilization to sight</b> each wonder takes a one-time reward themed to the place: a burst of science from the Galápagos, of faith from Mount Fuji, of gold from the Salar de Uyuni. Sight them all before anyone else and you earn <b>${escapeHtml(naturalWonderBonusSummary(ALL_NATURAL_WONDERS_BONUS))}</b> on top. This is what makes early scouting pay: the rewards go to whoever gets there first, and they are never offered twice.</p>` +
         `<p>Beyond the discovery bonus, a natural wonder is a genuinely excellent tile to work, so founding a city within reach of one is worth going out of your way for. Select any wonder below for its full story.</p>`,
     ) +
@@ -1778,16 +1779,22 @@ function renderNaturalWonderDetail(id: string): string {
   if (!w) return detailNotFound();
   const terrain = w.validTerrain.map((t) => TERRAIN_NAMES[t as keyof typeof TERRAIN_NAMES] ?? t).join(", ");
   const bonus = naturalWonderBonusSummary(w.discoveryBonus);
+  const tiles = naturalWonderTileCount(w.id);
+  const scale = tiles > 1 ? `${tiles} tiles · ` : "";
   return (
-    detailHead(naturalWonderArt(w.id), w.name, "Natural wonder · one per world", yieldChips(w.tileYields)) +
+    detailHead(naturalWonderArt(w.id), w.name, `Natural wonder · ${scale}one per world`, yieldChips(w.tileYields)) +
     section("Flavour", `<p>${escapeHtml(w.desc)}</p>`) +
     section(
       "Discovery",
       `<p>The first civilization to sight ${escapeHtml(w.name)} claims <b>${escapeHtml(bonus)}</b>. The reward is one-time and goes to whoever gets there first.</p>`,
     ) +
     section(
-      "The tile",
-      `<p>Working this tile adds ${yieldChips(w.tileYields) || "no bonus yields"} to its city, on top of what the land already gives. It is found on <b>${escapeHtml(terrain)}</b>.</p>`,
+      tiles > 1 ? "The tiles" : "The tile",
+      `<p>Working ${tiles > 1 ? "any of its tiles" : "this tile"} adds ${yieldChips(w.tileYields) || "no bonus yields"} to its city, on top of what the land already gives.` +
+        (tiles > 1
+          ? ` ${escapeHtml(w.name)} covers <b>${tiles} tiles</b>, and every one of them pays the same, so a city that takes in the whole of it is worth building for.`
+          : "") +
+        ` It is found on <b>${escapeHtml(terrain)}</b>.</p>`,
     ) +
     historyBlock("History", naturalWonderHistory(id))
   );

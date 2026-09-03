@@ -27,7 +27,15 @@ import { coastFrameFor, type CoastAtlas } from "./coast-assets";
 import { mapEdgeFrameFor, type MapEdgeAtlas } from "./map-edge-assets";
 import { riverChannelFrame, riverMouthFrame, riverMountainFrame, type RiverAtlas } from "./river-assets";
 import { roadFrame, isolatedRoadFrame, type RoadAtlas } from "./road-assets";
-import { RESOURCE_DEFS, resourceActive, type GameState, type ResourceId } from "@roc/sim";
+import {
+  RESOURCE_DEFS,
+  resourceActive,
+  naturalWonderAnchorFor,
+  naturalWonderSpritePaintTile,
+  type GameState,
+  type ResourceId,
+} from "@roc/sim";
+import { getNaturalWonder, naturalWonderFootprint } from "@roc/data";
 import { type ResourceAtlas } from "./resource-assets";
 import { naturalWonderTileImage, type NaturalWonderAtlas } from "./natural-wonder-assets";
 import { wonderTileImage, type WonderAtlas } from "./wonder-assets";
@@ -77,6 +85,63 @@ export function pointInTileHex(camera: Camera, col: number, row: number, sx: num
 /** Footprint width of a tile (== height after squish) for a given hex size. */
 export function tileFootprint(size: number): number {
   return Math.sqrt(3) * size;
+}
+
+/**
+ * Sideways bleed baked into a MULTI-TILE natural wonder sprite, in footprint
+ * widths per side: the canopy and rock faces of a big wonder spill a little past
+ * the hexes it stands on, so the sprite is that much wider than its footprint
+ * bounding box on each side. One-tile sprites have no bleed (their 256px width is
+ * exactly one footprint) — see `naturalWonderSpriteRect`.
+ */
+export const MULTI_TILE_WONDER_SIDE_BLEED = 0.125;
+
+/**
+ * Where a natural wonder's sprite is drawn, given its ANCHOR tile's screen center.
+ * The sprite spans its footprint's bounding box (plus the side bleed for multi-tile
+ * wonders) and is anchored so the bottom vertex of its lowest row sits at the
+ * bottom edge of the image; everything taller than that overhangs upward, exactly
+ * like the one-tile 256×384 format.
+ */
+export function naturalWonderSpriteRect(
+  wonderId: string,
+  img: HTMLImageElement,
+  footprint: number,
+  sx: number,
+  sy: number,
+): { x: number; y: number; w: number; h: number } {
+  const offsets = naturalWonderFootprint(getNaturalWonder(wonderId));
+  let left = Infinity;
+  let right = -Infinity;
+  let bottom = -Infinity;
+  for (const { q, r } of offsets) {
+    const cx = footprint * (q + r / 2);
+    const cy = footprint * 0.75 * r;
+    left = Math.min(left, cx - footprint / 2);
+    right = Math.max(right, cx + footprint / 2);
+    bottom = Math.max(bottom, cy + footprint / 2);
+  }
+  const bleed = offsets.length > 1 ? footprint * MULTI_TILE_WONDER_SIDE_BLEED : 0;
+  const w = right - left + bleed * 2;
+  const h = (img.naturalHeight / img.naturalWidth) * w;
+  return { x: sx + left - bleed, y: sy + bottom - h, w, h };
+}
+
+/**
+ * Horizontal offset from a wonder's ANCHOR tile centre to the centre of its whole
+ * footprint (0 for a one-tile wonder). Used to hang a single label under the middle
+ * of a multi-tile wonder instead of over its south-west corner.
+ */
+export function naturalWonderFootprintCenterX(wonderId: string, footprint: number): number {
+  const offsets = naturalWonderFootprint(getNaturalWonder(wonderId));
+  let left = Infinity;
+  let right = -Infinity;
+  for (const { q, r } of offsets) {
+    const cx = footprint * (q + r / 2);
+    left = Math.min(left, cx);
+    right = Math.max(right, cx);
+  }
+  return (left + right) / 2;
 }
 
 /** World-space pixel center of an offset (col,row) tile. */
@@ -945,6 +1010,85 @@ function primaryTerrainImage(
   return img && isImageReady(img) ? img : undefined;
 }
 
+/** The wonder id when this tile belongs to a MULTI-tile wonder, else undefined. */
+function multiTileWonderId(id: string | undefined): string | undefined {
+  if (!id) return undefined;
+  return naturalWonderFootprint(getNaturalWonder(id)).length > 1 ? id : undefined;
+}
+
+/**
+ * Paint a MULTI-tile natural wonder: one wide sprite covering several tiles, hung
+ * off the footprint's anchor tile. It is drawn once, when the terrain loop reaches
+ * the last tile of the footprint, so every tile it covers has already laid down its
+ * own terrain and no sliver of map shows through where the painting stops just shy
+ * of a hex edge. A no-op on every other tile.
+ */
+function drawMultiTileWonder(
+  ctx: CanvasRenderingContext2D,
+  map: GameMap,
+  camera: Camera,
+  tile: { col: number; row: number; naturalWonder?: string },
+  atlas: NaturalWonderAtlas | undefined,
+  footprint: number,
+): void {
+  const id = multiTileWonderId(tile.naturalWonder);
+  if (!id) return;
+  const paintAt = naturalWonderSpritePaintTile(map, tile.col, tile.row);
+  if (!paintAt || paintAt.col !== tile.col || paintAt.row !== tile.row) return;
+  const img = naturalWonderTileImage(atlas, id);
+  const anchor = naturalWonderAnchorFor(map, tile.col, tile.row);
+  if (!img || !anchor) return;
+  const c = tileCenterWorld(anchor.col, anchor.row);
+  const r = naturalWonderSpriteRect(
+    id,
+    img,
+    footprint,
+    camera.worldToScreenX(c.x),
+    camera.worldToScreenY(c.y),
+  );
+  ctx.drawImage(img, r.x, r.y, r.w, r.h);
+}
+
+/**
+ * Cover a fogged tile's tall sprite overhang with a flat silhouette. One-tile
+ * sprites are drawn straight over the tile. A multi-tile wonder is ONE wide sprite
+ * shared by several tiles, so it is positioned from its anchor tile and clipped to
+ * this tile's own column: each fogged tile of the footprint then hides exactly its
+ * own share of the wonder, and its neighbours are left alone.
+ */
+function drawFogSprite(
+  ctx: CanvasRenderingContext2D,
+  map: GameMap,
+  camera: Camera,
+  d: { img: HTMLImageElement | undefined; sx: number; sy: number; wonderId?: string; col: number; row: number },
+  fill: string,
+  footprint: number,
+): void {
+  if (!d.img) return;
+  const sil = fogSilhouette(d.img, fill);
+  if (!d.wonderId) {
+    const scale = footprint / sil.width;
+    ctx.drawImage(sil, d.sx - (sil.width * scale) / 2, d.sy + footprint / 2 - sil.height * scale, sil.width * scale, sil.height * scale);
+    return;
+  }
+  const anchor = naturalWonderAnchorFor(map, d.col, d.row);
+  if (!anchor) return;
+  const ac = tileCenterWorld(anchor.col, anchor.row);
+  const r = naturalWonderSpriteRect(
+    d.wonderId,
+    d.img,
+    footprint,
+    camera.worldToScreenX(ac.x),
+    camera.worldToScreenY(ac.y),
+  );
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(d.sx - footprint / 2, r.y, footprint, d.sy + footprint / 2 - r.y);
+  ctx.clip();
+  ctx.drawImage(sil, r.x, r.y, r.w, r.h);
+  ctx.restore();
+}
+
 function paintFogOfWar(
   ctx: CanvasRenderingContext2D,
   state: GameState,
@@ -962,8 +1106,17 @@ function paintFogOfWar(
   const fog = opts.fog;
   if (!fog) return;
   const { map } = state;
-  const fogDraws: { img: HTMLImageElement | undefined; sx: number; sy: number }[] = [];
-  const unexploredDraws: { img: HTMLImageElement | undefined; sx: number; sy: number }[] = [];
+  type FogDraw = {
+    img: HTMLImageElement | undefined;
+    sx: number;
+    sy: number;
+    /** Set when img is a wide multi-tile natural wonder sprite (see drawFogSprite). */
+    wonderId?: string;
+    col: number;
+    row: number;
+  };
+  const fogDraws: FogDraw[] = [];
+  const unexploredDraws: FogDraw[] = [];
 
   for (const t of map.tiles) {
     // Off-map slots (staggered left edge, bottom corners) carry tile data but are not
@@ -983,16 +1136,27 @@ function paintFogOfWar(
     const key = `${t.col},${t.row}`;
     const explored = fog.explored.has(key);
     const visible = fog.visible.has(key);
+    const multiWonderId = multiTileWonderId(t.naturalWonder);
     if (!explored) {
       unexploredDraws.push({
         img: coverUnexploredArt ? primaryTerrainImage(t, opts) : undefined,
         sx,
         sy,
+        wonderId: multiWonderId,
+        col: t.col,
+        row: t.row,
       });
       continue;
     }
     if (!visible) {
-      fogDraws.push({ img: primaryTerrainImage(t, opts), sx, sy });
+      fogDraws.push({
+        img: primaryTerrainImage(t, opts),
+        sx,
+        sy,
+        wonderId: multiWonderId,
+        col: t.col,
+        row: t.row,
+      });
     }
   }
 
@@ -1017,12 +1181,7 @@ function paintFogOfWar(
     // Then cover tall sprite overhang (baked-bitmap mode only): without this,
     // mountain/forest peaks poke out above the flat fills at the map's edge.
     for (const u of unexploredDraws) {
-      if (!u.img) continue;
-      const sil = fogSilhouette(u.img, UNEXPLORED_FILL);
-      const scale = footprint / sil.width;
-      const drawW = sil.width * scale;
-      const drawH = sil.height * scale;
-      ctx.drawImage(sil, u.sx - drawW / 2, u.sy + footprint / 2 - drawH, drawW, drawH);
+      drawFogSprite(ctx, map, camera, u, UNEXPLORED_FILL, footprint);
     }
   }
 
@@ -1039,13 +1198,7 @@ function paintFogOfWar(
       traceHex(fc, f.sx, f.sy);
       fc.fill();
       fc.stroke(); // seal the antialias seam between adjacent fog hexes
-      if (f.img) {
-        const sil = fogSilhouette(f.img, FOG_SOLID);
-        const scale = footprint / sil.width;
-        const drawW = sil.width * scale;
-        const drawH = sil.height * scale;
-        fc.drawImage(sil, f.sx - drawW / 2, f.sy + footprint / 2 - drawH, drawW, drawH);
-      }
+      drawFogSprite(fc, map, camera, f, FOG_SOLID, footprint);
     }
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1200,8 +1353,10 @@ export function drawScene(
       variants && variants.length > 0
         ? variants[hashSeed(`${t.col},${t.row},${t.terrain}`) % variants.length]
         : undefined;
-    // A natural wonder replaces the terrain art with its own full-tile sprite.
-    if (t.naturalWonder) {
+    // A natural wonder replaces the terrain art with its own sprite. A one-tile
+    // wonder simply swaps its tile's art; a MULTI-tile wonder is one sprite spanning
+    // several tiles and is painted after the terrain, below.
+    if (t.naturalWonder && !multiTileWonderId(t.naturalWonder)) {
       const wonderImg = naturalWonderTileImage(opts.naturalWonderAtlas, t.naturalWonder);
       if (wonderImg) img = wonderImg;
     }
@@ -1225,6 +1380,12 @@ export function drawScene(
     } else {
       ctx.fillStyle = TERRAIN_COLORS[t.terrain];
       ctx.fill();
+    }
+
+    // A multi-tile natural wonder paints its one wide sprite over the terrain of the
+    // whole footprint, once, on the last of its tiles in this loop's order.
+    if (t.naturalWonder) {
+      drawMultiTileWonder(ctx, map, camera, t, opts.naturalWonderAtlas, footprint);
     }
 
     // Wooded hills: a tree cluster grows on the hill crest (decor over terrain).

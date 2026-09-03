@@ -1,7 +1,14 @@
-import { cityAt, cityMaxHp, ownedTileYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, majorityReligion, type GameState, type TradeRoute } from "@roc/sim";
+import { cityAt, cityMaxHp, ownedTileYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, majorityReligion, isNaturalWonderAnchor, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
-import { BASE_SIZE, VSQUISH, tileCenterWorld, tileFootprint, mapIntersectsViewport } from "./renderer";
+import {
+  BASE_SIZE,
+  VSQUISH,
+  tileCenterWorld,
+  tileFootprint,
+  mapIntersectsViewport,
+  naturalWonderFootprintCenterX,
+} from "./renderer";
 import { isImageReady, type UnitAtlas } from "./unit-assets";
 import { cityImageIndex, type CityAtlas } from "./city-assets";
 import { barbCampFrameFor, villageFrameFor, ruinFrameFor, type FeatureAtlas } from "./feature-assets";
@@ -444,9 +451,13 @@ export function drawOverlay(
   if (size > 13) {
     for (const t of state.map.tiles) {
       if (!t.naturalWonder) continue;
+      // A multi-tile wonder gets ONE label, hung off its anchor tile and nudged
+      // to the middle of the footprint rather than one label per tile.
+      if (!isNaturalWonderAnchor(state.map, t.col, t.row)) continue;
       if (!o.explored.has(`${t.col},${t.row}`)) continue;
       if (!tileOnScreen(t.col, t.row)) continue;
       const s = screen(t.col, t.row);
+      const centerDx = naturalWonderFootprintCenterX(t.naturalWonder, tileFootprint(size));
       const label = getNaturalWonder(t.naturalWonder)?.name ?? "Natural Wonder";
       const fontSize = Math.max(8, Math.round(size * 0.24));
       ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
@@ -455,12 +466,13 @@ export function drawOverlay(
       const labelH = fontSize + pad * 2;
       const labelW = textW + pad * 4;
       const labelY = s.y + size * 0.58;
+      const labelX = s.x + centerDx;
       ctx.fillStyle = "rgba(0,0,0,0.6)";
       ctx.beginPath();
-      ctx.roundRect(s.x - labelW / 2, labelY, labelW, labelH, labelH / 2);
+      ctx.roundRect(labelX - labelW / 2, labelY, labelW, labelH, labelH / 2);
       ctx.fill();
       ctx.fillStyle = "#f0d77a";
-      ctx.fillText(label, s.x, labelY + labelH / 2);
+      ctx.fillText(label, labelX, labelY + labelH / 2);
     }
     // Built world wonders: name label (decor art or vector stand-in is in the renderer).
     for (const t of state.map.tiles) {

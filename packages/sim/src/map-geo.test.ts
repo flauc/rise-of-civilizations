@@ -99,17 +99,15 @@ describe("natural wonder geo on all map types", () => {
           barbarians: false,
           naturalWonders: true,
         });
-        const geo = mapGeoProfile(state.map.mapType);
         for (const t of state.map.tiles) {
           if (!t.naturalWonder) continue;
           sawAny = true;
           const def = getNaturalWonder(t.naturalWonder);
           expect(def?.realWorldBox, `${mapType} ${t.naturalWonder}`).toBeDefined();
-          expect(
-            naturalWonderTileGeoValid(state.map, t.naturalWonder, t.col, t.row),
-            `${mapType} placed ${t.naturalWonder} outside its box`,
-          ).toBe(true);
         }
+        // Whole-wonder rule: a multi-tile footprint may straddle the edge of a
+        // tight box as long as the wonder itself lands inside it.
+        expect(naturalWonderGeoViolations(state.map), `${mapType} geo violations`).toEqual([]);
       }
     }
     expect(sawAny).toBe(true);

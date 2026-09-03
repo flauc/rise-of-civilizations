@@ -8,7 +8,9 @@ describe("map-aware wonder loading", () => {
     const state = createGame({ seed: "nw-map", cols: 48, rows: 32, playerCount: 1, naturalWonders: true });
     const onMap = state.map.tiles.filter((t) => t.naturalWonder);
     const ids = naturalWonderIdsOnMap(state);
-    expect(ids.length).toBe(onMap.length);
+    // One sprite per wonder, not per tile: a multi-tile wonder stamps its id on
+    // several tiles but only needs its single wide painting loaded once.
+    expect(ids.length).toBe(new Set(onMap.map((t) => t.naturalWonder)).size);
     expect(ids.length).toBeGreaterThan(0);
     for (const t of onMap) {
       expect(ids).toContain(t.naturalWonder);

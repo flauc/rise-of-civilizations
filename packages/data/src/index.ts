@@ -3288,16 +3288,49 @@ export interface NaturalWonderDef {
   adjacentToWater?: boolean;
   /** Mandatory lat/lon box (degrees). Enforced on every map via `mapGeoProfile`. */
   realWorldBox: { latMin: number; latMax: number; lonMin: number; lonMax: number };
+  /** MULTI-TILE wonders (the Amazon, the Grand Canyon) whose single painted sprite
+   *  spans several contiguous tiles. Axial (q,r) offsets from the ANCHOR tile, which
+   *  is always the first entry `{ q: 0, r: 0 }` and is the sprite's south-west-most
+   *  tile. Every tile in the footprint carries the same wonder id, so every tile
+   *  yields the same bonus and any one of them counts as sighting the wonder.
+   *  Omitted = an ordinary one-tile wonder. */
+  footprint?: readonly NaturalWonderOffset[];
+}
+
+/** An axial offset from a multi-tile wonder's anchor tile. */
+export interface NaturalWonderOffset {
+  readonly q: number;
+  readonly r: number;
+}
+
+/** The implicit footprint of a one-tile wonder. */
+export const SINGLE_TILE_FOOTPRINT: readonly NaturalWonderOffset[] = [{ q: 0, r: 0 }];
+
+/** Footprint of a wonder def (single-tile wonders report their one anchor tile). */
+export function naturalWonderFootprint(
+  def: NaturalWonderDef | undefined,
+): readonly NaturalWonderOffset[] {
+  return def?.footprint ?? SINGLE_TILE_FOOTPRINT;
+}
+
+/** How many map tiles a wonder id occupies (1 for ordinary wonders). */
+export function naturalWonderTileCount(id: string | undefined): number {
+  return naturalWonderFootprint(getNaturalWonder(id)).length;
 }
 
 const NW = (d: NaturalWonderDef): NaturalWonderDef => d;
+/** Multi-tile footprint from `[q, r]` pairs; the first pair must be the anchor `[0, 0]`. */
+const FP = (...offsets: readonly [number, number][]): readonly NaturalWonderOffset[] =>
+  offsets.map(([q, r]) => ({ q, r }));
 /** Real World map lat/lon placement box (degrees). */
 const RW = (latMin: number, latMax: number, lonMin: number, lonMax: number) =>
   ({ latMin, latMax, lonMin, lonMax });
 
-// Every natural wonder is a single, full map tile. Worked-tile yields are strong
-// (these are rare, unique tiles) and the discovery reward to the FIRST civ to
-// sight each is a meaningful one-time burst, themed to the wonder.
+// Most natural wonders fill a single full map tile; a few (see `footprint`) span
+// several contiguous tiles under one painted sprite, and every tile of those pays
+// the same yields. Worked-tile yields are strong (these are rare, unique tiles) and
+// the discovery reward to the FIRST civ to sight each is a meaningful one-time
+// burst, themed to the wonder.
 export const NATURAL_WONDER_DEFS: NaturalWonderDef[] = [
   // ---- sacred & towering peaks (science / faith) --------------------------
   NW({ id: "mount_everest", name: "Mount Everest", desc: "The highest peak on Earth, roof of the world.", validTerrain: ["mountains"], realWorldBox: RW(26, 29, 84, 89), tileYields: { science: 3, faith: 1 }, discoveryBonus: { science: 90, faith: 40 } }),
@@ -3311,7 +3344,9 @@ export const NATURAL_WONDER_DEFS: NaturalWonderDef[] = [
 
   // ---- rock & desert wonders (science / gold / faith) ---------------------
   NW({ id: "eye_of_the_sahara", name: "Eye of the Sahara", desc: "A colossal bullseye of rock rings in the desert.", validTerrain: ["desert"], realWorldBox: RW(19, 22, -13, -8), tileYields: { science: 3, gold: 1 }, discoveryBonus: { science: 80, gold: 50 } }),
-  NW({ id: "grand_canyon", name: "Grand Canyon", desc: "A mile-deep gorge carved over eons.", validTerrain: ["mesa", "desert"], realWorldBox: RW(36, 37, -113, -111), tileYields: { science: 2, gold: 2 }, discoveryBonus: { science: 90, gold: 50 } }),
+  // Four tiles: two on the anchor's row and two on the row above shifted north-east,
+  // with the gorge cut down the middle and the canyon walls towering over all of it.
+  NW({ id: "grand_canyon", name: "Grand Canyon", desc: "A mile-deep gorge carved over eons.", validTerrain: ["mesa", "desert"], realWorldBox: RW(35, 37.5, -114.5, -110.5), tileYields: { science: 2, gold: 2 }, discoveryBonus: { science: 90, gold: 50 }, footprint: FP([0, 0], [1, 0], [1, -1], [2, -1]) }),
   NW({ id: "salar_de_uyuni", name: "Salar de Uyuni", desc: "The world's largest salt flat, a mirror to the sky.", validTerrain: ["desert"], realWorldBox: RW(-21, -20, -68, -67), tileYields: { gold: 3, production: 1 }, discoveryBonus: { gold: 110 } }),
   NW({ id: "zhangye_danxia", name: "Zhangye Danxia", desc: "Rainbow-banded sandstone ridges.", validTerrain: ["mesa", "desert"], realWorldBox: RW(37, 39, 99, 101), tileYields: { culture: 2, science: 1, gold: 1 }, discoveryBonus: { culture: 60, science: 40 } }),
   NW({ id: "cappadocia", name: "Cappadocia", desc: "Fairy-chimney spires and hidden cave cities.", validTerrain: ["mesa", "hills"], realWorldBox: RW(38, 39, 34, 35), tileYields: { faith: 2, culture: 1, production: 1 }, discoveryBonus: { faith: 60, culture: 60 } }),
@@ -3335,7 +3370,9 @@ export const NATURAL_WONDER_DEFS: NaturalWonderDef[] = [
   NW({ id: "moraine_lake", name: "Moraine Lake", desc: "Glacial meltwater of impossible blue beneath the peaks.", validTerrain: ["mountains", "lake"], realWorldBox: RW(51, 52, -117, -115), tileYields: { science: 2, culture: 2 }, discoveryBonus: { culture: 50, science: 50 } }),
 
   // ---- great forests & valleys (science / production / culture) -----------
-  NW({ id: "amazon_rainforest", name: "Amazon Rainforest", desc: "An immense, teeming green ocean of trees.", validTerrain: ["jungle"], realWorldBox: RW(-8, 2, -68, -48), tileYields: { food: 2, production: 2, science: 1 }, discoveryBonus: { science: 100, freeTech: true } }),
+  // Four tiles: two on the anchor's row, two on the row above shifted north-east,
+  // so the canopy reads as one unbroken stretch of jungle.
+  NW({ id: "amazon_rainforest", name: "Amazon Rainforest", desc: "An immense, teeming green ocean of trees.", validTerrain: ["jungle"], realWorldBox: RW(-8, 2, -68, -48), tileYields: { food: 2, production: 2, science: 1 }, discoveryBonus: { science: 100, freeTech: true }, footprint: FP([0, 0], [1, 0], [1, -1], [2, -1]) }),
   NW({ id: "pantanal", name: "Pantanal", desc: "The world's largest tropical wetland.", validTerrain: ["grassland", "jungle"], realWorldBox: RW(-22, -15, -60, -54), tileYields: { food: 3, gold: 1 }, discoveryBonus: { gold: 60, science: 40 } }),
   NW({ id: "yosemite", name: "Yosemite Valley", desc: "Sheer granite walls above ancient sequoias.", validTerrain: ["mountains", "forest"], realWorldBox: RW(37.5, 38, -120, -119), tileYields: { production: 2, culture: 1, science: 1 }, discoveryBonus: { culture: 60, science: 40 } }),
   NW({ id: "zhangjiajie", name: "Zhangjiajie", desc: "A forest of towering quartzite pillars.", validTerrain: ["mountains", "forest"], realWorldBox: RW(29, 30, 110, 111), tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 50 } }),

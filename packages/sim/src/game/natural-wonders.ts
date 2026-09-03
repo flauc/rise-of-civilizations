@@ -1,17 +1,22 @@
-// Natural wonders: awe-inspiring single tiles placed on the map at world-gen
-// (Mount Everest, the Grand Canyon, the Great Barrier Reef…). Each occupies ONE
-// full tile whose art replaces the terrain. The FIRST civ to sight a wonder
-// claims a one-time bonus; tiles inside a civ's borders passively inspire culture
-// and tourism, and citizens working the tile also harvest its food/production/
-// science/faith yields; the first civ to have sighted EVERY natural wonder earns
-// a grand reward. All placement is deterministic (seeded).
+// Natural wonders: awe-inspiring places stamped onto the map at world-gen (Mount
+// Everest, the Grand Canyon, the Great Barrier Reef…). Most occupy ONE full tile
+// whose art replaces the terrain; a few (the Amazon, the Grand Canyon) declare a
+// multi-tile `footprint` and stamp the SAME wonder id onto every tile of it, so
+// each of those tiles pays the same yields and sighting any one of them discovers
+// the whole wonder. The FIRST civ to sight a wonder claims a one-time bonus; tiles
+// inside a civ's borders passively inspire culture and tourism, and citizens working
+// a tile also harvest its food/production/science/faith yields; the first civ to
+// have sighted EVERY natural wonder earns a grand reward. All placement is
+// deterministic (seeded).
 
-import { axialDistance, axialNeighbor, axialToOffset, getTile, hashSeed, isWater, offsetToAxial, type Tile } from "@roc/shared";
+import { axialAdd, axialDistance, axialNeighbor, axialToOffset, getTile, hashSeed, isMapTilePresent, isWater, offsetToAxial, type Axial, type GameMap, type Tile } from "@roc/shared";
 import {
   ALL_NATURAL_WONDERS_BONUS,
   NATURAL_WONDER_DEFS,
   getNaturalWonder,
+  naturalWonderFootprint,
   type NaturalWonderBonus,
+  type NaturalWonderDef,
 } from "@roc/data";
 import { log, playerById, unitAt, citiesOf, type City, type GameState, type Player, type WonderDiscoveryInfo } from "./state";
 import { TECH_DEFS, type TechId } from "./content";
@@ -19,13 +24,117 @@ import { mapGeoProfile, tileInWonderBox, wonderBoxOverlapsMap, assertNaturalWond
 import { isGeoMapType, isRegionalGeoMapType } from "../geo-maps";
 import {
   anchorRegionalWonderTerrain,
+  footprintFitsOnLand,
   isInlandNaturalWonder,
   regionalEligibleWonderCount,
   regionalInlandSeaOk,
+  stampWonderFootprint,
   REGIONAL_WONDER_SPACING,
 } from "../regional-wonder-terrain";
 import { isPassableLand, ZERO_YIELDS, type Yields } from "./terrain";
 import { cityTerritory } from "./territory";
+
+// ---- footprints ----------------------------------------------------------
+
+/** The offset tiles a wonder placed with its anchor at (col,row) would occupy. */
+export function naturalWonderFootprintTiles(
+  def: NaturalWonderDef | undefined,
+  col: number,
+  row: number,
+): { col: number; row: number }[] {
+  const anchor = offsetToAxial({ col, row });
+  return naturalWonderFootprint(def).map((o) =>
+    axialToOffset(axialAdd(anchor, o as Axial)),
+  );
+}
+
+/**
+ * True when (col,row) is the ANCHOR tile of its wonder, i.e. the tile the sprite
+ * hangs from. A single-tile wonder is always its own anchor; a multi-tile wonder's
+ * anchor is the one tile from which every footprint offset lands on a tile carrying
+ * the same wonder id (only one tile of a placed footprint can satisfy that, and a
+ * wonder is never placed twice in a world).
+ */
+export function isNaturalWonderAnchor(map: GameMap, col: number, row: number): boolean {
+  const tile = getTile(map, col, row);
+  const id = tile?.naturalWonder;
+  if (!id) return false;
+  const def = getNaturalWonder(id);
+  if (!def?.footprint) return true;
+  return naturalWonderFootprintTiles(def, col, row).every(
+    (t) => getTile(map, t.col, t.row)?.naturalWonder === id,
+  );
+}
+
+/**
+ * The anchor tile of the wonder that (col,row) belongs to, i.e. the tile its sprite
+ * hangs from. A single-tile wonder returns itself; any tile of a multi-tile
+ * footprint returns the shared anchor. Undefined when the tile holds no wonder.
+ */
+export function naturalWonderAnchorFor(
+  map: GameMap,
+  col: number,
+  row: number,
+): { col: number; row: number } | undefined {
+  const id = getTile(map, col, row)?.naturalWonder;
+  if (!id) return undefined;
+  const def = getNaturalWonder(id);
+  if (!def?.footprint) return { col, row };
+  const here = offsetToAxial({ col, row });
+  for (const o of def.footprint) {
+    const cand = axialToOffset({ q: here.q - o.q, r: here.r - o.r });
+    if (isNaturalWonderAnchor(map, cand.col, cand.row)) return cand;
+  }
+  return undefined;
+}
+
+/**
+ * The tile of a wonder's footprint that its sprite should be PAINTED from: the last
+ * one the renderer reaches in row-major (top row first, then left to right) draw
+ * order. Painting there means every tile of the wonder has already laid down its own
+ * terrain, so the sprite never leaves a hole where its art falls a pixel short of a
+ * hex edge. Single-tile wonders paint from themselves.
+ */
+export function naturalWonderSpritePaintTile(
+  map: GameMap,
+  col: number,
+  row: number,
+): { col: number; row: number } | undefined {
+  const id = getTile(map, col, row)?.naturalWonder;
+  if (!id) return undefined;
+  const def = getNaturalWonder(id);
+  if (!def?.footprint) return { col, row };
+  const anchor = naturalWonderAnchorFor(map, col, row);
+  if (!anchor) return undefined;
+  let last: { col: number; row: number } | undefined;
+  for (const t of naturalWonderFootprintTiles(def, anchor.col, anchor.row)) {
+    if (!last || t.row > last.row || (t.row === last.row && t.col > last.col)) last = t;
+  }
+  return last;
+}
+
+/** Every tile of every placed wonder, keyed by wonder id (one map scan). */
+export function naturalWonderTilesOnMap(
+  map: GameMap,
+): Map<string, { col: number; row: number }[]> {
+  const out = new Map<string, { col: number; row: number }[]>();
+  for (const t of map.tiles) {
+    if (!t.naturalWonder) continue;
+    const list = out.get(t.naturalWonder);
+    if (list) list.push({ col: t.col, row: t.row });
+    else out.set(t.naturalWonder, [{ col: t.col, row: t.row }]);
+  }
+  return out;
+}
+
+/** The anchor tile of a placed wonder id, or undefined when it is not on the map. */
+export function naturalWonderAnchorTile(
+  map: GameMap,
+  id: string,
+): { col: number; row: number } | undefined {
+  const tiles = naturalWonderTilesOnMap(map).get(id);
+  return tiles?.find((t) => isNaturalWonderAnchor(map, t.col, t.row)) ?? tiles?.[0];
+}
 
 /** Bonus yields a citizen working a natural-wonder tile adds (culture is territorial,
  *  not from working — see naturalWonderTerritoryCulture). */
@@ -136,16 +245,17 @@ export function checkNaturalWonderDiscovery(state: GameState, playerId: number):
   state.discoveredWonders ??= {};
 
   const explored = player.explored;
-  // wonder id -> its (single) tile, from one map scan.
-  const tileOf = new Map<string, { col: number; row: number }>();
-  for (const t of state.map.tiles) {
-    if (t.naturalWonder && !tileOf.has(t.naturalWonder)) tileOf.set(t.naturalWonder, { col: t.col, row: t.row });
-  }
+  // wonder id -> every tile of its footprint, from one map scan.
+  const tilesOf = naturalWonderTilesOnMap(state.map);
+  const sighted = (tiles: readonly { col: number; row: number }[]): boolean =>
+    tiles.some((t) => explored.has(`${t.col},${t.row}`));
   const allBonusText = naturalWonderBonusSummary(ALL_NATURAL_WONDERS_BONUS);
 
-  for (const [id, tile] of tileOf) {
+  for (const [id, tiles] of tilesOf) {
     if (state.discoveredWonders[id] !== undefined) continue;
-    if (!explored.has(`${tile.col},${tile.row}`)) continue;
+    if (!sighted(tiles)) continue;
+    // Announce (and centre the camera) on the anchor tile the sprite hangs from.
+    const tile = tiles.find((t) => isNaturalWonderAnchor(state.map, t.col, t.row)) ?? tiles[0]!;
     const def = getNaturalWonder(id);
     if (!def) continue;
     const firstForPlayer = !Object.values(state.discoveredWonders).includes(playerId);
@@ -171,8 +281,8 @@ export function checkNaturalWonderDiscovery(state: GameState, playerId: number):
   if (
     state.allNaturalWondersClaimedBy === undefined &&
     state.naturalWonderIds.every((id) => {
-      const t = tileOf.get(id);
-      return t ? explored.has(`${t.col},${t.row}`) : false;
+      const tiles = tilesOf.get(id);
+      return tiles ? sighted(tiles) : false;
     })
   ) {
     state.allNaturalWondersClaimedBy = playerId;
@@ -192,9 +302,11 @@ export function checkNaturalWonderDiscovery(state: GameState, playerId: number):
 // ---- placement at map generation -----------------------------------------
 
 /**
- * Scatter single-tile natural wonders across the map (deterministic, away from
- * starts and spaced apart). Records the placed ids on state.naturalWonderIds.
- * Call before placeResources so resources never land on a wonder tile.
+ * Scatter natural wonders across the map (deterministic, away from starts and
+ * spaced apart). A wonder with a multi-tile `footprint` is only placed where its
+ * WHOLE footprint fits, and every tile of it is stamped with the wonder id.
+ * Records the placed ids on state.naturalWonderIds. Call before placeResources so
+ * resources never land on a wonder tile.
  */
 export function placeNaturalWonders(
   state: GameState,
@@ -239,14 +351,18 @@ export function placeNaturalWonders(
     return n;
   };
 
-  // Prefer wonders that can actually fit this map's geography, then shuffle within tiers.
+  // Multi-tile wonders go FIRST: they are the showpieces, they need several free
+  // tiles in a row, and their lat/lon boxes are the tightest, so if they do not get
+  // first pick they are crowded out of every slot. After them, prefer wonders that
+  // can actually fit this map's geography, then shuffle within tiers.
   const order = NATURAL_WONDER_DEFS
     .map((def) => ({
       def,
+      multi: def.footprint ? 1 : 0,
       rough: roughGeoTerrainMatches(def),
       key: hashSeed(`nw-order:${def.id}:${seed}`),
     }))
-    .sort((a, b) => b.rough - a.rough || a.key - b.key)
+    .sort((a, b) => b.multi - a.multi || b.rough - a.rough || a.key - b.key)
     .map((o) => o.def);
 
   // Coastline wonders (sea cliffs) must sit on a LAND tile that borders open water,
@@ -299,15 +415,33 @@ export function placeNaturalWonders(
     const minDist = isGeoMapType(map.mapType) ? 4 : 6;
     return starts.every((s) => !s || axialDistance(offsetToAxial(s), offsetToAxial({ col, row })) >= minDist);
   };
-  // Hard spacing guarantee: two wonders never sit too close on the same map.
-  const tooClose = (col: number, row: number): boolean =>
-    placed.some((p) => axialDistance(offsetToAxial(p), offsetToAxial({ col, row })) < MIN_WONDER_SPACING);
+  // Hard spacing guarantee: two wonders never sit too close on the same map. For a
+  // multi-tile wonder every tile of the footprint has to clear the spacing.
+  const tooClose = (col: number, row: number, def?: (typeof NATURAL_WONDER_DEFS)[number]): boolean => {
+    const own = def ? naturalWonderFootprintTiles(def, col, row) : [{ col, row }];
+    return own.some((o) =>
+      placed.some((p) => axialDistance(offsetToAxial(p), offsetToAxial(o)) < MIN_WONDER_SPACING),
+    );
+  };
   const inWonderRegion = (col: number, row: number, box: RealWorldBox): boolean =>
     tileInWonderBox(geo, col, row, map.cols, map.rows, box);
 
+  // A single tile's own suitability: terrain, emptiness, distance from starts.
+  // Every tile of a multi-tile footprint must pass this.
+  const tileIsFreeFor = (def: (typeof NATURAL_WONDER_DEFS)[number], col: number, row: number): boolean => {
+    const t = getTile(map, col, row);
+    if (!t || !isMapTilePresent(map, col, row)) return false;
+    if (occupied(t) || t.river || !def.validTerrain.includes(t.terrain)) return false;
+    if (!farFromStarts(col, row)) return false;
+    if (unitAt(state, col, row)) return false;
+    return true;
+  };
+
+  // The ANCHOR tile carries the geo box and the shoreline/ocean placement rules
+  // (only single-tile wonders use those flags today), and anchors the sprite.
   const tileAcceptsWonder = (def: (typeof NATURAL_WONDER_DEFS)[number], col: number, row: number): boolean => {
     const t = getTile(map, col, row);
-    if (!t || occupied(t) || t.river || !def.validTerrain.includes(t.terrain)) return false;
+    if (!t || !tileIsFreeFor(def, col, row)) return false;
     if (def.openOcean && (t.terrain !== "ocean" || !ringedByOcean(col, row))) return false;
     if (def.coastalWater && (!isWater(t.terrain) || !bordersLand(col, row))) return false;
     if (def.adjacentToWater && !besideWater(t)) return false;
@@ -316,17 +450,21 @@ export function placeNaturalWonders(
     } else if (def.coastal && !bordersSea(col, row)) return false;
     if (isRegionalGeoMapType(map.mapType) && isInlandNaturalWonder(def) && !regionalInlandSeaOk(map, col, row)) return false;
     if (!inWonderRegion(col, row, def.realWorldBox)) return false;
-    if (!farFromStarts(col, row)) return false;
-    if (unitAt(state, col, row)) return false;
-    return true;
+    // Multi-tile wonders only fit where every tile of the footprint is free too.
+    return naturalWonderFootprintTiles(def, col, row).every((f) => tileIsFreeFor(def, f.col, f.row));
   };
 
   const placeWonderAt = (def: (typeof NATURAL_WONDER_DEFS)[number], col: number, row: number): boolean => {
-    if (!tileAcceptsWonder(def, col, row) || tooClose(col, row)) return false;
-    const t = getTile(map, col, row);
-    if (!t) return false;
-    t.naturalWonder = def.id;
-    placed.push({ col, row });
+    if (!tileAcceptsWonder(def, col, row) || tooClose(col, row, def)) return false;
+    const tiles = naturalWonderFootprintTiles(def, col, row);
+    for (const f of tiles) {
+      const t = getTile(map, f.col, f.row);
+      if (!t) return false; // checked above; belt and braces before mutating
+    }
+    for (const f of tiles) {
+      getTile(map, f.col, f.row)!.naturalWonder = def.id;
+      placed.push(f);
+    }
     placedIds.push(def.id);
     return true;
   };
@@ -341,13 +479,57 @@ export function placeNaturalWonders(
       if (!tileAcceptsWonder(def, t.col, t.row)) continue;
       candidates.push({ col: t.col, row: t.row, key: hashSeed(`nw:${def.id}:${t.col},${t.row}:${seed}`) });
     }
-    if (candidates.length === 0) continue;
+    if (candidates.length === 0) {
+      if (placeShowpieceOnStampedTerrain(def)) continue;
+      continue;
+    }
     candidates.sort((a, b) => a.key - b.key);
-    const pick = candidates.find((c) => !tooClose(c.col, c.row));
-    if (!pick) continue;
+    const pick = candidates.find((c) => !tooClose(c.col, c.row, def));
+    if (!pick) {
+      placeShowpieceOnStampedTerrain(def);
+      continue;
+    }
     placeWonderAt(def, pick.col, pick.row);
   }
 
   assertNaturalWonderGeo(map);
   state.naturalWonderIds = placedIds;
+
+  /**
+   * Last resort for a MULTI-TILE showpiece (the Amazon, the Grand Canyon): its
+   * lat/lon box is the tightest on the list and world-gen does not always grow the
+   * right ground there — the Colorado Plateau, for instance, usually comes out as
+   * plains, so a canyon that insists on mesa/desert would simply never appear. When
+   * a showpiece finds no home, stamp its own characteristic terrain across a
+   * footprint-sized patch of empty land inside its box (the same trick regional maps
+   * already use to make the Matterhorn mountainous) and settle it there. Ordinary
+   * one-tile wonders are left to the normal pass: there are thirty of them and the
+   * world does not miss the few that do not fit.
+   */
+  function placeShowpieceOnStampedTerrain(def: (typeof NATURAL_WONDER_DEFS)[number]): boolean {
+    if (!def.footprint) return false;
+    if (!wonderBoxOverlapsMap(geo, map.cols, map.rows, def.realWorldBox)) return false;
+    // Same rules as a normal anchor, but judged on the land itself rather than on
+    // the terrain type we are about to replace.
+    const usable = (col: number, row: number): boolean => {
+      const t = getTile(map, col, row);
+      if (!t || !isMapTilePresent(map, col, row)) return false;
+      if (occupied(t) || isWater(t.terrain)) return false;
+      if (!farFromStarts(col, row)) return false;
+      return !unitAt(state, col, row);
+    };
+    const spots: { col: number; row: number; key: number }[] = [];
+    for (const t of map.tiles) {
+      if (!inWonderRegion(t.col, t.row, def.realWorldBox)) continue;
+      if (!footprintFitsOnLand(map, def, t.col, t.row)) continue;
+      if (!naturalWonderFootprintTiles(def, t.col, t.row).every((f) => usable(f.col, f.row))) continue;
+      if (tooClose(t.col, t.row, def)) continue;
+      spots.push({ col: t.col, row: t.row, key: hashSeed(`nw-stamp:${def.id}:${t.col},${t.row}:${seed}`) });
+    }
+    if (spots.length === 0) return false;
+    spots.sort((a, b) => a.key - b.key);
+    const spot = spots[0]!;
+    stampWonderFootprint(map, def, spot);
+    return placeWonderAt(def, spot.col, spot.row);
+  }
 }

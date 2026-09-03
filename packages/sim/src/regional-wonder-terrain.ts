@@ -1,7 +1,7 @@
 // Stamp authentic terrain at each regional wonder's real-world coordinates so
 // Matterhorn is mountains, Vesuvius a volcano, Plitvice a lake, and so on.
 
-import { NATURAL_WONDER_DEFS, type NaturalWonderDef } from "@roc/data";
+import { NATURAL_WONDER_DEFS, naturalWonderFootprint, type NaturalWonderDef } from "@roc/data";
 import {
   axialNeighbor,
   axialToOffset,
@@ -31,7 +31,8 @@ const TERRAIN_PRIORITY: TerrainType[] = [
   "plains",
 ];
 
-function preferredTerrain(def: NaturalWonderDef): TerrainType {
+/** The most characteristic terrain a wonder may sit on (volcano over hills, …). */
+export function preferredTerrain(def: NaturalWonderDef): TerrainType {
   for (const t of TERRAIN_PRIORITY) {
     if (def.validTerrain.includes(t)) return t;
   }
@@ -119,13 +120,13 @@ function collectAnchorCandidates(
   map: GameMap,
   def: NaturalWonderDef,
   box: { latMin: number; latMax: number; lonMin: number; lonMax: number },
-): { col: number; row: number; dist: number; rulesOk: boolean; terrainOk: boolean; inland: number }[] {
+): { col: number; row: number; dist: number; rulesOk: boolean; terrainOk: boolean; footprintOk: boolean; inland: number }[] {
   const geo = mapGeoProfile(map.mapType);
   const { cols, rows } = map;
   const centerLat = (box.latMin + box.latMax) / 2;
   const centerLon = (box.lonMin + box.lonMax) / 2;
   const inlandWonder = isInlandNaturalWonder(def);
-  const out: { col: number; row: number; dist: number; rulesOk: boolean; terrainOk: boolean; inland: number }[] = [];
+  const out: { col: number; row: number; dist: number; rulesOk: boolean; terrainOk: boolean; footprintOk: boolean; inland: number }[] = [];
 
   for (const t of map.tiles) {
     if (!tileInWonderBox(geo, t.col, t.row, cols, rows, box)) continue;
@@ -150,6 +151,8 @@ function collectAnchorCandidates(
       dist,
       rulesOk,
       terrainOk: def.validTerrain.includes(t.terrain),
+      // A multi-tile wonder must not hang half of its sprite over open water.
+      footprintOk: footprintFitsOnLand(map, def, t.col, t.row),
       inland,
     });
   }
@@ -196,6 +199,7 @@ function pickAnchorTile(
   const inlandWonder = isInlandNaturalWonder(def);
   candidates.sort(
     (a, b) =>
+      Number(b.footprintOk) - Number(a.footprintOk) ||
       Number(b.rulesOk) - Number(a.rulesOk) ||
       Number(b.terrainOk) - Number(a.terrainOk) ||
       (inlandWonder ? b.inland - a.inland : 0) ||
@@ -222,6 +226,39 @@ function stampTileForWonder(map: GameMap, col: number, row: number, def: Natural
   t.terrain = preferredTerrain(def);
 }
 
+/**
+ * Stamp a wonder's terrain across its WHOLE footprint. Single-tile wonders stamp
+ * just the anchor; a multi-tile wonder needs every tile it covers to be the same
+ * kind of ground, or placement would reject the footprint (and the sprite would
+ * straddle a lake or a forest).
+ */
+export function stampWonderFootprint(
+  map: GameMap,
+  def: NaturalWonderDef,
+  anchor: { col: number; row: number },
+): void {
+  const here = offsetToAxial(anchor);
+  for (const o of naturalWonderFootprint(def)) {
+    const t = axialToOffset({ q: here.q + o.q, r: here.r + o.r });
+    stampTileForWonder(map, t.col, t.row, def);
+  }
+}
+
+/** True when every tile of a footprint anchored here exists and is dry land. */
+export function footprintFitsOnLand(
+  map: GameMap,
+  def: NaturalWonderDef,
+  col: number,
+  row: number,
+): boolean {
+  const here = offsetToAxial({ col, row });
+  return naturalWonderFootprint(def).every((o) => {
+    const off = axialToOffset({ q: here.q + o.q, r: here.r + o.r });
+    const t = getTile(map, off.col, off.row);
+    return !!t && !isWater(t.terrain);
+  });
+}
+
 /** Ensure every viewport wonder has correct terrain at its geographic anchor. */
 export function anchorRegionalWonderTerrain(map: GameMap): Map<string, { col: number; row: number }> {
   const anchors = new Map<string, { col: number; row: number }>();
@@ -233,7 +270,7 @@ export function anchorRegionalWonderTerrain(map: GameMap): Map<string, { col: nu
     if (!wonderBoxOverlapsMap(geo, cols, rows, def.realWorldBox)) continue;
     const anchor = pickAnchorTile(map, def);
     if (!anchor) continue;
-    stampTileForWonder(map, anchor.col, anchor.row, def);
+    stampWonderFootprint(map, def, anchor);
     anchors.set(def.id, anchor);
   }
   return anchors;
