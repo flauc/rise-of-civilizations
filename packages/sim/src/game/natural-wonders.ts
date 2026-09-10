@@ -437,21 +437,31 @@ export function placeNaturalWonders(
     return true;
   };
 
-  // The ANCHOR tile carries the geo box and the shoreline/ocean placement rules
-  // (only single-tile wonders use those flags today), and anchors the sprite.
+  // The ANCHOR tile carries the geo box and the shoreline placement rules (the art
+  // meets the sea at the anchor), and anchors the sprite.
   const tileAcceptsWonder = (def: (typeof NATURAL_WONDER_DEFS)[number], col: number, row: number): boolean => {
     const t = getTile(map, col, row);
     if (!t || !tileIsFreeFor(def, col, row)) return false;
-    if (def.openOcean && (t.terrain !== "ocean" || !ringedByOcean(col, row))) return false;
+    if (def.openOcean && t.terrain !== "ocean") return false;
     if (def.coastalWater && (!isWater(t.terrain) || !bordersLand(col, row))) return false;
     if (def.adjacentToWater && !besideWater(t)) return false;
     if (def.coastalFront) {
       if (!frontFacesSea(col, row)) return false;
     } else if (def.coastal && !bordersSea(col, row)) return false;
     if (isRegionalGeoMapType(map.mapType) && isInlandNaturalWonder(def) && !regionalInlandSeaOk(map, col, row)) return false;
+    // The ANCHOR must sit inside the lat/lon box. A multi-tile footprint may then
+    // reach a tile or so past its edge, but anchoring inside is what keeps a wonder
+    // in its own part of the world (a 6-tile Sahara anchored on the box edge would
+    // otherwise be free to spill across the Mediterranean).
     if (!inWonderRegion(col, row, def.realWorldBox)) return false;
-    // Multi-tile wonders only fit where every tile of the footprint is free too.
-    return naturalWonderFootprintTiles(def, col, row).every((f) => tileIsFreeFor(def, f.col, f.row));
+    const tiles = naturalWonderFootprintTiles(def, col, row);
+    // Every tile of the footprint must be free too. "Ringed by ocean" is a property
+    // of each tile rather than of the anchor: the WHOLE island group has to sit out
+    // in deep water, never brushing a coast (the tiles ring each other, so this only
+    // demands open sea around the outside of the group).
+    return tiles.every(
+      (f) => tileIsFreeFor(def, f.col, f.row) && (!def.openOcean || ringedByOcean(f.col, f.row)),
+    );
   };
 
   const placeWonderAt = (def: (typeof NATURAL_WONDER_DEFS)[number], col: number, row: number): boolean => {
@@ -469,27 +479,40 @@ export function placeNaturalWonders(
     return true;
   };
 
+  // Showpieces get first pick, but never the whole world: they each eat several
+  // tiles and a lot of the spacing budget, so on a small map they would take every
+  // slot and leave no room for the other twenty-odd wonders. Keep two slots back for
+  // ordinary ones, which still lets every showpiece land on a huge or giant map.
+  const multiCap = Math.max(1, targetCount - 2);
+  let multiPlaced = 0;
+
   for (const def of order) {
     if (placedIds.length >= targetCount) break;
-    const anchor = regionalAnchors.get(def.id);
-    if (anchor && placeWonderAt(def, anchor.col, anchor.row)) continue;
+    if (def.footprint && multiPlaced >= multiCap) continue;
+    const placedBefore = placedIds.length;
+    const settle = (): void => {
+      const anchor = regionalAnchors.get(def.id);
+      if (anchor && placeWonderAt(def, anchor.col, anchor.row)) return;
 
-    const candidates: { col: number; row: number; key: number }[] = [];
-    for (const t of map.tiles) {
-      if (!tileAcceptsWonder(def, t.col, t.row)) continue;
-      candidates.push({ col: t.col, row: t.row, key: hashSeed(`nw:${def.id}:${t.col},${t.row}:${seed}`) });
-    }
-    if (candidates.length === 0) {
-      if (placeShowpieceOnStampedTerrain(def)) continue;
-      continue;
-    }
-    candidates.sort((a, b) => a.key - b.key);
-    const pick = candidates.find((c) => !tooClose(c.col, c.row, def));
-    if (!pick) {
-      placeShowpieceOnStampedTerrain(def);
-      continue;
-    }
-    placeWonderAt(def, pick.col, pick.row);
+      const candidates: { col: number; row: number; key: number }[] = [];
+      for (const t of map.tiles) {
+        if (!tileAcceptsWonder(def, t.col, t.row)) continue;
+        candidates.push({ col: t.col, row: t.row, key: hashSeed(`nw:${def.id}:${t.col},${t.row}:${seed}`) });
+      }
+      if (candidates.length === 0) {
+        placeShowpieceOnStampedTerrain(def);
+        return;
+      }
+      candidates.sort((a, b) => a.key - b.key);
+      const pick = candidates.find((c) => !tooClose(c.col, c.row, def));
+      if (!pick) {
+        placeShowpieceOnStampedTerrain(def);
+        return;
+      }
+      placeWonderAt(def, pick.col, pick.row);
+    };
+    settle();
+    if (def.footprint && placedIds.length > placedBefore) multiPlaced++;
   }
 
   assertNaturalWonderGeo(map);

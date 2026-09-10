@@ -328,8 +328,13 @@ describe("natural wonders", () => {
     expect(state.naturalWonderIds.length).toBeGreaterThan(0);
     for (const id of state.naturalWonderIds) {
       expect(NATURAL_WONDER_IDS).toContain(id);
-      const tile = state.map.tiles.find((x) => x.naturalWonder === id)!;
-      expect(naturalWonderTileGeoValid(state.map, id, tile.col, tile.row)).toBe(true);
+      // The ANCHOR is the tile pinned inside the geo box; the rest of a multi-tile
+      // footprint hangs off it and may reach a little past the box edge.
+      const tile = state.map.tiles.find(
+        (x) => x.naturalWonder === id && isNaturalWonderAnchor(state.map, x.col, x.row),
+      )!;
+      expect(tile, id).toBeDefined();
+      expect(naturalWonderTileGeoValid(state.map, id, tile.col, tile.row), id).toBe(true);
     }
   });
 
@@ -520,7 +525,11 @@ describe("natural wonders", () => {
         for (const t of state.map.tiles) {
           if (t.naturalWonder !== "sahara_dunes") continue;
           sawSahara = true;
-          expect(tileInWonderBox(geo, t.col, t.row, state.map.cols, state.map.rows, def.realWorldBox!)).toBe(true);
+          // The anchor is pinned inside the box; the other five tiles of the dune
+          // field trail off it, so they are held to the wider "still Africa" bound.
+          if (isNaturalWonderAnchor(state.map, t.col, t.row)) {
+            expect(tileInWonderBox(geo, t.col, t.row, state.map.cols, state.map.rows, def.realWorldBox!)).toBe(true);
+          }
           const { lat } = geo.tileLatLon(t.col, t.row, state.map.cols, state.map.rows);
           expect(lat).toBeLessThan(34);
           expect(lat).toBeGreaterThanOrEqual(17);

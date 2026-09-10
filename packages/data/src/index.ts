@@ -3351,11 +3351,15 @@ export const NATURAL_WONDER_DEFS: NaturalWonderDef[] = [
   NW({ id: "zhangye_danxia", name: "Zhangye Danxia", desc: "Rainbow-banded sandstone ridges.", validTerrain: ["mesa", "desert"], realWorldBox: RW(37, 39, 99, 101), tileYields: { culture: 2, science: 1, gold: 1 }, discoveryBonus: { culture: 60, science: 40 } }),
   NW({ id: "cappadocia", name: "Cappadocia", desc: "Fairy-chimney spires and hidden cave cities.", validTerrain: ["mesa", "hills"], realWorldBox: RW(38, 39, 34, 35), tileYields: { faith: 2, culture: 1, production: 1 }, discoveryBonus: { faith: 60, culture: 60 } }),
   NW({ id: "pamukkale", name: "Pamukkale", desc: "Cascading white travertine terraces and hot springs.", validTerrain: ["hills"], realWorldBox: RW(37, 38, 28, 30), tileYields: { faith: 2, gold: 1, culture: 1 }, discoveryBonus: { faith: 50, culture: 50 } }),
-  NW({ id: "sahara_dunes", name: "Sahara", desc: "An endless sea of wind-sculpted dunes.", validTerrain: ["desert"], realWorldBox: RW(17, 31, -11, 33), tileYields: { gold: 2, faith: 1, production: 1 }, discoveryBonus: { gold: 90, faith: 40 } }),
+  // Six tiles, the largest wonder on the map: three on the anchor's row and three
+  // on the row above shifted north-east, so the dune field rolls on and on.
+  NW({ id: "sahara_dunes", name: "Sahara", desc: "An endless sea of wind-sculpted dunes.", validTerrain: ["desert"], realWorldBox: RW(17, 31, -11, 33), tileYields: { gold: 2, faith: 1, production: 1 }, discoveryBonus: { gold: 90, faith: 40 }, footprint: FP([0, 0], [1, 0], [2, 0], [1, -1], [2, -1], [3, -1]) }),
 
   // ---- coasts, reefs & islands (gold / science) ---------------------------
   NW({ id: "great_barrier_reef", name: "Great Barrier Reef", desc: "The largest living structure on Earth.", validTerrain: ["coast"], coastalWater: true, realWorldBox: RW(-20, -11, 144, 154), tileYields: { food: 3, gold: 2, science: 1 }, discoveryBonus: { gold: 80, science: 60 } }),
-  NW({ id: "galapagos_islands", name: "Galápagos Islands", desc: "Isolated isles teeming with singular life.", validTerrain: ["ocean"], openOcean: true, realWorldBox: RW(-2, 2, -93, -89), tileYields: { science: 3, food: 1 }, discoveryBonus: { science: 90, freeTech: true } }),
+  // Four tiles of open sea, the isles scattered across all of them: two on the
+  // anchor's row and two on the row above shifted north-east.
+  NW({ id: "galapagos_islands", name: "Galápagos Islands", desc: "Isolated isles teeming with singular life.", validTerrain: ["ocean"], openOcean: true, realWorldBox: RW(-4, 4, -102, -88), tileYields: { science: 3, food: 1 }, discoveryBonus: { science: 90, freeTech: true }, footprint: FP([0, 0], [1, 0], [1, -1], [2, -1]) }),
   NW({ id: "cliffs_of_dover", name: "White Cliffs of Dover", desc: "Gleaming chalk cliffs facing the sea.", validTerrain: ["grassland", "plains", "hills"], coastalFront: true, realWorldBox: RW(50.5, 51.5, 0, 2), tileYields: { gold: 3, culture: 1 }, discoveryBonus: { gold: 70, culture: 30 } }),
   NW({ id: "giants_causeway", name: "Giant's Causeway", desc: "Interlocking basalt columns marching into the sea.", validTerrain: ["hills", "grassland", "plains"], coastal: true, realWorldBox: RW(55, 55.5, -7, -5.5), tileYields: { science: 2, culture: 2 }, discoveryBonus: { science: 60, culture: 40 } }),
 
