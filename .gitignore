@@ -16,3 +16,5 @@ assets/generated/
 assets/purchased/
 roc-play-upload-e3c7cf088b85.json
 *.keystore
+tools/out/
+__pycache__/

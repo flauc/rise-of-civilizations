@@ -25,6 +25,7 @@ import { loadUnitAtlas } from "./unit-assets";
 import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
 import { loadFeatureAtlas } from "./feature-assets";
+import { loadWallAtlas } from "./wall-assets";
 import { loadResourceAtlas } from "./resource-assets";
 import { preloadCoachVoice } from "./coach-voice";
 import { allRewardArtUrls } from "./reward-art";
@@ -90,6 +91,7 @@ export function preloadGameAssets(): void {
   loadCityAtlas();
   loadImprovementAtlas();
   loadFeatureAtlas();
+  loadWallAtlas();
   loadResourceAtlas();
 
   preloadRewardArt();

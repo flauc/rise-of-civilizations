@@ -70,6 +70,7 @@ import { loadCityAtlas } from "./city-assets";
 import { loadImprovementAtlas } from "./improvement-assets";
 import { loadConstructionAtlas } from "./construction-assets";
 import { loadFeatureAtlas } from "./feature-assets";
+import { loadWallAtlas } from "./wall-assets";
 import {
   ensureNaturalWonderTiles,
   getNaturalWonderAtlas,
@@ -1339,6 +1340,9 @@ function startGame(session: Session, setup: GameSetup = {}): void {
   const featureAtlas = loadFeatureAtlas(() => {
     needsRedraw = true;
   });
+  const wallAtlas = loadWallAtlas(() => {
+    needsRedraw = true;
+  });
   const naturalWonderAtlas = getNaturalWonderAtlas();
   const wonderAtlas = getWonderAtlas();
   const resourceAtlas = loadResourceAtlas(mapAtlasRepaint);
@@ -1517,6 +1521,7 @@ function startGame(session: Session, setup: GameSetup = {}): void {
         cityAtlas,
         featureAtlas,
         constructionAtlas,
+        wallAtlas,
         religionIconAtlas,
       }, cssWidth, cssHeight);
       if (loadingDismissed && needsHudRender) {
@@ -1557,6 +1562,11 @@ function startGame(session: Session, setup: GameSetup = {}): void {
       tapTile(col: number, row: number) {
         const c = tileCenterWorld(col, row);
         handleTap(camera.worldToScreenX(c.x), camera.worldToScreenY(c.y));
+      },
+      centerOn(col: number, row: number, zoom?: number) {
+        if (zoom !== undefined) camera.zoom = zoom;
+        centerOn(col, row);
+        needsRedraw = true;
       },
       hoverTile(col: number, row: number) {
         const c = tileCenterWorld(col, row);

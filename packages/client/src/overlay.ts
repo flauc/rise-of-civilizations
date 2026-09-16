@@ -1,4 +1,4 @@
-import { cityAt, cityMaxHp, ownedTileYields, isEconKind, isDefenseKind, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, majorityReligion, isNaturalWonderAnchor, type GameState, type TradeRoute } from "@roc/sim";
+import { cityAt, cityMaxHp, ownedTileYields, isEconKind, isDefenseKind, structureCondition, UNIT_DEFS, unitMaxHp, ACTIVE_ABILITY_DEFS, uniqueUnitForCiv, majorityReligion, isNaturalWonderAnchor, type GameState, type TradeRoute } from "@roc/sim";
 import { axialNeighbor, axialNeighbors, axialToOffset, getTile, hashSeed, offsetToAxial } from "@roc/shared";
 import { Camera } from "./camera";
 import {
@@ -21,6 +21,7 @@ import {
 import { getNaturalWonder, getLegend, getReligionByName, getWonder } from "@roc/data";
 import type { ReligionIconAtlas } from "./religion-assets";
 import { drawGlyph } from "./icons";
+import { SIDE_ORIENT, type Palisade, type WallAtlas } from "./wall-assets";
 import { isPhoneShell } from "./viewport-shell";
 
 export interface OverlayState {
@@ -57,6 +58,7 @@ export interface OverlayState {
   cityAtlas?: CityAtlas;
   featureAtlas?: FeatureAtlas;
   constructionAtlas?: ConstructionAtlas;
+  wallAtlas?: WallAtlas;
   religionIconAtlas?: ReligionIconAtlas;
 }
 
@@ -271,6 +273,49 @@ function drawRampart(
       }
     }
   }
+}
+
+/** Fraction of each wall side, at both ends, tucked under its joint towers. */
+const PALISADE_INSET = 0.1;
+/** Joint tower size relative to the side pieces' scale. */
+const PALISADE_TOWER_SCALE = 1.7;
+
+/**
+ * Draw one palisade side between hex corners c0 and c1.
+ *
+ * The piece's two end-post ground points are mapped onto the corners, pulled in
+ * by PALISADE_INSET so the run stops at the joint towers' footprints. Diagonal
+ * pieces get one uniform scale plus a vertical shear, so the painted slope lands
+ * exactly on the hex side while every picket stays upright. Nothing has to line
+ * up with the neighbouring side: the tower on the shared corner covers the joint.
+ */
+function drawPalisadeSide(ctx: CanvasRenderingContext2D, pal: Palisade, side: number, c0: Pt, c1: Pt): void {
+  const orient = SIDE_ORIENT[side % 6]!;
+  const g = pal.sides[orient];
+  const dx = c1.x - c0.x;
+  const dy = c1.y - c0.y;
+  const p0 = { x: c0.x + dx * PALISADE_INSET, y: c0.y + dy * PALISADE_INSET };
+  const p1 = { x: c1.x - dx * PALISADE_INSET, y: c1.y - dy * PALISADE_INSET };
+  if (orient === "v") {
+    const [p, q] = p0.y <= p1.y ? [p0, p1] : [p1, p0];
+    const k = (q.y - p.y) / (g.by - g.ay);
+    ctx.transform(k, 0, 0, k, p.x - k * g.ax, p.y - k * g.ay);
+  } else {
+    const [p, q] = p0.x <= p1.x ? [p0, p1] : [p1, p0];
+    const run = g.bx - g.ax;
+    const k = (q.x - p.x) / run;
+    const shy = (q.y - p.y - k * (g.by - g.ay)) / run;
+    ctx.transform(k, shy, 0, k, p.x - k * g.ax, p.y - k * g.ay - shy * g.ax);
+  }
+  ctx.drawImage(g.img, 0, 0, g.w, g.h);
+}
+
+/** Draw a palisade joint tower standing on hex corner `c`. */
+function drawPalisadeTower(ctx: CanvasRenderingContext2D, pal: Palisade, c: Pt, size: number): void {
+  const d = pal.sides.d;
+  const k = ((VSQUISH * size * (1 - 2 * PALISADE_INSET)) / (d.bx - d.ax)) * PALISADE_TOWER_SCALE;
+  const t = pal.tower;
+  ctx.drawImage(t.img, c.x - k * t.ax, c.y - k * t.ay, k * t.w, k * t.h);
 }
 
 function drawHpBar(
@@ -504,15 +549,33 @@ export function drawOverlay(
   // Walls hug the tile edges that face the owner's frontier and connect to
   // neighbouring walls/towers at shared corners — drawn dynamically (like roads)
   // from the tile's territory-border edges rather than as a centred icon.
+  //
+  // Painted walls are a palisade: a side piece fitted between the two corners of
+  // each border edge, and a joint tower on every corner a run touches. A corner
+  // is shared by the tiles meeting there and tall pieces from neighbouring tiles
+  // overlap, so every side and tower on screen is gathered first and then drawn
+  // together, back to front.
+  const pal = o.wallAtlas?.palisade;
+  type PalisadeItem =
+    | { depth: number; faint: boolean; kind: "side"; side: number; c0: Pt; c1: Pt; color: string }
+    | { depth: number; faint: boolean; kind: "tower"; c: Pt };
+  const palItems: PalisadeItem[] = [];
+  const palTowers = new Map<string, PalisadeItem>();
+  const structureMarks: (() => void)[] = [];
   for (const t of state.map.tiles) {
-    if (!t.structure || t.structure.hp <= 0) continue;
+    // A breached structure stays on the map at 0 hp as walkable rubble that can
+    // be repaired, so it is still drawn — the destroyed artwork is what tells the
+    // player the tile is open.
+    const structure = t.structure;
+    if (!structure) continue;
     if (!o.explored.has(`${t.col},${t.row}`)) continue;
     if (!tileOnScreen(t.col, t.row)) continue;
     const ownerPid = t.ownerCityId !== undefined ? tileOwnerPlayer.get(t.ownerCityId) : undefined;
     const color = ownerPid !== undefined ? colorOf(ownerPid) : "#999";
     const s = screen(t.col, t.row);
-    const isTower = t.structure.kind === "tower";
-    const tier = t.structure.tier;
+    const isTower = structure.kind === "tower";
+    const tier = structure.tier;
+    const condition = structureCondition(structure.hp, structure.maxHp);
     const corners = hexCorners(s.x, s.y, size);
 
     // Edges whose neighbour isn't owned by this structure's player are border
@@ -526,31 +589,91 @@ export function drawOverlay(
     }
     if (sides.length === 0) for (let sd = 0; sd < 6; sd++) sides.push(sd);
 
-    drawRampart(ctx, corners, sides, color, size, tier);
-
-    // Towers add a bastion node on the line; they anchor and connect wall runs.
-    if (isTower) {
-      const r = size * 0.24 * (1 + (tier - 1) * 0.12);
-      ctx.fillStyle = "rgba(26,24,22,0.92)";
-      ctx.strokeStyle = color;
-      ctx.lineWidth = Math.max(1.2, size * 0.05);
-      ctx.beginPath();
-      ctx.rect(s.x - r, s.y - r, r * 2, r * 2);
-      ctx.fill();
-      ctx.stroke();
-      if (size > 12) {
-        ctx.fillStyle = "#fff";
-        ctx.font = `bold ${Math.round(size * 0.3)}px system-ui, sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        drawGlyph(ctx, "♜", s.x, s.y + 1, Math.round(size * 0.34));
+    const faint = condition === "destroyed";
+    if (pal) {
+      for (const sd of sides) {
+        const c0 = corners[sd]!;
+        const c1 = corners[(sd + 1) % 6]!;
+        palItems.push({ depth: (c0.y + c1.y) / 2, faint, kind: "side", side: sd, c0, c1, color });
+        for (const c of [c0, c1]) {
+          const key = `${Math.round(c.x)},${Math.round(c.y)}`;
+          if (!palTowers.has(key)) palTowers.set(key, { depth: c.y, faint, kind: "tower", c });
+        }
       }
+    } else {
+      // Walls whose art has yet to stream in keep the vector rampart. The vector
+      // form has no ruined state of its own, so a breached structure is simply
+      // drawn faint — enough to show a repairable footprint.
+      ctx.save();
+      if (faint) ctx.globalAlpha = 0.4;
+      drawRampart(ctx, corners, sides, color, size, tier);
+      ctx.restore();
     }
 
-    if (t.structure.hp < t.structure.maxHp) {
-      drawHpBar(ctx, s.x, s.y + size * 0.55, size * 0.9, t.structure.hp / t.structure.maxHp);
+    // Tile marks go on top of the palisade, which is only drawn once every
+    // structure's sides and joints have been gathered.
+    structureMarks.push(() => {
+      // Towers add a bastion node on the line; they anchor and connect wall runs.
+      if (isTower) {
+        ctx.save();
+        if (condition === "destroyed") ctx.globalAlpha = 0.4;
+        const r = size * 0.24 * (1 + (tier - 1) * 0.12);
+        ctx.fillStyle = "rgba(26,24,22,0.92)";
+        ctx.strokeStyle = color;
+        ctx.lineWidth = Math.max(1.2, size * 0.05);
+        ctx.beginPath();
+        ctx.rect(s.x - r, s.y - r, r * 2, r * 2);
+        ctx.fill();
+        ctx.stroke();
+        if (size > 12) {
+          ctx.fillStyle = "#fff";
+          ctx.font = `bold ${Math.round(size * 0.3)}px system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          drawGlyph(ctx, "♜", s.x, s.y + 1, Math.round(size * 0.34));
+        }
+        ctx.restore();
+      }
+
+      // Rubble needs no health bar: the faded artwork already says it is down.
+      const { hp, maxHp } = structure;
+      if (hp > 0 && hp < maxHp) {
+        drawHpBar(ctx, s.x, s.y + size * 0.55, size * 0.9, hp / maxHp);
+      }
+    });
+  }
+
+  if (pal && palItems.length > 0) {
+    // A painted palisade carries no player colour of its own, so lay a tinted
+    // footing under the whole run first.
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = Math.max(2, size * 0.12);
+    ctx.lineCap = "round";
+    for (const it of palItems) {
+      if (it.kind !== "side") continue;
+      ctx.strokeStyle = it.color;
+      ctx.beginPath();
+      ctx.moveTo(it.c0.x, it.c0.y);
+      ctx.lineTo(it.c1.x, it.c1.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Far pieces first. A tower level with a side goes after it, so the joint
+    // it stands on stays covered.
+    const all = [...palItems, ...palTowers.values()].sort(
+      (a, b) => a.depth - b.depth || (a.kind === "tower" ? 1 : 0) - (b.kind === "tower" ? 1 : 0),
+    );
+    for (const it of all) {
+      ctx.save();
+      if (it.faint) ctx.globalAlpha = 0.4;
+      if (it.kind === "side") drawPalisadeSide(ctx, pal, it.side, it.c0, it.c1);
+      else drawPalisadeTower(ctx, pal, it.c, size);
+      ctx.restore();
     }
   }
+  for (const mark of structureMarks) mark();
 
   // ---- works in progress (construction sites) ----
   // Every tile the viewer is developing shows a category build-site sprite (or a
