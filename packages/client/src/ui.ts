@@ -77,6 +77,8 @@ import {
   specialistLabour,
   workerSlots,
   nextTierAt,
+  isRepairWork,
+  repairFraction,
   workName,
   isDefenseKind,
   improvementYields,
@@ -4582,7 +4584,15 @@ export function createUI(handlers: UIHandlers): UI {
       // gold) before committing. Folds in the resource it would activate, if any.
       const workPreview = (k: string, t: number): string => {
         if (k === "road") return `<span class="imp-prev">${roadMoveCost(t)} move per tile (faster travel)</span>`;
-        if (isDefenseKind(k)) return `<span class="imp-prev">🛡️ defensive structure</span>`;
+        if (isDefenseKind(k)) {
+          // Patching a breach reuses the footings, so say what it will cost the
+          // player relative to raising the thing from nothing.
+          if (isRepairWork(tile, k, t)) {
+            const share = Math.round(repairFraction(tile.structure!.hp, tile.structure!.maxHp) * 100);
+            return `<span class="imp-prev">🛡️ back to full strength, for ${share}% of a new build</span>`;
+          }
+          return `<span class="imp-prev">🛡️ defensive structure</span>`;
+        }
         const yld = { ...improvementYields(k, t) };
         const rdef = tile.resource ? RESOURCE_DEFS[tile.resource as keyof typeof RESOURCE_DEFS] : undefined;
         const activates = !!rdef && rdef.improvement === k;
@@ -4620,7 +4630,10 @@ export function createUI(handlers: UIHandlers): UI {
       const btns = kinds.map((k) => {
         const tier = nextTierAt(tile, k);
         if (tier === null) return "";
-        const verb = tier > 1 ? "Upgrade → " : "";
+        // A battered structure is patched up at the tier it already is, so the
+        // button offers a repair rather than a build or an upgrade.
+        const repairing = isRepairWork(tile, k, tier);
+        const verb = repairing ? "Repair " : tier > 1 ? "Upgrade → " : "";
         const can = canStartWork(state, viewerId, k, tile.col, tile.row);
         if (can.ok) return workBtn(k, tier, verb);
         if (isImpGateReason(can.error)) return workBtn(k, tier, verb, can.error);

@@ -220,7 +220,9 @@ export function applyCheat(
         if (terrains && !terrains.has(tile.terrain)) {
           return { ok: false, error: "wrong terrain for this work" };
         }
-        if (tile.structure) return { ok: false, error: "tile occupied by a defensive structure" };
+        // God Mode ignores the usual one-thing-per-tile rule: clear any defensive
+        // structure standing here so the improvement can always be dropped.
+        tile.structure = undefined;
         tile.improvement = kind;
         tile.improvementLevel = 3;
         log(state, `${player.name} built a ${workName(kind, 3)} (cheat).`, { actorId: playerId, targetIds: [playerId] });
@@ -228,7 +230,10 @@ export function applyCheat(
       }
       if (isDefenseKind(kind)) {
         if (!isPassableLand(tile.terrain)) return { ok: false, error: "not passable land" };
-        if (tile.improvement) return { ok: false, error: "tile occupied by an improvement" };
+        // Same here: bulldoze whatever improvement is on the tile rather than
+        // refusing, so a wall or tower can be placed anywhere on land.
+        tile.improvement = undefined;
+        tile.improvementLevel = undefined;
         const hp = STRUCTURE_HP[kind][2]!;
         tile.structure = { kind, tier: 3, hp, maxHp: hp };
         log(state, `${player.name} built a ${workName(kind, 3)} (cheat).`, { actorId: playerId, targetIds: [playerId] });

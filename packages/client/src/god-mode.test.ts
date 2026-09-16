@@ -112,6 +112,29 @@ test("builds an economic improvement and a defensive structure", () => {
   expect(wallTile.structure!.hp).toBeGreaterThan(0);
 });
 
+test("god mode replaces whatever occupies a tile when building", () => {
+  const s = newGame();
+  const p = currentPlayer(s);
+  const tile = s.map.tiles.find((t) => t.terrain === "grassland")!;
+
+  // A farm on the tile must not block a wall — god mode bulldozes it.
+  applyCheat(s, p.id, { type: "buildWork", kind: "farm", col: tile.col, row: tile.row });
+  const wallRes = applyCheat(s, p.id, { type: "buildWork", kind: "wall", col: tile.col, row: tile.row });
+  expect(wallRes.ok).toBe(true);
+  expect(tile.structure).toMatchObject({ kind: "wall", tier: 3 });
+  expect(tile.improvement).toBeUndefined();
+
+  // A wall must not block a tower, nor an improvement going back down.
+  const towerRes = applyCheat(s, p.id, { type: "buildWork", kind: "tower", col: tile.col, row: tile.row });
+  expect(towerRes.ok).toBe(true);
+  expect(tile.structure).toMatchObject({ kind: "tower", tier: 3 });
+
+  const farmRes = applyCheat(s, p.id, { type: "buildWork", kind: "farm", col: tile.col, row: tile.row });
+  expect(farmRes.ok).toBe(true);
+  expect(tile.improvement).toBe("farm");
+  expect(tile.structure).toBeUndefined();
+});
+
 test("spawns a naval unit on a water tile", () => {
   const s = newGame();
   const p = currentPlayer(s);

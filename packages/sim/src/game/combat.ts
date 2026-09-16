@@ -17,7 +17,7 @@ import {
   type PromotionId,
 } from "./content";
 import { isRough, terrainDefense, isWaterTerrain, isForestTerrain, TERRAIN_NAMES } from "./terrain";
-import { structureDefense, towerBombard } from "./fortifications";
+import { RUBBLE_LIFESPAN, structureDefense, structureStands, towerBombard } from "./fortifications";
 import { civCombatBonus, uniqueUnitForUnit, unitDisplayName } from "./civs";
 import { legendCombatBonus } from "./legends";
 import { extendLegendsOnTrigger } from "./legend-lifespan";
@@ -486,10 +486,14 @@ function defenseStrength(
   const eff = playerEffects(state, unit.ownerId);
   if (unit.embarked && eff.embarkedCombatBonus) add("Embarked", eff.embarkedCombatBonus);
   if (isForestTile(state, unit.col, unit.row) && eff.forestTileCombatBonus) add("Forest tile bonus", eff.forestTileCombatBonus);
-  // A friendly defensive structure on the tile shelters its defender.
-  if (tile?.structure && tile.ownerCityId !== undefined) {
+  // A friendly defensive structure on the tile shelters its defender, by as much
+  // of it as still stands — a wall battered to rubble is no cover at all.
+  if (tile?.structure && structureStands(tile.structure) && tile.ownerCityId !== undefined) {
     const o = state.cities.get(tile.ownerCityId);
-    if (o && o.ownerId === unit.ownerId) add("Fortification", structureDefense(tile.structure.tier));
+    if (o && o.ownerId === unit.ownerId) {
+      const shelter = structureDefense(tile.structure.tier, tile.structure.hp, tile.structure.maxHp);
+      if (shelter > 0) add("Fortification", shelter);
+    }
   }
   if (vsRanged && has(unit, "cover")) add("Cover vs ranged", 4);
   // Anti-cavalry also helps the defender against mounted attackers.
@@ -618,7 +622,7 @@ function adjacentFriendlyMilitary(state: GameState, unit: Unit): number {
 function defendsWalls(state: GameState, unit: Unit): boolean {
   if (cityAt(state, unit.col, unit.row)) return true;
   const tile = getTile(state.map, unit.col, unit.row);
-  return !!tile?.structure;
+  return structureStands(tile?.structure);
 }
 
 /** True if a friendly unit holding a wall stance (Stone Bulwark / Elephant Wall) stands adjacent. */
@@ -1077,7 +1081,7 @@ export function resolveAttack(
         killUnit(state, attacker, { victorOwnerId: enemyUnit.ownerId });
         return { ok: true };
       }
-      if (defenderDead && !cityAt(state, col, row) && !unitAt(state, col, row) && !targetTile.structure) {
+      if (defenderDead && !cityAt(state, col, row) && !unitAt(state, col, row) && !structureStands(targetTile.structure)) {
         // Naval melee ships only advance onto water tiles; they cannot beach onto land.
         if (!attackerNaval || isWaterTerrain(targetTile.terrain)) {
           attacker.col = col; // advance into vacated tile
@@ -1108,7 +1112,12 @@ export function resolveAttack(
       if (!ranged) attacker.hp -= damageFrom(structDef * 0.5, attEff); // melee takes some back
       awardXp(state, attacker, 3);
       if (struct.hp <= 0) {
-        targetTile.structure = undefined;
+        // A breached structure is not swept off the map: its end posts still
+        // stand and the rubble between them stays put, walkable by anyone and
+        // far cheaper for the owner to patch up than to rebuild — until
+        // RUBBLE_LIFESPAN turns of neglect let the tile clear itself.
+        struct.hp = 0;
+        struct.rubbleExpiresTurn = state.turn + RUBBLE_LIFESPAN;
         attackerOwner.gold += 10;
         log(state, `${attackerOwner.name} stormed a fortification.`, {
           actorId: attacker.ownerId,

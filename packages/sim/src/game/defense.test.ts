@@ -4,7 +4,15 @@ import { createGame } from "./setup";
 import { beginTurn, applyCommand } from "./commands";
 import { computeReachable, offsetNeighbors } from "./movement";
 import { computeAttackTargets, resolveAttack, towerBombardment } from "./combat";
-import { structureHp } from "./fortifications";
+import {
+  RUBBLE_LIFESPAN,
+  repairFraction,
+  structureCondition,
+  structureDefense,
+  structureHp,
+  tickRubble,
+} from "./fortifications";
+import { nextTierAt, workLabourFor } from "./works";
 import { citiesOf, makeUnit, unitsOf } from "./state";
 
 function setup() {
@@ -36,7 +44,7 @@ function setup() {
 }
 
 describe("defensive structures", () => {
-  it("a wall blocks enemy movement and must be attacked to be removed", () => {
+  it("a wall blocks enemy movement until it is breached, then leaves walkable rubble", () => {
     const { s, structTile, enemy } = setup();
     structTile.structure = { kind: "wall", tier: 1, hp: structureHp("wall", 1), maxHp: structureHp("wall", 1) };
     const key = `${structTile.col},${structTile.row}`;
@@ -52,10 +60,59 @@ describe("defensive structures", () => {
       enemy.hp = 100;
       resolveAttack(s, enemy, structTile.col, structTile.row);
     }
-    expect(structTile.structure).toBeUndefined();
-    // Now the tile is passable again.
+    // The wall is breached but NOT swept away: the rubble stays put so it can be
+    // patched back up, and it no longer blocks anyone.
+    expect(structTile.structure).toBeDefined();
+    expect(structTile.structure!.hp).toBe(0);
+    expect(structureCondition(0, structTile.structure!.maxHp)).toBe("destroyed");
     enemy.movementLeft = 2;
     expect(computeReachable(s, enemy).has(key)).toBe(true);
+  });
+
+  it("rubble left unrepaired clears itself after RUBBLE_LIFESPAN turns", () => {
+    const { s, structTile } = setup();
+    const maxHp = structureHp("wall", 1);
+    structTile.structure = { kind: "wall", tier: 1, hp: 0, maxHp, rubbleExpiresTurn: s.turn + RUBBLE_LIFESPAN };
+
+    s.turn += RUBBLE_LIFESPAN - 1;
+    tickRubble(s);
+    expect(structTile.structure).toBeDefined(); // still within its lifespan
+
+    s.turn += 1;
+    tickRubble(s);
+    expect(structTile.structure).toBeUndefined(); // hauled away, tile is bare again
+  });
+
+  it("a damaged wall is repaired at its own tier, for a fraction of a rebuild", () => {
+    const { s, structTile } = setup();
+    const maxHp = structureHp("wall", 2);
+    const city = citiesOf(s, 0)[0]!;
+    const fresh = workLabourFor(s, "wall", 2, city, structTile.col, structTile.row).masonry!;
+
+    // Undamaged, the ladder offers the next tier up.
+    structTile.structure = { kind: "wall", tier: 2, hp: maxHp, maxHp };
+    expect(nextTierAt(structTile, "wall")).toBe(3);
+
+    // Battered, it must be patched back up at tier 2 first — and that is cheaper.
+    structTile.structure = { kind: "wall", tier: 2, hp: maxHp / 2, maxHp };
+    expect(nextTierAt(structTile, "wall")).toBe(2);
+    const half = workLabourFor(s, "wall", 2, city, structTile.col, structTile.row).masonry!;
+    expect(half).toBeLessThan(fresh);
+    expect(half).toBeCloseTo(Math.ceil(fresh * repairFraction(maxHp / 2, maxHp)), 0);
+
+    // A flattened wall costs more to repair than a half-standing one, but still
+    // less than raising it from nothing.
+    structTile.structure = { kind: "wall", tier: 2, hp: 0, maxHp };
+    const wrecked = workLabourFor(s, "wall", 2, city, structTile.col, structTile.row).masonry!;
+    expect(wrecked).toBeGreaterThan(half);
+    expect(wrecked).toBeLessThan(fresh);
+  });
+
+  it("a wall shelters its defender by however much of it still stands", () => {
+    const maxHp = structureHp("wall", 3);
+    const full = structureDefense(3, maxHp, maxHp);
+    expect(structureDefense(3, maxHp / 2, maxHp)).toBeCloseTo(full / 2);
+    expect(structureDefense(3, 0, maxHp)).toBe(0); // rubble is no cover at all
   });
 
   it("a tower bombards an adjacent enemy at the owner's turn start", () => {

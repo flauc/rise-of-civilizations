@@ -1030,7 +1030,8 @@ function renderSpecialists(): string {
     ) +
     section(
       "Walls, Towers & Forts",
-      `<p>A <b>Mason</b> and a <b>Military Engineer</b> together raise defensive structures on a tile. <b>Walls</b> (Palisade → Stone Wall → Great Wall) block enemy movement: an enemy must destroy the wall, attacking it like a unit, before the tile can be crossed. <b>Towers</b> (Watchtower → Fort → Citadel) block movement <i>and</i> bombard an adjacent enemy each turn. Both shelter a friendly defender standing on the tile, and regenerate health while not under attack.</p>`,
+      `<p>A <b>Mason</b> and a <b>Military Engineer</b> together raise defensive structures on a tile. <b>Walls</b> (Palisade → Stone Wall → Great Wall) block enemy movement: an enemy must batter the wall down, attacking it like a unit, before the tile can be crossed. <b>Towers</b> (Watchtower → Fort → Citadel) block movement <i>and</i> bombard an adjacent enemy each turn. Both shelter a friendly defender standing on the tile, by as much of the structure as still stands: as the stonework comes down, so does the cover it gives.</p>` +
+        `<p>A structure passes through three states. <b>Intact</b> is full strength. <b>Damaged</b> masonry still stands and still blocks the way, but shelters its defender less and less. <b>Breached</b> is a hole in your line: the end posts hold, the span between them is rubble, and enemies walk straight through. Rubble is not the end of the wall, though. <b>Repairing</b> it back to full costs only a fraction of a fresh build, scaled by how much is actually missing, so patching a breach is always cheaper than starting over. Leave it broken for 10 turns and the rubble is finally hauled away, taking the discount with it.</p>`,
     ) +
     section(
       "Wonders",

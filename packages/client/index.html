@@ -523,6 +523,18 @@
         left: max(12px, env(safe-area-inset-left));
         bottom: max(12px, env(safe-area-inset-bottom));
         width: 300px;
+        /* A tile with every build option unlocked (roads, improvements, the full
+           wonder list, god mode) is taller than the screen; cap it under the top
+           bar and scroll instead of growing off the top edge. */
+        max-height: min(
+          calc(
+            100dvh - var(--topbar-h, 68px) - var(--roc-safe-top, env(safe-area-inset-top, 0px)) -
+              24px
+          ),
+          720px
+        );
+        overflow: auto;
+        overscroll-behavior: contain;
         z-index: 10;
       }
       /* Tile names ("Grassland · Barbarian Camp") are long; let the summary bar
@@ -530,6 +542,18 @@
       #tile-panel .ip-name {
         white-space: normal;
         overflow: visible;
+      }
+      /* The panel scrolls once it hits its height cap, so pin the summary bar
+         (collapse chevron + close button) to the top instead of letting it
+         scroll out of reach behind a long build list. */
+      #tile-panel .ip-summary {
+        position: sticky;
+        top: 0;
+        margin: -12px -14px 0;
+        padding: 12px 14px 8px;
+        width: auto;
+        background: rgb(31, 28, 20);
+        z-index: 1;
       }
       .tinfo-yields {
         display: flex;

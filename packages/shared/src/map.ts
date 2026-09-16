@@ -64,8 +64,18 @@ export interface Tile {
   road?: boolean;
   /** Road tier 1–3 (undefined treated as 1 when a road exists). */
   roadLevel?: number;
-  /** A defensive structure occupying this tile (blocks enemy entry until destroyed). */
-  structure?: { kind: "wall" | "tower"; tier: number; hp: number; maxHp: number };
+  /** A defensive structure occupying this tile. It blocks enemy entry while any
+   *  health remains; once battered to 0 hp it stays on the tile as walkable
+   *  rubble that can be repaired far more cheaply than it could be rebuilt, until
+   *  `rubbleExpiresTurn` clears it (see fortifications.ts). */
+  structure?: {
+    kind: "wall" | "tower";
+    tier: number;
+    hp: number;
+    maxHp: number;
+    /** Turn on/after which 0-hp rubble is cleared away, freeing the tile. */
+    rubbleExpiresTurn?: number;
+  };
   /** Id of the city whose territory this tile belongs to; undefined if neutral. */
   ownerCityId?: number;
   /** A map feature on this tile: "village" (perk when entered), "barb_camp", or

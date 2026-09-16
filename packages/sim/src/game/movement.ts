@@ -16,6 +16,7 @@ import { UNIT_DEFS, type UnitDef, type TechId } from "./content";
 import { getWonder } from "@roc/data";
 import { foreignTerritoryOwner, atWar, relationBetween } from "./diplomacy";
 import { playerEffects } from "./civs";
+import { structureStands } from "./fortifications";
 
 /** Whether a unit's domain is water (native ship or embarked land unit). */
 export function isWaterDomain(unit: Unit): boolean {
@@ -200,10 +201,11 @@ function occupancy(state: GameState, exclude: Unit): Set<string> {
   return occ;
 }
 
-/** A standing enemy defensive structure blocks entry until it is destroyed. */
+/** A standing enemy defensive structure blocks entry until it is destroyed. Once
+ *  breached it is walkable rubble, so the tile opens up without being cleared. */
 export function enemyStructureBlocks(state: GameState, col: number, row: number, playerId: number): boolean {
   const tile = getTile(state.map, col, row);
-  if (!tile?.structure || tile.structure.hp <= 0 || tile.ownerCityId === undefined) return false;
+  if (!structureStands(tile?.structure) || tile?.ownerCityId === undefined) return false;
   const owner = state.cities.get(tile.ownerCityId);
   return !!owner && owner.ownerId !== playerId;
 }

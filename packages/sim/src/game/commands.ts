@@ -35,6 +35,7 @@ import { rushCity, rushWork, rushTraining, type RushCurrency } from "./rush";
 import { capitalPopulationBonusFor, BASE_CITY_POPULATION } from "@roc/data";
 import { foundTerritory, expandTerritory, canExpandTo, tileOwnerId } from "./territory";
 import { onUnitEnter, tickRuins, clearRuin } from "./features";
+import { tickRubble } from "./fortifications";
 import { foundReligion, spreadReligion, buyReligiousUnit, evangelize, purgeHeresy, boardTradeRoute, processTransit, upgradeReligion, pickReligionPerk, moveHolyCity } from "./religion";
 import { trackCircumnavigation } from "./science-victory";
 import { accrueInfluence } from "./culture-victory";
@@ -239,7 +240,10 @@ export function beginTurn(state: GameState): void {
   if (state.currentPlayerIndex === 0) {
     refreshTradeRoutePaths(state); // snap routes onto faster roads once per round
   }
-  if (state.currentPlayerIndex === 0) tickRuins(state); // ruins fade once per round
+  if (state.currentPlayerIndex === 0) {
+    tickRuins(state); // ruins fade once per round
+    tickRubble(state); // and breached walls left unrepaired are finally hauled away
+  }
   for (const u of unitsOf(state, player.id)) {
     if (u.sleeping) continue;
     if (u.aboardShipId !== undefined) {

@@ -19,7 +19,7 @@ import {
   specialistLabour,
   type SpecialistId,
 } from "./specialists";
-import { DEFENSE_NAMES, STRUCTURE_HP, type DefenseKind } from "./fortifications";
+import { DEFENSE_NAMES, STRUCTURE_HP, repairFraction, type DefenseKind } from "./fortifications";
 import { IMPROVEMENT_REQ_TECH, type ImprovementKind } from "./improvements";
 import { emitImprovementComplete, emitWonderComplete } from "./turn-updates";
 import { advanceRoadRoute, onRouteWorkCancelled } from "./road-routes";
@@ -201,7 +201,12 @@ export function nextTierAt(tile: Tile, kind: string): number | null {
     if (!isPassableLand(tile.terrain)) return null;
     if (tile.improvement) return null; // economic improvement occupies the tile
     if (tile.structure && tile.structure.kind !== kind) return null; // wrong structure type
-    const cur = tile.structure && tile.structure.kind === kind ? tile.structure.tier : 0;
+    const here = tile.structure && tile.structure.kind === kind ? tile.structure : undefined;
+    // Damaged or breached masonry is patched back up at the tier it already is —
+    // a far cheaper job than raising it again (see workLabourFor). Only once it
+    // stands at full health can it be built higher.
+    if (here && here.hp < here.maxHp) return here.tier;
+    const cur = here ? here.tier : 0;
     return cur < MAX_TIER ? cur + 1 : null;
   }
   if (isUniqueImpKind(kind)) {
@@ -213,6 +218,13 @@ export function nextTierAt(tile: Tile, kind: string): number | null {
     return cur < MAX_TIER ? cur + 1 : null; // build (tier 1) or upgrade toward tier 3
   }
   return null;
+}
+
+/** True when a work of `kind` at `tier` on this tile would patch up the structure
+ *  already standing there rather than raise a new one (or upgrade it a tier). */
+export function isRepairWork(tile: Tile | undefined, kind: string, tier: number): boolean {
+  const s = tile?.structure;
+  return !!s && isDefenseKind(kind) && s.kind === kind && s.tier === tier && s.hp < s.maxHp;
 }
 
 /** Distance-and-tier-scaled labour requirement for a tile/defensive work. */
@@ -231,7 +243,14 @@ export function workLabourFor(
     return { [ECON_DISCIPLINE[kind]]: Math.ceil(base) };
   }
   if (isDefenseKind(kind)) {
-    const base = DEFENSE_BASE[kind] * tier * distMult;
+    const tile = getTile(state.map, col, row);
+    // Rebuilding on top of your own broken wall reuses its footings, its end
+    // posts and most of its stone, so a repair is charged as a fraction of a
+    // fresh build, scaled by how much of it is actually missing.
+    const repair = isRepairWork(tile, kind, tier)
+      ? repairFraction(tile!.structure!.hp, tile!.structure!.maxHp)
+      : 1;
+    const base = DEFENSE_BASE[kind] * tier * distMult * repair;
     // Defensive works need both a Mason and a Military Engineer.
     return { masonry: Math.ceil(base), engineering: Math.ceil(base) };
   }
@@ -933,6 +952,7 @@ function completeWork(state: GameState, w: Work): void {
   const tile = getTile(state.map, w.target.col, w.target.row);
   if (!tile) return;
   const tier = w.tier ?? 1;
+  let repaired = false;
   if (w.kind === "road") {
     tile.road = true;
     tile.roadLevel = tier;
@@ -941,9 +961,12 @@ function completeWork(state: GameState, w: Work): void {
     tile.improvementLevel = tier;
   } else if (isDefenseKind(w.kind)) {
     const maxHp = STRUCTURE_HP[w.kind][tier - 1]!;
+    repaired = isRepairWork(tile, w.kind, tier);
+    // A fresh record also drops any rubble countdown the breach had started.
     tile.structure = { kind: w.kind, tier, hp: maxHp, maxHp };
   }
-  log(state, `${owner?.name ?? "Someone"} completed a ${workName(w.kind, tier)}.`, {
+  const verb = repaired ? "repaired" : "completed";
+  log(state, `${owner?.name ?? "Someone"} ${verb} a ${workName(w.kind, tier)}.`, {
     actorId: owner?.id,
     targetIds: owner ? [owner.id] : undefined,
     tile: w.target ? { col: w.target.col, row: w.target.row } : undefined,
