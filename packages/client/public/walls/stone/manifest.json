@@ -1,0 +1,115 @@
+{
+  "towerScale": 1.5,
+  "sides": {
+    "v": {
+      "intact": {
+        "file": "side_v",
+        "w": 154,
+        "h": 835,
+        "ax": 77.0,
+        "ay": 0.0,
+        "bx": 77.0,
+        "by": 834.8
+      },
+      "damaged": {
+        "file": "side_v_damaged",
+        "w": 154,
+        "h": 835,
+        "ax": 77.0,
+        "ay": 0.0,
+        "bx": 77.0,
+        "by": 834.8
+      },
+      "destroyed": {
+        "file": "side_v_destroyed",
+        "w": 285,
+        "h": 374,
+        "ax": 140.6,
+        "ay": -231.6,
+        "bx": 140.6,
+        "by": 603.2
+      }
+    },
+    "u": {
+      "intact": {
+        "file": "side_u",
+        "w": 608,
+        "h": 532,
+        "ax": 28.0,
+        "ay": 528.77,
+        "bx": 579.2,
+        "by": 252.59
+      },
+      "damaged": {
+        "file": "side_u_damaged",
+        "w": 594,
+        "h": 530,
+        "ax": 27.61,
+        "ay": 531.12,
+        "bx": 573.3,
+        "by": 257.7
+      },
+      "destroyed": {
+        "file": "side_u_destroyed",
+        "w": 596,
+        "h": 534,
+        "ax": 34.8,
+        "ay": 534.1,
+        "bx": 569.47,
+        "by": 266.2
+      }
+    },
+    "d": {
+      "intact": {
+        "file": "side_d",
+        "w": 608,
+        "h": 532,
+        "ax": 28.0,
+        "ay": 252.59,
+        "bx": 579.2,
+        "by": 528.77
+      },
+      "damaged": {
+        "file": "side_d_damaged",
+        "w": 594,
+        "h": 530,
+        "ax": 19.46,
+        "ay": 257.7,
+        "bx": 565.14,
+        "by": 531.12
+      },
+      "destroyed": {
+        "file": "side_d_destroyed",
+        "w": 596,
+        "h": 534,
+        "ax": 24.78,
+        "ay": 266.2,
+        "bx": 559.45,
+        "by": 534.1
+      }
+    }
+  },
+  "tower": {
+    "intact": {
+      "file": "tower",
+      "w": 178,
+      "h": 362,
+      "ax": 88.6,
+      "ay": 287.24
+    },
+    "damaged": {
+      "file": "tower",
+      "w": 178,
+      "h": 362,
+      "ax": 88.6,
+      "ay": 287.24
+    },
+    "destroyed": {
+      "file": "tower",
+      "w": 178,
+      "h": 362,
+      "ax": 88.6,
+      "ay": 287.24
+    }
+  }
+}
